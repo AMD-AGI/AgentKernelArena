@@ -19,6 +19,19 @@ oracle in `_arena_reference.py`, before timing and against observed timed output
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
+An unscored correctness control exercises every additional legal row count
+M=3 through 8 through the declared matmul wrapper, using small nontrivial
+FP16 matrices and both bias settings across the controls. Each row count also
+has a larger or uneven N/K control, spanning contiguous and transposed B and
+the complementary bias setting; M=3 includes N=K=4096. These controls are
+correctness-only and leave the 80 declared case identities unchanged. Before each measured
+sample, the adapter invalidates the scored output buffer outside the timing
+interval; the canonical graph timer therefore captures one complete kernel
+call per replay. Every sample must rewrite that output correctly. The original
+66 scored cases, 10 warmups, 100 samples and numerical tolerances remain.
+Latency values from the earlier batched graph policy are not directly
+comparable to the checked one-call policy.
+
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch
 peer timing is not an Arena baseline and is omitted by this adapter. Candidate

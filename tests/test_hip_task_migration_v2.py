@@ -46,6 +46,17 @@ def import_path(path):
     return module
 
 
+def small_gate_replay_fixture(root):
+    """A real six-parameter gate on small CPU inputs for replay mechanics tests."""
+    functional = import_path(root / 'pytorch_code_functional/py_5334_GateGRUSelectionLayer_func.py')
+    model = functional.GateGRUSelectionLayer(2, 4, 0.0).eval()
+    with torch.no_grad():
+        for parameter in model.parameters():
+            parameter.fill_(.1)
+    inputs = [torch.tensor([[[[-1., .5]]]]), torch.tensor([[[[.2, .8]]]])]
+    return model, inputs, functional.module_fn
+
+
 def report_fake_samples(kwargs, output):
     """Model the helper's read-only callback after every reported sample."""
     callback = kwargs['timed_run'].after_sample
@@ -824,17 +835,26 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
         monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
             assert_declared_control=lambda _model, _inputs: None))
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
-    inputs = [torch.tensor([-1., .5, 2.])]
+    gate_case = relative == 'hip2hip/gpumode/GateGRUSelectionLayer'
+    if gate_case:
+        module, inputs, gate_fn = small_gate_replay_fixture(root)
+        reference_for_replay = lambda: module(*inputs)
+    else:
+        inputs = [torch.tensor([-1., .5, 2.])]
     observed = []
     reference_operator = ((lambda x: torch.softmax(x, dim=-1))
                           if hasattr(helper, 'softmax_reference') else torch.nn.functional.gelu)
+    if not gate_case:
+        reference_for_replay = lambda: reference_operator(inputs[0])
     def benchmark(invoke, **kwargs):
         observed.append(kwargs)
-        output = invoke()
+        with torch.no_grad():
+            output = invoke()
         report_fake_samples(kwargs, output)
         def replay():
             assert torch.isnan(output).all()  # Same timed buffer was poisoned.
-            output.copy_(torch.zeros_like(output) if behavior == 'wrong_replay' else reference_operator(inputs[0]))
+            with torch.no_grad():
+                output.copy_(torch.zeros_like(output) if behavior == 'wrong_replay' else reference_for_replay())
             return output
         kwargs['timed_run']._bind(replay, output)
         return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
@@ -843,12 +863,21 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
     helper.install(perf, runner.output_contract)
-    def module(x, fn=reference_operator): return fn(x)
-    def candidate(x):
-        output = reference_operator(x)
-        if behavior == 'input_mutation': x.add_(1)
-        if behavior == 'input_alias': x.copy_(output); return x
-        return output
+    if gate_case:
+        def candidate(x_1, x_2, reset_weight, reset_bias, update_weight, update_bias,
+                      proposal_weight, proposal_bias):
+            output = gate_fn(x_1, x_2, reset_weight, reset_bias, update_weight,
+                             update_bias, proposal_weight, proposal_bias)
+            if behavior == 'input_mutation': x_1.add_(1)
+            if behavior == 'input_alias': x_1.copy_(output); return x_1
+            return output
+    else:
+        def module(x, fn=reference_operator): return fn(x)
+        def candidate(x):
+            output = reference_operator(x)
+            if behavior == 'input_mutation': x.add_(1)
+            if behavior == 'input_alias': x.copy_(output); return x
+            return output
     if behavior == 'correct':
         elapsed, metadata = perf.cal_hip_latency(module, inputs, candidate)
         assert elapsed == .25 and metadata['replay_validation_valid'] is True
@@ -1828,7 +1857,16 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
             self.register_buffer('offset', torch.tensor(.5))
         def forward(self, x, fn=None):
             return torch.nn.functional.gelu(x * self.weight + self.offset) if fn is None else fn(x, self.weight, self.offset)
-    model = Model().eval()
+    gate_case = path.parent.name == 'GateGRUSelectionLayer'
+    if gate_case:
+        model, inputs, candidate = small_gate_replay_fixture(path.parent)
+        x = inputs[0]
+        original_inputs = [value.clone() for value in inputs]
+        original_state = {name: value.clone() for name, value in model.state_dict().items()}
+    else:
+        model = Model().eval()
+        x = torch.tensor([-1., .5, 2.])
+        inputs = [x]
     if path.parent.name in {'GELU', '14539_GELU', 'l1n26_GELU_'}:
         # The shared state test uses a synthetic affine model; actual GELU's
         # independent oracle and both real call paths have separate controls.
@@ -1836,7 +1874,6 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
     if path.parent.name in {'SoftmaxModule', '10082_SoftmaxModule', 'l1n23_Softmax'}:
         # Isolate shared state mechanics; real Softmax has independent controls.
         monkeypatch.setattr(helper, 'softmax_reference', lambda value, axis: model(value))
-    x = torch.tensor([-1., .5, 2.])
     original = x.clone()
     if 'CrossEntropyLossLabelSmoothing' in path.parent.name:
         # This test isolates shared state mechanics with its synthetic model.
@@ -1845,8 +1882,9 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
         monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
             reference=lambda value, epsilon, distribution: model(value),
             assert_declared_control=lambda _model, _inputs: None))
-    def candidate(x, weight, offset):
-        return torch.nn.functional.gelu(x * weight + offset)
+    if not gate_case:
+        def candidate(x, weight, offset):
+            return torch.nn.functional.gelu(x * weight + offset)
     def benchmark(invoke, **kwargs):
         assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
         output = invoke().detach()
@@ -1854,10 +1892,14 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
         def replay():
             assert torch.isnan(output).all()
             with torch.no_grad():
-                output.copy_(candidate(x, model.weight, model.offset))
+                output.copy_(invoke() if gate_case else candidate(x, model.weight, model.offset))
                 if fault in ('input', 'exception'): x.add_(1)
-                if fault in ('parameter', 'exception'): model.weight.add_(1)
-                if fault in ('buffer', 'exception'): model.offset.add_(1)
+                if fault in ('parameter', 'exception'):
+                    (model.update.weight if gate_case else model.weight).add_(1)
+                if fault in ('buffer', 'exception'):
+                    # GateGRU has six parameters and no buffer; mutate a second
+                    # live gate argument while retaining this state-fault branch.
+                    (model.reset.bias if gate_case else model.offset).add_(1)
                 if fault == 'exception': raise RuntimeError('deliberate replay failure')
             return output
         kwargs['timed_run']._bind(replay, output)
@@ -1868,16 +1910,22 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
     helper.install(perf, runner.output_contract)
     def run():
-        return perf.cal_modu_latency(model, [x]) if role == 'baseline' else perf.cal_hip_latency(model, [x], candidate)
+        return perf.cal_modu_latency(model, inputs) if role == 'baseline' else perf.cal_hip_latency(model, inputs, candidate)
     if fault == 'none':
         _, meta = run()
         assert meta['input_state_restored'] and meta['model_state_validation_valid']
-        assert meta['model_state_tensor_count'] == 2
+        assert meta['model_state_tensor_count'] == (6 if gate_case else 2)
     else:
         with pytest.raises((ValueError, RuntimeError, AssertionError)):
             run()
     torch.testing.assert_close(x, original, rtol=0, atol=0)
-    assert model.weight.item() == 2 and model.offset.item() == .5
+    if gate_case:
+        for value, pristine in zip(inputs, original_inputs):
+            torch.testing.assert_close(value, pristine, rtol=0, atol=0)
+        for name, value in model.state_dict().items():
+            torch.testing.assert_close(value, original_state[name], rtol=0, atol=0)
+    else:
+        assert model.weight.item() == 2 and model.offset.item() == .5
 
 
 @pytest.mark.parametrize('path', [p for p in EXTENSIONS if 'level2' in p.parts or 'level3' in p.parts], ids=lambda p: p.parent.name)

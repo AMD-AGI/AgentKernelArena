@@ -56,3 +56,9 @@ the harness checks those outputs, changes an operand, poisons outputs, and repla
 same graph against the original numerical reference. All comparisons, snapshots,
 perturbations and restoration are outside the timed window. An unobservable graph
 fallback fails instead of validating a different untimed invocation.
+
+Unscored known-answer controls also exercise chunk sizes 32 and 128 with two
+batches, three heads, mixed feature widths and partial final chunks. The 32-token
+case crosses into a third chunk. Independent scalar state and causal-attention
+sums validate complete outputs at the same 5e-2 tolerances; the five scored
+64-token cases, timing and input generation remain unchanged.

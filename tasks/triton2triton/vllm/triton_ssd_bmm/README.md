@@ -49,9 +49,10 @@ reference and numerical gate compare the **complete** chunk matrix for both flag
 values, including all upper-triangle elements. The earlier phrase “optional causal
 masking” was inaccurate for this task's expected output. No elementwise triangular
 mask is part of the accepted result. Candidate tile choices must still produce every
-required element. The existing five workloads, kernel and comparator are unchanged.
-An additional unscored `causal=True` known answer checks the complete matrix and
-regression coverage rejects replacing its upper triangle with zeros.
+required element. The existing five scored workloads and comparator are unchanged.
+The kernel no longer skips upper tiles when `causal=True`, because the reference
+requires their values. An additional unscored chunk-size-128 causal known answer
+checks the complete matrix, and regression coverage rejects omitted upper tiles.
 
 Unscored stride controls independently vary each operand's token and group
 strides while keeping the last dimension contiguous, as required by the wrapper.

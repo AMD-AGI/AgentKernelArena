@@ -141,6 +141,8 @@ def benchmark_type(base, plugin, module):
                 raise RuntimeError('Nonpositive/nonfinite device timing')
             if method not in ('cuda_graph','cuda_event_fallback'):
                 raise RuntimeError('Missing device timing method')
+            if method=='cuda_graph' and record.get('benchmark_effective_repeats')!=1:
+                raise RuntimeError('Graph timing included unobserved layer norm calls')
             row.update(execution_time_ms=ms,benchmark_method=method,
                        metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
                                  'measured_samples_checked':checked_samples[0],

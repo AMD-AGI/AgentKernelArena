@@ -56,6 +56,12 @@ their own declared files and checked against the independent PyTorch reference.
 Every candidate action must execute its own compiled entrypoint; protected
 baseline/reference imports, calls and data access remain prohibited.
 
+For graph-timed cases without an input-reset callback, each captured sample now
+contains one operator call (`max_graph_repeats=1`). The earlier capture cap
+allowed more calls per sample, so historical latency may differ and needs a
+same-source rerun before comparison. Event-timed cases are unaffected; the
+declared inputs, 10 warmups, 100 samples, and numerical gates remain the same.
+
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated
 re-execution. A modification fails validation. Original input and model tensor
@@ -63,3 +69,11 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+Correctness varies each of the six live gate weights and biases at every
+declared geometry. After the reported samples, the protected timing adapter
+changes those same parameter buffers one at a time and checks output-poisoned
+replays of the graph that was measured against changed PyTorch references.
+The original parameters are restored even when a check fails. These additional
+replays are unscored; the five cases, ten warmups, one hundred samples, and
+numerical tolerance are unchanged.

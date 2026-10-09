@@ -83,7 +83,7 @@ def test_protected_controls_reject_each_unit_stride_assumption(broken):
 
     if broken is None:
         run()
-        assert len(seen) == 29
+        assert len(seen) == 37
         assert any(source_stride == 2 and count_stride == 1
                    for _, _, source_stride, count_stride in seen)
         assert {count_dtype for _, count_dtype, source_stride, count_stride in seen

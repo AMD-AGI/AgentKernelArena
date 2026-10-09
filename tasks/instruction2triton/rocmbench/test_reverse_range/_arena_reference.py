@@ -58,8 +58,40 @@ def _cast_like(expected, actual):
 
 
 def prepare(c, module):
-    expected=torch.flip(c['data_perf'][1:513],[0])
-    return lambda result: compare(c['res_perf_buffer'],expected,exact=True)
+    source = c['data_perf']
+    original = source.detach().clone()
+    contract = (source.shape, source.dtype, source.device,
+                source.stride(), source.storage_offset())
+    expected = torch.flip(source[1:513], [0])
+
+    def check(result):
+        current = c['data_perf']
+        if (not isinstance(current, torch.Tensor) or current is not source
+                or (current.shape, current.dtype, current.device,
+                    current.stride(), current.storage_offset()) != contract
+                or not torch.equal(current.contiguous().view(torch.uint8),
+                                   original.contiguous().view(torch.uint8))):
+            raise AssertionError('Input argument data_perf was modified')
+        compare(c['res_perf_buffer'], expected, exact=True)
+
+    return check
+
+
+def check_interior_transitions(c, invoke):
+    """A correct output sentinel must not hide changes elsewhere in the input."""
+    source, output = c['data_perf'], c['res_perf_buffer']
+    saved_source, saved_output = source.clone(), output.clone()
+    try:
+        for index in (511, 257):
+            source.copy_(saved_source)
+            output.copy_(saved_output)
+            # input[512], which determines output[0], stays unchanged.
+            source[index].add_(3)
+            check = prepare(c, None)
+            check(invoke())
+    finally:
+        source.copy_(saved_source)
+        output.copy_(saved_output)
 
 
 @contextmanager

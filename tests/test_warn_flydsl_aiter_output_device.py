@@ -9,7 +9,12 @@ import torch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = ("gemm_a16w16_nt_n6144_k1536", "gemm_a16w16_nt_n7168_k512")
+TASKS = tuple(sorted(
+    path.parent.parent.name
+    for path in (ROOT / "tasks/Aiter-task").glob("gemm_*/scripts/task_measure.py")
+    if "def host_copy" in path.read_text()
+))
+assert len(TASKS) == 14  # The other three GEMMs retain their legacy timing protocol.
 MODULES = ("task_measure", "task_baseline", "task_compare", "task_inputs", "task_reference")
 
 

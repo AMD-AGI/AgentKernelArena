@@ -540,6 +540,8 @@ def test_control_manifest_shapes_match_actual_tensors_and_full_outputs(name, mon
             value=values[slot]
             assert list(value.shape)==c['input_shapes'][key]
             expected_dtype=torch.float32 if key in ('mid_o','alibi_slopes') else torch.float16 if value.is_floating_point() else torch.int32
+            if name==REMAINING[3] and case=='float32_branch' and value.is_floating_point():
+                expected_dtype=torch.float32
             assert value.dtype==expected_dtype
         outputs=checks.expected_outputs(h,values)
         assert [list(v.shape) for v in outputs]==list(c['output_shapes'].values())

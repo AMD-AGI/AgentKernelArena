@@ -63,6 +63,61 @@ def prepare(c, module):
     return lambda result: compare(c.get('c_buffer',result),expected,atol=1e-3,rtol=1e-2)
 
 
+def check_declared_m_controls(module, device):
+    """Exercise every legal row count absent from the original M=1/2 suite."""
+    for rows in range(3, 9):
+        cols, inner = 23, 31
+        a = ((torch.arange(rows * inner, device=device) % 17 - 8).reshape(rows, inner)
+             .to(torch.float16) / 16)
+        b = ((torch.arange(cols * inner, device=device) % 19 - 9).reshape(cols, inner)
+             .to(torch.float16) / 32).T
+        bias = ((torch.arange(rows, device=device) - 3).to(torch.float16) / 16
+                if rows % 2 else None)
+        a_saved, b_saved = a.clone(), b.clone()
+        bias_saved = None if bias is None else bias.clone()
+        expected = a @ b
+        if bias is not None:
+            expected = expected + bias[:, None]
+        actual = module.matmul('triton-multreduce', a, b, bias)
+        compare(actual, expected, atol=1e-3, rtol=1e-2)
+        if (not torch.equal(a, a_saved) or not torch.equal(b, b_saved) or
+                (bias is not None and not torch.equal(bias, bias_saved))):
+            raise AssertionError('Multreduce modified read-only control input')
+
+    # Pair each previously small-only row count with a distinct larger or
+    # uneven N/K boundary. Both contiguous and transposed B, and both bias
+    # branches, are represented without changing any scored case.
+    profiles = (
+        (3, 4096, 4096, False, False),
+        (4, 129, 257, True, True),
+        (5, 256, 128, False, False),
+        (6, 257, 129, True, True),
+        (7, 512, 513, False, False),
+        (8, 513, 512, True, True),
+    )
+    for rows, cols, inner, use_bias, transpose_b in profiles:
+        a = (((torch.arange(rows * inner, device=device).reshape(rows, inner) % 17) + 1)
+             .to(torch.float16) / 16)
+        if transpose_b:
+            b = (((torch.arange(cols * inner, device=device).reshape(cols, inner) % 19) + 1)
+                 .to(torch.float16) / 32).T
+        else:
+            b = (((torch.arange(inner * cols, device=device).reshape(inner, cols) % 19) + 1)
+                 .to(torch.float16) / 32)
+        bias = ((torch.arange(rows, device=device) + 1).to(torch.float16) / 8
+                if use_bias else None)
+        a_saved, b_saved = a.clone(), b.clone()
+        bias_saved = None if bias is None else bias.clone()
+        expected = a @ b
+        if bias is not None:
+            expected = expected + bias[:, None]
+        actual = module.matmul('triton-multreduce', a, b, bias)
+        compare(actual, expected, atol=1e-3, rtol=1e-2)
+        if (not torch.equal(a, a_saved) or not torch.equal(b, b_saved) or
+                (bias is not None and not torch.equal(bias, bias_saved))):
+            raise AssertionError('Multreduce modified read-only control input')
+
+
 @contextmanager
 def perturbed_inputs(c):
     """Change live operands for a bound replay; restore them on every exit."""

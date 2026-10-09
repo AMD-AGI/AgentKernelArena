@@ -20,10 +20,19 @@ class MeasuredQuantizedStream:
         self.check_unchanged = check_unchanged
         self.prepared = 0
         self.prepared_inputs = None
-        self.outputs = []
+        self.checked = 0
+        self.reference = None
+        self.compare = None
+        self.last_expected = None
+        self.expected_cpu = None
         self.measuring = True
         self.output_shape = (inputs[0].shape[0], inputs[1].shape[0])
         self.output_device = inputs[0].device
+
+    def bind(self, reference, compare):
+        if self.prepared or self.checked:
+            raise AssertionError("Measured reference must be bound before sampling")
+        self.reference, self.compare = reference, compare
 
     def _set_input(self, index):
         if index == 0:
@@ -55,6 +64,10 @@ class MeasuredQuantizedStream:
             raise AssertionError("More preparations than reported samples")
         self._set_input(self.prepared)
         self.prepared_inputs = tuple(value.clone() for value in self.inputs)
+        if self.reference is None or self.compare is None:
+            raise AssertionError("Measured reference must be bound before sampling")
+        self.last_expected = self.reference()
+        self.expected_cpu = self.last_expected.detach().to("cpu", copy=True)
         self.prepared += 1
 
     def observe(self, output):
@@ -66,20 +79,21 @@ class MeasuredQuantizedStream:
                 or output.device != self.output_device):
             raise AssertionError("Measured quantized GEMM output violates its contract")
         self.check_unchanged(self.inputs, self.prepared_inputs)
-        # Retain the full returned bytes. This is necessary for the original
-        # per-element numerical gate; a checksum would not establish it.
-        self.outputs.append(output.detach().to("cpu", copy=True))
+        if self.reference is None or self.compare is None or self.checked + 1 != self.prepared:
+            raise AssertionError("Measured sample lacks its bound reference or preparation")
+        # The Event has ended. Read the measured output and apply the full
+        # per-element gate before another invocation can reuse its storage.
+        actual = output.detach().to("cpu", copy=True)
+        self.compare(actual, self.expected_cpu)
+        self.expected_cpu = None
+        self.checked += 1
 
     def validate(self, reference, compare):
         self.measuring = False
-        if self.prepared != self.samples or len(self.outputs) != self.samples:
-            raise AssertionError("Reported samples lack matching measured outputs")
-        last_expected = None
-        for index, actual in enumerate(self.outputs):
-            self._set_input(index)
-            last_expected = reference()
-            compare(actual, last_expected.cpu())
-        return last_expected
+        if (reference is not self.reference or compare is not self.compare
+                or self.prepared != self.samples or self.checked != self.samples):
+            raise AssertionError("Reported samples lack matching checked outputs")
+        return self.last_expected
 
     def restore(self):
         self.measuring = False

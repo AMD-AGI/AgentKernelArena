@@ -31,6 +31,8 @@ The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing
 policy is shared by both roles; candidate changes cannot select a weaker policy.
+Returned Event timing is rejected for these graph-timed cases, including after
+loading a candidate extension.
 
 Use the argv prefix in `config.yaml` followed by one of:
 
@@ -55,6 +57,9 @@ cases, warmups and repetition counts. The framework identifies captured-graph an
 automatic unsupported fallback cannot be reported as replay-validated.
 Each graph sample captures one operator call, so its time cannot be divided by
 additional unchecked calls.
+The earlier graph capture cap allowed more calls per sample when no input-reset
+callback was needed; historical latency may differ and needs a same-source
+rerun before comparison. Event timing is unaffected.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated

@@ -50,7 +50,8 @@ class FakeBase:
 
     def run_benchmark(self, *, baseline_callable=None):
         assert baseline_callable is None
-        times, metadata = _measure_times(self.op_callable, self.config)
+        times, metadata = _measure_times(
+            self.op_callable, self.config, prepare_fn=self.prepare_fn)
         return {"timing_ms": {"mean": sum(times) / len(times)}, **metadata}
 
 
@@ -168,6 +169,9 @@ def test_adapter_checks_measured_samples_and_bound_replay(monkeypatch, task, met
     reference.check_row_stride_control = lambda context, module: None
     reference.check_blocked_stride_control = lambda context, module: None
     reference.check_stride_controls = lambda context, module: None
+    reference.check_partial_tile_controls = lambda context, module: None
+    reference.check_interior_transitions = lambda context, invoke: None
+    reference.check_declared_m_controls = lambda module, device: None
     reference.poison_outputs = lambda context, result, *statistics: calls.append("poisoned")
     reference.snapshot_inputs = lambda context: {}
     reference.check_inputs = lambda context, saved: None
@@ -202,6 +206,7 @@ def test_adapter_checks_measured_samples_and_bound_replay(monkeypatch, task, met
         timed_run.bound = True
         return [1.0] * repetition, {
             "benchmark_method": method,
+            "benchmark_effective_repeats": 1,
             "benchmark_timed_run_kind": "captured_graph" if method == "cuda_graph" else "eager_callable",
             "benchmark_fallback_reason": "declared event timing" if method == "cuda_event_fallback" else None,
         }
@@ -230,7 +235,16 @@ def test_adapter_checks_measured_samples_and_bound_replay(monkeypatch, task, met
             "captured_graph" if method == "cuda_graph" else "eager_callable")
         if method == "cuda_event_fallback":
             assert row["metadata"]["device_timing"]["benchmark_fallback_reason"] == "declared event timing"
-    assert ("poisoned" in calls) == (not bad_sample)
+    if task in (
+        'instruction2triton/rocmbench/gemm',
+        'instruction2triton/rocmbench/test_reverse_range',
+        'triton2triton/rocmbench/easy/test_reverse_range',
+        'triton2triton/rocmbench/hard/test_block_pointer_matmul',
+        'triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel',
+    ):
+        assert "poisoned" in calls  # sample preparation invalidates the scored buffer
+    else:
+        assert ("poisoned" in calls) == (not bad_sample)
     assert _measure_times is FakeBase.run_benchmark.__globals__["_measure_times"]
 
 
@@ -261,6 +275,9 @@ def test_adapter_replays_changed_operand_and_restores_it(monkeypatch, task, cach
     reference.check_row_stride_control = lambda context, module: None
     reference.check_blocked_stride_control = lambda context, module: None
     reference.check_stride_controls = lambda context, module: None
+    reference.check_declared_m_controls = lambda module, device: None
+    reference.check_partial_tile_controls = lambda context, module: None
+    reference.check_interior_transitions = lambda context, invoke: None
     reference.perturbed_inputs = perturbed_inputs
     reference.poison_outputs = lambda context, output, *statistics: None
     reference.snapshot_inputs = lambda context: {}
@@ -288,7 +305,8 @@ def test_adapter_replays_changed_operand_and_restores_it(monkeypatch, task, cach
         timed_run.outputs = output
         timed_run.replay_output = lambda: (prepare_fn(),fn())[1] if prepare_fn is not None else fn()
         timed_run.bound = True
-        return [1.0] * repetition, {"benchmark_method": "cuda_graph"}
+        return [1.0] * repetition, {"benchmark_method": "cuda_graph",
+                                   "benchmark_effective_repeats": 1}
     timer.benchmark_cuda_graph_or_events_samples = samples
     monkeypatch.setitem(sys.modules, "_aka_benchmark", timer)
 

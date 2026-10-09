@@ -85,6 +85,34 @@ def check_stride_controls(c, module):
             raise AssertionError('Block-pointer matmul modified a read-only operand')
 
 
+def check_partial_tile_controls(c, module):
+    """Exercise the declared single-tile M, N, and K boundaries independently."""
+    device = c['a'].device
+    m, n, k = 32, 32, 64
+    a = ((torch.arange(m * k, device=device).reshape(m, k) % 17) + 1).to(torch.float16) / 16
+    b = ((torch.arange(k * n, device=device).reshape(k, n) % 19) + 1).to(torch.float16) / 32
+    saved_a, saved_b = a.clone(), b.clone()
+    sentinel = -37.0
+    for block_m, block_n, block_k in ((16, 32, 64), (32, 16, 64), (32, 32, 32)):
+        out = torch.full((m, n), sentinel, device=device, dtype=torch.float32)
+        module.matmul_no_scf_with_advance_kernel[(1,)](
+            a_ptr=a, b_ptr=b, c_ptr=out, M=m, N=n, K=k,
+            stride_am=a.stride(0), stride_ak=a.stride(1),
+            stride_bk=b.stride(0), stride_bn=b.stride(1),
+            stride_cm=out.stride(0), stride_cn=out.stride(1),
+            BLOCK_M=block_m, BLOCK_N=block_n, BLOCK_K=block_k,
+            num_warps=4)
+        expected_tile = a[:block_m, :block_k] @ b[:block_k, :block_n]
+        # Match the original FP16-PyTorch comparison for the FP32 accumulator.
+        compare(out[:block_m, :block_n], expected_tile, check_dtype=False)
+        untouched = torch.ones_like(out, dtype=torch.bool)
+        untouched[:block_m, :block_n] = False
+        if not torch.equal(out[untouched], torch.full_like(out[untouched], sentinel)):
+            raise AssertionError('Single-tile kernel wrote outside its output tile')
+        if not torch.equal(a, saved_a) or not torch.equal(b, saved_b):
+            raise AssertionError('Single-tile kernel modified a read-only operand')
+
+
 @contextmanager
 def perturbed_inputs(c):
     """Change live operands for a bound replay; restore them on every exit."""

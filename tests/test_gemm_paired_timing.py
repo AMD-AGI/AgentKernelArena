@@ -57,18 +57,18 @@ def normalize_former_role_policy(function):
     return function
 
 
-# Qualified sample-stream repairs change the direct timing harness (and both
+# Reviewed sample-stream repairs change the direct timing harness (and both
 # a4w4 entrypoints). Keep BEFORE as the historical comparison for every other
 # function; these exact current ASTs are covered by measured-output CPU tests.
 QUALIFIED_SAMPLE_STREAM = {
-    ('batched_gemm_a8w8_kernel', 'arena_benchmark'): 'ec8d61b76248e7117b4674d23ff0930ad119d2d6e0d2cc4899d096d7b9a1c8aa',
-    ('gemm_a16w8_blockscale_kernel', 'arena_benchmark'): 'a08fb29684f110909e9c65f1220a7103f91a0d1a434805696ce74e91acd37529',
-    ('gemm_a16wfp4_kernel', 'arena_benchmark'): '9cf3effa83d6cb8a36e5e413350db0fa40571dc7ddf01caef3d184109741629c',
-    ('gemm_a4w4_kernel', 'run_benchmark'): 'c10d9c64bfeeaad96ff4a0cad8196abb5bb8c72284f53227b57cfa8a6af99659',
-    ('gemm_a4w4_kernel', 'arena_benchmark'): '3aa7efc505d6cb07a159d2eb99e2934edf166e4c4f313b4342fee43623d0eded',
-    ('gemm_a8w8_per_token_scale_kernel', 'arena_benchmark'): '662733b7d492f06efb0e3de40f51f0c9fe0a2a973579533a503ace00e67d599b',
-    ('gemm_afp4wfp4_kernel', 'arena_benchmark'): '715c53f630326441083946cd2df0cd3f8e7e950d4b9f694b555b1e0f08e464e7',
-    ('gemm_afp8wfp8_kernel', 'arena_benchmark'): '3f9d7333abd48e6bdbb70ed29fdead9e189ebf69d7c04b86a060655f641c14e4',
+    ('batched_gemm_a8w8_kernel', 'arena_benchmark'): '9ca79f53cc6e1cfa2aa0189d8df38ebf8c469262290e972e4146acc8c4bffe4e',
+    ('gemm_a16w8_blockscale_kernel', 'arena_benchmark'): 'b78779a905e805e2b308b61d92a5534f1505613cb2ba42caf90eeae2c2138223',
+    ('gemm_a16wfp4_kernel', 'arena_benchmark'): 'f7990603cb84b264a7e3b0de08d6735f25b120c5626fe63b055876963334fed7',
+    ('gemm_a4w4_kernel', 'run_benchmark'): 'c02d2202f52bf5cee8eec88ef195ff41004824b93c32cf4b91360038722d5439',
+    ('gemm_a4w4_kernel', 'arena_benchmark'): '463e9594397515ea0f88d90cd65366774dca27c86c31001969f56e5e12f71a64',
+    ('gemm_a8w8_per_token_scale_kernel', 'arena_benchmark'): '24dd5395ac98661ce605eaa1670646e16bdd1a00e6740963376c201e88b9f37e',
+    ('gemm_afp4wfp4_kernel', 'arena_benchmark'): 'e83e5f4c54c0601690d248974f80891eda40a936df02e49e30f7569c770cb4d0',
+    ('gemm_afp8wfp8_kernel', 'arena_benchmark'): '8c0baea0e53f6d4938770d50f485f6efca6c80484dbc6f395e743ac5a8d74d75',
 }
 
 

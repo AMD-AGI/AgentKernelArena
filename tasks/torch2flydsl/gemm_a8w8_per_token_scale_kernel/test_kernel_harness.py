@@ -454,6 +454,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             # Both roles retain the declared 10 warmups and 100 Event samples.
             use_graph = False
             event_reason = "capture_unsafe_aiter_hipblaslt"
+            stream.bind(reference, _compare_quant_gemm_output)
             timed = TimedRun()
             timed.after_sample = stream.observe
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(

@@ -20,10 +20,18 @@ class MeasuredInputStream:
         self.samples = samples
         self.prepared = 0
         self.reference_prepared = 0
-        self.outputs = []
+        self.checked = 0
+        self.reference = None
+        self.compare = None
+        self.expected_cpu = None
         self.measuring = True
         self.prepared_left = None
         self.prepared_right = None
+
+    def bind(self, reference, compare):
+        if self.prepared or self.checked:
+            raise AssertionError("Measured reference must be bound before sampling")
+        self.reference, self.compare = reference, compare
 
     def _set_input(self, index):
         import torch
@@ -49,6 +57,11 @@ class MeasuredInputStream:
         self._set_input(self.prepared)
         self.prepared_left = self.left.clone()
         self.prepared_right = self.right.clone()
+        if self.reference is None or self.compare is None:
+            raise AssertionError("Measured reference must be bound before sampling")
+        # Build only this sample's oracle before its start Event. The observer
+        # then reads the measured output without issuing GPU oracle work.
+        self.expected_cpu = self.reference().detach().to("cpu", copy=True)
         self.prepared += 1
 
     def observe(self, output):
@@ -65,17 +78,20 @@ class MeasuredInputStream:
                 or not torch.equal(self.right.contiguous().view(torch.uint8),
                                     self.prepared_right.contiguous().view(torch.uint8))):
             raise AssertionError("Operator modified a read-only measured input")
-        self.outputs.append(output.detach().to("cpu", copy=True))
+        if self.reference is None or self.compare is None or self.checked + 1 != self.prepared:
+            raise AssertionError("Measured sample lacks its bound reference or preparation")
+        # The Event has ended. Check the exact returned bytes against the full
+        # oracle now, before a later invocation can reuse the output storage.
+        actual = output.detach().to("cpu", copy=True)
+        self.compare(actual, self.expected_cpu)
+        self.expected_cpu = None
+        self.checked += 1
 
     def validate(self, reference, compare):
         self.measuring = False
-        if self.prepared != self.samples or len(self.outputs) != self.samples:
-            raise AssertionError("Reported samples lack matching inputs or outputs")
-        for index, actual in enumerate(self.outputs):
-            self._set_input(index)
-            expected = reference()
-            compare(actual, expected.cpu())
-        self.outputs.clear()
+        if (reference is not self.reference or compare is not self.compare
+                or self.prepared != self.samples or self.checked != self.samples):
+            raise AssertionError("Reported samples lack matching checked inputs or outputs")
 
     def prepare_reference(self):
         if self.reference_prepared >= self.samples:

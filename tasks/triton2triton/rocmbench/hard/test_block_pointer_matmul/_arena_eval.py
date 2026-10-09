@@ -48,7 +48,8 @@ def inspect_candidate(data, *, require_implemented=False):
 
 
 def benchmark_type(base, plugin, module):
-    from _arena_reference import prepare, poison_outputs, perturbed_inputs, check_stride_controls
+    from _arena_reference import (prepare, poison_outputs, perturbed_inputs,
+                                  check_stride_controls, check_partial_tile_controls)
     class CheckedBenchmark(base):
         def __init__(self,*args,**kwargs):
             # Inputs are task-owned locals prepared by the original performance
@@ -65,6 +66,7 @@ def benchmark_type(base, plugin, module):
             check(output)
             if plugin.action=='correctness':
                 check_stride_controls(self.context,module)
+                check_partial_tile_controls(self.context,module)
                 row['metrics']={'performance_inputs_checked':True}
                 plugin.exercised.add(row['test_case_id'])
                 return {}

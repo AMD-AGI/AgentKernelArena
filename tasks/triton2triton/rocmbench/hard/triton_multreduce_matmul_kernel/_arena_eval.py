@@ -48,7 +48,8 @@ def inspect_candidate(data, *, require_implemented=False):
 
 
 def benchmark_type(base, plugin, module):
-    from _arena_reference import prepare, poison_outputs, perturbed_inputs
+    from _arena_reference import (prepare, poison_outputs, perturbed_inputs,
+                                  check_declared_m_controls)
     class CheckedBenchmark(base):
         def __init__(self,*args,**kwargs):
             # Inputs are task-owned locals prepared by the original performance
@@ -64,6 +65,9 @@ def benchmark_type(base, plugin, module):
             output=original()
             check(output)
             if plugin.action=='correctness':
+                if not plugin.m_controls_checked:
+                    check_declared_m_controls(module,self.context['a'].device)
+                    plugin.m_controls_checked=True
                 row['metrics']={'performance_inputs_checked':True}
                 plugin.exercised.add(row['test_case_id'])
                 return {}
@@ -83,12 +87,18 @@ def benchmark_type(base, plugin, module):
                                estimate_reps=5, max_graph_repeats=1000,
                                prepare_fn=None, use_cuda_graph=True,
                                fallback_reason=None):
+                def prepare_sample():
+                    if prepare_fn is not None:prepare_fn()
+                    # The scored kernel writes c_buffer. Invalidate it before
+                    # every warmup/replay outside the timing interval; a graph
+                    # that skips its output write then fails after_sample.
+                    poison_outputs(self.context, None)
                 return benchmark_cuda_graph_or_events_samples(
                     callable_fn, warmup=config.warm_up,
                     repetition=config.repetition, target_ms=target_ms,
                     n_retries=n_retries, estimate_reps=estimate_reps,
                     max_graph_repeats=max_graph_repeats,
-                    prepare_fn=prepare_fn, use_cuda_graph=use_cuda_graph,
+                    prepare_fn=prepare_sample, use_cuda_graph=use_cuda_graph,
                     fallback_reason=fallback_reason, timed_run=timed)
             globals_['_measure_times']=measured_times
             try:
@@ -116,6 +126,8 @@ def benchmark_type(base, plugin, module):
                 raise RuntimeError('Nonpositive/nonfinite device timing')
             if method not in ('cuda_graph','cuda_event_fallback'):
                 raise RuntimeError('Missing device timing method')
+            if method=='cuda_graph' and record.get('benchmark_effective_repeats')!=1:
+                raise RuntimeError('Graph timing included unobserved kernel calls')
             row.update(execution_time_ms=ms,benchmark_method=method,
                        metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
                                  'measured_samples_checked':checked_samples[0],
@@ -133,6 +145,7 @@ class ReportPlugin:
         self.rows={key:deepcopy(row) for key,row in self.expected.items()
                    if action=='validate-task' or action in row['checks']}
         self.collection_error=None;self.node_rows={};self.current_row=None;self.exercised=set()
+        self.m_controls_checked=False
 
     def pytest_collection_modifyitems(self,session,config,items):
         found={};kept=[]

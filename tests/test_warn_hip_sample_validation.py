@@ -134,14 +134,27 @@ def test_model_validates_every_reported_sample(task, method):
         _compare_results=lambda a, b, **kw: torch.allclose(a, b, **kw),
     )
     validator.install(perf, lambda expected, actual: torch.testing.assert_close(actual.shape, expected.shape))
-    elapsed, metadata = perf.cal_hip_latency(Model(), [torch.tensor([0.5])], n_iter=3)
+    if task == "hip2hip/gpumode/GateGRUSelectionLayer":
+        gate = load_file(ROOT / task / "pytorch_code_functional/py_5334_GateGRUSelectionLayer_func.py")
+        def fixture():
+            model = gate.GateGRUSelectionLayer(2, 4, 0.0).eval()
+            with torch.no_grad():
+                for parameter in model.parameters():
+                    parameter.fill_(0.1)
+            return model, [torch.tensor([[[[0.5, -0.3]]]]),
+                           torch.tensor([[[[0.2, 0.7]]]])]
+    else:
+        fixture = lambda: (Model(), [torch.tensor([0.5])])
+    model, inputs = fixture()
+    elapsed, metadata = perf.cal_hip_latency(model, inputs, n_iter=3)
     assert elapsed == 0.1
     assert metadata["validated_sample_count"] == 3
     assert metadata["replay_validation_valid"] is True
 
     perf.benchmark_cuda_graph_or_events = lambda invoke, **kw: bench(invoke, method=method, bad_first=True, **kw)
     with pytest.raises((ValueError, AssertionError), match="Timed operator output disagrees"):
-        perf.cal_hip_latency(Model(), [torch.tensor([0.5])], n_iter=3)
+        model, inputs = fixture()
+        perf.cal_hip_latency(model, inputs, n_iter=3)
 
 
 @pytest.mark.parametrize("task", NATIVE_TASKS)
@@ -295,12 +308,21 @@ def test_matmul_pool_sum_changed_input_survives_large_reduction():
     torch.manual_seed(0)
     model = module.Matmul_MaxPool_Sum_Scale(1024, 4096, 2, 0.5)
     inputs = [torch.rand(512, 1024)]
+    scored_inputs = inputs[0].clone()
     with torch.no_grad():
         expected = model(*inputs)
         changed, changed_inputs = validator.changed_input_reference(
             inputs, 0, expected, model, torch.allclose, 1e-4, 1e-5)
     assert not torch.allclose(expected, changed, rtol=1e-4, atol=1e-5)
     torch.testing.assert_close(changed, model(*changed_inputs), rtol=0, atol=0)
+    # The scored random inputs and prior replay below -4 cannot reach this
+    # valid interval. The original reduction still distinguishes dropping it.
+    with torch.no_grad():
+        middle_negative = -3 - scored_inputs / 2
+        correct = model(middle_negative)
+        dropped = model(torch.where((middle_negative > -4) & (middle_negative < -2),
+                                    0, middle_negative))
+    assert not torch.allclose(correct, dropped, rtol=1e-4, atol=1e-5)
 
 
 @pytest.mark.parametrize("fault", ("x_face", "y_face", "z_endpoint", "rotation"))

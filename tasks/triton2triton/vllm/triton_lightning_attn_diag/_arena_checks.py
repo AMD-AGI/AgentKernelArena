@@ -61,15 +61,17 @@ def checked_modules(harness):
             import torch
             result = verify(q, k, v, s, BLOCK, CBLOCK)
             if not diagnosed:
-                # Unscored: second main block, partial sub-block, zero/nonzero
-                # decay, and the public 4D slope and alternate block arguments.
-                index = torch.arange(2 * 273 * 32, device=q.device).reshape(1, 2, 273, 32)
-                dq = (0.125 + (index % 5) / 16).to(q.dtype)
-                dk = (0.25 + (index % 7) / 16).to(k.dtype)
-                dv = (0.125 + (index % 3) / 8).to(v.dtype)
-                ds = torch.tensor([0., .03], device=q.device, dtype=s.dtype).reshape(1, 2, 1, 1)
-                verify(dq, dk, dv, ds, 256, 32)
-                verify(dq, dk, dv, ds, 64, 16)
+                # Unscored: second and third main blocks, partial sub-blocks,
+                # zero/nonzero decay, 4D slopes and alternate block arguments.
+                for length in (273, 545):
+                    index = torch.arange(2 * length * 32, device=q.device).reshape(1, 2, length, 32)
+                    dq = (0.125 + (index % 5) / 16).to(q.dtype)
+                    dk = (0.25 + (index % 7) / 16).to(k.dtype)
+                    dv = (0.125 + (index % 3) / 8).to(v.dtype)
+                    ds = torch.tensor([0., .03], device=q.device, dtype=s.dtype).reshape(1, 2, 1, 1)
+                    verify(dq, dk, dv, ds, 256, 32)
+                    if length == 273:
+                        verify(dq, dk, dv, ds, 64, 16)
                 diagnosed = True
             return result
 

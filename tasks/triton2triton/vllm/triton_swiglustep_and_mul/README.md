@@ -51,4 +51,7 @@ Event timing rather than graph replay latency. Each measured output is checked
 after its timing window. After timing, input is multiplied by -3 and the final
 output poisoned with NaN. Rerunning the same public invocation must produce the
 new reference output. Checks are outside timing and original input is restored
-even when the rerun fails.
+even when the rerun fails. Graph `after_sample` can inspect a captured output,
+but graph replay does not rerun the allocating wrapper and a batched graph can
+leave earlier returns unchecked. The Event method is the same for both roles;
+its times are not directly comparable with historical graph-replay times.

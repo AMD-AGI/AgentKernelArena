@@ -37,6 +37,12 @@ retained with the workspace for inspection. This does not change timed work.
 Correctness now compares every output element at the original task tolerance,
 in addition to the original aggregate/flag checks. Preserving a global or per-box
 sum cannot substitute for correct voxel/channel or point/feature contents.
+Boxes use `(cx, cy, cz, dx, dy, dz, heading)` with `cz` at the bottom. After
+rotation into the box frame, points on an x or y face are excluded and both
+vertical endpoints are included. For max pooling, the first point in a
+nonempty voxel initializes each feature channel, so negative feature values
+remain negative; empty voxels stay zero. Correctness-only controls exercise
+these boundaries and values without changing the measured cases.
 
 The baseline's declared timing method remains fixed for both roles. If edited
 native source fails the current-stream/capture-safety check required by that

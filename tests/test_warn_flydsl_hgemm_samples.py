@@ -64,9 +64,9 @@ except AssertionError:
 else:
     raise AssertionError('wrong middle measured output passed because final output was correct')
 assert torch.equal(a, originals[0]) and torch.equal(b, originals[1])
-assert len(samples) == 4 and torch.equal(samples[0][0], originals[0])
+assert len(samples) == 2 and torch.equal(samples[0][0], originals[0])
 assert len({pair[0].view(torch.uint8).numpy().tobytes() +
-            pair[1].view(torch.uint8).numpy().tobytes() for pair in samples}) == 4
+            pair[1].view(torch.uint8).numpy().tobytes() for pair in samples}) == 2
 
 samples.clear()
 def good():

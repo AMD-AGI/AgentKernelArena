@@ -123,6 +123,43 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_affine_parameter_variants(module, functional, hip_fn, inputs, original_expected,
+                                    compare, rtol, atol):
+    """Exercise both live affine operands at each scored geometry, outside timing."""
+    import torch
+    original_module = {key: value.detach().clone() for key, value in module.state_dict().items()}
+    original_functional = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+    try:
+        for name, delta in (("scale", 0.5), ("bias", 0.75)):
+            with torch.no_grad():
+                getattr(module, name).add_(delta)
+                getattr(functional, name).add_(delta)
+            expected = module(*copy.deepcopy(inputs))
+            if compare(original_expected, expected, rtol=rtol, atol=atol):
+                raise ValueError(f"Changed InnerProd {name} did not change the reference")
+            selected_state = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+            actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                      functional(*copy.deepcopy(inputs), fn=hip_fn))
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward ignored or mishandled changed InnerProd {name}")
+            if any(not torch.equal(value, selected_state[key])
+                   for key, value in functional.state_dict().items()):
+                raise ValueError("Selected forward changed InnerProd affine state")
+            module.load_state_dict(original_module)
+            functional.load_state_dict(original_functional)
+    finally:
+        module.load_state_dict(original_module)
+        functional.load_state_dict(original_functional)
+
+
+def require_graph_method(case, method):
+    if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
+                                     for key in ("benchmark_method", "reference_benchmark_method")
+                                     if key in case):
+        raise RuntimeError("Benchmark changed the declared graph timing method")
+
+
 def validate_task(args, rows):
     from case_controls import validate_controls
     validate_controls(rows)
@@ -188,6 +225,9 @@ def correctness(args, role, rows):
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
         result.append(row)
+        if passed:
+            check_affine_parameter_variants(module, functional, hip_fn, reference_inputs,
+                                            expected, checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
     return result
@@ -265,6 +305,7 @@ def performance(args, role, rows):
         if not isinstance(selected_benchmark, dict):
             raise RuntimeError("Benchmark omitted timing metadata for the measured role")
         method = selected_benchmark.get("benchmark_method")
+        require_graph_method(case, method)
         if selected_benchmark.get("replay_validation_valid") is not True or (
             selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
         ):

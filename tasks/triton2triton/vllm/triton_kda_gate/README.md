@@ -38,8 +38,16 @@ do not replace or add scored cases. Full output shape, dtype, device, finiteness
 read-only inputs are checked.
 
 The timed invocation keeps the original allocation/dispatch boundary, 10 warmups and
-100 samples. `TimedRun` retains outputs of the actual captured graph. After measurement,
-the harness checks those outputs, changes an operand, poisons outputs, and replays that
-same graph against the original numerical reference. All comparisons, snapshots,
-perturbations and restoration are outside the timed window. An unobservable graph
-fallback fails instead of validating a different untimed invocation.
+100 samples. The graph captures exactly one complete operator call per replay. The
+first reported sample retains the original seeded inputs; the other 99 use distinct,
+deterministic same-shape inputs. The same stream and prepared oracles are used for
+baseline and candidate. Oracle construction, input loading, previous-input integrity
+checks, and poisoning of the exact captured output buffer all occur before the start
+Event. After each end Event, a read-only observer compares the actual output against
+the oracle bound to that sample. The final input is checked explicitly. The
+changed-input replay leaves the last valid output intact: a kernel that reuses it
+without recomputing on the new input fails the numerical comparison. Original inputs
+are restored even if a check fails. A graph/Event fallback that cannot provide the
+same one-call captured-buffer observation fails. The distinct measured inputs, graph
+batching, and inter-sample preparation change cache and clock conditions; previous
+latencies are not directly comparable and cannot be reported as a kernel gain.

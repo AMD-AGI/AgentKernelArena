@@ -158,7 +158,7 @@ except AssertionError:
 else:
     raise AssertionError('wrong middle measured quantized output passed')
 assert all(torch.equal(a, b) for a, b in zip(inputs, originals))
-assert len(samples) == 4 and all(not torch.equal(samples[0][i], samples[1][i]) for i in (0, 1))
+assert len(samples) == 2 and all(not torch.equal(samples[0][i], samples[1][i]) for i in (0, 1))
 
 samples.clear()
 _, metadata, _, ref_metadata = h._timed_bpreshuffle_case(

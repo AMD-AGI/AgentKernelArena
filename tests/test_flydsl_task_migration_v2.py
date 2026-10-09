@@ -558,7 +558,7 @@ def test_torch_numerical_gates_cases_and_models_preserved():
         def calls(fn):
             return [ast.dump(n,include_attributes=False) for n in ast.walk(fn) if isinstance(n,ast.Call) and getattr(n.func,"id","") in {"benchmark_cuda_graph_or_events","_mean_ms"}]
         if name in _QUALIFIED_QUANT_EVENT_ARENA:
-            # The qualified direct runner prepares and observes each measured
+            # The direct runner prepares and observes each measured
             # sample; the original CLI runner retains its historical pin.
             measured=[n for n in ast.walk(direct) if isinstance(n,ast.Call)
                       and getattr(n.func,'id',None)=='benchmark_cuda_graph_or_events']
@@ -1669,10 +1669,10 @@ _QUALIFIED_HGEMM_BENCHMARKS = {
 def test_torch_gemm_original_benchmark_work_and_sampling_preserved():
     hgemm_tree = ast.parse((ROOT / "tasks/torch2flydsl/hgemm_kernel/test_kernel_harness.py").read_text())
     timed = next(n for n in hgemm_tree.body if isinstance(n, ast.FunctionDef) and n.name == "_timed_gemm_case")
-    # The qualified stream moves the full original call into this task-local
+    # The reviewed stream moves the full original call into this task-local
     # helper; focused controls exercise all measured samples and both roles.
     assert hashlib.sha256(ast.dump(timed, include_attributes=False).encode()).hexdigest() == (
-        '9a4b2eab7fbd0f69d229a00d5880889ecf7b00ef6bf20326fe1cfeb871a1e84e')
+        'd2c6a312648daaf607f369059f57553eb4eae32c35d1b0cd625b8911ba85ffe8')
     for (name, function), expected_hash in _TORCH_GEMM_ORIGINAL_BENCHMARKS.items():
         tree = ast.parse((ROOT / "tasks/torch2flydsl" / name / "test_kernel_harness.py").read_text())
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
@@ -2465,11 +2465,11 @@ def test_batched_int8_zero_reference_gate_and_original_work_unchanged():
     for fn in tree.body:
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
             if fn.name == 'arena_benchmark':
-                # This GPU-qualified body intentionally adds a distinct input
+                # This reviewed body intentionally adds a distinct input
                 # and checked output to every reported Event sample. The old
                 # AST cannot be reconstructed by stripping replay checks.
                 assert hashlib.sha256(ast.dump(fn,include_attributes=False).encode()).hexdigest() == (
-                    'f7f5471b25298a5e67648f24b679283ffd2ebbaa7765dad48cbf5313bad8fe68')
+                    '0840005315f9c0f1c9de9fa95b54492c5daecbca1a1b16a280ce2cdd75021f98')
                 continue
             normalized=_RemoveBatchedInt8Checks().visit(fn)
             if fn.name in {"run_benchmark", "arena_benchmark"}:
@@ -2511,20 +2511,28 @@ def test_batched_int8_qualified_stream_keeps_original_cases_and_equal_role_work(
                ast.unparse(n.func)=='stream.validate' for n in ast.walk(fn))
     assert any(isinstance(n,ast.Assign) and any(ast.unparse(t)=='timed.after_sample' for t in n.targets)
                and ast.unparse(n.value)=='stream.observe' for n in ast.walk(fn))
+    assert any(isinstance(n,ast.Call) and ast.unparse(n.func)=='stream.bind'
+               and [ast.unparse(arg) for arg in n.args]==['reference','_compare_batched_output']
+               for n in ast.walk(fn))
 
     helper=task/'scripts/sample_controls.py'
     assert hashlib.sha256(helper.read_bytes()).hexdigest() == (
-        '1c92090ec3168fd16bd9812240bd4927f6e6c20a388d64eda5ac5091672ec6f8')
+        '93e3c94eac0d2c42cb2b928bce486e6bdd2316b9cf9e504547afbbecf8eb97ec')
     Stream=module(helper).MeasuredInputStream
     x=torch.tensor([[[1.,2.],[3.,4.]]],dtype=torch.bfloat16)
     w=torch.tensor([[[5.,6.],[7.,8.]]],dtype=torch.bfloat16)
     originals=(x.clone(),w.clone())
     stream=Stream(x,w,seed=20260401,case_index=0,samples=4,
                   output_shape=(1,2,2),output_dtype=torch.bfloat16)
+    reference=lambda:torch.bmm(x.float(),w.float().transpose(1,2)).to(torch.bfloat16)
+    compare=lambda actual,expected:torch.testing.assert_close(actual,expected,atol=0,rtol=0)
+    stream.bind(reference,compare)
     candidate_inputs=[]
     for _ in range(4):
         stream.prepare()
         candidate_inputs.append((x.clone(),w.clone()))
+        stream.observe(reference())
+    stream.validate(reference,compare)
     baseline_inputs=[]
     for _ in range(4):
         stream.prepare_reference()
@@ -2968,16 +2976,16 @@ _QUANT_EVENT_STREAM_NAMES=frozenset({
 })
 
 
-# Qualified direct Event harnesses have a per-sample stream and output observer.
+# Direct Event harnesses have a per-sample stream and output observer.
 # Their original input builders, gates, models and CLI benchmark functions keep
 # the historical pins below. These only replace the affected direct-runner pin.
 _QUALIFIED_QUANT_EVENT_ARENA = {
-    'batched_gemm_a8w8_kernel': 'ec8d61b76248e7117b4674d23ff0930ad119d2d6e0d2cc4899d096d7b9a1c8aa',
-    'gemm_a16w8_blockscale_kernel': '48d16074858eb9362d96c29b9c577f03799a8955ddc527701dbd720ef011b30d',
-    'gemm_a16wfp4_kernel': '8fc0a830d9a06cf1b9ddbc944fa04a738e9a8dc832198cc37bbefbf9edeb6ceb',
-    'gemm_a8w8_per_token_scale_kernel': 'bb1b5e17c899ce11da11cad48ded9d9f62c33cc09071b6f773b96a7ebf08cde7',
-    'gemm_afp4wfp4_kernel': '14bb312dd547ba4b2a9fbaa318944dfee850a953dcb843472ee5ab9d44c4ca39',
-    'gemm_afp8wfp8_kernel': '5113707b0bc12abe3c1755d4ad1656f478cb8df7e0582c1e22565a5b728fd061',
+    'batched_gemm_a8w8_kernel': '9ca79f53cc6e1cfa2aa0189d8df38ebf8c469262290e972e4146acc8c4bffe4e',
+    'gemm_a16w8_blockscale_kernel': 'd0d30fae74145bb523bc900adb049f0da8d8e3d3fc40349e39553ac945631d00',
+    'gemm_a16wfp4_kernel': 'cbd12942d340c34efc1705e10c216d6ca0ae6fd2da91f6cdd039d1dc946aac86',
+    'gemm_a8w8_per_token_scale_kernel': '3b155c077116681444218c72c15d92e1a08d1111059ce4e615f3d03f831a754e',
+    'gemm_afp4wfp4_kernel': '9e67494bc48a19a97067c2a16f3f6babfa8c5c99f56ed5a0fd6e64282667fa83',
+    'gemm_afp8wfp8_kernel': '244312f937bbf8f9c9b7f9d62d50cafff3f5d2fba4cf5463359b2f5fe2ac5fba',
 }
 
 
@@ -3150,7 +3158,7 @@ def test_quant_gemm_preserves_zero_reference_denominator_and_normalized_gate(nam
 
 
 def test_quant_gemm_original_quantization_inputs_numeric_and_timing_functions_preserved():
-    hashes={'gemm_a16w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '93bff37a12d09580cc31aa6ffa370e5a2078a48b39f6b45c1660cdb85ceed836', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'ce7fc05173a63f6dd8a3c8ed28cf80406fa0c219cc622b76d50250e844d22053', 'run_benchmark': '9a48b014da77dbd608d90d612a6388e18f95fd8f33e482171a4700e5686f725d', 'arena_benchmark': 'defc1227e2c5eb6db2c8bb530c0d3d20493271b8a1f3b504c24154573cba059e'}, 'gemm_a16wfp4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '94c9fb8daa6c36fddc997ac668a6cb45a36d3ccd3f3b3e7d2b61f2eaa261debd', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'efa4bd4a9ad4138146bf604144086cb01d969ea5eb213385f83996ff690dd00f', 'run_benchmark': '4a94553fec39201aa1aa248165c57f38edc28334c765cca94b19a1fbe589ca33', 'arena_benchmark': '3818b99f737ad1ec43e6d4c575da11642801346bb036cfe9ecfa143aedff8060'}, 'gemm_a4w4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '5865e0e578d5b704f9b8e14647b8012315927edda4d707a434273d7f56929ac1', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '5fde44afc9fbb877a379ff91caee3f2a33e890b70689428476e93c1b957db2b9', 'run_benchmark': '4ca5e661c5d35618e6dc4591984dc4a4369ffe793043fdea4dac133186f43f8c', 'arena_benchmark': 'c8853015a53f2f888f974a53e4a02f7b22c1aeceeb0d2c6aa2957d4d3cca1ad4'}, 'gemm_a8w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_norm_worst': 'd7003c9ba7525de49603baf59e23bdb58e69a36796ae75fa7cad95fb292025a6', 'run_correctness': '6af71206b39f7aba58d882103352b64382317d1529a9fba71e8265fec33b7f0c', 'run_benchmark': 'b172161ae8a4c4cba052938c63aa5c3b4c6f674bc66f4c0f20551c3b7614f556', 'arena_benchmark': '7a62ff1081019435b838188ad687efdcd029b0a9c87720302f162ed78643dd47'}}
+    hashes={'gemm_a16w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '93bff37a12d09580cc31aa6ffa370e5a2078a48b39f6b45c1660cdb85ceed836', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'ce7fc05173a63f6dd8a3c8ed28cf80406fa0c219cc622b76d50250e844d22053', 'run_benchmark': '9a48b014da77dbd608d90d612a6388e18f95fd8f33e482171a4700e5686f725d', 'arena_benchmark': 'defc1227e2c5eb6db2c8bb530c0d3d20493271b8a1f3b504c24154573cba059e'}, 'gemm_a16wfp4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '94c9fb8daa6c36fddc997ac668a6cb45a36d3ccd3f3b3e7d2b61f2eaa261debd', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'efa4bd4a9ad4138146bf604144086cb01d969ea5eb213385f83996ff690dd00f', 'run_benchmark': '4a94553fec39201aa1aa248165c57f38edc28334c765cca94b19a1fbe589ca33', 'arena_benchmark': '3818b99f737ad1ec43e6d4c575da11642801346bb036cfe9ecfa143aedff8060'}, 'gemm_a4w4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '5865e0e578d5b704f9b8e14647b8012315927edda4d707a434273d7f56929ac1', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '5fde44afc9fbb877a379ff91caee3f2a33e890b70689428476e93c1b957db2b9', 'run_benchmark': 'e5cbf338f47a62e4e3b1347f73c239640a54e1277640832db4658b387a766c26', 'arena_benchmark': 'd34654dfc4648b891499860d639bd269512e40dc14055d1441122bab9ff5bd9e'}, 'gemm_a8w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_norm_worst': 'd7003c9ba7525de49603baf59e23bdb58e69a36796ae75fa7cad95fb292025a6', 'run_correctness': '6af71206b39f7aba58d882103352b64382317d1529a9fba71e8265fec33b7f0c', 'run_benchmark': 'b172161ae8a4c4cba052938c63aa5c3b4c6f674bc66f4c0f20551c3b7614f556', 'arena_benchmark': '7a62ff1081019435b838188ad687efdcd029b0a9c87720302f162ed78643dd47'}}
     for name,functions in hashes.items():
         tree=ast.parse((ROOT/'tasks/torch2flydsl'/name/'test_kernel_harness.py').read_text())
         for fn in tree.body:
@@ -5942,13 +5950,13 @@ def test_torch_actual_operators_are_required_without_unused_builders(name,tmp_pa
 
 def test_unused_builder_cleanup_retains_starter_model_and_manifest_bytes():
     original={'dynamic_mxfp8_quant_kernel': {'kernel.py': '04c2ab5eb9e9bee43be84633bc7b210fcb3ad8be69bba8aa98ef6897010611a0', 'model.py': '9e5b1e289eee05aba727b71e28a98e6a7611d9fd6737d5e87b83fe9469eed39d', 'cases.json': '9e76bdcd9955b731e930c2e46536dbce2522d2f88f4ad9cb76016e825821988d'}, 'gelu_and_mul_kernel': {'kernel.py': '4fb1de9fe9d5da55e5cb924ecd03458ab70cc493612857ca300343237d541f25', 'model.py': 'c171ab0b489b1cb87a3f551c3ba8ecd820e3147a9becb6810154040f4027f7dd', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gelu_tanh_and_mul_kernel': {'kernel.py': '04616e2c62589d5c2e4b8147772bf4e333e753e663eb5d95bb88456428110f24', 'model.py': '95988833405bac9d10624c4ca4e78ee0251a5a60c1dd457d6b915904b9b2dadf', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gemm_a8w8_bpreshuffle_kernel': {'kernel.py': 'b5d3e87a3ceca3fe555572f0b4ab5c7b1dd6c3f5c9e18ab924b589df3d485996', 'model.py': 'e4278a3637b56eab94baec3b712ff1fb5ac44206a0ac21b1925a7497ca0b9643', 'cases.json': '7f2d3e25a614486974800da54cb23d2c7913101b2ec1b82ca92818cdfec479ee'}, 'hgemm_kernel': {'kernel.py': '29cab2057d32224a7da558083f6b4edeb560e44efd59a60b82dfb14c9c6a8d28', 'model.py': '89ca4fce55817fdf5fcbaea925a1639f9b96cd809dcda8c06cd70f9e1033372e', 'cases.json': '8388fcafea635e69bde93aad82d8b6bcd10d3ffd9998f2594e4ab989c2fd61e4'}, 'jagged_dense_bmm_kernel': {'kernel.py': 'fcb9b75ec238ced56568fb5b27535a160314db29c212abe33c83be6f7df3c043', 'model.py': '1b446ea35fee03f47ae16121fb7ba8aa933e9e99c48f2d90584c770d56065186', 'cases.json': '8304b063316f9cfc3667a8f38d9d85805b38a2339deebd48b883bfb59b5427e3'}, 'moe_sorting_kernel': {'kernel.py': '4bc536d6d29f16e1f24278d9db05ffba13d723f3f42064cce18b60c687f3eb43', 'model.py': 'c874911efc1c947437d5c7c62019e7c52b34458a0ec1560ecdde72aa971de271', 'cases.json': '0c8247d8727d48dc3a8ddd20ede1db3ae2586e990222f7bf19ce39dc6ad913c4'}, 'qk_norm_rope_quant_kernel': {'kernel.py': 'be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46', 'model.py': '152a32140302f1264c555fbd9b6f9d8362583fd08b0344290a67d6b1bb849ee2', 'cases.json': 'de8e183a711424ddabe5f8bfea4fa00dbe79cb886462b5d3681f67fa9d6e0eb1'}, 'rmsnorm2d_dynamicquant_kernel': {'kernel.py': 'c8542e7ea4b69aa6881ae2e7046995c67112e7e38b68e95d3cc2a51965d05bdc', 'model.py': '5cd3abaf088651f8f2ed9db44513bfd8c5238a45145aaf3dcd3168d63e3ff080', 'cases.json': '046dcf1c5e6f49bf68bd6e935555006803f9f6af5668460389ae6147297528f1'}, 'rmsnorm2d_kernel': {'kernel.py': 'a20840e12a22f5c08fed1e87eee62de5dec590680c79b5b6fa8cb28d9dd9396a', 'model.py': '8442cb4d63444e7dfa9db1fa2d6253ceee0463b1debfd6919fc5219181de3b13', 'cases.json': '426c9e84d97161e5bb7a09353102c57648f5ca5a4790c46370b5369ba470fa64'}, 'rmsnorm2d_smoothquant_kernel': {'kernel.py': '701e11ec5e63bf65572fd9325a7e0b1bea0e1aa9561f8711de0e7ed0113fc2b0', 'model.py': '5496289dc3f8f72c1b9deefce1e39b7c1a00dc5726ad708abe65641fee4edf0e', 'cases.json': '359795558e6ebcfb617bbae66eda8540f5503cc5a04056f1fdfde58e13aedce4'}, 'swiglu_and_mul_kernel': {'kernel.py': '6adbabe7f43dd51289ec4afa3310ba30c56ad8f216edb801886882a1c00715e5', 'model.py': '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}}
-    # This one qualified starter was ported to the fixed FlyDSL image. Keep
+    # This starter was ported to the fixed FlyDSL image. Keep
     # the historical model/manifest pins and pin the complete reviewed kernel
     # bytes; focused port tests check the changed primitive adapter.
     qualified_kernel={'gemm_a8w8_bpreshuffle_kernel':
                       '41b5f3879a7b511f40ae2288a95fa1c3b4684fe9314adc0b59a041c4b189f298',
                       'hgemm_kernel':
-                      '721d848dc77ee61e81465dfae980b0fc27af9da07bef86cf74e1265932b093f4'}
+                      '720623b9cc87fa7c099de32f78e9f0c6c9a336be7b26f03a27aca583f3e7003b'}
     for name,files in original.items():
         for rel,expected in files.items():
             if rel=='kernel.py':expected=qualified_kernel.get(name,expected)

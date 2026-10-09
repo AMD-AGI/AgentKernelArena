@@ -455,6 +455,110 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/a6ee3ae99c2c10b6ac4d",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "bf16_column_a"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/28a4f105bc2f99b3e349",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "fp32_column_b_strided_output"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/ef2a8c1b56ad8243a3ce",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "fp16_both_inputs_strided"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/761b9f18c0a3c85cf5bd",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "fp8_tensor_scale"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/4e138da9287e4537baf9",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "int8_int32"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/4a48b41ecc4c89d29d4f",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "fp16_block_scale"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/34a060c3a9ad717a72cc",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "fp16_block_b_only"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_control/e3cd2017bc78bf0e39fe",
+      "params": {
+        "function": "domain_control",
+        "arguments": {
+          "name": "leaky_relu"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

@@ -65,6 +65,7 @@ def test_actual_layernorm_adapter_checks_each_measured_side_output(
         timed_run.replay = lambda: (prepare_fn(), fn())[1]
         return [1.0] * repetition, {
             "benchmark_method": "cuda_graph", "benchmark_timed_run_kind": "captured_graph",
+            "benchmark_effective_repeats": 1,
         }
 
     timer.benchmark_cuda_graph_or_events_samples = samples

@@ -221,18 +221,18 @@ __global__ void tanh_scale_scalar_fallback(
     // Small unroll to improve ILP
     int64_t i = tid;
     for (; i + 3 * stride < numel; i += 4 * stride) {
-        float v0 = static_cast<float>(input[i + 0 * stride]);
-        float v1 = static_cast<float>(input[i + 1 * stride]);
-        float v2 = static_cast<float>(input[i + 2 * stride]);
-        float v3 = static_cast<float>(input[i + 3 * stride]);
-        output[i + 0 * stride] = static_cast<scalar_t>(::tanhf(a * v0) * max_val);
-        output[i + 1 * stride] = static_cast<scalar_t>(::tanhf(a * v1) * max_val);
-        output[i + 2 * stride] = static_cast<scalar_t>(::tanhf(a * v2) * max_val);
-        output[i + 3 * stride] = static_cast<scalar_t>(::tanhf(a * v3) * max_val);
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            int64_t index = i + j * stride;
+            scalar_t scaled = static_cast<scalar_t>(a * static_cast<float>(input[index]));
+            scalar_t activated = static_cast<scalar_t>(::tanhf(static_cast<float>(scaled)));
+            output[index] = static_cast<scalar_t>(static_cast<float>(activated) * max_val);
+        }
     }
     for (; i < numel; i += stride) {
-        float v = static_cast<float>(input[i]);
-        output[i] = static_cast<scalar_t>(::tanhf(a * v) * max_val);
+        scalar_t scaled = static_cast<scalar_t>(a * static_cast<float>(input[i]));
+        scalar_t activated = static_cast<scalar_t>(::tanhf(static_cast<float>(scaled)));
+        output[i] = static_cast<scalar_t>(static_cast<float>(activated) * max_val);
     }
 }
 
@@ -352,4 +352,3 @@ torch::Tensor forward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "Scaled Tanh activation (HIP, fused with float4/float2/double2 vectorization)");
 }
-

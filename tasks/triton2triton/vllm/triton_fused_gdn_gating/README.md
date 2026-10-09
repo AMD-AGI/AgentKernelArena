@@ -44,3 +44,12 @@ threshold=2, and finite inputs on both sides of the stable softplus branch.
 Actual timed outputs and a poisoned replay after changing all four inputs must
 match the reference. Inputs are compared to pristine copies and restored even
 on replay or validation failure. Added checks are outside the timed interval.
+
+Each timed graph replays the GPU work captured from one complete wrapper
+invocation; Python allocation and dispatch run during capture. Both captured
+output buffers are filled with NaNs before every sample's start event, and both
+are checked after that sample completes. This rejects replays that reuse a
+capture-time result or omit either output write. The previous graph batching
+policy could count several calls while observing only the last call's outputs;
+its historical latency is not directly comparable to this single-call policy.
+Baseline and candidate use the same preparation and measurement boundary.

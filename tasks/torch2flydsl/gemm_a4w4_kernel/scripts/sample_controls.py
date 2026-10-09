@@ -20,10 +20,20 @@ class MeasuredInputStream:
         self.case_index = case_index
         self.samples = samples
         self.prepared = 0
-        self.outputs = []
+        self.reference_prepared = 0
+        self.checked = 0
+        self.reference = None
+        self.compare = None
+        self.last_expected = None
+        self.expected_cpu = None
         self.measuring = True
         self.prepared_a = None
         self.prepared_w = None
+
+    def bind(self, reference, compare):
+        if self.prepared or self.checked:
+            raise AssertionError("Measured reference must be bound before sampling")
+        self.reference, self.compare = reference, compare
 
     def _set_input(self, index):
         import torch
@@ -51,13 +61,17 @@ class MeasuredInputStream:
         # the candidate did not alter them before regeneration can erase it.
         self.prepared_a = self.a.clone()
         self.prepared_w = self.w.clone()
+        if self.reference is None or self.compare is None:
+            raise AssertionError("Measured reference must be bound before sampling")
+        # Compute this one oracle before its start Event. The output observer
+        # only reads completed values and never launches reference GPU work.
+        self.last_expected = self.reference()
+        self.expected_cpu = self.last_expected.detach().to("cpu", copy=True)
         self.prepared += 1
 
     def observe(self, output):
-        # The callback runs after the end event. It observes the output and
-        # verifies that the operator left the prepared operands unchanged.
-        # Copying the output to host storage prevents a later sample from
-        # overwriting the bytes belonging to this exact measured invocation.
+        # The callback runs after the end event. Check this exact output before
+        # a later call can reuse its storage, retaining only the last oracle.
         import torch
 
         if not isinstance(output, torch.Tensor):
@@ -67,16 +81,23 @@ class MeasuredInputStream:
             raise AssertionError("Measured output violates BF16 device contract")
         if not torch.equal(self.a, self.prepared_a) or not torch.equal(self.w, self.prepared_w):
             raise AssertionError("Operator modified a read-only measured input")
-        self.outputs.append(output.detach().to("cpu", copy=True))
+        if self.reference is None or self.compare is None or self.checked + 1 != self.prepared:
+            raise AssertionError("Measured sample lacks its bound reference or preparation")
+        actual = output.detach().to("cpu", copy=True)
+        self.compare(actual, self.expected_cpu)
+        self.expected_cpu = None
+        self.checked += 1
 
     def validate(self, reference, compare):
-        """Check every reported output, then restore the final sample inputs."""
+        """Confirm that every reported Event sample was checked."""
         self.measuring = False
-        if self.prepared != self.samples or len(self.outputs) != self.samples:
-            raise AssertionError("Reported samples lack matching inputs or outputs")
-        last_expected = None
-        for index, actual in enumerate(self.outputs):
-            self._set_input(index)
-            last_expected = reference()
-            compare(actual, last_expected.cpu())
-        return last_expected
+        if (reference is not self.reference or compare is not self.compare
+                or self.prepared != self.samples or self.checked != self.samples):
+            raise AssertionError("Reported samples lack matching checked inputs or outputs")
+        return self.last_expected
+
+    def prepare_reference(self):
+        if self.reference_prepared >= self.samples:
+            raise AssertionError("More diagnostic reference samples than scored samples")
+        self._set_input(self.reference_prepared)
+        self.reference_prepared += 1

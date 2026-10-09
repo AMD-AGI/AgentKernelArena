@@ -49,14 +49,17 @@ last actual event-measured output, then checks the same callable with changed
 activations and poisoned output. References and input checks stay outside timing;
 inputs are restored in a finally block.
 
-Correctness-only manifest controls: int4_explicit, int4_default, int8_explicit, int8_default.
+Correctness-only manifest controls: int4_explicit, int4_default, int8_explicit,
+int8_default, int4_unrouted, int8_dense_explicit, and int8_dense_default.
 They include repeated routes, absent/invalid experts, optional routing weights,
 partial matrix dimensions, and deterministic basis activations. Invalid expert
 assignments produce zero rows. Missing routing weights mean unit weights.
 INT4/INT8 controls exercise explicit and default zero points and signed routing
-weights. Each activation row has one nonzero integer value, and the integer
-weights/zero points, power-of-two scales and dyadic routing weights yield exactly
-representable FP16 intermediates and outputs. These controls therefore require
+weights. The original controls use one nonzero integer activation per row; the
+additional INT8 controls activate every K lane at a second valid geometry
+(K=64, N=96). Integer weights/zero points, power-of-two scales and dyadic
+routing weights yield exactly representable FP16 intermediates and outputs.
+These controls therefore require
 exact numerical equality, independently of the unchanged atol=1.0/rtol=0.5 rule
 for the five original random cases. The original relative tolerance alone admits
 a uniformly half-scaled answer; the exact controls reject that error, wrong
@@ -70,7 +73,7 @@ it is insufficient by itself because it admits half of the correct answer.
 `_numerical_contract.py` independently unpacks the weights and zero points on
 private CPU inputs, computes the mathematical result in FP64, and derives a
 per-element error budget before any candidate call. This requirement applies to
-**all five original cases, all four controls, the actual measured outputs and
+**all five original cases, all correctness-only controls, the actual measured outputs and
 changed-input replay**. Nothing is fitted to a baseline's observed errors.
 
 For activation matrix `A` and dequantized weight matrix `D=(q-zero)*scale`,

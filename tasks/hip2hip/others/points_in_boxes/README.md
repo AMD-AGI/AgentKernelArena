@@ -14,6 +14,10 @@ numerical tolerances and output-contract checks are retained. Extra checks in
 `scripts/reference_checks.py` provide small independent reference controls and
 cover measured variants previously missing from correctness. Do not reduce these
 cases or alter expected outputs to improve a score.
+Boxes use `(cx, cy, cz, dx, dy, dz, heading)` with `cz` at the bottom. After
+rotation into the box frame, points on an x or y face are outside the box;
+points at `cz` and `cz + dz` are inside. Correctness-only controls cover these
+faces and a rotated box without changing the measured cases.
 
 Compilation uses the actual original HIP compiler/extension build, including
 both native verification and benchmark binaries where applicable. The original
@@ -41,6 +45,12 @@ or downgrade only the candidate to event timing. The returned timing method is
 checked against the declared graph policy after the native extension is loaded,
 including environment changes made by a native static initializer. Implementation/launcher edits
 remain within the declared file boundary, and must honor this stream contract.
+
+Each graph-timed sample now captures one native operator call
+(`max_graph_repeats=1`). The earlier capture cap allowed more calls per
+sample, so historical latency may differ and needs a same-source rerun before
+comparison. The 10 warmups, 100 samples, cases, and correctness gates remain
+the same.
 
 Performance now compares the actual timed graph outputs to the full protected
 CPU reference, poisons those buffers and checks the same graph after replay.

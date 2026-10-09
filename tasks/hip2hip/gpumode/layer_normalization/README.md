@@ -52,6 +52,12 @@ configurations in eval mode; optional API modes are not extra scored cases.
 All original cases, input generation, seeds, numerical gates, 10 warmups and
 100 samples are retained. Checks run outside measured samples.
 
+For graph-timed cases without an input-reset callback, each captured sample now
+contains one operator call (`max_graph_repeats=1`). The earlier capture cap
+allowed more calls per sample, so historical latency may differ and needs a
+same-source rerun before comparison. Event-timed cases are unaffected; the
+declared inputs, 10 warmups, 100 samples, and numerical gates remain the same.
+
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated
 re-execution. A modification fails validation. Original input and model tensor
@@ -70,3 +76,10 @@ warmups and sample counts are preserved. These states reject implementations
 that omit scale or shift; an independent four-number CPU control checks both
 reference forms. They are explicit coverage changes from the former identity
 state, so old-workload speedups are not directly comparable.
+
+Each original geometry also checks two unscored live affine variants: gamma is
+increased by 0.5 and beta by 0.75, one at a time. The selected HIP forward must
+match the full protected output for both variants. After scoring, the measured
+graph or Event callable is rerun with each changed parameter and checked against
+the same reference. Both model states are restored even if a check fails; the
+six scored cases and their timed affine values are unchanged.

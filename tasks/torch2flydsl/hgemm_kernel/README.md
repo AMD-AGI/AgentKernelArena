@@ -63,13 +63,15 @@ poisoning occur outside timing, identically for baseline and candidate.
 Explicit Event timing checks the output of every completed measured sample.
 Sample zero uses the original input; each later sample receives a distinct
 seeded BF16 pair outside timing. The same stream is used for both Arena roles
-and the diagnostic PyTorch timing. After checking all measured values against
-the FP32 reference, the harness poisons the final output and reruns the same
+and the diagnostic PyTorch timing. One FP32 reference is prepared before each
+start Event; each complete output is checked after its end Event and released.
+Oracle preparation can change cache state identically for both roles.
+After checking all measured values, the harness poisons the final output and reruns the same
 eager callable on perturbed inputs. The five scored shapes, original sample,
 tolerance, ten warmups, 100 samples and Event policy remain unchanged. The
 strengthened data stream makes earlier timing results not directly comparable.
 
-The initial implementation uses the task's `kernels/` adapters for the
+The initial implementation uses the task's `hgemm_kernel_ops/` adapters for the
 low-level buffer and vector operations in FlyDSL 0.3.2. Those adapters use
 FlyDSL MLIR primitives; the GEMM arithmetic and launch remain in `kernel.py`.
 Run the task validator on the configured GPU image before treating a modified
@@ -90,6 +92,6 @@ imported operator is not candidate-owned arithmetic. Import aliases and
 `from ... import ...` do not change this rule. External backend/native dispatch
 (`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
 also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
-and the task's bundled `kernels/` helpers remain available under the existing
+and the task's bundled `hgemm_kernel_ops/` helpers remain available under the existing
 numerical and timing contract. Baseline checks retain their declared initial
 backend; the final candidate must use FlyDSL.

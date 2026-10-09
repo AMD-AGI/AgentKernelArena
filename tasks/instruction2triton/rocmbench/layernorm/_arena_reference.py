@@ -103,16 +103,17 @@ def capture_side_outputs(module):
             raise TypeError('Layer norm did not return a Tensor')
         return output.device,output.data_ptr(),tuple(output.shape),output.dtype
     def observed(grid,x,y,w,b,mean,rstd,*rest):
-        statistics[key(y)]=(mean,rstd)
+        statistics[key(y)]=(y,mean,rstd)
         return original(grid,x,y,w,b,mean,rstd,*rest)
     def lookup(output):
         try:
-            return statistics[key(output)]
+            return statistics[key(output)][1:]
         except KeyError as exc:
             raise AssertionError('Timed layer norm output has no bound mean/rstd buffers') from exc
     def poison_all():
-        for pair in statistics.values():
-            poison_statistics(pair)
+        for output, mean, rstd in statistics.values():
+            output.fill_(float('nan'))
+            poison_statistics((mean, rstd))
     lookup.poison_all=poison_all
     module.layernorm_wrapper_fn=observed
     try:

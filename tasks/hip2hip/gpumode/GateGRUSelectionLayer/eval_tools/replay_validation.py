@@ -9,6 +9,11 @@ import inspect
 
 import torch
 
+GATE_PARAMETERS = (
+    "reset.weight", "reset.bias", "update.weight", "update.bias",
+    "proposal.weight", "proposal.bias",
+)
+
 
 def unchanged_inputs(before, after):
     for expected, actual in zip(before, after):
@@ -137,6 +142,31 @@ def install(perf, output_contract):
                             current.copy_(original)
             if not changed_count:
                 raise ValueError('No changed-input replay was validated')
+            # The scored stream holds the model state fixed. Probe each live
+            # parameter through the captured graph afterward, without adding
+            # any work to the reported intervals or replacing their buffers.
+            parameters = dict(module.named_parameters())
+            if set(parameters) != set(GATE_PARAMETERS) or set(state) != set(GATE_PARAMETERS):
+                raise ValueError('Gate parameter set differs from the declared six arguments')
+            for name in GATE_PARAMETERS:
+                try:
+                    with torch.no_grad():
+                        parameters[name].add_(2.0)
+                    changed_state = {key: value.detach().clone()
+                                     for key, value in module.state_dict().items()}
+                    changed_expected = module(*copy.deepcopy(inputs))
+                    if perf._compare_results(expected, changed_expected, rtol=rtol, atol=atol):
+                        raise ValueError(f'Changed GateGRU {name} did not change the reference')
+                    with torch.no_grad():
+                        observed.outputs.fill_(float('nan'))
+                    changed_actual = observed.rerun()
+                    check_result(changed_actual, changed_expected, inputs, output_contract,
+                                 perf._compare_results, rtol, atol)
+                    unchanged_inputs(pristine, inputs)
+                    unchanged_model_state(changed_state, module)
+                finally:
+                    with torch.no_grad():
+                        parameters[name].copy_(state[name])
             return elapsed, {**metadata, 'replay_validation_valid': True,
                              'validated_sample_count': checked_samples,
                              'timed_output_checked': True,
@@ -145,6 +175,7 @@ def install(perf, output_contract):
                              'input_state_restored': True,
                              'model_state_validation_valid': True,
                              'model_state_tensor_count': len(state),
+                             'changed_gate_parameter_replay_count': len(GATE_PARAMETERS),
                              'replay_validation': 'full_reference_output_and_unchanged_inputs'}
         finally:
             with torch.no_grad():

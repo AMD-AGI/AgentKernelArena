@@ -139,23 +139,24 @@ def install(perf, output_contract):
                             current.copy_(original)
             if not changed_count:
                 raise ValueError('No changed-input replay was validated')
-            # The original scored generator is nonnegative. Check the same
-            # operator and shape on valid negative inputs outside measurement;
-            # a candidate that clamps x below -3 must not pass the positive cases.
-            with torch.no_grad():
-                inputs[0].copy_(-4 - pristine[0])
-                negative_inputs = copy.deepcopy(inputs)
-                negative_expected = module(*copy.deepcopy(inputs))
-            if perf._compare_results(expected, negative_expected, rtol=rtol, atol=atol):
-                raise ValueError('Negative input did not distinguish the reference output')
-            with torch.no_grad():
-                observed.outputs.fill_(float('nan'))
-            negative_actual = observed.rerun()
-            check_result(negative_actual, negative_expected, inputs, output_contract,
-                         perf._compare_results, rtol, atol)
-            unchanged_inputs(negative_inputs, inputs)
-            unchanged_model_state(state, module)
-            changed_count += 1
+            # The scored generator is nonnegative. Replay the same measured
+            # operator and shape on two disjoint, valid negative intervals so
+            # a candidate cannot specialize away either interval.
+            for negative in (-4 - pristine[0], -3 - pristine[0] / 2):
+                with torch.no_grad():
+                    inputs[0].copy_(negative)
+                    negative_inputs = copy.deepcopy(inputs)
+                    negative_expected = module(*copy.deepcopy(inputs))
+                if perf._compare_results(expected, negative_expected, rtol=rtol, atol=atol):
+                    raise ValueError('Negative input did not distinguish the reference output')
+                with torch.no_grad():
+                    observed.outputs.fill_(float('nan'))
+                negative_actual = observed.rerun()
+                check_result(negative_actual, negative_expected, inputs, output_contract,
+                             perf._compare_results, rtol, atol)
+                unchanged_inputs(negative_inputs, inputs)
+                unchanged_model_state(state, module)
+                changed_count += 1
             with torch.no_grad():
                 inputs[0].copy_(pristine[0])
             return elapsed, {**metadata, 'replay_validation_valid': True,

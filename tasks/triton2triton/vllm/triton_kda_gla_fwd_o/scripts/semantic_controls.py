@@ -64,32 +64,33 @@ def control_cases(device):
 
     # Different K/V/H with two batches and a partial second chunk. The exact
     # answer is assembled from scalar state and causal-attention sums.
-    B,T,H,K,V,BT=2,20,3,16,32,16
-    q=torch.zeros(B,T,H,K,device=device);g=torch.zeros_like(q)
-    v=torch.empty(B,T,H,V,device=device)
-    h=torch.zeros(B,math.ceil(T/BT),H,K,V,device=device)
-    A=torch.empty(B,T,H,BT,device=device);expected=torch.empty_like(v)
-    for b in range(B):
-        for i in range(T):
-            chunk=i//BT
-            for head in range(H):
-                q[b,i,head,:2]=torch.tensor([1.,2.],device=device)
-                g[b,i,head,:2]=torch.tensor([math.log(2.),math.log(.5)],device=device)
-                for j in range(BT):
-                    A[b,i,head,j]=1+j/16 if j<=i%BT else 99.
-                for d in range(V):
-                    factor=(b+1)*(chunk+1)*(head+1)*(d+1)/V
-                    h[b,chunk,head,0,d]=factor
-                    h[b,chunk,head,1,d]=3*factor
-                    v[b,i,head,d]=(b+1)*(i+1)*(d+1)/V
-                    inter=5*.25*factor
-                    intra=sum((1+(j%BT)/16)*(b+1)*(j+1)*(d+1)/V
-                              for j in range(chunk*BT,i+1))
-                    expected[b,i,head,d]=inter+intra
-    yield dict(name='batched_three_heads_mixed_width_partial_chunk',
-               entrypoint='kda_gla_fwd_o',
-               kwargs=dict(q=q,v=v,g=g,A=A,h=h,scale=.25,chunk_size=BT),
-               expected=expected,atol=5e-2,rtol=5e-2)
+    for BT,T in ((16,20),(32,67),(128,133)):
+        B,H,K,V=2,3,16,32
+        q=torch.zeros(B,T,H,K,device=device);g=torch.zeros_like(q)
+        v=torch.empty(B,T,H,V,device=device)
+        h=torch.zeros(B,math.ceil(T/BT),H,K,V,device=device)
+        A=torch.empty(B,T,H,BT,device=device);expected=torch.empty_like(v)
+        for b in range(B):
+            for i in range(T):
+                chunk=i//BT
+                for head in range(H):
+                    q[b,i,head,:2]=torch.tensor([1.,2.],device=device)
+                    g[b,i,head,:2]=torch.tensor([math.log(2.),math.log(.5)],device=device)
+                    for j in range(BT):
+                        A[b,i,head,j]=1+j/16 if j<=i%BT else 99.
+                    for d in range(V):
+                        factor=(b+1)*(chunk+1)*(head+1)*(d+1)/V
+                        h[b,chunk,head,0,d]=factor
+                        h[b,chunk,head,1,d]=3*factor
+                        v[b,i,head,d]=(b+1)*(i+1)*(d+1)/V
+                        inter=5*.25*factor
+                        intra=sum((1+(j%BT)/16)*(b+1)*(j+1)*(d+1)/V
+                                  for j in range(chunk*BT,i+1))
+                        expected[b,i,head,d]=inter+intra
+        yield dict(name=f'batched_three_heads_mixed_width_partial_chunk_bt{BT}',
+                   entrypoint='kda_gla_fwd_o',
+                   kwargs=dict(q=q,v=v,g=g,A=A,h=h,scale=.25,chunk_size=BT),
+                   expected=expected,atol=5e-2,rtol=5e-2)
 
 
 def reference_controls(h):

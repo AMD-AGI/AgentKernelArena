@@ -2,6 +2,8 @@
 
 import importlib.util
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -18,7 +20,7 @@ def load(path, name):
     return module
 
 
-@pytest.mark.parametrize("name", ["roiaware_pool3d", "points_in_boxes"])
+@pytest.mark.parametrize("name", ["roiaware_pool3d", "points_in_boxes", "roipoint_pool3d"])
 def test_native_graph_tasks_reject_candidate_controlled_event_downgrade(monkeypatch, name):
     task = TASKS / "hip2hip/others" / name
     adapter = load(task / "scripts/evaluate.py", name + "_timing_adapter")
@@ -33,6 +35,106 @@ def test_native_graph_tasks_reject_candidate_controlled_event_downgrade(monkeypa
     measured[0]["benchmark_method"] = "cuda_event_fallback"
     with pytest.raises(RuntimeError, match="changed the declared device timing method"):
         adapter.checked_performance([case], measured, workload["graph_policy"])
+
+
+@pytest.mark.parametrize("relative", [
+    "gpumode/10024_Feedforward",
+    "gpumode/11184_Sigmoid",
+    "gpumode/11754_layer_normalization",
+    "kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale",
+    "kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling",
+])
+def test_torch2hip_adapter_requires_complete_timed_sample_validation(relative):
+    task = TASKS / "torch2hip" / relative
+    adapter = load(task / "eval_tools/evaluate.py", relative.replace("/", "_") + "_timing_adapter")
+    valid = {"benchmark_method": "cuda_graph", "replay_validation_valid": True,
+             "timed_output_checked": True, "benchmark_samples": 100,
+             "validated_sample_count": 100}
+    assert adapter.checked_timed_benchmark(valid, "candidate", None) is valid
+    assert adapter.checked_timed_benchmark(valid, "baseline", None) is valid
+    reference = valid.copy()
+    measured = {**valid, "reference_benchmark": reference}
+    assert adapter.checked_timed_benchmark(measured, "baseline", "hip_ref/ref.hip") is reference
+    for field, invalid in (
+        ("replay_validation_valid", False),
+        ("replay_validation_valid", None),
+        ("timed_output_checked", False),
+        ("benchmark_samples", None),
+        ("benchmark_samples", 0),
+        ("validated_sample_count", 99),
+        ("validated_sample_count", True),
+    ):
+        incomplete = {**valid, field: invalid}
+        with pytest.raises(RuntimeError, match="did not validate all reported samples"):
+            adapter.checked_timed_benchmark(incomplete, "candidate", None)
+        with pytest.raises(RuntimeError, match="did not validate all reported samples"):
+            adapter.checked_timed_benchmark({"reference_benchmark": incomplete}, "baseline",
+                                            "hip_ref/ref.hip")
+    with pytest.raises(RuntimeError, match="omitted timing metadata"):
+        adapter.checked_timed_benchmark(valid, "baseline", "hip_ref/ref.hip")
+
+
+@pytest.mark.parametrize("relative", [
+    "gpumode/10024_Feedforward",
+    "gpumode/11184_Sigmoid",
+    "gpumode/11754_layer_normalization",
+    "kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale",
+    "kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling",
+])
+@pytest.mark.parametrize("fault", ["missing_sample", "event_method"])
+def test_torch2hip_performance_action_rejects_invalid_timing(relative, fault, tmp_path, monkeypatch):
+    task = TASKS / "torch2hip" / relative
+    adapter = load(task / "eval_tools/evaluate.py", relative.replace("/", "_") + "_action_adapter")
+    monkeypatch.setattr(adapter, "ROOT", tmp_path)
+    (tmp_path / "build").mkdir()
+    inputs = [{"shape": [2], "dtype": "torch.float32", "stride": [1]}]
+    rows = [{"test_case_id": "case_0", "params": {"inputs": inputs}}]
+    perf = types.SimpleNamespace(
+        _compare_results=lambda *a, **kw: True,
+        load_modu_obj=lambda *a: None,
+        load_func_obj=lambda *a: None,
+        load_function_from_path=lambda *a: lambda: iter([[torch.ones(2)]]),
+    )
+
+    def benchmark(*paths, **kwargs):
+        list(perf.load_function_from_path("module", "get_inputs")())
+        perf._write_perf_report({"status": "ok", "test_cases": [{
+            "case_idx": 0, "correct": True, "ori_time": 0.2, "opt_time": 0.1,
+            "benchmark_method": "cuda_event_fallback" if fault == "event_method" else "cuda_graph",
+            "benchmark_samples": 100,
+            "validated_sample_count": 99 if fault == "missing_sample" else 100,
+            "replay_validation_valid": True,
+            "timed_output_checked": True,
+        }]})
+
+    perf.cal_kernel_perf = benchmark
+    monkeypatch.setitem(sys.modules, "cal_kernel_perf", perf)
+    monkeypatch.setitem(sys.modules, "replay_validation",
+                        types.SimpleNamespace(install=lambda *a: None))
+    args = types.SimpleNamespace(candidate="kernel.hip", module="module.py",
+                                 functional="functional.py", model_class="Example",
+                                 baseline_hip=None)
+    reason = ("did not validate all reported samples" if fault == "missing_sample"
+              else "changed the declared graph timing method")
+    with pytest.raises(RuntimeError, match=reason):
+        adapter.performance(args, "candidate", rows)
+
+
+@pytest.mark.parametrize("relative", [
+    "gpumode/10024_Feedforward",
+    "gpumode/11184_Sigmoid",
+    "gpumode/11754_layer_normalization",
+    "kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale",
+    "kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling",
+])
+def test_torch2hip_rejects_internal_baseline_method_downgrade(relative):
+    adapter = load(TASKS / "torch2hip" / relative / "eval_tools/evaluate.py",
+                   relative.replace("/", "_") + "_graph_gate")
+    adapter.require_graph_method({"benchmark_method": "cuda_graph",
+                                  "reference_benchmark_method": "cuda_graph"}, "cuda_graph")
+    with pytest.raises(RuntimeError, match="changed the declared graph timing method"):
+        adapter.require_graph_method({"benchmark_method": "cuda_graph",
+                                      "reference_benchmark_method": "cuda_event_fallback"}, "cuda_graph")
 
 
 def test_conv_batchnorm_controls_reject_omitted_bn_and_event_method():
@@ -69,6 +171,41 @@ def test_conv_batchnorm_controls_reject_omitted_bn_and_event_method():
     with pytest.raises(RuntimeError, match="declared graph timing method"):
         adapter.require_graph_method({"benchmark_method": "cuda_graph",
                                       "reference_benchmark_method": "cuda_event_fallback"}, "cuda_graph")
+
+
+@pytest.mark.parametrize("ignored", ["weight", "bias"])
+def test_conv_parameter_controls_reject_fixed_seed_zero_parameter(ignored):
+    import torch.nn.functional as nnf
+
+    task = TASKS / "torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling"
+    module_source = load(task / "pytorch_code_module/py_l2n73_Conv2d_BatchNorm_Scaling.py", "conv_parameter_module")
+    functional_source = load(task / "pytorch_code_functional/py_l2n73_Conv2d_BatchNorm_Scaling_func.py",
+                             "conv_parameter_functional")
+    adapter = load(task / "eval_tools/evaluate.py", "conv_parameter_adapter")
+    torch.manual_seed(0)
+    module = module_source.Conv2d_BatchNorm_Scaling(8, 64, 3, 2).eval()
+    functional = functional_source.Conv2d_BatchNorm_Scaling(8, 64, 3, 2).eval()
+    functional.load_state_dict(module.state_dict())
+    inputs = [torch.rand(2, 8, 7, 7)]
+    expected = module(*inputs)
+    compare = lambda left, right, **bounds: torch.allclose(left, right, **bounds)
+    initial_module = {name: value.clone() for name, value in module.state_dict().items()}
+    initial_functional = {name: value.clone() for name, value in functional.state_dict().items()}
+    adapter.check_conv_parameter_variants(module, functional, None, inputs, expected,
+                                          compare, 1e-4, 1e-5)
+    frozen_weight = functional.conv.weight.detach().clone()
+    frozen_bias = functional.conv.bias.detach().clone()
+
+    def fixed_parameter(x, weight, bias, bn_weight, bn_bias, bn_mean, bn_var, bn_eps, scale):
+        return nnf.batch_norm(nnf.conv2d(x, frozen_weight if ignored == "weight" else weight,
+                                        frozen_bias if ignored == "bias" else bias),
+                              bn_mean, bn_var, bn_weight, bn_bias, training=False, eps=bn_eps) * scale
+
+    with pytest.raises(ValueError, match=f"changed convolution {ignored}"):
+        adapter.check_conv_parameter_variants(module, functional, fixed_parameter, inputs,
+                                              expected, compare, 1e-4, 1e-5)
+    assert all(torch.equal(value, initial_module[name]) for name, value in module.state_dict().items())
+    assert all(torch.equal(value, initial_functional[name]) for name, value in functional.state_dict().items())
 
 
 @pytest.mark.parametrize("ignored", ["fc1_weight", "fc1_bias", "fc2_weight", "fc2_bias"])

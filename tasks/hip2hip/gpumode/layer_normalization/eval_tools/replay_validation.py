@@ -139,11 +139,36 @@ def install(perf, output_contract):
                             current.copy_(original)
             if not changed_count:
                 raise ValueError('No changed-input replay was validated')
+            changed_parameter_count = 0
+            if hasattr(module, 'gamma') or hasattr(module, 'beta'):
+                if not {'gamma', 'beta'} <= state.keys():
+                    raise ValueError('Layer normalization affine state is incomplete')
+                for name, delta in (('gamma', 0.5), ('beta', 0.75)):
+                    with torch.no_grad():
+                        getattr(module, name).add_(delta)
+                    changed_state = {key: value.detach().clone()
+                                     for key, value in module.state_dict().items()}
+                    with torch.no_grad():
+                        changed_expected = module(*copy.deepcopy(inputs))
+                    if perf._compare_results(expected, changed_expected, rtol=rtol, atol=atol):
+                        raise ValueError(f'Changed layer normalization {name} did not change the reference')
+                    with torch.no_grad():
+                        observed.outputs.fill_(float('nan'))
+                    changed_actual = observed.rerun()
+                    check_result(changed_actual, changed_expected, inputs, output_contract,
+                                 perf._compare_results, rtol, atol)
+                    unchanged_inputs(pristine, inputs)
+                    unchanged_model_state(changed_state, module)
+                    changed_parameter_count += 1
+                    with torch.no_grad():
+                        getattr(module, name).copy_(state[name])
             return elapsed, {**metadata, 'replay_validation_valid': True,
                              'validated_sample_count': checked_samples,
                              'timed_output_checked': True,
                              'changed_input_replay_valid': True,
                              'changed_input_replay_count': changed_count,
+                             'changed_parameter_replay_valid': changed_parameter_count == 2 if changed_parameter_count else None,
+                             'changed_parameter_replay_count': changed_parameter_count,
                              'input_state_restored': True,
                              'model_state_validation_valid': True,
                              'model_state_tensor_count': len(state),

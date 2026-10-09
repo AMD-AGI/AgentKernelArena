@@ -10,7 +10,8 @@ TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
 if TASK_DIR not in sys.path:
     sys.path.insert(0, TASK_DIR)
-from scripts.contract_checks import InputSnapshot, check_outputs, observe_measured_samples, validate_timed
+from scripts.contract_checks import (InputSnapshot, MeasuredInputStream, MeasuredOutputReset,
+                                     ContractFailure, check_outputs, validate_timed)
 from scripts import semantic_controls
 
 TASK_NAME = "triton2triton/triton_kda_gate"
@@ -79,6 +80,25 @@ def gen_inputs(seed, device):
     return (g, A, D), {}
 
 
+def measured_input_stream(args, kwargs, seed, device, output_reset):
+    """Prepare all 100 same-shape oracles before any timed work starts."""
+    import torch
+    g, A, D = args
+    generator = torch.Generator(device='cpu').manual_seed(seed + 1000003)
+    base_g, base_A = g.detach().cpu(), A.detach().cpu()
+    variants = [(g.detach().clone(), A.detach().clone())]
+    for index in range(1, BENCHMARK_ITERATIONS):
+        new_g = base_g + 0.125 * torch.randn(base_g.shape, generator=generator) + index / 16
+        # This coordinate makes stream values provably distinct at float32
+        # precision; the remaining coordinates retain varied valid inputs.
+        new_g.reshape(-1)[0] = base_g.reshape(-1)[0] + index / 16
+        new_A = base_A + 0.025 * torch.randn(base_A.shape, generator=generator) + index / 128
+        variants.append((new_g.to(g.device), new_A.to(A.device)))
+    expected = [reference(sample_g, sample_A, D, **kwargs).to(device)
+                for sample_g, sample_A in variants]
+    return MeasuredInputStream(g, A, variants, expected, output_reset)
+
+
 def run_compile():
     try:
         import ast
@@ -141,31 +161,50 @@ def run_performance():
             args, kwargs = gen_inputs(seed, device)
 
             readonly = InputSnapshot({str(i): a for i,a in enumerate(args) if isinstance(a, torch.Tensor)})
-            from _aka_benchmark import TimedRun
-            timed = TimedRun()
-            expected = lambda: reference(*args, **kwargs).to(device)
-            observe_measured_samples(
-                timed, readonly, expected, atol=1e-3, rtol=1e-3)
-            def _bench_fn():
-                return mod.fused_kda_gate(*args, **kwargs)
-            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
-                _bench_fn,
-                warmup=WARMUP_ITERATIONS,
-                repetition=BENCHMARK_ITERATIONS,
-                timed_run=timed,
-            )
-            benchmark_metadata.update(validate_timed(
-                timed, readonly, lambda: reference(*args, **kwargs).to(device),
-                lambda: args[0].add_(1.0), atol=1e-3, rtol=1e-3, expected_samples=BENCHMARK_ITERATIONS))
-
-            test_cases.append({
-                "test_case_id": f"perf{test_idx + 1}",
-                "execution_time_ms": elapsed_ms,
-                **benchmark_metadata,
-                "params": {
-                    "seed": seed
-                }
-            })
+            try:
+                from _aka_benchmark import TimedRun
+                timed = TimedRun()
+                output_reset = MeasuredOutputReset()
+                stream = measured_input_stream(args, kwargs, seed, device, output_reset)
+                timed.sample_checks = 0
+                def _observe(output):
+                    stream.observe(output, atol=1e-3, rtol=1e-3)
+                    timed.sample_checks += 1
+                timed.after_sample = _observe
+                def _bench_fn():
+                    output = mod.fused_kda_gate(*args, **kwargs)
+                    output_reset.bind_output(output)
+                    return output
+                elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
+                    _bench_fn,
+                    warmup=WARMUP_ITERATIONS,
+                    repetition=BENCHMARK_ITERATIONS,
+                    max_graph_repeats=1,
+                    prepare_fn=stream.prepare,
+                    timed_run=timed,
+                )
+                if (benchmark_metadata.get('benchmark_method') != 'cuda_graph'
+                        or benchmark_metadata.get('benchmark_effective_repeats') != 1
+                        or output_reset.output is not timed.outputs
+                        or output_reset.resets_for_output < BENCHMARK_ITERATIONS):
+                    raise ContractFailure('Timed graph did not reset one captured output per sample')
+                benchmark_metadata.update(validate_timed(
+                    timed, readonly, lambda: reference(*args, **kwargs).to(device),
+                    lambda: args[0].add_(1.0), atol=1e-3, rtol=1e-3,
+                    expected_samples=BENCHMARK_ITERATIONS, output_reset=output_reset,
+                    input_stream=stream))
+                benchmark_metadata['captured_output_preparations'] = output_reset.resets_for_output
+                benchmark_metadata['measured_input_variants'] = stream.sample_index
+                benchmark_metadata['input_preparations'] = stream.preparations
+                test_cases.append({
+                    "test_case_id": f"perf{test_idx + 1}",
+                    "execution_time_ms": elapsed_ms,
+                    **benchmark_metadata,
+                    "params": {"seed": seed}
+                })
+            finally:
+                readonly.restore()
+                readonly.check()
         except Exception as exc:
             test_cases.append({
                 "error": f"{type(exc).__name__}: {exc}",

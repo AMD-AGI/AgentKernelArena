@@ -4315,11 +4315,16 @@ def test_gdn_gate_actual_timed_outputs_replay_and_restore(monkeypatch, mode):
     mod = SimpleNamespace(fused_gdn_gating=_gdn_gate_cpu)
     h.load_module = lambda: mod
     def benchmark(measured, *, timed_run, **kwargs):
+        prepare = kwargs.pop('prepare_fn')
         options.append(kwargs)
         outputs = measured(); cached = checks.snapshots(outputs)
-        if mode == 'wrong_timed': outputs[1].zero_()
-        if mode == 'mutate_timed': inputs[-1][0].zero_()
         for _ in range(kwargs["repetition"]):
+            prepare()
+            assert all(torch.isnan(value).all() for value in outputs)
+            for value, expected in zip(outputs, cached):
+                value.copy_(expected)
+            if mode == 'wrong_timed': outputs[1].zero_()
+            if mode == 'mutate_timed': inputs[-1][0].zero_()
             timed_run.after_sample(outputs)
         def replay():
             if mode == 'raise_replay': raise RuntimeError('replay failed')
@@ -4332,7 +4337,7 @@ def test_gdn_gate_actual_timed_outputs_replay_and_restore(monkeypatch, mode):
             if mode == 'mutate_replay': inputs[-1][2].zero_()
             return outputs
         timed_run.outputs, timed_run.rerun = outputs, replay
-        return .125, {'benchmark_method': 'cuda_graph'}
+        return .125, {'benchmark_method': 'cuda_graph', 'benchmark_effective_repeats': 1}
     h._benchmark_cuda_graph_or_events = benchmark
     checks.install(h)
     rows = h.run_performance()

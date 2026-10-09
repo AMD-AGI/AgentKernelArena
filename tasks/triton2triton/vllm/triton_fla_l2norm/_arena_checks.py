@@ -44,8 +44,11 @@ def checked_modules(harness):
         module = load_original()
         original = getattr(module, SYMBOL)
         patched.append((module, original))
+        diagnosed_wide = False
 
         def checked(x, eps=1e-6):
+            nonlocal diagnosed_wide
+            import torch
             pristine = x.clone()
             expected = reference(harness, pristine, eps)
             diagnostic = diagnostic_input(pristine)
@@ -62,6 +65,19 @@ def checked_modules(harness):
             check_output(original(tail, eps=tail_eps),
                          reference(harness, tail_saved, tail_eps))
             unchanged(tail, tail_saved)
+            if not diagnosed_wide:
+                # The FP32 single-block cap is 16,384 features. Check both a
+                # complete second tile and a one-feature third/tail tile.
+                for width in (32768, 32769):
+                    wide = torch.linspace(-0.5, 0.75, steps=width, device=x.device,
+                                          dtype=x.dtype).repeat(2, 1)
+                    wide[0].zero_()
+                    wide_saved = wide.clone()
+                    wide_eps = 4e-4
+                    check_output(original(wide, eps=wide_eps),
+                                 reference(harness, wide_saved, wide_eps))
+                    unchanged(wide, wide_saved)
+                diagnosed_wide = True
             output = original(x, eps=eps)
             unchanged(x, pristine)
             check_output(output, expected)

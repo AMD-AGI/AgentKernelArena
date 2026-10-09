@@ -123,6 +123,13 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def require_graph_method(case, method):
+    if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
+                                     for key in ("benchmark_method", "reference_benchmark_method")
+                                     if key in case):
+        raise RuntimeError("Benchmark changed the declared graph timing method")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -237,6 +244,20 @@ def correctness(args, role, rows):
     return result
 
 
+def checked_timed_benchmark(case, role, baseline_hip):
+    selected = case.get("reference_benchmark") if role == "baseline" and baseline_hip else case
+    if not isinstance(selected, dict):
+        raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+    samples = selected.get("benchmark_samples")
+    validated = selected.get("validated_sample_count")
+    if (selected.get("replay_validation_valid") is not True
+            or selected.get("timed_output_checked") is not True
+            or type(samples) is not int or samples <= 0
+            or type(validated) is not int or validated != samples):
+        raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
+    return selected
+
+
 def performance(args, role, rows):
     import cal_kernel_perf as perf
     # Keep the original case generation, seed schedule, module state alignment,
@@ -305,13 +326,16 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = checked_timed_benchmark(case, role, args.baseline_hip)
+        method = selected_benchmark.get("benchmark_method")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
+        require_graph_method(case, method)
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

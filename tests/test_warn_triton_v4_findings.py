@@ -83,7 +83,7 @@ def test_expand_public_control_rejects_dtype_shortcuts(broken):
     else:
         run()
         assert len(seen) == 20
-        assert len(calls) == 29  # ragged, 22 dtype, 5 stride controls, original
+        assert len(calls) == 37  # ragged, 22 dtype, 8 nonfinite, 5 stride, original
     assert module.expand_batch_to_tokens is expand
 
 

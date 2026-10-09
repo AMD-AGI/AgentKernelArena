@@ -16,8 +16,15 @@ The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 Collection is checked against this independent manifest. Original correctness
 functions run unchanged. Performance inputs additionally run the task-local
 oracle in `_arena_reference.py`, before timing and against observed timed output.
+The full input tensor is checked bitwise for immutability after the initial
+invocation, every measured sample, and the changed-input bound replay. An
+untimed same-buffer control changes interior input values while the first output
+remains correct, then requires a fresh full reversal.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+10 warmups and 100 samples are unchanged. The adapter now poisons the output
+before each timed replay, outside the device interval, and captures one kernel
+call per graph replay. This makes every scored call overwrite all 512 elements;
+timings from the previous batched-graph policy are not directly comparable.
 
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch

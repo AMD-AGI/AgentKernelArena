@@ -113,7 +113,8 @@ def test_roiaware_scored_max_rejects_systematic_fifteen_percent_error():
         checks.check_timed_output(actual, expected, 'max', gpu=False)
 
 
-def test_l2n55_negative_replay_rejects_clamped_candidate(monkeypatch):
+@pytest.mark.parametrize('fault', ('clamp_below_minus_three', 'erase_minus_four_to_minus_two'))
+def test_l2n55_negative_replay_rejects_clamped_candidate(monkeypatch, fault):
     root = TASKS / 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale'
     validator = load(root / 'eval_tools/replay_validation.py')
 
@@ -149,9 +150,14 @@ def test_l2n55_negative_replay_rejects_clamped_candidate(monkeypatch):
         benchmark_cuda_graph_or_events=benchmark,
         _compare_results=lambda left, right, **kw: torch.allclose(left, right, **kw))
     validator.install(perf, lambda expected, actual: torch.testing.assert_close(actual.shape, expected.shape))
+    def incorrect(value):
+        if fault == 'clamp_below_minus_three':
+            value = value.clamp_min(-3)
+        else:
+            value = torch.where((value > -4) & (value < -2), 0, value)
+        return value.sum(dim=1).clone()
     with pytest.raises(ValueError, match='Timed operator output disagrees'):
-        perf.cal_hip_latency(Model(), inputs,
-            lambda value: value.clamp_min(-3).sum(dim=1).clone(), n_iter=2)
+        perf.cal_hip_latency(Model(), inputs, incorrect, n_iter=2)
     torch.testing.assert_close(inputs[0], original, rtol=0, atol=0)
     elapsed, metadata = perf.cal_hip_latency(Model(), inputs,
         lambda value: value.sum(dim=1).clone(), n_iter=2)

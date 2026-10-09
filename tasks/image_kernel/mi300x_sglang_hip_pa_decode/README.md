@@ -74,6 +74,12 @@ This migration has CPU regression coverage; formal GPU task validation and the
 optimization campaign are coordinated separately. Runtime source availability
 must be checked against the selected immutable image, not inferred from a tag.
 
+The original two correctness cases and two scored decode cases are retained.
+One additional correctness-only case uses four long, uneven contexts of 1025,
+1024, 1009 and 1008 tokens. It checks partial final pages and partitions through
+the same independent PyTorch reference and 0.02 tolerance. It has no timing row;
+the scored shapes, layouts, warmups and sample counts are unchanged.
+
 HIP evaluation uses a fresh task-local JIT directory per action. The runner
 requires a successful compilation whose inputs include a declared candidate
 translation unit or template header. It records the covered files and rejects

@@ -199,6 +199,8 @@ def _timed_bpreshuffle_case(kmod, mmod, inputs, candidate, *, case_index, warmup
             torch.cuda.synchronize()
             require_unchanged(inputs, stream.originals)
 
+        sample_reference = lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale)
+        stream.bind(sample_reference, _compare_preshuffle_output)
         timed = TimedRun()
         timed.after_sample = stream.observe
         kernel_ms, kernel_meta = benchmark_cuda_graph_or_events(
@@ -207,10 +209,7 @@ def _timed_bpreshuffle_case(kmod, mmod, inputs, candidate, *, case_index, warmup
         )
         if kernel_meta.get("benchmark_samples") != iters:
             raise AssertionError("Reported sample count differs from the declared count")
-        last_expected = stream.validate(
-            lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
-            _compare_preshuffle_output,
-        )
+        last_expected = stream.validate(sample_reference, _compare_preshuffle_output)
         last_inputs = tuple(value.clone() for value in inputs)
         kernel_meta.update(verify_timed_run(
             timed, inputs=inputs, originals=last_inputs, expected=last_expected,
@@ -219,7 +218,7 @@ def _timed_bpreshuffle_case(kmod, mmod, inputs, candidate, *, case_index, warmup
             reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
             compare=_compare_preshuffle_output, minimum_replay_change=2 * NORM_TOL,
         ))
-        kernel_meta["validated_sample_count"] = len(stream.outputs)
+        kernel_meta["validated_sample_count"] = stream.checked
         kernel_meta["replay_quantized_operands_changed"] = True
 
         stream.restore()

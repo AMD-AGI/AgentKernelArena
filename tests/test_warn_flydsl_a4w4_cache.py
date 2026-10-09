@@ -35,16 +35,22 @@ def _compare(actual, expected):
     assert torch.equal(actual, expected)
 
 
-def _measured_run(candidate, *, samples=100):
+def _measured_run(candidate, *, samples=100, allow_failure=False):
     a, w = _inputs()
     stream = controls.MeasuredInputStream(
         a, w, seed=20260401, case_index=0, samples=samples)
+    stream.bind(lambda: _reference(a, w), _compare)
     for _ in range(10):
         candidate(a, w)
-    for _ in range(samples):
-        stream.prepare()
-        stream.observe(candidate(a, w))
-    assert stream.prepared == len(stream.outputs) == samples
+    try:
+        for _ in range(samples):
+            stream.prepare()
+            stream.observe(candidate(a, w))
+    except AssertionError:
+        if not allow_failure:
+            raise
+    else:
+        assert stream.prepared == stream.checked == samples
     return stream, a, w
 
 
@@ -59,7 +65,8 @@ def test_every_reported_sample_is_checked_and_the_first_is_original():
     assert torch.equal(seen[10][1], stream.original_w)
     assert all(not torch.equal(seen[i][0], seen[j][0])
                for i in range(10, 110) for j in range(i + 1, 110))
-    last = stream.validate(lambda: _reference(a, w), _compare)
+    last = stream.validate(stream.reference, _compare)
+    assert not hasattr(stream, "outputs")
     assert torch.equal(last, _reference(*seen[-1]))
     assert stream.measuring is False
     a.neg_()
@@ -75,10 +82,10 @@ def test_wrong_middle_measured_output_fails_even_if_last_output_is_correct():
         result = _reference(a, w)
         return torch.zeros_like(result) if calls == 61 else result
 
-    stream, a, w = _measured_run(candidate)
-    assert torch.equal(stream.outputs[-1], _reference(a, w))
+    stream, a, w = _measured_run(candidate, allow_failure=True)
+    assert stream.checked < stream.prepared <= stream.samples
     with pytest.raises(AssertionError):
-        stream.validate(lambda: _reference(a, w), _compare)
+        stream.validate(stream.reference, _compare)
 
 
 def test_warmup_output_cache_fails_on_actual_measured_sample():
@@ -90,10 +97,10 @@ def test_warmup_output_cache_fails_on_actual_measured_sample():
             cached = _reference(a, w)
         return cached  # A scored-sample shortcut with no actual recomputation.
 
-    stream, a, w = _measured_run(candidate)
-    assert torch.equal(stream.outputs[-1], cached)
+    stream, a, w = _measured_run(candidate, allow_failure=True)
+    assert stream.checked < stream.prepared <= stream.samples
     with pytest.raises(AssertionError):
-        stream.validate(lambda: _reference(a, w), _compare)
+        stream.validate(stream.reference, _compare)
     assert torch.equal(stream.original_a, original_a)
     assert torch.equal(stream.original_w, original_w)
 
@@ -103,6 +110,7 @@ def test_observer_rejects_invalid_measured_output_before_host_copy(invalid):
     a, w = _inputs()
     stream = controls.MeasuredInputStream(
         a, w, seed=20260401, case_index=0, samples=1)
+    stream.bind(lambda: _reference(a, w), _compare)
     stream.prepare()
     output = _reference(a, w)
     if invalid == "shape":
@@ -113,7 +121,7 @@ def test_observer_rejects_invalid_measured_output_before_host_copy(invalid):
         output = None
     with pytest.raises(AssertionError):
         stream.observe(output)
-    assert stream.outputs == []
+    assert stream.checked == 0 and not hasattr(stream, "outputs")
 
 
 @pytest.mark.parametrize("key_kind", ["version", "content"])
@@ -137,7 +145,7 @@ def test_exact_input_caches_cannot_reuse_work_across_distinct_samples(key_kind):
         return result
 
     stream, a, w = _measured_run(candidate)
-    stream.validate(lambda: _reference(a, w), _compare)
+    stream.validate(stream.reference, _compare)
     # Content cache may reuse the original first sample from external warmup;
     # none of the 99 new samples can reuse a warmup or another measured result.
     assert (hits, full_calls) == ((9, 101) if key_kind == "version" else (10, 100))
@@ -257,8 +265,7 @@ def test_actual_benchmark_entrypoints_check_scored_outputs(
     else:
         with pytest.raises(AssertionError):
             namespace[entrypoint](verbose=False)
-        assert len(measured_callbacks) == (
-            0 if behavior in {"warmup_mutates", "measured_mutates"} else 1)
+        assert len(measured_callbacks) == 0
     original_a, original_w = _inputs()
     assert torch.equal(created_inputs[-1][0], original_a)
     assert torch.equal(created_inputs[-1][1], original_w)

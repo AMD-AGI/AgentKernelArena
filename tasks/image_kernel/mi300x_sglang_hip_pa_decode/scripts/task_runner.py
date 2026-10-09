@@ -185,6 +185,20 @@ def _write_performance_report(results: list[dict]) -> None:
 # Shapes are DECODE-flavoured: exactly one query token per sequence, GQA, large
 # context, so the multi-partition decode reduce path of pa_kernels.cuh is hit.
 # ---------------------------------------------------------------------------
+def _context_lengths(ctx_lens, num_seqs, context_lengths=None):
+    if type(ctx_lens) is not int or ctx_lens <= 0 or type(num_seqs) is not int or num_seqs <= 0:
+        raise ValueError("Context maximum and sequence count must be positive integers")
+    if context_lengths is None:
+        return [ctx_lens] * num_seqs
+    if not isinstance(context_lengths, (list, tuple)) or len(context_lengths) != num_seqs:
+        raise ValueError("One context length is required for every sequence")
+    if any(type(value) is not int or value <= 0 or value > ctx_lens for value in context_lengths):
+        raise ValueError("Sequence lengths must be positive integers within ctx_lens")
+    if max(context_lengths) != ctx_lens:
+        raise ValueError("ctx_lens must equal the longest sequence")
+    return list(context_lengths)
+
+
 def _make_case(
     *,
     ctx_lens: int,
@@ -193,11 +207,14 @@ def _make_case(
     head_size: int,
     block_size: int,
     dtype_str: str,
+    context_lengths: list[int] | tuple[int, ...] | None = None,
 ):
     import torch
     from einops import rearrange
     from csrc.cpp_itfs.pa import pa_ragged_test as T
 
+    explicit_lengths = context_lengths is not None
+    context_lengths = _context_lengths(ctx_lens, num_seqs, context_lengths)
     dtype = {"float16": torch.float16, "bfloat16": torch.bfloat16}[dtype_str]
     device = "cuda:0"
     torch.manual_seed(0)
@@ -226,7 +243,7 @@ def _make_case(
         "(b nblocks) -> b nblocks",
         b=num_seqs,
     )
-    seq_lens = torch.full(size=(num_seqs,), fill_value=ctx_lens, dtype=torch.int)
+    seq_lens = torch.tensor(context_lengths, dtype=torch.int)
 
     def get_num_blocks(cl):
         return (cl + block_size - 1) // block_size
@@ -234,7 +251,6 @@ def _make_case(
     def get_last_page_len(cl):
         return cl % block_size if cl % block_size > 0 else block_size
 
-    context_lengths = [ctx_lens] * num_seqs
     num_blocks_list = [get_num_blocks(c) for c in context_lengths]
     last_page_lens = [get_last_page_len(c) for c in context_lengths]
     kv_indptr = torch.tensor([0] + num_blocks_list).cumsum(dim=0, dtype=torch.int)
@@ -272,6 +288,7 @@ def _make_case(
             "head_size": head_size,
             "block_size": block_size,
             "dtype": dtype_str,
+            **({"context_lengths": context_lengths} if explicit_lengths else {}),
         },
         "query": query,
         "key_cache_new": key_cache_new.contiguous(),
@@ -361,6 +378,14 @@ PERF_CASES = [
     ("pa_decode_ctx8192_s128", dict(ctx_lens=8192, num_seqs=128, num_heads=(16, 2), head_size=128, block_size=16, dtype_str="bfloat16")),
 ]
 
+# Correctness-only decode controls. Preserve both scored performance cases while
+# exercising partial final pages and partitions at the same long-context regime.
+EXTRA_CASES = [
+    dict(ctx_lens=1025, num_seqs=4, num_heads=(8, 1), head_size=128,
+         block_size=16, dtype_str="bfloat16",
+         context_lengths=[1025, 1024, 1009, 1008]),
+]
+
 
 def run_compile() -> None:
     case = _make_case(**CASES[0])
@@ -375,7 +400,7 @@ def run_correctness() -> None:
     # kernel that is correct on the small shapes but wrong -- or specializing
     # invalid behavior -- on the large scored shapes would still earn a perf score.
     scored_cfgs = [cfg for _id, cfg in PERF_CASES]
-    for idx, cfg in enumerate([*CASES, *scored_cfgs]):
+    for idx, cfg in enumerate([*CASES, *scored_cfgs, *EXTRA_CASES]):
         case = _make_case(**cfg)
         out = _run_aiter(case)
         ref = _run_torch(case)

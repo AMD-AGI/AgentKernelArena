@@ -408,23 +408,56 @@ CONTRACT_CASES = {'ragged_permuted_alibi_scale': {'batch': 2,
                                                   'b_seq_len': [2],
                                                   'alibi_slopes': [8]},
                                  'output_shapes': {'o': [8, 8, 64]},
-                                 'page_mapping': 'reversed physical page order'}}
+                                 'page_mapping': 'reversed physical page order'},
+                  'float32_branch': {'batch': 2,
+                                     'query_heads': 8,
+                                     'kv_heads': 2,
+                                     'head_dim': 64,
+                                     'seed': 928,
+                                     'dtypes': {'data': 'float32',
+                                                'statistics': 'float32',
+                                                'routing': 'int32',
+                                                'alibi_slopes': 'float32'},
+                                     'contract_case': 'float32_branch',
+                                     'context_lengths': [19, 7],
+                                     'query_lengths': [65, 3],
+                                     'sequence_lengths': [84, 10],
+                                     'sm_scale': 0.17,
+                                     'block_size': 16,
+                                     'alibi_slopes': [0.5, 0.25, 0.125, 0.0625,
+                                                      0.5, 0.25, 0.125, 0.0625],
+                                     'input_shapes': {'q': [68, 8, 64],
+                                                      'k': [68, 2, 64],
+                                                      'v': [68, 2, 64],
+                                                      'k_cache': [8, 2, 8, 16, 8],
+                                                      'v_cache': [8, 2, 64, 16],
+                                                      'b_loc': [2, 2],
+                                                      'b_start_loc': [3],
+                                                      'b_seq_len': [2],
+                                                      'alibi_slopes': [8]},
+                                     'output_shapes': {'o': [68, 8, 64]},
+                                     'page_mapping': 'reversed physical page order'}}
 
 
 def control_inputs(h,case,device="cuda"):
     import torch
     c=CONTRACT_CASES[case]
     torch.manual_seed(c["seed"])
-    kc,vc,pages,_,_=h.setup_paged_kv_cache(2,19,2,64,16,device,torch.float16)
+    dtype={'float16': torch.float16, 'float32': torch.float32}[c['dtypes']['data']]
+    kc,vc,pages,_,_=h.setup_paged_kv_cache(2,19,2,64,16,device,dtype)
     # Fill padding blocks as ordinary finite cache data before non-identity routing.
     kc.copy_(torch.randn_like(kc));vc.copy_(torch.randn_like(vc))
-    q=torch.randn(8,8,64,device=device,dtype=torch.float16)
-    k=torch.randn(8,2,64,device=device,dtype=torch.float16);v=torch.randn_like(k)
+    total_tokens=sum(c['query_lengths'])
+    q=torch.randn(total_tokens,8,64,device=device,dtype=dtype)
+    k=torch.randn(total_tokens,2,64,device=device,dtype=dtype);v=torch.randn_like(k)
     pages.copy_((kc.shape[0]-1-torch.arange(pages.numel(),device=device).reshape_as(pages)).int())
-    kwargs={'max_input_len':5,'sm_scale':c['sm_scale']}
+    kwargs={'max_input_len':max(c['query_lengths']),'sm_scale':c['sm_scale']}
     if 'alibi_slopes' in c:kwargs['alibi_slopes']=torch.tensor(c['alibi_slopes'],device=device,dtype=torch.float32)
     if 'sliding_window' in c:kwargs['sliding_window']=c['sliding_window']
-    return (q,k,v,torch.zeros_like(q),kc,vc,pages,torch.tensor([0,5,8],device=device,dtype=torch.int32),torch.tensor(c['sequence_lengths'],device=device,dtype=torch.int32)),kwargs
+    starts=[0]
+    for length in c['query_lengths']:
+        starts.append(starts[-1]+length)
+    return (q,k,v,torch.zeros_like(q),kc,vc,pages,torch.tensor(starts,device=device,dtype=torch.int32),torch.tensor(c['sequence_lengths'],device=device,dtype=torch.int32)),kwargs
 
 
 def install_controls(harness):

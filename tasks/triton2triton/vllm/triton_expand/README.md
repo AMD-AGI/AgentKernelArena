@@ -8,7 +8,13 @@ Optimize the Triton expand kernel that broadcasts a [batch_size] tensor to [num_
 
 Constraints:
 - Must maintain the same function signature for `expand_batch_to_tokens`
-- Output must exactly match the reference for every dtype; expansion and replacement copy values without arithmetic
+- Output must exactly match the reference for every supported dtype: float16,
+  bfloat16, float32, float64, int8, int16, int32, int64, uint8 and bool.
+  Cumulative counts use int32 or int64. These are the complete dtype domain of
+  this task; complex, float8 and quantized tensor formats are outside its contract.
+  Expansion copies source values without arithmetic, including floating NaNs,
+  infinities and signed zero. Replacement uses scalar equality, so NaN does not
+  compare equal to a replacement key.
 
 
 ## Evaluation contract
@@ -36,16 +42,27 @@ input dtype and device are required, with a reference computed from pristine
 source/count buffers before candidate invocation.
 
 The original full public wrapper, seeds, 10 warmups and 100 samples remain the
-performance workload. Every measured output is checked after its device-event sample. The final
-output is then poisoned and the same public invocation is rerun with changed values and one redistributed token at the same total
-size. Both input buffers must remain unchanged by the candidate and are restored
-even on replay failure. Added reference and replay checks are outside timing.
+performance workload. Explicit device-Event timing invokes the allocating
+public wrapper for every sample in both roles. A graph observer would see a
+captured output after each replay, but replay would not rerun the wrapper; a
+batched graph could also hide earlier outputs in that replay. Every measured
+output is checked after its Event sample. The final output is then poisoned and
+the same public invocation is rerun with changed values and one redistributed
+token at the same total size. Both input buffers must remain unchanged by the
+candidate and are restored even on replay failure. Reference and replay checks
+are outside timing. These Event times are not directly comparable with the
+historical graph-replay times.
 
 Unscored dtype controls cover float16, bfloat16, float32, float64, int8,
 int16, int32, int64, uint8 and bool with both int32 and int64 cumulative counts.
 The bool controls check mixed-value expansion and value replacement separately.
 All outputs require exact equality, including fractional values and int64 values
 beyond the int32 range.
+Additional controls copy NaNs, infinities and signed zero and replace negative
+infinity at both cumulative-count widths. The independent CPU oracle copies
+tensor values without a Python-float conversion. Output and input-immutability
+checks compare bytes, retaining exact finite comparisons while accepting
+unchanged NaN representations. These controls add no scored rows or timed work.
 
 Additional unscored controls pass legal noncontiguous 1-D source views (integer,
 floating and bool) and cumulative-count views (int32 and int64) separately.

@@ -68,6 +68,27 @@ def control_cases(device):
                                causal=causal,output_dtype=output_dtype),
                    expected=expected,atol=1e-1,rtol=1e-1)
 
+    # At chunk_size=32 each chunk occupies one tile. This case crosses an
+    # upper tile in the causal launch, where the public contract still asks
+    # for the complete matrix rather than an elementwise causal mask.
+    size = 128
+    a = torch.zeros(size, 2, 16, device=device, dtype=torch.float16)
+    b = torch.zeros_like(a)
+    token = torch.arange(1, size + 1, device=device, dtype=torch.float16)
+    for group in range(2):
+        a[:, group, 0] = token * (group + 1)
+        a[:, group, 1] = group + 1
+        b[:, group, 0] = 1
+        b[:, group, 1] = token * 2
+    expected = torch.empty(1, 2, size, size, device=device, dtype=torch.float16)
+    for group in range(2):
+        expected[0, group] = (group + 1) * (token[:, None] + 2 * token[None, :])
+    yield dict(name='causal_128_complete_upper_tiles', entrypoint='bmm_chunk_fwd',
+               kwargs=dict(a=a, b=b, chunk_size=size,
+                           cu_chunk_seqlens=torch.tensor([0, size], device=device, dtype=torch.int32),
+                           causal=True, output_dtype=None),
+               expected=expected, atol=1e-1, rtol=1e-1)
+
 
 def reference_controls(h):
     rows=[]

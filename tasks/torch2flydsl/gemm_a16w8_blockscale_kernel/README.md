@@ -69,7 +69,7 @@ input distribution for both baseline and candidate. Preparation is outside
 Event timing. After each Event ends, the harness reads the live operands and
 copies that sample's complete output for an independent quantized-reference
 check; the final output is also poisoned and the exact timed callable rerun
-with changed inputs. Oracle checks and output copies are outside timing. The
+with changed inputs. The oracle for each prepared input is computed before its start Event. The complete measured output is compared with it after the end Event, then released; only one sample is retained. Oracle preparation can change cache state, but the same boundary applies to baseline and candidate. The
 diagnostic reference timing receives the same input stream. Since the timed
 input sequence changed, historical latencies and speedups are not directly
 comparable; the changed task packages require fresh GPU qualification.

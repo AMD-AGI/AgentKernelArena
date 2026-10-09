@@ -302,6 +302,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             # A candidate's capture support must not change the scoring method.
             use_graph = False
             event_reason = "capture_unsafe_aiter_hipblaslt"
+            sample_stream.bind(sample_reference, _compare_quant_gemm_output)
             timed = TimedRun()
             timed.after_sample = sample_stream.observe
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
@@ -322,13 +323,20 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
             a.copy_(sample_stream.original_a)
             w.copy_(sample_stream.original_w)
 
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-        )
+        try:
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
+                warmup=0,
+                repetition=iters,
+                use_cuda_graph=use_graph,
+                fallback_reason=event_reason,
+                prepare_fn=sample_stream.prepare_reference,
+            )
+            if sample_stream.reference_prepared != iters:
+                raise AssertionError("Diagnostic reference stream omitted a sample")
+        finally:
+            a.copy_(sample_stream.original_a)
+            w.copy_(sample_stream.original_w)
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
         speedup = (
@@ -481,6 +489,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             # A candidate's capture support must not change the scoring method.
             use_graph = False
             event_reason = "capture_unsafe_aiter_hipblaslt"
+            sample_stream.bind(sample_reference, _compare_quant_gemm_output)
             timed = TimedRun()
             timed.after_sample = sample_stream.observe
             kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
@@ -501,13 +510,20 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
             a.copy_(sample_stream.original_a)
             w.copy_(sample_stream.original_w)
 
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-        )
+        try:
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
+                warmup=0,
+                repetition=iters,
+                use_cuda_graph=use_graph,
+                fallback_reason=event_reason,
+                prepare_fn=sample_stream.prepare_reference,
+            )
+            if sample_stream.reference_prepared != iters:
+                raise AssertionError("Diagnostic reference stream omitted a sample")
+        finally:
+            a.copy_(sample_stream.original_a)
+            w.copy_(sample_stream.original_w)
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
         speedup = (

@@ -63,6 +63,12 @@ is not directly comparable to the former degenerate parameter workload.
 The declared entrypoint is `forward`, with reduction over C and scalar bias
 added afterward. Other methods are not substituted for this operator.
 
+For graph-timed cases without an input-reset callback, each captured sample now
+contains one operator call (`max_graph_repeats=1`). The earlier capture cap
+allowed more calls per sample, so historical latency may differ and needs a
+same-source rerun before comparison. Event-timed cases are unaffected; the
+declared inputs, 10 warmups, 100 samples, and numerical gates remain the same.
+
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated
 re-execution. A modification fails validation. Original input and model tensor
@@ -86,3 +92,11 @@ pointer or capture a potentially stale bias value before queued state updates.
 This applies to forward, nosum and pixelwise paths in both candidate and provided
 baseline. It also keeps captured replay bound to the current device bias buffer;
 no host synchronization or additional timed operator is introduced.
+
+Correctness varies `scale` and `bias` independently at every scored input
+geometry, using the same module and functional reference with the unchanged
+numerical tolerance. These controls run outside timing and restore both models'
+parameter values even on failure. A shape-specific implementation must read the
+live parameter tensors; the four scored cases, warmups and samples are unchanged.
+The adapter also rejects an Event downgrade of either measured slot; the
+declared reference policy for these cases is graph timing.

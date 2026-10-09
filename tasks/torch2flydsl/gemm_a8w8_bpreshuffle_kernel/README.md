@@ -74,13 +74,15 @@ Both roles retain explicit Event timing: ten external warmups, zero additional
 collector warmups and 100 measured samples. Sample zero uses the original
 seeded data; each later sample receives a distinct seeded BF16 activation and
 weight pair, quantized and preshuffled outside timing. A read-only observer
-captures each actual measured output and checks input immutability; after
-timing, all 100 outputs are compared with quantized FP32 GEMM/BF16 references
-using the original numerical gate. The unquantized torch matmul diagnostic
+prepares one quantized FP32 GEMM/BF16 reference before each start Event, then
+checks that sample's actual output and input immutability after its end Event.
+The complete output is compared under the original numerical gate and released,
+so all 100 samples are checked with bounded host memory. Oracle preparation
+can change cache state identically for baseline and candidate. The unquantized torch matmul diagnostic
 receives the same raw input stream. Poisoning and replay also use independent
 new quantized operands and verified packed weights, with a distinguishable
 reference; every input is restored on exit. The five shapes, tolerance and
 full public operator timing boundary remain unchanged, though this stronger
 data stream makes historical performance measurements not directly comparable.
 No captured-graph claim is made for this Event invocation. The task-local
-FlyDSL 0.3.2 buffer adapter requires fresh qualification in the pinned image.
+FlyDSL 0.3.2 buffer adapter is part of the initial implementation; edits to it or the harness require fresh qualification in the pinned image.

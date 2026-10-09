@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 BUFFER_OPS = (
     Path(__file__).resolve().parents[1]
-    / "tasks/torch2flydsl/hgemm_kernel/kernels/buffer_ops.py"
+    / "tasks/torch2flydsl/hgemm_kernel/hgemm_kernel_ops/buffer_ops.py"
 )
 
 

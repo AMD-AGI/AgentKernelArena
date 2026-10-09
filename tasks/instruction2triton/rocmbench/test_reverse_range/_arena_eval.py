@@ -48,7 +48,8 @@ def inspect_candidate(data, *, require_implemented=False):
 
 
 def benchmark_type(base, plugin, module):
-    from _arena_reference import prepare, poison_outputs, perturbed_inputs
+    from _arena_reference import (check_interior_transitions, prepare,
+                                  poison_outputs, perturbed_inputs)
     class CheckedBenchmark(base):
         def __init__(self,*args,**kwargs):
             # Inputs are task-owned locals prepared by the original performance
@@ -63,10 +64,16 @@ def benchmark_type(base, plugin, module):
             original=self.op_callable
             output=original()
             check(output)
+            check_interior_transitions(self.context, original)
             if plugin.action=='correctness':
                 row['metrics']={'performance_inputs_checked':True}
                 plugin.exercised.add(row['test_case_id'])
                 return {}
+            previous_prepare=self.prepare_fn
+            def prepare_each_call():
+                if previous_prepare is not None:previous_prepare()
+                poison_outputs(self.context,None)
+            self.prepare_fn=prepare_each_call
             # Bind the canonical timer's output collector to the reported
             # samples. A Python wrapper only observes graph capture, whereas
             # graph replays write the captured buffers without calling Python.
@@ -87,7 +94,7 @@ def benchmark_type(base, plugin, module):
                     callable_fn, warmup=config.warm_up,
                     repetition=config.repetition, target_ms=target_ms,
                     n_retries=n_retries, estimate_reps=estimate_reps,
-                    max_graph_repeats=max_graph_repeats,
+                    max_graph_repeats=1,
                     prepare_fn=prepare_fn, use_cuda_graph=use_cuda_graph,
                     fallback_reason=fallback_reason, timed_run=timed)
             globals_['_measure_times']=measured_times
@@ -98,6 +105,7 @@ def benchmark_type(base, plugin, module):
                 record=super().run_benchmark(*args,**kwargs)
             finally:
                 globals_['_measure_times']=measure
+                self.prepare_fn=previous_prepare
             if not timed.bound or checked_samples[0]!=self.config.repetition:
                 raise RuntimeError('Measured sample outputs were not all checked')
             # Under graph timing this is the exact captured output buffer; for
@@ -116,6 +124,8 @@ def benchmark_type(base, plugin, module):
                 raise RuntimeError('Nonpositive/nonfinite device timing')
             if method not in ('cuda_graph','cuda_event_fallback'):
                 raise RuntimeError('Missing device timing method')
+            if record.get('benchmark_effective_repeats') != 1:
+                raise RuntimeError('Reverse-range timing must observe one prepared invocation per sample')
             row.update(execution_time_ms=ms,benchmark_method=method,
                        metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
                                  'measured_samples_checked':checked_samples[0],

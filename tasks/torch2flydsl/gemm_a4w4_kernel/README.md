@@ -69,11 +69,13 @@ sample, then a distinct deterministic BF16 activation and weight pair at the
 same shape for each later sample. Preparation runs before the start Event for
 both baseline and candidate. A read-only observer copies each reported output
 after its end Event and checks that the candidate left that sample's prepared
-inputs unchanged; the task-local quantized model checks every copy under the
-unchanged normalized error gate. This defeats warmup-result reuse and exact
+inputs unchanged; the task-local quantized model prepares one reference before
+each start Event, and the observer compares that sample's complete output after
+its end Event under the unchanged normalized error gate. Only one sample is
+retained. Oracle preparation can change cache state for both roles. This defeats warmup-result reuse and exact
 input version/content caches across the remaining samples. The subsequent
 poisoned-output, changed-input replay checks the last measured callable again.
-The original operands are restored for the legacy unquantized diagnostic timing.
+The unquantized diagnostic timing receives the same prepared input stream, then restores the original operands.
 The data stream is stronger than the historical fixed-input stream, so old
 latencies and speedups are not directly comparable; fresh GPU validation is
 required.

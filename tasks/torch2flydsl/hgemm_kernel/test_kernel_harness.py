@@ -115,6 +115,8 @@ def _timed_gemm_case(candidate, a, b, *, case_index, warmup, iters):
             torch.cuda.synchronize()
             require_unchanged((a, b), (stream.original_a, stream.original_b))
 
+        sample_reference = lambda: _gemm_reference(a, b)
+        stream.bind(sample_reference, _compare_gemm_output)
         timed = TimedRun()
         timed.after_sample = stream.observe
         kernel_ms, kernel_meta = benchmark_cuda_graph_or_events(
@@ -123,14 +125,14 @@ def _timed_gemm_case(candidate, a, b, *, case_index, warmup, iters):
         )
         if kernel_meta.get("benchmark_samples") != iters:
             raise AssertionError("Reported sample count differs from the declared count")
-        last_expected = stream.validate(lambda: _gemm_reference(a, b), _compare_gemm_output)
+        last_expected = stream.validate(sample_reference, _compare_gemm_output)
         last_inputs = (a.clone(), b.clone())
         kernel_meta.update(verify_timed_run(
             timed, inputs=(a, b), originals=last_inputs, expected=last_expected,
             perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
             reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
         ))
-        kernel_meta["validated_sample_count"] = len(stream.outputs)
+        kernel_meta["validated_sample_count"] = stream.checked
 
         # The diagnostic PyTorch side receives the identical prepared stream.
         stream.restore()
@@ -140,9 +142,9 @@ def _timed_gemm_case(candidate, a, b, *, case_index, warmup, iters):
             ref_ms, ref_meta = benchmark_cuda_graph_or_events(
                 lambda: torch.mm(a, b.transpose(-1, -2)),
                 warmup=0, repetition=iters, use_cuda_graph=False,
-                fallback_reason=reason, prepare_fn=reference_stream.prepare,
+                fallback_reason=reason, prepare_fn=reference_stream.prepare_reference,
             )
-            if reference_stream.prepared != iters or ref_meta.get("benchmark_samples") != iters:
+            if reference_stream.reference_prepared != iters or ref_meta.get("benchmark_samples") != iters:
                 raise AssertionError("Reference stream differs from candidate sample count")
         finally:
             reference_stream.restore()

@@ -22,8 +22,8 @@ warmups and sample counts are unchanged.
 The scored forward path also writes per-row FP32 mean and reciprocal standard
 deviation buffers. The adapter binds those buffers to the exact returned output
 from each captured call and verifies all three values at every scored shape and
-dtype. It poisons statistics before each measured graph replay, outside the
-device timing interval, and poisons all three outputs before the changed-input
+dtype. It poisons the bound y, mean and rstd buffers before each measured graph
+replay, outside the device timing interval, and again before the changed-input
 replay. Every observed sample checks that x, w and b remain read-only, and
 restores them on any failure. This preparation makes each graph replay one
 logical operator call;
