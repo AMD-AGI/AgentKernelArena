@@ -38,7 +38,7 @@ def workspace(tmp_path):
 @pytest.mark.parametrize("with_task_root", [False, True])
 def test_complete_actual_manifest_matches_default_optimizer_and_report(workspace, with_task_root):
     snapshot = snapshot_workspace_harness(workspace, **({"task_root": TASK} if with_task_root else {}))
-    expected = {p.relative_to(workspace).as_posix() for p in workspace.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+    expected = {p.relative_to(workspace).as_posix() for p in workspace.rglob("*") if p.is_file()}
     expected -= {ALIAS, "ut/negative_check.json"}
     description = describe_workspace_harness(workspace)
     assert set(snapshot.digests) == set(description["protected_paths"]) == expected
@@ -68,7 +68,7 @@ def rewrite(source, change):
 
 
 @pytest.mark.parametrize("name", sorted(EDITABLE))
-def test_gpu_body_and_warp_tuning_remain_editable_through_shipped_alias(workspace, name):
+def test_gpu_body_remains_editable_through_shipped_alias(workspace, name):
     snapshot = snapshot_workspace_harness(workspace)
     def change(tree):
         node = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name)
@@ -79,7 +79,23 @@ def test_gpu_body_and_warp_tuning_remain_editable_through_shipped_alias(workspac
     assert (workspace / ALIAS).resolve() == workspace / SOURCE
 
 
-@pytest.mark.parametrize("attack", ["launcher", "signature", "decorator", "imports", "module_code", "other_kernel", "warp_helper"])
+@pytest.mark.parametrize("body", [
+    "torch.cuda.Event.elapsed_time = lambda *args, **kwargs: 0.000001\nreturn 4",
+    "return 32",
+], ids=["host_timing_monkeypatch", "scalar_warp_change"])
+def test_host_warp_helper_body_is_frozen_without_executing_it(workspace, body):
+    snapshot = snapshot_workspace_harness(workspace)
+    def change(tree):
+        helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_num_warps")
+        helper.body = ast.parse(body).body
+    # Parsing and rewriting source is sufficient to exercise guard acceptance;
+    # never import the candidate or execute this host-side timing mutation.
+    rewrite(workspace / SOURCE, change)
+    with pytest.raises(RuntimeError, match="Protected test/harness files changed"):
+        verify_workspace_harness(snapshot)
+
+
+@pytest.mark.parametrize("attack", ["launcher", "signature", "decorator", "imports", "module_code", "other_kernel"])
 def test_source_launcher_interface_and_non_target_code_are_frozen(workspace, attack):
     snapshot = snapshot_workspace_harness(workspace)
     def change(tree):
@@ -87,8 +103,6 @@ def test_source_launcher_interface_and_non_target_code_are_frozen(workspace, att
         kernel = functions["_gemma_fused_add_rmsnorm_kernel"]
         if attack == "launcher":
             functions["gemma_fused_add_rmsnorm"].body = [ast.parse("return x, residual").body[0]]
-        elif attack == "warp_helper":
-            functions["_num_warps"].body = ast.parse("torch.cuda.Event.elapsed_time = lambda *args: 0.001\nreturn 16").body
         elif attack == "signature":
             kernel.args.args[0].arg = "different_interface"
         elif attack == "decorator":

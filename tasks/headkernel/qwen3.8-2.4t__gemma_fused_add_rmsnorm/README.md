@@ -31,8 +31,10 @@ Editable function body in `source/minimax_m3_rmsnorm.py`:
 - `_gemma_fused_add_rmsnorm_kernel`
 
 The authoritative harness guard preserves its signature and decorators and
-freezes `_num_warps`, the public launcher `gemma_fused_add_rmsnorm`, imports, other functions,
-and module-level code. It freezes the complete task input package, including
+freezes the host helper `_num_warps`, public launcher `gemma_fused_add_rmsnorm`,
+imports, other functions, and module-level code. Host helpers can mutate the
+timing environment before graph replay, so their bodies remain frozen.
+The guard freezes the complete task input package, including
 the UT oracle, metadata, live-shape evidence, routing helpers, baseline overlay,
 and baseline reference. The shipped `ut/kernel_src/minimax_m3_rmsnorm.py`
 symlink remains an alias of the editable source; replacing or redirecting it

@@ -42,11 +42,11 @@ prompt:
     It is 5.06% of de-inflated GPU time in the serving profile
     (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 77.9% memory-bound of its empirical roofline.
 
-    Edit only the body of `_gemma_fused_add_rmsnorm_kernel`
-    in source/minimax_m3_rmsnorm.py. Keep its signature and decorators.
-    The warp helper `_num_warps`, public launcher `gemma_fused_add_rmsnorm`, imports, other functions,
-    and module-level code are frozen. The shipped ut/kernel_src symlink must
-    continue to point to that same candidate source file.
+    Edit only the body of `_gemma_fused_add_rmsnorm_kernel` in
+    source/minimax_m3_rmsnorm.py. Keep its signature and decorators.
+    The host helper `_num_warps`, public launcher `gemma_fused_add_rmsnorm`,
+    imports, other functions, and module-level code are frozen. The shipped
+    ut/kernel_src symlink must continue to point to that same candidate source file.
 
     Entry points that must keep their signatures:
       gemma_fused_add_rmsnorm
