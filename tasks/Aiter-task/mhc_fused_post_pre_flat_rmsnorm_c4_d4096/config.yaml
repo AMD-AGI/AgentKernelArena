@@ -1,4 +1,7 @@
 schema_version: 2
+kernel_identity:
+  logical_operator: mhc_fused_post_pre_flat_rmsnorm_c4_d4096
+  source_owner: aiter
 candidate:
   language: flydsl
   initial_state: unimplemented

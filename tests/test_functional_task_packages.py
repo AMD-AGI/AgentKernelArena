@@ -48,6 +48,8 @@ def test_config_paths_and_complete_manifest(task):
     config = spec.to_mapping()
     assert spec.candidate.initial_state == 'unimplemented'
     assert spec.candidate.language == 'flydsl'
+    # Forge files KB records under the operator and its production source owner.
+    assert config['kernel_identity'] == {'logical_operator': task.name, 'source_owner': 'aiter'}
     assert config['candidate']['editable'] == ['kernel.py']
     assert [(e.file, e.kind, e.symbol) for e in spec.candidate.entrypoints] == [
         ('kernel.py', 'builder', f'build_{task.name}_module')]

@@ -1,4 +1,7 @@
 schema_version: 2
+kernel_identity:
+  logical_operator: gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024
+  source_owner: aiter
 candidate:
   language: flydsl
   initial_state: unimplemented
