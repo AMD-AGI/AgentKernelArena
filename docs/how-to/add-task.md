@@ -659,14 +659,30 @@ installed package in the pinned runtime; they do not import this copy. Preserve
 the package's Python JIT sources while excluding generated build/cache trees.
 Copying the whole upstream repository is unnecessary for this task contract.
 
-The existing SIKL suite contains 17 BF16 GEMM tasks and four MXFP4 MoE tasks,
-each covering its declared case set. The same schema fits both families. A MoE
-runner keeps its routing, quantization, reference, comparison, and multi-kernel
-timing logic in task files. It does not acquire a separate task config schema.
+The existing SIKL suite uses two package layouts, each covering its declared
+case set. The builder layout above (root `workload.json`, `scripts/evaluate.py`)
+holds 22 BF16 GEMM tasks, four MXFP4 MoE tasks, one paged top-k task and three
+sparse flash MLA tasks. The functional layout (`scripts/workload.json` embedding
+the bundle definition and rows, `scripts/task_runner.py`) holds 15
+blockwise-scaled FP8 GEMM tasks and one fused mHC post→pre task; one runner copy
+serves all of them, reading the operands held across timed calls from the
+workload policy's `persistent_inputs`. Both layouts declare an unimplemented
+FlyDSL builder in a root `kernel.py`, export accepted candidates as SIKL
+solutions, and share the same schema. A MoE runner keeps its routing,
+quantization, reference, comparison, and multi-kernel timing logic in task
+files; the top-k runner its declared valid lengths, routing-plan checks and
+destination-passing output, and the MLA runner its per-pool lengths, index
+patterns and per-shape base draws. A task whose production baseline lives in sglang
+declares `kernel_identity.source_owner: sglang` and acquires the relevant
+sglang subtrees instead of the AITER package. No family acquires a separate
+task config schema.
 
 If the production baseline has a documented numerical mismatch, explicitly add
 `correctness_policy: diagnostic` and `diagnostic_reason` under `baseline` after
 reviewing that evidence. This example does not silently enable that exception.
+The deepseek-v4-flash tasks declare it as a family policy: their reference is an
+FP32 PyTorch computation that the production baseline is not required to meet,
+and each reason adds the measured evidence where a mismatch was observed.
 An optional common export declaration can be added to either family:
 
 ```yaml

@@ -1,0 +1,25 @@
+{
+  "name": "gemm_a16w16_nt_n2048_k4096__flydsl",
+  "definition": "gemm_a16w16_nt_n2048_k4096",
+  "author": "",
+  "spec": {
+    "language": "",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "",
+    "dependencies": [],
+    "destination_passing_style": false,
+    "binding": null
+  },
+  "sources": [
+    {
+      "path": "",
+      "content": ""
+    }
+  ],
+  "description": "FlyDSL solution slot for gemm_a16w16_nt_n2048_k4096 -- language, entry_point and sources to be filled in."
+}

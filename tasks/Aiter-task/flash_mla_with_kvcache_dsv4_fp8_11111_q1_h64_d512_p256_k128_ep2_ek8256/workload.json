@@ -1,0 +1,5583 @@
+{
+  "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256",
+  "op_type": "mla",
+  "axes": {
+    "query_length": 1,
+    "heads": 64,
+    "head_dim": 512,
+    "page_size": 256,
+    "one": 1,
+    "packed_width": 584,
+    "topk": 128,
+    "extra_page_size": 2,
+    "extra_topk": 8256
+  },
+  "variable_axes": [
+    "batch",
+    "pages",
+    "extra_pages"
+  ],
+  "inputs": {
+    "q": {
+      "shape": [
+        "batch",
+        "query_length",
+        "heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "kv_cache": {
+      "shape": [
+        "pages",
+        "page_size",
+        "one",
+        "packed_width"
+      ],
+      "dtype": "float8_e4m3fn"
+    },
+    "sparse_indices": {
+      "shape": [
+        "batch",
+        "query_length",
+        "topk"
+      ],
+      "dtype": "int32"
+    },
+    "sparse_lens": {
+      "shape": [
+        "batch"
+      ],
+      "dtype": "int32"
+    },
+    "extra_kv_cache": {
+      "shape": [
+        "extra_pages",
+        "extra_page_size",
+        "one",
+        "packed_width"
+      ],
+      "dtype": "float8_e4m3fn"
+    },
+    "extra_sparse_indices": {
+      "shape": [
+        "batch",
+        "query_length",
+        "extra_topk"
+      ],
+      "dtype": "int32"
+    },
+    "extra_sparse_lens": {
+      "shape": [
+        "batch"
+      ],
+      "dtype": "int32"
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32"
+    },
+    "sinks": {
+      "shape": [
+        "heads"
+      ],
+      "dtype": "float32"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "batch",
+        "query_length",
+        "heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "lse": {
+      "shape": [
+        "batch",
+        "query_length",
+        "heads"
+      ],
+      "dtype": "float32"
+    }
+  },
+  "scalars": {
+    "sm_scale": 0.04419417382415922
+  },
+  "length_grid": {
+    "sparse": [
+      0,
+      1,
+      63,
+      64,
+      65,
+      127,
+      128
+    ],
+    "extra": [
+      0,
+      1,
+      2,
+      31,
+      32,
+      33,
+      127,
+      128,
+      129,
+      511,
+      512,
+      513,
+      1024,
+      2048,
+      4096,
+      8192,
+      8255,
+      8256
+    ]
+  },
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the bundled task callbacks. Each case fixes the valid lengths and index pattern; the bundle cases keep the initializer's own lengths. Every case is checked and timed for both roles under the same callback comparison. A declared baseline numerical exception keeps the failed comparison evidence; candidates have none.",
+  "cases": [
+    {
+      "case_id": "batch_1_bundle",
+      "uuid": "b8e3a6ea1947598c",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_1_s0_e0",
+      "uuid": "e3b48ece02d426f7",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e0",
+      "uuid": "02e36fb2ee64f79a",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e1",
+      "uuid": "4570d76c20d8adf1",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e2",
+      "uuid": "ccf3e7876f0db5d1",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e31",
+      "uuid": "1e392e6ea1adf9ab",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e32",
+      "uuid": "e52f4015c808ace4",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e33",
+      "uuid": "7b7444c24e4e76ed",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e64",
+      "uuid": "51237bfe2aa1079f",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e127",
+      "uuid": "a7b82f27e6f86b16",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e128",
+      "uuid": "fc4de1f4ceb2a050",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e129",
+      "uuid": "8fce423d695c4179",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e256",
+      "uuid": "dcb37f57df299e30",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e511",
+      "uuid": "3eaa039e0e347f25",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e512",
+      "uuid": "c5bdaa118ef8b730",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e513",
+      "uuid": "760777758b89abab",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e1024",
+      "uuid": "12555a774b2acb08",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e2048",
+      "uuid": "2bcf5565d60b1e3a",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e4096",
+      "uuid": "71a19ce38e879ab1",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e8192",
+      "uuid": "bd1e31a02d36f49e",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e8255",
+      "uuid": "a1d077eaa703dc7d",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s0_e8256",
+      "uuid": "c4f7c4cc551d2ca3",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s1_e8256",
+      "uuid": "d4461d6c8008f6a7",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s63_e8256",
+      "uuid": "78871baa213dc8d1",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s64_e8256",
+      "uuid": "9827d6e0df4ef34f",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s65_e8256",
+      "uuid": "a68986d177956678",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s127_e8256",
+      "uuid": "f89ca41785e98477",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128_e8256",
+      "uuid": "f5ce630e0c492155",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_holes",
+      "uuid": "a74eb5c778266302",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_short_history",
+      "uuid": "656cf854e72589aa",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_tail",
+      "uuid": "b3129aa248bcd456",
+      "batch": 1,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_2_bundle",
+      "uuid": "1975d7f5f83cdc8c",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_2_s0_e0",
+      "uuid": "fccebbb334f92008",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e0",
+      "uuid": "b0cffc3cfb6e0375",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e1",
+      "uuid": "d446e0e86f82c94b",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e2",
+      "uuid": "9745f21a2e8677f3",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e31",
+      "uuid": "bb550e02f0cfe2bb",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e32",
+      "uuid": "be723c8a3aefc7c2",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e33",
+      "uuid": "9e1c18f9ba485bfc",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e64",
+      "uuid": "f570403f5f0a6c9d",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e127",
+      "uuid": "c6a8559824cd43ca",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e128",
+      "uuid": "c7fd4dba0b7ed871",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e129",
+      "uuid": "bada9c730e248ffd",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e256",
+      "uuid": "44417a2e3e950504",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e511",
+      "uuid": "994ed553df800eda",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e512",
+      "uuid": "8e588be5163ca562",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e513",
+      "uuid": "f7a1b5b5abb5a47b",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e1024",
+      "uuid": "0be5fdb7b2f56ca8",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e2048",
+      "uuid": "22ff69d762ea5cc8",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e4096",
+      "uuid": "c3779eacdadfdd54",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e8192",
+      "uuid": "230acfa2cfacf0db",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e8255",
+      "uuid": "62368efd0e4b4826",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s0_e8256",
+      "uuid": "090d627b21a7112d",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s1_e8256",
+      "uuid": "baef1714d9d3c4f3",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s63_e8256",
+      "uuid": "90259aa3e7a25c62",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s64_e8256",
+      "uuid": "e713fd05a68b51aa",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s65_e8256",
+      "uuid": "48b14f3b4fbec92c",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s127_e8256",
+      "uuid": "568047750f7d7f91",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128_e8256",
+      "uuid": "c789e1b513c901a6",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_holes",
+      "uuid": "8957bfdbcd869873",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_short_history",
+      "uuid": "b9a6947f2b714b99",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_tail",
+      "uuid": "d22436d8564966cd",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_2_mixed",
+      "uuid": "7407fb74e65c8e06",
+      "batch": 2,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_bundle",
+      "uuid": "0c514bd286ae2b25",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_4_s0_e0",
+      "uuid": "e43c8d0f5f1706f8",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e0",
+      "uuid": "fc17610d0af639a8",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e1",
+      "uuid": "5f68872e97bf2586",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e2",
+      "uuid": "6ffe0185124c0a59",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e31",
+      "uuid": "88b0dcf96f11b064",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e32",
+      "uuid": "d402eeea318abb33",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e33",
+      "uuid": "9a5a9bbcf43a29b9",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e64",
+      "uuid": "a6e2f4a9c96671e6",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e127",
+      "uuid": "2dbd7ed8ae543c68",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e128",
+      "uuid": "2cde521a75e1a17c",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e129",
+      "uuid": "01c9d8cc2f97f6f3",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e256",
+      "uuid": "3ed935791d8d7bd8",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e511",
+      "uuid": "599790174006bea9",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e512",
+      "uuid": "f3ccedf2dfe5e863",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e513",
+      "uuid": "5a01f4cc73ebee44",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e1024",
+      "uuid": "842e43d92a426f70",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e2048",
+      "uuid": "48ab35fe9efec138",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e4096",
+      "uuid": "42bda899cfbea5c3",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e8192",
+      "uuid": "af0512ac3b742d92",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e8255",
+      "uuid": "8dacba8e4dd59f3c",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s0_e8256",
+      "uuid": "ef83bf174e11a667",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s1_e8256",
+      "uuid": "e65978bef6d40422",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s63_e8256",
+      "uuid": "8e9a40b843e58c2e",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s64_e8256",
+      "uuid": "618f985e7b2947d5",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s65_e8256",
+      "uuid": "331a6cfe40fa36e3",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s127_e8256",
+      "uuid": "cbf35f4b0433ef57",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128_e8256",
+      "uuid": "444e18a828e56aff",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_holes",
+      "uuid": "5cb80d14c4712409",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_short_history",
+      "uuid": "0e9d84b5d69e23d1",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_tail",
+      "uuid": "aa07533ab7f5f789",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_4_mixed",
+      "uuid": "04db91ca0fa369fb",
+      "batch": 4,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_bundle",
+      "uuid": "eec3a314ac650cca",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_8_s0_e0",
+      "uuid": "6069c278cbbd54dc",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e0",
+      "uuid": "fc919b7ca1cf11c0",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e1",
+      "uuid": "b8cdaf557f946eb3",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e2",
+      "uuid": "90e2094c5f2e1c1a",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e31",
+      "uuid": "8764b3181594db27",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e32",
+      "uuid": "3f1d80931683c7e1",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e33",
+      "uuid": "2ff2254f1e68426e",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e64",
+      "uuid": "98133119b1527107",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e127",
+      "uuid": "3c76ef2f764adaea",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e128",
+      "uuid": "06e600e2146f567f",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e129",
+      "uuid": "4b07b3fdad8f0aa5",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e256",
+      "uuid": "9d46b674b508986e",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e511",
+      "uuid": "8b65efde20f650f8",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e512",
+      "uuid": "a9ff49cf19c86379",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e513",
+      "uuid": "133a5303b7b9f9b0",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e1024",
+      "uuid": "fba48a83d05bdee3",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e2048",
+      "uuid": "a48f72c7719f7683",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e4096",
+      "uuid": "2e93abf821f1cbf3",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e8192",
+      "uuid": "c616776de4d75ba6",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e8255",
+      "uuid": "59f5ea8f5283033e",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s0_e8256",
+      "uuid": "a1cfddc42b5dba3b",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s1_e8256",
+      "uuid": "a7c25f658abdb7a9",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s63_e8256",
+      "uuid": "2e3f9b9e052218c6",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s64_e8256",
+      "uuid": "0beb04e6e4fbecb7",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s65_e8256",
+      "uuid": "fd6a6d530eb3d1e9",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s127_e8256",
+      "uuid": "7a3e111cdbdfb99f",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128_e8256",
+      "uuid": "c38488330a24fdac",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_holes",
+      "uuid": "9d3e42407459ddfa",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_short_history",
+      "uuid": "ade741878df0f64f",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_tail",
+      "uuid": "6f1f0b4817d02e19",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_8_mixed",
+      "uuid": "17c3c52a31edd8b2",
+      "batch": 8,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_bundle",
+      "uuid": "02f253042de15eab",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_16_s0_e0",
+      "uuid": "ff3b56481850ac7f",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e0",
+      "uuid": "7ac60075dc8d6180",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e1",
+      "uuid": "277943f2f5c3fa42",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e2",
+      "uuid": "8a360aeba2421a54",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e31",
+      "uuid": "c913d18c1c43407b",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e32",
+      "uuid": "f2b06956bf49767f",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e33",
+      "uuid": "cca4e5d40d826f45",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e64",
+      "uuid": "dbc658fc7413889d",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e127",
+      "uuid": "0600adb604d55648",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e128",
+      "uuid": "d3a16dc021258a92",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e129",
+      "uuid": "0b7cc28331b28790",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e256",
+      "uuid": "1b6b168d21351c21",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e511",
+      "uuid": "ce292e5be0b6d118",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e512",
+      "uuid": "579a2c2bfbd27158",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e513",
+      "uuid": "add03089e8810506",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e1024",
+      "uuid": "1d2a5cb3ea5959f9",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e2048",
+      "uuid": "5a6a8cacf8ac2133",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e4096",
+      "uuid": "fbe5975049b87a1b",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e8192",
+      "uuid": "bce72ba98bf3d56d",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e8255",
+      "uuid": "6f3eaa7d06a87dd5",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s0_e8256",
+      "uuid": "3d4312cdc6ff3fac",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s1_e8256",
+      "uuid": "ed7f022a10ada2e7",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s63_e8256",
+      "uuid": "1f15d7662edaf649",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s64_e8256",
+      "uuid": "c49e692cbc49d9f3",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s65_e8256",
+      "uuid": "ea9f3eb28b17e959",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s127_e8256",
+      "uuid": "8e82c4c3f260cc01",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128_e8256",
+      "uuid": "2f3f8f5cbe19fded",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_holes",
+      "uuid": "11063c230f4f8939",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_short_history",
+      "uuid": "33be3c01a00da6d6",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_tail",
+      "uuid": "39d03f4a49ca6bd1",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_16_mixed",
+      "uuid": "d4b1bb08500371f7",
+      "batch": 16,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_bundle",
+      "uuid": "5e4d29446ae359a7",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_32_s0_e0",
+      "uuid": "e4ee4a54b209a11e",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e0",
+      "uuid": "a317e3c34a614105",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e1",
+      "uuid": "496380539957636a",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e2",
+      "uuid": "3220c535cbb90c81",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e31",
+      "uuid": "768f03ba940c972e",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e32",
+      "uuid": "11abf73faf79b690",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e33",
+      "uuid": "ae34b66e02aba7b5",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e64",
+      "uuid": "555d6e345ce9939a",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e127",
+      "uuid": "0616176710192a80",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e128",
+      "uuid": "d7fb5ad741ba65d3",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e129",
+      "uuid": "7da962e93417edee",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e256",
+      "uuid": "60f754e6c5186e02",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e511",
+      "uuid": "d67a6777760cd82c",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e512",
+      "uuid": "c4908da2f244bc81",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e513",
+      "uuid": "33b0d5811de02323",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e1024",
+      "uuid": "6046f3a1d6d0368d",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e2048",
+      "uuid": "a326d502f705dabf",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e4096",
+      "uuid": "b72fd56c0585ba1e",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e8192",
+      "uuid": "97c93869547d8b1a",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e8255",
+      "uuid": "ea33e5253e495ec4",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s0_e8256",
+      "uuid": "71d6878bf67f187a",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s1_e8256",
+      "uuid": "60e06c6fcdc8aef4",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s63_e8256",
+      "uuid": "f615bfa83f4fe8b3",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s64_e8256",
+      "uuid": "9a41d708a10716d8",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s65_e8256",
+      "uuid": "98773a0f0bb6fd23",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s127_e8256",
+      "uuid": "f373c885b331a16c",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128_e8256",
+      "uuid": "9833cb1ce6dc9219",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_holes",
+      "uuid": "2a286f0de7d396e2",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_short_history",
+      "uuid": "4dd08f80664156c8",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_tail",
+      "uuid": "46e2c924b9537919",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_32_mixed",
+      "uuid": "652de28d29f858dc",
+      "batch": 32,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_bundle",
+      "uuid": "9cc5ca60196d0d50",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_64_s0_e0",
+      "uuid": "2ba5dc900391add7",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e0",
+      "uuid": "524a82f83d4be4ec",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e1",
+      "uuid": "63a7789a503b92b5",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e2",
+      "uuid": "26bb8875bc0160d5",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e31",
+      "uuid": "efa72dc15582d04b",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e32",
+      "uuid": "91a4dcdd14c9f100",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e33",
+      "uuid": "e1315cf07550351c",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e64",
+      "uuid": "c1526525bd0a878f",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e127",
+      "uuid": "a458bc705934306c",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e128",
+      "uuid": "eca8534b716d47ce",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e129",
+      "uuid": "013b4ef40dc7ff02",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e256",
+      "uuid": "15bef8820a598c91",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e511",
+      "uuid": "93c3b6e8130d92db",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e512",
+      "uuid": "a3d419d38cb17d61",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e513",
+      "uuid": "11a2d5b284b6b985",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e1024",
+      "uuid": "c464356b76d5ea83",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e2048",
+      "uuid": "10fba0bdbb87963d",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e4096",
+      "uuid": "4db0751e064384cb",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e8192",
+      "uuid": "408e255c37863067",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e8255",
+      "uuid": "946f099777b5e22f",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s0_e8256",
+      "uuid": "84e90e0631ee1838",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s1_e8256",
+      "uuid": "184f5b15c6815f31",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s63_e8256",
+      "uuid": "f6722c134681610e",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s64_e8256",
+      "uuid": "c8f8845cda979045",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s65_e8256",
+      "uuid": "be2031a59679117a",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s127_e8256",
+      "uuid": "1883695a2067764e",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128_e8256",
+      "uuid": "ac380c50f6dacde6",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_holes",
+      "uuid": "7e87b36f4e7f7709",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_short_history",
+      "uuid": "501ed90d44b06ff5",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_tail",
+      "uuid": "0130f76b6c97c56a",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_64_mixed",
+      "uuid": "e68f1f735e1584a9",
+      "batch": 64,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_bundle",
+      "uuid": "440537c864a0c8bd",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_128_s0_e0",
+      "uuid": "3c46ec04e3811c5f",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e0",
+      "uuid": "3dcbae089ceeaa53",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e1",
+      "uuid": "5634524cefb2e48d",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e2",
+      "uuid": "98464262669d5614",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e31",
+      "uuid": "c102dfd5e97406b0",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e32",
+      "uuid": "af6d7c8fc3bc0c0e",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e33",
+      "uuid": "4096251c60bd37d8",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e64",
+      "uuid": "645c5384a510a678",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e127",
+      "uuid": "bf12baca2982b335",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e128",
+      "uuid": "686f775e98e212e4",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e129",
+      "uuid": "14a238ab31952210",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e256",
+      "uuid": "768886b92c0be5c4",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e511",
+      "uuid": "6a49d5093d9656b8",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e512",
+      "uuid": "8160b5916ede8d69",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e513",
+      "uuid": "62d7106a1ac03fc8",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e1024",
+      "uuid": "19f0aa95737f799c",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e2048",
+      "uuid": "246f07087b03ebd9",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e4096",
+      "uuid": "3f00aee0ef7be0a3",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e8192",
+      "uuid": "e4e5085460c35660",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e8255",
+      "uuid": "4eaadb0ae1a454e6",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s0_e8256",
+      "uuid": "e29e8ea30ab30b23",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s1_e8256",
+      "uuid": "0d63cbb5eac8ea65",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s63_e8256",
+      "uuid": "69928bfea138d27f",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s64_e8256",
+      "uuid": "d67fcae06d9acbf3",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s65_e8256",
+      "uuid": "fc5392fa0f62fdcb",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s127_e8256",
+      "uuid": "d44e4241e7199a64",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128_e8256",
+      "uuid": "adf41053c425b94a",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_holes",
+      "uuid": "136024a00ba287c0",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_short_history",
+      "uuid": "2ac91aa0c842e1bc",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_tail",
+      "uuid": "0f9ca4ed2c2af846",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_128_mixed",
+      "uuid": "1adfd49e22e1ae74",
+      "batch": 128,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_bundle",
+      "uuid": "46d260a4d284fc25",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_256_s0_e0",
+      "uuid": "d27e2be324eec1c9",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e0",
+      "uuid": "b1a705560e4ce916",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e1",
+      "uuid": "7e0e26c13b9699e0",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e2",
+      "uuid": "0df71a41d84279f1",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e31",
+      "uuid": "9c0e18ab61d33292",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e32",
+      "uuid": "b88fae3e276a4fe1",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e33",
+      "uuid": "d0e83c7b84523aa4",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e64",
+      "uuid": "8f17ffe0955b383e",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e127",
+      "uuid": "be8e7c7c88f32fca",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e128",
+      "uuid": "a5ea99cc77ac0bee",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e129",
+      "uuid": "da039d995aee8021",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e256",
+      "uuid": "abd27b881fe3ee77",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e511",
+      "uuid": "88e0255f05fc72f8",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e512",
+      "uuid": "b05b9bde40e4df9d",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e513",
+      "uuid": "e54942f35fae3ba0",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e1024",
+      "uuid": "26437fe2d6ee65bd",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e2048",
+      "uuid": "26b608c859b0e332",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e4096",
+      "uuid": "6f3a57c6f4cb0c32",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e8192",
+      "uuid": "6c60c852e084081e",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e8255",
+      "uuid": "ad48a11ebfbec540",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s0_e8256",
+      "uuid": "dd7b430d28e956ee",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s1_e8256",
+      "uuid": "517ac9b2170ff58d",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s63_e8256",
+      "uuid": "f7064d9d5b6002c2",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s64_e8256",
+      "uuid": "736c3af4d2c2e149",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s65_e8256",
+      "uuid": "a49fb70f29acdc0f",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s127_e8256",
+      "uuid": "3fc37f3b73c43c88",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128_e8256",
+      "uuid": "c1d8bc937abf4e75",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_holes",
+      "uuid": "d3356fa986b39307",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_short_history",
+      "uuid": "7e003dc54f94580d",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_tail",
+      "uuid": "254281a98f3ce41c",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_256_mixed",
+      "uuid": "52582d246bd4a7f0",
+      "batch": 256,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_bundle",
+      "uuid": "048db99379a5f7a4",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_512_s0_e0",
+      "uuid": "d840044f2d3ca5c0",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e0",
+      "uuid": "080ebe60516361a3",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e1",
+      "uuid": "9e6896d787a63f4d",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e2",
+      "uuid": "39d73b3e4715d226",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e31",
+      "uuid": "54f991cd832aa933",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e32",
+      "uuid": "37c5e5b23e65ad4a",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e33",
+      "uuid": "eed6ca1327beb5db",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e64",
+      "uuid": "a36268254edc906b",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e127",
+      "uuid": "fac25094d4acc7f1",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e128",
+      "uuid": "81edc93bcc15ecbc",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e129",
+      "uuid": "64b459bee1c027f1",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e256",
+      "uuid": "0e00c6c51daec35f",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e511",
+      "uuid": "0798247a4ae3d733",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e512",
+      "uuid": "2cce0e0a96bbb2b1",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e513",
+      "uuid": "6bdd469e395acd3a",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e1024",
+      "uuid": "a35b302bb33b1eba",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e2048",
+      "uuid": "ca9426a8a6e2a4ee",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e4096",
+      "uuid": "57d88e1c16b9f4f7",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e8192",
+      "uuid": "b29d3b1d7cb340af",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e8255",
+      "uuid": "0f6f30ec94964337",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s0_e8256",
+      "uuid": "1e1030b4e327f410",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s1_e8256",
+      "uuid": "da928e42b53913ae",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s63_e8256",
+      "uuid": "407a0aeed1d5e864",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s64_e8256",
+      "uuid": "e41eb2ce26ccecf0",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s65_e8256",
+      "uuid": "3477dde8f2cee3a6",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s127_e8256",
+      "uuid": "efb728e6d3a04023",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128_e8256",
+      "uuid": "7ede54a07d58cf85",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_holes",
+      "uuid": "f74cc44ef9b8932c",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_short_history",
+      "uuid": "c1dee787a7c49684",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_tail",
+      "uuid": "ce0bbe680ad7fb55",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_512_mixed",
+      "uuid": "cda6cfc026877a67",
+      "batch": 512,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_bundle",
+      "uuid": "ea578682b653e18d",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_1024_s0_e0",
+      "uuid": "70b838e519fd826e",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e0",
+      "uuid": "cba9bf5623e8e4f6",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e1",
+      "uuid": "807f4caf1bf2e159",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e2",
+      "uuid": "e792880bdb1cb8c9",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e31",
+      "uuid": "affe01bc7f18cc09",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e32",
+      "uuid": "976ec1463b2fc91b",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e33",
+      "uuid": "ad3d15224d7264bf",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e64",
+      "uuid": "ba0e3860037f5459",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e127",
+      "uuid": "8f6a627ff18ac102",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e128",
+      "uuid": "fc99f0483103c575",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e129",
+      "uuid": "be1694ea858b5e10",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e256",
+      "uuid": "8acb3adab6ca1585",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e511",
+      "uuid": "0f1ca4c02b2d6824",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e512",
+      "uuid": "309283fd9528c4b0",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e513",
+      "uuid": "d176db94edf6363a",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e1024",
+      "uuid": "1f59fc974d28d073",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e2048",
+      "uuid": "e88baab369df2cbc",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e4096",
+      "uuid": "014f67b7da61aba9",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e8192",
+      "uuid": "d80891f34ea0a434",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e8255",
+      "uuid": "c82e0252bb6f4d58",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s0_e8256",
+      "uuid": "a060ef5f5c323fdf",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s1_e8256",
+      "uuid": "b00b92cdfeffd98b",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s63_e8256",
+      "uuid": "4cbfa84cb333e4c4",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s64_e8256",
+      "uuid": "e49b1dd38fbb6d32",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s65_e8256",
+      "uuid": "77ba89ebae1a73f6",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s127_e8256",
+      "uuid": "355ff550a5da9362",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128_e8256",
+      "uuid": "adf07853c7bf1326",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_holes",
+      "uuid": "dda3fffab9b081a4",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_short_history",
+      "uuid": "9a8440dfc2112e0d",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_tail",
+      "uuid": "b1780402686ecbd1",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_1024_mixed",
+      "uuid": "e306f8c7ac72f4b0",
+      "batch": 1024,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_bundle",
+      "uuid": "62dfadc9f9172e5b",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_2048_s0_e0",
+      "uuid": "bc87c99159b82840",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e0",
+      "uuid": "e934028e71716d5b",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e1",
+      "uuid": "d638b31380eb7626",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e2",
+      "uuid": "1e8bdd28b69b7b57",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e31",
+      "uuid": "9f5d2a464d98d4e1",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e32",
+      "uuid": "e7f5ac148668b5a7",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e33",
+      "uuid": "fdeb3c7875d3a561",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e64",
+      "uuid": "a7fbb646612ceff0",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e127",
+      "uuid": "9fb6835acc6f0e55",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e128",
+      "uuid": "c604696a7b81b3fb",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e129",
+      "uuid": "8ed9114f7555e3fa",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e256",
+      "uuid": "db0af3b8f3e4b070",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e511",
+      "uuid": "81427f24052ca4a8",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e512",
+      "uuid": "08d8c745055baffd",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e513",
+      "uuid": "c55275b340a0963d",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e1024",
+      "uuid": "34459b40d530451a",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e2048",
+      "uuid": "01f5ab0ac8dfcd90",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e4096",
+      "uuid": "514e2be70dbf7bda",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e8192",
+      "uuid": "207d680b1a73f5fd",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e8255",
+      "uuid": "81ec7295b669ba4c",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s0_e8256",
+      "uuid": "7eb768a5b20efad4",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s1_e8256",
+      "uuid": "e7d7c60f8b7ee0fc",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s63_e8256",
+      "uuid": "dd1687b0d5a6ca0a",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s64_e8256",
+      "uuid": "b9cb1fd442572edf",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s65_e8256",
+      "uuid": "6a9c415689c83c5e",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s127_e8256",
+      "uuid": "1006bdb577e6d1fe",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128_e8256",
+      "uuid": "fd8a8cee7579478a",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_holes",
+      "uuid": "04fe9b698c113754",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_short_history",
+      "uuid": "4c42375c0b1dfd75",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_tail",
+      "uuid": "d071d8508e95561b",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_2048_mixed",
+      "uuid": "b29eb45e58925ca7",
+      "batch": 2048,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_bundle",
+      "uuid": "49684548ac3dada3",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_4096_s0_e0",
+      "uuid": "9ad711a4ba8c321f",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e0",
+      "uuid": "528f7c76ec38c1bd",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e1",
+      "uuid": "a7d9eadd9771c667",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e2",
+      "uuid": "e20116df49fb9f64",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e31",
+      "uuid": "6f75814e8106ca8c",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 31
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e32",
+      "uuid": "9c16933f77b64836",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 32
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e33",
+      "uuid": "63b882bb16e8518f",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 33
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e64",
+      "uuid": "7a567713f0fd3792",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e127",
+      "uuid": "090a105267798170",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e128",
+      "uuid": "63583b84f95481c9",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e129",
+      "uuid": "726cf679cc2206f5",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 129
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e256",
+      "uuid": "778bd813b29ebc1a",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e511",
+      "uuid": "fd00d8c6aecd1d54",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 511
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e512",
+      "uuid": "4c4351888ec2f5f1",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 512
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e513",
+      "uuid": "b4ce7ee81f5a3461",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 513
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e1024",
+      "uuid": "b8c768ed5eecc245",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 1024
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e2048",
+      "uuid": "5482246f45818b0b",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 2048
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e4096",
+      "uuid": "744b1bbbf2b3fc44",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 4096
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e8192",
+      "uuid": "cab8c546340327c8",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8192
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e8255",
+      "uuid": "2aeecd682916884c",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8255
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s0_e8256",
+      "uuid": "1069bdffeca09c8a",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 0,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s1_e8256",
+      "uuid": "2a724ed5ebea604f",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 1,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s63_e8256",
+      "uuid": "6c2c3f49c082f50d",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 63,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s64_e8256",
+      "uuid": "6cf0f1fec607bfaa",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s65_e8256",
+      "uuid": "1408ab1585873cb2",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 65,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s127_e8256",
+      "uuid": "b7183fb3bed260e1",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 127,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128_e8256",
+      "uuid": "5d18b9db03afc231",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_holes",
+      "uuid": "ee861d4445dc7ead",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 128,
+          "extra": 8256
+        },
+        "holes": {
+          "sparse": 3,
+          "extra": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_short_history",
+      "uuid": "9e0547fb1e9c9bf8",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 1
+        },
+        "holes": {
+          "extra": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_tail",
+      "uuid": "a29a0c020df53bf3",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "uniform": {
+          "sparse": 64,
+          "extra": 4128
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_4096_mixed",
+      "uuid": "ce14f8bede33f78e",
+      "batch": 4096,
+      "pages": 2019,
+      "extra_pages": 201836,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 7
+        }
+      }
+    }
+  ]
+}

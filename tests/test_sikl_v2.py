@@ -60,11 +60,14 @@ def manifest(contract):
 def test_complete_manifest_is_accepted_by_framework(config_path, monkeypatch):
     with modules(config_path.parent, monkeypatch) as contract:
         captured = manifest(contract)
-        assert len(captured.cases) == 13
+        workload = contract.load_workload()
+        assert len(captured.cases) == len(workload['cases'])
+        if workload['op_type'] in ('gemm', 'moe'):
+            assert len(captured.cases) == 13
         for row in captured.cases:
             assert row['checks'] == ['correctness', 'performance']
             assert row['params']['uuid']
-            assert row['dtype'] == 'bfloat16'
+            assert row['dtype'] == ('float32' if workload['op_type'] == 'topk' else 'bfloat16')
 
 
 @pytest.mark.parametrize('config_path', TASKS, ids=lambda p: p.parent.name)
@@ -752,6 +755,17 @@ def test_runner_controls_are_mandatory_and_preserve_real_manifest(tmp_path, monk
             assert len(CaseManifest.from_result(result).cases) == 13
 
 
+# The deepseek-v4-flash tasks compare against an FP32 PyTorch reference that the
+# production baseline is not required to meet; each declares that family policy,
+# with task-specific evidence where a mismatch was measured.
+DSV4_FAMILY_POLICY = 'deepseek-v4-flash family policy'
+DSV4_TASKS = {*(f'gemm_a16w16_nt_n{n}_k4096' for n in (64, 256, 512, 1024, 2048)),
+              'flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128',
+              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256',
+              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512',
+              'topk_transform_paged_paged_k512_page_size64'}
+
+
 def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
     evidence = {
         'gemm_a16w16_nt_n4096_k2048': '329bc9861f7199c4df4d6fc0fc0eb16353cfe995',
@@ -763,16 +777,26 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
         'gemm_a16w16_nt_n6144_k3072': '9488e7dd33b407bbbbb193b258d812870132d1a31708475bebe7d93f36a6da55',
         'gemm_a16w16_nt_n6144_k4096': '01fa1cdb8b76a15e0c4de1643b0cabcf5c4d3c49ebd550d2cc079c7f3237ef01',
         'gemm_a16w16_nt_n6144_k6144': 'd641c76d2113890966f1b4132fd3cb0cd53fde9a6a7d44e25bd177db9ecc86b5',
+        'gemm_a16w16_nt_n64_k4096': 'c471e5e842344d232f504c5d8a191116bcfb8aa4119e7dfb3431edc7264cab81',
+        'gemm_a16w16_nt_n256_k4096': 'd529534b7ae881c1416f22dec7b9a0e8c8657ddb040b0a755f8a7344c53c6ccd',
+        'gemm_a16w16_nt_n512_k4096': '4e795b1efd64cdd01d9ff229e4176a27d12cadf81c5c864bb397a0f1c30b86fd',
+        'gemm_a16w16_nt_n1024_k4096': '1b1eff453ec7d1f253c5361eac683d91d5d14a73eb620f92b8c3bc1a1b7213d3',
+        'gemm_a16w16_nt_n2048_k4096': '20aa34f087b048be14d8b4352b03b79039f10f83d4e16a5c106b719ecc05937a',
     }
     diagnostic = []
     for path in TASKS:
+        name = path.parent.name
         spec = load_task_spec(path, task_id=str(path.parent.relative_to(ROOT / 'tasks')))
         if spec.baseline.correctness_policy == 'diagnostic':
-            diagnostic.append(path.parent.name)
-            assert evidence[path.parent.name] in spec.baseline.diagnostic_reason
+            diagnostic.append(name)
+            assert name in evidence or name in DSV4_TASKS
+            if name in evidence:
+                assert evidence[name] in spec.baseline.diagnostic_reason
+            if name in DSV4_TASKS:
+                assert spec.baseline.diagnostic_reason.startswith(DSV4_FAMILY_POLICY)
         else:
             assert spec.baseline.diagnostic_reason is None
-    assert set(diagnostic) == set(evidence)
+    assert set(diagnostic) == set(evidence) | DSV4_TASKS
 
 
 def test_diagnostic_task_still_reports_actual_pass(monkeypatch):

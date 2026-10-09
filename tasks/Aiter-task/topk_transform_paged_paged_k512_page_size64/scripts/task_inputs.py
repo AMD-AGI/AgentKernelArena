@@ -1,124 +1,259 @@
-"""Use supplied initialization callbacks or the legacy version-1 input policy.
+# Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+"""Input construction, valid lengths and destination buffer for paged top-k.
 
-Random tensors are synthesized, not reconstructed captured inputs. Preserve
-all definition shapes, dtypes, scalar literals and operator semantics.
+The buffers are allocated here, in the definition's declared shapes and dtypes,
+and filled by ``task_initialize``, which is the schema bundle's own
+``initialize`` callback: tie-free scores, a random legal page permutation per
+row, lengths chosen from 0, a quarter, half or all of the capacity, and the
+conservative v2 routing plan. Nothing about the distribution is decided in this
+file, because the acceptance run that verifies a result uses that callback and a
+second implementation of it here would be a second operator.
+
+The callback's lengths alone do not exercise the operator: the valid lengths
+are values inside ``seq_lens``, and a decode step sees them change while every
+buffer capacity stays fixed. Each case therefore names its lengths. A
+``bundle`` case keeps the callback's own; every other case writes its declared
+lengths into ``seq_lens`` after the callback has run. The routing plan the
+callback writes routes no row to the cluster pool and its threshold exceeds
+every legal length, so it matches every declared length; ``check_case_inputs``
+verifies that, rather than assuming it, for every input that is checked or
+timed.
+
+Each case is built on its own, from a generator re-seeded to ``seed`` for that
+case. Every constant lives in the configured workload JSON. Arena copies each
+task directory into its own workspace, so a task cannot import from a sibling
+and every task has to carry its own copy of these modules.
 """
 
 from __future__ import annotations
 
-import hashlib
-from pathlib import Path
+from typing import Any
 
 import torch
 
-from scripts.task_api import dimensions, dtype, shape_of, load_solution, validate_inputs
+import task_compare
+import task_initialize
+
+# The declared workload path is resolved only inside this task workspace.
+import task_contract
+
+WORKLOAD = task_contract.load_workload()
+
+DEFINITION = str(WORKLOAD["definition"])
+AXES: dict[str, int] = dict(WORKLOAD["axes"])
+INPUTS: dict[str, dict] = dict(WORKLOAD["inputs"])
+OUTPUTS: dict[str, dict] = dict(WORKLOAD["outputs"])
+(OUTPUT_NAME,) = tuple(OUTPUTS)
+SCALARS: dict[str, Any] = dict(WORKLOAD["scalars"])
+K = AXES["k"]
+PAGE_SIZE = AXES["page_size"]
+SEED = int(WORKLOAD["seed"])
+
+DTYPES = {"float32": torch.float32, "int32": torch.int32, "int64": torch.int64}
+
+# Written into the destination before every call, outside timing. Legal outputs
+# are -1 padding or nonnegative slots, so any element left unwritten fails.
+OUTPUT_POISON = -2
+# The v2 plan's threshold field is read as uint32 by the backend.
+PLAN_UINT32_MAX = 2**32 - 1
+
+# The entrypoint is explicit task data; it is not derived from operator identity.
+BUILDER_SYMBOL = task_contract.candidate_entry()["symbol"]
+
+# Benchmark parameters used for both baseline and candidate. Timing must be
+# CUDA-graph based: short rows and small batches run for microseconds and
+# eager timing would be dominated by per-call host dispatch.
+BENCH_WARMUP = int(WORKLOAD["bench"]["warmup"])
+BENCH_REPETITION = int(WORKLOAD["bench"]["repetition"])
+BENCH_TARGET_MS = float(WORKLOAD["bench"]["target_ms"])
+
+CASES: tuple[dict[str, Any], ...] = tuple(WORKLOAD["cases"])
+CASE_IDS: tuple[str, ...] = tuple(str(case["case_id"]) for case in CASES)
+
+GATE_EXPLANATION = (
+    "gate: scripts/task_compare.py, the schema bundle's own comparison callback. "
+    "It requires the exact selected set per row, -1 padding in the reference "
+    "positions and the exact order of short rows -- nothing here relaxes it."
+)
 
 
-def make_inputs(definition, row, policy, device="cuda"):
-    seed = int.from_bytes(hashlib.sha256(
-        f"{policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little")
-    generator = torch.Generator(device=device).manual_seed(seed)
-    axes = dimensions(definition, row)
-    if definition.get("initialize"):
-        values = {
-            name: (row["workload"]["inputs"][name]["value"] if spec.get("shape") is None else
-                   torch.empty(shape_of(spec, axes), dtype=dtype(spec["dtype"]), device=device))
-            for name, spec in definition["inputs"].items()
-        }
-        return initialize_buffers(values, definition, row, seed % (2**63), device)
-    if definition["op_type"] == "moe":
-        return _moe(definition, row, axes, generator, device)
-    if definition["op_type"] != "gemm":
-        raise NotImplementedError("Implement this operator's input policy from its declared contract")
-    result = {}
-    for name, spec in definition["inputs"].items():
-        desc = row["workload"]["inputs"][name]
-        if desc["type"] == "scalar":
-            result[name] = desc["value"]
-        else:
-            kind = dtype(spec["dtype"])
-            if kind not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
-                raise NotImplementedError(f"No generic random policy for {name}: {kind}")
-            result[name] = torch.randn(shape_of(spec, axes), generator=generator, device=device, dtype=kind)
-    return result
+def dimensions(case: dict[str, Any]) -> dict[str, int]:
+    return {**AXES, **{axis: int(case[axis]) for axis in task_contract.VARIABLE_AXES}}
 
 
-def initialize_buffers(values, definition, row, seed, device):
-    initialize = load_solution(Path(__file__).parent / "initialize", "main.py::run")
-    original = dict(values)
-    storage = {name: (v.data_ptr(), v.stride()) for name, v in values.items() if isinstance(v, torch.Tensor)}
-    if initialize(values, seed=seed) is not values:
-        raise ValueError("initialize must return the original input dictionary")
-    apply_runtime_lengths(values, row)
-    validate_inputs(values, definition, row, device)
-    for name, (pointer, stride) in storage.items():
-        if values[name] is not original[name] or values[name].data_ptr() != pointer or values[name].stride() != stride:
-            raise ValueError(f"initialize replaced input buffer: {name}")
-    return values
+def declared_shape(spec: dict, dims: dict[str, int]) -> tuple[int, ...]:
+    return tuple(dims[name] for name in spec["shape"])
 
 
-def refill_inputs(values, definition, row, policy, device="cuda"):
-    """Change the input draw without changing graph-bound storage or metadata."""
-    changed_policy = {**policy, "seed": policy["seed"] + 1}
-    if definition.get("initialize"):
-        seed = int.from_bytes(hashlib.sha256(
-            f"{changed_policy['seed']}:{row['workload']['uuid']}".encode()).digest()[:8], "little") % (2**63)
-        return initialize_buffers(values, definition, row, seed, device)
-    replacement = make_inputs(definition, row, changed_policy, device)
-    for name, value in values.items():
-        if isinstance(value, torch.Tensor):
-            value.copy_(replacement[name])
-            if hasattr(replacement[name], "is_shuffled"):
-                value.is_shuffled = replacement[name].is_shuffled
-    return values
+def initialize_case(inputs: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
+    """Fill existing buffers for a case: the bundle's draw, then the case lengths."""
+    task_initialize.run(inputs, seed=SEED)
+    lengths = task_contract.row_lengths(case, WORKLOAD)
+    if lengths is not None:
+        inputs["seq_lens"].copy_(torch.tensor(lengths, dtype=torch.int32))
+    return inputs
 
 
-def _moe(definition, row, axes, generator, device):
-    required = {"num_tokens", "model_dim", "num_experts", "topk", "w1_rows", "w1_cols",
-                "w2_cols", "w1_scale_cols", "w2_scale_cols"}
-    if not required <= axes.keys() or "quantization:per_1x32" not in definition.get("tags", []):
-        raise NotImplementedError("Only declared per_1x32 MXFP4 MoE inputs have a built-in policy")
-    from aiter.ops.shuffle import shuffle_weight
-    from aiter.utility.fp4_utils import dynamic_mxfp4_quant, e8m0_shuffle
-
-    e, d, rows, m, k = (axes[n] for n in ("num_experts", "model_dim", "w1_rows", "num_tokens", "topk"))
-    if k > e or rows % 2 or axes["w1_cols"] * 2 != d or axes["w2_cols"] * 2 != rows // 2:
-        raise ValueError("Inconsistent MXFP4 MoE dimensions")
-    result = {}
-    for name, shape in (("w1", (e, rows, d)), ("w2", (e, d, rows // 2))):
-        raw = 0.125 * torch.randn(shape, device=device, dtype=torch.bfloat16, generator=generator)
-        packed, scales = dynamic_mxfp4_quant(raw.reshape(-1, shape[-1]))
-        packed = packed.reshape(shape[0], shape[1], -1)
-        scales = e8m0_shuffle(scales).reshape(shape[0], shape[1], -1)
-        result[name] = shuffle_weight(packed.contiguous(), (16, 16)).view(dtype(definition["inputs"][name]["dtype"]))
-        result[name].is_shuffled = True
-        result[name + "_scale"] = scales.view(dtype(definition["inputs"][name + "_scale"]["dtype"]))
-    result["hidden_states"] = 0.25 * torch.randn((m, d), device=device, dtype=torch.bfloat16, generator=generator)
-    scores = torch.rand((m, e), device=device, generator=generator)
-    ids = scores.topk(k, dim=-1).indices
-    result["topk_ids"] = ids.to(torch.int32).contiguous()
-    result["topk_weights"] = scores.gather(1, ids).softmax(-1).contiguous()
-    for name, desc in row["workload"]["inputs"].items():
-        if desc["type"] == "scalar":
-            result[name] = desc["value"]
-    return result
+def build_case_inputs(case: dict[str, Any], device: str = "cuda") -> dict[str, Any]:
+    """Allocate one case's declared buffers and let the bundle fill them."""
+    dims = dimensions(case)
+    inputs = {
+        name: (SCALARS[name] if spec["shape"] is None else
+               torch.empty(declared_shape(spec, dims), dtype=DTYPES[spec["dtype"]], device=device))
+        for name, spec in INPUTS.items()
+    }
+    return initialize_case(inputs, case)
 
 
-def apply_runtime_lengths(values, row, *, replay=False):
-    """Apply the manifest's length pattern without replacing graph-bound buffers."""
-    regime = row["workload"].get("runtime_lengths")
-    if regime is None:
-        return values
-    pattern = regime["replay_seq_lens" if replay else "seq_lens"]
-    capacity = min(values["scores"].shape[1],
-                   values["page_tables"].shape[1] * values["page_size"])
-    if not pattern or any(type(length) is not int or not 0 <= length <= capacity
-                          for length in pattern):
-        raise ValueError("runtime length pattern must lie within score/page capacity")
-    lengths = values["seq_lens"]
-    lengths.copy_(torch.tensor([pattern[i % len(pattern)] for i in range(lengths.numel())],
-                              dtype=lengths.dtype, device=lengths.device))
-    # A conservative non-cluster plan remains valid for every supported length.
-    values["metadata"].zero_()
-    values["metadata"][0, 0] = 2**31 - 1
-    return values
+def refill_case_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
+    """Redraw a case's buffers in place, keeping their storage.
+
+    The bundle's callback writes preallocated buffers rather than allocating
+    them, so redrawing through it changes the values while leaving every
+    property the operator depends on untouched. A CUDA graph captured over these
+    buffers therefore reads the new draw on its next replay.
+    """
+    return task_initialize.run(inputs, seed=seed)
+
+
+# The operands a case holds fixed while the call-varying ones change: the valid
+# lengths it declares and the routing plan that has to match them. Scores and
+# the page table are new for every decode step.
+PERSISTENT_INPUTS: tuple[str, ...] = ("seq_lens", "metadata")
+
+
+def redraw_call_varying_inputs(inputs: dict[str, Any], seed: int) -> dict[str, Any]:
+    """Redraw the scores and page table through the bundle, keeping the case lengths.
+
+    The full callback runs, and the operands the case owns are then restored.
+    Selecting a subset of the bundle's initializers instead would put a second
+    copy of which distribution fills which buffer in this file.
+    """
+    held = {name: inputs[name].detach().clone() for name in PERSISTENT_INPUTS}
+    refill_case_inputs(inputs, seed=seed)
+    for name, value in held.items():
+        inputs[name].copy_(value)
+    return inputs
+
+
+def call_varying_draws(
+    inputs: dict[str, Any], seeds: list[int]
+) -> list[dict[str, torch.Tensor]]:
+    """One snapshot of the call-varying operands per seed, drawn by the bundle.
+
+    The buffers themselves end as they started, so drawing ahead of time does
+    not change what the next call reads.
+    """
+    names = tuple(
+        name
+        for name, value in inputs.items()
+        if isinstance(value, torch.Tensor) and name not in PERSISTENT_INPUTS
+    )
+    current = {name: inputs[name].detach().clone() for name in names}
+    draws = []
+    for seed in seeds:
+        redraw_call_varying_inputs(inputs, seed=seed)
+        draws.append({name: inputs[name].detach().clone() for name in names})
+    load_draw(inputs, current)
+    return draws
+
+
+def load_draw(inputs: dict[str, Any], draw: dict[str, torch.Tensor]) -> None:
+    """Copy a snapshot into the live buffers, keeping their storage."""
+    for name, value in draw.items():
+        inputs[name].copy_(value)
+
+
+def call_kwargs(inputs: dict[str, Any]) -> dict[str, Any]:
+    """The reference's argument set, in the schema's input order."""
+    return {name: inputs[name] for name in INPUTS}
+
+
+def allocate_output(inputs: dict[str, Any]) -> torch.Tensor:
+    """The destination buffer the caller owns, in the declared shape and dtype."""
+    spec = OUTPUTS[OUTPUT_NAME]
+    dims = {**AXES, "batch": inputs["scores"].shape[0]}
+    return torch.empty(declared_shape(spec, dims), dtype=DTYPES[spec["dtype"]],
+                       device=inputs["scores"].device)
+
+
+def poison_output(out: torch.Tensor) -> None:
+    out.fill_(OUTPUT_POISON)
+
+
+def baseline_kwargs(inputs: dict[str, Any], out: torch.Tensor) -> dict[str, Any]:
+    return {**call_kwargs(inputs), OUTPUT_NAME: out}
+
+
+def launch_args(inputs: dict[str, Any], out: torch.Tensor) -> tuple[Any, ...]:
+    """Positional candidate arguments: declared inputs in order, then the destination."""
+    return (*(inputs[name] for name in INPUTS), out)
+
+
+def plan_matches(seq_lens: torch.Tensor, metadata: torch.Tensor) -> bool:
+    """Whether metadata is a valid v2 routing plan for these lengths.
+
+    Row 0 holds (cluster_threshold, number of routed items); rows 1..N hold the
+    (batch_id, seq_len) of exactly the rows longer than the threshold.
+    """
+    lengths = seq_lens.to(torch.int64).cpu()
+    plan = metadata.to(torch.int64).cpu()
+    threshold, count = int(plan[0, 0]) & PLAN_UINT32_MAX, int(plan[0, 1])
+    routed = {(row, int(length)) for row, length in enumerate(lengths.tolist()) if length > threshold}
+    items = {(int(row), int(length)) for row, length in plan[1:1 + count].tolist()}
+    return 0 <= count <= lengths.numel() and len(items) == count and items == routed
+
+
+def check_case_inputs(inputs: dict[str, Any], case: dict[str, Any], *, thorough: bool = False) -> dict:
+    """Validate a case's inputs before they are checked or timed.
+
+    Lengths must lie in [0, capacity] and equal the declared ones; the plan must
+    match them; the page table must map every slot into signed int32. The
+    thorough form also checks the valid score prefixes are tie-free and finite,
+    which the definition requires of qualification inputs.
+    """
+    lengths = inputs["seq_lens"].to(torch.int64)
+    limit = task_contract.capacity(case, AXES)
+    if bool((lengths < 0).any()) or bool((lengths > limit).any()):
+        raise RuntimeError(f"seq_lens outside [0, {limit}]")
+    declared = task_contract.row_lengths(case, WORKLOAD)
+    if declared is not None and lengths.cpu().tolist() != declared:
+        raise RuntimeError("seq_lens differ from the case's declared lengths")
+    if not plan_matches(inputs["seq_lens"], inputs["metadata"]):
+        raise RuntimeError("metadata is not a matching v2 plan for seq_lens")
+    tables = inputs["page_tables"].to(torch.int64)
+    if bool((tables < 0).any()) or int(tables.max()) * PAGE_SIZE + PAGE_SIZE - 1 > 2**31 - 1:
+        raise RuntimeError("page table maps outside signed int32 slots")
+    evidence = {"lengths_min": int(lengths.min()), "lengths_max": int(lengths.max()),
+                "distinct_lengths": sorted({int(v) for v in lengths.unique().tolist()})[:32],
+                "plan_matches_lengths": True}
+    if thorough:
+        scores = inputs["scores"]
+        valid = torch.arange(scores.shape[1], device=scores.device)[None, :] < inputs["seq_lens"][:, None]
+        if bool((torch.isnan(scores) & valid).any()):
+            raise RuntimeError("valid scores contain NaN")
+        for row in range(scores.shape[0]):
+            prefix = scores[row, :int(lengths[row])]
+            if prefix.numel() > 1 and bool((prefix.sort().values.diff() == 0).any()):
+                raise RuntimeError(f"row {row} has tied valid scores")
+        evidence["valid_scores_tie_free"] = True
+    return evidence
+
+
+def verdict(got: torch.Tensor, expected: torch.Tensor) -> tuple[bool, str]:
+    """Apply the bundle's comparison callback and report what it decided.
+
+    The callback raises AssertionError for a candidate that fails its contract
+    or its rule, and ValueError for a reference it considers invalid. Only the
+    first is a candidate verdict, so only the first is caught.
+    """
+    try:
+        task_compare.run(got, expected)
+    except AssertionError as failure:
+        return False, str(failure)
+    return True, "matches the reference selection"
+
+
+def assert_candidate_is_independent(source: str) -> None:
+    """Apply the documented dependency policy before candidate import."""
+    task_contract.assert_source_independent(source)
