@@ -49,6 +49,30 @@ Declared source files remain subject to the task's GPU-body guard. Top-level
 build, log, validator, and environment caches remain runtime output; nested
 same-name directories containing task inputs stay protected.
 
+Legacy tasks that do not implement `trusted_evaluation` can opt in to the
+same complete input boundary without claiming that evaluation ABI:
+
+```yaml
+harness_protection:
+  freeze_task_inputs: true
+  reject_new_source_symlinks: true
+  runtime_outputs:
+    - ut/result.json
+    - ut/generated_overlay
+  editable_python_function_bodies:
+    source/kernel.py:
+      - kernel_body
+```
+
+List only files or directories that the protected runner generates as outputs;
+never exclude workload metadata, oracle inputs, or imported harness helpers.
+The default snapshot, ordinary optimizer snapshot, and authoritative validator
+description then use the same boundary. `editable_python_function_bodies`
+permits changes to the named top-level bodies while freezing their signatures,
+decorators, imports, other definitions, and module-level code. Shipped source
+aliases retain their original targets. Every such declaration needs adversarial
+mutation tests and a fresh full task-validator pass.
+
 The guard must expose `validate_sources(candidate_root, reference_root)` and
 raise on edits outside the intended GPU implementation boundary. It runs on
 the host from the trusted Git package before any container starts. Keep it

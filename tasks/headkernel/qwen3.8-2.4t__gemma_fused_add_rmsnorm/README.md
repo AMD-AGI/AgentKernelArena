@@ -21,15 +21,25 @@
 config.yaml              arena task schema + a headkernel: provenance block
 scripts/task_runner.py   compile | correctness | performance
 scripts/_bench.py        canonical graph timing, 10 warmups / 100 raw samples
-source/                  THE EDITABLE KERNEL - change only this
+source/                  fused Triton body and warp-count helper are editable
 ut/                      frozen GEAK op package (oracle, harness, overlays)
 ut/kernel_src/           symlinks back into source/ - same bytes, two views
 ```
 
-Edit targets:
+Editable function bodies in `source/minimax_m3_rmsnorm.py`:
 
-- `gemma_fused_add_rmsnorm` in `source/minimax_m3_rmsnorm.py`
-- `_gemma_fused_add_rmsnorm_kernel` in `source/minimax_m3_rmsnorm.py`
+- `_gemma_fused_add_rmsnorm_kernel`
+- `_num_warps`
+
+The authoritative harness guard preserves their signatures and decorators and
+freezes the public launcher `gemma_fused_add_rmsnorm`, imports, other functions,
+and module-level code. It freezes the complete task input package, including
+the UT oracle, metadata, live-shape evidence, routing helpers, baseline overlay,
+and baseline reference. The shipped `ut/kernel_src/minimax_m3_rmsnorm.py`
+symlink remains an alias of the editable source; replacing or redirecting it
+is rejected. Ordinary outputs under `build/`, `ut/reports/`, `ut/_cand_overlay/`,
+and the generated `ut/result.json` and `ut/negative_check.json` are excluded
+from the immutable input snapshot.
 
 ## Running it
 
