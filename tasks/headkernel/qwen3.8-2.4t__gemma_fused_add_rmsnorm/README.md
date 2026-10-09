@@ -56,13 +56,25 @@ python3 scripts/task_runner.py performance
   It performs 10 warmups and reports all 100 graph replay samples per case in
   their original order, together with per-case `benchmark_method: cuda_graph`.
   Each replay contains one native callable invocation. Before every replay,
-  outside the event interval, it restores x, residual and weight and poisons
-  both output buffers with NaN. It checks every completed invocation against
-  the hash-verified frozen native baseline at the existing tolerance `0.02`,
-  including the exact graph whose samples were recorded. Validation, input
-  restoration and output poisoning are excluded from device timing. Capture
+  outside the event interval, it generates new BF16 x, residual and weight
+  values on the CPU and poisons both output buffers with NaN. Timing inputs
+  retain the original uniform domains: x `[-0.75, 0.875]`, residual
+  `[-0.625, 0.5]`, and weight `[-0.125, 0.125]`. A continuous CPU RNG supplies
+  fresh values before every warmup, capture, and graph replay. Expected outputs
+  are computed entirely on the CPU from the unrounded FP32 residual sum and
+  remain on the CPU; only inputs are copied to the GPU. Completed outputs are
+  copied back and checked at the existing tolerance `0.02`, including the last
+  timed sample and the exact graph whose samples were recorded. Validation,
+  input generation/copies and output poisoning are excluded from device timing. Capture
   failure, invalid samples or either output failing validation fails the whole
   performance run; there is no event fallback for these graph-capable cases.
+  After timing, that same graph is challenged with zero residuals, exactly
+  cancelling residuals, near-cancelling residuals, and small finite amplitudes
+  where `eps=1e-6` matters. These four correctness replays do not enter the 100
+  reported samples. The correctness command also runs ordinary values and all
+  four challenges at both live shapes after the original frozen unittest.
+  A candidate that caches its first outputs is rejected when inputs change,
+  including when its private cache survives poisoning of the public outputs.
   Use framework workspace setup or `make materialize-perf-task TASK=<task>`
   from the repository before running timing directly in a copied task.
 

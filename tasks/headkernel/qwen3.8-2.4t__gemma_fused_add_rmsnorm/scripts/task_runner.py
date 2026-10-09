@@ -230,6 +230,13 @@ def run_correctness(cfg, timeout):
     # GEAK_WEIGHTED_SPEEDUP block), and demanding one spelling reports a passing
     # kernel as a failure.
     ok = proc.returncode == 0
+    challenge_report, challenge_error = None, None
+    if ok:
+        try:
+            challenge_report, challenge_out = run_cpu_truth_challenges(max(1, timeout - secs))
+            out += "\n" + challenge_out
+        except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+            ok, challenge_error = False, str(exc)
     # Per-case verdict lines. Packages spell these several ways: "[correct:...]",
     # "[oracle       ] FAIL err=...", "[sequence     ] PASS err=...", plus the
     # GEAK summary markers. Matching only "[correct:" meant a failing run recorded
@@ -254,8 +261,9 @@ def run_correctness(cfg, timeout):
         meaning = "environment (uncaught harness exception - the UT compared nothing)"
     write_report("correctness_report.json", {
         "status": "ok" if ok else "fail",
-        "error": None if ok else
+        "error": None if ok else challenge_error or
                  f"ut/unittest.py exit={proc.returncode} ({meaning})",
+        "cpu_truth_challenges": challenge_report,
         "exit_code": proc.returncode,
         "exit_meaning": meaning,
         "ut_verdict_line": verdict,
@@ -269,7 +277,7 @@ def run_correctness(cfg, timeout):
         "stdout_tail": out.strip().splitlines()[-120:],
     })
     if not ok:
-        return False, f"ut/unittest.py exit={proc.returncode}: {out.strip().splitlines()[-3:]}"
+        return False, challenge_error or f"ut/unittest.py exit={proc.returncode}: {out.strip().splitlines()[-3:]}"
     return True, None
 
 
@@ -293,6 +301,47 @@ def candidate_overlay():
     spec.loader.exec_module(h)
     _base, cand = h.build_candidate_overlay(UT_DIR, meta)
     return cand
+
+
+def run_cpu_truth_challenges(timeout):
+    """Supplement the unchanged frozen UT with independent CPU-truth cases."""
+    overlay = candidate_overlay()
+    if not overlay:
+        raise RuntimeError("CPU-truth correctness requires the candidate overlay")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([overlay] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+    output = os.path.join(BUILD_DIR, "_cpu_truth_correctness.json")
+    try:
+        os.unlink(output)
+    except FileNotFoundError:
+        pass
+    command = [sys.executable, "-u", os.path.join(TASK_DIR, "scripts", "_bench.py"),
+               "--ut", UT_DIR, "--out", output, "--correctness-only"]
+    proc = subprocess.run(command, cwd=TASK_DIR, env=env, capture_output=True, text=True, timeout=timeout)
+    if proc.returncode != 0:
+        raise RuntimeError("CPU-truth correctness failed: " + (proc.stderr or proc.stdout)[-2000:])
+    with open(output) as fh:
+        raw = json.load(fh)
+    with open(os.path.join(UT_DIR, "meta.json")) as fh:
+        meta = json.load(fh)
+    fields = ("regime", "m", "n", "dtype", "eps", "x_shape", "x_stride",
+              "residual_shape", "residual_stride", "weight_shape", "weight_stride")
+    expected = {f"{case['sig']}|{case['regime']}": {key: case[key] for key in fields}
+                for case in meta["workload"]["cases"]}
+    rows = raw.get("cases", [])
+    kinds = ("ordinary", "zero_residual", "zero_sum", "near_cancellation", "small_amplitude")
+    if (raw.get("status") != "ok" or raw.get("mode") != "cpu_truth_correctness"
+            or not isinstance(rows, list) or len(rows) != 2
+            or any(not isinstance(row, dict) for row in rows)
+            or {row.get("sig") for row in rows} != set(expected)
+            or any(row.get("params") != expected[row["sig"]]
+                   or row.get("checks") != [{"kind": kind, "passed": True} for kind in kinds]
+                   or row.get("expected_device") != "cpu" or row.get("tolerance") != meta["tol"]
+                   or type(row.get("checked_invocations")) is not int or row["checked_invocations"] != len(kinds)
+                   or type(row.get("max_rel_err")) not in (int, float)
+                   or not math.isfinite(row["max_rel_err"]) or row["max_rel_err"] < 0 for row in rows)):
+        raise ValueError("incomplete CPU-truth correctness challenge report")
+    return raw, proc.stdout
 
 
 def _benchmark_cases(raw):
@@ -337,10 +386,18 @@ def _benchmark_cases(raw):
                 raise ValueError("benchmark summaries do not match raw samples")
         validation = row.get("validation", {})
         if (not isinstance(validation, dict)
-                or validation.get("checked_invocations") != WARMUP_ITERATIONS + BENCHMARK_ITERATIONS + 4
+                or validation.get("checked_invocations") != WARMUP_ITERATIONS + BENCHMARK_ITERATIONS + 8
+                or validation.get("timing_checked_invocations") != WARMUP_ITERATIONS + BENCHMARK_ITERATIONS + 4
+                or validation.get("fresh_input_sets") != WARMUP_ITERATIONS + BENCHMARK_ITERATIONS + 10
+                or validation.get("expected_device") != "cpu"
+                or validation.get("fresh_inputs_per_replay") is not True
+                or validation.get("input_seed") != 31000 + list(expected).index(sig)
+                or validation.get("correctness_challenges") != [
+                    {"kind": kind, "passed": True} for kind in
+                    ("zero_residual", "zero_sum", "near_cancellation", "small_amplitude")]
                 or validation.get("tolerance") != meta["tol"]
                 or validation.get("outputs") != ["normed", "pre_norm_sum"]
-                or validation.get("inputs_restored") != ["x", "residual", "weight"]
+                or validation.get("inputs_varied") != ["x", "residual", "weight"]
                 or validation.get("outputs_poisoned_before_replay") is not True
                 or validation.get("measured_graph_validated") is not True
                 or type(validation.get("max_rel_err")) not in (int, float)
