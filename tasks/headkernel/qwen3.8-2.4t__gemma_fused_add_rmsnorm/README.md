@@ -20,7 +20,7 @@
 ```
 config.yaml              arena task schema + a headkernel: provenance block
 scripts/task_runner.py   compile | correctness | performance
-scripts/_bench.py        native 10 warmup / 100 measured timing
+scripts/_bench.py        canonical graph timing, 10 warmups / 100 raw samples
 source/                  THE EDITABLE KERNEL - change only this
 ut/                      frozen GEAK op package (oracle, harness, overlays)
 ut/kernel_src/           symlinks back into source/ - same bytes, two views
@@ -51,12 +51,36 @@ python3 scripts/task_runner.py performance
   deliberate output corruption that must be rejected (`ut/negative_check.json`)
   and an identity check that the two legs resolve to different code
   (`ut/selection_validation.json`).
-- **performance** builds this op's live geometries through the package's own
-  `ut/cases.py` - there is no frozen blob to replay - and times them with the same
-  10 warmup + 100 measured cuda-event methodology. It falls back to the GEAK
-  interleaved median-of-3 legs only if that entry point is missing, and says which
-  it used in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
+- **performance** builds the exact two live geometries through `ut/cases.py`
+  and uses the workspace-materialized canonical `_aka_benchmark.py` helper.
+  It performs 10 warmups and reports all 100 graph replay samples per case in
+  their original order, together with per-case `benchmark_method: cuda_graph`.
+  Each replay contains one native callable invocation. Before every replay,
+  outside the event interval, it generates new BF16 x, residual and weight
+  values on the CPU and poisons both output buffers with NaN. Timing inputs
+  retain the original uniform domains: x `[-0.75, 0.875]`, residual
+  `[-0.625, 0.5]`, and weight `[-0.125, 0.125]`. A continuous CPU RNG supplies
+  fresh values before every warmup, capture, and graph replay. Expected outputs
+  are computed entirely on the CPU from the unrounded FP32 residual sum and
+  remain on the CPU; only inputs are copied to the GPU. Completed outputs are
+  copied back and checked at the existing tolerance `0.02`, including the last
+  timed sample and the exact graph whose samples were recorded. Validation,
+  input generation/copies and output poisoning are excluded from device timing. Capture
+  failure, invalid samples or either output failing validation fails the whole
+  performance run; there is no event fallback for these graph-capable cases.
+  After timing, that same graph is challenged with zero residuals, exactly
+  cancelling residuals, near-cancelling residuals, and small finite amplitudes
+  where `eps=1e-6` matters. These four correctness replays do not enter the 100
+  reported samples. The correctness command also runs ordinary values and all
+  four challenges at both live shapes after the original frozen unittest.
+  A candidate that caches its first outputs is rejected when inputs change,
+  including when its private cache survives poisoning of the public outputs.
+  Use framework workspace setup or `make materialize-perf-task TASK=<task>`
+  from the repository before running timing directly in a copied task.
+
+Historical CUDA-event timings describe the previous benchmark method. This
+harness change requires fresh trusted and framework GPU qualification; the old
+numbers are not graph timings or a declared event fallback.
 
 ## Starting point
 
@@ -76,3 +100,9 @@ different code) and `ut/negative_check.json` (proof a corrupted output is
 rejected) are what it records instead - read those before trusting a speedup.
 
 **Note.** prefill M=8192 and decode M=64 at N=8192. The oracle is a deterministic runtime baseline rather than a frozen blob; source/ is byte-identical to the deployed kernel, so the first measurement is a null run.
+
+## SGLang 0.5.20 source refresh
+
+The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.
+
+The fused kernel computes the residual sum in FP32 and uses that unrounded sum for the variance and normalization. It casts independently when storing the BF16 normalized output and the BF16 residual output; the stored residual is not reread to compute the normalization. Both output buffers are fresh and distinct.
