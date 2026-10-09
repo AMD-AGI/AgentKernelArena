@@ -15,10 +15,30 @@ handling and load balancing across uneven KV histories. Both tasks optimize the
 same `pa_kernels.cuh`; they differ only in the benchmarked shape regime, so a
 real speedup should hold across both.
 
+All original cases remain. Additional correctness and measured cases supply an
+explicit context length for each sequence, spanning page and partition boundaries
+and mixing short histories with a 4097-token history in one batch. The Torch
+reference and native ragged page indices use those same per-sequence lengths.
+The workload manifest records the full length vectors; its `ctx_lens` value is
+their maximum. Warmups, samples, numerical tolerances and timing boundaries are
+unchanged, and every newly measured case also runs the full correctness check.
+
 This runner:
   - compile:     builds the op with a small ragged case (smoke)
   - correctness: runs the HIP op vs a torch reference (assert close)
   - performance: benchmarks the HIP op and writes build/performance_report.json
+
+## Device scope
+
+The `mi300x_` directory prefix is a historical task identifier, not a GPU
+selection rule or a claim that a timing was measured on MI300X. The run
+configuration selects the physical GPU; this task's `config.yaml` declares no
+architecture restriction. A validation result applies only to the source,
+immutable runtime image, GPU model and architecture recorded by that run.
+In particular, MI355X/gfx950 measurements do not establish MI300X/gfx942
+performance or compatibility. A separate matching-device run is required for
+any such claim. Keep the original case identities and workload when comparing
+baseline and candidate on the selected device.
 
 ## Arena v2 contract
 

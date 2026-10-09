@@ -32,7 +32,8 @@ import sys
 import tempfile
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import (allclose_output, require_tensor_contract,
+from scripts.replay_checks import (allclose_output, observe_measured_samples,
+                                  require_sample_count, require_tensor_contract,
                                   require_unchanged, verify_timed_run)
 
 # ============================================================================
@@ -186,6 +187,21 @@ def _kernel_b(mod, B_T):
 
         return preshuffle_b(B_T).contiguous()
     return B_T
+
+
+def _replay_perturbations(mod, A, B_T, B_k, A_scale, B_scale):
+    """Change each read-only operand separately without changing its storage."""
+    def change_b():
+        B_T.copy_((-B_T.float()).to(B_T.dtype))
+        if B_k is not B_T:
+            B_k.copy_(_kernel_b(mod, B_T))
+
+    return (
+        ("A", lambda: A.copy_((-A.float()).to(A.dtype))),
+        ("B_T", change_b),
+        ("A_scale", lambda: A_scale.mul_(1.25)),
+        ("B_scale", lambda: B_scale.mul_(1.25)),
+    )
 
 
 def _as_i8(tensor):
@@ -359,16 +375,27 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
         timed = TimedRun()
 
+        def compare_measured(actual, ref):
+            allclose_output(actual, ref, atol=ATOL, rtol=RTOL,
+                            dtype=torch.bfloat16)
+
+        checked_samples = observe_measured_samples(
+            timed, inputs=inputs, originals=originals,
+            expected=expected, compare=compare_measured)
+
         def launch():
             cf(*(args[:-1] + (torch.cuda.current_stream(),)))
             return C
 
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             launch, warmup=0, repetition=iters, timed_run=timed,
+            max_graph_repeats=1, prepare_fn=lambda: C.fill_(float('nan')),
         )
+        kernel_bench_meta.update(require_sample_count(
+            checked_samples, kernel_bench_meta, iters))
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=inputs, originals=originals, expected=expected,
-            perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
+            perturbations=_replay_perturbations(mod, A, B_T, B_k, A_scale, B_scale),
             reference=lambda: _torch_reference(A, B_T, A_scale, B_scale),
             compare=lambda actual, ref: allclose_output(
                 actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
@@ -380,7 +407,8 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             _ = torch.mm(a_f, b_f.T)
         torch.cuda.synchronize()
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a_f, b_f.T), warmup=0, repetition=iters
+            lambda: torch.mm(a_f, b_f.T), warmup=0, repetition=iters,
+            max_graph_repeats=1,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
@@ -525,16 +553,27 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
         timed = TimedRun()
 
+        def compare_measured(actual, ref):
+            allclose_output(actual, ref, atol=ATOL, rtol=RTOL,
+                            dtype=torch.bfloat16)
+
+        checked_samples = observe_measured_samples(
+            timed, inputs=inputs, originals=originals,
+            expected=expected, compare=compare_measured)
+
         def launch():
             cf(*(args[:-1] + (torch.cuda.current_stream(),)))
             return C
 
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             launch, warmup=0, repetition=iters, timed_run=timed,
+            max_graph_repeats=1, prepare_fn=lambda: C.fill_(float('nan')),
         )
+        kernel_bench_meta.update(require_sample_count(
+            checked_samples, kernel_bench_meta, iters))
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=inputs, originals=originals, expected=expected,
-            perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
+            perturbations=_replay_perturbations(mod, A, B_T, B_k, A_scale, B_scale),
             reference=lambda: _torch_reference(A, B_T, A_scale, B_scale),
             compare=lambda actual, ref: allclose_output(
                 actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
@@ -546,7 +585,8 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
             _ = torch.mm(a_f, b_f.T)
         torch.cuda.synchronize()
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a_f, b_f.T), warmup=0, repetition=iters
+            lambda: torch.mm(a_f, b_f.T), warmup=0, repetition=iters,
+            max_graph_repeats=1,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]

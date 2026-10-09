@@ -24,10 +24,14 @@ def load(path):
     return module
 
 
-@pytest.fixture(params=FIRST + REMAINING)
-def contract(request, monkeypatch):
+class SampledTimedRun(SimpleNamespace):
+    @property
+    def bound(self):
+        return callable(getattr(self, 'rerun', None))
+
+
+def make_contract(name, monkeypatch):
     monkeypatch.chdir(ROOT)
-    name = request.param
     checks = load(TASKS / name / '_arena_checks.py')
     harness = load(TASKS / name / 'scripts/task_runner.py')
     if name == FIRST[0]:
@@ -66,8 +70,13 @@ def contract(request, monkeypatch):
     return checks, harness, args, kwargs
 
 
+@pytest.fixture(params=FIRST + REMAINING)
+def contract(request, monkeypatch):
+    return make_contract(request.param, monkeypatch)
+
+
 def cpu_graph_double(h):
-    h._TimedRun=SimpleNamespace
+    h._TimedRun=SampledTimedRun
     def benchmark(fn, *, timed_run, **options):
         assert options=={'warmup':10,'repetition':100}
         outputs=fn()
@@ -75,6 +84,9 @@ def cpu_graph_double(h):
             new=fn()
             for output,wanted in zip(outputs,new):output.copy_(wanted)
             return outputs
+        if callable(getattr(timed_run, 'after_sample', None)):
+            for _ in range(options['repetition']):
+                timed_run.after_sample(outputs)
         timed_run.outputs,timed_run.rerun=outputs,replay
         return .125,{'benchmark_method':'cuda_graph','benchmark_warmup':10,'benchmark_samples':100}
     h._benchmark_cuda_graph_or_events=benchmark
@@ -128,6 +140,16 @@ def test_actual_correctness_wrapper_pristine_full_output_guards(contract, monkey
 
 @pytest.mark.parametrize('fault', ['none', 'stale', 'unwritten_tail', 'auxiliary', 'mutated_input'])
 def test_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault):
+    assert_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault)
+
+
+@pytest.mark.parametrize('fault', ['wrong_middle_sample', 'missing_sample'])
+def test_paged_alibi_rejects_unchecked_measured_sample(monkeypatch, fault):
+    contract = make_contract('triton_paged_prefix_prefill_alibi', monkeypatch)
+    assert_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault)
+
+
+def assert_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault):
     checks, harness, args, kwargs = contract
     install_numerical_double(monkeypatch, checks)
     good = numerical_candidate(checks, harness)
@@ -140,6 +162,16 @@ def test_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypat
         assert options == {'warmup': 10, 'repetition': 100}
         outputs = measured()
         old = tuple(o.clone() for o in outputs)
+        if callable(getattr(timed_run, 'after_sample', None)):
+            for index in range(options['repetition']):
+                if fault == 'missing_sample' and index == 49:
+                    continue
+                if fault == 'wrong_middle_sample' and index == 49:
+                    wrong = list(outputs)
+                    wrong[0] = torch.full_like(outputs[0], float('nan'))
+                    timed_run.after_sample(tuple(wrong))
+                else:
+                    timed_run.after_sample(outputs)
         def replay():
             replay_count.append(1)
             new = old if fault == 'stale' else checks.expected_outputs(harness, dict(enumerate(args)) | kwargs)
@@ -153,14 +185,14 @@ def test_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypat
             return outputs
         timed_run.outputs, timed_run.rerun = outputs, replay
         return .125, {'benchmark_method': 'cuda_graph'}
-    harness._TimedRun = SimpleNamespace
+    harness._TimedRun = SampledTimedRun
     if fault == 'none':
         ms, metadata = checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
         assert ms == .125 and metadata['perturbed_input_replay_checked']
     else:
         with pytest.raises(AssertionError):
             checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
-    assert replay_count == [1]
+    assert replay_count == ([] if fault in {'wrong_middle_sample', 'missing_sample'} else [1])
     for key, original in pristine.items():
         assert torch.equal(checks._tensor_bytes(args[key]), checks._tensor_bytes(original))
     assert getattr(mod, checks.SYMBOL) is good
@@ -508,6 +540,8 @@ def test_control_manifest_shapes_match_actual_tensors_and_full_outputs(name, mon
             value=values[slot]
             assert list(value.shape)==c['input_shapes'][key]
             expected_dtype=torch.float32 if key in ('mid_o','alibi_slopes') else torch.float16 if value.is_floating_point() else torch.int32
+            if name==REMAINING[3] and case=='float32_branch' and value.is_floating_point():
+                expected_dtype=torch.float32
             assert value.dtype==expected_dtype
         outputs=checks.expected_outputs(h,values)
         assert [list(v.shape) for v in outputs]==list(c['output_shapes'].values())

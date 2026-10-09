@@ -123,6 +123,45 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+GATE_PARAMETERS = (
+    "reset.weight", "reset.bias", "update.weight", "update.bias",
+    "proposal.weight", "proposal.bias",
+)
+
+
+def check_gate_parameter_variants(module, functional, hip_fn, inputs, original_expected,
+                                  compare, rtol, atol):
+    """Exercise each live gate argument at the scored geometry, outside timing."""
+    import torch
+    module_parameters = dict(module.named_parameters())
+    functional_parameters = dict(functional.named_parameters())
+    if set(module_parameters) != set(GATE_PARAMETERS) or set(functional_parameters) != set(GATE_PARAMETERS):
+        raise ValueError("Gate parameter set differs from the declared six arguments")
+    original_module = {name: value.detach().clone() for name, value in module_parameters.items()}
+    original_functional = {name: value.detach().clone() for name, value in functional_parameters.items()}
+    try:
+        for name in GATE_PARAMETERS:
+            with torch.no_grad():
+                module_parameters[name].add_(2.0)
+                functional_parameters[name].add_(2.0)
+            expected = module(*copy.deepcopy(inputs))
+            if compare(original_expected, expected, rtol=rtol, atol=atol):
+                raise ValueError(f"Changed GateGRU {name} did not change the reference")
+            actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                      functional(*copy.deepcopy(inputs), fn=hip_fn))
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward ignored or mishandled changed GateGRU {name}")
+            with torch.no_grad():
+                module_parameters[name].copy_(original_module[name])
+                functional_parameters[name].copy_(original_functional[name])
+    finally:
+        with torch.no_grad():
+            for name in GATE_PARAMETERS:
+                module_parameters[name].copy_(original_module[name])
+                functional_parameters[name].copy_(original_functional[name])
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -184,6 +223,9 @@ def correctness(args, role, rows):
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
         result.append(row)
+        if passed:
+            check_gate_parameter_variants(module, functional, hip_fn, reference_inputs,
+                                          expected, checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
     return result
@@ -257,13 +299,21 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

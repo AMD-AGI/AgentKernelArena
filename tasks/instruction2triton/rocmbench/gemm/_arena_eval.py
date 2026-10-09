@@ -48,7 +48,7 @@ def inspect_candidate(data, *, require_implemented=False):
 
 
 def benchmark_type(base, plugin, module):
-    from _arena_reference import prepare
+    from _arena_reference import prepare, poison_outputs, perturbed_inputs
     class CheckedBenchmark(base):
         def __init__(self,*args,**kwargs):
             # Inputs are task-owned locals prepared by the original performance
@@ -67,30 +67,70 @@ def benchmark_type(base, plugin, module):
                 row['metrics']={'performance_inputs_checked':True}
                 plugin.exercised.add(row['test_case_id'])
                 return {}
-            observed=[output]
-            def observed_op():
-                value=original()
-                observed[0]=value
-                return value
-            self.op_callable=observed_op
+            previous_prepare=self.prepare_fn
+            def prepare_each_call():
+                if previous_prepare is not None:previous_prepare()
+                # Require every measured GEMM to overwrite its complete C.
+                # This runs before the start Event, never inside device timing.
+                poison_outputs(self.context,None)
+            self.prepare_fn=prepare_each_call
+            # Bind the canonical timer's output collector to the reported
+            # samples. A Python wrapper only observes graph capture, whereas
+            # graph replays write the captured buffers without calling Python.
+            from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+            timed=TimedRun()
+            checked_samples=[0]
+            def check_sample(measured_output):
+                check(measured_output)
+                checked_samples[0]+=1
+            timed.after_sample=check_sample
+            globals_=base.run_benchmark.__globals__
+            measure=globals_['_measure_times']
+            def measured_times(callable_fn, config, target_ms=1.0, n_retries=5,
+                               estimate_reps=5, max_graph_repeats=1000,
+                               prepare_fn=None, use_cuda_graph=True,
+                               fallback_reason=None):
+                return benchmark_cuda_graph_or_events_samples(
+                    callable_fn, warmup=config.warm_up,
+                    repetition=config.repetition, target_ms=target_ms,
+                    n_retries=n_retries, estimate_reps=estimate_reps,
+                    max_graph_repeats=1,
+                    prepare_fn=prepare_fn, use_cuda_graph=use_cuda_graph,
+                    fallback_reason=fallback_reason, timed_run=timed)
+            globals_['_measure_times']=measured_times
             try:
                 # The common session owns the independent baseline. The old
                 # helper's optional peer/reference timing is not that baseline.
                 kwargs['baseline_callable']=None
                 record=super().run_benchmark(*args,**kwargs)
             finally:
-                self.op_callable=original
-            # For graph capture, this aliases the last captured output buffers;
-            # for event timing it is the output of the last measured invocation.
-            # Do not rerun a separate candidate and label it timed evidence.
-            check(observed[0])
+                globals_['_measure_times']=measure
+                self.prepare_fn=previous_prepare
+            if not timed.bound or checked_samples[0]!=self.config.repetition:
+                raise RuntimeError('Measured sample outputs were not all checked')
+            # Under graph timing this is the exact captured output buffer; for
+            # explicit Event timing it is the last measured eager return.
+            check(timed.outputs)
+            # Change the live caller-owned operands after measurement, then
+            # replay the exact bound graph/eager callable against a fresh oracle.
+            # The task reference restores every changed input even on failure.
+            with perturbed_inputs(self.context):
+                changed_check=prepare(self.context,module)
+                poison_outputs(self.context,timed.outputs)
+                replayed=timed.rerun()
+                changed_check(replayed)
             ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
             if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
                 raise RuntimeError('Nonpositive/nonfinite device timing')
             if method not in ('cuda_graph','cuda_event_fallback'):
                 raise RuntimeError('Missing device timing method')
+            if record.get('benchmark_effective_repeats') != 1:
+                raise RuntimeError('GEMM timing must observe one prepared invocation per sample')
             row.update(execution_time_ms=ms,benchmark_method=method,
                        metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
+                                 'measured_samples_checked':checked_samples[0],
+                                 'bound_replay_output_checked':True,
+                                 'perturbed_input_replay_checked':True,
                                  'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
             plugin.exercised.add(row['test_case_id'])
             return record
@@ -99,10 +139,16 @@ def benchmark_type(base, plugin, module):
 
 class ReportPlugin:
     def __init__(self,data,action):
-        self.data=data;self.action=action;self.expected={r['test_case_id']:r for r in data['cases']}
+        self.data=data;self.action=action;self.expected={r['test_case_id']:r for r in data['cases']
+                                                      if r['params']['function']!='domain_control'}
+        self.controls={r['test_case_id']:r for r in data['cases']
+                       if r['params']['function']=='domain_control'}
         self.rows={key:deepcopy(row) for key,row in self.expected.items()
                    if action=='validate-task' or action in row['checks']}
+        self.rows.update({key:deepcopy(row) for key,row in self.controls.items()
+                          if action=='validate-task' or action in row['checks']})
         self.collection_error=None;self.node_rows={};self.current_row=None;self.exercised=set()
+        self.module=None
 
     def pytest_collection_modifyitems(self,session,config,items):
         found={};kept=[]
@@ -115,6 +161,7 @@ class ReportPlugin:
             found[key]={'function':name,'arguments':params}
             if key not in self.rows:continue
             self.node_rows[item.nodeid]=key;kept.append(item)
+            self.module=item.module
             if name=='test_performance' and self.action!='validate-task':
                 module=item.module
                 if not getattr(module,'_arena_bench_installed',False):
@@ -157,6 +204,13 @@ def evaluate(role,action):
             return result
         import pytest
         plugin=ReportPlugin(data,action)
+        from _arena_domain_controls import CONTROL_NAMES, run_control
+        declared={row['params']['arguments']['name'] for row in plugin.controls.values()}
+        if declared!=set(CONTROL_NAMES) or len(plugin.controls)!=len(CONTROL_NAMES):
+            raise ValueError('GEMM domain control manifest differs from protected control definitions')
+        for row in plugin.controls.values():
+            if row['test_case_id']!=identity('domain_control',row['params']['arguments']) or row['checks']!=['correctness']:
+                raise ValueError('Invalid GEMM domain control manifest row')
         result['cases']=list(plugin.rows.values())
         for row in result['cases']:
             if action!='validate-task':row['status']='FAIL';row['reason']='Case was not executed'
@@ -168,6 +222,15 @@ def evaluate(role,action):
         if action=='validate-task':result['metadata']={'candidate_state':state,'manifest_collected':True}
         if code or plugin.collection_error:
             raise RuntimeError(plugin.collection_error or f'pytest exited {code}: '+output.getvalue()[-3000:])
+        if action=='correctness':
+            if plugin.module is None:raise RuntimeError('Protected GEMM module was not collected')
+            for key,row in plugin.controls.items():
+                try:
+                    run_control(plugin.module,row['params']['arguments']['name'])
+                except BaseException as exc:
+                    plugin.rows[key].update(status='FAIL',reason=f'{type(exc).__name__}: {exc}',failure_kind='domain_control_failure')
+                else:
+                    plugin.rows[key].update(status='PASS',metrics={'domain_control_checked':True})
         failures=[r for r in result['cases'] if r['status']!='PASS']
         if failures:result.update(status='FAIL',reason=f'{len(failures)} cases failed or skipped',failure_kind='case_failure')
     except BaseException as exc:

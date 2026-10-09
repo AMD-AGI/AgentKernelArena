@@ -107,10 +107,34 @@ def checked_benchmark(harness, benchmark, fn, **options):
             raise AssertionError('Benchmark did not invoke GDN gating')
         return captured
 
+    prior_prepare = options.pop('prepare_fn', None)
+    def prepare_sample():
+        if prior_prepare is not None:
+            prior_prepare()
+        # Preparation limits each graph to the device work captured from one
+        # public wrapper invocation. Once its output buffers are
+        # captured, invalidate both before each sample's start event so a
+        # replay that omits either device write cannot pass after_sample.
+        if captured is not None:
+            for value in captured:
+                value.fill_(float('nan'))
+
     setattr(module, SYMBOL, collect)
     try:
         timed = harness._TimedRun()
-        ms, metadata = benchmark(measured, timed_run=timed, **options)
+        checked_samples = [0]
+        def check_sample(output):
+            unchanged(inputs, pristine)
+            check_outputs(output, expected)
+            checked_samples[0] += 1
+        timed.after_sample = check_sample
+        ms, metadata = benchmark(measured, timed_run=timed,
+                                 prepare_fn=prepare_sample, **options)
+        if not timed.bound or checked_samples[0] != options['repetition']:
+            raise AssertionError('Reported sample outputs were not all checked')
+        if (metadata.get('benchmark_method') == 'cuda_graph' and
+                metadata.get('benchmark_effective_repeats') != 1):
+            raise AssertionError('Graph timing included unobserved wrapper calls')
         unchanged(inputs, pristine)
         check_outputs(timed.outputs, expected)
         for i, value in enumerate(inputs):
@@ -125,7 +149,8 @@ def checked_benchmark(harness, benchmark, fn, **options):
         unchanged(inputs, replay_pristine)
         check_outputs(replayed, replay_expected)
         return ms, {**metadata, 'timed_output_checked': True,
-                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True}
+                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True,
+                    'measured_samples_checked': checked_samples[0], }
     finally:
         setattr(module, SYMBOL, original)
         for value, saved in zip(inputs, pristine):

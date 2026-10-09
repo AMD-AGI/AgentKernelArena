@@ -27,6 +27,8 @@ The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing
 policy is shared by both roles; candidate changes cannot select a weaker policy.
+Returned Event timing is rejected for these graph-timed cases, including after
+loading a candidate extension.
 
 Use the argv prefix in `config.yaml` followed by one of:
 
@@ -51,6 +53,12 @@ The declared workload uses the original `get_init_inputs()`/`workload.json`
 configurations in eval mode; optional API modes are not extra scored cases.
 All original cases, input generation, seeds, numerical gates, 10 warmups and
 100 samples are retained. Checks run outside measured samples.
+
+For graph-timed cases without an input-reset callback, each captured sample now
+contains one operator call (`max_graph_repeats=1`). The earlier capture cap
+allowed more calls per sample, so historical latency may differ and needs a
+same-source rerun before comparison. Event-timed cases are unaffected; the
+declared inputs, 10 warmups, 100 samples, and numerical gates remain the same.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated

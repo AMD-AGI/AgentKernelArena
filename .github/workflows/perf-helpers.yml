@@ -1,8 +1,20 @@
 name: benchmark-integrity
 
+# Run the full audit once per PR revision; branch pushes would duplicate it.
+# Use manual dispatch to audit a branch before opening a PR. Main keeps its
+# post-merge audit, and a new PR revision cancels only the outdated PR run.
 on:
   pull_request:
   push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   unit-and-helper-audit:
@@ -16,6 +28,8 @@ jobs:
         with:
           # The full source audit includes Python 3.12 syntax and AST fixtures.
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: .github/workflows/perf-helpers.yml
       - name: Install CPU test dependencies
         run: |
           python -m pip install --upgrade pip
@@ -24,6 +38,6 @@ jobs:
       - name: Run benchmark helper audit
         run: make check-perf-helpers
       - name: Run CPU and mock unit tests
-        run: python -m pytest -q tests
+        run: python -m pytest -q tests --durations=25
       - name: Compile Python sources
         run: python -m compileall -q src tasks tests

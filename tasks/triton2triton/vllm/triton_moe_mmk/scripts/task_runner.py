@@ -76,10 +76,18 @@ def control_inputs(name, device):
     if name in CONTROL_SHAPES:
         M, K, N = CONTROL_SHAPES[name]
         torch.manual_seed(47 + list(CONTROL_SHAPES).index(name))
-        return {"A": torch.randn(M,K,device=device,dtype=torch.float16)*0.1,
-                "B": torch.randn(K,N,device=device,dtype=torch.float16)*0.1}
+        A = torch.randn(M,K,device=device,dtype=torch.float16)*0.1
+        B = torch.randn(K,N,device=device,dtype=torch.float16)*0.1
+        if name == 'n_tail':
+            padded = torch.full((K,N*2),-123,device=device,dtype=B.dtype)
+            padded[:, ::2].copy_(B)
+            B = padded[:, ::2]
+        return {"A": A, "B": B}
     A = ((torch.arange(17*35, device=device).reshape(17,35) % 7)-3).to(torch.float16)
     B = ((torch.arange(35*70, device=device).reshape(35,70) % 5)-2).to(torch.float16)
+    padded = torch.full((17,70),-123,device=device,dtype=A.dtype)
+    padded[:, ::2].copy_(A)
+    A = padded[:, ::2]
     return {'A':A, 'B':B}
 
 

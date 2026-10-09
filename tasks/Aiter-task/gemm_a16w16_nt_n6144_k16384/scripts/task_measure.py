@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import secrets
+from typing import NamedTuple
 import torch
 
 import task_baseline
@@ -93,10 +94,59 @@ def check_case(case, *, role, launch=None):
     inputs = task_inputs.build_case_inputs(case)
     expected = task_reference.run(**task_inputs.call_kwargs(inputs))
     before = input_snapshot(inputs)
-    got = case_call(inputs, role=role, launch=launch)()
-    torch.cuda.synchronize()
-    assert_inputs_unchanged(inputs, before)
-    return compare_output(got, expected)
+    try:
+        got = case_call(inputs, role=role, launch=launch)()
+        torch.cuda.synchronize()
+        assert_inputs_unchanged(inputs, before)
+        result = compare_output(got, expected)
+        if (task_inputs.WORKLOAD["op_type"] != "gemm"
+                or result.get("failure_kind") == "output_contract"):
+            return result
+        # The scored stream deliberately keeps b fixed so a real implementation
+        # may reuse a packed weight. Correctness separately checks the same
+        # launch with current weights in original and new same-shape storage.
+        replays = check_current_weight_replays(
+            case, inputs, expected, before["b"], role=role, launch=launch)
+        if (replays["status"] != "PASS"
+                and (result["status"] == "PASS"
+                     or replays.get("failure_kind") != "numerical_mismatch")):
+            return replays
+        result["metadata"]["current_weight_replays"] = replays
+        return result
+    finally:
+        # Correctness owns these buffers, but leave their initial contents intact
+        # even when a changed-weight replay fails or the candidate mutates one.
+        for name, value in before.items():
+            inputs[name].view(torch.uint8).copy_(value)
+
+
+def check_current_weight_replays(case, inputs, original_expected, original_weight, *, role, launch):
+    """Unscored weight changes; never alter the fixed-weight timed workload."""
+    modes = ("in_place", "new_storage")
+    records = []
+    for mode, seed in zip(modes, fresh_draw_seeds(len(modes))):
+        alternate = {name: torch.empty_like(inputs[name]) for name in ("a", "b")}
+        task_inputs.refill_case_inputs(alternate, seed)
+        if torch.equal(alternate["b"].view(torch.uint8), original_weight):
+            raise RuntimeError("Current-weight control redrew the original weight")
+        if mode == "in_place":
+            inputs["b"].copy_(alternate["b"])
+            current = inputs
+        else:
+            current = {"a": inputs["a"], "b": alternate["b"]}
+        expected = task_reference.run(**task_inputs.call_kwargs(current))
+        if task_inputs.verdict(original_expected, expected)[0]:
+            raise RuntimeError("Current-weight control did not change the expected output")
+        before = input_snapshot(current)
+        got = case_call(current, role=role, launch=launch)()
+        torch.cuda.synchronize()
+        assert_inputs_unchanged(current, before)
+        verdict = compare_output(got, expected)
+        if verdict["status"] != "PASS":
+            return {**verdict, "reason": f"Current-weight {mode} replay failed: {verdict['reason']}",
+                    "metadata": {**verdict.get("metadata", {}), "current_weight_replays": records}}
+        records.append({"mode": mode, "status": "PASS", "comparison": verdict["metadata"]["comparison"]})
+    return {"status": "PASS", "metadata": records}
 
 
 # The timed samples rotate through TIMED_DRAWS draws of the call-varying
@@ -164,8 +214,29 @@ class RotatingDraws:
         self._next = 0
         self._served = None
         self.consumed = None
+        self._persistent_snapshot = None
+        self._current_checked = False
+        self.guarded_invocations = 0
+
+    def assert_current_unchanged(self):
+        """Check the live inputs before a later preparation can erase a mutation."""
+        if self._persistent_snapshot is None:
+            raise RuntimeError("Timed input guard was not initialized")
+        if self._current_checked:
+            return
+        expected = dict(self._persistent_snapshot)
+        if self.consumed is not None:
+            expected.update({name: value.view(torch.uint8)
+                             for name, value in self.consumed.items()})
+        assert_inputs_unchanged(self._inputs, expected)
+        self._current_checked = True
+        if self.consumed is not None:
+            self.guarded_invocations += 1
 
     def __call__(self):
+        # The previous invocation may have modified a. Check it before the
+        # next draw overwrites the evidence. This runs before the start event.
+        self.assert_current_unchanged()
         if self._served is not None:
             draw, self._served = self._served, None
         else:
@@ -173,15 +244,24 @@ class RotatingDraws:
             self._next = (self._next + 1) % len(self._draws)
         task_inputs.load_draw(self._inputs, draw)
         self.consumed = draw
+        self._current_checked = False
 
     def serve(self, draw):
         self._served = draw
 
 
+class MeasuredOutput(NamedTuple):
+    value: torch.Tensor
+    source_device: torch.device
+
+
 def host_copy(outputs):
     # A device-to-host copy reads the outputs without writing device memory, so
     # keeping them evicts little of what the next invocation finds in cache.
-    return outputs.detach().to("cpu") if isinstance(outputs, torch.Tensor) else outputs
+    # Keep the source device: moving the value back for oracle comparison must
+    # not hide an output produced on the wrong device.
+    return (MeasuredOutput(outputs.detach().to("cpu"), outputs.device)
+            if isinstance(outputs, torch.Tensor) else outputs)
 
 
 class SampleChecks:
@@ -239,8 +319,15 @@ def verify_timed_outputs(inputs, kept):
             task_inputs.load_draw(inputs, draw)
             expected_by_draw[id(draw)] = task_reference.run(**task_inputs.call_kwargs(inputs))
         expected = expected_by_draw[id(draw)]
-        if isinstance(got, torch.Tensor):
-            got = got.to(expected.device)
+        source_device = got.source_device if isinstance(got, MeasuredOutput) else (
+            got.device if isinstance(got, torch.Tensor) else None)
+        if source_device != expected.device:
+            results.append({"status": "FAIL", "failure_kind": "output_contract",
+                            "reason": (f"Timed output device {source_device} differs from "
+                                       f"reference device {expected.device}")})
+            continue
+        if isinstance(got, MeasuredOutput):
+            got = got.value.to(expected.device)
         results.append(compare_output(got, expected))
     failed = [result for result in results if result["status"] != "PASS"]
     metadata = {"checked_invocations": len(results), "failed_invocations": len(failed)}
@@ -290,6 +377,7 @@ def time_case(case, *, role, launch=None, baseline_diagnostic=False):
     rotation = RotatingDraws(inputs, task_inputs.call_varying_draws(inputs, timed_seeds))
     unseen = task_inputs.call_varying_draws(inputs, unseen_seeds)
     weights = input_snapshot({name: inputs[name] for name in task_inputs.PERSISTENT_INPUTS})
+    rotation._persistent_snapshot = weights
     checked = choose_checked_samples(task_inputs.BENCH_REPETITION, CHECKED_SAMPLES)
     checks = SampleChecks(rotation, checked)
     timed = TimedRun()
@@ -310,9 +398,13 @@ def time_case(case, *, role, launch=None, baseline_diagnostic=False):
                 "metadata": protocol}
     if not timed.bound:
         raise RuntimeError("Benchmark did not expose the invocation it timed")
+    # The last reported sample has no following reported preparation. Check it
+    # now, before an unseen preparation can replace its activation.
+    rotation.assert_current_unchanged()
     unseen_ms, unseen_kept = run_unseen_draws(timed, rotation, unseen)
     torch.cuda.synchronize()
-    assert_inputs_unchanged(inputs, {**weights, **input_snapshot(rotation.consumed)})
+    rotation.assert_current_unchanged()
+    protocol["guarded_invocations"] = rotation.guarded_invocations
     cost = verify_timed_cost(unseen_ms, execution_time_ms)
     outputs = verify_timed_outputs(inputs, checks.kept + unseen_kept)
     protocol.update(unseen_draw_cost=cost["metadata"], timed_output_correctness=outputs)

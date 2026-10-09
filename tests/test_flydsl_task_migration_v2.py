@@ -517,6 +517,8 @@ def test_torch_numerical_gates_cases_and_models_preserved():
                 handler.body.pop(0)
         if name in {"silu_and_mul_kernel", "batched_gemm_bf16_kernel", "hgemm_kernel", "rmsnorm2d_kernel", "moe_topk_softmax_kernel", "moe_topk_sigmoid_kernel", "moe_topk_softplus_kernel", "moe_biased_grouped_topk_kernel"}:
             fn = _RemoveAddedReplayChecks().visit(fn)
+        if name == "hgemm_kernel":
+            fn = _RemoveHgemmSignedControl().visit(fn)
         if name in {"silu_and_mul_quant_kernel", "smoothquant_kernel"}:
             fn = _RemoveFusedQuantChecks().visit(fn)
         if name in {"rope_fwd_kernel", "rope_thd_fwd_kernel"}:
@@ -555,7 +557,21 @@ def test_torch_numerical_gates_cases_and_models_preserved():
         direct=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="arena_benchmark")
         def calls(fn):
             return [ast.dump(n,include_attributes=False) for n in ast.walk(fn) if isinstance(n,ast.Call) and getattr(n.func,"id","") in {"benchmark_cuda_graph_or_events","_mean_ms"}]
-        assert calls(original)==calls(direct),name
+        if name in _QUALIFIED_QUANT_EVENT_ARENA:
+            # The direct runner prepares and observes each measured
+            # sample; the original CLI runner retains its historical pin.
+            measured=[n for n in ast.walk(direct) if isinstance(n,ast.Call)
+                      and getattr(n.func,'id',None)=='benchmark_cuda_graph_or_events']
+            assert len(measured)==2,name
+            for call in measured:
+                kw={item.arg:item.value for item in call.keywords}
+                assert ast.unparse(kw['warmup'])=='0',name
+                assert ast.unparse(kw['repetition'])=='iters',name
+                assert ast.unparse(kw['use_cuda_graph'])=='use_graph',name
+                assert 'prepare_fn' in kw,name
+            assert 'timed_run' in {item.arg for item in measured[0].keywords},name
+        else:
+            assert calls(original)==calls(direct),name
 
 # Base fingerprints cover original input generation, cases, tolerances, output
 # checks, timing, warmups and resets. Only declaration/loader plumbing and the
@@ -950,6 +966,38 @@ class _RemoveAddedReplayChecks(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
+class _RemoveHgemmSignedControl(ast.NodeTransformer):
+    """Compare the original five-case gate after excluding signed controls."""
+
+    def visit_For(self, node):
+        controls={item.id for item in ast.walk(node)
+                  if isinstance(item, ast.Name)
+                  and item.id in {'_signed_candidate_control', '_mixed_sign_candidate_control'}}
+        if controls:
+            assert controls=={'_signed_candidate_control', '_mixed_sign_candidate_control'}
+            assert ast.unparse(node.iter)=='SHAPES'
+            return None
+        return self.generic_visit(node)
+
+    def visit_Try(self, node):
+        if any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == "_signed_candidate_control"
+            for call in ast.walk(node)
+        ):
+            return None
+        return self.generic_visit(node)
+
+    def visit_Assign(self, node):
+        if any(isinstance(target, ast.Name) and target.id == "status" for target in node.targets):
+            node.value = ast.parse(
+                '"ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(SHAPES)})"',
+                mode="eval",
+            ).body
+        return self.generic_visit(node)
+
+
 _REPLAY_TASKS = ["triton2flydsl/aiter/gemm_a16w16",
                  "flydsl2flydsl/fp8_gemm_4wave_kernel",
                  "torch2flydsl/silu_and_mul_kernel",
@@ -994,9 +1042,12 @@ def test_measured_and_replayed_outputs_use_real_numerical_controls(task_name, be
         atol, rtol = (1e-1, 1e-2) if "triton2flydsl" in task_name else (2e-2, 2e-2)
         compare = lambda actual, ref: checks.allclose_output(actual, ref, atol=atol, rtol=rtol)
     def check():
+        perturbation = ({"perturbations": (("x", lambda: x.neg_()),)}
+                        if task_name == "flydsl2flydsl/fp8_gemm_8wave_kernel"
+                        else {"perturb": lambda: x.neg_()})
         return checks.verify_timed_run(
             timed, inputs=(x, w), originals=originals, expected=expected,
-            perturb=lambda: x.neg_(), reference=lambda: x @ w.T, compare=compare,
+            reference=lambda: x @ w.T, compare=compare, **perturbation,
         )
     if behavior == "correct":
         evidence = check()
@@ -1087,14 +1138,20 @@ def test_silu_provided_baseline_replay_oracle_is_independent():
     assert validate(timed)["timed_output_correctness"] == "PASS"
 
 
-@pytest.mark.parametrize("task_name", [
+_GEMM_TIMING_TASKS = [
     "triton2flydsl/aiter/gemm_a16w16",
     "flydsl2flydsl/fp8_gemm_4wave_kernel",
     "flydsl2flydsl/fp8_gemm_8wave_kernel",
     "flydsl2flydsl/blockscale_preshuffle_gemm_kernel",
     "flydsl2flydsl/preshuffle_gemm_v2_kernel",
-])
-@pytest.mark.parametrize("bad_phase", [None, "measured", "replay"])
+]
+
+
+@pytest.mark.parametrize("task_name,bad_phase", [
+    (task_name, phase)
+    for task_name in _GEMM_TIMING_TASKS
+    for phase in (None, "measured", "replay")
+] + [("flydsl2flydsl/fp8_gemm_8wave_kernel", "skip_middle")])
 def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_phase, monkeypatch, tmp_path):
     """Execute task benchmark orchestration with CPU tensor / timing doubles.
 
@@ -1116,10 +1173,16 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
         bound = False
         outputs = None
 
-    def benchmark(fn, warmup, repetition, timed_run=None):
+    def benchmark(fn, warmup, repetition, timed_run=None, **kwargs):
         seen.append((warmup, repetition, timed_run is not None))
         phase["name"] = "measured"
-        result = fn()
+        count = repetition if timed_run is not None and task_name == "flydsl2flydsl/fp8_gemm_8wave_kernel" else 1
+        for _ in range(count):
+            if kwargs.get("prepare_fn") is not None:
+                kwargs["prepare_fn"]()
+            result = fn()
+            if timed_run is not None and callable(getattr(timed_run, "after_sample", None)):
+                timed_run.after_sample(result)
         if timed_run is not None:
             timed_run.outputs = result
             timed_run.bound = True
@@ -1129,7 +1192,7 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
                 return result
             timed_run.rerun = replay
         phase["name"] = "setup"
-        return .1, {"benchmark_method": "cuda_graph"}
+        return .1, {"benchmark_method": "cuda_graph", "benchmark_samples": repetition}
 
     a = torch.tensor([[1., 2.], [3., 4.]], dtype=torch.bfloat16)
     b = torch.tensor([[3., 4.], [5., 6.]], dtype=torch.bfloat16)
@@ -1140,8 +1203,11 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
             return torch.full((a.shape[0], b.shape[0]), a[0, 0].item(), dtype=torch.bfloat16)
         return a @ b.T
     ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
-          "verify_timed_run": checks.verify_timed_run, "allclose_output": checks.allclose_output,
-          "math": math, "json": json, "Path": Path}
+              "verify_timed_run": checks.verify_timed_run, "allclose_output": checks.allclose_output,
+              "math": math, "json": json, "Path": Path}
+    if task_name == "flydsl2flydsl/fp8_gemm_8wave_kernel":
+        ns.update({"observe_measured_samples": checks.observe_measured_samples,
+                   "require_sample_count": checks.require_sample_count})
     if "triton2flydsl" in task_name:
         ns.update({"_HERE": str(tmp_path), "WARMUP": 10, "ITERS": 100,
             "TEST_SHAPES": [{"name": "controlled", "M": 2, "N": 2, "K": 2}],
@@ -1158,17 +1224,28 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
         monkeypatch.setitem(sys.modules, "flydsl.compiler", compiler)
         c = torch.zeros((a.shape[0], b.shape[0]), dtype=torch.bfloat16)
         scale = torch.ones(2)
+        scale_b = scale.clone()
+        measured_calls = [0]
         def compiled(*args):
-            c.copy_(compute())
+            if phase["name"] == "measured" and task_name == "flydsl2flydsl/fp8_gemm_8wave_kernel":
+                measured_calls[0] += 1
+                if bad_phase == "skip_middle" and measured_calls[0] == 42:
+                    return
+            value = compute()
+            if task_name == "flydsl2flydsl/fp8_gemm_8wave_kernel":
+                value = value.float() * scale[:, None] * scale_b[None, :]
+            c.copy_(value)
         ns.update({"_CANDIDATE_DIR": str(tmp_path), "HARNESS_SHAPES": [(2, 2, 2)],
             "ATOL": 2e-2, "RTOL": 2e-2,
             "_load_kernel": lambda *args: object(),
-            "_make_inputs": lambda *args, **kwargs: (a, b, c, scale, scale.clone()),
+            "_make_inputs": lambda *args, **kwargs: (a, b, c, scale, scale_b),
             "_kernel_b": lambda mod, value: value,
             "_compile_and_run_once": lambda *args: (compiled, None),
             "_kernel_args": lambda *args: (None,),
         })
         names = {"arena_benchmark", "_torch_reference"}
+        if task_name == "flydsl2flydsl/fp8_gemm_8wave_kernel":
+            names.add("_replay_perturbations")
         if "blockscale_preshuffle" in task_name:
             inp = {"M": 2, "N": 128, "K": 2, "scale_k": 1, "scale_n": 1,
                    "a_fp8": a, "b_fp8": b, "b_shuf": b.clone(),
@@ -1188,7 +1265,8 @@ def test_actual_gemm_benchmark_binds_and_validates_timed_output(task_name, bad_p
         assert records[0]["replay_correctness"] == "PASS"
         assert seen[0] == (10 if "blockscale_preshuffle" in task_name else 0, 100, True)
     else:
-        with pytest.raises(AssertionError, match="Numerical mismatch"):
+        expected_error = "Non-finite" if bad_phase == "skip_middle" else "Numerical mismatch"
+        with pytest.raises(AssertionError, match=expected_error):
             run()
 
 
@@ -1459,32 +1537,45 @@ def test_torch_gemm_measured_output_and_eager_reinvocation(name, provided, funct
     class Collector:
         bound = False
         outputs = None
-    def benchmark(fn, *, warmup, repetition, use_cuda_graph, fallback_reason, timed_run=None):
+    def benchmark(fn, *, warmup, repetition, use_cuda_graph, fallback_reason, timed_run=None, prepare_fn=None):
         calls.append((warmup, repetition, use_cuda_graph, timed_run is not None))
         phase["value"] = "measured"
-        out = fn()
+        if name == "hgemm_kernel":
+            for _ in range(repetition):
+                if prepare_fn is not None:prepare_fn()
+                out = fn()
+                if timed_run is not None:timed_run.after_sample(out)
+        else:out = fn()
         if timed_run is not None:
             timed_run.outputs = out
             timed_run.bound = True
             def rerun():
                 phase["value"] = "replay"
+                if prepare_fn is not None:prepare_fn()
                 result = fn()  # eager Event path returns a fresh allocation
                 assert result is not out
                 return result
             timed_run.rerun = rerun
         phase["value"] = "setup"
-        return .1, {"benchmark_method": "cuda_graph" if use_cuda_graph else "cuda_event_fallback"}
+        return .1, {"benchmark_method": "cuda_graph" if use_cuda_graph else "cuda_event_fallback",
+                    "benchmark_samples": repetition}
     kmod = types.SimpleNamespace(flydsl_batched_gemm_bf16=compute, flydsl_hgemm=compute)
     monkeypatch.setitem(sys.modules, "aiter", types.SimpleNamespace(batched_gemm_bf16_CK=compute))
     ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
           "verify_timed_run": checks.verify_timed_run, "require_tensor_contract": checks.require_tensor_contract,
+          "require_unchanged": checks.require_unchanged,
           "math": math, "json": json, "Path": Path, "_KERNEL_DIR": str(tmp_path),
           "KERNEL_FILE": "kernel.py", "MODEL_FILE": "model.py", "KERNEL_ENTRY": "flydsl_batched_gemm_bf16",
           "SHAPES": [{"name": "controlled", "b": 1, "m": 2, "n": 2, "k": 2}],
           "TOL": .01, "ATOL": .01, "RTOL": .01, "PASS_PCT": 99.9, "TILING_KEYS": (),
           "_make_inputs": lambda *args: (a,b), "_load_module": lambda directory,filename,alias: None if provided and filename == "kernel.py" else kmod,
           "_retry": lambda fn, **kwargs: fn()}
-    _harness_functions(task, {function, "_norm_worst", "_checked_gemm_output", "_gemm_reference", "_compare_gemm_output"}, ns)
+    functions = {function, "_norm_worst", "_checked_gemm_output", "_gemm_reference", "_compare_gemm_output"}
+    if name == "hgemm_kernel":
+        ns["MeasuredInputStream"] = module(task / "scripts/sample_controls.py").MeasuredInputStream
+        ns["SEED"] = 20260401
+        functions.add("_timed_gemm_case")
+    _harness_functions(task, functions, ns)
     if behavior == "correct":
         result = ns[function](verbose=False)
         if function == "run_benchmark":result = json.loads((tmp_path/"build/performance_report.json").read_text())
@@ -1507,20 +1598,21 @@ def test_torch_gemm_correctness_rejects_invalid_contracts(name, behavior, monkey
     a = torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16)
     b = a.clone()
     if name.startswith("batched"):a,b=a.unsqueeze(0),b.unsqueeze(0)
-    reference = lambda *args: (a.float() @ b.float().transpose(-1,-2)).to(a.dtype)
+    def reference(x=a, y=b):
+        return (x.float() @ y.float().transpose(-1,-2)).to(x.dtype)
     class Model:
         def to(self,*args):return self
         def eval(self):return self
-        def __call__(self,*args):return reference()
+        def __call__(self,*args):return reference(*args)
     def compute(*args,**kwargs):
-        out = reference()
+        out = reference(*args)
         if behavior == "shape":out=out[..., :1]
         if behavior == "dtype":out=out.float()
         if behavior == "device":out=out.to("meta")
         if behavior == "nonfinite":out.flatten()[0]=float("nan")
-        if behavior == "input_modified":a.add_(1)
+        if behavior == "input_modified":args[0].add_(1)
         return out
-    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(batched_gemm_bf16_CK=reference))
+    monkeypatch.setitem(sys.modules,"aiter",types.SimpleNamespace(batched_gemm_bf16_CK=lambda x,y,_: reference(x,y)))
     mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[])
     kmod=types.SimpleNamespace(flydsl_batched_gemm_bf16=compute,flydsl_hgemm=compute)
     ns={"require_tensor_contract":checks.require_tensor_contract,"require_unchanged":checks.require_unchanged,
@@ -1529,7 +1621,16 @@ def test_torch_gemm_correctness_rejects_invalid_contracts(name, behavior, monkey
         "TOL":.01,"ATOL":.01,"RTOL":.01,"PASS_PCT":99.9,"TILING_KEYS":(),
         "_make_inputs":lambda *args:(a,b),"_retry":lambda fn,**kwargs:fn(),
         "_load_module":lambda directory,filename,alias:mmod if filename=="model.py" else kmod}
-    _harness_functions(task,{"run_correctness","_norm_worst","_checked_gemm_output"},ns)
+    names={"run_correctness","_norm_worst","_checked_gemm_output"}
+    if name == "hgemm_kernel":
+        names.update({"_signed_candidate_control","_gemm_reference","_compare_gemm_output"})
+    _harness_functions(task,names,ns)
+    if name == "hgemm_kernel":
+        control=ns["_signed_candidate_control"]
+        ns["_signed_candidate_control"]=lambda candidate,model,shape: control(candidate,model,shape,device="cpu")
+        # This tiny synthetic shape has K=2; the independent K=16 mixed-sign
+        # controls are exercised with all five scored shapes in their own test.
+        ns["_mixed_sign_candidate_control"]=lambda candidate,model,shape: None
     if behavior=="correct":assert ns["run_correctness"](verbose=False) is True
     else:
         with pytest.raises(AssertionError,match="correctness FAILED"):ns["run_correctness"](verbose=False)
@@ -1559,8 +1660,19 @@ def test_torch_gemm_replay_numerical_rules_keep_zero_scale_and_percent_boundarie
 
 _TORCH_GEMM_ORIGINAL_BENCHMARKS = {('batched_gemm_bf16_kernel', 'run_benchmark'): 'c90d460059918323dbece546e3f557219b2e9384260a6661383d6aaec3b26b82', ('batched_gemm_bf16_kernel', 'arena_benchmark'): '06e9e400f31817921ef212bd186f685bbf94420a7e0c2f946af5b30f2307f254', ('hgemm_kernel', 'run_benchmark'): '472f2bde0f1462d720bf12509600c1b4fc10fae4580c5c5828695ca4a8afbf4a', ('hgemm_kernel', 'arena_benchmark'): '9094d767825dd1f9d77aa7a9d54cb4175626165b185a666fc7a49fb297afaa4a'}
 
+_QUALIFIED_HGEMM_BENCHMARKS = {
+    'run_benchmark': 'b8e38d455b1c0aaa826ca6aa488bb1eabca14ca99d2a954fdf32044d469b03ce',
+    'arena_benchmark': 'ac0eabbd09e0128c57a9a401257296e65c59908d1e1f47c6fe07dcab298d8661',
+}
+
 
 def test_torch_gemm_original_benchmark_work_and_sampling_preserved():
+    hgemm_tree = ast.parse((ROOT / "tasks/torch2flydsl/hgemm_kernel/test_kernel_harness.py").read_text())
+    timed = next(n for n in hgemm_tree.body if isinstance(n, ast.FunctionDef) and n.name == "_timed_gemm_case")
+    # The reviewed stream moves the full original call into this task-local
+    # helper; focused controls exercise all measured samples and both roles.
+    assert hashlib.sha256(ast.dump(timed, include_attributes=False).encode()).hexdigest() == (
+        'd2c6a312648daaf607f369059f57553eb4eae32c35d1b0cd625b8911ba85ffe8')
     for (name, function), expected_hash in _TORCH_GEMM_ORIGINAL_BENCHMARKS.items():
         tree = ast.parse((ROOT / "tasks/torch2flydsl" / name / "test_kernel_harness.py").read_text())
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == function)
@@ -1568,6 +1680,7 @@ def test_torch_gemm_original_benchmark_work_and_sampling_preserved():
         if name == "batched_gemm_bf16_kernel":
             from test_gemm_paired_timing import normalize_former_role_policy
             fn = normalize_former_role_policy(fn)
+        if name == 'hgemm_kernel':expected_hash = _QUALIFIED_HGEMM_BENCHMARKS[function]
         assert hashlib.sha256(ast.dump(fn, include_attributes=False).encode()).hexdigest() == expected_hash
 
 
@@ -2261,14 +2374,23 @@ def test_batched_int8_measured_outputs_and_replay(function, provided, behavior, 
     kmod=types.SimpleNamespace(flydsl_batched_gemm_a8w8=compute)
     class Collector:bound=False
     calls=[]
-    def benchmark(fn,*,warmup,repetition,use_cuda_graph,fallback_reason,timed_run=None):
+    def benchmark(fn,*,warmup,repetition,use_cuda_graph,fallback_reason,timed_run=None,prepare_fn=None):
         calls.append((warmup,repetition,use_cuda_graph,timed_run is not None))
-        phase['value']='measured';out=fn();phase['value']='setup'
+        phase['value']='measured'
+        if prepare_fn is not None:
+            for _ in range(repetition):
+                prepare_fn()
+                out=fn()
+                if timed_run is not None:timed_run.after_sample(out)
+        else:out=fn()
+        phase['value']='setup'
         if timed_run is not None:
             timed_run.bound=True;timed_run.outputs=out
             def replay():
                 phase['value']='replay'
-                try:return fn()
+                try:
+                    if prepare_fn is not None:prepare_fn()
+                    return fn()
                 finally:phase['value']='setup'
             timed_run.rerun=replay
         return .1,{'benchmark_method':'cuda_graph' if use_cuda_graph else 'cuda_event_fallback'}
@@ -2277,7 +2399,9 @@ def test_batched_int8_measured_outputs_and_replay(function, provided, behavior, 
         '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','KERNEL_ENTRY':'flydsl_batched_gemm_a8w8',
         '_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else None if provided else kmod,
         '_make_inputs':lambda *a:(x,w),'_retry':lambda fn,**kwargs:fn(),
-        'SHAPES':[{'name':'controlled','b':1,'m':2,'n':2,'k':2}],'TOL':.01,'math':math,'json':json,'Path':Path}
+        'SHAPES':[{'name':'controlled','b':1,'m':2,'n':2,'k':2}],'TOL':.01,'math':math,'json':json,'Path':Path,
+        'MeasuredInputStream':module(task/'scripts/sample_controls.py').MeasuredInputStream,
+        'SEED':20260401}
     _harness_functions(task,{function,'_norm_worst','_checked_batched_output','_compare_batched_output'},ns)
     if behavior=='correct':
         result=ns[function](verbose=False)
@@ -2340,11 +2464,83 @@ def test_batched_int8_zero_reference_gate_and_original_work_unchanged():
     tree=ast.parse((task/'test_kernel_harness.py').read_text())
     for fn in tree.body:
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
+            if fn.name == 'arena_benchmark':
+                # This reviewed body intentionally adds a distinct input
+                # and checked output to every reported Event sample. The old
+                # AST cannot be reconstructed by stripping replay checks.
+                assert hashlib.sha256(ast.dump(fn,include_attributes=False).encode()).hexdigest() == (
+                    '0840005315f9c0f1c9de9fa95b54492c5daecbca1a1b16a280ce2cdd75021f98')
+                continue
             normalized=_RemoveBatchedInt8Checks().visit(fn)
             if fn.name in {"run_benchmark", "arena_benchmark"}:
                 from test_gemm_paired_timing import normalize_former_role_policy
                 normalized = normalize_former_role_policy(normalized)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+
+
+def test_batched_int8_qualified_stream_keeps_original_cases_and_equal_role_work():
+    import torch
+    task=ROOT/'tasks/torch2flydsl/batched_gemm_a8w8_kernel'
+    source=task/'test_kernel_harness.py'
+    tree=ast.parse(source.read_text())
+    assignments={target.id:node.value for node in tree.body if isinstance(node,ast.Assign)
+                 for target in node.targets if isinstance(target,ast.Name)}
+    shapes=ast.literal_eval(assignments['SHAPES'])
+    assert [(r['b'],r['m'],r['n'],r['k']) for r in shapes] == [
+        (16,32,1280,8192), (16,128,1280,8192), (16,64,8192,1024),
+        (16,256,8192,1024), (16,512,1280,8192)]
+    assert ast.literal_eval(assignments['TOL']) == .01
+    assert ast.literal_eval(assignments['SEED']) == 20260401
+    fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='arena_benchmark')
+    assert [ast.literal_eval(default) for default in fn.args.defaults] == [10,100,True]
+    calls=[n for n in ast.walk(fn) if isinstance(n,ast.Call) and
+           isinstance(n.func,ast.Name) and n.func.id=='benchmark_cuda_graph_or_events']
+    assert len(calls)==2
+    candidate,baseline=({kw.arg:ast.unparse(kw.value) for kw in call.keywords} for call in calls)
+    for keywords in (candidate,baseline):
+        assert {key:keywords[key] for key in ('warmup','repetition','use_cuda_graph','fallback_reason')} == {
+            'warmup':'0','repetition':'iters','use_cuda_graph':'use_graph',
+            'fallback_reason':'event_reason'}
+    assert candidate['timed_run']=='timed'
+    assert candidate['prepare_fn']=='stream.prepare'
+    assert baseline['prepare_fn']=='stream.prepare_reference'
+    assert 'timed_run' not in baseline
+    assert ast.unparse(calls[0].args[0])=='lambda: device_op(x, w)'
+    assert ast.unparse(calls[1].args[0])=='lambda: torch.bmm(x.float(), w.float().transpose(1, 2))'
+    assert any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and
+               ast.unparse(n.func)=='stream.validate' for n in ast.walk(fn))
+    assert any(isinstance(n,ast.Assign) and any(ast.unparse(t)=='timed.after_sample' for t in n.targets)
+               and ast.unparse(n.value)=='stream.observe' for n in ast.walk(fn))
+    assert any(isinstance(n,ast.Call) and ast.unparse(n.func)=='stream.bind'
+               and [ast.unparse(arg) for arg in n.args]==['reference','_compare_batched_output']
+               for n in ast.walk(fn))
+
+    helper=task/'scripts/sample_controls.py'
+    assert hashlib.sha256(helper.read_bytes()).hexdigest() == (
+        '93e3c94eac0d2c42cb2b928bce486e6bdd2316b9cf9e504547afbbecf8eb97ec')
+    Stream=module(helper).MeasuredInputStream
+    x=torch.tensor([[[1.,2.],[3.,4.]]],dtype=torch.bfloat16)
+    w=torch.tensor([[[5.,6.],[7.,8.]]],dtype=torch.bfloat16)
+    originals=(x.clone(),w.clone())
+    stream=Stream(x,w,seed=20260401,case_index=0,samples=4,
+                  output_shape=(1,2,2),output_dtype=torch.bfloat16)
+    reference=lambda:torch.bmm(x.float(),w.float().transpose(1,2)).to(torch.bfloat16)
+    compare=lambda actual,expected:torch.testing.assert_close(actual,expected,atol=0,rtol=0)
+    stream.bind(reference,compare)
+    candidate_inputs=[]
+    for _ in range(4):
+        stream.prepare()
+        candidate_inputs.append((x.clone(),w.clone()))
+        stream.observe(reference())
+    stream.validate(reference,compare)
+    baseline_inputs=[]
+    for _ in range(4):
+        stream.prepare_reference()
+        baseline_inputs.append((x.clone(),w.clone()))
+    assert all(torch.equal(c,b) for pair in zip(candidate_inputs,baseline_inputs)
+               for c,b in zip(*pair))
+    assert all(torch.equal(c,o) for c,o in zip(candidate_inputs[0],originals))
+    assert any(not torch.equal(candidate_inputs[0][0],later[0]) for later in candidate_inputs[1:])
 
 
 class _RemoveMxfp8Checks(_RemoveActivationReplayChecks):
@@ -2773,6 +2969,24 @@ def test_fmoe_case_evidence_preserves_real_passes_and_failure_kind(name,fault,mo
 
 
 _QUANT_GEMM_CONTROL_NAMES=['gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel', 'gemm_a4w4_kernel', 'gemm_a8w8_blockscale_kernel', 'gemm_a8w8_kernel', 'gemm_a8w8_per_token_scale_kernel', 'gemm_a8wfp4_kernel', 'gemm_afp4wfp4_kernel', 'gemm_afp8wfp8_kernel']
+_QUANT_EVENT_STREAM_NAMES=frozenset({
+    'gemm_a16w8_blockscale_kernel', 'gemm_a16wfp4_kernel',
+    'gemm_a8w8_per_token_scale_kernel', 'gemm_afp4wfp4_kernel',
+    'gemm_afp8wfp8_kernel',
+})
+
+
+# Direct Event harnesses have a per-sample stream and output observer.
+# Their original input builders, gates, models and CLI benchmark functions keep
+# the historical pins below. These only replace the affected direct-runner pin.
+_QUALIFIED_QUANT_EVENT_ARENA = {
+    'batched_gemm_a8w8_kernel': '9ca79f53cc6e1cfa2aa0189d8df38ebf8c469262290e972e4146acc8c4bffe4e',
+    'gemm_a16w8_blockscale_kernel': 'd0d30fae74145bb523bc900adb049f0da8d8e3d3fc40349e39553ac945631d00',
+    'gemm_a16wfp4_kernel': 'cbd12942d340c34efc1705e10c216d6ca0ae6fd2da91f6cdd039d1dc946aac86',
+    'gemm_a8w8_per_token_scale_kernel': '3b155c077116681444218c72c15d92e1a08d1111059ce4e615f3d03f831a754e',
+    'gemm_afp4wfp4_kernel': '9e67494bc48a19a97067c2a16f3f6babfa8c5c99f56ed5a0fd6e64282667fa83',
+    'gemm_afp8wfp8_kernel': '244312f937bbf8f9c9b7f9d62d50cafff3f5d2fba4cf5463359b2f5fe2ac5fba',
+}
 
 
 class _RemoveQuantGemmChecks(_RemoveAddedReplayChecks):
@@ -2804,6 +3018,49 @@ class _RemoveQuantGemmChecks(_RemoveAddedReplayChecks):
                     assert isinstance(keyword.value,ast.Constant) and keyword.value.value==32
             node.keywords=[kw for kw in node.keywords if kw.arg!='x_scale_group_size']
         return super().visit_Call(node)
+
+
+class _RemoveA4w4SampleChecks(_RemoveQuantGemmChecks):
+    """Keep the historical score-work hash while checking the new stream separately."""
+    def visit_Try(self,node):
+        if len(node.finalbody)==2 and all(
+            isinstance(stmt,ast.Expr) and isinstance(stmt.value,ast.Call)
+            and isinstance(stmt.value.func,ast.Attribute)
+            and getattr(stmt.value.func.value,'id',None) in {'a','w'}
+            and stmt.value.func.attr=='copy_'
+            and len(stmt.value.args)==1
+            and isinstance(stmt.value.args[0],ast.Attribute)
+            and getattr(stmt.value.args[0].value,'id',None)=='sample_stream'
+            for stmt in node.finalbody
+        ):
+            # The protected case's work is inside this failure-restoration
+            # wrapper; compare that work with the original fingerprint.
+            result=[]
+            for stmt in node.body:
+                normalized=self.visit(stmt)
+                if isinstance(normalized,list):result.extend(normalized)
+                elif normalized is not None:result.append(normalized)
+            return result
+        return self.generic_visit(node)
+    def visit_Assign(self,node):
+        if len(node.targets)==1:
+            target=node.targets[0]
+            if isinstance(target,ast.Tuple) and [getattr(e,'id',None) for e in target.elts]==['sample_stream','sample_reference']:return None
+            if isinstance(target,ast.Attribute) and getattr(target.value,'id',None)=='timed' and target.attr=='after_sample':return None
+            if isinstance(target,ast.Subscript) and getattr(target.value,'id',None)=='kernel_bench_meta' and isinstance(target.slice,ast.Constant) and target.slice.value in {'measured_sample_outputs_checked','measured_input_stream'}:return None
+        return super().visit_Assign(node)
+    def visit_Expr(self,node):
+        if isinstance(node.value,ast.Call):
+            call=node.value
+            if isinstance(call.func,ast.Attribute) and getattr(call.func.value,'id',None)=='sample_stream' and call.func.attr=='validate':return None
+            if getattr(call.func,'id',None)=='require_unchanged' and call.args and isinstance(call.args[-1],ast.Tuple) and any(isinstance(e,ast.Attribute) and getattr(e.value,'id',None)=='sample_stream' for e in call.args[-1].elts):return None
+            if isinstance(call.func,ast.Attribute) and getattr(call.func.value,'id',None) in {'a','w'} and call.func.attr=='copy_' and call.args and isinstance(call.args[0],ast.Attribute) and getattr(call.args[0].value,'id',None)=='sample_stream':return None
+        return super().visit_Expr(node)
+    def visit_Call(self,node):
+        node=super().visit_Call(node)
+        if isinstance(node,ast.Call) and getattr(node.func,'id',None)=='benchmark_cuda_graph_or_events':
+            node.keywords=[kw for kw in node.keywords if kw.arg!='prepare_fn']
+        return node
 
 
 @pytest.mark.parametrize('name',_QUANT_GEMM_CONTROL_NAMES)
@@ -2845,12 +3102,22 @@ def test_quant_gemm_actual_timed_output_and_original_quantized_oracle(name,funct
     class Collector:bound=False
     calls=[]
     def benchmark(fn,*,warmup,repetition,timed_run=None,**kwargs):
-        calls.append((warmup,repetition,timed_run is not None,kwargs));phase['value']='measured';out=fn();phase['value']='setup'
+        calls.append((warmup,repetition,timed_run is not None,kwargs));phase['value']='measured'
+        if name=='gemm_a4w4_kernel' or (name in _QUANT_EVENT_STREAM_NAMES and function=='arena_benchmark'):
+            out=None
+            for _ in range(repetition):
+                if kwargs.get('prepare_fn') is not None:kwargs['prepare_fn']()
+                out=fn()
+                if timed_run is not None:timed_run.after_sample(out)
+        else:out=fn()
+        phase['value']='setup'
         if timed_run is not None:
             timed_run.outputs=out;timed_run.bound=True
             def replay():
                 phase['value']='replay'
-                try:return fn()
+                try:
+                    if kwargs.get('prepare_fn') is not None:kwargs['prepare_fn']()
+                    return fn()
                 finally:phase['value']='setup'
             timed_run.rerun=replay
         graph=kwargs.get('use_cuda_graph',True)
@@ -2860,7 +3127,15 @@ def test_quant_gemm_actual_timed_output_and_original_quantized_oracle(name,funct
         '_make_inputs':lambda *a:(originals[0].clone(),originals[1].clone()),'_retry':lambda fn,**kw:fn(),
         '_aiter_ground_truth':lambda *args:compute(*args[-2:]),'_KERNEL_DIR':str(tmp_path),'MODEL_FILE':'model.py','KERNEL_FILE':'kernel.py',
         'KERNEL_ENTRY':'flydsl_'+name.removesuffix('_kernel'),'SHAPES':[{'name':'controlled','m':2,'n':2,'k':2}],'TOL':.01,'math':math,'json':json,'Path':Path}
-    _harness_functions(t,{function,'_checked_quant_gemm_output','_compare_quant_gemm_output','_gemm_replay_validator','_norm_worst'},ns)
+    function_names={function,'_checked_quant_gemm_output','_compare_quant_gemm_output','_gemm_replay_validator','_norm_worst'}
+    if name=='gemm_a4w4_kernel':
+        ns['MeasuredInputStream']=module(t/'scripts/sample_controls.py').MeasuredInputStream
+        ns['SEED']=20260401
+        function_names.add('_measured_stream')
+    elif name in _QUANT_EVENT_STREAM_NAMES and function=='arena_benchmark':
+        ns['MeasuredInputStream']=module(t/'scripts/sample_controls.py').MeasuredInputStream
+        ns['SEED']=20260401
+    _harness_functions(t,function_names,ns)
     if behavior=='correct':
         result=ns[function](verbose=False)
         if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
@@ -2883,16 +3158,19 @@ def test_quant_gemm_preserves_zero_reference_denominator_and_normalized_gate(nam
 
 
 def test_quant_gemm_original_quantization_inputs_numeric_and_timing_functions_preserved():
-    hashes={'gemm_a16w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '93bff37a12d09580cc31aa6ffa370e5a2078a48b39f6b45c1660cdb85ceed836', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'ce7fc05173a63f6dd8a3c8ed28cf80406fa0c219cc622b76d50250e844d22053', 'run_benchmark': '9a48b014da77dbd608d90d612a6388e18f95fd8f33e482171a4700e5686f725d', 'arena_benchmark': 'defc1227e2c5eb6db2c8bb530c0d3d20493271b8a1f3b504c24154573cba059e'}, 'gemm_a16wfp4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '94c9fb8daa6c36fddc997ac668a6cb45a36d3ccd3f3b3e7d2b61f2eaa261debd', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'efa4bd4a9ad4138146bf604144086cb01d969ea5eb213385f83996ff690dd00f', 'run_benchmark': '4a94553fec39201aa1aa248165c57f38edc28334c765cca94b19a1fbe589ca33', 'arena_benchmark': '3818b99f737ad1ec43e6d4c575da11642801346bb036cfe9ecfa143aedff8060'}, 'gemm_a4w4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '5865e0e578d5b704f9b8e14647b8012315927edda4d707a434273d7f56929ac1', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '5fde44afc9fbb877a379ff91caee3f2a33e890b70689428476e93c1b957db2b9', 'run_benchmark': '4ca5e661c5d35618e6dc4591984dc4a4369ffe793043fdea4dac133186f43f8c', 'arena_benchmark': 'c8853015a53f2f888f974a53e4a02f7b22c1aeceeb0d2c6aa2957d4d3cca1ad4'}, 'gemm_a8w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_norm_worst': 'd7003c9ba7525de49603baf59e23bdb58e69a36796ae75fa7cad95fb292025a6', 'run_correctness': '6af71206b39f7aba58d882103352b64382317d1529a9fba71e8265fec33b7f0c', 'run_benchmark': 'b172161ae8a4c4cba052938c63aa5c3b4c6f674bc66f4c0f20551c3b7614f556', 'arena_benchmark': '7a62ff1081019435b838188ad687efdcd029b0a9c87720302f162ed78643dd47'}}
+    hashes={'gemm_a16w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '93bff37a12d09580cc31aa6ffa370e5a2078a48b39f6b45c1660cdb85ceed836', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'ce7fc05173a63f6dd8a3c8ed28cf80406fa0c219cc622b76d50250e844d22053', 'run_benchmark': '9a48b014da77dbd608d90d612a6388e18f95fd8f33e482171a4700e5686f725d', 'arena_benchmark': 'defc1227e2c5eb6db2c8bb530c0d3d20493271b8a1f3b504c24154573cba059e'}, 'gemm_a16wfp4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '94c9fb8daa6c36fddc997ac668a6cb45a36d3ccd3f3b3e7d2b61f2eaa261debd', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': 'efa4bd4a9ad4138146bf604144086cb01d969ea5eb213385f83996ff690dd00f', 'run_benchmark': '4a94553fec39201aa1aa248165c57f38edc28334c765cca94b19a1fbe589ca33', 'arena_benchmark': '3818b99f737ad1ec43e6d4c575da11642801346bb036cfe9ecfa143aedff8060'}, 'gemm_a4w4_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_aiter_ground_truth': '5865e0e578d5b704f9b8e14647b8012315927edda4d707a434273d7f56929ac1', '_norm_worst': '30ce97d4508b520ddfe031026030fa4fe8375e82f199635f936cbf9fcd2f1014', 'run_correctness': '5fde44afc9fbb877a379ff91caee3f2a33e890b70689428476e93c1b957db2b9', 'run_benchmark': 'e5cbf338f47a62e4e3b1347f73c239640a54e1277640832db4658b387a766c26', 'arena_benchmark': 'd34654dfc4648b891499860d639bd269512e40dc14055d1441122bab9ff5bd9e'}, 'gemm_a8w8_blockscale_kernel': {'_make_inputs': '1ad09792077e031b36ddc25108380668ae78fb442487fca064c831df7d79a0ec', '_norm_worst': 'd7003c9ba7525de49603baf59e23bdb58e69a36796ae75fa7cad95fb292025a6', 'run_correctness': '6af71206b39f7aba58d882103352b64382317d1529a9fba71e8265fec33b7f0c', 'run_benchmark': 'b172161ae8a4c4cba052938c63aa5c3b4c6f674bc66f4c0f20551c3b7614f556', 'arena_benchmark': '7a62ff1081019435b838188ad687efdcd029b0a9c87720302f162ed78643dd47'}}
     for name,functions in hashes.items():
         tree=ast.parse((ROOT/'tasks/torch2flydsl'/name/'test_kernel_harness.py').read_text())
         for fn in tree.body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
-                restored=_RemoveQuantGemmChecks().visit(fn)
+                normalizer = _RemoveA4w4SampleChecks() if name=='gemm_a4w4_kernel' else _RemoveQuantGemmChecks()
+                restored=normalizer.visit(fn)
                 if fn.name in {"run_benchmark", "arena_benchmark"}:
                     from test_gemm_paired_timing import normalize_former_role_policy
                     restored = normalize_former_role_policy(restored)
-                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+                expected = (_QUALIFIED_QUANT_EVENT_ARENA.get(name)
+                            if fn.name=='arena_benchmark' else None) or functions[fn.name]
+                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==expected,(name,fn.name)
 
 
 @pytest.mark.parametrize('behavior',['correct','cached','scale_mutated','reference_error'])
@@ -2932,7 +3210,9 @@ def test_remaining_quant_gemm_original_inputs_numerics_and_timing_preserved():
                 if fn.name in {"run_benchmark", "arena_benchmark"}:
                     from test_gemm_paired_timing import normalize_former_role_policy
                     restored = normalize_former_role_policy(restored)
-                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
+                expected = (_QUALIFIED_QUANT_EVENT_ARENA.get(name)
+                            if fn.name=='arena_benchmark' else None) or functions[fn.name]
+                assert hashlib.sha256(ast.dump(restored,include_attributes=False).encode()).hexdigest()==expected,(name,fn.name)
 
 
 @pytest.mark.parametrize('k',[128,256])
@@ -5670,8 +5950,16 @@ def test_torch_actual_operators_are_required_without_unused_builders(name,tmp_pa
 
 def test_unused_builder_cleanup_retains_starter_model_and_manifest_bytes():
     original={'dynamic_mxfp8_quant_kernel': {'kernel.py': '04c2ab5eb9e9bee43be84633bc7b210fcb3ad8be69bba8aa98ef6897010611a0', 'model.py': '9e5b1e289eee05aba727b71e28a98e6a7611d9fd6737d5e87b83fe9469eed39d', 'cases.json': '9e76bdcd9955b731e930c2e46536dbce2522d2f88f4ad9cb76016e825821988d'}, 'gelu_and_mul_kernel': {'kernel.py': '4fb1de9fe9d5da55e5cb924ecd03458ab70cc493612857ca300343237d541f25', 'model.py': 'c171ab0b489b1cb87a3f551c3ba8ecd820e3147a9becb6810154040f4027f7dd', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gelu_tanh_and_mul_kernel': {'kernel.py': '04616e2c62589d5c2e4b8147772bf4e333e753e663eb5d95bb88456428110f24', 'model.py': '95988833405bac9d10624c4ca4e78ee0251a5a60c1dd457d6b915904b9b2dadf', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gemm_a8w8_bpreshuffle_kernel': {'kernel.py': 'b5d3e87a3ceca3fe555572f0b4ab5c7b1dd6c3f5c9e18ab924b589df3d485996', 'model.py': 'e4278a3637b56eab94baec3b712ff1fb5ac44206a0ac21b1925a7497ca0b9643', 'cases.json': '7f2d3e25a614486974800da54cb23d2c7913101b2ec1b82ca92818cdfec479ee'}, 'hgemm_kernel': {'kernel.py': '29cab2057d32224a7da558083f6b4edeb560e44efd59a60b82dfb14c9c6a8d28', 'model.py': '89ca4fce55817fdf5fcbaea925a1639f9b96cd809dcda8c06cd70f9e1033372e', 'cases.json': '8388fcafea635e69bde93aad82d8b6bcd10d3ffd9998f2594e4ab989c2fd61e4'}, 'jagged_dense_bmm_kernel': {'kernel.py': 'fcb9b75ec238ced56568fb5b27535a160314db29c212abe33c83be6f7df3c043', 'model.py': '1b446ea35fee03f47ae16121fb7ba8aa933e9e99c48f2d90584c770d56065186', 'cases.json': '8304b063316f9cfc3667a8f38d9d85805b38a2339deebd48b883bfb59b5427e3'}, 'moe_sorting_kernel': {'kernel.py': '4bc536d6d29f16e1f24278d9db05ffba13d723f3f42064cce18b60c687f3eb43', 'model.py': 'c874911efc1c947437d5c7c62019e7c52b34458a0ec1560ecdde72aa971de271', 'cases.json': '0c8247d8727d48dc3a8ddd20ede1db3ae2586e990222f7bf19ce39dc6ad913c4'}, 'qk_norm_rope_quant_kernel': {'kernel.py': 'be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46', 'model.py': '152a32140302f1264c555fbd9b6f9d8362583fd08b0344290a67d6b1bb849ee2', 'cases.json': 'de8e183a711424ddabe5f8bfea4fa00dbe79cb886462b5d3681f67fa9d6e0eb1'}, 'rmsnorm2d_dynamicquant_kernel': {'kernel.py': 'c8542e7ea4b69aa6881ae2e7046995c67112e7e38b68e95d3cc2a51965d05bdc', 'model.py': '5cd3abaf088651f8f2ed9db44513bfd8c5238a45145aaf3dcd3168d63e3ff080', 'cases.json': '046dcf1c5e6f49bf68bd6e935555006803f9f6af5668460389ae6147297528f1'}, 'rmsnorm2d_kernel': {'kernel.py': 'a20840e12a22f5c08fed1e87eee62de5dec590680c79b5b6fa8cb28d9dd9396a', 'model.py': '8442cb4d63444e7dfa9db1fa2d6253ceee0463b1debfd6919fc5219181de3b13', 'cases.json': '426c9e84d97161e5bb7a09353102c57648f5ca5a4790c46370b5369ba470fa64'}, 'rmsnorm2d_smoothquant_kernel': {'kernel.py': '701e11ec5e63bf65572fd9325a7e0b1bea0e1aa9561f8711de0e7ed0113fc2b0', 'model.py': '5496289dc3f8f72c1b9deefce1e39b7c1a00dc5726ad708abe65641fee4edf0e', 'cases.json': '359795558e6ebcfb617bbae66eda8540f5503cc5a04056f1fdfde58e13aedce4'}, 'swiglu_and_mul_kernel': {'kernel.py': '6adbabe7f43dd51289ec4afa3310ba30c56ad8f216edb801886882a1c00715e5', 'model.py': '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}}
+    # This starter was ported to the fixed FlyDSL image. Keep
+    # the historical model/manifest pins and pin the complete reviewed kernel
+    # bytes; focused port tests check the changed primitive adapter.
+    qualified_kernel={'gemm_a8w8_bpreshuffle_kernel':
+                      '41b5f3879a7b511f40ae2288a95fa1c3b4684fe9314adc0b59a041c4b189f298',
+                      'hgemm_kernel':
+                      '720623b9cc87fa7c099de32f78e9f0c6c9a336be7b26f03a27aca583f3e7003b'}
     for name,files in original.items():
         for rel,expected in files.items():
+            if rel=='kernel.py':expected=qualified_kernel.get(name,expected)
             assert hashlib.sha256((ROOT/'tasks/torch2flydsl'/name/rel).read_bytes()).hexdigest()==expected,(name,rel)
 
 
@@ -6658,23 +6946,38 @@ def test_bpreshuffle_actual_operator_and_event_output_controls(function,behavior
         def __call__(self,*a):return real.Model()(*a)
     mmod=types.SimpleNamespace(Model=Model,get_init_inputs=lambda:[],pertoken_quant=real.pertoken_quant);kmod=types.SimpleNamespace(preshuffle_weight_a8=shuffle,flydsl_gemm_a8w8_bpreshuffle=compute)
     class Collector:bound=False
-    def bench(fn,*,warmup,repetition,use_cuda_graph,fallback_reason,timed_run=None):
+    def bench(fn,*,warmup,repetition,use_cuda_graph,fallback_reason,timed_run=None,prepare_fn=None):
         seen.append((warmup,repetition,use_cuda_graph,fallback_reason));phase['name']='measured'
+        if prepare_fn is not None:
+            for _ in range(repetition):
+                prepare_fn()
+                out=fn()
+                if timed_run is not None:timed_run.after_sample(out)
+        else:out=fn()
         if timed_run is not None:
-            timed_run.outputs=fn();timed_run.bound=True
+            timed_run.outputs=out;timed_run.bound=True
             def rerun():
                 phase['name']='replay'
-                try:return fn()
+                try:
+                    if prepare_fn is not None:prepare_fn()
+                    return fn()
                 finally:phase['name']='setup'
             timed_run.rerun=rerun
-        else:fn()
         phase['name']='setup'
-        return .1,{'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable'}
+        return .1,{'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable',
+                   'benchmark_samples':repetition}
     monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
+    def make_inputs(m,n,k,device='cuda',*,seed=20260401):
+        if seed==20260401:return x,w
+        generator=torch.Generator().manual_seed(seed)
+        return (torch.randn((m,k),generator=generator,dtype=torch.bfloat16),
+                torch.randn((n,k),generator=generator,dtype=torch.bfloat16))
+    streams=module(task/'scripts/sample_controls.py')
     ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':bench,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,'math':math,'json':json,'Path':Path,
-        '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','_make_inputs':lambda *a:(x,w),'_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else kmod,
-        'NORM_TOL':.01,'ATOL':.01,'RTOL':.01,'PASS_PCT':99.9,'TILING_KEYS':('tile_m','tile_n','tile_k'),'SHAPES':[{'name':'controlled','m':2,'n':16,'k':32,'tile_m':16,'tile_n':16,'tile_k':32}], '_retry':lambda fn,**kw:fn()}
-    _harness_functions(task,{function,'_checked_preshuffle','_compare_preshuffle_output','_quantized_dense_reference','_perturb_preshuffle_scales'},ns)
+        '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','_make_inputs':make_inputs,'_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else kmod,
+        'NORM_TOL':.01,'ATOL':.01,'RTOL':.01,'PASS_PCT':99.9,'TILING_KEYS':('tile_m','tile_n','tile_k'),'SHAPES':[{'name':'controlled','m':2,'n':16,'k':32,'tile_m':16,'tile_n':16,'tile_k':32}], '_retry':lambda fn,**kw:fn(),
+        'MeasuredQuantizedStream':streams.MeasuredQuantizedStream,'RawReferenceStream':streams.RawReferenceStream,'SEED':20260401}
+    _harness_functions(task,{function,'_checked_preshuffle','_compare_preshuffle_output','_quantized_dense_reference','_perturb_preshuffle_scales','_install_alternate_quantized_inputs','_timed_bpreshuffle_case'},ns)
     # Measured-only controls are separately tested on both real timing paths.
     should_pass=behavior=='correct' or correctness and behavior in {'measured_wrong','replay_wrong','cached','wrong_scale'}
     if should_pass:
@@ -6712,13 +7015,51 @@ def test_bpreshuffle_known_layout_positions_original_zero_gate_and_dependencies(
 def test_bpreshuffle_preserves_original_source_model_cases_math_and_event_boundaries():
     hashes={'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_retry': '5acaf1837049f86ff6b6dc46531036dc49bc6c4a7b91ad3de70bf613d57e4489', '_make_inputs': '62a69561df2134b9d91389a1b3814a9adb3719a2563350f6d45cc2fcff7adaab', 'run_correctness': '8a508376c948226a90fb1fdfda698f68415b64050741a626e87790ea7306d01c', 'run_benchmark': '269cfdc27066d63f6dd0480ec2097c10afae0a36576ec950aea589999aa2b11b', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': '9c550a9fa70e86cbcfd1abf675606a9360f61bd43923a19d5693da85659f1f2a'}
     task=ROOT/'tasks/torch2flydsl/gemm_a8w8_bpreshuffle_kernel'
+    qualified_stream_hashes={
+        '_make_inputs': '9ecbd2bc7850ef9945a3e2391366653b12c0534f214a89cd1576ae81f8c67a3f',
+        'run_benchmark': '803ff47a9fc7b112e872b85983fc106159624f4ad7316b9f3f39084069787455',
+        'arena_benchmark': '7992866db77d42beafed791e96b0c9bd079ccaa82f365fcf9f607b4aac4cfbce',
+    }
     for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
         if isinstance(fn,ast.FunctionDef) and fn.name in hashes:
             normalized=_RemoveBpreshuffleChecks().visit(fn)
-            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
+            expected=qualified_stream_hashes.get(fn.name,hashes[fn.name])
+            assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==expected,fn.name
     peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
     for rel in ['task_runtime.py','scripts/candidate_checks.py','scripts/replay_checks.py']:
-        assert (task/rel).read_bytes()==(peer/rel).read_bytes(),rel
+        task_bytes = (task/rel).read_bytes()
+        if rel == 'task_runtime.py':
+            # The Event evidence binding is tested through the actual
+            # report reader elsewhere; compare all remaining legacy bytes.
+            start=b'        # Preserve the raw benchmark fields and bind the same measured values\n'
+            end=b'        result.append(row)\n'
+            assert task_bytes.count(start)==1 and task_bytes.count(end)==1
+            before, rest=task_bytes.split(start,1)
+            added, after=rest.split(end,1)
+            assert b'row["metadata"]["device_timing"]' in added
+            task_bytes=before+end+after
+        if rel == 'scripts/replay_checks.py':
+            # The qualified quantized replay also requires a meaningful
+            # reference change. Normalize that exact guard and the evidence
+            # field, then compare every remaining byte with the legacy helper.
+            new_signature=(b'def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare,\n'
+                           b'                     minimum_replay_change=0):')
+            old_signature=b'def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare):'
+            assert task_bytes.count(new_signature)==1
+            task_bytes=task_bytes.replace(new_signature,old_signature)
+            guard=(b'        if minimum_replay_change:\n'
+                   b'            difference = (expected_replay.float() - expected.float()).abs().max().item()\n'
+                   b'            scale = expected_replay.float().abs().max().item()\n'
+                   b'            if difference / max(scale, 1e-9) <= minimum_replay_change:\n'
+                   b'                raise AssertionError("Changed quantized operands did not distinguish the reference output")\n')
+            assert task_bytes.count(guard)==1
+            task_bytes=task_bytes.replace(guard,b'')
+            new = (b'return {"timed_output_correctness": "PASS", "timed_output_checked": True,\n'
+                   b'            "replay_correctness": "PASS",')
+            old = b'return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",'
+            assert task_bytes.count(new) == 1
+            task_bytes = task_bytes.replace(new, old)
+        assert task_bytes == (peer/rel).read_bytes(), rel
     cfg=load_task_spec(task/'config.yaml',task_id='torch2flydsl/gemm_a8w8_bpreshuffle_kernel').to_mapping()
     assert [e['symbol'] for e in cfg['candidate']['entrypoints']]==['flydsl_gemm_a8w8_bpreshuffle','preshuffle_weight_a8']
 

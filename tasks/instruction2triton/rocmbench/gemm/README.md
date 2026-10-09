@@ -21,25 +21,33 @@ FP16 PyTorch result and the additional protected tensor-contract checks.
 
 The implementation API is broader than this selected workload. Its dtype,
 stride, scaling and activation arguments and existing behavior must be preserved.
-The historical API documentation below explains those arguments; it does not
-claim that this task benchmarks every supported combination. The original pytest
-selection excludes alternate dtypes, column-major layouts and activation/scaling
-modes; the optional standalone plotting CLI is separate from Arena's configured
-pytest evaluation. A PASS for this task certifies the declared workload only,
-not those additional API paths or arbitrary M/N-tail shapes. No original case,
-assertion or implementation branch is removed by this scope clarification.
+Eight separately identified correctness-only controls exercise BF16, FP32,
+FP8 and INT8 paths, independent A/B column-major views, strided C, tensor and
+block scaling (including B-only scaling), and the leaky-ReLU branch. The block
+controls cross both K and N scale-group boundaries. These controls use the same
+public wrapper in baseline and candidate with independent PyTorch oracles and
+are never timed or scored. The optional standalone plotting CLI is separate
+from Arena's configured evaluation. A PASS covers the selected scored cases
+and these representative API branches; it does not certify every combination
+or arbitrary shapes. No original case, assertion or implementation branch was
+removed.
 
 ## Evaluation contract
 
 Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
-`workloads.json` retains 22 original collected cases, including 11 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
+`workloads.json` retains 22 original collected cases, including 11 performance cases,
+and adds eight correctness-only `domain_control` rows. Original pytest collection
+is checked against its independent manifest rows; the domain rows are checked
+against task-local protected definitions and run separately after original pytest
+correctness. Original correctness functions run unchanged. Performance inputs additionally run the task-local
 oracle in `_arena_reference.py`, before timing and against observed timed output.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+10 warmups and 100 samples are unchanged. The adapter now poisons C before
+each measured replay, outside the device interval, and captures one GEMM call
+per graph replay. Every scored call must overwrite C; timings from the prior
+batched-graph policy are not directly comparable.
 
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch

@@ -70,9 +70,23 @@ def comparator_control(expected, *, atol, rtol):
     raise ContractFailure('Comparator accepted deliberately wrong output')
 
 
-def validate_timed(timed, readonly, reference, perturb, *, atol, rtol):
+def observe_measured_samples(timed, readonly, reference, *, atol, rtol):
+    """Check each reported sample after its end event, outside device timing."""
+    expected = reference()
+    timed.sample_checks = 0
+    def check_sample(outputs):
+        readonly.check()
+        check_outputs(outputs, expected, atol=atol, rtol=rtol,
+                      inputs=[entry[1] for entry in readonly.entries])
+        timed.sample_checks += 1
+    timed.after_sample = check_sample
+
+
+def validate_timed(timed, readonly, reference, perturb, *, atol, rtol, expected_samples):
     if not timed.bound:
         raise ContractFailure('No observable measured invocation')
+    if timed.sample_checks != expected_samples:
+        raise ContractFailure('Reported samples were not all checked')
     inputs = [entry[1] for entry in readonly.entries]
     readonly.check()
     check_outputs(timed.outputs, reference(), atol=atol, rtol=rtol, inputs=inputs)
@@ -91,4 +105,5 @@ def validate_timed(timed, readonly, reference, perturb, *, atol, rtol):
         readonly.restore()
     return {'timed_output_correctness': 'PASS', 'replay_correctness': 'PASS',
             'readonly_inputs': 'PASS', 'replay_inputs_changed': True,
-            'output_coverage': 'all_output_tensors_and_elements'}
+            'output_coverage': 'all_output_tensors_and_elements',
+            'measured_samples_checked': timed.sample_checks}

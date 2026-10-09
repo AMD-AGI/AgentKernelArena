@@ -48,7 +48,10 @@ def inspect_candidate(data, *, require_implemented=False):
 
 
 def benchmark_type(base, plugin, module):
-    from _arena_reference import prepare
+    from _arena_reference import (prepare_full, poison_outputs, perturbed_inputs,
+                                  check_scale_stride_control, check_width_tail_controls,
+                                  snapshot_inputs, check_inputs, restore_inputs,
+                                  observe_kernel_side_outputs)
     class CheckedBenchmark(base):
         def __init__(self,*args,**kwargs):
             # Inputs are task-owned locals prepared by the original performance
@@ -58,42 +61,82 @@ def benchmark_type(base, plugin, module):
 
         def run_benchmark(self,*args,**kwargs):
             row=plugin.current_row
-            check=prepare(self.context,module)
-            if self.prepare_fn is not None:self.prepare_fn()
-            original=self.op_callable
-            output=original()
-            check(output)
-            if plugin.action=='correctness':
-                row['metrics']={'performance_inputs_checked':True}
-                plugin.exercised.add(row['test_case_id'])
-                return {}
-            observed=[output]
-            def observed_op():
-                value=original()
-                observed[0]=value
-                return value
-            self.op_callable=observed_op
+            original_inputs=snapshot_inputs(self.context)
             try:
-                # The common session owns the independent baseline. The old
-                # helper's optional peer/reference timing is not that baseline.
-                kwargs['baseline_callable']=None
-                record=super().run_benchmark(*args,**kwargs)
+                with observe_kernel_side_outputs(module) as observed:
+                    check=prepare_full(self.context,module)
+                    if self.prepare_fn is not None:self.prepare_fn()
+                    original=self.op_callable
+                    output=original()
+                    check(output,observed.latest)
+                    check_inputs(self.context,original_inputs)
+                    if plugin.action=='correctness':
+                        check_scale_stride_control(module,self.context['q'].device)
+                        check_width_tail_controls(module,self.context['q'].device)
+                        row['metrics']={'performance_inputs_checked':True,
+                                        'side_outputs_checked':True}
+                        plugin.exercised.add(row['test_case_id'])
+                        return {}
+                    # The proxy records actual kernel L/m arguments. Graph
+                    # replays reuse the last captured pair; Event timing gets
+                    # the fresh pair from each eager launch. One graph call per
+                    # sample keeps every side buffer observable.
+                    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+                    timed=TimedRun()
+                    checked_samples=[0]
+                    def check_sample(measured_output):
+                        check_inputs(self.context,original_inputs)
+                        check(measured_output,observed.latest)
+                        checked_samples[0]+=1
+                    timed.after_sample=check_sample
+                    globals_=base.run_benchmark.__globals__
+                    measure=globals_['_measure_times']
+                    def measured_times(callable_fn, config, target_ms=1.0, n_retries=5,
+                                       estimate_reps=5, max_graph_repeats=1000,
+                                       prepare_fn=None, use_cuda_graph=True,
+                                       fallback_reason=None):
+                        return benchmark_cuda_graph_or_events_samples(
+                            callable_fn, warmup=config.warm_up,
+                            repetition=config.repetition, target_ms=target_ms,
+                            n_retries=n_retries, estimate_reps=estimate_reps,
+                            max_graph_repeats=1,
+                            prepare_fn=prepare_fn, use_cuda_graph=use_cuda_graph,
+                            fallback_reason=fallback_reason, timed_run=timed)
+                    globals_['_measure_times']=measured_times
+                    try:
+                        # The common session owns the independent baseline.
+                        kwargs['baseline_callable']=None
+                        record=super().run_benchmark(*args,**kwargs)
+                    finally:
+                        globals_['_measure_times']=measure
+                    if not timed.bound or checked_samples[0]!=self.config.repetition:
+                        raise RuntimeError('Measured sample outputs were not all checked')
+                    check_inputs(self.context,original_inputs)
+                    check(timed.outputs,observed.latest)
+                    with perturbed_inputs(self.context):
+                        changed_inputs=snapshot_inputs(self.context)
+                        changed_check=prepare_full(self.context,module)
+                        poison_outputs(self.context,timed.outputs,observed.latest)
+                        replayed=timed.rerun()
+                        check_inputs(self.context,changed_inputs)
+                        changed_check(replayed,observed.latest)
+                    ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
+                    if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
+                        raise RuntimeError('Nonpositive/nonfinite device timing')
+                    if method not in ('cuda_graph','cuda_event_fallback'):
+                        raise RuntimeError('Missing device timing method')
+                    row.update(execution_time_ms=ms,benchmark_method=method,
+                               metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
+                                         'measured_samples_checked':checked_samples[0],
+                                         'side_outputs_checked':'L,m',
+                                         'max_graph_repeats':1,
+                                         'bound_replay_output_checked':True,
+                                         'perturbed_input_replay_checked':True,
+                                         'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
+                    plugin.exercised.add(row['test_case_id'])
+                    return record
             finally:
-                self.op_callable=original
-            # For graph capture, this aliases the last captured output buffers;
-            # for event timing it is the output of the last measured invocation.
-            # Do not rerun a separate candidate and label it timed evidence.
-            check(observed[0])
-            ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
-            if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
-                raise RuntimeError('Nonpositive/nonfinite device timing')
-            if method not in ('cuda_graph','cuda_event_fallback'):
-                raise RuntimeError('Missing device timing method')
-            row.update(execution_time_ms=ms,benchmark_method=method,
-                       metadata={'timing_stats':record['timing_ms'],'timed_output_checked':True,
-                                 'device_timing':{k:v for k,v in record.items() if k.startswith('benchmark_')}})
-            plugin.exercised.add(row['test_case_id'])
-            return record
+                restore_inputs(self.context,original_inputs)
     return CheckedBenchmark
 
 

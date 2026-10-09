@@ -1,6 +1,8 @@
 """CPU contract regressions; real Triton/GPU qualification is separate evidence."""
 import ast
+from copy import deepcopy
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 import hashlib
@@ -12,8 +14,44 @@ import torch
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _original_fla_gen_inputs(seed, device):
+    import torch
+    torch.manual_seed(seed)
+    B, T, H, K, V, BT = 1, 64, 2, 32, 32, 64
+    from math import ceil
+    NT = ceil(T / BT)
+    q = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+    k = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+    v = torch.randn(B, T, H, V, device=device, dtype=torch.float32) * 0.1
+    h = torch.randn(B, NT, H, V, K, device=device, dtype=torch.float32) * 0.1
+    g = torch.randn(B, T, H, device=device, dtype=torch.float32) * 0.01
+    return (q, k, v, h, g), {"chunk_size": BT}
+
+
+def _original_kda_gen_inputs(seed, device):
+    import torch
+    torch.manual_seed(seed)
+    B, T, H, K, V, BT = 1, 64, 2, 32, 32, 64
+    from math import ceil
+    NT = ceil(T / BT)
+    q = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+    v = torch.randn(B, T, H, V, device=device, dtype=torch.float32) * 0.1
+    g = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.01
+    A = torch.randn(B, T, H, BT, device=device, dtype=torch.float32) * 0.01
+    h = torch.randn(B, NT, H, K, V, device=device, dtype=torch.float32) * 0.1
+    return (q, v, g, A, h, 0.125), {"chunk_size": BT}
+
+
+QUALIFIED_INPUT_GENERATORS = {
+    'triton_fla_chunk_fwd_o': (_original_fla_gen_inputs,
+                               '7e8febbbe1713ce96d7f6a099ce6cd09413e15729916526370d62f96910affe7'),
+    'triton_kda_gla_fwd_o': (_original_kda_gen_inputs,
+                            'f4b9e8d804b91f3e8596eaa2517a15aa83d12b30a5e18f92428c30e5093d0e7c'),
+}
 BASELINE = {'triton_fla_chunk_fwd_o': {'files': {'source/triton_fla_chunk_fwd_o.py': '3b47b94d96369bd0494c3a7996c47f62325a9371840382590c898ee65d417123',
-                                      'workloads.json': 'db237f9668446ac0851f5bfee765b2e7ac223f5a218764749c842e42dcd2962c'},
+                                      'workloads.json': 'd9c03fb5d09a0e6a9ab6114c95a92ed8f457d4b66fa46770f1b81d5d412880f2'},
                             'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                             'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                             'reference_and_constants_ast': 'b7466441ef03672e93f32a1288f52017c769bf8a269eb9bea29dcd84c461159b'},
@@ -38,7 +76,7 @@ BASELINE = {'triton_fla_chunk_fwd_o': {'files': {'source/triton_fla_chunk_fwd_o.
                      'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                      'reference_and_constants_ast': 'a22716f61770f9e5e43dc623934d52928e6548e8fb3308383b133f54962aa932'},
  'triton_kda_gla_fwd_o': {'files': {'source/triton_kda_gla_fwd_o.py': 'c6643a478127fccbebd11f30e51915111043a72d5331123c858b283231afa9a8',
-                                    'workloads.json': 'd2a697ffc63411c5df5d61ad03d539faf1220fd468e25e74a7c19c8be2cc95cb'},
+                                    'workloads.json': '6e54370906b636ce6a86b04aebffdb53cd27e67a1f6712a6f5bf4249608fe593'},
                           'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                           'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                           'reference_and_constants_ast': 'e590adef6e8d05c5b02038a0de23e69486605f1de5bd959d7a810f0f9be9a71a'},
@@ -124,7 +162,15 @@ def test_actual_timed_output_replay_and_readonly_guards(task,fault):
     if fault!='no_binding':timed._bind(replay,output)
     if fault=='wrong_measured':output.add_(10)
     if fault=='input_mutation':x.add_(1)
-    def run():return checks.validate_timed(timed,readonly,lambda:x*3,lambda:x.neg_(),atol=.01,rtol=.01)
+    def run():
+        if hasattr(checks, 'observe_measured_samples'):
+            checks.observe_measured_samples(timed,readonly,lambda:x*3,atol=.01,rtol=.01)
+            for _ in range(100):
+                timed.after_sample(output)
+            return checks.validate_timed(timed,readonly,lambda:x*3,lambda:x.neg_(),
+                                         atol=.01,rtol=.01,expected_samples=100)
+        return checks.validate_timed(timed,readonly,lambda:x*3,lambda:x.neg_(),
+                                     atol=.01,rtol=.01)
     if fault=='none':
         assert run()['replay_correctness']=='PASS'
         assert torch.equal(x,original)
@@ -167,10 +213,18 @@ def test_original_contract_preserved(task):
         assert _digest((root/relative).read_text())==digest
     text=(root/'scripts/task_runner.py').read_text();tree=ast.parse(text)
     def protected(tree):
-        return [ast.dump(n,include_attributes=False) for n in tree.body if
-            isinstance(n,ast.FunctionDef) and (n.name.startswith('reference') or n.name=='gen_inputs') or
-            isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id in
-            ('TEST_SHAPES','SEEDS','WARMUP_ITERATIONS','BENCHMARK_ITERATIONS','PERF_SEED_IDX') for t in n.targets)]
+        nodes=[]
+        for n in tree.body:
+            if isinstance(n,ast.FunctionDef) and n.name=='gen_inputs' and root.name in QUALIFIED_INPUT_GENERATORS:
+                fixture, qualified_hash=QUALIFIED_INPUT_GENERATORS[root.name]
+                assert _digest(ast.dump(n,include_attributes=False))==qualified_hash
+                n=deepcopy(ast.parse(inspect.getsource(fixture)).body[0])
+                n.name='gen_inputs'
+            if (isinstance(n,ast.FunctionDef) and (n.name.startswith('reference') or n.name=='gen_inputs') or
+                isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id in
+                ('TEST_SHAPES','SEEDS','WARMUP_ITERATIONS','BENCHMARK_ITERATIONS','PERF_SEED_IDX') for t in n.targets)):
+                nodes.append(ast.dump(n,include_attributes=False))
+        return nodes
     assert _digest(json.dumps(protected(tree)))==saved['reference_and_constants_ast']
     def generation(tree):
         return sorted((f.name,ast.dump(n,include_attributes=False)) for f in tree.body
@@ -182,6 +236,48 @@ def test_original_contract_preserved(task):
     call=next(n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_benchmark_cuda_graph_or_events')
     assert {k.arg:ast.unparse(k.value) for k in call.keywords}=={
         'warmup':'WARMUP_ITERATIONS','repetition':'BENCHMARK_ITERATIONS','timed_run':'timed'}
+
+
+@pytest.mark.parametrize('name', QUALIFIED_INPUT_GENERATORS)
+def test_qualified_scored_signal_preserves_original_draws_and_rejects_zero(name, monkeypatch):
+    root = ROOT / 'tasks/triton2triton/vllm' / name
+    for module in list(sys.modules):
+        if module == 'scripts' or module.startswith('scripts.'):
+            monkeypatch.delitem(sys.modules, module)
+    monkeypatch.syspath_prepend(str(root))
+    monkeypatch.chdir(root)
+    spec = importlib.util.spec_from_file_location('_qualified_input_harness', root/'scripts/task_runner.py')
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    original, _ = QUALIFIED_INPUT_GENERATORS[name]
+    factors = (3,3,3,3,1) if name=='triton_fla_chunk_fwd_o' else (5,5,1,5,5,1)
+    assert harness.SEEDS == [42,43,44,45,46]
+    for seed in harness.SEEDS:
+        old_args, old_kwargs = original(seed, 'cpu')
+        old_rng = torch.get_rng_state().clone()
+        historical_args, historical_kwargs = harness.gen_inputs(seed, 'cpu', historical=True)
+        assert torch.equal(torch.get_rng_state(), old_rng)
+        assert old_kwargs == historical_kwargs
+        for old, historical in zip(old_args, historical_args):
+            if isinstance(old, torch.Tensor):
+                assert torch.equal(old, historical)
+            else:
+                assert old == historical
+
+        scored_args, scored_kwargs = harness.gen_inputs(seed, 'cpu')
+        assert torch.equal(torch.get_rng_state(), old_rng)
+        assert scored_kwargs == old_kwargs
+        for old, scored, factor in zip(old_args, scored_args, factors):
+            if isinstance(old, torch.Tensor):
+                if factor==1:
+                    assert torch.equal(scored, old)
+                else:
+                    torch.testing.assert_close(scored, old*factor, atol=1e-7, rtol=2e-6)
+            else:
+                assert factor==1 and scored==old
+        expected = harness.reference(*scored_args, **scored_kwargs)
+        assert not torch.allclose(torch.zeros_like(expected), expected, atol=5e-2, rtol=5e-2)
+        harness.require_scored_signal(expected)
 
 
 @pytest.mark.parametrize('fault', ['none', 'wrong_measured', 'cached_replay', 'timed_input_write'])
@@ -225,14 +321,17 @@ def test_real_performance_runner_wires_collector_and_rejects_bad_paths(task, mon
                 return output
             return fn()
         timed_run._bind(replay,output)
-        if fault=='wrong_measured':
-            for out in values:out.add_(100)
-        if fault=='timed_input_write':
-            items=[c.cell_contents for c in fn.__closure__]
-            items=[v for item in items for v in (item if isinstance(item,tuple) else (item,))]
-            target=next(v for v in items if isinstance(v,torch.Tensor) and v.is_floating_point() and all(v is not o for o in values))
-            target.add_(1)
         calls.append(True)
+        for index in range(repetition):
+            if fault=='wrong_measured' and index==repetition//2:
+                for out in values:out.add_(100)
+            if fault=='timed_input_write' and index==repetition//2:
+                items=[c.cell_contents for c in fn.__closure__]
+                items=[v for item in items for v in (item if isinstance(item,tuple) else (item,))]
+                target=next(v for v in items if isinstance(v,torch.Tensor) and v.is_floating_point() and all(v is not o for o in values))
+                target.add_(1)
+            if timed_run.after_sample is not None:
+                timed_run.after_sample(output)
         return 1.0,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph','cpu_fixture':True}
     monkeypatch.setattr(h,'_benchmark_cuda_graph_or_events',fake_benchmark)
     records=h.run_performance()

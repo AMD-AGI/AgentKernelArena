@@ -483,7 +483,6 @@ def test_baseline_timed_output_diagnostic_cannot_exempt_candidate_or_non_numeric
         monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', lambda c: {})
         monkeypatch.setattr(measure.task_inputs, 'PERSISTENT_INPUTS', ())
         monkeypatch.setattr(measure.task_inputs, 'call_varying_draws', lambda i, seeds: [{} for _ in seeds])
-        monkeypatch.setattr(measure, 'RotatingDraws', lambda i, draws: types.SimpleNamespace(consumed={}))
         monkeypatch.setattr(measure, 'run_unseen_draws', lambda *a: ([0.1] * 4, []))
         monkeypatch.setattr(measure, 'verify_timed_cost', lambda *a, **kw: {'status': 'PASS', 'metadata': {}})
         monkeypatch.setattr(measure, 'case_call', lambda *a, **kw: lambda: None)

@@ -123,6 +123,49 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_parameter_variants(module, functional, hip_fn, inputs, compare, rtol, atol):
+    """Unscored controls for every parameter consumed by the declared forward."""
+    pairs = (("fc1.weight", "fc1_weight"), ("fc1.bias", "fc1_bias"),
+             ("fc2.weight", "fc2_weight"), ("fc2.bias", "fc2_bias"))
+    original_state = {name: value.detach().clone() for name, value in module.state_dict().items()}
+    original_functional = {name: value.detach().clone() for name, value in functional.state_dict().items()}
+    if any(left not in original_state or right not in original_functional
+           for left, right in pairs):
+        raise ValueError("Feedforward parameter controls cannot locate all four tensors")
+    if any(not original_state[left].equal(original_functional[right]) for left, right in pairs):
+        raise ValueError("Feedforward parameter controls require aligned model states")
+    try:
+        original_output = module(*copy.deepcopy(inputs))
+        for module_name, functional_name in pairs:
+            for delta in (1.0, -1.0, 4.0):
+                changed_state = {key: value.clone() for key, value in original_state.items()}
+                changed_functional = {key: value.clone() for key, value in original_functional.items()}
+                changed_state[module_name].add_(delta)
+                changed_functional[functional_name].add_(delta)
+                module.load_state_dict(changed_state)
+                functional.load_state_dict(changed_functional)
+                expected = module(*copy.deepcopy(inputs))
+                if not compare(original_output, expected, rtol=rtol, atol=atol):
+                    break
+            else:
+                raise ValueError(f"Parameter control did not change the reference: {functional_name}")
+            actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                      functional(*copy.deepcopy(inputs), fn=hip_fn))
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward ignored or mishandled changed parameter: {functional_name}")
+    finally:
+        module.load_state_dict(original_state)
+        functional.load_state_dict(original_functional)
+
+
+def require_graph_method(case, method):
+    if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
+                                     for key in ("benchmark_method", "reference_benchmark_method")
+                                     if key in case):
+        raise RuntimeError("Benchmark changed the declared graph timing method")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -184,9 +227,26 @@ def correctness(args, role, rows):
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
         result.append(row)
+        if passed:
+            check_parameter_variants(module, functional, hip_fn, reference_inputs,
+                                     checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
     return result
+
+
+def checked_timed_benchmark(case, role, baseline_hip):
+    selected = case.get("reference_benchmark") if role == "baseline" and baseline_hip else case
+    if not isinstance(selected, dict):
+        raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+    samples = selected.get("benchmark_samples")
+    validated = selected.get("validated_sample_count")
+    if (selected.get("replay_validation_valid") is not True
+            or selected.get("timed_output_checked") is not True
+            or type(samples) is not int or samples <= 0
+            or type(validated) is not int or validated != samples):
+        raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
+    return selected
 
 
 def performance(args, role, rows):
@@ -257,13 +317,16 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = checked_timed_benchmark(case, role, args.baseline_hip)
+        method = selected_benchmark.get("benchmark_method")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
+        require_graph_method(case, method)
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

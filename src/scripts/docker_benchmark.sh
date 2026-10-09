@@ -1613,43 +1613,88 @@ print("geak_engine=pinned clean checkout; live Workflow capability is checked by
 PY
 }
 
+copy_worker_state() {
+    local source="$1" target="$2" kind="$3"
+    # An existing worker home is left alone, as before. A failed new copy never
+    # creates this path, so the next launch cannot mistake partial state for it.
+    [[ ! -e "$target" && ! -L "$target" ]] || return 0
+
+    local attempt scratch entry copied
+    for attempt in 1 2 3 4; do
+        scratch="$(mktemp -d "$HOME/.aka-agent-state-stage.XXXXXXXX")" \
+            || die "Could not create private worker state staging directory"
+        if ! chmod 0700 "$scratch"; then
+            rm -rf -- "$scratch"
+            die "Could not protect worker state staging directory"
+        fi
+        copied=0
+        if [[ "$kind" == codex ]]; then
+            if ! mkdir -m 0700 "$scratch/state"; then
+                rm -rf -- "$scratch"
+                die "Could not create private Codex state staging directory"
+            fi
+            # Native Codex packages are immutable and mounted separately at
+            # their original path. Copy only mutable auth/config/session state.
+            if (
+                shopt -s dotglob nullglob
+                for entry in "$source"/*; do
+                    [[ "${entry##*/}" == packages ]] && continue
+                    cp -a "$entry" "$scratch/state/" 2>/dev/null || exit 1
+                done
+            ); then
+                copied=1
+            fi
+        elif cp -a "$source" "$scratch/state" 2>/dev/null; then
+            copied=1
+        fi
+
+        if [[ "$copied" == 1 ]]; then
+            if [[ "$kind" == file ]]; then
+                chmod u+rw "$scratch/state" 2>/dev/null || copied=0
+            else
+                chmod -R u+rwX "$scratch/state" 2>/dev/null || copied=0
+            fi
+        fi
+        if [[ "$copied" == 1 ]]; then
+            if [[ -e "$target" || -L "$target" ]]; then
+                rm -rf -- "$scratch"
+                die "Worker state destination appeared during staging"
+            fi
+            if mv -- "$scratch/state" "$target" 2>/dev/null; then
+                rmdir -- "$scratch"
+                return 0
+            fi
+        fi
+        # Only this mktemp-created private staging tree is disposable. Never
+        # remove or expose the mounted source or a published worker home.
+        rm -rf -- "$scratch"
+        if [[ "$attempt" -lt 4 ]]; then
+            warn "Worker state copy changed or failed; retrying ($attempt/4)"
+            sleep 0.2
+        fi
+    done
+    die "Worker state copy failed after four attempts"
+}
+
 container_prepare_worker_home() {
     local state_root="${AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
     mkdir -p "$HOME"
 
-    if [[ -d "$state_root/.codex" && ! -e "$HOME/.codex" ]]; then
-        mkdir -p "$HOME/.codex"
-        # Native Codex packages are immutable and can be hundreds of MB. The
-        # standalone package tree is mounted separately at its original path;
-        # copy only mutable auth/config/session state into the worker HOME.
-        (
-            shopt -s dotglob nullglob
-            local entry
-            for entry in "$state_root/.codex"/*; do
-                [[ "$(basename "$entry")" == "packages" ]] && continue
-                cp -a "$entry" "$HOME/.codex/"
-            done
-        )
-        chmod -R u+rwX "$HOME/.codex" 2>/dev/null || true
+    if [[ -d "$state_root/.codex" ]]; then
+        copy_worker_state "$state_root/.codex" "$HOME/.codex" codex
     fi
-
-    if [[ -d "$state_root/.claude" && ! -e "$HOME/.claude" ]]; then
-        cp -a "$state_root/.claude" "$HOME/.claude"
-        chmod -R u+rwX "$HOME/.claude" 2>/dev/null || true
+    if [[ -d "$state_root/.claude" ]]; then
+        copy_worker_state "$state_root/.claude" "$HOME/.claude" directory
     fi
-    if [[ -f "$state_root/.claude.json" && ! -e "$HOME/.claude.json" ]]; then
-        cp -a "$state_root/.claude.json" "$HOME/.claude.json"
-        chmod u+rw "$HOME/.claude.json" 2>/dev/null || true
+    if [[ -f "$state_root/.claude.json" ]]; then
+        copy_worker_state "$state_root/.claude.json" "$HOME/.claude.json" file
     fi
-
-    if [[ -d "$state_root/.cursor" && ! -e "$HOME/.cursor" ]]; then
-        cp -a "$state_root/.cursor" "$HOME/.cursor"
-        chmod -R u+rwX "$HOME/.cursor" 2>/dev/null || true
+    if [[ -d "$state_root/.cursor" ]]; then
+        copy_worker_state "$state_root/.cursor" "$HOME/.cursor" directory
     fi
-    if [[ -d "$state_root/.config/cursor" && ! -e "$HOME/.config/cursor" ]]; then
+    if [[ -d "$state_root/.config/cursor" ]]; then
         mkdir -p "$HOME/.config"
-        cp -a "$state_root/.config/cursor" "$HOME/.config/cursor"
-        chmod -R u+rwX "$HOME/.config/cursor" 2>/dev/null || true
+        copy_worker_state "$state_root/.config/cursor" "$HOME/.config/cursor" directory
     fi
 }
 

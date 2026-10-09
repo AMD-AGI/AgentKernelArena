@@ -28,6 +28,7 @@ import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.sample_controls import MeasuredInputStream
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -441,37 +442,53 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     for idx, shape in enumerate(SHAPES):
         m, n, k = shape["m"], shape["n"], shape["k"]
         a, w = _make_inputs(m, n, k)
+        # model.py is loaded afresh for this action; move its immutable FP4
+        # decode table before the first GPU reference or measured invocation.
         mmod.prepare_mxfp4_values(a.device)
-
-        replay_validate = _gemm_replay_validator(mmod, a, w)
-        _retry(lambda: device_op(a, w), what="benchmark warmup")
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            device_op(a, w)
-        torch.cuda.synchronize()
-
-        # Pair both roles with the provided baseline's fixed Event policy.
-        # A candidate's capture support must not change the scoring method.
-        use_graph = False
-        event_reason = "capture_unsafe_aiter_hipblaslt"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: device_op(a, w),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-            timed_run=timed,
+        stream = MeasuredInputStream(
+            a, w, seed=SEED, case_index=idx, samples=iters,
+            output_shape=(m, n), output_dtype=torch.bfloat16,
         )
-        kernel_bench_meta.update(replay_validate(timed))
+        model = mmod.Model().to(a.device).eval()
+        def reference():
+            with torch.no_grad():
+                return _checked_quant_gemm_output(model(a, w), a, w)
+        try:
+            reference()
+            require_unchanged((a, w), (stream.original_left, stream.original_right))
+            _retry(lambda: device_op(a, w), what="benchmark warmup")
+            require_unchanged((a, w), (stream.original_left, stream.original_right))
+            torch.cuda.synchronize()
+            for _ in range(warmup):
+                device_op(a, w)
+                require_unchanged((a, w), (stream.original_left, stream.original_right))
+            torch.cuda.synchronize()
 
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=use_graph,
-            fallback_reason=event_reason,
-        )
+            # Both roles retain the declared 10 warmups and 100 Event samples.
+            use_graph = False
+            event_reason = "capture_unsafe_aiter_hipblaslt"
+            stream.bind(reference, _compare_quant_gemm_output)
+            timed = TimedRun()
+            timed.after_sample = stream.observe
+            kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: device_op(a, w), warmup=0, repetition=iters,
+                use_cuda_graph=use_graph, fallback_reason=event_reason,
+                timed_run=timed, prepare_fn=stream.prepare,
+            )
+            stream.validate(reference, _compare_quant_gemm_output)
+            replay_validate = _gemm_replay_validator(mmod, a, w)
+            kernel_bench_meta.update(replay_validate(timed))
+            kernel_bench_meta["measured_sample_outputs_checked"] = iters
+            kernel_bench_meta["measured_input_stream"] = "original_then_seeded_bf16"
+
+            ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
+                lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
+                warmup=0, repetition=iters, use_cuda_graph=use_graph,
+                fallback_reason=event_reason, prepare_fn=stream.prepare_reference,
+            )
+        finally:
+            a.copy_(stream.original_left)
+            w.copy_(stream.original_right)
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
         speedup = (

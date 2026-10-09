@@ -1,4 +1,5 @@
 """Independent output checks for the performance inputs; never timed or editable."""
+from contextlib import contextmanager
 import numpy as np
 import torch
 
@@ -59,3 +60,29 @@ def _cast_like(expected, actual):
 def prepare(c, module):
     z=c['Z_initial'];expected=z@z
     return lambda result: compare(c['Z_tensor'],expected,atol=1e-2,rtol=1e-2,check_dtype=False)
+
+
+@contextmanager
+def perturbed_inputs(c):
+    """Change live operands for a bound replay; restore them on every exit."""
+    names = ('Z_initial',)
+    saved = {name: c[name].clone() for name in names if isinstance(c[name], torch.Tensor)}
+    try:
+        c['Z_initial'].add_(1)
+        yield
+    finally:
+        for name, original in saved.items():
+            c[name].copy_(original)
+
+
+def poison_outputs(c, result):
+    """Invalidate scored output buffers before checking the bound replay."""
+    for output in (c['Z_tensor'],):
+        if not isinstance(output, torch.Tensor):
+            raise TypeError("Missing scored output buffer")
+        if output.dtype == torch.bool:
+            output.logical_not_()
+        elif output.is_floating_point():
+            output.fill_(float("nan"))
+        else:
+            output.fill_(torch.iinfo(output.dtype).min)

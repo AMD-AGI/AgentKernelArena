@@ -58,11 +58,21 @@ The provided baseline already selects this method before attempting capture;
 an implemented candidate must use the same method even if it supports Graph
 capture. Selecting Event for the baseline and Graph for the candidate makes
 their timings incomparable and prevents Arena from scoring a correct candidate.
-This repair preserves the baseline method, operator calls, allocations, input
-cases, numerical gates, warmups and sample counts. It does not accept a runtime
-capture failure as permission to switch methods. Diagnostic reference timing
-uses the same fixed method. Prior results from mismatched methods are not valid
-speedups; changed task sources require fresh GPU qualification.
+This repair preserves the baseline method, operator calls, allocation
+boundaries, declared shapes, numerical gates, 10 warmups and 100 timed samples.
+It does not accept a runtime capture failure as permission to switch methods.
+Diagnostic reference timing uses the same fixed method.
+
+Sample zero uses the original seeded BF16 operands. The remaining 99 measured
+samples use distinct, deterministic BF16 operands with the same shapes and
+input distribution for both baseline and candidate. Preparation is outside
+Event timing. After each Event ends, the harness reads the live operands and
+copies that sample's complete output for an independent quantized-reference
+check; the final output is also poisoned and the exact timed callable rerun
+with changed inputs. The oracle for each prepared input is computed before its start Event. The complete measured output is compared with it after the end Event, then released; only one sample is retained. Oracle preparation can change cache state, but the same boundary applies to baseline and candidate. The
+diagnostic reference timing receives the same input stream. Since the timed
+input sequence changed, historical latencies and speedups are not directly
+comparable; the changed task packages require fresh GPU qualification.
 
 The output must be a finite BF16 tensor of shape `[M,N]` on the input device;
 raw A and weight tensors are read-only. Both the actual measured output and a

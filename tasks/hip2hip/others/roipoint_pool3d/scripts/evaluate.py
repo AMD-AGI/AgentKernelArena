@@ -20,7 +20,7 @@ def manifest():
     return data
 
 
-def checked_performance(expected, measured):
+def checked_performance(expected, measured, graph_policy):
     if isinstance(measured, tuple):
         measured, error = measured
         if error:
@@ -38,10 +38,14 @@ def checked_performance(expected, measured):
         latency = actual.get("execution_time_ms")
         if type(latency) not in (int, float) or not math.isfinite(latency) or latency <= 0:
             raise RuntimeError("Native benchmark did not produce finite positive device time")
-        if actual.get("benchmark_method") not in ("cuda_graph", "cuda_event_fallback"):
+        method = actual.get("benchmark_method")
+        if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Native benchmark did not establish a supported device timing method")
+        required_method = "cuda_graph" if graph_policy["enabled"] else "cuda_event_fallback"
+        if method != required_method:
+            raise RuntimeError("Native benchmark changed the declared device timing method")
         result.append({**row, "status": "PASS", "execution_time_ms": latency,
-                       "benchmark_method": actual["benchmark_method"], "metadata": {"native_benchmark": actual}})
+                       "benchmark_method": method, "metadata": {"native_benchmark": actual}})
     return result
 
 
@@ -101,7 +105,7 @@ def run(argv=None):
             reference_checks.check_additional_paths(harness)
             result["cases"] = [{**row, "status": "PASS"} for row in cases]
         else:
-            result["cases"] = checked_performance(cases, harness.run_performance())
+            result["cases"] = checked_performance(cases, harness.run_performance(), data["graph_policy"])
         result["status"] = "PASS"
     except Exception as exc:
         result.update(reason=f"{type(exc).__name__}: {exc}", failure_kind="execution_error")

@@ -86,8 +86,15 @@ def checked_benchmark(benchmark, fn, *, inputs, reference, check, perturb, **opt
         expected = reference(guard.saved)
         from _aka_benchmark import TimedRun
         timed = TimedRun()
+        checked_samples = [0]
+        def check_sample(output):
+            assert_output_contract(output, expected)
+            check(output, expected)
+            checked_samples[0] += 1
+        timed.after_sample = check_sample
         ms, metadata = benchmark(fn, timed_run=timed, **options)
         assert timed.bound, 'Timer did not expose its actual invocation'
+        assert checked_samples[0] == options['repetition'], 'Reported samples were not all checked'
         guard.check()
         assert_output_contract(timed.outputs, expected)
         check(timed.outputs, expected)
@@ -103,7 +110,8 @@ def checked_benchmark(benchmark, fn, *, inputs, reference, check, perturb, **opt
         check(replayed, changed_expected)
         metadata.update(benchmark_original_output_checked=True,
                         benchmark_replay_checked=True,
-                        benchmark_readonly_inputs_checked=True)
+                        benchmark_readonly_inputs_checked=True,
+                        benchmark_measured_samples_checked=checked_samples[0])
         return ms, metadata
     finally:
         guard.restore()

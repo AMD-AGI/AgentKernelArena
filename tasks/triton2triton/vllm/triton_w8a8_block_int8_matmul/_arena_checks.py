@@ -147,7 +147,17 @@ def checked_benchmark(harness, benchmark, fn, **options):
     setattr(module, SYMBOL, collect)
     try:
         timed = harness._TimedRun()
+        checked_samples = [0]
+        def check_sample(output):
+            check_output(output, expected)
+            checked_samples[0] += 1
+        timed.after_sample = check_sample
+        # Run the allocating public wrapper for every measured sample.
+        options = {**options, 'use_cuda_graph': False,
+                   'fallback_reason': 'full_public_invocation'}
         ms, metadata = benchmark(measured, timed_run=timed, **options)
+        if not timed.bound or checked_samples[0] != options['repetition']:
+            raise AssertionError('Reported sample outputs were not all checked')
         unchanged(inputs, pristine)
         check_output(timed.outputs, expected)
         # Change all four operands/scales outside timing. Use representable
@@ -163,7 +173,8 @@ def checked_benchmark(harness, benchmark, fn, **options):
         unchanged(inputs, replay_inputs)
         check_output(replayed, expected_replay)
         return ms, {**metadata, 'timed_output_checked': True,
-                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True}
+                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True,
+                    'measured_samples_checked': checked_samples[0], }
     finally:
         setattr(module, SYMBOL, original)
         for value, saved in zip(inputs, pristine):

@@ -58,6 +58,21 @@ def configure_models(models, inputs):
     return control
 
 
+def assert_declared_control(model, inputs):
+    """Check live state against the manifest, not a candidate-mutated snapshot."""
+    control = control_for_inputs(inputs)
+    if type(model.smooth_eps) not in (float, int) or model.smooth_eps != control['smooth_eps']:
+        raise ValueError('Operator changed the declared smoothing epsilon')
+    logits = inputs[0]
+    classes = logits.shape[-1]
+    ramp = torch.arange(1, classes + 1, device=logits.device, dtype=logits.dtype)
+    expected = (ramp / ramp.sum()).expand_as(logits).contiguous()
+    actual = dict(model.named_buffers()).get('smooth_dist')
+    if actual is None or actual.shape != expected.shape or actual.dtype != expected.dtype or actual.device != expected.device:
+        raise ValueError('Operator changed the declared smoothing buffer contract')
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
 def reference(logits, target, epsilon, distribution):
     """Independent log-sum-exp formula for the scored mean soft-target loss."""
     if logits.shape != target.shape or distribution.shape != target.shape:

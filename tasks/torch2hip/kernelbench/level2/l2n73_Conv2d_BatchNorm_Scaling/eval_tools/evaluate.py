@@ -123,6 +123,142 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_nonidentity_batchnorm(module, functional, hip_fn, inputs, original_expected,
+                                compare, rtol, atol):
+    """Check BN dependence at this scored case's geometry, outside timing."""
+    import torch
+    original_module = {key: value.detach().clone() for key, value in module.state_dict().items()}
+    original_functional = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+    channels = module.bn.num_features
+    try:
+        with torch.no_grad():
+            for model in (module, functional):
+                bn = model.bn
+                bn.weight.copy_(torch.linspace(0.5, 1.5, channels, device=bn.weight.device, dtype=bn.weight.dtype))
+                bn.bias.copy_(torch.linspace(-0.75, 0.75, channels, device=bn.bias.device, dtype=bn.bias.dtype))
+                bn.running_mean.copy_(torch.linspace(-0.5, 0.5, channels, device=bn.running_mean.device,
+                                                     dtype=bn.running_mean.dtype))
+                bn.running_var.copy_(torch.linspace(0.5, 1.5, channels, device=bn.running_var.device,
+                                                    dtype=bn.running_var.dtype))
+        expected = module(*copy.deepcopy(inputs))
+        if compare(original_expected, expected, rtol=rtol, atol=atol):
+            raise ValueError("Nonidentity BatchNorm control did not change the reference")
+        actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                  functional(*copy.deepcopy(inputs), fn=hip_fn))
+        output_contract(expected, actual)
+        if not compare(expected, actual, rtol=rtol, atol=atol):
+            raise ValueError("Selected forward ignored or mishandled nonidentity BatchNorm")
+    finally:
+        module.load_state_dict(original_module)
+        functional.load_state_dict(original_functional)
+
+
+def check_conv_parameter_variants(module, functional, hip_fn, inputs, original_expected,
+                                  compare, rtol, atol):
+    """Check each live convolution parameter at the scored case's geometry."""
+    import torch
+    original_module = {key: value.detach().clone() for key, value in module.state_dict().items()}
+    original_functional = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+    try:
+        for name, delta in (("weight", 0.125), ("bias", 0.75)):
+            with torch.no_grad():
+                for model in (module, functional):
+                    getattr(model.conv, name).add_(delta)
+            expected = module(*copy.deepcopy(inputs))
+            if compare(original_expected, expected, rtol=rtol, atol=atol):
+                raise ValueError(f"Changed convolution {name} did not change the reference")
+            selected_state = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+            actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                      functional(*copy.deepcopy(inputs), fn=hip_fn))
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward ignored or mishandled changed convolution {name}")
+            if any(not torch.equal(value, selected_state[key])
+                   for key, value in functional.state_dict().items()):
+                raise ValueError("Selected forward changed convolution or BatchNorm state")
+            module.load_state_dict(original_module)
+            functional.load_state_dict(original_functional)
+    finally:
+        module.load_state_dict(original_module)
+        functional.load_state_dict(original_functional)
+
+
+def check_independent_baseline_oracle(module, functional, compare, rtol, atol):
+    """Check both PyTorch paths against arithmetic without convolution/BN ops.
+
+    This is an unscored small known-answer control. HIP candidate correctness
+    still uses the original five declared geometries and their comparison.
+    """
+    import torch
+    if (tuple(module.conv.weight.shape) != (64, 8, 3, 3)
+            or tuple(functional.conv.weight.shape) != (64, 8, 3, 3)
+            or module.scaling_factor != 2.0 or functional.scaling_factor != 2.0):
+        raise ValueError("Independent Conv/BN control geometry or scale changed")
+    original_module = {key: value.detach().clone() for key, value in module.state_dict().items()}
+    original_functional = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+    x_cpu = ((torch.arange(2 * 8 * 5 * 6, dtype=torch.float32) % 29) - 14).reshape(2, 8, 5, 6) / 8
+    weight = torch.zeros((64, 8, 3, 3), dtype=torch.float32)
+    conv_bias = torch.empty(64, dtype=torch.float32)
+    bn_weight = torch.empty(64, dtype=torch.float32)
+    bn_bias = torch.empty(64, dtype=torch.float32)
+    bn_mean = torch.empty(64, dtype=torch.float32)
+    bn_var = torch.empty(64, dtype=torch.float32)
+    parameters = []
+    for channel in range(64):
+        first, second = channel % 8, (channel + 3) % 8
+        first_weight = (channel % 5 + 1) / 8
+        second_weight = (1 if channel % 2 else -1) * (channel % 3 + 1) / 8
+        bias = (channel % 7 - 3) / 8
+        gamma = 0.75 + (channel % 4) / 4
+        beta = (channel % 9 - 4) / 8
+        mean = (channel % 5 - 2) / 8
+        variance = 0.5 + (channel % 4) / 4
+        weight[channel, first, 0, 2] = first_weight
+        weight[channel, second, 2, 0] = second_weight
+        conv_bias[channel], bn_weight[channel], bn_bias[channel] = bias, gamma, beta
+        bn_mean[channel], bn_var[channel] = mean, variance
+        parameters.append((first, second, first_weight, second_weight,
+                           bias, gamma, beta, mean, variance))
+    expected_cpu = torch.empty((2, 64, 3, 4), dtype=torch.float32)
+    for batch in range(2):
+        for channel, (first, second, first_weight, second_weight,
+                      bias, gamma, beta, mean, variance) in enumerate(parameters):
+            for row in range(3):
+                for column in range(4):
+                    conv = (first_weight * x_cpu[batch, first, row, column + 2].item()
+                            + second_weight * x_cpu[batch, second, row + 2, column].item()
+                            + bias)
+                    expected_cpu[batch, channel, row, column] = (
+                        (conv - mean) * gamma / math.sqrt(variance + module.bn.eps)
+                        + beta) * 2.0
+    try:
+        with torch.no_grad():
+            for model in (module, functional):
+                model.conv.weight.copy_(weight.to(model.conv.weight.device))
+                model.conv.bias.copy_(conv_bias.to(model.conv.bias.device))
+                model.bn.weight.copy_(bn_weight.to(model.bn.weight.device))
+                model.bn.bias.copy_(bn_bias.to(model.bn.bias.device))
+                model.bn.running_mean.copy_(bn_mean.to(model.bn.running_mean.device))
+                model.bn.running_var.copy_(bn_var.to(model.bn.running_var.device))
+        for name, model in (("module", module), ("functional", functional)):
+            x = x_cpu.to(model.conv.weight.device)
+            expected = expected_cpu.to(x.device)
+            actual = model(x)
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"{name} failed independent Conv/BN known-answer control")
+    finally:
+        module.load_state_dict(original_module)
+        functional.load_state_dict(original_functional)
+
+
+def require_graph_method(case, method):
+    if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
+                                     for key in ("benchmark_method", "reference_benchmark_method")
+                                     if key in case):
+        raise RuntimeError("Benchmark changed the declared graph timing method")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -161,6 +297,7 @@ def correctness(args, role, rows):
     module, functional = prepare_models(args)
     tolerance = inspect.signature(checks.correctness_check).parameters
     rtol, atol = tolerance["rtol"].default, tolerance["atol"].default
+    check_independent_baseline_oracle(module, functional, checks._compare_results, rtol, atol)
     result = []
     for index, inputs in enumerate(inputs_gen):
         if index >= len(rows):
@@ -184,9 +321,28 @@ def correctness(args, role, rows):
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
         result.append(row)
+        if passed:
+            check_nonidentity_batchnorm(module, functional, hip_fn, reference_inputs,
+                                        expected, checks._compare_results, rtol, atol)
+            check_conv_parameter_variants(module, functional, hip_fn, reference_inputs,
+                                          expected, checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
     return result
+
+
+def checked_timed_benchmark(case, role, baseline_hip):
+    selected = case.get("reference_benchmark") if role == "baseline" and baseline_hip else case
+    if not isinstance(selected, dict):
+        raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+    samples = selected.get("benchmark_samples")
+    validated = selected.get("validated_sample_count")
+    if (selected.get("replay_validation_valid") is not True
+            or selected.get("timed_output_checked") is not True
+            or type(samples) is not int or samples <= 0
+            or type(validated) is not int or validated != samples):
+        raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
+    return selected
 
 
 def performance(args, role, rows):
@@ -257,13 +413,16 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = checked_timed_benchmark(case, role, args.baseline_hip)
+        method = selected_benchmark.get("benchmark_method")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
+        require_graph_method(case, method)
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

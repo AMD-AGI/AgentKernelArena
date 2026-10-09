@@ -36,8 +36,18 @@ atol=rtol=1e-4. The protected checker requires the original output shape, dtype
 and device and finite values, and checks input immutability. An extra unscored
 (2, 3, 17) case covers flattening and feature/row tails; zero and near-zero rows
 with nondefault epsilon make the epsilon behavior observable.
+Unscored FP32 widths 32,768 and 32,769 check the full last dimension beyond
+the original one-block cap, including a partial final tile. The wide source
+path accumulates the squared norm across every feature tile before writing
+the normalized row. These controls do not change the five scored 512-by-128
+cases or their timing method.
 
-The original full wrapper is timed with 10 warmups and 100 samples. Actual
-captured outputs and a poisoned replay with perturbed inputs must satisfy the
-same reference gate. Input restoration runs even when replay fails. These
-checks execute outside the measured region and retain all scored cases.
+The original full wrapper is timed with 10 warmups and 100 samples. Both roles
+use explicit device-Event timing so every measured sample invokes the public
+wrapper, including its output allocation. Graph `after_sample` can inspect a
+captured output after each replay, but replay does not invoke that wrapper and
+a batched graph exposes only its final returned output. Every measured output
+and a poisoned eager rerun with perturbed inputs must satisfy the same reference
+gate. Input restoration runs even when rerun fails. These checks execute outside
+the measured region and retain all scored cases. Event times are not directly
+comparable with the historical graph-replay times.

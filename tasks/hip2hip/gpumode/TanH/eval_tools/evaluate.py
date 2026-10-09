@@ -123,6 +123,69 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_scalar_variants(module, functional, hip_fn, inputs, original_expected,
+                          compare, rtol, atol):
+    """Check both configurable scalar operands at each scored geometry, outside timing."""
+    original = (module.a, module.max, functional.a, functional.max)
+    try:
+        for name, value in (("a", 0.5), ("max", 4.0)):
+            setattr(module, name, value)
+            setattr(functional, name, value)
+            expected = module(*copy.deepcopy(inputs))
+            if compare(original_expected, expected, rtol=rtol, atol=atol):
+                raise ValueError(f"Changed TanH {name} did not change the reference")
+            actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                      functional(*copy.deepcopy(inputs), fn=hip_fn))
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward ignored or mishandled changed TanH {name}")
+            if (module.a, module.max, functional.a, functional.max) != (
+                value if name == "a" else original[0],
+                value if name == "max" else original[1],
+                value if name == "a" else original[2],
+                value if name == "max" else original[3],
+            ):
+                raise ValueError("Selected forward changed TanH scalar state")
+            module.a, module.max, functional.a, functional.max = original
+    finally:
+        module.a, module.max, functional.a, functional.max = original
+
+
+def check_layout_dtype_controls(module, functional, hip_fn, compare, rtol, atol,
+                                device="cuda"):
+    """Check the existing HIP dtype and strided-view paths outside scoring."""
+    import torch
+    values = torch.tensor([[0.0, -1.0, 1.0, 20.0],
+                           [-20.0, 0.5, -0.5, 2.0]], device=device)
+    controls = (
+        ("strided_float32", values.t()),
+        ("strided_float64", values.double().t()),
+        ("float64", values.double()),
+        ("float16", values.half()),
+        ("bfloat16", values.bfloat16()),
+    )
+    checked = []
+    for name, value in controls:
+        if name.startswith("strided") and value.is_contiguous():
+            raise ValueError("Layout control did not create a strided view")
+        before = value.clone(memory_format=torch.preserve_format)
+        expected = module(value)
+        actual = (functional(value) if hip_fn is None else functional(value, fn=hip_fn))
+        output_contract(expected, actual)
+        if not compare(expected, actual, rtol=rtol, atol=atol):
+            raise ValueError(f"Selected forward mishandled TanH {name}")
+        torch.testing.assert_close(value, before, rtol=0, atol=0, equal_nan=True)
+        checked.append(name)
+    return checked
+
+
+def require_graph_method(case, method):
+    if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
+                                     for key in ("benchmark_method", "reference_benchmark_method")
+                                     if key in case):
+        raise RuntimeError("Benchmark changed the declared graph timing method")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -184,8 +247,14 @@ def correctness(args, role, rows):
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
         result.append(row)
+        if passed:
+            check_scalar_variants(module, functional, hip_fn, reference_inputs,
+                                  expected, checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    if all(row["status"] == "PASS" for row in result):
+        result[0]["metrics"]["unscored_layout_dtype_controls"] = check_layout_dtype_controls(
+            module, functional, hip_fn, checks._compare_results, rtol, atol)
     return result
 
 
@@ -257,13 +326,22 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        require_graph_method(case, method)
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

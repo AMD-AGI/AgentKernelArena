@@ -58,19 +58,36 @@ The provided baseline already selects this method before attempting capture;
 an implemented candidate must use the same method even if it supports Graph
 capture. Selecting Event for the baseline and Graph for the candidate makes
 their timings incomparable and prevents Arena from scoring a correct candidate.
-This repair preserves the baseline method, operator calls, allocations, input
-cases, numerical gates, warmups and sample counts. It does not accept a runtime
+This repair preserves the baseline method, operator calls and allocation
+boundary, declared shapes, numerical gates, warmups and sample counts. It does not accept a runtime
 capture failure as permission to switch methods. Diagnostic reference timing
 uses the same fixed method. Prior results from mismatched methods are not valid
 speedups; changed task sources require fresh GPU qualification.
+
+The scored Event run uses the original seeded operands for its first reported
+sample, then a distinct deterministic BF16 activation and weight pair at the
+same shape for each later sample. Preparation runs before the start Event for
+both baseline and candidate. A read-only observer copies each reported output
+after its end Event and checks that the candidate left that sample's prepared
+inputs unchanged; the task-local quantized model prepares one reference before
+each start Event, and the observer compares that sample's complete output after
+its end Event under the unchanged normalized error gate. Only one sample is
+retained. Oracle preparation can change cache state for both roles. This defeats warmup-result reuse and exact
+input version/content caches across the remaining samples. The subsequent
+poisoned-output, changed-input replay checks the last measured callable again.
+The unquantized diagnostic timing receives the same prepared input stream, then restores the original operands.
+The data stream is stronger than the historical fixed-input stream, so old
+latencies and speedups are not directly comparable; fresh GPU validation is
+required.
 
 The output must be a finite BF16 tensor of shape `[M,N]` on the input device;
 raw A and weight tensors are read-only. Both the actual measured output and a
 poisoned-output replay with changed activation/weight values must pass the
 original quantized `Model` reference and normalized max-error gate. The separate
 unquantized PyTorch GEMM remains only a diagnostic performance comparison.
-Original five cases, quantization/reference algorithms, seeds, tolerances,
-zero-reference denominator, timing policy, warmups and samples are unchanged.
+Original five cases, quantization/reference algorithms, original-input seed,
+tolerances, zero-reference denominator, timing policy, warmups and sample count
+are unchanged.
 Candidate-only auditing requires actual FlyDSL computation, with host allocation,
 layout/casts and launch preparation allowed. Baseline library dispatch and final
 candidate are checked separately; a starter is not a final implementation.

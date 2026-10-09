@@ -48,6 +48,8 @@ def flash_fwd_kernel(Q, K, V, sm_scale,  #
                 BLOCK_M: tl.constexpr, BLOCK_DMODEL: tl.constexpr, BLOCK_N: tl.constexpr):
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
+    batch = off_hz // H
+    head = off_hz % H
 
     # TODO: may replace with TMA store without range offset
     # initialize offsets for store
@@ -58,51 +60,51 @@ def flash_fwd_kernel(Q, K, V, sm_scale,  #
     l_prev = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
 
-    stride_qh_2d = stride_qh // stride_qm // stride_qk
-
     q_tile_ptr = tl.make_block_ptr(
-        base=Q,
-        shape=(D0, BLOCK_DMODEL),
+        base=Q + batch * stride_qz + head * stride_qh,
+        shape=(N_CTX, BLOCK_DMODEL),
         strides=(stride_qm, stride_qk),
-        offsets=(off_hz * stride_qh_2d + start_m * BLOCK_M, 0),
+        offsets=(start_m * BLOCK_M, 0),
         block_shape=(BLOCK_M, BLOCK_DMODEL),
         order=(1, 0),
     )
     k_tile_ptr = tl.make_block_ptr(
-        base=K,
-        shape=(D0, BLOCK_DMODEL),
+        base=K + batch * stride_kz + head * stride_kh,
+        shape=(N_CTX, BLOCK_DMODEL),
         strides=(stride_kn, stride_kk),
-        offsets=(off_hz * stride_qh_2d, 0),
+        offsets=(0, 0),
         block_shape=(BLOCK_N, BLOCK_DMODEL),
         order=(1, 0),
     )
     v_tile_ptr = tl.make_block_ptr(
-        base=V,
-        shape=(D0, BLOCK_DMODEL),
+        base=V + batch * stride_vz + head * stride_vh,
+        shape=(N_CTX, BLOCK_DMODEL),
         strides=(stride_vk, stride_vn),
-        offsets=(off_hz * stride_qh_2d, 0),
+        offsets=(0, 0),
         block_shape=(BLOCK_N, BLOCK_DMODEL),
         order=(1, 0),
     )
     out_tile_ptr = tl.make_block_ptr(
-        base=Out,
-        shape=(D0, BLOCK_DMODEL),
+        base=Out + batch * stride_oz + head * stride_oh,
+        shape=(N_CTX, BLOCK_DMODEL),
         strides=(stride_om, stride_on),
-        offsets=(off_hz * stride_qh_2d + start_m * BLOCK_M, 0),
+        offsets=(start_m * BLOCK_M, 0),
         block_shape=(BLOCK_M, BLOCK_DMODEL),
         order=(1, 0),
     )
     # load q: it will stay in SRAM throughout
-    q = tl.load(q_tile_ptr)
+    q = tl.load(q_tile_ptr, boundary_check=(0, 1), padding_option="zero")
 
     # loop over k, v and update accumulators
     for start_n in range(0, (start_m + 1) * BLOCK_M, BLOCK_N):
         # -- compute qk ----
-        k = tl.load(k_tile_ptr, boundary_check=(0, 1))
+        k = tl.load(k_tile_ptr, boundary_check=(0, 1), padding_option="zero")
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
         qk += tl.dot(q, tl.trans(k))
         qk *= sm_scale
-        qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
+        key_offsets = start_n + offs_n
+        qk = tl.where((offs_m[:, None] >= key_offsets[None, :])
+                      & (key_offsets[None, :] < N_CTX), qk, float("-inf"))
         # compute new m
         m_curr = tl.maximum(tl.max(qk, 1), m_prev)
         # correct old l
@@ -116,7 +118,7 @@ def flash_fwd_kernel(Q, K, V, sm_scale,  #
         acc *= (l_prev * l_rcp)[:, None]
         # update acc
         p = p.to(tl.float16)
-        v = tl.load(v_tile_ptr, boundary_check=(0, 1))
+        v = tl.load(v_tile_ptr, boundary_check=(0, 1), padding_option="zero")
         acc += tl.dot(p, v)
         # update m_i and l_i
         l_prev = l_curr
@@ -130,8 +132,8 @@ def flash_fwd_kernel(Q, K, V, sm_scale,  #
     # write back l and m
     l_ptrs = L + off_hz * N_CTX + offs_m
     m_ptrs = M + off_hz * N_CTX + offs_m
-    tl.store(l_ptrs, l_prev)
-    tl.store(m_ptrs, m_prev)
+    tl.store(l_ptrs, l_prev, mask=offs_m < N_CTX)
+    tl.store(m_ptrs, m_prev, mask=offs_m < N_CTX)
 
     acc = acc.to(tl.float16)
     tl.store(out_tile_ptr, acc, boundary_check=(0, 1))
@@ -188,11 +190,13 @@ class _attention(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, q, k, v, sm_scale):
-        BLOCK = 128
         # shape constraints
         Lq, Lk, Lv = q.shape[-1], k.shape[-1], v.shape[-1]
         assert Lq == Lk and Lk == Lv
         assert Lk in {16, 32, 64, 128}
+        # Keep the original 128-token tile for scored D=64. A 64-token tile
+        # bounds the wider D=128 control's register/shared-memory footprint.
+        BLOCK = 64 if Lk == 128 else 128
         o = torch.empty_like(q)
         grid = (triton.cdiv(q.shape[2], BLOCK), q.shape[0] * q.shape[1], 1)
         L = torch.empty((q.shape[0] * q.shape[1], q.shape[2]), device=q.device, dtype=torch.float32)
@@ -436,5 +440,3 @@ def bench_flash_attention(BATCH, H, N_CTX, D_HEAD, mode, provider, dtype=torch.f
             fn = lambda: o.backward(do, retain_graph=True)
         ms = triton.testing.do_bench(fn)
         return ms
-
-

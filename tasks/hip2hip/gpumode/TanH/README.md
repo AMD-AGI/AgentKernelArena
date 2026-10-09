@@ -46,7 +46,7 @@ You are a hip expert and good at gpu kernel implementation. Please implemnt a ta
 The performance adapter checks the complete output from the actual timed graph
 against the protected reference, checks caller inputs remain unchanged, then
 poisons output storage and validates a replay of that same graph. These checks
-use the same inputs; they do not establish changed-input cache resistance.
+also replay changed input values against the protected reference.
 All validation runs outside the measured samples. Case shapes, seeds, tolerance,
 warmups, sample counts, and the original timing policy remain unchanged.
 
@@ -56,6 +56,12 @@ their own declared files and checked against the independent PyTorch reference.
 Every candidate action must execute its own compiled entrypoint; protected
 baseline/reference imports, calls and data access remain prohibited.
 
+For graph-timed cases without an input-reset callback, each captured sample now
+contains one operator call (`max_graph_repeats=1`). The earlier capture cap
+allowed more calls per sample, so historical latency may differ and needs a
+same-source rerun before comparison. Event-timed cases are unaffected; the
+declared inputs, 10 warmups, 100 samples, and numerical gates remain the same.
+
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated
 re-execution. A modification fails validation. Original input and model tensor
@@ -63,3 +69,16 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+Correctness varies the configurable `a` and `max` scalars independently at each
+original input geometry, with the unchanged reference and tolerance, outside
+timing. Both values are restored even if a control fails. The benchmark rejects
+an Event downgrade, including one triggered by a candidate changing the process
+environment after the graph policy was selected. The 11 scored cases, 10 warmups
+and 100 samples remain unchanged.
+
+Correctness also checks noncontiguous float32/float64 views and contiguous
+float64, float16, and bfloat16 inputs against the PyTorch reference at the
+existing tolerance, outside scoring. The lower-precision HIP path rounds each
+expression stage to the input dtype, matching the reference's intermediate
+dtype behavior. The eleven scored inputs and their timing are unchanged.

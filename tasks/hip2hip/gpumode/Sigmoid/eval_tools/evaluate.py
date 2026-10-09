@@ -151,6 +151,61 @@ def validate_task(args, rows):
     return {"candidate_state": actual_state, "case_count": len(rows)}
 
 
+def check_sigmoid_controls(module, functional, hip_fn, rtol, atol, device="cuda"):
+    """Check unscored edge cases against an independent stable sigmoid formula."""
+    import torch
+    import correctness_check as checks
+    if (module.a, module.max) != (functional.a, functional.max):
+        raise ValueError("Reference and functional sigmoid parameters differ")
+    controls = (
+        ("scalar", torch.tensor(-2.5, device=device)),
+        ("empty", torch.empty((0, 7), device=device)),
+        ("extreme", torch.tensor([-80., -20., -1., 0., 1., 20., 80.], device=device)),
+    )
+    for name, value in controls:
+        scaled = value.double() * module.a
+        positive = 1.0 / (1.0 + torch.exp(-scaled))
+        negative_exp = torch.exp(scaled)
+        negative = negative_exp / (1.0 + negative_exp)
+        expected = (torch.where(scaled >= 0, positive, negative) * module.max).to(value.dtype)
+        actuals = (module(value.clone()),
+                   functional(value.clone()) if hip_fn is None else
+                   functional(value.clone(), fn=hip_fn))
+        for actual in actuals:
+            output_contract(expected, actual)
+            if not checks._compare_results(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"{name} sigmoid control disagrees with the mathematical reference")
+    return [name for name, _ in controls]
+
+
+def check_layout_dtype_controls(module, functional, hip_fn, compare, rtol, atol,
+                                device="cuda"):
+    """Exercise accepted layouts/dtypes without changing the 11 scored cases."""
+    import torch
+    values = torch.tensor([[0.0, -1.0, 1.0, 20.0],
+                           [-20.0, 0.5, -0.5, 2.0]], device=device)
+    controls = (
+        ("strided_float32", values.t()),
+        ("strided_float64", values.double().t()),
+        ("float64", values.double()),
+        ("float16", values.half()),
+        ("bfloat16", values.bfloat16()),
+    )
+    checked = []
+    for name, value in controls:
+        if name.startswith("strided") and value.is_contiguous():
+            raise ValueError("Layout control did not create a strided view")
+        before = value.clone(memory_format=torch.preserve_format)
+        expected = module(value)
+        actual = (functional(value) if hip_fn is None else functional(value, fn=hip_fn))
+        output_contract(expected, actual)
+        if not compare(expected, actual, rtol=rtol, atol=atol):
+            raise ValueError(f"Selected forward mishandled Sigmoid {name}")
+        torch.testing.assert_close(value, before, rtol=0, atol=0, equal_nan=True)
+        checked.append(name)
+    return checked
+
+
 def correctness(args, role, rows):
     import torch
     import correctness_check as checks
@@ -186,7 +241,84 @@ def correctness(args, role, rows):
         result.append(row)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    if all(row["status"] == "PASS" for row in result):
+        controls = check_sigmoid_controls(module, functional, hip_fn, rtol, atol)
+        result[0]["metrics"]["unscored_math_controls"] = controls
+        result[0]["metrics"]["unscored_layout_dtype_controls"] = check_layout_dtype_controls(
+            module, functional, hip_fn, checks._compare_results, rtol, atol)
     return result
+
+
+def check_unscored_layout_timing(args, role, perf, rtol=1e-4, atol=1e-5,
+                                 device="cuda"):
+    """Validate a strided input on its own measured graph, without scoring it."""
+    import torch
+    from _aka_benchmark import TimedRun
+    from replay_validation import check_result, unchanged_inputs, unchanged_model_state
+
+    source = args.baseline_hip if role == "baseline" else args.candidate
+    hip_fn = compile_hip(local_path(source), slot="perf_reference" if role == "baseline" else "perf_selected")
+    module, functional = prepare_models(args, device=device)
+    values = torch.tensor([[0.0, -1.0, 1.0, 2.0],
+                           [-2.0, 0.5, -0.5, 4.0]], device=device)
+    controls = []
+    for name, value in (("strided_float32", values.t()),
+                        ("strided_float64", values.double().t())):
+        if value.is_contiguous():
+            raise ValueError("Timed layout control did not create a strided input")
+        pristine = value.clone(memory_format=torch.preserve_format)
+        state = {key: tensor.detach().clone() for key, tensor in functional.state_dict().items()}
+        try:
+            expected = module(value.clone(memory_format=torch.preserve_format))
+            observed = TimedRun()
+            checked = 0
+
+            def check_sample(output):
+                nonlocal checked
+                output_contract(expected, output)
+                if not perf._compare_results(expected, output, rtol=rtol, atol=atol):
+                    raise ValueError(f"Timed Sigmoid {name} output disagrees with reference")
+                checked += 1
+
+            observed.after_sample = check_sample
+            _, metadata = perf.benchmark_cuda_graph_or_events(
+                lambda: functional(value, fn=hip_fn), warmup=10, repetition=100,
+                use_cuda_graph=True, max_graph_repeats=1, timed_run=observed)
+            if (metadata.get("benchmark_method") != "cuda_graph"
+                    or metadata.get("benchmark_timed_run_kind") != "captured_graph"
+                    or metadata.get("benchmark_effective_repeats") != 1
+                    or metadata.get("benchmark_samples") != 100 or checked != 100
+                    or not observed.bound):
+                raise ValueError(f"Timed Sigmoid {name} did not validate one graph call per sample")
+            torch.cuda.synchronize()
+            check_result(observed.outputs, expected, [value], output_contract,
+                         perf._compare_results, rtol, atol)
+            unchanged_inputs([pristine], [value])
+            unchanged_model_state(state, functional)
+            with torch.no_grad():
+                observed.outputs.fill_(float("nan"))
+            check_result(observed.rerun(), expected, [value], output_contract,
+                         perf._compare_results, rtol, atol)
+            unchanged_inputs([pristine], [value])
+            unchanged_model_state(state, functional)
+            with torch.no_grad():
+                value.add_(1)
+            changed = value.clone(memory_format=torch.preserve_format)
+            changed_expected = module(changed)
+            if perf._compare_results(expected, changed_expected, rtol=rtol, atol=atol):
+                raise ValueError(f"Timed Sigmoid {name} changed input was not distinguishable")
+            with torch.no_grad():
+                observed.outputs.fill_(float("nan"))
+            check_result(observed.rerun(), changed_expected, [value], output_contract,
+                         perf._compare_results, rtol, atol)
+            unchanged_inputs([changed], [value])
+            unchanged_model_state(state, functional)
+            controls.append(name)
+        finally:
+            with torch.no_grad():
+                value.copy_(pristine)
+            torch.cuda.synchronize()
+    return controls
 
 
 def performance(args, role, rows):
@@ -257,13 +389,23 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
+    result[0]["metadata"]["unscored_timed_layout_controls"] = check_unscored_layout_timing(
+        args, role, perf)
     return result
 
 

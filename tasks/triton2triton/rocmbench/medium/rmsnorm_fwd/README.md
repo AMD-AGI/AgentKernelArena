@@ -19,6 +19,13 @@ oracle in `_arena_reference.py`, before timing and against observed timed output
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 
+Unscored correctness checks cover row-strided input and output buffers on both
+kernel branches. For `USE_BLOCKED=True`, they retain each selected scored
+case's full legal width and output dtype, use independently padded row strides,
+and check the complete normalized output plus FP32 reciprocal standard
+deviations. The 126 scored performance cases and their graph timing are
+unchanged.
+
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch
 peer timing is not an Arena baseline and is omitted by this adapter. Candidate

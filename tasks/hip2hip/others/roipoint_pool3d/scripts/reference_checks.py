@@ -4,6 +4,8 @@
 The original task_runner gates remain in force. These checks execute outside
 formal timing; none reduce its shapes, tolerances, samples, or state resets.
 """
+import math
+
 import torch
 
 
@@ -62,10 +64,71 @@ def self_test(h):
     expected[0, 0] = torch.tensor([[0., 0., 1., 2.], [.5, 0., 1., 4.], [0., 0., 1., 2.]])
     known_answer(actual, expected)
     known_answer(flag, torch.tensor([[0, 1]], dtype=torch.int32))
+    check_face_reference(h)
+
+
+def face_control_inputs():
+    """Exact membership and ordered pooled outputs for the native box predicate."""
+    points = torch.tensor([[[
+        0., 0., 1.,       # interior
+    ], [1., 0., 1.],     # +x face: excluded
+        [-1., 0., 1.],   # -x face: excluded
+        [0., 1., 1.],    # +y face: excluded
+        [0., -1., 1.],   # -y face: excluded
+        [.5, 0., 0.],    # bottom z face: included
+        [-.5, 0., 2.],   # top z face: included
+        [0., 0., -.25],  # below bottom
+        [0., 0., 2.25],  # above top
+        [.25, .25, 1.],  # second interior point
+        [4., 1.5, 1.],   # rotated box interior, unrotated exterior
+        [4.75, 0., 1.],  # rotated box exterior, unrotated interior
+    ]], dtype=torch.float32)
+    features = torch.arange(1, 13, dtype=torch.float32).reshape(1, 12, 1)
+    boxes = torch.tensor([[[0., 0., 0., 2., 2., 2., 0.],
+                           [4., 0., 0., 4., 1., 2., math.pi / 2],
+                           [10., 0., 0., 2., 2., 2., 0.]]], dtype=torch.float32)
+    expected = torch.zeros((1, 3, 6, 4), dtype=torch.float32)
+    for box_index, selected in ((0, (0, 5, 6, 9, 0, 5)),
+                                (1, (10, 10, 10, 10, 10, 10))):
+        for sample_index, point_index in enumerate(selected):
+            expected[0, box_index, sample_index] = torch.cat(
+                (points[0, point_index], features[0, point_index]))
+    flags = torch.tensor([[0, 0, 1]], dtype=torch.int32)
+    return points, features, boxes, expected, flags
+
+
+def check_face_reference(h):
+    points, features, boxes, expected, flags = face_control_inputs()
+    axis_membership = (True, False, False, False, False, True, True,
+                       False, False, True)
+    for point_index, inside in enumerate(axis_membership):
+        if bool(h.check_point_in_box(points[0, point_index], boxes[0, 0])) != inside:
+            raise AssertionError(f"CPU box reference has wrong axis-face membership at point {point_index}")
+    for point_index, inside in ((10, True), (11, False)):
+        if bool(h.check_point_in_box(points[0, point_index], boxes[0, 1])) != inside:
+            raise AssertionError(f"CPU box reference has wrong rotated membership at point {point_index}")
+    actual, actual_flags = h.cpu_roipoint_pool3d(points, features, boxes, 6)
+    close(actual, expected)
+    close(actual_flags, flags)
+    return points, features, boxes, expected, flags
+
+
+def check_face_controls(h, native):
+    points, features, boxes, expected, flags = check_face_reference(h)
+    points_gpu, features_gpu, boxes_gpu = points.cuda(), features.cuda(), boxes.cuda()
+    output = torch.zeros_like(expected, device="cuda")
+    empty_flags = torch.zeros_like(flags, device="cuda")
+    assignments = torch.empty((1, points.shape[1], boxes.shape[1]), device="cuda", dtype=torch.int)
+    indices = torch.empty((1, boxes.shape[1], 6), device="cuda", dtype=torch.int)
+    native.forward(points_gpu.contiguous(), boxes_gpu.contiguous(), features_gpu.contiguous(),
+                   output, empty_flags, assignments, indices)
+    close(output, expected, gpu=True)
+    close(empty_flags, flags, gpu=True)
 
 
 def check_additional_paths(h):
     from kernel_loader import roipoint_pool3d_ext
+    check_face_controls(h, roipoint_pool3d_ext)
     for i, (B, N, C, M, S) in enumerate(h.TEST_SHAPES):
         torch.manual_seed(42 + i)
         points, features, boxes = h.generate_test_data(B, N, C, M, S, device="cuda")

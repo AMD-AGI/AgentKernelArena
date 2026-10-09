@@ -185,6 +185,20 @@ def _write_performance_report(results: list[dict]) -> None:
 # Shapes are DECODE-flavoured: exactly one query token per sequence, GQA, large
 # context, so the multi-partition decode reduce path of pa_kernels.cuh is hit.
 # ---------------------------------------------------------------------------
+def _context_lengths(ctx_lens, num_seqs, context_lengths=None):
+    if type(ctx_lens) is not int or ctx_lens <= 0 or type(num_seqs) is not int or num_seqs <= 0:
+        raise ValueError("Context maximum and sequence count must be positive integers")
+    if context_lengths is None:
+        return [ctx_lens] * num_seqs
+    if not isinstance(context_lengths, (list, tuple)) or len(context_lengths) != num_seqs:
+        raise ValueError("One context length is required for every sequence")
+    if any(type(value) is not int or value <= 0 or value > ctx_lens for value in context_lengths):
+        raise ValueError("Sequence lengths must be positive integers within ctx_lens")
+    if max(context_lengths) != ctx_lens:
+        raise ValueError("ctx_lens must equal the longest sequence")
+    return list(context_lengths)
+
+
 def _make_case(
     *,
     ctx_lens: int,
@@ -193,11 +207,14 @@ def _make_case(
     head_size: int,
     block_size: int,
     dtype_str: str,
+    context_lengths: list[int] | tuple[int, ...] | None = None,
 ):
     import torch
     from einops import rearrange
     from csrc.cpp_itfs.pa import pa_ragged_test as T
 
+    explicit_lengths = context_lengths is not None
+    context_lengths = _context_lengths(ctx_lens, num_seqs, context_lengths)
     dtype = {"float16": torch.float16, "bfloat16": torch.bfloat16}[dtype_str]
     device = "cuda:0"
     torch.manual_seed(0)
@@ -226,7 +243,7 @@ def _make_case(
         "(b nblocks) -> b nblocks",
         b=num_seqs,
     )
-    seq_lens = torch.full(size=(num_seqs,), fill_value=ctx_lens, dtype=torch.int)
+    seq_lens = torch.tensor(context_lengths, dtype=torch.int)
 
     def get_num_blocks(cl):
         return (cl + block_size - 1) // block_size
@@ -234,7 +251,6 @@ def _make_case(
     def get_last_page_len(cl):
         return cl % block_size if cl % block_size > 0 else block_size
 
-    context_lengths = [ctx_lens] * num_seqs
     num_blocks_list = [get_num_blocks(c) for c in context_lengths]
     last_page_lens = [get_last_page_len(c) for c in context_lengths]
     kv_indptr = torch.tensor([0] + num_blocks_list).cumsum(dim=0, dtype=torch.int)
@@ -272,6 +288,7 @@ def _make_case(
             "head_size": head_size,
             "block_size": block_size,
             "dtype": dtype_str,
+            **({"context_lengths": context_lengths} if explicit_lengths else {}),
         },
         "query": query,
         "key_cache_new": key_cache_new.contiguous(),
@@ -297,8 +314,8 @@ def _run_aiter(case: dict):
     # Call the raw op directly. pa_ragged_test.run_aiter is a @perftest-decorated
     # BENCHMARK wrapper (warmup + 101 profiled iters + torch.cuda.synchronize +
     # empty_cache + trace post-processing); timing it measured the harness, not the
-    # kernel (~100x inflated) and was not CUDA-graph capturable. The underlying op
-    # is a single launch and is capturable.
+    # operator (~100x inflated) and was not CUDA-graph capturable. The raw op is
+    # capturable; decode may dispatch both partition and reduce kernels.
     from csrc.cpp_itfs.pa.pa_ragged import paged_attention_ragged
 
     p = case["params"]
@@ -361,6 +378,14 @@ PERF_CASES = [
     ("pa_decode_ctx8192_s128", dict(ctx_lens=8192, num_seqs=128, num_heads=(16, 2), head_size=128, block_size=16, dtype_str="bfloat16")),
 ]
 
+# Correctness-only decode controls. Preserve both scored performance cases while
+# exercising partial final pages and partitions at the same long-context regime.
+EXTRA_CASES = [
+    dict(ctx_lens=1025, num_seqs=4, num_heads=(8, 1), head_size=128,
+         block_size=16, dtype_str="bfloat16",
+         context_lengths=[1025, 1024, 1009, 1008]),
+]
+
 
 def run_compile() -> None:
     case = _make_case(**CASES[0])
@@ -375,13 +400,42 @@ def run_correctness() -> None:
     # kernel that is correct on the small shapes but wrong -- or specializing
     # invalid behavior -- on the large scored shapes would still earn a perf score.
     scored_cfgs = [cfg for _id, cfg in PERF_CASES]
-    for idx, cfg in enumerate([*CASES, *scored_cfgs]):
+    for idx, cfg in enumerate([*CASES, *scored_cfgs, *EXTRA_CASES]):
         case = _make_case(**cfg)
         out = _run_aiter(case)
         ref = _run_torch(case)
         torch.testing.assert_close(out, ref, atol=2e-2, rtol=2e-2)
         print(f"Correctness case {idx} {cfg}: PASS")
 
+
+
+def _snapshot_readonly_inputs(case: dict) -> dict:
+    import torch
+
+    return {name: (value.detach().clone(), value.shape, value.stride(), value.dtype, value.device)
+            for name, value in case.items() if isinstance(value, torch.Tensor)
+            and name not in ("output", "workspace_buffer")}
+
+
+def _check_readonly_inputs(case: dict, saved: dict) -> None:
+    import torch
+
+    for name, (original, shape, stride, dtype, device) in saved.items():
+        current = case[name]
+        if (current.shape != shape or current.stride() != stride or current.dtype != dtype
+                or current.device != device or not torch.equal(current, original)):
+            raise AssertionError(f"Paged attention modified read-only {name}")
+
+
+def _restore_readonly_inputs(case: dict, saved: dict) -> None:
+    for name, (original, *_rest) in saved.items():
+        case[name].copy_(original)
+
+
+def _prepare_timed_sample(case: dict) -> None:
+    """Invalidate reused output and scratch outside the device timing interval."""
+    case["output"].fill_(float("nan"))
+    case["workspace_buffer"].fill_(0xA5)
 
 
 def _assert_timed_outputs(case: dict, timed) -> None:
@@ -398,22 +452,51 @@ def _assert_timed_outputs(case: dict, timed) -> None:
         raise RuntimeError("Benchmark did not expose its captured output")
     data = case['query']
     data.copy_((-data.float()).to(data.dtype))
+    changed_inputs = _snapshot_readonly_inputs(case)
+    expected = _run_torch(case)
+    _check_readonly_inputs(case, changed_inputs)
     timed.outputs.fill_(float("nan"))
     got = timed.rerun()
-    expected = _run_torch(case)
+    _check_readonly_inputs(case, changed_inputs)
     torch.testing.assert_close(got, expected, atol=2e-2, rtol=2e-2)
 
 
 def run_performance() -> None:
+    import torch
+
     results: list[dict] = []
     for test_case_id, cfg in PERF_CASES:
         case = _make_case(**cfg)
-        _run_aiter(case)  # warm build
-        timed = _TimedRun()
-        time_ms, bench_meta = _benchmark_cuda_graph_or_events(
-            lambda: _run_aiter(case), timed_run=timed
-        )
-        _assert_timed_outputs(case, timed)
+        original_inputs = _snapshot_readonly_inputs(case)
+        try:
+            _run_aiter(case)  # warm build
+            _check_readonly_inputs(case, original_inputs)
+            expected = _run_torch(case)
+            _check_readonly_inputs(case, original_inputs)
+            timed = _TimedRun()
+            checked_samples = [0]
+
+            def check_sample(actual):
+                _check_readonly_inputs(case, original_inputs)
+                torch.testing.assert_close(actual, expected, atol=2e-2, rtol=2e-2)
+                checked_samples[0] += 1
+
+            timed.after_sample = check_sample
+            time_ms, bench_meta = _benchmark_cuda_graph_or_events(
+                lambda: _run_aiter(case), timed_run=timed,
+                prepare_fn=lambda: _prepare_timed_sample(case), max_graph_repeats=1,
+            )
+            if (not timed.bound or checked_samples[0] != 100 or
+                    bench_meta.get("benchmark_effective_repeats") != 1 or
+                    bench_meta.get("benchmark_method") != "cuda_graph"):
+                raise RuntimeError("Scored graph did not expose 100 single-call measured outputs")
+            _check_readonly_inputs(case, original_inputs)
+            torch.testing.assert_close(timed.outputs, expected, atol=2e-2, rtol=2e-2)
+            _assert_timed_outputs(case, timed)
+            bench_meta["benchmark_measured_samples_checked"] = checked_samples[0]
+            bench_meta["benchmark_replay_checked"] = True
+        finally:
+            _restore_readonly_inputs(case, original_inputs)
         p = case["params"]
         entry = {
             "test_case_id": test_case_id,

@@ -117,22 +117,40 @@ def test_hipblaslt_baseline_and_candidate_share_predetermined_event_policy():
 
 
 def test_implemented_gemm_and_hipblaslt_reference_share_event_policy():
-    tasks = ["gemm_a8w8_bpreshuffle_kernel", "hgemm_kernel"]
-    for task in tasks:
+    helpers = {
+        "gemm_a8w8_bpreshuffle_kernel": "_timed_bpreshuffle_case",
+        "hgemm_kernel": "_timed_gemm_case",
+    }
+    for task, helper in helpers.items():
         harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
         source = harness.read_text()
         tree = ast.parse(source)
-        # Both the legacy entrypoint and the v2 result adapter preserve the
-        # predetermined Event policy for the candidate/reference timing pair.
+        # Both entrypoints delegate to the same candidate/reference timing pair.
+        # Follow that helper so moving the calls does not hide a policy change.
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         for name in ("run_benchmark", "arena_benchmark"):
             calls = [node for node in ast.walk(functions[name]) if isinstance(node, ast.Call)
                      and getattr(node.func, "id", "") == "benchmark_cuda_graph_or_events"]
-            assert len(calls) == 2, (harness, name)
-            for call in calls:
-                use_graph = next(k.value for k in call.keywords if k.arg == "use_cuda_graph")
-                assert isinstance(use_graph, ast.Constant) and use_graph.value is False
-        assert "capture_unsafe_hipblaslt_reference" in source, harness
+            assert calls == [], (harness, name)
+            delegates = [node for node in ast.walk(functions[name]) if isinstance(node, ast.Call)
+                         and getattr(node.func, "id", "") == helper]
+            assert len(delegates) == 1, (harness, name)
+        calls = [node for node in ast.walk(functions[helper]) if isinstance(node, ast.Call)
+                 and getattr(node.func, "id", "") == "benchmark_cuda_graph_or_events"]
+        assert len(calls) == 2, (harness, helper)
+        for call in calls:
+            keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+            assert isinstance(keywords["use_cuda_graph"], ast.Constant)
+            assert keywords["use_cuda_graph"].value is False
+            assert isinstance(keywords["fallback_reason"], ast.Name)
+            assert keywords["fallback_reason"].id == "reason"
+        reasons = [node.value for node in ast.walk(functions[helper])
+                   if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "reason"
+                           for target in node.targets)]
+        assert len(reasons) == 1
+        assert isinstance(reasons[0], ast.Constant)
+        assert reasons[0].value == "capture_unsafe_hipblaslt_reference"
 
 
 def test_torch2flydsl_gfx950_configs_use_platform_support():

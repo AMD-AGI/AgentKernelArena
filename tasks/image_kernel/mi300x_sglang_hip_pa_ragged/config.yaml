@@ -20,6 +20,7 @@ workspace:
     - aiter/jit/flydsl_cache
   setup:
   - - python3
+    - -B
     - scripts/setup_task.py
 evaluation:
   runner:

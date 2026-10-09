@@ -35,9 +35,13 @@ def known_answer(actual, expected):
 
 def self_test(h):
     boxes = torch.tensor([[[0., 0., 0., 2., 2., 2., 0.]]])
-    points = torch.tensor([[[0., 0., 1.], [2., 0., 1.], [0., 0., -1.]]])
-    known_answer(h.cpu_points_in_boxes_part(points, boxes), torch.tensor([[0, -1, -1]], dtype=torch.int32))
-    known_answer(h.cpu_points_in_boxes_all(points, boxes), torch.tensor([[[1], [0], [0]]], dtype=torch.int32))
+    points = torch.tensor([[[0., 0., 1.], [1., 0., 1.], [-1., 0., 1.],
+                            [0., 1., 1.], [0., 0., 0.], [0., 0., 2.],
+                            [0., 0., -1.]]])
+    known_answer(h.cpu_points_in_boxes_part(points, boxes),
+                 torch.tensor([[0, -1, -1, -1, 0, 0, -1]], dtype=torch.int32))
+    known_answer(h.cpu_points_in_boxes_all(points, boxes),
+                 torch.tensor([[[1], [0], [0], [0], [1], [1], [0]]], dtype=torch.int32))
     boxes = torch.tensor([[[0., 0., 0., 4., 1., 2., torch.pi / 2]]])
     points = torch.tensor([[[0., 1.5, 1.], [1.5, 0., 1.]]])
     known_answer(h.cpu_points_in_boxes_all(points, boxes), torch.tensor([[[1], [0]]], dtype=torch.int32))
@@ -45,6 +49,14 @@ def self_test(h):
 
 def check_additional_paths(h):
     from points_in_boxes_wrapper import points_in_boxes_part, points_in_boxes_all
+    boxes = torch.tensor([[[0., 0., 0., 2., 2., 2., 0.]]], device="cuda")
+    points = torch.tensor([[[0., 0., 1.], [1., 0., 1.], [-1., 0., 1.],
+                            [0., 1., 1.], [0., 0., 0.], [0., 0., 2.],
+                            [0., 0., -1.]]], device="cuda")
+    close(points_in_boxes_part(points, boxes),
+          torch.tensor([[0, -1, -1, -1, 0, 0, -1]], dtype=torch.int32), gpu=True)
+    close(points_in_boxes_all(points, boxes),
+          torch.tensor([[[1], [0], [0], [0], [1], [1], [0]]], dtype=torch.int32), gpu=True)
     for i, (B, T, M) in enumerate(h.TEST_SHAPES):
         torch.manual_seed(42 + i)
         boxes, points = h.generate_test_data(B, T, M, device="cuda")

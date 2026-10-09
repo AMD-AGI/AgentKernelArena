@@ -17,16 +17,30 @@ PyTorch module `pytorch_code_module/py_l2n73_Conv2d_BatchNorm_Scaling.py`.
 An empty target is allowed only during initial task validation; every final
 candidate action must compile/load the actual HIP implementation. It never uses
 a baseline fallback. Baseline correctness compares against the protected PyTorch
-module; the PyTorch baseline is cross-checked against the independent functional form.
+module; the PyTorch baseline is cross-checked against the functional form. Those
+two forms share PyTorch convolution and BatchNorm primitives, so correctness also
+checks both against an unscored, independently calculated known answer. That
+control uses the same 8 input channels, 64 output channels, 3×3 kernel and
+scale, with two spatial taps per output channel, nonidentity BatchNorm state,
+and a small 2×8×5×6 input. It computes expected values by scalar indexing and
+arithmetic without invoking either PyTorch convolution or BatchNorm primitive.
+The HIP candidate still uses all five original scored correctness geometries.
 
 All **5 cases** in `workload.json` are mandatory. The manifest was enumerated
 from the unchanged module `get_inputs()`; it is not inferred from candidate output.
 The original correctness tolerance and RNG schedule remain in
 `eval_tools/correctness_check.py` (model seed 0; comparison seed 1337 + case index).
+Each declared correctness geometry also gets an untimed control with nonidentity
+BatchNorm affine parameters and running statistics. Correctness also varies
+the live convolution weight and bias independently at every declared geometry;
+these controls run outside performance measurement. The same reference and
+selected forward must agree at the original tolerance, and the original model
+state is restored afterward. The five scored inputs and default model state remain.
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing
-policy is shared by both roles; candidate changes cannot select a weaker policy.
+policy is shared by both roles; returned Event timing is rejected when the
+declared baseline requires graph timing, including after native extension load.
 
 Use the argv prefix in `config.yaml` followed by one of:
 
@@ -50,6 +64,12 @@ that measured unit against the protected functional reference. All original
 cases, input generation, seeds, numerical tolerances, 10 warmups and 100 samples
 are preserved. Models run in the original eval mode: module dropout is disabled
 and batch-normalization uses frozen statistics. Checks are outside samples.
+
+For graph-timed cases without an input-reset callback, each captured sample now
+contains one operator call (`max_graph_repeats=1`). The earlier capture cap
+allowed more calls per sample, so historical latency may differ and needs a
+same-source rerun before comparison. Event-timed cases are unaffected; the
+declared inputs, 10 warmups, 100 samples, and numerical gates remain the same.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated
