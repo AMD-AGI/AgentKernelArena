@@ -61,17 +61,12 @@ re-invokes the same eager callable and is not captured graph replay. Graph timin
 validates the actual captured replay. Original shapes, seeds, tolerance, warmup,
 sample counts and Graph/Event selection remain unchanged.
 
-Runtime qualification: the initial implementation uses the legacy FlyDSL
-`expr.buffer_ops` and `expr.vector` APIs. It passed the full task validator on
-MI355X with the repository's pinned SGLang 0.5.14 / FlyDSL 0.2.2 runtime
-(2026-09-15, job 139392 on an available-memory MI355X allocation; all five
-correctness and performance cases, including
-measured Event outputs and eager re-invocation). The tested SGLang 0.5.19 /
-FlyDSL 0.3.2 runtime removes these APIs and fails before kernel execution.
-Select the qualified runtime through the run-level Docker image setting;
-an unchanged source under 0.5.19 is not qualified. Candidate and baseline must
-use the same runtime and timing method. This initial-task validation does not
-certify a subsequently modified candidate.
+The initial implementation uses the legacy FlyDSL buffer/vector interface.
+The bundled compatibility package supplies the removed helpers on current
+FlyDSL runtimes; see its attribution below. Select the runtime through the
+run-level Docker image setting, and keep baseline and candidate on the same
+image and timing method. Qualification binds a specific task source and image
+and does not certify a subsequently modified candidate.
 
 
 Only the entrypoints listed in config.yaml are required interfaces. The primary
@@ -90,3 +85,18 @@ also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
 and the task's bundled `kernels/` helpers remain available under the existing
 numerical and timing contract. Baseline checks retain their declared initial
 backend; the final candidate must use FlyDSL.
+
+The task-local `flydsl_compat` helpers preserve the legacy buffer/vector API
+when the installed FlyDSL no longer supplies it. See `flydsl_compat/SOURCE.md`
+for the pinned upstream source and retained license. Workloads, numerical gates,
+and timing parameters are unchanged.
+
+The performance action exposes the existing measured-output verification and
+Event metadata as `timed_output_checked` and `device_timing` for the validator.
+These fields add no timed work and preserve the protected benchmark settings.
+
+Candidate imports must not mutate shared dependency objects such as `torch.matmul`,
+including through import aliases. The task rejects known module/frame introspection
+routes before importing candidate code; the local compiled-kernel `_cf` cache lookup
+remains allowed. These checks supplement immutable harness files and GPU output
+checks; they are not a security sandbox for arbitrary Python.

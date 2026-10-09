@@ -4,9 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNNER="$ROOT/src/scripts/docker_benchmark.sh"
 cd "$ROOT"
-PINNED_GFX950_IMAGE="lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
-PINNED_GFX950_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78"
+PINNED_GFX950_IMAGE="lmsysorg/sglang:v0.5.20-rocm10-mi35x"
+PINNED_GFX950_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
 export PINNED_GFX950_IMMUTABLE_IMAGE
+DEFAULT_GFX950_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
 OLD_GFX950_IMAGE="lmsysorg/sglang:v0.5.12-rocm720-mi35x"
 REAL_PYTHON3="$(command -v python3)"
 export REAL_PYTHON3
@@ -180,6 +181,15 @@ fi
 # and the known manifest reference resolve to the same immutable local config ID,
 # and launch that ID rather than a mutable tag. An alias to identical content is
 # valid; a retagged image is rejected.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
+assert_has "AKA_ROCM_SDK_CORE_RUNTIME=1" "${args[@]}"
+for profiler_arch in gfx942 gfx1201; do
+    mapfile -t args < <(run_shell_args AKA_GPU_ARCH="$profiler_arch")
+    assert_not_has "AKA_ROCM_SDK_CORE_RUNTIME=1" "${args[@]}"
+done
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE=custom/image:tag)
+assert_not_has "AKA_ROCM_SDK_CORE_RUNTIME=1" "${args[@]}"
+
 mapfile -t verified_image < <(
     FAKE_SELECTED_IMAGE_ID=sha256:verified-config \
     FAKE_PINNED_IMAGE_ID=sha256:verified-config \
@@ -200,11 +210,26 @@ mapfile -t verified_alias < <(
 [[ "${verified_alias[0]}" == "sha256:verified-config" ]] \
     || fail "byte-identical scoring image alias was not frozen by ID"
 
+mapfile -t alias_args < <(
+    AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE=example.invalid/scoring:alias \
+    bash -c 'source "$1" smoke >/dev/null; verify_eval_tool_scoring_image; build_docker_args 0; printf "%s\n" "${docker_args[@]}"' _ "$RUNNER"
+)
+assert_has "AKA_ROCM_SDK_CORE_RUNTIME=1" "${alias_args[@]}"
+
 if FAKE_SELECTED_IMAGE_ID=sha256:retagged \
     FAKE_PINNED_IMAGE_ID=sha256:verified-config \
     bash "$RUNNER" _verify_eval_tool_scoring_image \
         gfx950 "$PINNED_GFX950_IMAGE" >/dev/null 2>&1; then
     fail "retagged scoring image unexpectedly passed immutable verification"
+fi
+
+# A rollback runtime needs its matching historical sidecars; it must not be
+# accepted by the ROCm 10 tool profile.
+if FAKE_SELECTED_IMAGE_ID=sha256:rocm72 \
+    FAKE_PINNED_IMAGE_ID=sha256:rocm10 \
+    bash "$RUNNER" _verify_eval_tool_scoring_image gfx950 \
+        lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705 >/dev/null 2>&1; then
+    fail "ROCm 7.2 scoring runtime unexpectedly passed ROCm 10 tool verification"
 fi
 
 # Artifact bind sources must be physical repository directories. Reject both a
@@ -257,7 +282,8 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 # The gfx950 default uses the immutable manifest, not the movable dated tag,
 # and retains the verified image's writable caches.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
-assert_has "$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+assert_has "$DEFAULT_GFX950_IMAGE" "${args[@]}"
+assert_has "AKA_SCORING_IMAGE_REFERENCE=$DEFAULT_GFX950_IMAGE" "${args[@]}"
 assert_not_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
@@ -272,8 +298,16 @@ mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CACHE_SUFFIX=worker/3
 assert_cache_args_present "-worker_3" "${args[@]}"
 
 # Explicitly selecting the same verified tag has the same behavior.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_SCORING_IMAGE_REFERENCE=stale-host-image)
+assert_has "AKA_SCORING_IMAGE_REFERENCE=$DEFAULT_GFX950_IMAGE" "${args[@]}"
+assert_not_has "AKA_SCORING_IMAGE_REFERENCE=stale-host-image" "${args[@]}"
+
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE=lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705)
+assert_has "AKA_SCORING_IMAGE_REFERENCE=lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705" "${args[@]}"
+
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
+assert_has "AKA_SCORING_IMAGE_REFERENCE=$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
 
 # The qualification image has the same non-root cache requirement. Test both
@@ -305,7 +339,7 @@ for mode in check-agents preflight run parallel-run; do
     }
     mapfile -t args < "$TEST_HOME/deepseek-$mode.args"
     assert_has "$DEEPSEEK_IMAGE" "${args[@]}"
-    assert_not_has "$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+    assert_not_has "lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78" "${args[@]}"
     if [[ "$mode" != parallel-run ]]; then
         assert_cache_args_present "" "${args[@]}"
     else
@@ -964,8 +998,24 @@ combined_pythonpath="$(env \
     AKA_GEAK_SDK_PATH=/runtime/geak-sdk \
     PYTHONPATH=/runtime/image-aiter \
     bash -c "$bootstrap_script" _ python3 -c 'import os; print(os.environ["PYTHONPATH"])')"
-[[ "$combined_pythonpath" == /runtime/geak-sdk:/runtime/image-aiter ]] \
+python_abi="$("$REAL_PYTHON3" -c 'import sys; print(sys.implementation.cache_tag)')"
+[[ "$combined_pythonpath" == "/runtime/geak-sdk/$python_abi:/runtime/image-aiter" ]] \
     || fail "GEAK bootstrap lost the image's Python import path"
+
+# A legacy unqualified cache may contain binary wheels for the previous image.
+# Only the current interpreter's cache can be imported after an upgrade.
+sdk_cache="$TEST_HOME/geak-sdk-cache"
+mkdir -p "$sdk_cache/$python_abi" "$sdk_cache/cpython-legacy"
+printf 'value = "legacy"\n' > "$sdk_cache/aka_sdk_cache_probe.py"
+printf 'value = "current"\n' > "$sdk_cache/$python_abi/aka_sdk_cache_probe.py"
+printf 'value = "other-abi"\n' > "$sdk_cache/cpython-legacy/aka_sdk_cache_probe.py"
+sdk_probe="$(env \
+    AGENT_KERNEL_ARENA_WORKDIR="$ROOT" \
+    AGENT_KERNEL_ARENA_ISOLATED_HOME=0 \
+    AKA_GEAK_SDK_PATH="$sdk_cache" \
+    PYTHONPATH=/runtime/image-aiter \
+    bash -c "$bootstrap_script" _ "$REAL_PYTHON3" -c 'import aka_sdk_cache_probe; print(aka_sdk_cache_probe.value)')"
+[[ "$sdk_probe" == current ]] || fail "GEAK imported an SDK cache for a different Python ABI"
 
 # The explicit setup command has no run config or required agent CLI, but still
 # needs the GEAK-only dependency path and workflow mount for its container check.
@@ -1193,7 +1243,7 @@ assert_has "resume" "${args[@]}"
 assert_has "--run-id" "${args[@]}"
 assert_has "run" "${args[@]}"
 assert_has "/sikl-config.yaml" "${args[@]}"
-assert_has "AGENT_KERNEL_ARENA_IMAGE=$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_IMAGE=$DEFAULT_GFX950_IMAGE" "${args[@]}"
 assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
 
 echo "PASS: docker_benchmark runtime, agent-selection, and eval-tool isolation tests"

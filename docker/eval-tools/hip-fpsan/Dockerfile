@@ -1,10 +1,10 @@
-ARG BASE_IMAGE=lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
+ARG BASE_IMAGE=lmsysorg/sglang:v0.5.20-rocm10-mi35x@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
 FROM ${BASE_IMAGE}
 
 ARG HIP_FPSAN_COMMIT=0ac9be8a1539a473ba21dfa686564c3be33c890e
 
 LABEL org.opencontainers.image.title="AgentKernelArena HIP-FpSan tool runtime" \
-      org.opencontainers.image.base.digest="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78" \
+      org.opencontainers.image.base.digest="sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69" \
       org.opencontainers.image.revision="0ac9be8a1539a473ba21dfa686564c3be33c890e"
 
 COPY src/eval_tools/probes/hip_fpsan_probe.hip /tmp/hip_fpsan_probe.hip

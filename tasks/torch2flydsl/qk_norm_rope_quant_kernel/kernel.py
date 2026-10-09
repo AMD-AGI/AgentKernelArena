@@ -35,11 +35,12 @@ import torch
 
 import flydsl.compiler as flyc
 import flydsl.expr as fx
-from flydsl.expr import arith, buffer_ops, const_expr, ptrtoint, range_constexpr, vector
+from flydsl.expr import arith, const_expr, ptrtoint, range_constexpr
+from flydsl_compat import buffer_ops, vector
 from flydsl.expr import math as fmath
 from flydsl.expr.arith import ArithValue, CmpFPredicate
 from flydsl.expr.typing import Int32, Stream, T
-from flydsl.expr.vector import ReductionOp
+ReductionOp = vector.ReductionOp
 from flydsl._mlir import ir
 from flydsl._mlir.dialects import fly, llvm, rocdl
 from flydsl.compiler.protocol import extract_to_ir_values

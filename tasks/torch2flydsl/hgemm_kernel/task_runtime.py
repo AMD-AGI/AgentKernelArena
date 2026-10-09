@@ -117,7 +117,7 @@ def check_dependencies(paths, final_language=True):
     calls in the declared function; it never exposes an AITER module object.
     Initial Triton / provided baseline evaluation keeps its original backend.
     """
-    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts"}
+    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts", "inspect", "gc", "builtins", "importlib"}
     external = {"triton", "cupy", "numba", "aiter", "ctypes", "subprocess"}
     loaders = {"eval", "exec", "__import__", "builtins.eval", "builtins.exec", "builtins.__import__",
                "importlib.import_module", "importlib.util.spec_from_file_location"}
@@ -181,8 +181,57 @@ def check_dependencies(paths, final_language=True):
             if isinstance(node, ast.Attribute): return dotted(node.value) + "." + node.attr
             return ""
 
+        # Track simple aliases of imported objects before candidate import, so
+        # t = torch cannot turn a module mutation into an apparently local write.
+        for _ in range(len(list(ast.walk(tree)))):
+            changed = False
+            for binding in ast.walk(tree):
+                if not isinstance(binding, (ast.Assign, ast.AnnAssign)):
+                    continue
+                value = binding.value
+                name = dotted(value)
+                if not name or name.split(".")[0] not in {v.split(".")[0] for v in aliases.values()}:
+                    continue
+                targets = binding.targets if isinstance(binding, ast.Assign) else [binding.target]
+                for target in targets:
+                    if isinstance(target, ast.Name) and target.id not in aliases:
+                        aliases[target.id] = name
+                        changed = True
+            if not changed:
+                break
+        imported_roots = {name.split(".")[0] for name in aliases.values()}
         for node in ast.walk(tree):
             name = dotted(node)
+            if name in {"sys.modules", "sys._getframe", "sys.settrace", "sys.setprofile"}:
+                raise ValueError(f"Protected runtime state in candidate: {name}")
+            if isinstance(node, ast.Attribute) and node.attr in {
+                "__dict__", "__globals__", "__builtins__", "__code__", "__closure__",
+                "__subclasses__", "__getattribute__", "f_globals", "f_locals", "f_back",
+            }:
+                raise ValueError(f"Runtime introspection is not allowed: {node.attr}")
+            if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                base = node.value
+                while isinstance(base, (ast.Attribute, ast.Subscript)):
+                    base = base.value
+                if dotted(base).split(".")[0] in imported_roots:
+                    raise ValueError(f"Protected dependency mutation in candidate: {name}")
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                if node.id in {"globals", "locals", "vars", "setattr", "delattr"}:
+                    raise ValueError(f"Dynamic runtime introspection is not allowed: {node.id}")
+                if node.id == "getattr" and not (
+                    isinstance(parents.get(node), ast.Call) and parents[node].func is node
+                ):
+                    raise ValueError("Dynamic runtime introspection alias is not allowed: getattr")
+            if isinstance(node, ast.Call):
+                called = dotted(node.func)
+                if called in {"globals", "locals", "vars", "setattr", "delattr"}:
+                    raise ValueError(f"Dynamic runtime introspection is not allowed: {called}")
+                if called == "getattr" and not (
+                    len(node.args) in (2, 3) and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "_cf"
+                    and dotted(node.args[0]).split(".")[0] not in imported_roots
+                ):
+                    raise ValueError("Dynamic runtime introspection is not allowed: getattr")
             if final_language and isinstance(getattr(node, "ctx", None), ast.Load):
                 if name in loaders:
                     raise ValueError(f"Dynamic implementation loading is not allowed: {name}")

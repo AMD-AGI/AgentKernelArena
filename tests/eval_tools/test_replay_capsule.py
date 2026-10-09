@@ -282,7 +282,8 @@ def test_flydsl_dynamic_layout_matches_no_padding_contract():
     assert len(packed) == 16  # i32 + i32 + i64, with no native padding
 
 
-def test_flydsl_static_launch_parser_rejects_multi_dispatch():
+@pytest.mark.parametrize("async_dependency", ["", "async [%stream] "])
+def test_flydsl_static_launch_parser_rejects_multi_dispatch(async_dependency):
     ir = '''
       %one = arith.constant 1 : index
       %threads = arith.constant 128 : index
@@ -290,9 +291,12 @@ def test_flydsl_static_launch_parser_rejects_multi_dispatch():
       gpu.launch_func @kernels::@race blocks in (%one, %one, %one)
           threads in (%threads, %one, %one) dynamic_shared_memory_size %smem
     '''
+    ir = ir.replace("gpu.launch_func @", f"gpu.launch_func {async_dependency}@")
     parsed = parse_flydsl_static_launch(ir)
     assert parsed.kernel_name == "race"
     assert parsed.launch.block == (128, 1, 1)
     assert parsed.launch.dynamic_smem_bytes == 512
     with pytest.raises(CapsuleValidationError, match="requires one"):
         parse_flydsl_static_launch(ir + ir)
+    with pytest.raises(CapsuleValidationError, match="requires one"):
+        parse_flydsl_static_launch(ir + "\n gpu.launch_func unknown_syntax")

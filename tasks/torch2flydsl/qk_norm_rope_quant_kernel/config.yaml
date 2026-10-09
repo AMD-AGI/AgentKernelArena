@@ -1,6 +1,6 @@
 schema_version: 2
-description: Implement or optimize qk_norm_rope_quant in FlyDSL, preserving all task inputs, outputs and
-  numerical gates.
+description: Implement or optimize the six BF16 quant=False RMSNorm + RoPE workloads in FlyDSL,
+  preserving Q/KV outputs, None scale slots and numerical gates. Optional quant=True FP8 output is not evaluated.
 instructions:
 - README.md
 candidate:

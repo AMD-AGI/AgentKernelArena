@@ -9,9 +9,8 @@ GFX950_V0519_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913"
 GFX950_V0519_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93"
 GFX950_V0520_DOCKER_IMAGE="lmsysorg/sglang:v0.5.20-rocm10-mi35x"
 GFX950_V0520_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
-# Keep qualification and scoring on the verified bytes, even if the dated tag
-# moves. New runtime candidates remain explicit overrides until qualified.
-DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0514_IMMUTABLE_IMAGE}"
+# Pin the MI355X runtime; retain the older manifest for explicit rollback.
+DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0520_IMMUTABLE_IMAGE}"
 # Built on first use when absent; its Dockerfile pins the base.
 DEFAULT_DOCKER_IMAGE_GFX1201="${AKA_DOCKER_IMAGE_GFX1201:-agent-kernel-arena:rdna4-rocm10-v1}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
@@ -42,6 +41,7 @@ EVAL_TOOL_FRAMEWORK_CONTAINER_ROOT="/opt/aka-eval-tools"
 EVAL_TOOL_SCRATCH_CONTAINER_DIR="/work"
 EVAL_TOOL_ARTIFACT_CONTAINER_DIR="/artifacts"
 EVAL_TOOL_RUNTIME_DIR=""
+EVAL_TOOL_SCORING_SDK_RUNTIME=0
 EVAL_TOOL_SOCKET_HOST_DIR=""
 EVAL_TOOL_ARTIFACT_HOST_ROOT=""
 EVAL_TOOL_ARTIFACT_SCORING_ROOT=""
@@ -156,7 +156,10 @@ uses_gfx950_aiter_cache_overrides() {
     [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] || return 1
     # Evaluation-tool setup may replace SELECTED_IMAGE with its verified local
     # ID. That verifier checks the pinned scoring bytes, including custom aliases.
-    local image_reference="${AKA_SCORING_IMAGE_REFERENCE:-$SELECTED_IMAGE}"
+    local image_reference="$SELECTED_IMAGE"
+    if [[ -n "${AKA_EVAL_TOOL_SOCKET_HOST_DIR:-}" ]]; then
+        image_reference="${AKA_SCORING_IMAGE_REFERENCE:-$SELECTED_IMAGE}"
+    fi
     [[ "$image_reference" == "$GFX950_V0514_DOCKER_IMAGE" \
         || "$image_reference" == "$GFX950_V0514_IMMUTABLE_IMAGE" \
         || "$image_reference" == "$GFX950_V0519_DOCKER_IMAGE" \
@@ -707,7 +710,7 @@ eval_tool_image() {
     if [[ -n "$override" ]]; then
         printf '%s\n' "$override"
     else
-        printf 'agent-kernel-arena/eval-tool-%s:gfx950\n' "${tool//_/-}"
+        printf 'agent-kernel-arena/eval-tool-%s:gfx950-rocm10\n' "${tool//_/-}"
     fi
 }
 
@@ -716,15 +719,16 @@ verify_eval_tool_scoring_image() {
     [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] \
         || die "Evaluation-tool sidecars are verified only for gfx950"
     selected_id="$(docker image inspect --format '{{.Id}}' "$SELECTED_IMAGE" 2>/dev/null || true)"
-    pinned_id="$(docker image inspect --format '{{.Id}}' "$GFX950_V0514_IMMUTABLE_IMAGE" 2>/dev/null || true)"
+    pinned_id="$(docker image inspect --format '{{.Id}}' "$GFX950_V0520_IMMUTABLE_IMAGE" 2>/dev/null || true)"
     [[ "$selected_id" == sha256:* ]] \
         || die "Could not resolve immutable scoring image ID for $SELECTED_IMAGE"
     [[ "$pinned_id" == sha256:* ]] \
-        || die "Pinned evaluation scoring image is unavailable: $GFX950_V0514_IMMUTABLE_IMAGE"
+        || die "Pinned evaluation scoring image is unavailable: $GFX950_V0520_IMMUTABLE_IMAGE"
     [[ "$selected_id" == "$pinned_id" ]] \
-        || die "Evaluation tools are unverified with scoring image $SELECTED_IMAGE ($selected_id); expected $GFX950_V0514_DOCKER_IMAGE ($pinned_id)"
+        || die "Evaluation tools are unverified with scoring image $SELECTED_IMAGE ($selected_id); expected $GFX950_V0520_DOCKER_IMAGE ($pinned_id)"
     export AKA_SCORING_IMAGE_RUNTIME_REF="$selected_id"
     export AKA_SCORING_IMAGE_REFERENCE="$SELECTED_IMAGE"
+    EVAL_TOOL_SCORING_SDK_RUNTIME=1
     # Launch by immutable local config ID after verification.  This closes the
     # gap in which a mutable tag could move between inspection and docker run.
     SELECTED_IMAGE="$selected_id"
@@ -1057,6 +1061,10 @@ build_docker_args() {
     # Parallel runs finish their preflight before starting any workers, so the
     # first container builds a missing default and subsequent containers reuse it.
     ensure_runtime_image
+    local scoring_image_reference="$SELECTED_IMAGE"
+    if [[ -n "${AKA_EVAL_TOOL_SOCKET_HOST_DIR:-}" ]]; then
+        scoring_image_reference="${AKA_SCORING_IMAGE_REFERENCE:?missing verified scoring image reference}"
+    fi
 
     docker_args=(run --rm --entrypoint bash)
     unset _MOUNTED_TARGETS
@@ -1090,6 +1098,9 @@ build_docker_args() {
         -e "AGENT_KERNEL_ARENA_DOCKER=1"
         -e "AGENT_KERNEL_ARENA_WORKDIR=${CONTAINER_WORKDIR}"
         -e "AGENT_KERNEL_ARENA_GPU_ARCH=${SELECTED_GPU_ARCH}"
+        # Bind ordinary runs as well as tool-enabled runs to their selected
+        # runtime. Materialization and session resume compare this identity.
+        -e "AKA_SCORING_IMAGE_REFERENCE=$scoring_image_reference"
         -e "AKA_REQUIRED_PROFILERS=${AKA_REQUIRED_PROFILERS:-}"
         -e "PYTORCH_ROCM_ARCH=${SELECTED_GPU_ARCH}"
         -e "AGENT_STATE_MOUNT_ROOT=${AGENT_STATE_MOUNT_ROOT}"
@@ -1097,9 +1108,20 @@ build_docker_args() {
         -w "$CONTAINER_WORKDIR"
     )
 
+    local sdk_core_runtime="$EVAL_TOOL_SCORING_SDK_RUNTIME"
+    case "$scoring_image_reference" in
+        "$GFX950_V0520_DOCKER_IMAGE"|"$GFX950_V0520_IMMUTABLE_IMAGE"|"${GFX950_V0520_DOCKER_IMAGE}@${GFX950_V0520_IMMUTABLE_IMAGE##*@}")
+            sdk_core_runtime=1
+            ;;
+    esac
+    if [[ "$sdk_core_runtime" == "1" ]]; then
+        docker_args+=(-e "AKA_ROCM_SDK_CORE_RUNTIME=1")
+    fi
+
     # GEAK's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
-    # a GEAK-only path for the container bootstrap to prepend to PYTHONPATH.
+    # a GEAK-only root for the bootstrap to qualify by Python ABI and prepend
+    # to PYTHONPATH. A ROCm image upgrade can change that ABI.
     # Do not replace the image's PYTHONPATH: it can supply AITER/source imports.
     if [[ "$GEAK_RUNTIME" == "1" ]]; then
         docker_args+=(-e "AKA_GEAK_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
@@ -1265,7 +1287,6 @@ build_docker_args() {
             -e "AKA_EVAL_TOOL_SCORING_ROOT=$CONTAINER_WORKDIR"
             -e "AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT=$AKA_EVAL_TOOL_ARTIFACT_SCORING_ROOT"
             -e "AKA_SCORING_IMAGE_RUNTIME_REF=${AKA_SCORING_IMAGE_RUNTIME_REF:?missing verified scoring image ID}"
-            -e "AKA_SCORING_IMAGE_REFERENCE=${AKA_SCORING_IMAGE_REFERENCE:?missing scoring image reference}"
         )
         if [[ -n "${AKA_EVAL_TOOLS_SELECTED:-}" ]]; then
             docker_args+=(-e "AKA_EVAL_TOOLS_SELECTED=${AKA_EVAL_TOOLS_SELECTED}")
@@ -1327,7 +1348,7 @@ docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
+    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export AKA_GEAK_SDK_PATH="${AKA_GEAK_SDK_PATH}/$(python -c "import sys; print(sys.implementation.cache_tag)")"; export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AKA_ROCM_SDK_CORE_RUNTIME:-0}" == "1" ]]; then sdk_library_path="$(python src/scripts/rocm_sdk_runtime.py --print-library-path)" && export LD_LIBRARY_PATH="$sdk_library_path" && mkdir -p /tmp/aka-runtime-bin && ln -sf "$AGENT_KERNEL_ARENA_WORKDIR/src/scripts/rocm_sdk_runtime.py" /tmp/aka-runtime-bin/rocprofv3 && export PATH="/tmp/aka-runtime-bin:$PATH"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
 }
 
 extract_config_name() {
@@ -1591,7 +1612,7 @@ PY
     # pulls the SDK's full dependency closure (a few hundred MB, several minutes
     # on first run). This is a one-time provisioning cost — later runs import the
     # SDK via PYTHONPATH and short-circuit above.
-    local target="${PYTHONUSERBASE:-$PWD/.aka-pyuserbase}/geak-sdk"
+    local target="${AKA_GEAK_SDK_PATH:-${PYTHONUSERBASE:-$PWD/.aka-pyuserbase}/geak-sdk/$(python -c 'import sys; print(sys.implementation.cache_tag)')}"
     echo "claude-agent-sdk not found in image; installing into $target ..."
     python -m pip install --upgrade --target "$target" -r agents/geak/requirements.txt
     PYTHONPATH="$target${PYTHONPATH:+:$PYTHONPATH}" python -c 'import claude_agent_sdk; print("claude-agent-sdk=" + str(getattr(claude_agent_sdk, "__version__", "unknown")) + " setup OK")'

@@ -1473,7 +1473,7 @@ def test_torch_gemm_measured_output_and_eager_reinvocation(name, provided, funct
                 return result
             timed_run.rerun = rerun
         phase["value"] = "setup"
-        return .1, {"benchmark_method": "cuda_graph" if use_cuda_graph else "cuda_event_fallback"}
+        return .1, {"benchmark_method": "cuda_graph" if use_cuda_graph else "cuda_event_fallback", "benchmark_fallback_reason": fallback_reason}
     kmod = types.SimpleNamespace(flydsl_batched_gemm_bf16=compute, flydsl_hgemm=compute)
     monkeypatch.setitem(sys.modules, "aiter", types.SimpleNamespace(batched_gemm_bf16_CK=compute))
     ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
@@ -1486,7 +1486,15 @@ def test_torch_gemm_measured_output_and_eager_reinvocation(name, provided, funct
           "_retry": lambda fn, **kwargs: fn()}
     _harness_functions(task, {function, "_norm_worst", "_checked_gemm_output", "_gemm_reference", "_compare_gemm_output"}, ns)
     if behavior == "correct":
-        result = ns[function](verbose=False)
+        if name == "hgemm_kernel" and function == "arena_benchmark":
+            actions = module(task / "scripts/task_actions.py")
+            result = actions.performance(types.SimpleNamespace(arena_benchmark=ns[function]))
+            assert result[0]["timed_output_checked"] is True
+            assert result[0]["device_timing"]["benchmark_method"] == "cuda_event_fallback"
+            assert result[0]["device_timing"]["benchmark_fallback_reason"] == "capture_unsafe_hipblaslt_reference"
+            assert result[0]["device_timing"]["benchmark_method_consistent"] is True
+        else:
+            result = ns[function](verbose=False)
         if function == "run_benchmark":result = json.loads((tmp_path/"build/performance_report.json").read_text())
         assert result[0]["timed_output_correctness"] == result[0]["replay_correctness"] == "PASS"
         assert calls == [(0,100,False,True),(0,100,False,False)]
@@ -2271,7 +2279,8 @@ def test_batched_int8_measured_outputs_and_replay(function, provided, behavior, 
                 try:return fn()
                 finally:phase['value']='setup'
             timed_run.rerun=replay
-        return .1,{'benchmark_method':'cuda_graph' if use_cuda_graph else 'cuda_event_fallback'}
+        return .1,{'benchmark_method':'cuda_graph' if use_cuda_graph else 'cuda_event_fallback',
+                   'benchmark_fallback_reason':fallback_reason}
     ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,
         'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,
         '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','KERNEL_ENTRY':'flydsl_batched_gemm_a8w8',
@@ -2280,7 +2289,15 @@ def test_batched_int8_measured_outputs_and_replay(function, provided, behavior, 
         'SHAPES':[{'name':'controlled','b':1,'m':2,'n':2,'k':2}],'TOL':.01,'math':math,'json':json,'Path':Path}
     _harness_functions(task,{function,'_norm_worst','_checked_batched_output','_compare_batched_output'},ns)
     if behavior=='correct':
-        result=ns[function](verbose=False)
+        if function == 'arena_benchmark':
+            actions = module(task/'scripts/task_actions.py')
+            result = actions.performance(types.SimpleNamespace(arena_benchmark=ns[function]))
+            assert result[0]['timed_output_checked'] is True
+            assert result[0]['device_timing']['benchmark_method'] == 'cuda_event_fallback'
+            assert result[0]['device_timing']['benchmark_fallback_reason'] == 'capture_unsafe_aiter_hipblaslt'
+            assert result[0]['device_timing']['benchmark_method_consistent'] is True
+        else:
+            result=ns[function](verbose=False)
         if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
         assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
         assert calls==[(0,100,False,True),(0,100,False,False)]
@@ -5669,7 +5686,9 @@ def test_torch_actual_operators_are_required_without_unused_builders(name,tmp_pa
 
 
 def test_unused_builder_cleanup_retains_starter_model_and_manifest_bytes():
-    original={'dynamic_mxfp8_quant_kernel': {'kernel.py': '04c2ab5eb9e9bee43be84633bc7b210fcb3ad8be69bba8aa98ef6897010611a0', 'model.py': '9e5b1e289eee05aba727b71e28a98e6a7611d9fd6737d5e87b83fe9469eed39d', 'cases.json': '9e76bdcd9955b731e930c2e46536dbce2522d2f88f4ad9cb76016e825821988d'}, 'gelu_and_mul_kernel': {'kernel.py': '4fb1de9fe9d5da55e5cb924ecd03458ab70cc493612857ca300343237d541f25', 'model.py': 'c171ab0b489b1cb87a3f551c3ba8ecd820e3147a9becb6810154040f4027f7dd', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gelu_tanh_and_mul_kernel': {'kernel.py': '04616e2c62589d5c2e4b8147772bf4e333e753e663eb5d95bb88456428110f24', 'model.py': '95988833405bac9d10624c4ca4e78ee0251a5a60c1dd457d6b915904b9b2dadf', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gemm_a8w8_bpreshuffle_kernel': {'kernel.py': 'b5d3e87a3ceca3fe555572f0b4ab5c7b1dd6c3f5c9e18ab924b589df3d485996', 'model.py': 'e4278a3637b56eab94baec3b712ff1fb5ac44206a0ac21b1925a7497ca0b9643', 'cases.json': '7f2d3e25a614486974800da54cb23d2c7913101b2ec1b82ca92818cdfec479ee'}, 'hgemm_kernel': {'kernel.py': '29cab2057d32224a7da558083f6b4edeb560e44efd59a60b82dfb14c9c6a8d28', 'model.py': '89ca4fce55817fdf5fcbaea925a1639f9b96cd809dcda8c06cd70f9e1033372e', 'cases.json': '8388fcafea635e69bde93aad82d8b6bcd10d3ffd9998f2594e4ab989c2fd61e4'}, 'jagged_dense_bmm_kernel': {'kernel.py': 'fcb9b75ec238ced56568fb5b27535a160314db29c212abe33c83be6f7df3c043', 'model.py': '1b446ea35fee03f47ae16121fb7ba8aa933e9e99c48f2d90584c770d56065186', 'cases.json': '8304b063316f9cfc3667a8f38d9d85805b38a2339deebd48b883bfb59b5427e3'}, 'moe_sorting_kernel': {'kernel.py': '4bc536d6d29f16e1f24278d9db05ffba13d723f3f42064cce18b60c687f3eb43', 'model.py': 'c874911efc1c947437d5c7c62019e7c52b34458a0ec1560ecdde72aa971de271', 'cases.json': '0c8247d8727d48dc3a8ddd20ede1db3ae2586e990222f7bf19ce39dc6ad913c4'}, 'qk_norm_rope_quant_kernel': {'kernel.py': 'be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46', 'model.py': '152a32140302f1264c555fbd9b6f9d8362583fd08b0344290a67d6b1bb849ee2', 'cases.json': 'de8e183a711424ddabe5f8bfea4fa00dbe79cb886462b5d3681f67fa9d6e0eb1'}, 'rmsnorm2d_dynamicquant_kernel': {'kernel.py': 'c8542e7ea4b69aa6881ae2e7046995c67112e7e38b68e95d3cc2a51965d05bdc', 'model.py': '5cd3abaf088651f8f2ed9db44513bfd8c5238a45145aaf3dcd3168d63e3ff080', 'cases.json': '046dcf1c5e6f49bf68bd6e935555006803f9f6af5668460389ae6147297528f1'}, 'rmsnorm2d_kernel': {'kernel.py': 'a20840e12a22f5c08fed1e87eee62de5dec590680c79b5b6fa8cb28d9dd9396a', 'model.py': '8442cb4d63444e7dfa9db1fa2d6253ceee0463b1debfd6919fc5219181de3b13', 'cases.json': '426c9e84d97161e5bb7a09353102c57648f5ca5a4790c46370b5369ba470fa64'}, 'rmsnorm2d_smoothquant_kernel': {'kernel.py': '701e11ec5e63bf65572fd9325a7e0b1bea0e1aa9561f8711de0e7ed0113fc2b0', 'model.py': '5496289dc3f8f72c1b9deefce1e39b7c1a00dc5726ad708abe65641fee4edf0e', 'cases.json': '359795558e6ebcfb617bbae66eda8540f5503cc5a04056f1fdfde58e13aedce4'}, 'swiglu_and_mul_kernel': {'kernel.py': '6adbabe7f43dd51289ec4afa3310ba30c56ad8f216edb801886882a1c00715e5', 'model.py': '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}}
+    # Starter hashes include the reviewed FlyDSL 0.3.2 API routing changes.
+    # Model and workload manifest hashes remain those of the original tasks.
+    original={'dynamic_mxfp8_quant_kernel': {'kernel.py': '04c2ab5eb9e9bee43be84633bc7b210fcb3ad8be69bba8aa98ef6897010611a0', 'model.py': '9e5b1e289eee05aba727b71e28a98e6a7611d9fd6737d5e87b83fe9469eed39d', 'cases.json': '9e76bdcd9955b731e930c2e46536dbce2522d2f88f4ad9cb76016e825821988d'}, 'gelu_and_mul_kernel': {'kernel.py': '4fb1de9fe9d5da55e5cb924ecd03458ab70cc493612857ca300343237d541f25', 'model.py': 'c171ab0b489b1cb87a3f551c3ba8ecd820e3147a9becb6810154040f4027f7dd', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gelu_tanh_and_mul_kernel': {'kernel.py': '04616e2c62589d5c2e4b8147772bf4e333e753e663eb5d95bb88456428110f24', 'model.py': '95988833405bac9d10624c4ca4e78ee0251a5a60c1dd457d6b915904b9b2dadf', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gemm_a8w8_bpreshuffle_kernel': {'kernel.py': 'da4cc1b465b8f5c620c88e5876a2e4799023b5d585a00b2f203e3914c2379269', 'model.py': 'e4278a3637b56eab94baec3b712ff1fb5ac44206a0ac21b1925a7497ca0b9643', 'cases.json': '7f2d3e25a614486974800da54cb23d2c7913101b2ec1b82ca92818cdfec479ee'}, 'hgemm_kernel': {'kernel.py': '27d4c78ecd9c8e42507f8c801ea80ab6e0fbd7667d0672e02b85a0b8ebe34667', 'model.py': '89ca4fce55817fdf5fcbaea925a1639f9b96cd809dcda8c06cd70f9e1033372e', 'cases.json': '8388fcafea635e69bde93aad82d8b6bcd10d3ffd9998f2594e4ab989c2fd61e4'}, 'jagged_dense_bmm_kernel': {'kernel.py': 'dbbda2a72ebe1872cf2a286eea086a33702c0bc4646a8e2006edc37be5fa7f0a', 'model.py': '1b446ea35fee03f47ae16121fb7ba8aa933e9e99c48f2d90584c770d56065186', 'cases.json': '8304b063316f9cfc3667a8f38d9d85805b38a2339deebd48b883bfb59b5427e3'}, 'moe_sorting_kernel': {'kernel.py': 'e46cc487791f85ae3aab7d32955f2b0784c946f1d3f7d8a03b89de53a7d3c8e0', 'model.py': 'c874911efc1c947437d5c7c62019e7c52b34458a0ec1560ecdde72aa971de271', 'cases.json': '0c8247d8727d48dc3a8ddd20ede1db3ae2586e990222f7bf19ce39dc6ad913c4'}, 'qk_norm_rope_quant_kernel': {'kernel.py': '1ca597964eb0b3899435b60fc01509891613a13cbe0d3552c6feac803ffe4d2a', 'model.py': '152a32140302f1264c555fbd9b6f9d8362583fd08b0344290a67d6b1bb849ee2', 'cases.json': 'de8e183a711424ddabe5f8bfea4fa00dbe79cb886462b5d3681f67fa9d6e0eb1'}, 'rmsnorm2d_dynamicquant_kernel': {'kernel.py': 'c8542e7ea4b69aa6881ae2e7046995c67112e7e38b68e95d3cc2a51965d05bdc', 'model.py': '5cd3abaf088651f8f2ed9db44513bfd8c5238a45145aaf3dcd3168d63e3ff080', 'cases.json': '046dcf1c5e6f49bf68bd6e935555006803f9f6af5668460389ae6147297528f1'}, 'rmsnorm2d_kernel': {'kernel.py': 'a20840e12a22f5c08fed1e87eee62de5dec590680c79b5b6fa8cb28d9dd9396a', 'model.py': '8442cb4d63444e7dfa9db1fa2d6253ceee0463b1debfd6919fc5219181de3b13', 'cases.json': '426c9e84d97161e5bb7a09353102c57648f5ca5a4790c46370b5369ba470fa64'}, 'rmsnorm2d_smoothquant_kernel': {'kernel.py': '701e11ec5e63bf65572fd9325a7e0b1bea0e1aa9561f8711de0e7ed0113fc2b0', 'model.py': '5496289dc3f8f72c1b9deefce1e39b7c1a00dc5726ad708abe65641fee4edf0e', 'cases.json': '359795558e6ebcfb617bbae66eda8540f5503cc5a04056f1fdfde58e13aedce4'}, 'swiglu_and_mul_kernel': {'kernel.py': '6adbabe7f43dd51289ec4afa3310ba30c56ad8f216edb801886882a1c00715e5', 'model.py': '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}}
     for name,files in original.items():
         for rel,expected in files.items():
             assert hashlib.sha256((ROOT/'tasks/torch2flydsl'/name/rel).read_bytes()).hexdigest()==expected,(name,rel)
@@ -6669,7 +6688,7 @@ def test_bpreshuffle_actual_operator_and_event_output_controls(function,behavior
             timed_run.rerun=rerun
         else:fn()
         phase['name']='setup'
-        return .1,{'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable'}
+        return .1,{'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable','benchmark_fallback_reason':fallback_reason}
     monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
     ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':bench,'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,'math':math,'json':json,'Path':Path,
         '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','_make_inputs':lambda *a:(x,w),'_load_module':lambda directory,filename,alias:mmod if filename=='model.py' else kmod,
@@ -6678,7 +6697,15 @@ def test_bpreshuffle_actual_operator_and_event_output_controls(function,behavior
     # Measured-only controls are separately tested on both real timing paths.
     should_pass=behavior=='correct' or correctness and behavior in {'measured_wrong','replay_wrong','cached','wrong_scale'}
     if should_pass:
-        result=ns[function](verbose=False)
+        if function == 'arena_benchmark':
+            actions = module(task/'scripts/task_actions.py')
+            result = actions.performance(types.SimpleNamespace(arena_benchmark=ns[function]))
+            assert result[0]['timed_output_checked'] is True
+            assert result[0]['device_timing']['benchmark_method'] == 'cuda_event_fallback'
+            assert result[0]['device_timing']['benchmark_fallback_reason'] == 'capture_unsafe_hipblaslt_reference'
+            assert result[0]['device_timing']['benchmark_method_consistent'] is True
+        else:
+            result=ns[function](verbose=False)
         if not correctness:
             report=json.loads((tmp_path/'build/performance_report.json').read_text()) if function=='run_benchmark' else result
             assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
@@ -7159,7 +7186,7 @@ def test_qk_original_source_passes_static_compile_without_kernel_or_case_edit():
     assert result.metadata['compile_kind']=='python_bytecode'
     # Syntax evidence only: GPU compilation/correctness/performance are required
     # again with the corrected dependency policy and unchanged old API source.
-    assert hashlib.sha256((task/'kernel.py').read_bytes()).hexdigest()=='be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46'
+    assert hashlib.sha256((task/'kernel.py').read_bytes()).hexdigest()=='1ca597964eb0b3899435b60fc01509891613a13cbe0d3552c6feac803ffe4d2a'
 
 
 
@@ -7294,3 +7321,63 @@ def test_a8w8_production_baseline_uses_one_consistent_reduction_policy():
     assert seen=={'run_correctness':1,'run_benchmark':1,'arena_benchmark':1}
     cfg=load_task_spec(task/'config.yaml',task_id='torch2flydsl/gemm_a8w8_kernel')
     assert cfg.baseline.correctness_policy=='required'
+
+
+@pytest.mark.parametrize('source', [
+    'import sys\nsys.modules["arena_harness"]._norm_worst = lambda *a: (0, 0)',
+    'import sys as runtime\nruntime.modules["arena_harness"].TOL = 1e9',
+    'from sys import modules as loaded\nloaded["arena_harness"]._compare_batched_output = lambda *a: None',
+    'import sys\ngetattr(sys, "modules")["arena_harness"].TOL = 1e9',
+    'import sys\nvars(sys)["modules"]["arena_harness"].TOL = 1e9',
+    'import sys\nsys.__dict__["modules"]["arena_harness"].TOL = 1e9',
+    'import inspect\ninspect.currentframe().f_back.f_globals["TOL"] = 1e9',
+    'def helper(): pass\nhelper.__globals__["TOL"] = 1e9',
+    'from builtins import getattr as lookup\nlookup(obj, "modules")',
+    'from sys import setprofile as disable\ndisable(None)',
+])
+def test_batched_int8_rejects_comparator_state_bypass_before_import(tmp_path, source):
+    task = ROOT / 'tasks/torch2flydsl/batched_gemm_a8w8_kernel'
+    runtime = module(task / 'task_runtime.py')
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl\n' + source + '\n')
+    with pytest.raises(ValueError, match='Protected|introspection'):
+        runtime.check_dependencies([candidate], final_language=True)
+
+
+def test_batched_int8_allows_ordinary_kernel_preparation_dependencies(tmp_path):
+    runtime = module(ROOT / 'tasks/torch2flydsl/batched_gemm_a8w8_kernel/task_runtime.py')
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl.compiler as flyc\nimport torch\nimport math\nimport sys\nlimit = sys.maxsize\n')
+    runtime.check_dependencies([candidate], final_language=True)
+
+
+@pytest.mark.parametrize('source', [
+    'import torch\ntorch.matmul = lambda *a: 0',
+    'import torch as t\nt.matmul = lambda *a: 0',
+    'import torch\nt = torch\nu = t\nu.matmul = lambda *a: 0',
+    'from torch import testing as checks\nchecks.assert_close = lambda *a: None',
+    'import torch\ndel torch.matmul',
+    'import torch\ntorch.__dict__["matmul"] = lambda *a: 0',
+    'import torch\nsetattr(torch, "matmul", lambda *a: 0)',
+    'import torch\nwrite = setattr\nwrite(torch, "matmul", lambda *a: 0)',
+    'import torch\ngetattr(torch, "__dict__")["matmul"] = lambda *a: 0',
+    'import sys\nsys.modules["torch"].matmul = lambda *a: 0',
+    'from sys import modules as loaded\nloaded["torch"].matmul = lambda *a: 0',
+    'import inspect\ninspect.currentframe().f_back.f_globals["TOL"] = 1e9',
+    'def helper(): pass\nhelper.__globals__["TOL"] = 1e9',
+])
+def test_hgemm_rejects_oracle_mutation_before_import(tmp_path, source):
+    runtime = module(ROOT / 'tasks/torch2flydsl/hgemm_kernel/task_runtime.py')
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl\n' + source + '\n')
+    with pytest.raises(ValueError, match='Protected|introspection'):
+        runtime.check_dependencies([candidate], final_language=True)
+
+
+def test_hgemm_retains_local_compilation_cache_and_initial_kernel(tmp_path):
+    task = ROOT / 'tasks/torch2flydsl/hgemm_kernel'
+    runtime = module(task / 'task_runtime.py')
+    runtime.check_dependencies([task / 'kernel.py'], final_language=True)
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl\ndef run(exe):\n    cf = getattr(exe, "_cf", None)\n    exe._cf = cf\n')
+    runtime.check_dependencies([candidate], final_language=True)

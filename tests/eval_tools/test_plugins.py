@@ -337,6 +337,40 @@ def test_gpu_asan_invocation_uses_fresh_triton_cache_and_xnack(tmp_path):
     assert invocation.timeout_s == 12
 
 
+@pytest.mark.parametrize("language", [KernelLanguage.TRITON, KernelLanguage.HIP])
+def test_gpu_asan_candidate_environment_matches_health(tmp_path, monkeypatch, language):
+    from src.eval_tools.worker import _asan_environment
+
+    evidence = {
+        "host_asan_preload": "/opt/asan/llvm/lib/clang/23/lib/linux/asan.so",
+        "host_asan_lib_dir": "/opt/asan/llvm/lib/clang/23/lib/linux",
+        "hip_asan_runtime": "/opt/asan/libamdhip64.so",
+        "hsa_asan_runtime": "/opt/asan/libhsa-runtime64.so",
+        "asan_runtime_dir": "/opt/asan",
+        "asan_extra_library_dirs": ["/opt/asan/llvm/lib", "/opt/asan/rocm_sysdeps/lib"],
+        "normal_rocm_lib_dir": "/opt/rocm/lib",
+    }
+    inherited = {"LD_PRELOAD": "/existing/preload.so", "LD_LIBRARY_PATH": "/existing/lib"}
+    for key, value in inherited.items():
+        monkeypatch.setenv(key, value)
+    ctx = replace(
+        context(tmp_path, profile(language, framework=language.value),
+                {"command": ["true"], **evidence}),
+        env=inherited,
+    )
+    invocation = get_plugin("gpu_asan").build_invocation(ctx)
+    for key, value in _asan_environment(evidence).items():
+        assert invocation.env[key] == value
+
+
+@pytest.mark.parametrize("paths", ["/lib", ["relative"], [None], ["/bad\x00path"]])
+def test_gpu_asan_rejects_invalid_attested_library_paths(tmp_path, paths):
+    ctx = context(tmp_path, profile(KernelLanguage.HIP, framework="hip"),
+                  {"command": ["true"], "asan_extra_library_dirs": paths})
+    with pytest.raises(ValueError, match="absolute sidecar paths"):
+        get_plugin("gpu_asan").build_invocation(ctx)
+
+
 @pytest.mark.parametrize("tool", ["gpu_asan", "triton_fpsan", "hip_fpsan"])
 def test_configured_attestation_path_is_shared_by_invocation_and_parser(
     tmp_path, tool

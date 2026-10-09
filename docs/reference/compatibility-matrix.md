@@ -17,7 +17,7 @@ The following hardware configurations are supported and tested.
 | --- | --- | --- |
 | MI300X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI300X` |
 | MI325X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI325X` |
-| MI355X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI355X` |
+| MI355X | 10.0 (Bundled in the selected SGLang image.) | `target_gpu_model: MI355X` |
 | RDNA4 (`gfx1201`, 16 GB tested) | Pinned in the [RDNA4 recipe](../../docker/rdna4/Dockerfile) | `target_gpu_model: RDNA4`; HIP/Triton task runtime checks, with limits in the [recipe guide](../../docker/rdna4/README.md). |
 
 ## Software requirements
@@ -28,28 +28,28 @@ The following software versions are required or verified.
 | --- | --- | --- |
 | Linux | Ubuntu 22.04, Ubuntu 24.04 | |
 | hipcc | Matches ROCm image | Required for HIP tasks. |
-| Profiler tools | Match runtime image | Smoke reports `rocprof-compute` and `rocprofv3` availability. Core graph/event timing needs neither; profiling runs can require specific binaries with `AKA_REQUIRED_PROFILERS`. Availability does not establish candidate analysis. See the [qualification record](runtime-upgrade-qualification.md#profiler-capability-policy). |
+| Profiler tools | Match runtime image | Smoke reports `rocprof-compute` and `rocprofv3` availability. Core graph/event timing needs neither; profiling runs can require specific binaries with `AKA_REQUIRED_PROFILERS`. Availability does not establish candidate analysis. See the [runtime guide](mi355x-runtime.md#sdk-and-profiling). |
 | Docker | Current stable release | Required; serial experiments run through `make docker-run`; multi-GPU experiments run through `make docker-parallel-run`. |
-| SGLang runtime image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705` for `gfx950` | The verified `gfx950` digest is `sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. |
+| SGLang runtime image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; SGLang 0.5.20 / ROCm 10 for `gfx950` | The MI355X default is `lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. Task-specific runtime requirements still apply. |
 | RDNA4 runtime image | [Digest-pinned base and layout adapter](../../docker/rdna4/Dockerfile) | Default image builds on first use if missing; `make docker-build-rdna4` prebuilds or rebuilds it. Image overrides disable automatic builds; see the [runtime guide](../../docker/rdna4/README.md). |
 | Python for GPU experiments | Provided by the qualified task runtime image | Task-specific qualification applies; older images do not support every retained task. |
 | Python for the full repository CPU/source audit | CPython 3.12 | The complete source set requires 3.12 syntax, and migration AST fingerprints are pinned to this minor version. Use full Git history; see [contributor verification](../../CONTRIBUTING.md#testing-and-verification). |
 | Node.js and npm | Node.js 22+ for Claude Code's npm installation; Node.js 24 for DeepSeek Harness | Required on the host for npm-installed agent CLIs; DeepSeek uses a dedicated prefix. |
 | PyTorch | ROCm build bundled in the image | Provided by the selected runtime image. |
 | Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
-| AITER | `0.1.17.dev110+g9127c94a1` in the verified `gfx950` image | Required by AITER-backed task oracles and kernels. |
-| FlyDSL | `0.2.2` in the verified `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks. |
+| AITER | Source installation bundled in the pinned `gfx950` image | Required by AITER-backed task oracles and kernels. Distribution metadata alone may not identify a source installation; retain the image identity and materialized source hashes. |
+| FlyDSL | `0.3.2` in the default `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks. |
 
 ## Evaluation-tool sidecars
 
 Optional Triton FpSan, GPU ASan, rocJITsu Race Detector, rocJITsu Waitcheck,
 rocJITsu ConSan, and HIP-FpSan dependencies are kept out of the scoring image
-and installed in one isolated sidecar image per tool. The scoring image,
-FlyDSL, and AITER versions in the preceding table remain unchanged.
+and installed in one isolated sidecar image per tool. Enabling a tool does not
+install packages into the scoring image or change its dependency versions.
 
 | GPU architecture | Sidecar status | Notes |
 | --- | --- | --- |
-| `gfx950` (MI355X) | Runtime-qualified, candidate-dependent | Pinned image/build locks and all six integrated startup controls pass on the current hardware. End-to-end readiness still depends on language, artifact, adapter, and candidate attestation. Waitcheck and ConSan are qualified only for explicitly configured advisory pilots. Trusted single-dispatch Triton/FlyDSL rocJITsu capsule replay is implemented, but automatic evaluator-owned capsule capture and binding to the correctness run remain advisory-only gaps. |
+| `gfx950` (MI355X) | Migration qualification incomplete, candidate-dependent | Five ROCm 10 runtime startup controls pass; GPU ASan safe probes fail on the tested hosts and remain unqualified. See the [runtime guide](mi355x-runtime.md). End-to-end readiness still depends on language, artifact, adapter, and candidate attestation. Waitcheck and ConSan are qualified only for explicitly configured advisory pilots. Trusted single-dispatch Triton/FlyDSL rocJITsu capsule replay is implemented, but automatic evaluator-owned capsule capture and binding to the correctness run remain advisory-only gaps. |
 | `gfx942` (MI300X/MI325X) | Unverified | No equivalent image/adapter/positive-control qualification has completed; the host runner currently rejects evaluation-tool sidecars. |
 | `gfx1201` (RDNA4) | Unverified | Runtime task checks do not qualify evaluation-tool sidecars; the host runner rejects them. |
 
@@ -99,9 +99,7 @@ validated on hardware.
 Model/provider support and run-level overrides are integration-specific; there
 is no shared top-level provider field.
 
-| Provider | Notes |
-| --- | --- |
-| OpenAI | Use a selected integration or CLI configured for OpenAI. |
-| Anthropic | Use a selected integration or CLI configured for Anthropic. |
-| DeepSeek | `deepseek_harness` selects the upstream DeepSeek provider; model, protocol, and optional endpoint override are integration-local settings. |
-| OpenRouter or another OpenAI-compatible service | Supported when the selected integration accepts a custom provider/base URL. |
+For supported providers, model selection and custom endpoint settings, use the
+[selected integration's configuration guide](../how-to/agents.md) and its
+`agents/<agent_name>/agent_config.yaml`. Provider configuration remains local
+to that integration.

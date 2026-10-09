@@ -13,7 +13,11 @@ from .replay_capsule import CapsuleValidationError, LaunchSpec
 
 
 _CONST_RE = re.compile(r"(%[A-Za-z0-9_.$-]+)\s*=\s*arith\.constant\s+(-?\d+)\s*:\s*(?:index|i\d+)")
-_LAUNCH_RE = re.compile(r"gpu\.launch_func\s+@(?:[A-Za-z0-9_.$-]+::)?@(?P<kernel>[A-Za-z0-9_.$-]+)(?P<body>.*?)(?=\n\s*[%}]|$)", re.S)
+_LAUNCH_RE = re.compile(
+    r"gpu\.launch_func\s+(?:async\s*\[[^\]]*\]\s*)?"
+    r"@(?:[A-Za-z0-9_.$-]+::)?@(?P<kernel>[A-Za-z0-9_.$-]+)"
+    r"(?P<body>.*?)(?=\n\s*[%}]|$)", re.S,
+)
 _BIN_RE = re.compile(r'\bbin\s*=\s*"((?:\\.|[^"\\])*)"', re.S)
 
 
@@ -57,7 +61,7 @@ def _parse_dims(body: str, label: str, constants: Mapping[str, int]) -> tuple[in
 def parse_flydsl_static_launch(source_ir: str) -> FlyDslStaticLaunch:
     constants = {name: int(value) for name, value in _CONST_RE.findall(source_ir)}
     launches = list(_LAUNCH_RE.finditer(source_ir))
-    if len(launches) != 1:
+    if len(launches) != 1 or len(re.findall(r"\bgpu\.launch_func\b", source_ir)) != 1:
         raise CapsuleValidationError(f"FlyDSL replay MVP requires one gpu.launch_func, found {len(launches)}")
     match = launches[0]
     body = match.group("body")

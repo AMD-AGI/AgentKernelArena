@@ -41,6 +41,7 @@ repository.
 
       * :doc:`Configuration and API reference <reference/api-reference>`
       * :doc:`Performance measurement methodology <reference/benchmark-methodology>`
+      * :doc:`MI355X runtime and compatibility <reference/mi355x-runtime>`
 
 To contribute to the documentation, see the
 `AgentKernelArena GitHub repository <https://github.com/AMD-AGI/AgentKernelArena>`_.
