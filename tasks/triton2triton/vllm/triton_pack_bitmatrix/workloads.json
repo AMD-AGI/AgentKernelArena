@@ -180,10 +180,11 @@
       "params": {
         "case_index": 10003,
         "configuration": [
-          1,
-          64,
+          5,
+          70,
           33
-        ]
+        ],
+        "source": "repository"
       },
       "checks": [
         "correctness"
@@ -195,14 +196,48 @@
       "params": {
         "case_index": 10004,
         "configuration": [
-          1,
-          64,
+          5,
+          70,
           65
-        ]
+        ],
+        "source": "repository"
       },
       "checks": [
         "correctness"
       ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-6",
+      "params": {
+        "case_index": 10005,
+        "configuration": [3, 34, 2],
+        "layout": "row_padding",
+        "source": "repository"
+      },
+      "checks": ["correctness"],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-7",
+      "params": {
+        "case_index": 10006,
+        "configuration": [3, 34, 2],
+        "layout": "column_gaps",
+        "source": "repository"
+      },
+      "checks": ["correctness"],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-upstream-8",
+      "params": {
+        "case_index": 10007,
+        "configuration": [3, 34, 2],
+        "layout": "row_and_column_gaps",
+        "source": "repository"
+      },
+      "checks": ["correctness"],
       "status": "PASS"
     }
   ],
@@ -227,14 +262,32 @@
       32
     ],
     [
-      1,
-      64,
+      5,
+      70,
       33
     ],
     [
-      1,
-      64,
+      5,
+      70,
       65
+    ],
+    [
+      3,
+      34,
+      2,
+      "row_padding"
+    ],
+    [
+      3,
+      34,
+      2,
+      "column_gaps"
+    ],
+    [
+      3,
+      34,
+      2,
+      "row_and_column_gaps"
     ]
   ]
 }

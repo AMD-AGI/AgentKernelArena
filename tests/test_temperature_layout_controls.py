@@ -43,9 +43,109 @@ def test_manifest_keeps_five_original_scored_cases():
     assert [(row["test_case_id"], row["checks"]) for row in manifest["cases"]] == [
         (f"perf{index}", ["correctness", "performance"]) for index in range(1, 6)
     ] + [("contract_controls", ["correctness"])]
+    assert "partial final 8192-element block" in manifest["cases"][-1]["params"]["coverage"]
 
 
-def test_native_controls_require_large_mapping_and_real_padded_stride(task_modules):
+@pytest.mark.parametrize("replacement", [
+    "def apply_temperature(logits, idx_mapping, temperature, extra=1):",
+    "def apply_temperature(logits, idx_mapping, temperature, *args):",
+    "def apply_temperature(logits, idx_mapping, temperature, **kwargs):",
+    "def apply_temperature(logits, idx_mapping, temperature=1):",
+    "def apply_temperature(logits, idx_mapping, *, temperature):",
+    "def apply_temperature(logits, idx_mapping, /, temperature):",
+    "def apply_temperature(logits, temperature, idx_mapping):",
+    "def apply_temperature(logits, mapping, temperature):",
+])
+def test_public_wrapper_signature_mutations_fail_before_harness(replacement, tmp_path, monkeypatch):
+    adapter = _load(TASK / "_arena_eval.py", "temperature_signature_adapter")
+    original = "def apply_temperature(logits, idx_mapping, temperature):"
+    source = (TASK / "source/triton_temperature.py").read_text()
+    assert source.count(original) == 1
+    target = tmp_path / "source/triton_temperature.py"
+    target.parent.mkdir()
+    target.write_text(source.replace(original, replacement, 1))
+    monkeypatch.setattr(adapter, "ROOT", tmp_path)
+
+    def unexpected_harness():
+        pytest.fail("invalid signature reached the GPU harness")
+
+    monkeypatch.setattr(adapter, "load_harness", unexpected_harness)
+    result = adapter.evaluate("candidate", "compile")
+    assert result["status"] == "FAIL"
+    assert result["failure_kind"] == "execution_failure"
+    assert "exact signature apply_temperature(logits, idx_mapping, temperature)" in result["reason"]
+
+
+def test_public_wrapper_signature_accepts_original_and_ignores_annotations(tmp_path, monkeypatch):
+    adapter = _load(TASK / "_arena_eval.py", "temperature_signature_adapter_valid")
+    data = adapter.load_manifest()
+    assert adapter.inspect_candidate(data, require_implemented=True) == "implemented"
+    original = "def apply_temperature(logits, idx_mapping, temperature):"
+    annotated = "def apply_temperature(logits: object, idx_mapping: object, temperature: object) -> object:"
+    source = (TASK / "source/triton_temperature.py").read_text()
+    target = tmp_path / "source/triton_temperature.py"
+    target.parent.mkdir()
+    target.write_text(source.replace(original, annotated, 1))
+    monkeypatch.setattr(adapter, "ROOT", tmp_path)
+    assert adapter.inspect_candidate(data, require_implemented=True) == "implemented"
+
+
+@pytest.mark.parametrize("wrapper_source, accepted", [
+    ("def apply_temperature(logits, idx_mapping, temperature):\n    return None\n", True),
+    ("def apply_temperature(logits, idx_mapping, temperature):\n    return None\n"
+     "apply_temperature.__defaults__ = ()\n"
+     "apply_temperature.__kwdefaults__ = {}\n", True),
+    ("def apply_temperature(logits, idx_mapping, temperature):\n    return None\n"
+     "_original_apply_temperature = apply_temperature\n"
+     "apply_temperature = lambda logits, idx_mapping, temperature, extra=None: "
+     "_original_apply_temperature(logits, idx_mapping, temperature)\n", False),
+    ("import inspect\n"
+     "def apply_temperature(logits, idx_mapping, temperature):\n    return None\n"
+     "_original_apply_temperature = apply_temperature\n"
+     "apply_temperature = lambda logits, idx_mapping, temperature, extra=None: "
+     "_original_apply_temperature(logits, idx_mapping, temperature)\n"
+     "apply_temperature.__signature__ = inspect.signature(_original_apply_temperature)\n", False),
+    ("import functools\n"
+     "def variadic(fn):\n"
+     "    @functools.wraps(fn)\n"
+     "    def wrapper(*args, **kwargs):\n"
+     "        return fn(*args, **kwargs)\n"
+     "    return wrapper\n"
+     "@variadic\n"
+     "def apply_temperature(logits, idx_mapping, temperature):\n"
+     "    return None\n", False),
+])
+def test_exported_wrapper_signature_checked_by_native_loader(
+        wrapper_source, accepted, task_modules, tmp_path, monkeypatch):
+    replay, contract = task_modules
+    monkeypatch.setitem(sys.modules, "_arena_contract", contract)
+    adapter = _load(TASK / "_arena_eval.py", "temperature_exported_signature_adapter")
+    source_path = tmp_path / "source/triton_temperature.py"
+    source_path.parent.mkdir()
+    source_path.write_text(
+        "class triton:\n"
+        "    @staticmethod\n"
+        "    def jit(fn): return fn\n"
+        "@triton.jit\n"
+        "def _temperature_kernel(): return None\n"
+        + wrapper_source)
+    runner_path = tmp_path / "scripts/task_runner.py"
+    runner_path.parent.mkdir()
+    runner_path.write_bytes((TASK / "scripts/task_runner.py").read_bytes())
+    monkeypatch.setattr(adapter, "ROOT", tmp_path)
+    assert adapter.inspect_candidate(adapter.load_manifest(), require_implemented=True) == "implemented"
+    cwd = os.getcwd()
+    try:
+        result = adapter.evaluate("candidate", "compile")
+    finally:
+        os.chdir(cwd)
+    assert result["status"] == ("PASS" if accepted else "FAIL")
+    if not accepted:
+        assert result["failure_kind"] == "execution_failure"
+        assert "exact signature apply_temperature(logits, idx_mapping, temperature)" in result["reason"]
+
+
+def test_native_controls_require_large_mapping_partial_block_and_padded_stride(task_modules):
     replay, contract = task_modules
     seen = []
     padded = []
@@ -60,13 +160,41 @@ def test_native_controls_require_large_mapping_and_real_padded_stride(task_modul
     contract.controls(None, replay.Recorder(None, contract).wrap(correct), "cpu")
     assert seen[1][0] == (64, 32768)
     assert seen[1][2] != list(range(64))
-    assert seen[2][0] == (4, 256)
-    assert seen[2][1] == (264, 1)
+    assert seen[2] == ((4, 8449), (8449, 1), [2, 0, 3, 1])
+    assert seen[3][0] == (4, 256)
+    assert seen[3][1] == (264, 1)
+    tail = list(contract.control_inputs(None))[2]
+    expected = contract.reference(None, tail)
+    torch.testing.assert_close(expected[0, 8192:], tail[0][0, 8192:] * 2, atol=0, rtol=0)
+    torch.testing.assert_close(expected[2, 8192:], tail[0][2, 8192:] / 2, atol=0, rtol=0)
+    assert not torch.equal(expected[0, 8192:], tail[0][0, 8192:])
+    assert not torch.equal(expected[2, 8192:], tail[0][2, 8192:])
     before, after = padded[0]
     torch.testing.assert_close(after[0], before[0] * 2, atol=0, rtol=0)
     torch.testing.assert_close(after[1], before[1], atol=0, rtol=0)
     torch.testing.assert_close(after[2], before[2] / 2, atol=0, rtol=0)
     torch.testing.assert_close(after[3], before[3], atol=0, rtol=0)
+
+
+def test_native_controls_reject_candidate_skipping_partial_final_block(task_modules):
+    replay, contract = task_modules
+    seen = []
+
+    def skip_partial_final_block(logits, mapping, temperature):
+        seen.append(tuple(logits.shape))
+        if logits.shape[1] > 8192 and logits.shape[1] % 8192:
+            _correct(contract, logits[:, :8192], mapping, temperature)
+        else:
+            _correct(contract, logits, mapping, temperature)
+
+    # The mutation satisfies the existing small and 32768-wide controls.
+    for args in list(contract.control_inputs(None))[:2]:
+        replay.Recorder(None, contract).wrap(skip_partial_final_block)(*args)
+    assert seen == [(4, 4), (64, 32768)]
+
+    with pytest.raises(AssertionError):
+        contract.controls(None, replay.Recorder(None, contract).wrap(skip_partial_final_block), "cpu")
+    assert seen[-1] == (4, 8449)
 
 
 def test_ignored_mapping_fails_large_vocab_control(task_modules):
@@ -142,6 +270,7 @@ def test_actual_gpu_kernel_passes_native_controls_and_mapping_replay(task_module
     ok, error = harness.run_correctness(case_index=contract.CONTROL_INDEX)
     assert ok, error
     assert ((64, 32768), (32768, 1)) in seen
+    assert ((4, 8449), (8449, 1)) in seen
     assert ((4, 256), (264, 1)) in seen
 
     source = original_loader()

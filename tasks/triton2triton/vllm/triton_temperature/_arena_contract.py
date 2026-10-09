@@ -53,6 +53,11 @@ def control_inputs(harness):
     yield (torch.linspace(-4, 4, rows * vocab, dtype=torch.float32).reshape(rows, vocab),
            i([(row + 17) % rows for row in range(rows)]),
            f([0, 1, 0.5, 2, 1.5, 0.75, 0.25, 3] * (rows // 8)))
+    # The large scored width is an exact multiple of the kernel's 8192-element
+    # block. This correctness-only width requires a masked second block.
+    rows, vocab = 4, 8192 + 257
+    yield (torch.arange(1, rows * vocab + 1, dtype=torch.float32).reshape(rows, vocab),
+           i([2, 0, 3, 1]), f([0, 1, 0.5, 2]))
 
 def observe(result, args):
     return args[MUTABLE[0]]

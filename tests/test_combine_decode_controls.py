@@ -66,10 +66,6 @@ def test_known_decode_answer_and_prefill_control(task_modules):
                                   "contiguous_draft_stride"])
 def test_native_correctness_action_rejects_decode_faults(task_modules, monkeypatch, fault):
     contract, replay, harness, adapter = task_modules
-    if fault in ("omit_zero_draft_sampled", "use_batch_row"):
-        # The new remapped decode case must reject each fault on its own.
-        decode = tuple(contract.control_inputs(harness))[1]
-        monkeypatch.setattr(contract, "control_inputs", lambda harness: iter((decode,)))
     observed_strides = []
 
     def combine_sampled_and_draft_tokens(
@@ -111,6 +107,15 @@ def test_native_correctness_action_rejects_decode_faults(task_modules, monkeypat
             )
             input_ids.copy_(wrong_ids)
         return indices
+
+    if fault in ("omit_zero_draft_sampled", "use_batch_row"):
+        # Prove the new remapped decode input rejects each fault independently.
+        # Keep the normal control list intact for the native action below;
+        # padded_draft_inputs also reads its second entry.
+        decode = tuple(contract.control_inputs(harness))[1]
+        checked = replay.Recorder(harness, contract).wrap(combine_sampled_and_draft_tokens)
+        with pytest.raises(AssertionError, match="exact integer reference"):
+            checked(*decode)
 
     # Route the real task adapter through the normal installed correctness
     # checker. The five scored cases are left to their separate GPU runner.

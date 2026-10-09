@@ -125,7 +125,7 @@
       ],
       "params": {
         "case_index": 5,
-        "coverage": "Correctness-only controls cover zero/one no-op, heterogeneous temperatures, remapped requests at the largest scored vocabulary, and padded row strides."
+        "coverage": "Correctness-only controls cover zero/one no-op, heterogeneous temperatures, remapped requests at the largest scored vocabulary, a partial final 8192-element block, and padded row strides."
       }
     }
   ],

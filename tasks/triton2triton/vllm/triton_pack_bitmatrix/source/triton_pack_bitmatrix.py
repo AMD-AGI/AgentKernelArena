@@ -82,7 +82,9 @@ def pack_topk_to_bitmatrix(
         bitmatrix: [n_rows, bm_cols] uint32 tensor where each bit indicates
                    if token is assigned to that expert
     """
-    topk_ids = topk_ids.to(torch.int16)
+    # The kernel uses row-major linear offsets, so normalize strided views.
+    # This is a no-op for the contiguous inputs in the scored workloads.
+    topk_ids = topk_ids.to(torch.int16).contiguous()
     n_rows, num_topk = topk_ids.shape
 
     BLOCK_SIZE_M = 512
