@@ -25,6 +25,13 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 
 ## Protected evaluation controls
 
-Temperature controls cover zero/one no-op, heterogeneous temperatures and remapped requests.
+Temperature controls cover zero/one no-op, heterogeneous temperatures, remapped
+requests at the largest scored vocabulary, a partial final 8192-element block
+above the first block, and a padded row stride with untouched padding. The
+partial-block control has nonidentity request mapping and rows whose final 257
+logits must change. The padded view is created on the target device so its
+actual stride is checked at the candidate call. The supported layout is
+contiguous columns with an optional padded row stride; arbitrary column strides
+are outside this contract.
 
-The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes a domain-valid input, recomputes the CPU oracle and restores all input buffers in `finally`. For the zero operator the replay control instead poisons its output. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.
+The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes both temperature and request mapping, recomputes the CPU oracle and restores all input buffers in `finally`. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.
