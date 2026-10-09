@@ -23,7 +23,8 @@ The following prerequisites are required before running AgentKernelArena.
   without `sudo`.
 - **Runtime image:** `gfx942` uses
   `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses
-  `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`. The runner selects from
+  the digest-pinned SGLang 0.5.20 / ROCm 10 image declared in
+  [`docker_benchmark.sh`](../../src/scripts/docker_benchmark.sh). The runner selects from
   `target_gpu_model` for experiment runs and from the visible host GPU for shell
   and smoke commands.
   For `gfx1201`, the runner automatically builds the default
@@ -57,8 +58,45 @@ before a container is launched.
 
 The [DeepSeek draft validator config](../../example_configs/task_validator_deepseek_drafts_mi355x.yaml)
 pins its MI355X run to the tested ROCm 10 image. The runner supplies writable
-AITER/FlyDSL caches and AITER configuration storage for that image. The global
-architecture defaults and evaluation-tool image qualification are unchanged.
+AITER/FlyDSL caches and AITER configuration storage for that image, which is also
+the MI355X default. Other GPU architecture defaults are unchanged.
+
+Start a separate run after changing images. Ordinary runs record the selected
+image reference in materialization and baseline state, and resume rejects a
+different runtime. Older workspaces without that image identity also require a
+fresh run; their runtime cannot be verified retrospectively. Pin custom images
+by digest when comparing experiments.
+An image upgrade changes the compiler and runtime libraries as well as ROCm;
+measure baseline and candidate in the same runtime and keep older results
+associated with their original image.
+
+To roll back, select `GFX950_V0514_IMMUTABLE_IMAGE` from the
+[runner image definitions](../../src/scripts/docker_benchmark.sh) with
+`docker_image` or `AKA_DOCKER_IMAGE`, and start a fresh run. Evaluation tools
+also need the matching repository revision and sidecar set; the ROCm 10 tool
+profile deliberately rejects the old scoring image.
+
+The MI355X runner selects the SDK core libraries for workloads and routes
+`rocprofv3` to that same installation used by PyTorch.
+The image's original console entrypoint chooses a separate developer tree;
+loading both trees in a Python workload can abort with duplicate LLVM option
+registration. The wrapper preserves profiler arguments and GPU selection.
+`rocprof-compute` is an optional package and is not bundled in this image; see
+the [runtime guide](../reference/mi355x-runtime.md#sdk-and-profiling) for
+SDK library selection and profiler availability boundaries.
+
+Some image-backed tasks require a dedicated runtime, including tasks that
+materialize vLLM source directories. Select their documented image explicitly
+through the run config's `docker_image` field; the MI355X default does not supply
+every task's external dependencies. Optional evaluation tools have their own
+[scoring-image compatibility requirements](../how-to/use-evaluation-tools.md).
+
+To reproduce a run on the previous MI355X runtime, explicitly select its digest:
+
+```bash
+AKA_DOCKER_IMAGE_GFX950=lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78 \
+  make docker-run CONFIG=example_configs/quickstart_claude_mi355x.yaml
+```
 
 ```bash
 git clone https://github.com/AMD-AGI/AgentKernelArena.git

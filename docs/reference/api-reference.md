@@ -59,17 +59,17 @@ The built-in IDs are `triton_fpsan`, `gpu_asan`, `rocjitsu`,
 `rocjitsu_waitcheck`, `rocjitsu_consan`, and `hip_fpsan`.
 
 Sidecar build locks, integrated positive controls, and end-to-end fixtures
-currently exist only for `gfx950`; all six startup controls pass in the current
-MI355X qualification. Each applicable candidate still needs a task-specific
+currently exist only for `gfx950`. The ROCm 10 migration has five passing
+startup controls; GPU ASan remains unqualified, as recorded in the
+[runtime compatibility guide](mi355x-runtime.md). Each applicable candidate still needs a task-specific
 adapter and attestation, and enabling an image alone does not imply that a
 kernel was analyzed. See [Check kernels with evaluation
 tools](../how-to/use-evaluation-tools.md) for the support matrix and operational
 requirements.
 
 When tools are enabled, the selected scoring image must resolve to the same
-immutable local Docker image ID as the pinned
-`lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`
-manifest. The runner rejects a different build, launches by the verified ID,
+immutable local Docker image ID as the scoring manifest pinned in
+[`docker/eval-tools/images.lock.yaml`](../../docker/eval-tools/images.lock.yaml). The runner rejects a different build, launches by the verified ID,
 and records both the selected reference and verified ID in plan source evidence.
 
 Worker reports live at repository-root

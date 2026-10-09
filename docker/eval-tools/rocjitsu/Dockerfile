@@ -1,5 +1,8 @@
-ARG BASE_IMAGE=lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
-FROM ${BASE_IMAGE} AS builder
+ARG BASE_IMAGE=lmsysorg/sglang:v0.5.20-rocm10-mi35x@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
+# Keep the native engine build toolchain pinned independently of its runtime.
+ARG BUILDER_IMAGE=lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
+FROM ${BUILDER_IMAGE} AS builder
+ARG BUILD_JOBS=8
 
 ARG ROCJITSU_COMMIT=0bf561a0d8a4a6b88954f2c46bd3a50871cda140
 ARG GOOGLETEST_COMMIT=b514bdc898e2951020cbdca1304b75f5950d1f59
@@ -40,7 +43,7 @@ RUN cmake -S /src/rocm-systems/emulation/rocjitsu -B /build/rocjitsu -G Ninja \
         -DCMAKE_HIP_ARCHITECTURES=gfx950 \
         -DBUILD_TESTING=ON \
         -DRJ_INSTALL_TESTS=OFF \
-    && cmake --build /build/rocjitsu --parallel \
+    && cmake --build /build/rocjitsu --parallel "${BUILD_JOBS}" \
     && cmake --install /build/rocjitsu \
     && mkdir -p /opt/rocjitsu/runtime \
     && cp -a /usr/lib/x86_64-linux-gnu/libstdc++.so.6* /opt/rocjitsu/runtime/ \
@@ -49,7 +52,7 @@ RUN cmake -S /src/rocm-systems/emulation/rocjitsu -B /build/rocjitsu -G Ninja \
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="AgentKernelArena rocJITsu tool runtime" \
-      org.opencontainers.image.base.digest="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78" \
+      org.opencontainers.image.base.digest="sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69" \
       org.opencontainers.image.revision="0bf561a0d8a4a6b88954f2c46bd3a50871cda140"
 
 COPY --from=builder /opt/rocjitsu /opt/rocjitsu

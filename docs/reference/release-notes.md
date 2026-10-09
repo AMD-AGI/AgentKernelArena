@@ -141,8 +141,9 @@ The task validator now includes Codex backend support, improved Python-environme
 - Evaluation-tool sidecars are experimental and `gfx950`-only. Startup controls
   prove a tool installation can detect its synthetic bug, not that a candidate
   was instrumented. No bundled task currently supplies a production-qualified
-  adapter/attestation. All six integrated startup controls pass on the current
-  MI355X qualification host. Synthetic manager-to-sidecar candidate pairs also
+  adapter/attestation. All six integrated startup controls passed on the
+  ROCm 7.2 MI355X qualification host; the ROCm 10 profile has separate
+  [qualification requirements](runtime-upgrade-qualification.md). Synthetic manager-to-sidecar candidate pairs also
   distinguished clean from seeded-bug Triton FpSan, HIP/Triton GPU ASan, and
   HIP-FpSan runs; trusted AOT replay produced a clean Triton result and found the
   seeded FlyDSL LDS race. Waitcheck distinguished a correct wait from a missing

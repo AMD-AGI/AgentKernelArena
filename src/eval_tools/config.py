@@ -35,6 +35,8 @@ RUNTIME_OPTION_KEYS: dict[str, frozenset[str]] = {
         {
             "asan_runtime_dir",
             "hip_asan_runtime",
+            "hsa_asan_runtime",
+            "asan_extra_library_dirs",
             "host_asan_preload",
             "host_asan_lib_dir",
             "normal_rocm_lib_dir",

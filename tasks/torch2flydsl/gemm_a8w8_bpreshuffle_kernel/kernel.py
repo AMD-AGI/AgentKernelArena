@@ -32,7 +32,8 @@ from flydsl._mlir import ir
 from flydsl._mlir.dialects.arith import CmpIPredicate
 from flydsl.compiler.kernel_function import CompilationContext
 from flydsl.expr import arith as _arith
-from flydsl.expr import buffer_ops, const_expr, gpu, math, range_constexpr, rocdl
+from flydsl.expr import const_expr, gpu, math, range_constexpr, rocdl
+from flydsl_compat import buffer_ops, vector
 from flydsl.expr.typing import T
 from flydsl.runtime.device import get_rocm_arch as get_hip_arch
 from flydsl.utils.smem_allocator import SmemAllocator, SmemPtr
@@ -1760,7 +1761,7 @@ def compile_preshuffle_gemm_a8(
             return load_b_pack_k32(
                 buffer_ops,
                 fx.arith,
-                fx.vector,
+                vector,
                 arg_b=arg_b,
                 b_rsrc=b_rsrc,
                 layout_b=layout_b,
@@ -1838,7 +1839,7 @@ def compile_preshuffle_gemm_a8(
             vec_elems = 16 if elem_bytes == 1 else 8
             b16 = _buffer_load_vec(
                 buffer_ops,
-                fx.vector,
+                vector,
                 b_rsrc,
                 idx_pack,
                 elem_type=_elem_type(),
@@ -1919,7 +1920,7 @@ def compile_preshuffle_gemm_a8(
         def load_a_16(idx_elem):
             return buffer_copy_gmem16_dwordx4(
                 buffer_ops,
-                fx.vector,
+                vector,
                 elem_type=_elem_type(),
                 idx_i32=idx_elem,
                 rsrc=a_rsrc,
@@ -2460,7 +2461,7 @@ def compile_preshuffle_gemm_a8(
                 mfma_epilog(
                     use_cshuffle=True,
                     arith=fx.arith,
-                    vector=fx.vector,
+                    vector=vector,
                     gpu=gpu,
                     range_constexpr=range_constexpr,
                     tile_m=tile_m,

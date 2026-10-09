@@ -924,7 +924,9 @@ def select_3d_config(
         "NUM_SEGMENTS_PER_SEQ": num_segments,
         "num_warps": attn_num_warps,
         "waves_per_eu": attn_waves_per_eu,
-        "num_stages": 2 if DEVICE_ARCH in ("gfx1250", "gfx950") else 1,
+        # The two-stage gfx950 pipeline produces incorrect values with Triton 3.8.
+        # Keep the single-stage schedule; workload and numerical gates are unchanged.
+        "num_stages": 2 if DEVICE_ARCH == "gfx1250" else 1,
     }
     reduce_config = {
         "TILE_SIZE": TILE_SIZE,

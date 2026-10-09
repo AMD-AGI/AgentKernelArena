@@ -25,13 +25,16 @@ would complement the current rocJITsu checks with compiler-instrumented dynamic
 race detection on applicable device code.
 
 TSAN is not currently registered as an AgentKernelArena evaluation tool. The
-pinned ROCm 7.2 HIP compiler used by the `gfx950` scoring baseline warns that
+previous ROCm 7.2 baseline compiler warned that
 `-fsanitize=thread` is unsupported for the `amdgcn-amd-amdhsa` device target
 and ignores the option. Host `libclang_rt.tsan` files do not establish device
 instrumentation or GPU runtime coverage. Public ROCm development documentation
 describes device-side TSAN builds for `gfx942` and `gfx950`, but that project
 development path has not been qualified as a pinned, general-purpose evaluator
 runtime for this benchmark.
+
+The ROCm 10 default-image migration does not add a TSAN runtime or qualify
+device TSAN coverage.
 
 Future TSAN support should be added only after a compatible device compiler and
 runtime can be pinned in an isolated sidecar. Promotion requires exact candidate
@@ -53,10 +56,13 @@ host launchers and native support code, but host instrumentation does not prove
 that an optimized GPU kernel was checked.
 
 UBSAN is not currently registered as an AgentKernelArena evaluation tool. ROCm
-documents its current development build as host-only, and the pinned ROCm 7.2
-HIP compiler warns that `-fsanitize=undefined` is unsupported for the
+development documentation describes host-only support, and the previous ROCm 7.2
+HIP compiler warned that `-fsanitize=undefined` is unsupported for the
 `amdgcn-amd-amdhsa` device target and ignores the option. AgentKernelArena must
 therefore not treat a host-only UBSAN run as device-kernel sanitizer coverage.
+
+The ROCm 10 default-image migration does not add a UBSAN runtime or qualify
+device UBSAN coverage.
 
 Future GPU UBSAN support depends on upstream device instrumentation and a
 compatible device runtime becoming available. Once available, it will require

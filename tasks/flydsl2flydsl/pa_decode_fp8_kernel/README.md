@@ -6,8 +6,11 @@ always use this workspace's declared source; they never search other workspaces.
 
 Optimize the FlyDSL Paged Attention Decode FP8 kernel for AMD MI300X GPU.
 The kernel implements paged KV-cache attention decode with FP8 quantized
-keys/values, MFMA-based dot products, online softmax, multi-partition
-reduce, and supports both one-shot and split-reduce modes.
+keys/values, MFMA-based dot products, online softmax, and split-partial
+reduction. The eight declared workloads evaluate persistent scheduling with a
+1027-token context and no sliding window. Other launch routes present in the
+source are outside this task's measured workload; these cases do not qualify a
+one-shot or sliding-window path.
 You MUST keep the kernel in FlyDSL — do NOT rewrite it in HIP, CUDA, or Triton.
 
 Only `candidate.editable` files in `config.yaml` may be changed. Preserve the declared
@@ -88,3 +91,7 @@ helpers may only be called directly in those functions in `kernel.py`, not
 exported, introspected, or used as access to another AITER operator. Other AITER
 operators and namespace imports remain forbidden. This preserves the existing
 metadata/reduce glue and does not permit delegating attention computation.
+
+The task bundles the attributed legacy buffer/vector API adapters in
+`flydsl_compat/` for FlyDSL 0.3 runtimes. Older runtimes use their installed
+helpers. Kernel computation, inputs and numerical gates are unchanged.
