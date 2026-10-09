@@ -429,3 +429,25 @@ report interpretation.
 - Expand standardized private held-out coverage.
 - Support heterogeneous agent configurations within one multi-GPU experiment.
 - Continue expanding task coverage across the supported kernel environments.
+
+## Citation
+
+If you use AgentKernelArena in your research, please cite our paper:
+
+```bibtex
+@misc{younesian2026agentkernelarena,
+  title = {{AgentKernelArena}: Generalization-Aware Benchmarking of {GPU} Kernel Optimization Agents},
+  author = {Sharareh Younesian and Wenwen Ouyang and Sina Rafati
+            and Mehdi Rezagholizadeh and Sharon Zhou and Ji Liu
+            and Yue Liu and Yuchen Yang and Hao Li and Ziqiong Liu
+            and Dong Li and Vikram Appia and Zhenyu Gu and Emad Barsoum},
+  year = {2026},
+  eprint = {2605.16819},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.CL},
+  url = {https://arxiv.org/abs/2605.16819}
+}
+```
+
+For reproducibility, please also report the commit hash or release,
+task selection, hardware, and evaluation configuration used in your experiments.
