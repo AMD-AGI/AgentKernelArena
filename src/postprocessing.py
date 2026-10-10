@@ -91,8 +91,8 @@ def _build_general_report_lines(
     lines.extend([
         "OVERALL STATISTICS:",
         f"  Total Tasks:           {aggregate_result['total_tasks']}",
-        f"  Total Score:           {aggregate_result['total_score']:.2f}",
-        f"  Average Score:         {aggregate_result['average_score']:.2f}",
+        f"  Total Score:           {aggregate_result['total_score']:.4f}",
+        f"  Average Score:         {aggregate_result['average_score']:.4f}",
         "Compilation:",
         f"  Pass Count:            {aggregate_result['compilation_pass_count']}/{aggregate_result['total_tasks']}",
         f"  Pass Rate:             {aggregate_result['compilation_pass_rate']:.1f}%",
@@ -150,7 +150,7 @@ def _build_general_report_lines(
             lines.append(f"    Correctness Pass:     {stats['correctness_pass_count']}/{stats['count']}")
             lines.append(f"    Correctness Pass Rate: {stats['correctness_pass_rate']:.1f}%")
             lines.append(f"    Speedup > 1.0:        {stats['speedup_gt_1_count']}/{stats['count']} ({stats['speedup_gt_1_rate']:.1f}%)")
-            lines.append(f"    Average Score:        {stats['average_score']:.2f}")
+            lines.append(f"    Average Score:        {stats['average_score']:.4f}")
             if "candidate_accepted_count" in stats:
                 lines.append(
                     f"    Accepted / Rejected / N/A: {stats['candidate_accepted_count']} / "
@@ -194,7 +194,7 @@ def _build_general_report_lines(
         status = _task_status(task)
         outcome = _outcome_fields(task)
         lines.append(
-            f"{status:<12} {task['task_name']:<40} Score: {task['score']:>6.1f}  Speedup: {task['speedup_ratio']:.2f}x"
+            f"{status:<12} {task['task_name']:<40} Score: {task['score']:>6.4f}  Speedup: {task['speedup_ratio']:.2f}x"
             f"  Accepted: {_acceptance_label(outcome['candidate_accepted'])}"
             f"  Delivery: {outcome['delivery_status'] or 'N/A'}"
         )

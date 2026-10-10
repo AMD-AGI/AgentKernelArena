@@ -106,7 +106,7 @@ output = pathlib.Path(os.environ['ARENA_EXPORT_PATH'])
     assert export["command"]["stdout"] == "EXPORT_STDOUT_DIAGNOSTIC\n"
     assert export["command"]["stderr"] == "EXPORT_STDERR_DIAGNOSTIC\n"
     assert export["command"]["elapsed_s"] >= 0
-    assert report["pass_correctness"] and report["score"] == 220
+    assert report["pass_correctness"] and report["score"] == 0
     if mutation in ("candidate", "candidate_escape"):
         assert export["candidate_unchanged"] is False
         assert report["candidate_accepted"] is False
@@ -170,7 +170,7 @@ output.write_text('{"partial": true}')
     assert export["command"]["stderr"] == "EXPORT_TIMEOUT_STDERR\n"
     assert 1 <= export["command"]["elapsed_s"] <= elapsed
     assert report["delivery_status"] == "INCOMPLETE"
-    assert report["candidate_accepted"] is True and report["score"] == 220
+    assert report["candidate_accepted"] is True and report["score"] == 0
     if partial_artifact:
         assert (workspace / "artifacts/solution.json").read_text() == '{"partial": true}'
     else:

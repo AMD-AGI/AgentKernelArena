@@ -349,21 +349,33 @@ tasks:
 
 Every normal optimization task produces `task_result.yaml` with compilation and correctness status, baseline and optimized times, speedup, timing-method metadata, and the final score.
 
-The default score is:
+The score uses the power family with **`p = 0.5`** (square root):
 
-| Component | Points | Condition |
-| --- | ---: | --- |
-| Compilation | 20 | The optimized implementation compiles |
-| Correctness | 100 | Correctness passes |
-| Performance | `speedup_ratio × 100` | Added only when compilation and correctness pass |
+```text
+score = max(0, 1 - speedup_threshold / speedup_ratio) ** p
+```
 
-Therefore:
+Compilation and correctness must pass, and the evaluator must provide a valid,
+comparable speedup. Otherwise the score is `0`. There are no compilation or
+correctness bonuses. With the default `speedup_threshold = 1.05`, a candidate
+must be more than 5% faster to earn a positive score:
 
-- Compilation fails → `0`
-- Compilation passes but correctness fails → `20`
-- Both pass → `120 + speedup_ratio × 100`
+| Speedup | Score |
+| --- | ---: |
+| At or below 1.05× | 0 |
+| 1.1× | 0.2132 |
+| 1.2× | 0.3536 |
+| 2× | 0.6892 |
 
-For multi-case tasks, the evaluator prefers the explicit per-case average `speedup_ratio` rather than deriving the score from only the two aggregate timing values. The scoring policy can be replaced in `src/score.py` when an experiment needs a different reward function.
+Scores are bounded between `0` and `1`. The concave curve gives modest qualifying
+improvements more credit than a linear curve. A zero score does not imply a
+correctness failure; compilation, correctness, and acceptance have separate fields.
+
+To adjust the curve, edit `SCORE_POWER` in [`src/score.py`](src/score.py): `0.5`
+is concave, `1.0` is linear, and `2.0` is convex. Edit
+`SCORE_SPEEDUP_THRESHOLD` to change the cutoff. Both constants must be finite and
+positive. See [Scoring](docs/reference/api-reference.md#scoring) for the variable
+definitions, aggregation rule, and implications for comparing historical scores.
 
 ## Task Configuration
 
