@@ -52,12 +52,20 @@ def probe() -> dict:
             raise RuntimeError(f"KernelForge {name} lacks adapter-required parameters: {sorted(missing)}")
     # Optional, so an engine that always patches the framework still runs; the
     # adapter asks for the standalone kernel only where the engine accepts that.
-    rewrite = cli.main.commands["forge-rewrite-by-flydsl"]
-    applyback_optional = "applyback" in {parameter.name for parameter in rewrite.params}
+    loop = {parameter.name: parameter for parameter in cli.main.commands["forge-loop"].params}
+    rewrite = {parameter.name: parameter for parameter in cli.main.commands["forge-rewrite-by-flydsl"].params}
+    applyback_optional = "applyback" in rewrite
+    # Both commands, because the workflow that will run is chosen only after this probe.
+    search_controls = all({"search_policy", "lanes", "merge_stacking"} <= set(params) for params in (loop, rewrite))
+    search_policies = (sorted(set(loop["search_policy"].type.choices) & set(rewrite["search_policy"].type.choices))
+                       if search_controls else [])
+    knowledge_switch = {"experience_kb", "pr_kb"} <= set(loop) and "rewrite_kb" in rewrite
     return {"adapter_api": ADAPTER_API, "version": version,
             "initialization_targets": ["flydsl", "hip", "triton"],
             "backends": sorted(KERNEL_BACKENDS), "rewrite_target": "flydsl",
-            "applyback_optional": applyback_optional}
+            "applyback_optional": applyback_optional,
+            "search_controls": search_controls, "search_policies": search_policies,
+            "knowledge_switch": knowledge_switch}
 
 
 def main(argv=None):

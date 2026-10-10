@@ -379,20 +379,23 @@ def test_action_budget_is_capped_by_remaining_campaign(tmp_path):
         bounded_spec(context.spec, time.time() - 1)
 
 
-def mock_engine(monkeypatch, *, fail=False, port_ok=True, timeout=False, applyback_optional=False):
+def mock_engine(monkeypatch, *, fail=False, port_ok=True, timeout=False, applyback_optional=False,
+                capabilities=None, environments=None):
     commands = []
     real_run = subprocess.run
     def subprocess_run(command, **kwargs):
         if "--arena-probe" in command:
             return SimpleNamespace(returncode=0, stdout=json.dumps(
                 {"backends": ["flydsl", "hip", "triton"], "adapter_api": 1,
-                 "applyback_optional": applyback_optional}), stderr="")
+                 "applyback_optional": applyback_optional, **(capabilities or {})}), stderr="")
         return real_run(command, **kwargs)
     monkeypatch.setattr(adapter.subprocess, "run", subprocess_run)
     monkeypatch.setattr(adapter, "_resolve_gpu_arch", lambda _: "gfx950")
     monkeypatch.setattr(adapter, "_resolve_gpu_type", lambda _: "mi355x")
     def run(command, *, workspace, env, **kwargs):
         commands.append(command)
+        if environments is not None:
+            environments.append(dict(env))
         plan = json.loads(Path(env["ARENA_FORGE_PLAN"]).read_text())
         engine = Path(workspace)
         result = {"improved": False}
@@ -634,8 +637,25 @@ def test_timeout_recovers_the_port_when_no_keep_was_published(tmp_path, monkeypa
     context = rewrite_at_wall(tmp_path, monkeypatch, publish=lambda port, keep: {
         "run_state.json": {"head_commit": port, "best": {"commit_hash": ""}}})
     output = adapter.launch({}, "unused", str(context.workspace))
-    assert '"delivery_selection": "timeout_recovered_search_head"' in output
+    assert '"delivery_selection": "timeout_recovered_search_best"' in output
     assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+def test_timeout_recovers_the_start_not_a_slower_accepted_head(tmp_path, monkeypatch):
+    """Under seqany HEAD can sit on an accepted candidate that never beat the port."""
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, accepted: {
+        "run_state.json": {"head_commit": accepted, "start_commit": port, "best": {"commit_hash": ""}}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_search_best"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "1"
+
+
+def test_timeout_recovers_the_recorded_best_behind_the_head(tmp_path, monkeypatch):
+    context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, keep: {
+        "run_state.json": {"head_commit": port, "start_commit": port, "best": {"commit_hash": keep}}})
+    output = adapter.launch({}, "unused", str(context.workspace))
+    assert '"delivery_selection": "timeout_recovered_search_best"' in output
+    assert (context.workspace / "source/kernel.py").read_text() == "4"
 
 
 @pytest.mark.parametrize("keep", [
@@ -643,12 +663,12 @@ def test_timeout_recovers_the_port_when_no_keep_was_published(tmp_path, monkeypa
     {"commit_hash": "not-a-commit", "correctness_passed": True},
     {"correctness_passed": True},
 ])
-def test_unattested_keep_record_falls_through_to_the_search_head(tmp_path, monkeypatch, keep):
-    """A record that names no commit cannot select one; the head still can."""
+def test_unattested_keep_record_falls_through_to_the_search_best(tmp_path, monkeypatch, keep):
+    """A record that names no commit cannot select one; the search state still can."""
     context = rewrite_at_wall(tmp_path, monkeypatch, keep_content="4", publish=lambda port, _: {
         "best_result.json": keep, "run_state.json": {"head_commit": port}})
     output = adapter.launch({}, "unused", str(context.workspace))
-    assert '"delivery_selection": "timeout_recovered_search_head"' in output
+    assert '"delivery_selection": "timeout_recovered_search_best"' in output
     assert (context.workspace / "source/kernel.py").read_text() == "1"
 
 
@@ -665,6 +685,8 @@ def test_keep_without_a_correctness_verdict_is_not_recovered(tmp_path, monkeypat
     (dict(publish=lambda port, keep: {}), "nothing published"),
     (dict(port_ok=False, publish=lambda port, keep: {"run_state.json": {"head_commit": port}}), "port never completed"),
     (dict(publish=lambda port, keep: {"run_state.json": {"head_commit": "not-a-commit"}}), "unusable head"),
+    (dict(publish=lambda port, keep: {"run_state.json": {"head_commit": port, "start_commit": ""}}),
+     "unusable start"),
 ])
 def test_timeout_without_a_recoverable_candidate_preserves_the_original(tmp_path, monkeypatch, kwargs, reason):
     """Recovery never degrades into delivering an unidentified working tree."""
@@ -940,6 +962,70 @@ def test_backend_override_does_not_forward_a_different_providers_default():
     assert config["model"] is None
     explicit = adapter._config({"agent": {"agent_backend": "codex", "model": "my-model"}})
     assert explicit["model"] == "my-model"
+
+
+SEARCH_CAPABLE = {"search_controls": True, "search_policies": ["seqany", "sequential"], "knowledge_switch": True}
+
+
+@pytest.mark.parametrize("state", ["implemented", "unimplemented"])
+def test_default_config_leaves_search_and_knowledge_to_the_engine(tmp_path, monkeypatch, state):
+    context, _, _ = fixture_task(tmp_path, initial_state=state)
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    monkeypatch.setenv("PR_KB_ENABLE", "1")
+    environments = []
+    commands = mock_engine(monkeypatch, environments=environments)
+    adapter.launch({}, "unused", str(context.workspace))
+    command, = commands
+    forwarded = {"--search-policy", "--lanes", "--merge-stacking", "--no-merge-stacking",
+                 "--no-rewrite-kb", "--no-experience-kb", "--no-pr-kb"}
+    assert forwarded.isdisjoint(command)
+    assert environments[0]["PR_KB_ENABLE"] == "1"
+
+
+@pytest.mark.parametrize("state", ["implemented", "unimplemented"])
+def test_search_controls_and_knowledge_off_reach_the_engine(tmp_path, monkeypatch, state):
+    context, _, _ = fixture_task(tmp_path, initial_state=state)
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    monkeypatch.setenv("PR_KB_ENABLE", "1")
+    environments = []
+    commands = mock_engine(monkeypatch, capabilities=SEARCH_CAPABLE, environments=environments)
+    agent = {"search_policy": "SeqAny", "lanes": 1, "merge_stacking": False, "knowledge_base": False}
+    adapter.launch({"agent": agent}, "unused", str(context.workspace))
+    command, = commands
+    assert command[command.index("--search-policy") + 1] == "seqany"
+    assert command[command.index("--lanes") + 1] == "1"
+    assert "--no-merge-stacking" in command
+    if state == "unimplemented":
+        assert "--no-rewrite-kb" in command
+        assert {"--no-experience-kb", "--no-pr-kb"}.isdisjoint(command)
+    else:
+        assert {"--no-experience-kb", "--no-pr-kb"} <= set(command)
+        assert "--no-rewrite-kb" not in command
+    assert "PR_KB_ENABLE" not in environments[0]
+
+
+@pytest.mark.parametrize(("agent", "capabilities", "message"), [
+    ({"search_policy": "seqany"}, {}, "search controls"),
+    ({"lanes": 1}, {}, "search controls"),
+    ({"search_policy": "greedy"}, SEARCH_CAPABLE, "search policy 'greedy'"),
+    ({"knowledge_base": False}, {}, "knowledge base"),
+])
+def test_a_control_the_engine_would_ignore_fails_before_launch(tmp_path, monkeypatch, agent, capabilities, message):
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    commands = mock_engine(monkeypatch, capabilities=capabilities)
+    with pytest.raises(adapter.ForgeRunError, match=message):
+        adapter.launch({"agent": agent}, "unused", str(context.workspace))
+    assert commands == []
+
+
+@pytest.mark.parametrize("agent", [
+    {"search_policy": ""}, {"search_policy": 1}, {"lanes": 0}, {"lanes": True}, {"lanes": "2"},
+    {"merge_stacking": "no"}, {"knowledge_base": None}, {"knowledge_base": "off"},
+])
+def test_malformed_search_and_knowledge_settings_are_rejected(agent):
+    with pytest.raises(ValueError):
+        adapter._config({"agent": agent})
 
 
 def test_new_nested_tree_helpers_are_visible_to_git_in_rewrite_scratch(tmp_path):

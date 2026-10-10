@@ -59,7 +59,8 @@ def _config(eval_config: dict) -> dict:
         raise ValueError("agent run configuration must be a mapping")
     allowed = {"workflow", "model", "timeout_seconds", "permission_mode", "agent_backend",
                "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds",
-               "initialization_max_attempts", "initialization_budget_fraction"}
+               "initialization_max_attempts", "initialization_budget_fraction",
+               "search_policy", "lanes", "merge_stacking", "knowledge_base"}
     config.update({key: value for key, value in overrides.items() if key in allowed})
     if overrides.get("agent_backend") not in (None, "claude") and "model" not in overrides:
         # A Claude default is not a model ID for another provider. Let upstream
@@ -74,7 +75,38 @@ def _config(eval_config: dict) -> dict:
     fraction = config["initialization_budget_fraction"]
     if type(fraction) not in (int, float) or not 0 < fraction < 1:
         raise ValueError("Forge initialization_budget_fraction must be between zero and one")
+    policy = config["search_policy"]
+    if policy is not None and (type(policy) is not str or not policy.strip()):
+        raise ValueError("Forge search_policy must be null or a policy name")
+    lanes = config["lanes"]
+    if lanes is not None and (type(lanes) is not int or lanes < 1):
+        raise ValueError("Forge lanes must be null or a positive integer")
+    if config["merge_stacking"] is not None and type(config["merge_stacking"]) is not bool:
+        raise ValueError("Forge merge_stacking must be null or a boolean")
+    if type(config["knowledge_base"]) is not bool:
+        raise ValueError("Forge knowledge_base must be a boolean")
     return config
+
+
+def require_search_controls(config: dict, capabilities: dict) -> None:
+    """Refuse a requested search control the installed engine would not apply."""
+    requested = [field for field in ("search_policy", "lanes", "merge_stacking") if config[field] is not None]
+    if requested and not capabilities.get("search_controls"):
+        raise ForgeRunError(f"KernelForge does not accept the configured search controls: {requested}")
+    policy = config["search_policy"]
+    if policy is not None and policy.strip().lower() not in capabilities.get("search_policies", []):
+        raise ForgeRunError(f"KernelForge does not offer search policy {policy!r}; "
+                            f"it offers {capabilities.get('search_policies', [])}")
+    if not config["knowledge_base"] and not capabilities.get("knowledge_switch"):
+        raise ForgeRunError("KernelForge cannot be told to leave its knowledge base off")
+
+
+def engine_environment(env: dict, config: dict) -> dict:
+    """The engine's environment with learned knowledge removed when the run turns it off."""
+    if not config["knowledge_base"]:
+        # The nested loop of a rewrite has no command-line switch for PR references; it reads only this.
+        env.pop("PR_KB_ENABLE", None)
+    return env
 
 
 def _initialize_git(root: Path) -> None:
@@ -156,6 +188,22 @@ def rewrite_prefix(result, engine: Path) -> str:
     return attempts[0]
 
 
+def search_best(state: dict) -> str:
+    """The commit a published search state holds as its best, or empty.
+
+    Not HEAD: a search policy that commits candidates which did not improve on
+    the best leaves HEAD on one of them. A state that records no start commit
+    comes from an engine whose HEAD is always its best.
+    """
+    best = state.get("best")
+    keep = _commit(best.get("commit_hash")) if isinstance(best, dict) else ""
+    if keep:
+        return keep
+    if "start_commit" in state:
+        return _commit(state["start_commit"])
+    return _commit(state.get("head_commit"))
+
+
 def _timeout_fallback(plan: dict, status: dict) -> str:
     """The commit Arena itself accepted for this workflow, when it has one."""
     if plan["workflow"] == "optimize":
@@ -176,11 +224,12 @@ def recover_timeout_candidate(plan: dict, engine: Path, result, fallback: str = 
     first.
 
     Without a KEEP there can still be a committed candidate. A rewrite commits
-    its correct port before the search begins, and the search leaves HEAD on the
-    last state it committed; the engine reads its own current best the same way.
-    That route has no single attestation, so a rewrite must also have published
-    `port_ok`, and the caller's `fallback` supplies the commit Arena itself
-    accepted before the engine started.
+    its correct port before the search begins, and the search state names its
+    best: the last KEEP it recorded, else the commit it started from; the engine
+    resolves its own current best the same way. That route has no single
+    attestation, so a rewrite must also have published `port_ok`, and the
+    caller's `fallback` supplies the commit Arena itself accepted before the
+    engine started.
 
     None of these is a verdict: they identify a bundle for Arena to evaluate
     normally. Returns the commit and how it was chosen, or empty strings when the
@@ -193,9 +242,9 @@ def recover_timeout_candidate(plan: dict, engine: Path, result, fallback: str = 
         if commit:
             return commit, "timeout_recovered_keep"
     ported = plan["workflow"] != "rewrite" or (isinstance(result, dict) and result.get("port_ok") is True)
-    head = _commit((_published(experiments / "run_state.json") or {}).get("head_commit"))
-    if head and ported:
-        return head, "timeout_recovered_search_head"
+    searched = search_best(_published(experiments / "run_state.json") or {})
+    if searched and ported:
+        return searched, "timeout_recovered_search_best"
     if fallback:
         return fallback, "timeout_recovered_validated_input"
     return "", ""
@@ -258,6 +307,8 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
                     "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]
+        if not config["knowledge_base"]:
+            command += ["--no-experience-kb", "--no-pr-kb"]
     else:
         command += ["--source-kernel", plan["source"], "--flydsl-kernel-name", plan["anchor"],
                     "--logical-op-name", operator, "--no-prepare-driver",
@@ -267,6 +318,8 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
             command += ["--framework", identity["source_owner"]]
         if context.spec.candidate.initial_language in ("triton", "hip", "cuda", "cpp"):
             command += ["--source-language", context.spec.candidate.initial_language]
+        if not config["knowledge_base"]:
+            command += ["--no-rewrite-kb"]
         if plan.get("applyback_optional"):
             # Arena delivers the standalone candidate and scores it itself; the
             # framework patch is work this campaign would discard, and the
@@ -274,6 +327,12 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
             # that cannot be told this still produces it, which is why the
             # result reader keeps tolerating that stage's failure.
             command += ["--no-applyback"]
+    if config["search_policy"] is not None:
+        command += ["--search-policy", config["search_policy"].strip().lower()]
+    if config["lanes"] is not None:
+        command += ["--lanes", str(config["lanes"])]
+    if config["merge_stacking"] is not None:
+        command += ["--merge-stacking" if config["merge_stacking"] else "--no-merge-stacking"]
     return command
 
 
@@ -318,6 +377,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
                     **bridge.TASK_ENV})
         arena_root = Path(__file__).resolve().parents[2]
         env["PYTHONPATH"] = os.pathsep.join([str(arena_root), *filter(None, [env.get("PYTHONPATH", "")])])
+        env = engine_environment(env, config)
         # Probe in the exact interpreter used by both outer and nested CLIs.
         probe = subprocess.run([config.get("python") or sys.executable,
                                 str(Path(__file__).with_name("engine.py")), "--arena-probe"],
@@ -329,6 +389,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         status["engine"] = capabilities
         plan["applyback_optional"] = bool(capabilities.get("applyback_optional"))
         require_supported_backend(context.spec, capabilities)
+        require_search_controls(config, capabilities)
         candidate = context.spec.candidate
         initially_target = candidate.initial_state == "implemented" and candidate.initial_language == candidate.language
         changed = _digest(context.spec, context.workspace) != _digest(context.spec, context.baseline_workspace)

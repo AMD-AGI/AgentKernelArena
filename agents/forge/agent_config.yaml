@@ -14,5 +14,12 @@ initialization_max_attempts: 3
 initialization_budget_fraction: 0.4
 # Empty follows agent_backend; no accidental provider/model mismatch.
 supervisor_backend: ""
+# Search controls of the engine's optimization loop; null follows the engine default.
+search_policy: null
+lanes: null
+merge_stacking: null
+# Whether the engine reads and publishes learned knowledge: rewrite recipes,
+# experience records and upstream pull-request references.
+knowledge_base: true
 # Optional executable for an environment with Hyperloom[forge] installed.
 # python: /opt/forge/bin/python
