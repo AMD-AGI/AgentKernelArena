@@ -239,13 +239,16 @@ The adapter reads, in order:
 | Record | `delivery_selection` |
 | --- | --- |
 | `forge_experiments/best_result.json` with `correctness_passed` | `timeout_recovered_keep` |
-| `forge_experiments/run_state.json` `head_commit` | `timeout_recovered_search_head` |
+| `forge_experiments/run_state.json` `best.commit_hash`, else `start_commit` | `timeout_recovered_search_best` |
 | The commit Arena accepted before launch | `timeout_recovered_validated_input` |
 
 The KEEP record comes first because it carries the engine's own correctness
-verdict. The search head covers a rewrite whose port committed but whose search
+verdict. The search state covers a rewrite whose port committed but whose search
 never improved on it, and it requires that rewrite to have published `port_ok`;
-the engine resolves its own current best the same way. The last row is the
+the engine resolves its own current best the same way. It is not the state's
+`head_commit`: under the `seqany` search policy HEAD can hold an accepted
+candidate slower than the best. A state that records no `start_commit` falls
+back to `head_commit`, which such an engine keeps on its best. The last row is the
 verified input an optimize or initialize campaign already had, which needs no
 engine record. A record naming no usable commit is skipped rather than trusted,
 and a timeout that reaches none of these still fails with the original candidate
@@ -351,10 +354,17 @@ Search defaults live in [agent_config.yaml](agent_config.yaml); the run may
 override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
-`supervisor_backend`, and `python`. An empty supervisor follows the selected
-backend. Lane count, task preparation, profiling, planning probes and knowledge
-warm starts follow the engine defaults. Arena publishes the task and leaves the
-search policy to Forge. Two consequences are load bearing. The public task
+`supervisor_backend`, `search_policy`, `lanes`, `merge_stacking`,
+`knowledge_base`, and `python`. An empty supervisor follows the selected
+backend. `search_policy`, `lanes` and `merge_stacking` are forwarded to the
+engine's optimization loop on every workflow; null leaves each to the engine
+default. `knowledge_base: false` keeps the engine from reading or publishing
+learned knowledge: rewrite recipes, experience records and pull-request
+references, the last also by removing `PR_KB_ENABLE` from the engine
+environment. The capability probe must report every requested control, so a
+setting the installed engine would ignore fails the campaign before launch.
+Task preparation, profiling and planning probes follow the engine defaults.
+Two consequences are load bearing. The public task
 protocol exposes no profiler invocation, so the bridge answers `--profile-run`
 with an explicit unsupported capability. A single-file upstream recipe cannot
 describe a multi-file candidate, so a task whose `candidate.editable` spans more
