@@ -137,6 +137,10 @@ task scripts their normal sibling imports, including `production_comparison`,
 while `-I` continues to exclude ambient `PYTHONPATH` and user-site packages.
 The task and image mounts retain their existing read-only boundaries.
 
+The host entrypoint also supports direct isolated invocation with
+`python3 -I src/tools/trusted_task_eval.py`. It resolves sibling helpers from
+the trusted checkout, including when staging starts from another working directory.
+
 Transfers use `rclone --transfers 64000 --progress --buffer-size 0`,
 `GOMAXPROCS=1`, two checkers, disabled multithread streams, and explicit lists of
 at most 24 objects. Batches target at most 64 MiB; a larger individual asset is
