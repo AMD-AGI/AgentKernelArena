@@ -255,6 +255,57 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     }
 
 
+@pytest.mark.parametrize(
+    "worker_name", ("_bench.py", "generated_worker.py", "timing/generated_worker.py")
+)
+def test_generated_controller_declares_the_real_canonical_worker(tmp_path, worker_name):
+    task = tmp_path / "tasks" / "generated_task"
+    scripts = task / "scripts"
+    scripts.mkdir(parents=True)
+    controller = scripts / "generated_task_runner.py"
+    controller.write_text("def main():\n    return run_performance_worker()\n")
+    worker = scripts / worker_name
+    worker.parent.mkdir(parents=True, exist_ok=True)
+    worker.write_text(
+        "from _aka_benchmark import benchmark_cuda_graph_or_events_samples\n"
+    )
+    config = task / "config.yaml"
+    command = "performance_command: [python3 scripts/generated_task_runner.py performance]\n"
+    config.write_text(command)
+
+    # An adjacent canonical worker is not an implicit exemption for a wrapper.
+    counts, problems = audit_task_benchmark_entrypoints(tmp_path)
+    assert counts == {}
+    assert len(problems) == 1 and "unrecognized performance entrypoint" in problems[0]
+
+    config.write_text(command + f"harness_path: scripts/{worker_name}\n")
+    assert configured_performance_entrypoints(task) == {controller, worker}
+    assert audit_task_benchmark_entrypoints(tmp_path) == ({"canonical_python": 1}, [])
+    materialize_perf_helpers_in_workspace(task, root=ROOT)
+    assert (worker.parent / AKA_HELPER_FILE_NAME).read_text() == canonical_aka_helper(ROOT)
+    if worker.parent != scripts:
+        assert not (scripts / AKA_HELPER_FILE_NAME).exists()
+    assert configured_performance_entrypoints(task) == {controller, worker}
+
+
+@pytest.mark.parametrize("harness_path", ("scripts/missing.py", "scripts/not_a_timer.py"))
+def test_generated_controller_cannot_declare_a_missing_or_noncanonical_worker(
+    tmp_path, harness_path
+):
+    task = tmp_path / "tasks" / "generated_task"
+    scripts = task / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "generated_task_runner.py").write_text("def main(): return 0\n")
+    (scripts / "not_a_timer.py").write_text("def run(): return 0\n")
+    (task / "config.yaml").write_text(
+        "performance_command: [python3 scripts/generated_task_runner.py performance]\n"
+        f"harness_path: {harness_path}\n"
+    )
+    counts, problems = audit_task_benchmark_entrypoints(tmp_path)
+    assert counts == {}
+    assert len(problems) == 1 and "unrecognized performance entrypoint" in problems[0]
+
+
 def test_colocated_kernel_body_is_editable_but_harness_remains_protected(tmp_path):
     entrypoint = tmp_path / "combined_benchmark.py"
     entrypoint.write_text(
