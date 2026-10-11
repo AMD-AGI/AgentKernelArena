@@ -588,11 +588,33 @@ def finalize_report(
     )
     _atomic_yaml_dump(report_path, report)
     digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
-    _atomic_yaml_dump(
-        marker_path,
-        {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest},
-    )
+    marker = {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest}
+    from src.validator_integrity import integrity_marker_requirement
+    requirement = integrity_marker_requirement(workspace_path)
+    if requirement is not None:
+        marker["validator_integrity"] = requirement
+    _atomic_yaml_dump(marker_path, marker)
     return report
+
+
+def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> None:
+    """Record a failed audit without running any task-controlled helper code."""
+    report_path = workspace / REPORT_FILENAME
+    try:
+        raw = yaml.safe_load(report_path.read_text()) if report_path.is_file() and not report_path.is_symlink() else None
+    except (OSError, yaml.YAMLError):
+        raw = None
+    if isinstance(raw, dict) and isinstance(raw.get("checks"), dict):
+        raw["checks"]["harness_integrity"] = {
+            "status": "FAIL", "details": error, "post_validator_integrity_verified": False,
+        }
+    report = normalize_report(raw, expected_task_name=task_name, framework_error=error)
+    _atomic_yaml_dump(report_path, report)
+    _atomic_yaml_dump(workspace / COMPLETION_MARKER_FILENAME, {
+        "validation_schema_version": REPORT_SCHEMA_VERSION,
+        "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+        "validator_integrity": {"required": True, "status": "PENDING"},
+    })
 
 
 def validation_report_is_complete(workspace: str | Path) -> bool:
@@ -626,4 +648,7 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
         for name in CHECK_NAMES
     ):
         return False
-    return report.get("overall_status") == compute_overall_status(report)
+    if report.get("overall_status") != compute_overall_status(report):
+        return False
+    from src.validator_integrity import completion_integrity_matches
+    return completion_integrity_matches(workspace_path, marker, report)

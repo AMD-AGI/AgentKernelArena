@@ -26,6 +26,7 @@ from src.evaluator import (
 from src.runtime_env import apply_subprocess_python_path
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+from src.validator_integrity import begin_validator_integrity, finish_validator_integrity
 from src.eval_tools.config import EvalToolsConfig
 from src.eval_tools.contracts import SourceEvidence
 from src.eval_tools.evidence import (
@@ -480,6 +481,7 @@ def run_task(
     total_tasks: int,
 ) -> tuple[bool, Path | None]:
     workspace_path: Path | None = None
+    validator_integrity = None
     logger.info("=" * 80)
     logger.info(f"Task {task_index}/{total_tasks}: {task_name}")
     logger.info("=" * 80)
@@ -546,16 +548,32 @@ def run_task(
                 baseline_cases = measure_baseline(workspace_path, task_config, logger)
 
         harness_snapshot = snapshot_workspace_harness(
-            workspace_path, task_root=Path(task_config_dir).parent
+            workspace_path, task_root=Path(task_config_dir).parent, strict=is_validator
+        )
+        validator_integrity = (
+            begin_validator_integrity(workspace_path, task_config, harness_snapshot)
+            if is_validator else None
         )
 
         logger.info(f"Launching agent: {agent.value}")
-        agent_launcher(
-            eval_config=eval_config,
-            task_config_dir=task_config_dir,
-            workspace=str(workspace_path),
-        )
+        launcher_error = None
+        try:
+            agent_launcher(
+                eval_config=eval_config,
+                task_config_dir=task_config_dir,
+                workspace=str(workspace_path),
+            )
+        except Exception as exc:
+            if not is_validator:
+                raise
+            launcher_error = f"Validator launcher failed: {type(exc).__name__}: {exc}"
         logger.info("Agent execution completed")
+
+        if is_validator and not finish_validator_integrity(
+            validator_integrity, task_name=task_name, launcher_error=launcher_error
+        ):
+            logger.error("Post-validator integrity or launcher check rejected %s", task_name)
+            return False, workspace_path
 
         if not is_validator:
             # Agents work inside the task workspace and could accidentally modify
@@ -642,8 +660,15 @@ def run_task(
             report_workspace = workspace_path or get_task_workspace_path(
                 run_directory, task_name, timestamp
             )
-            if report_workspace.is_dir():
+            if report_workspace.is_dir() and not report_workspace.is_symlink():
                 try:
+                    if validator_integrity is not None:
+                        # A failed post-run check or receipt write must never
+                        # re-execute task helpers or become a resumable PASS.
+                        from agents.task_validator.report_schema import invalidate_integrity_report
+
+                        invalidate_integrity_report(report_workspace, task_name, str(e))
+                        return False, report_workspace
                     from agents.task_validator.report_schema import finalize_report
 
                     finalize_report(
