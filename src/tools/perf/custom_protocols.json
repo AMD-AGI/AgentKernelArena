@@ -122,7 +122,8 @@
       "description": "FreshCallbacks times one graph replay with owned CPU observations and canonical per-replay validation.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "bf4c91ddb56d435806300b6c3907d0ddfdedd30fd37290076b9111a192a82eb1"
+        "bf4c91ddb56d435806300b6c3907d0ddfdedd30fd37290076b9111a192a82eb1",
+        "cea3cbd06cce0afa50b5233c5c33d375021521b708058b5a2cfb5d023b7bd7ed"
       ],
       "files_sha256": {
         "ut/fresh_runner.py": [
