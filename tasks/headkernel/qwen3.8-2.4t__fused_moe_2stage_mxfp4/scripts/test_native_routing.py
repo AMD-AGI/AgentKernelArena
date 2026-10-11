@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager, nullcontext
 import copy
+import dataclasses
+import functools
 import importlib.util
 import json
 import math
@@ -33,6 +35,9 @@ class Tensor:
 
     def stride(self):
         return (2, 1)
+
+    def storage_offset(self):
+        return 0
 
     def untyped_storage(self):
         return self
@@ -134,6 +139,24 @@ class FakeTorch(types.ModuleType):
         return left.values == right.values
 
 
+def example_execution(block=32, stage='moe2'):
+    metadata = {
+        'stage1': {'callable': 'aiter.fused_moe:moe1'},
+        'stage2': {'callable': 'aiter.fused_moe:' + stage},
+        'block_m': block, 'ksplit': 0, 'run_1stage': False,
+        'has_bias': False, 'use_non_temporal_load': True, 'fuse_quant': '',
+        'stage2_has_bias': False, 'flat': False, 'output_aux': False,
+        'prequant': True, 'skip_inter_quant': False, 'route_bucket': '',
+        'expected_sorted_blocks': None, 'min_sorted_blocks': None, 'max_sorted_blocks': None,
+    }
+    return {'schema': 'qwen-moe-resolved-native-v1', 'effective_block_size_M': block,
+            'metadata': [copy.deepcopy(metadata), copy.deepcopy(metadata)],
+            'sorting': [{'args': ['ids', 'weights', 512, 8192, 'torch.bfloat16', block, None, None, 0],
+                         'kwargs': {'accumulate': True, 'flat': False, 'return_local_topk_ids': False}}],
+            'stages': [{'args': ['hidden', 'w1', 'w2', 10, 'sortedids', 'sortedweights', 'experts', 'valid',
+                                'out', True, block], 'kwargs': {}}]}
+
+
 class FakeRuntime:
     def __init__(self, torch):
         self.torch, self.meta = torch, META
@@ -155,6 +178,9 @@ class FakeRuntime:
     def call(self, kwargs, route='captured', collector=None):
         output = Tensor()
         captured = self.torch.cuda.capturing
+        if collector is not None:
+            block = 32 if route == 'captured' else int(route[5:])
+            collector.observe_execution(example_execution(block), None if route == 'captured' else block)
 
         def run():
             if collector is not None and (self.fail_replay == 'no_op'
@@ -201,7 +227,7 @@ class ContractTests(unittest.TestCase):
             with self.subTest(poisoned=poisoned), self.assertRaises((ValueError, SyntaxError)):
                 contract.parse_policy(poisoned, META)
 
-    def test_effective_source_normalizes_comments_but_binds_routes(self):
+    def test_declared_policy_normalizes_comments_but_execution_requires_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
             task = Path(tmp) / 'task'
             shutil.copytree(TASK, task, symlinks=True, ignore=shutil.ignore_patterns('build', '__pycache__', '_aka_benchmark.py', 'reference_io.pt'))
@@ -209,10 +235,14 @@ class ContractTests(unittest.TestCase):
             source = task / contract.POLICY_FILE
             source.write_text('# comment-only change\n' + source.read_text())
             after = contract.source_context(task)
-            self.assertEqual(before['effective_source_sha256'], after['effective_source_sha256'])
+            self.assertIsNone(before['effective_source_sha256'])
+            self.assertIsNone(after['effective_source_sha256'])
+            self.assertEqual(before['declared_policy_sha256'], after['declared_policy_sha256'])
             self.assertNotEqual(before['source_file_sha256'], after['source_file_sha256'])
             source.write_text(source.read_text().replace('"captured"', '"block32"', 1))
-            self.assertNotEqual(before['effective_source_sha256'], contract.source_context(task)['effective_source_sha256'])
+            changed = contract.source_context(task)
+            self.assertIsNone(changed['effective_source_sha256'])
+            self.assertNotEqual(before['declared_policy_sha256'], changed['declared_policy_sha256'])
             native = task / 'ut' / META['source_provenance']['baseline_ref']
             native.write_text(native.read_text() + '\n# tampered baseline\n')
             with self.assertRaisesRegex(ValueError, 'native source changed'):
@@ -225,6 +255,9 @@ class ContractTests(unittest.TestCase):
         for spec in contract.specs(META):
             rows.append({'sig': spec['sig'] + '|' + spec['regime'], 'params': contract.case_params(META, spec),
                          'selected_route': 'captured', 'benchmark_method': 'cuda_graph',
+                         'native_dispatch': {'declared_block_size_M': None, 'native_block_m': 32, 'effective_block_size_M': 32},
+                         'resolved_execution': example_execution(),
+                         'resolved_execution_observations': 12, 'resolved_capture_observations': 2,
                          'benchmark_warmup': 10, 'benchmark_samples': 100, 'benchmark_effective_repeats': 1,
                          'samples_ms': samples[:], 'mean_ms': math.fsum(samples) / 100,
                          'median_ms': (samples[49] + samples[50]) / 2, 'min_ms': min(samples), 'max_ms': max(samples),
@@ -234,9 +267,11 @@ class ContractTests(unittest.TestCase):
                                         'routes_weights_scales_preserved': True, 'checked_invocations': 114,
                                         'fresh_input_sets': 116, 'outputs_poisoned_before_replay': True,
                                         'measured_graph_validated': True}})
-        return {'status': 'ok', 'protocol': contract.PROTOCOL, 'request': request,
-                'request_sha256': contract.fingerprint(request), 'cases': rows,
-                'timer': 'cuda_graph', 'warmup': 10, 'iters': 100}, request
+        payload = {'status': 'ok', 'protocol': contract.PROTOCOL, 'request': request,
+                   'request_sha256': contract.fingerprint(request), 'cases': rows,
+                   'timer': 'cuda_graph', 'warmup': 10, 'iters': 100}
+        payload['effective_execution_sha256'] = contract.effective_execution_identity(payload, META, request)
+        return payload, request
 
     def test_report_rejects_missing_cases_samples_abi_and_stale_source(self):
         payload, request = self.payload()
@@ -248,7 +283,12 @@ class ContractTests(unittest.TestCase):
                      lambda p: p['cases'][0].update(mean_ms=0.0001),
                      lambda p: p['cases'][0]['validation'].update(checked_invocations=113),
                      lambda p: p.update(request_sha256='0' * 64),
-                     lambda p: p['cases'][0].update(benchmark_fallback_reason='event')]
+                     lambda p: p['cases'][0].update(benchmark_fallback_reason='event'),
+                     lambda p: p['cases'][0].pop('resolved_execution'),
+                     lambda p: p['cases'][0].update(resolved_capture_observations=1),
+                     lambda p: p['cases'][0]['resolved_execution'].update(effective_block_size_M=64),
+                     lambda p: p['cases'][0]['resolved_execution']['metadata'][0]['stage2'].update(callable='other'),
+                     lambda p: p.update(effective_execution_sha256='0' * 64)]
         for mutate in mutations:
             invalid = copy.deepcopy(payload)
             mutate(invalid)
@@ -293,6 +333,63 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'mutated weights'):
             state.validate()
         self.assertEqual(native.reference_calls, 0)
+
+    def test_native_default_and_explicit_alias_have_identical_observed_arguments(self):
+        @dataclasses.dataclass
+        class Metadata:
+            stage1: object
+            stage2: object
+            block_m: int
+            ksplit: int = 0
+            run_1stage: bool = False
+
+        def stage1():
+            pass
+
+        def stage2():
+            pass
+
+        for block in (32, 64, 128):
+            native = object.__new__(runtime.NativeRuntime)
+            native.torch = FakeTorch()
+            native.dispatcher = lambda: Metadata(functools.partial(stage1, kernelName='moe1'),
+                                                 functools.partial(stage2, kernelName='moe2'), block)
+            native.sorting = lambda *args, **kwargs: [Tensor() for _ in range(5)]
+
+            def two_stages(*args, **kwargs):
+                native._dispatch()
+                return Tensor()
+
+            native.two_stages = two_stages
+
+            def production(**kwargs):
+                metadata = native._dispatch()
+                actual = kwargs.get('block_size_M')
+                actual = metadata.block_m if actual is None else actual
+                native._sorting('ids', 'weights', 512, 8192, 'torch.bfloat16', actual,
+                                None, None, 0, accumulate=True, flat=False)
+                return native._two_stages('hidden', 'w1', 'w2', 10, 'ids', 'weights', 'experts',
+                                          'valid', 'output', True, actual)
+
+            native.fn = production
+            observations = []
+            collector = types.SimpleNamespace(observe_execution=lambda value, declared:
+                                              observations.append((copy.deepcopy(value), declared)))
+            native.call({}, 'captured', collector)
+            native.call({}, 'block' + str(block), collector)
+            self.assertIsNone(observations[0][1])
+            self.assertEqual(observations[1][1], block)
+            self.assertEqual(observations[0][0], observations[1][0])
+            self.assertEqual(contract.fingerprint(observations[0][0]), contract.fingerprint(observations[1][0]))
+            self.assertNotIn('0x', json.dumps(observations[0][0]))
+
+    def test_native_execution_changes_between_capture_invocations_are_rejected(self):
+        state = runtime.ReplayState(FakeRuntime(FakeTorch()), META['workload']['cases'][0], 'captured', 1)
+        state.observe_execution(example_execution(32), None)
+        with self.assertRaisesRegex(ValueError, 'native execution changed'):
+            state.observe_execution(example_execution(64), None)
+        with self.assertRaisesRegex(ValueError, 'native execution changed'):
+            state.observe_execution(example_execution(32, stage='different_moe2'), None)
 
     def test_canonical_graph_adapter_checks_every_completed_replay(self):
         helper_path = TASK / 'scripts/_aka_benchmark.py'

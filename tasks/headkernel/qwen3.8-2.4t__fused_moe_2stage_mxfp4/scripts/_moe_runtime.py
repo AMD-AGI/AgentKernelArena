@@ -4,11 +4,15 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 import importlib.util
+import dataclasses
+import enum
+import functools
 import math
+import numbers
 from pathlib import Path
 import sys
 
-from _routing_contract import case_params, file_sha, require, specs, strict_json
+from _routing_contract import case_params, file_sha, fingerprint, require, specs, strict_json
 
 
 def load_module(name, path):
@@ -37,6 +41,54 @@ def to_device(torch, tensor):
     return value
 
 
+def native_value(value, torch=None):
+    """Canonical native launch data, never address-bearing callable reprs."""
+    if value is None or type(value) is bool:
+        return value
+    if isinstance(value, str):
+        return str(value)
+    if isinstance(value, enum.Enum):
+        return {'enum': type(value).__module__ + '.' + type(value).__qualname__,
+                'name': value.name, 'value': native_value(value.value, torch)}
+    if type(value).__module__.startswith('aiter') and type(value).__name__ in ('ActivationType', 'QuantType', 'GateMode'):
+        # AITER image builds can expose these enums through pybind rather than
+        # Python's Enum base. Their stable name/value still describes the ABI.
+        name, number = getattr(value, 'name', None), getattr(value, 'value', None)
+        require(isinstance(name, str) and type(number) in (int, str), 'invalid native enum')
+        return {'enum': type(value).__module__ + '.' + type(value).__qualname__, 'name': name, 'value': number}
+    if type(value).__module__ == 'numpy' and type(value).__name__ == 'bool_':
+        return bool(value)
+    if isinstance(value, numbers.Integral):
+        return int(value)
+    if isinstance(value, numbers.Real):
+        require(math.isfinite(float(value)), 'nonfinite native launch metadata')
+        return float(value)
+    if torch is not None and torch.is_tensor(value):
+        return {'tensor': {'shape': list(value.shape), 'stride': list(value.stride()),
+                           'storage_offset': int(value.storage_offset()),
+                           'dtype': str(value.dtype), 'device_type': value.device.type,
+                           'is_shuffled': bool(getattr(value, 'is_shuffled', False))}}
+    if type(value).__module__ == 'torch' and type(value).__name__ == 'dtype':
+        return {'dtype': str(value)}
+    if isinstance(value, functools.partial):
+        return {'partial': native_value(value.func, torch),
+                'args': native_value(value.args, torch), 'kwargs': native_value(value.keywords, torch)}
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {field.name: native_value(getattr(value, field.name), torch)
+                for field in dataclasses.fields(value)}
+    if isinstance(value, (list, tuple)):
+        return [native_value(item, torch) for item in value]
+    if isinstance(value, dict):
+        require(all(type(key) is str for key in value), 'non-string native configuration key')
+        return {key: native_value(item, torch) for key, item in value.items()}
+    if callable(value):
+        module = getattr(value, '__module__', None)
+        name = getattr(value, '__qualname__', None) or getattr(value, '__name__', None)
+        require(isinstance(module, str) and isinstance(name, str), 'unnamed native callable')
+        return {'callable': module + ':' + name}
+    raise ValueError('unsupported native launch metadata: ' + type(value).__name__)
+
+
 class NativeRuntime:
     def __init__(self, task, torch, meta):
         self.task, self.torch, self.meta = Path(task), torch, meta
@@ -53,8 +105,10 @@ class NativeRuntime:
         self.collector = None
         self.sorting = self.native.moe_sorting
         self.dispatcher = self.native.get_2stage_cfgs
+        self.two_stages = self.native.fused_moe_2stages
         self.native.moe_sorting = self._sorting
         self.native.get_2stage_cfgs = self._dispatch
+        self.native.fused_moe_2stages = self._two_stages
         self.cases = load_module('_qwen_moe_captured_cases', self.task / 'ut/cases.py')
         self.harness = load_module('_qwen_moe_correctness', self.task / 'ut/harness_lib.py')
         fixture = self.task / 'ut' / meta['reference_io']
@@ -71,6 +125,10 @@ class NativeRuntime:
         self.device_shared = {}
 
     def _sorting(self, *args, **kwargs):
+        if self.collector is not None:
+            require(len(args) > 5, 'native sorting block argument was not observed')
+            self.launch_observation['sorting'].append({
+                'args': native_value(args, self.torch), 'kwargs': native_value(kwargs, self.torch)})
         result = self.sorting(*args, **kwargs)
         if self.collector is not None:
             self.collector.scratch = list(result)
@@ -79,11 +137,15 @@ class NativeRuntime:
     def _dispatch(self, *args, **kwargs):
         result = self.dispatcher(*args, **kwargs)
         if self.collector is not None:
-            self.collector.dispatch = {
-                'native_block_m': int(result.block_m), 'run_1stage': bool(result.run_1stage),
-                'stage1': repr(result.stage1), 'stage2': repr(result.stage2),
-            }
+            self.launch_observation['metadata'].append(native_value(result, self.torch))
         return result
+
+    def _two_stages(self, *args, **kwargs):
+        if self.collector is not None:
+            require(len(args) > 10, 'native stage block argument was not observed')
+            self.launch_observation['stages'].append({
+                'args': native_value(args, self.torch), 'kwargs': native_value(kwargs, self.torch)})
+        return self.two_stages(*args, **kwargs)
 
     def call(self, kwargs, route='captured', collector=None):
         tuned = dict(kwargs)
@@ -91,8 +153,25 @@ class NativeRuntime:
             require(route in ('block32', 'block64', 'block128'), 'unsupported native route')
             tuned['block_size_M'] = int(route[5:])
         self.collector = collector
+        if collector is not None:
+            self.launch_observation = {'schema': 'qwen-moe-resolved-native-v1',
+                                       'metadata': [], 'sorting': [], 'stages': []}
         try:
-            return self.fn(**tuned)
+            output = self.fn(**tuned)
+            if collector is not None:
+                observed = self.launch_observation
+                require(len(observed['metadata']) == 2 and len(observed['sorting']) == 1
+                        and len(observed['stages']) == 1, 'complete two-stage native dispatch was not observed')
+                block = observed['sorting'][0]['args'][5]
+                require(type(block) is int and block > 0
+                        and observed['stages'][0]['args'][10] == block,
+                        'sorting and MoE stages resolved different block sizes')
+                observed['effective_block_size_M'] = block
+                declared = tuned.get('block_size_M')
+                resolved = int(observed['metadata'][0]['block_m']) if declared in (None, 0, -1) else declared
+                require(block == resolved, 'observed block differs from native hint resolution')
+                collector.observe_execution(observed, declared)
+            return output
         finally:
             self.collector = None
 
@@ -140,6 +219,9 @@ class ReplayState:
         self.outputs = None
         self.scratch = []
         self.dispatch = None
+        self.resolved_execution = None
+        self.execution_observations = 0
+        self.capture_observations = 0
         self.capture_pending = False
         self.needs_validation = False
         self.checked_invocations = 0
@@ -148,6 +230,18 @@ class ReplayState:
         self.tol = float(runtime.meta['tol'])
         self.use_captured = False
         self.check_captured = False
+
+    def observe_execution(self, observed, declared):
+        if self.resolved_execution is None:
+            self.resolved_execution = observed
+        else:
+            require(fingerprint(observed) == fingerprint(self.resolved_execution),
+                    'native execution changed between warmup/capture invocations')
+        self.execution_observations += 1
+        self.capture_observations += int(self.torch.cuda.is_current_stream_capturing())
+        self.dispatch = {'declared_block_size_M': declared,
+                         'native_block_m': int(observed['metadata'][0]['block_m']),
+                         'effective_block_size_M': observed['effective_block_size_M']}
 
     def prepare(self):
         self.validate()
