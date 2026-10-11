@@ -5,6 +5,7 @@ source_file_path:
 target_kernel_functions:
   - dynamic_per_group_scaled_quant_kernel
 harness_protection:
+  freeze_task_inputs: true
   reject_new_source_symlinks: true
 platform_support:
   required_arch: gfx950

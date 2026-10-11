@@ -4,6 +4,13 @@ The production baseline is AITER's native `per_group_quant_hip`. Baseline and ca
 
 Only the body of `dynamic_per_group_scaled_quant_kernel` in `source/quant_kernels.cu` is editable. Its signature and surrounding translation unit are checked against `ut/native/quant_kernels.reference.cu`. Local device helpers inside that body are allowed. New includes, macros, host hooks and changes to the launcher are rejected before compilation. The stock, brace-free architecture type-selection block may remain unchanged or be removed with a rewritten kernel body. All other task files are frozen.
 
+The framework snapshots the complete task input package and discards newly added
+input files before evaluation, including import-shadowing files such as
+`ut/torch.py`. Existing UT, oracle, native-wrapper and provenance files remain
+immutable. Generated files under `build/` and the framework's standard runtime
+outputs remain writable. This input-freeze change updates the package identity;
+fresh trusted and framework qualification is required for the current package.
+
 | BF16 input | Observed calls per rank |
 |---|---:|
 | `[8192, 1536]` | 728 |
