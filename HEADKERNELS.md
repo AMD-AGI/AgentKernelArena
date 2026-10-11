@@ -37,7 +37,7 @@ Use the [portable setup guide](docs/how-to/headkernel-upstream-runtime.md) befor
 
 The runtime is the exact SGLang 0.5.20 MI355X image in the [catalog](tools/headkernel-runtime-targets.json). Use local NVMe for fixtures, caches, and results. Isolated task validation does not require a Crusoe allocation, shared model tree, model server, or whole checkpoint. A complete serving-workload reproduction has separate model and TP8 resource requirements described in the [workload archive index](docs/reference/headkernel-ready-subsets.md#workload-archives-in-oci).
 
-After preparing each selected task's inputs, use the normal Docker workflow with `CONFIG=example_configs/headkernel_sg520_current_mi355x.yaml`. Require source-matched, framework-finalized reports and complete trusted comparisons before asserting current qualification. Preserve raw samples, source controls, failed attempts, and timing-quality decisions.
+After preparing each selected task's inputs, use the normal Docker workflow with `CONFIG=example_configs/headkernel_sg520_current_mi355x.yaml`. Set `AKA_SKIP_DEV_MEM=1`, install and authenticate the selected validator CLI, and run `make docker-check-agents` for that configuration before cache preparation or long validation; the [setup guide](docs/how-to/headkernel-upstream-runtime.md#run-the-standard-arena-validator) gives the command order and backend instructions. These host startup settings do not change task cases or timing policy. Require source-matched, framework-finalized reports and complete trusted comparisons before asserting current qualification. Preserve raw samples, source controls, failed attempts, and timing-quality decisions.
 
 ## Capture provenance and scope
 
