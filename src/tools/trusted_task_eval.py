@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from pathlib import Path, PurePosixPath
 
@@ -309,7 +310,86 @@ def preserve_diagnostics(build, output):
         (output / "hashes.json").write_text(json.dumps(records, indent=2) + "\n")
 
 
-def run_phase(image, task, staging, output, leg, request, render_device, timeout, cache_source=None):
+def container_resource_arguments(resources):
+    """Explicit host limits; these do not alter task measurement settings."""
+    resources = resources or {}
+    require(set(resources) <= {"cpus", "memory_gib"}, "unknown container resource limit")
+    arguments = []
+    cpus = resources.get("cpus")
+    if cpus is not None:
+        require(type(cpus) in (int, float) and math.isfinite(cpus) and cpus > 0,
+                "container CPU limit must be positive and finite")
+        arguments.extend(["--cpus", str(cpus)])
+    memory = resources.get("memory_gib")
+    if memory is not None:
+        require(type(memory) is int and memory > 0, "container memory GiB must be a positive integer")
+        arguments.extend(["--memory", str(memory) + "g"])
+    return arguments
+
+
+def process_memory_snapshot(proc=Path("/proc")):
+    """Read only the invoking process's cgroup, without resetting counters."""
+    try:
+        group = next(line.split(":", 2)[2] for line in (proc / "self/cgroup").read_text().splitlines()
+                     if line.startswith("0::"))
+        group = PurePosixPath(group)
+        require(group.is_absolute() and ".." not in group.parts, "invalid process cgroup path")
+        mounts = [line.split() for line in (proc / "self/mountinfo").read_text().splitlines()
+                  if " - cgroup2 " in line]
+        require(len(mounts) == 1, "one process cgroup2 mount is required")
+        mount_root, mountpoint = PurePosixPath(mounts[0][3]), Path(mounts[0][4])
+        suffix = PurePosixPath(".") if str(group) == "/" else group.relative_to(mount_root)
+        directory = mountpoint / suffix
+        counters = {}
+        for name in ("memory.current", "memory.peak", "memory.max", "memory.events",
+                     "memory.events.local", "memory.swap.current", "memory.swap.max"):
+            path = directory / name
+            if path.is_file():
+                counters[name] = path.read_text().strip()
+        require("memory.current" in counters and "memory.max" in counters,
+                "process cgroup memory counters are unavailable")
+        return {"status": "observed", "cgroup": str(directory), "counters": counters,
+                "observed_unix": time.time()}
+    except (OSError, ValueError, StopIteration) as error:
+        return {"status": "unavailable", "error": str(error), "observed_unix": time.time()}
+
+
+def preserve_container_exit(name, destination, before):
+    """Retain OOM/limit evidence before cleanup; never dump Config.Env."""
+    record = {"schema": "trusted-container-exit-v1", "name": name,
+              "process_memory_before": before, "process_memory_after": process_memory_snapshot(),
+              "observed_unix": time.time(), "container": None}
+    try:
+        result = subprocess.run(["docker", "inspect", name], capture_output=True,
+                                text=True, check=False, timeout=10)
+        require(result.returncode == 0, "container inspection failed: " + (result.stderr or "")[:2000])
+        rows = json.loads(result.stdout)
+        require(isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], dict)
+                and rows[0].get("Name") == "/" + name,
+                "container inspection identity differs")
+        row = rows[0]
+        require(isinstance(row.get("State"), dict) and isinstance(row.get("HostConfig"), dict),
+                "container state or limits are missing")
+        require(re.fullmatch(r"[a-f0-9]{64}", row.get("Id", "")) is not None,
+                "container inspection ID is invalid")
+        record["container"] = {
+            "id": row["Id"], "name": row["Name"], "image_id": row.get("Image"),
+            "state": {key: row.get("State", {}).get(key) for key in
+                      ("Status", "OOMKilled", "ExitCode", "Error", "StartedAt", "FinishedAt")},
+            "limits": {key: row.get("HostConfig", {}).get(key) for key in
+                       ("Memory", "MemorySwap", "NanoCpus", "CpuQuota", "CpuPeriod", "CpusetCpus", "PidsLimit")},
+        }
+        record["status"] = "observed"
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as error:
+        record["status"] = "unavailable"
+        record["error"] = str(error)
+    with Path(destination).open("x") as stream:
+        json.dump(record, stream, indent=2, allow_nan=False)
+        stream.write("\n")
+
+
+def run_phase(image, task, staging, output, leg, request, render_device, timeout, cache_source=None,
+              container_resources=None):
     phase = request["phase"]
     label = leg + "_" + phase
     build = staging / (label + "_build")
@@ -324,7 +404,12 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     gpu_path.write_text(canonical(request["gpu"]))
     name = "aka-task-retest-" + uuid.uuid4().hex
     command = docker_command(image, task, build, render_device, name, cache)
+    # Existing finally cleanup owns removal. Automatic removal would discard
+    # Docker's OOMKilled/ExitCode evidence before the host can inspect it.
+    command = [argument for argument in command if argument != "--rm"]
     command = command_with_binding(command, image, request["gpu"], GPU_BINDING_HELPER, gpu_path)
+    image_index = command.index(image)
+    command[image_index:image_index] = container_resource_arguments(container_resources)
     image_index = command.index(image)
     if cache is not None:
         # AITER's import otherwise selects the image's root-owned FlyDSL cache
@@ -340,6 +425,7 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     command += [phase, "--request", "/evaluation-request.json"]
     command += distribution_phase_arguments(request.get("distribution_correctness_mode"), phase)
     primary = None
+    memory_before = process_memory_snapshot()
     try:
         with (output / (label + ".log")).open("xb") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
@@ -350,6 +436,10 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
         raise
     finally:
         failures = []
+        try:
+            preserve_container_exit(name, output / (label + ".container.json"), memory_before)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            failures.append(exc)
         try:
             subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, check=False, timeout=30)
@@ -367,7 +457,8 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
 
 def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, render_device, scratch_dir=None, timeout=7200,
                    fixture_local_mirror=None, fixture_oci_prefix=None,
-                   fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES, phase_timeouts=None):
+                   fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES,
+                   phase_timeouts=None, container_resources=None):
     # Reject malformed host budgets before staging fixtures or selecting a GPU.
     evaluation_timeouts({}, None, timeout, phase_timeouts)
     repo, candidate_workspace = Path(repo).resolve(), Path(candidate_workspace).resolve()
@@ -376,6 +467,8 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
     for path in (repo, output.resolve(), scratch):
         require(not path.is_relative_to(candidate_workspace), "trusted repository/output/scratch must be outside the agent workspace")
     require(timeout > 0, "timeout must be positive")
+    container_resource_arguments(container_resources)
+    resource_options = {"container_resources": container_resources} if container_resources else {}
     scratch.mkdir(parents=True, exist_ok=True)
     output.mkdir(mode=0o700, parents=True)
     with tempfile.TemporaryDirectory(prefix="aka-task-retest-", dir=scratch) as temporary:
@@ -423,7 +516,7 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 if mode is not None and phase in ("compile", "correctness"):
                     request["distribution_correctness_mode"] = mode
                 report = run_phase(image, task, staging, output, leg, request, render_device,
-                                   limits[phase], cache_source)
+                                   limits[phase], cache_source, **resource_options)
                 measured = validate_report(report, manifest, request)
                 validate_distribution_report(report, manifest, request, contract["distributions"], mode)
                 # Ignore only the empty bind-mount point added after fingerprinting.
@@ -456,6 +549,8 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                   "manifest_sha256": fingerprint(manifest), "full_case_coverage": True, "cases": cases,
                   "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in cases) / len(cases),
                   "reports": reports, "framework_task_validator_status": "not_asserted"}
+        if container_resources:
+            result["requested_container_resources"] = dict(container_resources)
         if contract["distributions"] is not None:
             result["observed_work_correctness"] = {
                 "mode": contract["distribution_correctness_mode"],
@@ -529,6 +624,8 @@ def main():
     for phase in PHASES:
         parser.add_argument("--" + phase + "-timeout", type=int,
                             help="optional host cap for each " + phase + " phase; cannot exceed --timeout")
+    parser.add_argument("--container-cpus", type=float, help="explicit CPU quota for each task phase")
+    parser.add_argument("--container-memory-gib", type=int, help="explicit memory limit for each task phase")
     args = parser.parse_args()
     if Path("/.dockerenv").exists():
         parser.error("run from a trusted host outside the agent container")
@@ -545,10 +642,13 @@ def main():
         return
     if not args.candidate_workspace or not args.render_device:
         parser.error("retesting requires --candidate-workspace and --render-device")
+    resources = {key: value for key, value in
+                 (("cpus", args.container_cpus), ("memory_gib", args.container_memory_gib))
+                 if value is not None}
     result = trusted_retest(repo=args.repo, commit=args.commit, task_path=args.task,
                             candidate_workspace=args.candidate_workspace, output=args.output,
                             render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout,
-                            phase_timeouts=phase_timeouts, **fixtures)
+                            phase_timeouts=phase_timeouts, container_resources=resources or None, **fixtures)
     print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
                       "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
     if result['status'] == 'rejected_timing_quality':

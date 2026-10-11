@@ -141,6 +141,20 @@ The host entrypoint also supports direct isolated invocation with
 `python3 -I src/tools/trusted_task_eval.py`. It resolves sibling helpers from
 the trusted checkout, including when staging starts from another working directory.
 
+Use `--container-cpus 24 --container-memory-gib 192` when the allocated host
+resources require explicit phase limits. Reserve allocation memory for host
+staging and file caches as well as the container. These options change resource
+limits only; case coverage, warmups, replay counts, numerical checks and timing
+methods still come from the protected task contract.
+
+Each phase writes `<leg>_<phase>.container.json` before its existing bounded
+container cleanup. It records the exact container ID, `State.OOMKilled`, exit
+code, actual Docker resource limits, and the invoking process's cgroup memory
+counters before and after the phase. It never retains `Config.Env` or a full
+Docker inspection dump. Failed inspection is recorded as unavailable, so exit
+137 alone is not labelled as OOM. A failed phase still propagates its original
+exception and cannot publish a successful measurement.
+
 Transfers use `rclone --transfers 64000 --progress --buffer-size 0`,
 `GOMAXPROCS=1`, two checkers, disabled multithread streams, and explicit lists of
 at most 24 objects. Batches target at most 64 MiB; a larger individual asset is
