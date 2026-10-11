@@ -1,140 +1,114 @@
-"""CPU-only checks for the editable MoE copy's AITER operation registration."""
+"""CPU checks that MoE routing engages the protected native operation safely."""
 
-import ast
-import inspect
+import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
+import tempfile
 import unittest
+from unittest.mock import patch
 
 
-SOURCE = Path(__file__).resolve().parents[1] / (
-    "tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4/source/moe_candidate.py"
+TASK = Path(__file__).resolve().parents[1] / (
+    'tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4'
 )
 
 
-def _candidate_decorator(registry, guard, fake, module_name="moe_candidate"):
-    """Execute only registration code, without importing torch or the kernel.
-
-    Evaluate the decorators attached to the real candidate entry so this check
-    also catches accidentally leaving the original decorator on that entry.
-    """
-    tree = ast.parse(SOURCE.read_text(), filename=str(SOURCE))
-    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-    wrapper = functions.get("_register_candidate_moe")
-    namespace = {
-        "__name__": module_name,
-        "torch": SimpleNamespace(ops=SimpleNamespace(aiter=registry)),
-        "torch_compile_guard": guard,
-        "fused_moe_fake": fake,
-    }
-    if wrapper is not None:
-        isolated = ast.Module(body=[wrapper], type_ignores=[])
-        exec(compile(isolated, str(SOURCE), "exec"), namespace)
-    decorators = [
-        eval(compile(ast.Expression(node), str(SOURCE), "eval"), namespace)
-        for node in functions["fused_moe_"].decorator_list
-    ]
-
-    def decorate(function):
-        for decorator in reversed(decorators):
-            function = decorator(function)
-        return function
-
-    return decorate
+def _load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-class _Operation:
-    def __init__(self, function, fake):
-        self.function = function
-        self.fake = fake
-        self.schema = inspect.signature(function)
-
-    def __call__(self, *args, **kwargs):
-        return self.function(*args, **kwargs)
+CONTRACT = _load('_qwen_moe_registration_contract', TASK / 'scripts/_routing_contract.py')
+with patch.dict('sys.modules', {'_routing_contract': CONTRACT}):
+    RUNTIME = _load('_qwen_moe_registration_runtime', TASK / 'scripts/_moe_runtime.py')
+META = json.loads((TASK / 'ut/meta.json').read_text())
+SOURCE = TASK / CONTRACT.POLICY_FILE
 
 
-class MoERegistrationTests(unittest.TestCase):
-    def setUp(self):
-        def production(hidden_states, *, scale=1):
-            return ("production", hidden_states, scale)
+class MoENativeRoutingTests(unittest.TestCase):
+    def test_policy_edit_reaches_native_operation_and_preserves_baseline_arguments(self):
+        original = SOURCE.read_bytes()
+        # Submit an admitted route change through the real source parser.
+        changed = original.replace(b'"captured"', b'"block64"', 1)
+        original_routes = CONTRACT.parse_policy(original, META)
+        candidate_routes = CONTRACT.parse_policy(changed, META)
+        calls = []
+        native = object.__new__(RUNTIME.NativeRuntime)
+        sentinel = object()
 
-        def production_fake(*args, **kwargs):
-            return "production fake"
+        def production(**kwargs):
+            calls.append(kwargs)
+            return sentinel
 
-        def candidate_fake(*args, **kwargs):
-            return "candidate fake"
+        native.fn = production
+        kwargs = {
+            'hidden_states': object(), 'w1': object(), 'w2': object(),
+            'w1_scale': object(), 'w2_scale': object(), 'expert_mask': object(),
+            'topk_ids': object(), 'topk_weight': object(), 'activation': object(),
+            'quant_type': object(), 'doweight_stage1': False, 'hidden_pad': 0,
+            'intermediate_pad': 0, 'a1_scale': None, 'a2_scale': None,
+            'bias1': None, 'bias2': None,
+        }
+        for case in CONTRACT.specs(META):
+            signature = case['sig']
+            self.assertIs(native.call(kwargs, candidate_routes[signature]), sentinel)
+            self.assertIs(native.call(kwargs, original_routes[signature]), sentinel)
+        self.assertEqual(calls[0], dict(kwargs, block_size_M=64))
+        self.assertEqual(calls[1:], [kwargs, kwargs, kwargs])
+        self.assertNotIn('block_size_M', kwargs)
+        self.assertIs(native.fn, production)
 
-        self.production = _Operation(production, production_fake)
-        self.registry = SimpleNamespace(fused_moe_=self.production)
-        self.fake = candidate_fake
-        self.registrations = []
+    def test_native_dispatch_failure_propagates_without_fallback(self):
+        native = object.__new__(RUNTIME.NativeRuntime)
+        calls = []
 
-    def guard(self, *, gen_fake):
-        def decorate(function):
-            self.registrations.append((function, gen_fake))
-            # Model AITER's shared operation namespace: an existing name can
-            # return the old operation even for a different Python function.
-            if hasattr(self.registry, function.__name__):
-                return getattr(self.registry, function.__name__)
-            operation = _Operation(function, gen_fake)
-            setattr(self.registry, function.__name__, operation)
-            return operation
+        def unsupported(**kwargs):
+            calls.append(kwargs)
+            raise RuntimeError('unsupported native block geometry')
 
-        return decorate
+        native.fn = unsupported
+        with self.assertRaisesRegex(RuntimeError, 'unsupported native block geometry'):
+            native.call({'hidden_states': 'input'}, 'block128', collector=object())
+        self.assertEqual(calls, [{'hidden_states': 'input', 'block_size_M': 128}])
+        self.assertIsNone(native.collector)
+        self.assertIs(native.fn, unsupported)
 
-    @staticmethod
-    def candidate():
-        def fused_moe_(hidden_states, *, scale=1):
-            return ("candidate", hidden_states, scale)
+    def test_candidate_cannot_register_a_custom_operation_or_supply_the_baseline(self):
+        source = SOURCE.read_bytes()
+        programs = [
+            b'import torch\n' + source,
+            b'from candidate import baseline_callable\n' + source,
+            source.replace(b'def select_routes():', b'@torch.library.custom_op("aiter::fused_moe_")\ndef select_routes():'),
+            source + b'\ndef baseline_callable():\n    return lambda **kwargs: None\n',
+            source.replace(b'"captured"', b'baseline_callable()', 1),
+        ]
+        for program in programs:
+            with self.subTest(program=program), self.assertRaises((ValueError, SyntaxError)):
+                CONTRACT.parse_policy(program, META)
 
-        return fused_moe_
-
-    def test_candidate_dispatch_does_not_reuse_or_replace_production(self):
-        decorate = _candidate_decorator(self.registry, self.guard, self.fake)
-        candidate = decorate(self.candidate())
-
-        self.assertIs(self.registry.fused_moe_, self.production)
-        self.assertEqual(self.production("input", scale=2), ("production", "input", 2))
-        self.assertIsNot(candidate, self.production)
-        self.assertEqual(candidate("input", scale=2), ("candidate", "input", 2))
-        self.assertIs(self.registry.moe_candidate_fused_moe_, candidate)
-
-    def test_original_function_schema_and_fake_callback_reach_guard(self):
-        function = self.candidate()
-        schema = inspect.signature(function)
-        decorate = _candidate_decorator(self.registry, self.guard, self.fake)
-        candidate = decorate(function)
-
-        self.assertEqual(self.registrations, [(function, self.fake)])
-        self.assertIs(candidate.function, function)
-        self.assertEqual(candidate.schema, schema)
-        self.assertIs(candidate.fake, self.fake)
-        self.assertEqual(candidate.fake("input"), "candidate fake")
-        self.assertEqual(self.production.fake("input"), "production fake")
-
-    def test_duplicate_candidate_is_rejected_before_guard_can_reuse_it(self):
-        decorate = _candidate_decorator(self.registry, self.guard, self.fake)
-        candidate = decorate(self.candidate())
-
-        with self.assertRaisesRegex(RuntimeError, "already registered: moe_candidate_fused_moe_"):
-            decorate(self.candidate())
-
-        self.assertEqual(len(self.registrations), 1)
-        self.assertIs(self.registry.moe_candidate_fused_moe_, candidate)
-        self.assertIs(self.registry.fused_moe_, self.production)
-
-    def test_module_names_have_distinct_registration_keys(self):
-        first = _candidate_decorator(self.registry, self.guard, self.fake)(self.candidate())
-        decorate = _candidate_decorator(
-            self.registry, self.guard, self.fake, module_name="other.moe_candidate"
-        )
-        second = decorate(self.candidate())
-
-        self.assertIsNot(first, second)
-        self.assertIs(self.registry.moe_candidate_fused_moe_, first)
-        self.assertIs(self.registry.other_moe_candidate_fused_moe_, second)
-        self.assertEqual(second("input"), ("candidate", "input", 1))
+    def test_changed_or_task_owned_native_source_is_rejected_before_gpu_access(self):
+        # NativeRuntime must reject image substitution before Torch or AITER can
+        # launch anything. The stubs intentionally expose no GPU methods.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            task = root / 'task'
+            task.mkdir()
+            image_file = root / 'image_fused_moe.py'
+            image_file.write_text('changed image source')
+            module = SimpleNamespace(__file__=str(image_file))
+            with patch.object(RUNTIME.importlib, 'import_module', return_value=module):
+                with self.assertRaisesRegex(ValueError, 'protected SG520 source'):
+                    RUNTIME.NativeRuntime(task, object(), META)
+            image_file = task / 'fused_moe.py'
+            image_file.write_bytes((TASK / 'ut' / META['source_provenance']['baseline_ref']).read_bytes())
+            module.__file__ = str(image_file)
+            with patch.object(RUNTIME.importlib, 'import_module', return_value=module):
+                with self.assertRaisesRegex(ValueError, 'protected SG520 source'):
+                    RUNTIME.NativeRuntime(task, object(), META)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

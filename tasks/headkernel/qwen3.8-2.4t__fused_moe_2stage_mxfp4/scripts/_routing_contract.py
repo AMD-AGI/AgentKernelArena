@@ -102,7 +102,8 @@ def source_context(task, meta=None):
     meta_path = task / "ut/meta.json"
     meta = strict_json(meta_path.read_text()) if meta is None else meta
     path = task / POLICY_FILE
-    require(not path.is_symlink() and not path.parent.is_symlink() and path.resolve().is_relative_to(task),
+    require(path.is_file() and not path.is_symlink() and not path.parent.is_symlink()
+            and path.resolve().is_relative_to(task),
             "routing source must be a task-local regular file")
     raw = path.read_bytes()
     routes = parse_policy(raw, meta)
