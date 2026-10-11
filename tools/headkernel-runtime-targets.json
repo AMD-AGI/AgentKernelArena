@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "updated_date": "2026-10-08",
-  "description": "Portable task/runtime mapping for 18 refreshed SG0.5.20 tasks and five preserved Qwen mappings. Active selection is not qualification; readiness stays false pending final reports.",
+  "updated_date": "2026-10-11",
+  "description": "Consolidated head-kernels-top5 source/runtime mapping for all 23 SG0.5.20 tasks. Five ready subsets retain historical qualification; 18 tasks remain unfinished, and the merged framework requires current validation for all 23. The existing automatic fixture materializer covers 18 manifest/native contracts; Qwen uses task-local setup.",
   "primary_sglang": "sglang_v0520",
   "alternate_sglang": "sglang_v0519",
   "current_vllm": "vllm_v0290",
@@ -11,25 +11,24 @@
       "new_validation"
     ],
     "models": [
-      "minimax-m3",
-      "kimi-k3",
       "deepseek-v4-pro",
-      "glm-5.3-flash"
-    ],
-    "excluded_models": [
+      "glm-5.3-flash",
+      "kimi-k3",
+      "minimax-m3",
       "qwen3.8-2.4t"
     ],
+    "excluded_models": [],
     "framework": "sglang",
     "framework_version": "0.5.20",
     "target": "sglang_v0520",
     "manifest_digest": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
     "latest_matching_evidence_only": true,
     "allow_alternate_targets": false,
-    "status": "captured_tasks_integrated_pending_final_qualification",
-    "task_evidence": "task_local_cases_and_fixture_manifests",
-    "gpu_validation": "final_task_specific_reports_required",
+    "status": "all_sources_integrated_pending_merged_framework_and_task_qualification",
+    "task_evidence": "task_local_contracts_and_retained_capture_provenance",
+    "gpu_validation": "fresh_source_matched_current_framework_reports_required",
     "ready": false,
-    "active_task_count": 18,
+    "active_task_count": 23,
     "qualification_claimed": false
   },
   "images": {
@@ -86,7 +85,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -102,7 +101,8 @@
       "fixture_manifest_sha256": "a5ad824c4762090509f5a0807759ae221f48fe83cc762751a26f0bdf4b522e4b",
       "fixture_asset_count": 78,
       "fixture_declared_bytes": 3399769775,
-      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
+      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
     },
     {
       "task": "headkernel/deepseek-v4-pro__moe_stage1_grouped_gemm_silu_opus_a8w4",
@@ -111,7 +111,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -127,7 +127,8 @@
       "fixture_manifest_sha256": "2b9dedf91c64ec44620033615168acdb425412480cfeddb1fdae9ef5420ab2f2",
       "fixture_asset_count": 30,
       "fixture_declared_bytes": 3589806040,
-      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
+      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
     },
     {
       "task": "headkernel/deepseek-v4-pro__moe_stage2_down_proj_reduce_opus_a8w4",
@@ -136,7 +137,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -152,7 +153,8 @@
       "fixture_manifest_sha256": "60aa91f6a36469ceb9210e97efef6eb0c08ba016c4940b5cf4f22ae75c78ac05",
       "fixture_asset_count": 118,
       "fixture_declared_bytes": 7508634634,
-      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified"
+      "fixture_publication_status": "raw_assets_full_readback_verified; current_task_unqualified",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
     },
     {
       "task": "headkernel/deepseek-v4-pro__unified_paged_attention_decode",
@@ -161,7 +163,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "ordinary_scoring_pairing_hold",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -178,7 +180,8 @@
       "fixture_asset_count": 19180,
       "fixture_declared_bytes": 121463093,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
@@ -201,7 +204,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "scoped_publication_pending_exact_review",
+      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -218,11 +221,15 @@
       "fixture_asset_count": 25,
       "fixture_declared_bytes": 1413573052,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "unaffected_by_new_pairing_finding_pending_exact_review",
         "ordinary_scoring_readiness_claimed": false,
         "published_scoped_evidence_retained": true
-      }
+      },
+      "historical_ready_guide": "ready/mla-prefill/README.md",
+      "historical_ready_receipt": "ready/mla-prefill/READY.json",
+      "historical_published_commit": "55c8f713b06b206e0ae1d389e6726e65140078c0"
     },
     {
       "task": "headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
@@ -231,10 +238,10 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "scoped_publication_pending_exact_review",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
-      "framework_qualified": true,
-      "trusted_retest_qualified": true,
+      "framework_qualified": false,
+      "trusted_retest_qualified": false,
       "workload": "sg520_64x8192x1024_c64_tp8",
       "source_run": "glm-final-capture-v4-194841",
       "target_callable": "aiter::gemm_a8w8_blockscale_bpreshuffle",
@@ -248,8 +255,13 @@
       "fixture_asset_count": 70,
       "fixture_declared_bytes": 522116267,
       "fixture_publication_status": "full_readback_verified",
-      "qualification_scope": "Published14-case correctness and native-primary measurement evidence retained; ordinary-scoring exact review remains pending. No production improvement or whole-suite readiness.",
-      "qualified_evidence": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
+        "status": "unaffected_by_new_pairing_finding_pending_exact_review",
+        "ordinary_scoring_readiness_claimed": false,
+        "published_scoped_evidence_retained": true
+      },
+      "historical_qualified_evidence": {
         "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle/42448aad-670cd1870ed0/",
         "manifest_sha256": "6113bdde7c57be172809433e4e42a1b439114c37d052a436be54fa789f0ef95e",
         "source_commit": "42448aad4cc48aa4a635d1763edcd54275184b48",
@@ -268,11 +280,7 @@
         "framework_report": "framework/validation_report.yaml",
         "framework_marker": "framework/.validation_complete"
       },
-      "ordinary_scoring_review": {
-        "status": "unaffected_by_new_pairing_finding_pending_exact_review",
-        "ordinary_scoring_readiness_claimed": false,
-        "published_scoped_evidence_retained": true
-      }
+      "historical_qualification_scope": "Published14-case correctness and native-primary measurement evidence retained; ordinary-scoring exact review remains pending. No production improvement or whole-suite readiness."
     },
     {
       "task": "headkernel/glm-5.3-flash__fused_moe_kernel",
@@ -281,7 +289,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -297,7 +305,8 @@
       "fixture_manifest_sha256": "93793627ac5f0d0aaf2e88d3a6c2a47dbd1a124dff8de884226896a897e90353",
       "fixture_asset_count": 14,
       "fixture_declared_bytes": 1041999325,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
     },
     {
       "task": "headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk",
@@ -306,7 +315,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -322,7 +331,8 @@
       "fixture_manifest_sha256": "63ce16a3b226a413255827a386c7537590981224057f0441ac16138a203a5d89",
       "fixture_asset_count": 64,
       "fixture_declared_bytes": 806660545,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
     },
     {
       "task": "headkernel/kimi-k3__attn_residual_aggregate_hip",
@@ -331,7 +341,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -348,7 +358,8 @@
       "fixture_asset_count": 404,
       "fixture_declared_bytes": 27833348,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "full_native_tensor_dump": false
+      "full_native_tensor_dump": false,
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
     },
     {
       "task": "headkernel/kimi-k3__dense_bf16_gemm_cijk",
@@ -357,7 +368,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "pending_final_qualification",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -373,7 +384,8 @@
       "fixture_manifest_sha256": "1adf9eade1b8485c0962908a509e4a8ec8d05496ae907165ed7d1d83caab2ce8",
       "fixture_asset_count": 130,
       "fixture_declared_bytes": 5868605070,
-      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates"
+      "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
     },
     {
       "task": "headkernel/kimi-k3__lean_attention_decode",
@@ -382,7 +394,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "ordinary_scoring_pairing_hold",
+      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -399,16 +411,6 @@
       "fixture_asset_count": 15,
       "fixture_declared_bytes": 632810514,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
-        "status": "shared_schedule_repair_and_exact_review_required",
-        "ordinary_scoring_qualified": false,
-        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
-        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
-        "audited_cases_sha256": "400f89a5a5bfff1c453017ed7fefe45aedcbfc99fdb2fc0cb156bc96fe71dcfa",
-        "reason": "request-seeded length and physical-KV selection",
-        "workload_scope": "1024 sequence-length values",
-        "existing_private_paired_evidence_retracted": false
-      },
       "published_private_paired_evidence": {
         "status": "retained_valid_within_published_scope",
         "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/kimi-k3__lean_attention_decode/fbf39099-0f472d9140f8/",
@@ -418,7 +420,21 @@
         "case_count": 1,
         "private_paired_phases": 6,
         "ordinary_scoring_readiness": false
-      }
+      },
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
+        "status": "shared_schedule_repair_and_exact_review_required",
+        "ordinary_scoring_qualified": false,
+        "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
+        "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
+        "audited_cases_sha256": "400f89a5a5bfff1c453017ed7fefe45aedcbfc99fdb2fc0cb156bc96fe71dcfa",
+        "reason": "request-seeded length and physical-KV selection",
+        "workload_scope": "1024 sequence-length values",
+        "existing_private_paired_evidence_retracted": false
+      },
+      "historical_ready_guide": "ready/kimi-lean/README.md",
+      "historical_ready_receipt": "ready/kimi-lean/READY.json",
+      "historical_published_commit": "c39e94c8e148a171173eb276a9e495ab821c1649"
     },
     {
       "task": "headkernel/kimi-k3__moe_gemm1_stage1",
@@ -427,7 +443,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "ordinary_scoring_pairing_hold",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -444,7 +460,8 @@
       "fixture_asset_count": 29,
       "fixture_declared_bytes": 1666534545,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "shared_schedule_repair_and_exact_review_required",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
@@ -462,7 +479,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "ordinary_scoring_pairing_hold",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -482,7 +499,8 @@
       "fixture_asset_count": 30,
       "fixture_declared_bytes": 2462745708,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "shared_schedule_repair_and_exact_review_required",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
@@ -500,7 +518,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "ordinary_scoring_pairing_hold",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -517,7 +535,8 @@
       "fixture_asset_count": 213,
       "fixture_declared_bytes": 2397202144,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
@@ -540,7 +559,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "scoped_publication_pending_exact_review",
+      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -557,11 +576,15 @@
       "fixture_asset_count": 74,
       "fixture_declared_bytes": 2044395146,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "unaffected_by_new_pairing_finding_pending_exact_review",
         "ordinary_scoring_readiness_claimed": false,
         "published_scoped_evidence_retained": true
-      }
+      },
+      "historical_ready_guide": "ready/minimax-fp4/README.md",
+      "historical_ready_receipt": "ready/minimax-fp4/READY.json",
+      "historical_published_commit": "ef7474dd9e29e74428ca09b4c488832db1fd220e"
     },
     {
       "task": "headkernel/minimax-m3__gqa_share_sparse_decode_kernel",
@@ -570,7 +593,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "ordinary_scoring_pairing_hold",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -587,7 +610,8 @@
       "fixture_asset_count": 289,
       "fixture_declared_bytes": 4683533856,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
@@ -610,7 +634,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "ordinary_scoring_pairing_hold",
+      "task_compatibility": "source_refreshed_pending_full_qualification",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -627,7 +651,8 @@
       "fixture_asset_count": 346,
       "fixture_declared_bytes": 1694863880,
       "fixture_publication_status": "task_manifest_declared; publication and qualification are separate gates",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "paired_reference_cpu_reviewed_pending_gpu_qualification",
         "ordinary_scoring_qualified": false,
         "audit_name": "OTHER-DISTRIBUTION-TASKS.json",
@@ -650,7 +675,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "scoped_publication_pending_exact_review",
+      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -663,11 +688,15 @@
       "trusted_retest_tool": "src/tools/trusted_native_eval.py",
       "environment_and_setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
       "frequency_scope": "eight sampled prefill steps per rank; no full-workload extrapolation",
-      "ordinary_scoring_review": {
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "historical_ordinary_scoring_review": {
         "status": "unaffected_by_new_pairing_finding_pending_exact_review",
         "ordinary_scoring_readiness_claimed": false,
         "published_scoped_evidence_retained": true
-      }
+      },
+      "historical_ready_guide": "ready/ds-quant/README.md",
+      "historical_ready_receipt": "ready/ds-quant/READY.json",
+      "historical_published_commit": "23cb3067ab81f03264ec6027b97be17156f291a9"
     },
     {
       "task": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster",
@@ -675,10 +704,22 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
-      "task_compatibility": "not_validated",
-      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
-      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster"
+      "task_compatibility": "source_refreshed_pending_full_qualification",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "ready": false,
+      "framework_qualified": false,
+      "trusted_retest_qualified": false,
+      "scope": "source_refreshed_sg520",
+      "capture_image_role": "historical_SG0518_shape_and_fixture_provenance_not_current_runtime",
+      "source_refresh_manifest": "tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/ut/runtime_refresh.json",
+      "source_refresh_manifest_sha256": "a653db627e85a9c3f572c8f331b2455a5c32cc295dce58c2d57ae34a46dcee77",
+      "source_refresh_commit": "f501ef65403bdf76a122918c405f6494bc6eab38",
+      "workload": "qwen_sg518_shape_capture",
+      "current_runtime_workload_capture": "PENDING_FULL_SG0520_CAPTURE",
+      "input_policy": "task_local_setup_with_retained_shape_and_fixture_provenance",
+      "environment_and_setup_guide": "tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/README.md",
+      "historical_environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "historical_environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster"
     },
     {
       "task": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4",
@@ -686,10 +727,22 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
-      "task_compatibility": "not_validated",
-      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
-      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4"
+      "task_compatibility": "source_refreshed_pending_full_qualification",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "ready": false,
+      "framework_qualified": false,
+      "trusted_retest_qualified": false,
+      "scope": "source_refreshed_sg520",
+      "capture_image_role": "historical_SG0518_shape_and_fixture_provenance_not_current_runtime",
+      "source_refresh_manifest": "tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4/ut/runtime_refresh.json",
+      "source_refresh_manifest_sha256": "b375b21734e674285d4c1abdb2fbe5e8077668947089c841ee74bc6520bfff50",
+      "source_refresh_commit": "f501ef65403bdf76a122918c405f6494bc6eab38",
+      "workload": "qwen_sg518_shape_capture",
+      "current_runtime_workload_capture": "PENDING_FULL_SG0520_CAPTURE",
+      "input_policy": "task_local_setup_with_retained_shape_and_fixture_provenance",
+      "environment_and_setup_guide": "tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4/README.md",
+      "historical_environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "historical_environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4"
     },
     {
       "task": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
@@ -697,10 +750,22 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
-      "task_compatibility": "not_validated",
-      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
-      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode"
+      "task_compatibility": "source_refreshed_pending_full_qualification",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "ready": false,
+      "framework_qualified": false,
+      "trusted_retest_qualified": false,
+      "scope": "source_refreshed_sg520",
+      "capture_image_role": "historical_SG0518_shape_and_fixture_provenance_not_current_runtime",
+      "source_refresh_manifest": "tasks/headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/ut/runtime_refresh.json",
+      "source_refresh_manifest_sha256": "445cad2dd9bf74cbd891f008e8643eb5aca1392c24d4a8a376b6b63735920018",
+      "source_refresh_commit": "f501ef65403bdf76a122918c405f6494bc6eab38",
+      "workload": "qwen_sg518_shape_capture",
+      "current_runtime_workload_capture": "PENDING_FULL_SG0520_CAPTURE",
+      "input_policy": "task_local_setup_with_retained_shape_and_fixture_provenance",
+      "environment_and_setup_guide": "tasks/headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/README.md",
+      "historical_environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "historical_environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode"
     },
     {
       "task": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm",
@@ -708,10 +773,25 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
-      "task_compatibility": "not_validated",
-      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
-      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm"
+      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "ready": false,
+      "framework_qualified": false,
+      "trusted_retest_qualified": false,
+      "historical_ready_guide": "ready/qwen-rmsnorm/README.md",
+      "historical_ready_receipt": "ready/qwen-rmsnorm/READY.json",
+      "historical_published_commit": "f501ef65403bdf76a122918c405f6494bc6eab38",
+      "scope": "source_refreshed_sg520",
+      "capture_image_role": "historical_SG0518_shape_and_fixture_provenance_not_current_runtime",
+      "source_refresh_manifest": "tasks/headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm/ut/runtime_refresh.json",
+      "source_refresh_manifest_sha256": "bd72894398ae69674493f372baa163d038ebddd18fc88d46b4b06b16979e18e8",
+      "source_refresh_commit": "f501ef65403bdf76a122918c405f6494bc6eab38",
+      "workload": "qwen_sg518_shape_capture",
+      "current_runtime_workload_capture": "PENDING_FULL_SG0520_CAPTURE",
+      "input_policy": "task_local_setup_with_retained_shape_and_fixture_provenance",
+      "environment_and_setup_guide": "tasks/headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm/README.md",
+      "historical_environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "historical_environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm"
     },
     {
       "task": "headkernel/qwen3.8-2.4t__paged_attention_decode",
@@ -719,10 +799,22 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "alternate_target": "sglang_v0519",
-      "task_compatibility": "not_validated",
-      "environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
-      "environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__paged_attention_decode"
+      "task_compatibility": "source_refreshed_pending_full_qualification",
+      "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+      "ready": false,
+      "framework_qualified": false,
+      "trusted_retest_qualified": false,
+      "scope": "source_refreshed_sg520",
+      "capture_image_role": "historical_SG0518_shape_and_fixture_provenance_not_current_runtime",
+      "source_refresh_manifest": "tasks/headkernel/qwen3.8-2.4t__paged_attention_decode/ut/runtime_refresh.json",
+      "source_refresh_manifest_sha256": "e157ac1e092c6e9fdf4d7aa0354603925abdaebf346b7d8b55b7ded120113c23",
+      "source_refresh_commit": "f501ef65403bdf76a122918c405f6494bc6eab38",
+      "workload": "qwen_sg518_shape_capture",
+      "current_runtime_workload_capture": "PENDING_FULL_SG0520_CAPTURE",
+      "input_policy": "task_local_setup_with_retained_shape_and_fixture_provenance",
+      "environment_and_setup_guide": "tasks/headkernel/qwen3.8-2.4t__paged_attention_decode/README.md",
+      "historical_environment_and_setup_catalog": "tools/headkernel-public-runtimes.json",
+      "historical_environment_and_setup_task_key": "headkernel/qwen3.8-2.4t__paged_attention_decode"
     }
   ],
   "vllm_task_mapping": {
@@ -731,8 +823,8 @@
     "qualification": "The vLLM image is a user-supplied serving target, not a substitute for SGLang task dependencies. Mapping requires framework-specific import, binding and GPU validation."
   },
   "provenance": {
-    "original_task_configs": "preserved",
-    "kernel_math_shapes_tolerances": "unchanged",
+    "original_task_configs": "Historical capture/runtime catalogs retained; current task sources and configs are consolidated for SG0.5.20.",
+    "kernel_math_shapes_tolerances": "Task-local contracts and provenance govern; source refresh and harness changes do not imply a new serving capture.",
     "capture_era_public_runtime_catalog": "tools/headkernel-public-runtimes.json",
     "reported_results": "tools/headkernel-reported-results.json",
     "image_layers_downloaded": 0,
@@ -740,8 +832,7 @@
     "task_validator_pass": false
   },
   "ready": false,
-  "refreshed_task_count": 18,
-  "preserved_qwen_task_count": 5,
+  "refreshed_task_count": 23,
   "workloads": {
     "sg520_64x8192x1024_c64_tp8": {
       "num_prompts": 64,
@@ -763,6 +854,26 @@
       },
       "serving_tensor_parallelism": 8,
       "isolated_replay": "one GPU with captured rank-local operands; no model server or whole checkpoint required"
+    },
+    "qwen_sg518_shape_capture": {
+      "status": "historical_shape_and_fixture_provenance_only",
+      "capture_framework_version": "0.5.18",
+      "tp": 8,
+      "ep": 8,
+      "attention_page_size": 1,
+      "mamba_dtype": "float32_model_default",
+      "current_source_runtime": "sglang_v0520",
+      "current_SG0520_full_workload_capture": "PENDING",
+      "later_measured_metadata": {
+        "record": 103483,
+        "tp": 8,
+        "ep": 1,
+        "context_length": 11264,
+        "attention_page_size": 16,
+        "mamba_dtype": "bfloat16",
+        "complete_image_and_raw_log_record_available": false,
+        "dispatch_equivalence_to_task_fixtures_claimed": false
+      }
     }
   },
   "historical_task_mappings": [
@@ -906,7 +1017,25 @@
       ]
     }
   ],
-  "ordinary_scoring_review": {
+  "source_refreshed_qwen_task_count": 5,
+  "fixture_preparation_task_count": 18,
+  "historical_ready_subset_count": 5,
+  "unfinished_task_count": 18,
+  "consolidation": {
+    "branch": "head-kernels-top5",
+    "base_commit": "ba5b1c90877ca826901f2f56c0f1c02a4600d8b0",
+    "guide": "HEADKERNELS.md",
+    "task_and_evidence_index": "docs/reference/headkernel-ready-subsets.md",
+    "unified_validator_config": "example_configs/headkernel_sg520_current_mi355x.yaml",
+    "merged_framework_qualification": "PENDING",
+    "historical_input_pins_rewritten": false,
+    "current_qualification_claimed": false
+  },
+  "setup_scopes": {
+    "refreshed_sg520": "18 manifest/native contracts supported by tools/prepare_headkernel_run.py",
+    "source_refreshed_sg520": "5 Qwen SG0.5.20 source tasks using task-local setup; not automatically staged by that helper"
+  },
+  "historical_ordinary_scoring_review": {
     "status": "readiness_withheld_pending_repairs_and_exact_review",
     "published_scoped_packages_retained": 5,
     "older_Kimi_MoE_snapshots_retained_separately": 2,
@@ -931,5 +1060,12 @@
     "audit_sha256": "cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc",
     "normal_path_ready_count_asserted": false,
     "published_evidence_retracted": false
+  },
+  "ordinary_scoring_review": {
+    "status": "pending_merged_framework_revalidation",
+    "current_ready": false,
+    "historical_ready_routes_remain_scoped_to_original_pins": true,
+    "qwen_authoritative_timing_quality_admission": "adapter_and_current_GPU_validation_required",
+    "qwen_historical_RMSNorm_evidence": "explicit_manual_trusted_route_and_protected_framework_only"
   }
 }

@@ -1,10 +1,22 @@
-# SGLang 0.5.20 head-kernel refresh progress
-
-**As of 2026-10-06, five task packages retain scoped published evidence. Kimi Lean's ordinary scoring is withheld, and the four other published definitions are unaffected by the new pairing finding, pending exact review.** This is not five fully ready tasks. The 18-task refresh and whole-suite release remain incomplete, with no complete model-workload, all-observed-settings or end-to-end gain claim.
-
-The [current runtime catalogue](../../tools/headkernel-runtime-targets.json) is the source of truth for active task IDs, runtime/image selection and fixture bindings. [HEADKERNELS.md](../../HEADKERNELS.md) describes the current 18-task selection and portable setup. The older [progress JSON](../../tools/headkernel-sg520-refresh.json) retains its **2026-10-05 snapshot** and original status; it is an archival evidence index, not the current qualification count.
+# SGLang 0.5.20 consolidation and preserved refresh history
 
 ## Current qualification
+
+As of **2026-10-11**, `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** and the five preserved historical ready-subset guides. Eighteen tasks still lack a completed historical subset qualification. **All 23 require current merged-framework validation**; no current merged-checkout PASS or complete model/E2E gain is claimed.
+
+Use the [consolidated index](headkernel-ready-subsets.md) for the five historical receipts, immutable source commits, current remaining gates and [portable workload archives](headkernel-ready-subsets.md#workload-archives-in-oci). [HEADKERNELS.md](../../HEADKERNELS.md) records the source merges and input-preparation routes. The [unified config](../../example_configs/headkernel_sg520_current_mi355x.yaml) and [runtime catalog](../../tools/headkernel-runtime-targets.json) select all 23 tasks.
+
+The five historical ready task trees matched their qualified trees at the consolidation base, but shared framework pins differ. The unchanged `ready/` verifiers intentionally enforce those original pins and are not current-checkout validation commands. Qwen's historical RMSNorm evidence applies to its explicit manual trusted/protected route; authoritative ordinary timing-quality admission and current GPU validation remain outstanding.
+
+Qwen is included in the current SG0.5.20 source set. Its retained SG0.5.18 shapes/fixtures and TP8/EP8 dispatch are provenance, not evidence of a new SG0.5.20 workload capture. Later measured metadata103483 differs in EP, page size, Mamba dtype and context, and lacks a complete image/raw-log record. The current Qwen capture remains pending.
+
+## Historical qualification checkpoint — 2026-10-06
+
+The sections below retain earlier scoped publications and their original hashes, failures and capture limits. This checkpoint's five-package list includes an older GLM FP8 result; it is a different dated set from the five ready-subset directories now consolidated, which include Qwen RMSNorm. It must not be used as the current qualification count. The [archival progress JSON](../../tools/headkernel-sg520-refresh.json) likewise retains its 2026-10-05 snapshot.
+
+At this checkpoint, five task packages retained scoped published evidence. Kimi Lean's ordinary scoring was held for schedule pairing, and the four other published definitions still needed exact review. The then-18-task refresh was incomplete; no complete model-workload, all-observed-settings or end-to-end gain claim followed from those publications.
+
+### Earlier scoped publications
 
 Each publication below retains its matching native/correctness evidence, source controls, framework-finalized PASS, private six-phase paired retest and verified readback. Those receipts remain valid within their recorded scope. Ordinary baseline/candidate scoring needs its own pairing and exact readiness review; publication alone does not discharge that gate.
 
@@ -30,13 +42,13 @@ The GLM FP8 publication qualifies correctness and measurement of the unchanged s
 
 **Seven scoped qualification snapshots are retained**, including the two earlier Kimi MoE publications. Those two snapshots qualify older routing contracts and are separate from the five packages above. The changed Kimi MoE tasks require fresh qualification. Kimi's interrupted loading attempt in the historical chronology below remains a historical capture event; Lean's present hold concerns ordinary-scoring schedule pairing.
 
-## Ordinary scoring pairing hold
+### Historical ordinary-scoring pairing finding
 
 The broader CPU source audit found **seven ordinary distribution-scoring paths** that select independent request-seeded work schedules for baseline and candidate. They are DeepSeek MLA decode; Kimi Lean and both MoE stages; and MiniMax decode score, sparse decode and sparse prefill. Even balanced state counts do not establish identical ordered inputs. The ordinary path needs a shared seed and ordered schedule, followed by owner repair and exact review.
 
 Kimi Lean's published private six-phase route used a paired challenge and remains valid within that scope. Its ordinary path must not inherit readiness from that result. The finding is recorded in `OTHER-DISTRIBUTION-TASKS.json`, SHA-256 `cb2e1abbcf44f6b555388fc0454dbe9e1dc002283202df2ca92f19d0b2253abc`; the [runtime catalogue](../../tools/headkernel-runtime-targets.json) records the affected task IDs and readiness holds.
 
-The current matrix withholds **14 definitions** for this hold or other outstanding gates. The four published definitions outside this additional pairing hold still await exact readiness review; no fully ready task count is asserted.
+The checkpoint matrix withheld **14 definitions** for this hold or other outstanding gates. Its four published definitions outside the pairing hold still awaited exact readiness review; no fully ready task count was asserted.
 
 | Model | Definitions held or with other gates pending | Count |
 | --- | --- | ---: |
@@ -45,7 +57,7 @@ The current matrix withholds **14 definitions** for this hold or other outstandi
 | Kimi K3 | Dense GEMM; residual aggregation; Lean attention; MoE stages 1 and 2 | 5 |
 | MiniMax M3 | Decode score; sparse attention decode and prefill | 3 |
 
-Qwen's five preserved mappings and tasks are outside these 18 refreshed tasks and the 14-definition held/pending count.
+Qwen's five then-preserved mappings were outside that 18-task checkpoint and its 14-definition held/pending count. They are now source-refreshed for SG0.5.20 and included in the consolidated 23-task selection.
 
 [quant-evidence]: oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_refresh/20261005/validation-final-20261005T172445Z/MANIFEST.json
 [mla-prefill-evidence]: oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/deepseek-v4-pro__unified_paged_attention_prefill/b98b3d12-744a5ca81874/MANIFEST.json
@@ -53,10 +65,9 @@ Qwen's five preserved mappings and tasks are outside these 18 refreshed tasks an
 [fp4-evidence]: oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/minimax-m3__gemm_afp4wfp4_kernel/0460635c-225b83431bab/MANIFEST.json
 [fp8-evidence]: oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/qualified-task-evidence/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle/42448aad-670cd1870ed0/MANIFEST.json
 
-## Scope and image
+### Historical refresh scope and image
 
-Refresh/new validation covers MiniMax M3, Kimi K3, DeepSeek V4 Pro and GLM-5.3-Flash on **SGLang 0.5.20 only**, using the latest matching evidence.
-Qwen3.8 2.4T is excluded; its mappings, tasks and workloads remain unchanged. The [runtime policy](../../tools/headkernel-runtime-targets.json) pins this exact image:
+That checkpoint covered MiniMax M3, Kimi K3, DeepSeek V4 Pro and GLM-5.3-Flash on **SGLang 0.5.20**. Qwen was outside that earlier refresh. The current source set includes all five models; Qwen capture provenance remains separately identified. The exact SG0.5.20 image is:
 
 ```text
 docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96

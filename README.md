@@ -1,14 +1,15 @@
 # AgentKernelArena: An A/B Testing and RL-Ready Environment for GPU Kernel Agents
 
-This branch contains 18 refreshed SG0.5.20 head-kernel tasks and five preserved
-Qwen tasks. See [HEADKERNELS.md](HEADKERNELS.md) for the portable setup, captured
-inputs, historical results and pending qualification status.
+`head-kernels-top5` consolidates all **23 SG0.5.20 source task mappings** for
+DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T in this
+checkout. Start at [HEADKERNELS.md](HEADKERNELS.md) for source provenance,
+per-task preparation and the unified validator selection.
 
-For the current SGLang 0.5.20 refresh, use the [published ready-subset index](docs/reference/headkernel-ready-subsets.md).
-It links five independently reviewed, GPU-qualified task subsets at their exact
-commits, with setup, fixture downloads and scoring checks. The complete top-five
-suite remains unqualified; the restored tasks in this branch are a historical
-snapshot, and the refreshed subsets live on the linked ready branches.
+The [task and evidence index](docs/reference/headkernel-ready-subsets.md) links
+five **historically qualified subsets** and the other 18 unfinished tasks.
+Their guides and strict input pins are retained in `ready/`; they do not qualify
+the merged framework. Fresh validation of this checkout remains pending for all
+23 tasks. No complete model-workload readiness or serving/E2E gain is claimed.
 
 AgentKernelArena is a controlled experimentation platform for developing AI agents on real GPU kernel optimization tasks. It enables reproducible A/B testing across models, prompts, tools, and agent policies, while providing objective compilation, correctness, and performance signals that can serve as rewards for agent reinforcement learning.
 
@@ -197,14 +198,14 @@ The prompt system also recognizes `cuda2hip`; the current bundled task tree does
 - Git
 - Node.js 22+ and npm when using the alternative npm installation of Claude Code
   (or another npm-installed agent CLI)
-- For MI300/MI355X, use the GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`
+- For the top-five MI355X tasks, use the exact SG0.5.20 image in the [runtime catalog](tools/headkernel-runtime-targets.json) and the [head-kernel setup guide](docs/how-to/headkernel-upstream-runtime.md). Other Arena quickstarts retain their separate GPU-specific runtime defaults.
 - For RDNA4 `gfx1201`, the runner automatically builds the default [pinned RDNA4 runtime](docker/rdna4/README.md) on first use if it is missing.
 - A supported agent CLI installed and logged in on the host, or the dependencies required by a specialized agent
 
 ### Setup
 
 ```bash
-git clone https://github.com/AMD-AGI/AgentKernelArena.git
+git clone --branch head-kernels-top5 https://github.com/AMD-AGI/AgentKernelArena.git
 cd AgentKernelArena
 
 # Verify the container runtime, GPU, and Python environment.

@@ -1,21 +1,52 @@
-# Head-kernel tasks and portable setup
+# Consolidated top-five head kernels
 
-This branch contains **18 active refreshed tasks** for DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3 and MiniMax M3, plus **five preserved Qwen3.8 2.4T tasks**. The [runtime catalog](tools/headkernel-runtime-targets.json) is the source of truth for task selection, the exact SGLang 0.5.20 image and fixture bindings. **Five task packages retain scoped published evidence. Kimi Lean's ordinary scoring is held for schedule pairing; the four other published definitions are unaffected by this finding, pending exact review.** The [current qualification record](docs/reference/headkernel-sg520-refresh.md#current-qualification) separates those publications from readiness and identifies all seven ordinary distribution-scoring holds. Five publications do not establish five fully ready tasks. Ordinary-scoring and whole-suite readiness remain **`ready=false`**; no complete model-workload readiness or serving gain is claimed.
+`head-kernels-top5` is the single source branch for **23 SG0.5.20 task mappings across five models**. It contains the refreshed task sources, shared framework, five historical ready-subset guides, and workload archive links. The [runtime catalog](tools/headkernel-runtime-targets.json) and [unified validator selection](example_configs/headkernel_sg520_current_mi355x.yaml) enumerate the same 23 tasks.
 
-| Model | Refreshed active tasks | Setup |
-| --- | ---: | --- |
-| DeepSeek V4 Pro | 6 | Five captured-fixture tasks and the self-contained native FP8 quantization task |
-| GLM 5.3 Flash | 3 | Dense BF16 GEMM, FP8 GEMM and whole-MoE port |
-| Kimi K3 | 5 | Dense GEMM, residual aggregation, Lean attention and two MoE stages |
-| MiniMax M3 | 4 | FP4 Quark GEMM and three attention tasks |
-| Qwen3.8 2.4T | 0 refreshed; 5 preserved | Existing capture-era mappings and task files remain unchanged |
+**Qualification is still incomplete.** Five subsets retain qualification at their original pinned commits; the other 18 tasks remain unfinished. The merged framework also needs fresh validation for all 23 tasks. Matching a historical task tree does not qualify changed scoring, guards, report handling, or GPU binding. No current merged-checkout verification, complete model-workload readiness, or serving/E2E gain is claimed.
 
-Use the [portable setup guide](docs/how-to/headkernel-upstream-runtime.md) to materialize task-local OCI fixtures into a clean checkout **before an agent starts**, run the standard framework validator, and retest submitted source from a trusted Git commit. A normal replay needs a compatible local ROCm/Docker host and the task fixtures. It does not need a Crusoe allocation, shared campaign directory, model server or whole-model checkpoint. [The current selection](example_configs/headkernel_sg520_current_mi355x.yaml) enumerates all 18 refreshed task IDs; selecting a task does not assert that it is qualified.
+Start with the [consolidated task and evidence index](docs/reference/headkernel-ready-subsets.md). It links the five guides in this checkout, their immutable historical versions, the remaining gates, and the portable OCI workload archives. The original `ready/*/INPUT-PINS.json` and verification scripts remain strict historical records. They are expected to reject this merged checkout because shared framework and documentation files differ; do not rewrite those pins or treat their historical receipts as current validation.
 
-The recording workload is 64 requests, ISL8192, OSL1024, concurrency64, TP8, context9218 and seed42. Warmup uses the same prompts with OSL16 followed by a prefix-cache flush. Isolated tasks replay rank-local operations on one compatible GPU. Each task's `cases.json`, config and provenance remain authoritative about layouts, controls, occurrence counts, references and scoring; sampled profiler counts must not be extrapolated into full-workload frequencies.
+| Model | SG0.5.20 source tasks | Historical ready subsets | Other unfinished tasks |
+| --- | ---: | ---: | ---: |
+| DeepSeek V4 Pro | 6 | 2 | 4 |
+| GLM 5.3 Flash | 3 | 0 | 3 |
+| Kimi K3 | 5 | 1 | 4 |
+| MiniMax M3 | 4 | 1 | 3 |
+| Qwen3.8 2.4T | 5 | 1 | 4 |
+| **Total** | **23** | **5** | **18** |
 
-Kimi residual aggregation preserves the original score/combine **logical head** through `kimi-k3__attn_residual_aggregate_hip`. Its fixtures contain the first `min(4,T)` actual token rows as explicitly labeled parity samples, with the complete native ABI and workload counts. They are not full native tensor dumps. The task separately checks complete full-shape outputs against an independent mathematical reference. GLM whole-MoE and GEMM port comparisons also retain their task-specific native-parity limits; a port-versus-port score is not a serving-runtime gain.
+## Sources brought into this branch
 
-Historical implementations have explicit dispositions: DeepSeek sparse MLA is replaced by unified paged prefill/decode for this recipe; Kimi grouped attention is replaced by Lean for served batch64 but remains a native low-batch branch; GLM scale-layout copies produced aliases rather than materialized GPU copies. The [disposition record](docs/reference/headkernel-superseded-attention.json) links the attention replacements. None of these dispositions retires the current dense GEMM or residual logical heads.
+The consolidation base is `ba5b1c90877ca826901f2f56c0f1c02a4600d8b0`. These source commits are preserved in its history; their evidence keeps its original scope.
 
-The [reported workload results table](docs/reference/headkernel-reported-results.md) and [reported-results data](tools/headkernel-reported-results.json) remain the supplied historical **SGLang 0.5.17** figures. They are not new SG0.5.20 measurements or gains. The verbatim [upstream README](HEADKERNELS_UPSTREAM.md), [capture-era runtime catalog](tools/headkernel-public-runtimes.json), [original payload manifest](tools/headkernel-artifacts.json) and [original publication record](tools/headkernel-publication.json) preserve the earlier restoration, including Qwen's setup. Their historical setup requirements do not apply automatically to a refreshed task.
+| Source | Commit | Included content and evidence scope |
+| --- | --- | --- |
+| Refreshed task/framework line | `57fb634c69047120f6ee5b1cf6cd6c9d3df43047` | Current non-Qwen tasks, shared evaluation and protection changes; source integration is not a new GPU result. |
+| DeepSeek MLA prefill handoff | `55c8f713b06b206e0ae1d389e6726e65140078c0` | [Two-case receipt](ready/mla-prefill/READY.json), original input pins and guide. |
+| DeepSeek quantization handoff | `23cb3067ab81f03264ec6027b97be17156f291a9` | [Three-shape receipt](ready/ds-quant/READY.json), original input pins and guide. |
+| Kimi Lean handoff | `c39e94c8e148a171173eb276a9e495ab821c1649` | [Sampled-distribution receipt](ready/kimi-lean/READY.json), original input pins and guide. |
+| MiniMax FP4 handoff | `ef7474dd9e29e74428ca09b4c488832db1fd220e` | [Fourteen-case receipt](ready/minimax-fp4/READY.json), original input pins and guide. |
+| Full Qwen source refresh and RMSNorm handoff | `f501ef65403bdf76a122918c405f6494bc6eab38` | All five Qwen SG0.5.20 source mappings, including the four unfinished tasks; [historical RMSNorm receipt](ready/qwen-rmsnorm/READY.json) applies only to its explicit trusted/protected qualification route. |
+| Published top-five documentation | `8fa0d73c81e55100d8e32d1963d6b247764fe56a` | Earlier published task index; superseded current-status wording is reconciled here without changing historical evidence. |
+
+All five historical ready task trees matched their qualified trees at the consolidation base. Shared framework pins differ, including the timing-quality module for Qwen. Current ordinary Qwen scoring also needs authoritative timing-quality admission and source-bound validation. The historical manual trusted-route qualification does not discharge that gate.
+
+## Prepare and validate the current sources
+
+Use the [portable setup guide](docs/how-to/headkernel-upstream-runtime.md) before running an agent. The existing `prepare_headkernel_run.py` materializer handles the **18 manifest/native task contracts**. Its default selection does not prepare Qwen. The five source-refreshed Qwen tasks use their task-local setup and original shape/fixture provenance; the runtime catalog links those instructions. The 23-task validator config is a selection, not a promise that every task's inputs are already staged.
+
+The runtime is the exact SGLang 0.5.20 MI355X image in the [catalog](tools/headkernel-runtime-targets.json). Use local NVMe for fixtures, caches, and results. Isolated task validation does not require a Crusoe allocation, shared model tree, model server, or whole checkpoint. A complete serving-workload reproduction has separate model and TP8 resource requirements described in the [workload archive index](docs/reference/headkernel-ready-subsets.md#workload-archives-in-oci).
+
+After preparing each selected task's inputs, use the normal Docker workflow with `CONFIG=example_configs/headkernel_sg520_current_mi355x.yaml`. Require source-matched, framework-finalized reports and complete trusted comparisons before asserting current qualification. Preserve raw samples, source controls, failed attempts, and timing-quality decisions.
+
+## Capture provenance and scope
+
+The recorded non-Qwen workload recipe is 64 requests, ISL8192, OSL1024, concurrency 64, TP8, context 9218 and seed42, with OSL16 warmup followed by a prefix-cache flush. Task manifests remain authoritative about rank-local layouts, controls, occurrence counts and references. Sampled profiler counts must not be extrapolated into full-workload frequencies.
+
+Qwen's sources target SG0.5.20, while its retained shapes and fixtures originate from the documented **SG0.5.18 TP8/EP8** capture, with page 1 attention and FP32 model-default Mamba. Later measured metadata record 103483 describes **TP8/EP1, context 11264, page 16 attention and BF16 Mamba**; the full image/raw-log record is absent. Those settings do not establish equivalent task dispatch. A complete SG0.5.20 Qwen workload capture and matching task provenance remain pending.
+
+Kimi residual aggregation preserves the score/combine logical head through `kimi-k3__attn_residual_aggregate_hip`. Its fixtures contain the first `min(4,T)` actual token rows as labeled parity samples, not full native tensor dumps; full-shape independent checks remain required. GLM replacement ports retain their task-specific native-parity limits. A port-versus-port ratio is not a serving-runtime gain.
+
+Historical implementations retain explicit [dispositions](docs/reference/headkernel-superseded-attention.json): DeepSeek sparse MLA is superseded by unified paged prefill/decode for this recipe; Kimi grouped attention is a native low-batch branch while served batch 64 uses Lean; GLM scale-layout copies produced aliases. The two inactive configured packages are excluded from the 23-task current selection.
+
+The [refresh chronology](docs/reference/headkernel-sg520-refresh.md), [reported workload figures](docs/reference/headkernel-reported-results.md), [upstream README](HEADKERNELS_UPSTREAM.md), [capture-era catalog](tools/headkernel-public-runtimes.json) and [original publication record](tools/headkernel-publication.json) preserve their original dates and scope. Their older runtime settings and reported gains are historical evidence, not defaults or qualification for this merged branch.
