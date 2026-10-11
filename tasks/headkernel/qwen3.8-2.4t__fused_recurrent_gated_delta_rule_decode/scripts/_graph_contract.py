@@ -6,6 +6,10 @@ from pathlib import Path
 import statistics
 
 
+def same_json(left, right):
+    return json.dumps(left,sort_keys=True,separators=(',',':'),allow_nan=False)==json.dumps(right,sort_keys=True,separators=(',',':'),allow_nan=False)
+
+
 def contract(root):
     path = Path(root)/'ut/benchmark_contract.json'
     value = json.loads(path.read_text())
@@ -46,6 +50,7 @@ def benchmark_cases(raw, root):
     if not isinstance(raw, dict) or raw.get('timer') != 'cuda_graph':
         raise ValueError('A complete CUDA graph measurement is required')
     validate_provenance(raw, root, policy)
+    validate_request(raw.get('request'), root, policy)
     for key, expected in [('warmup',10), ('iters',100)]:
         if type(raw.get(key)) is not int or raw[key] != expected:
             raise ValueError('Warmups and ordered sample counts are immutable')
@@ -58,7 +63,7 @@ def benchmark_cases(raw, root):
         if not isinstance(row, dict):
             raise ValueError('Invalid graph case')
         sig = row.get('sig')
-        if sig not in expected or sig in seen or row.get('params') != expected[sig]:
+        if sig not in expected or sig in seen or not same_json(row.get('params'),expected[sig]):
             raise ValueError('Case identity or full recorded ABI differs')
         seen.add(sig)
         if row.get('benchmark_method') != 'cuda_graph' or 'benchmark_fallback_reason' in row:
@@ -98,6 +103,17 @@ def benchmark_cases(raw, root):
     return result
 
 
+def validate_request(request, root, policy):
+    expected={**provenance(root,policy),
+              'manifest_sha256':hashlib.sha256((Path(root)/'ut/meta.json').read_bytes()).hexdigest()}
+    if (not isinstance(request,dict) or type(request.get('schema_version')) is not int or request['schema_version']!=1
+            or request.get('phase')!='performance' or not isinstance(request.get('request_id'),str)
+            or len(request['request_id'])!=48 or any(x not in '0123456789abcdef' for x in request['request_id'])
+            or any(request.get(key)!=value for key,value in expected.items())):
+        raise ValueError('Performance invocation/source/metadata binding differs')
+    return request
+
+
 def correctness_cases(raw, root):
     policy = contract(root)
     if not isinstance(raw,dict) or raw.get('status')!='ok' or raw.get('mode')!='cpu_truth_correctness':
@@ -108,7 +124,7 @@ def correctness_cases(raw, root):
     if len(rows)!=len(expected) or {row.get('sig') for row in rows}!=set(expected):
         raise ValueError('Correctness challenge coverage differs from the protected cases')
     for row in rows:
-        if (row.get('params')!=expected[row['sig']] or row.get('expected_device')!='cpu'
+        if (not same_json(row.get('params'),expected[row['sig']]) or row.get('expected_device')!='cpu'
                 or row.get('checks')!=[{'kind':k,'passed':True} for k in ('ordinary',*policy['challenges'])]
                 or row.get('checked_invocations')!=5 or row.get('tolerance')!=policy['tolerance']):
             raise ValueError('Incorrect CPU-truth challenge record')

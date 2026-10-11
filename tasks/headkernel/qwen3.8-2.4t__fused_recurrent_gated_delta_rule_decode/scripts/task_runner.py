@@ -24,11 +24,14 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import importlib.util
 import json
 import math
 import os
 import re
+import secrets
+from pathlib import Path
 import statistics
 import subprocess
 import sys
@@ -337,6 +340,18 @@ def _benchmark_cases(raw):
     return _contract_module().benchmark_cases(raw, TASK_DIR)
 
 
+def _performance_inputs(cfg):
+    module = _contract_module()
+    policy = module.contract(TASK_DIR)
+    if cfg.get("source_file_path") != policy["source_paths"]:
+        raise ValueError("Performance source paths differ from the protected graph contract")
+    metadata = Path(UT_DIR) / "meta.json"
+    if metadata.is_symlink() or not metadata.is_file():
+        raise ValueError("Performance metadata must be a regular protected input")
+    return {**module.provenance(TASK_DIR, policy),
+            "manifest_sha256": hashlib.sha256(metadata.read_bytes()).hexdigest()}
+
+
 def run_performance(cfg, timeout):
     bench = os.path.join(TASK_DIR, "scripts", "_bench.py")
     out_json = os.path.join(BUILD_DIR, "_bench_raw.json")
@@ -357,6 +372,10 @@ def run_performance(cfg, timeout):
         })
         return []
 
+    request = {"schema_version":1, "phase":"performance", "request_id":secrets.token_hex(24),
+               **_performance_inputs(cfg)}
+    request_path = Path(BUILD_DIR) / "_performance_request.json"
+    request_path.write_text(json.dumps(request,indent=2)+"\n")
     env = dict(os.environ)
     env.setdefault("PYTHONUNBUFFERED", "1")
     overlay_note = "none (timed against the live stack, as the op's own UT does)"
@@ -393,7 +412,8 @@ def run_performance(cfg, timeout):
         return []
 
     cmd = [sys.executable, "-u", bench, "--ut", UT_DIR, "--out", out_json,
-           "--warmup", str(WARMUP_ITERATIONS), "--iters", str(BENCHMARK_ITERATIONS)]
+           "--warmup", str(WARMUP_ITERATIONS), "--iters", str(BENCHMARK_ITERATIONS),
+           "--request", str(request_path)]
     try:
         proc = subprocess.run(cmd, cwd=TASK_DIR, env=env, capture_output=True,
                               text=True, timeout=timeout)
@@ -410,6 +430,9 @@ def run_performance(cfg, timeout):
             with open(out_json) as fh:
                 raw = json.load(fh)
             cases = _benchmark_cases(raw)
+            if (raw.get("request") != request
+                    or _performance_inputs(cfg) != {key:request[key] for key in ("source_sha256","manifest_sha256","case_contract_sha256")}):
+                raise ValueError("Performance request, source, or metadata changed during measurement")
         except (OSError, ValueError, TypeError) as exc:
             reason = f"invalid benchmark report: {exc}"
         else:
@@ -424,6 +447,7 @@ def run_performance(cfg, timeout):
                 "source_sha256": raw["source_sha256"],
                 "case_contract_sha256": raw["case_contract_sha256"],
                 "source_binding": raw["source_binding"],
+                "request": request,
                 "test_cases": cases,
             })
             total = sum(c["execution_time_ms"] for c in cases if c["execution_time_ms"] > 0)

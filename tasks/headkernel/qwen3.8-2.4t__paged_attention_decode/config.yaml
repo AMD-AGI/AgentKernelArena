@@ -8,6 +8,11 @@ target_kernel_functions:
   - _paged_attention_kernel
   - _paged_attention_ll4mi_reduce_kernel
 
+benchmark_quality:
+  schema_version: 1
+  adapter: qwen_paged_attention_graph_v1
+  validator_sha256: 13c9909e40403ebc65c3e1c933ea66309801abd99637e88bbbfc4cd2f6ae5238
+
 harness_protection:
   freeze_task_inputs: true
   reject_new_source_symlinks: true

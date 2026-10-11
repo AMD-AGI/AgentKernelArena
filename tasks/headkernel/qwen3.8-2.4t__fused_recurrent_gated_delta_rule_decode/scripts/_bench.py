@@ -20,7 +20,7 @@ import statistics
 import sys
 
 from _recurrent_inputs import CHALLENGES, CPUInputs, IMMUTABLE, case_params as describe_case
-from _graph_contract import contract, provenance
+from _graph_contract import contract, provenance, validate_request
 
 
 WARMUP = 10
@@ -229,6 +229,7 @@ def main():
     parser.add_argument("--warmup", type=int, default=WARMUP)
     parser.add_argument("--iters", type=int, default=SAMPLES)
     parser.add_argument("--correctness-only", action="store_true")
+    parser.add_argument("--request", type=Path)
     args = parser.parse_args()
     args.out.unlink(missing_ok=True)
     if (args.warmup, args.iters) != (WARMUP, SAMPLES):
@@ -242,6 +243,10 @@ def main():
     verify_frozen_source(args.ut, meta)
     policy = contract(args.ut.parent)
     pins = provenance(args.ut.parent, policy)
+    if not args.correctness_only:
+        if args.request is None:
+            raise ValueError('Performance must use the protected task-runner request')
+        pins['request']=validate_request(json.loads(args.request.read_text()),args.ut.parent,policy)
     pins['source_binding'] = verify_candidate_binding(cases, args.ut)
     specs = meta["workload"]["cases"]
     # Reconstruct the recorded ABI on CPU. Captured expected tensors never

@@ -214,7 +214,10 @@ def complete_report():
         'correctness_challenges':[{'kind':k,'passed':True} for k in policy['challenges']],
         **policy['validation_contract']}
     source=pins['source_sha256']['source/pa_kernels.cuh']
+    request={'schema_version':1,'phase':'performance','request_id':'c'*48,**pins,
+             'manifest_sha256':hashlib.sha256((TASK/'ut/meta.json').read_bytes()).hexdigest()}
     return {'timer':'cuda_graph','warmup':10,'iters':100,**pins,
+        'request':request,
         'source_binding':{'launcher_source_sha256':hashlib.sha256((TASK/'source/attention_candidate.py').read_bytes()).hexdigest(),
             'device_source_sha256':source,'device_kernel':'paged_attention_ll4mi_QKV_mfma16_kernel'},
         'cases':[{'sig':case['test_case_id'],'params':case['params'],
@@ -223,7 +226,7 @@ def complete_report():
             'validation':validation}]}
 
 
-@pytest.mark.parametrize('attack',['none','missing_case','missing_sample','no_poison','wrong_abi','wrong_binary'])
+@pytest.mark.parametrize('attack',['none','missing_case','missing_sample','no_poison','wrong_abi','wrong_binary','missing_request','wrong_metadata'])
 def test_complete_attention_report_is_required(attack):
     report=complete_report();row=report['cases'][0]
     if attack=='none':
@@ -233,5 +236,7 @@ def test_complete_attention_report_is_required(attack):
     elif attack=='missing_sample':row['samples_ms'].pop()
     elif attack=='no_poison':row['validation']['poisoned_buffers']=[]
     elif attack=='wrong_abi':row['params']={**row['params'],'block_size':16}
-    else:report['source_binding']['device_source_sha256']='0'*64
+    elif attack=='wrong_binary':report['source_binding']['device_source_sha256']='0'*64
+    elif attack=='missing_request':report.pop('request')
+    else:report['request']['manifest_sha256']='0'*64
     with pytest.raises(ValueError):contract.benchmark_cases(report,TASK)

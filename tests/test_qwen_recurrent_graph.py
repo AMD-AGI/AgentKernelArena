@@ -1,6 +1,7 @@
 """CPU regressions for recurrent math, per-replay reset and complete reports."""
 import copy
 import ast
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -157,12 +158,15 @@ def valid_report():
                 **policy['validation_contract']}})
     pins=contract.provenance(TASK,policy)
     source=pins['source_sha256']['source/fused_recurrent.py']
+    request={'schema_version':1,'phase':'performance','request_id':'c'*48,**pins,
+             'manifest_sha256':hashlib.sha256((TASK/'ut/meta.json').read_bytes()).hexdigest()}
     return {'timer':'cuda_graph','warmup':10,'iters':100,'cases':rows,**pins,
+            'request':request,
             'source_binding':{'launcher_source_sha256':source,'device_source_sha256':source,
                               'device_kernel':'fused_recurrent_gated_delta_rule_packed_decode_kernel'}}
 
 
-@pytest.mark.parametrize('attack',['missing_case','dropped_sample','gpu_truth','no_reset','wrong_source','wrong_mean','event'])
+@pytest.mark.parametrize('attack',['missing_case','dropped_sample','gpu_truth','no_reset','wrong_source','wrong_mean','event','missing_request','wrong_metadata','bool_dimension'])
 def test_incomplete_or_forged_report_contract_rejects(attack):
     report=valid_report();row=report['cases'][0]
     if attack=='missing_case':report['cases'].pop()
@@ -171,7 +175,10 @@ def test_incomplete_or_forged_report_contract_rejects(attack):
     elif attack=='no_reset':row['validation']['restored_buffers']=[]
     elif attack=='wrong_source':report['source_sha256']['source/fused_recurrent.py']='0'*64
     elif attack=='wrong_mean':row['mean_ms']=0.001
-    else:row['benchmark_method']='cuda_event'
+    elif attack=='event':row['benchmark_method']='cuda_event'
+    elif attack=='missing_request':report.pop('request')
+    elif attack=='wrong_metadata':report['request']['manifest_sha256']='0'*64
+    else:row['params']={**row['params'],'m':True}
     with pytest.raises(ValueError):contract.benchmark_cases(report,TASK)
 
 
