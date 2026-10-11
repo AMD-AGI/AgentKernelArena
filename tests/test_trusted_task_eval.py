@@ -96,6 +96,7 @@ def test_non_object_failure_manifest_preserves_original_phase_error_and_text(tmp
             (build/'broken.tensor_failure.json').write_text(malformed)
             raise original_error
         if command[:3]==['docker','rm','-f']:return subprocess.CompletedProcess(command,0)
+        if command[:2]==['docker','inspect']:return subprocess.CompletedProcess(command,1,'','no such container')
         return original_run(command,**kwargs)
     monkeypatch.setattr(subprocess,'run',run)
     with pytest.raises(subprocess.CalledProcessError) as caught:
