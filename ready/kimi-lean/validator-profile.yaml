@@ -1,0 +1,8 @@
+backend: claude_code
+timeout_seconds: 12000
+python_path: null
+model: claude-sonnet-5
+effort: max
+compile_timeout: 1800
+correctness_timeout: 3600
+performance_timeout: 3600
