@@ -11,7 +11,7 @@ target_kernel_functions:
 benchmark_quality:
   schema_version: 1
   adapter: qwen_paged_attention_graph_v1
-  validator_sha256: 13c9909e40403ebc65c3e1c933ea66309801abd99637e88bbbfc4cd2f6ae5238
+  validator_sha256: 10a3f31ce5741d8331c7125dcb798f723513656b2eac7ce7cf818cd68c2c156e
 
 harness_protection:
   freeze_task_inputs: true

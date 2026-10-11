@@ -10,6 +10,14 @@ def same_json(left, right):
     return json.dumps(left,sort_keys=True,separators=(',',':'),allow_nan=False)==json.dumps(right,sort_keys=True,separators=(',',':'),allow_nan=False)
 
 
+def mixed_error_ratio(actual, reference, tolerance):
+    """The original UT's per-element mixed bound, normalized to a limit of 1."""
+    reference=reference.float()
+    difference=(actual.float()-reference).abs()
+    absolute=tolerance*reference.pow(2).mean().sqrt().clamp_min(1e-6)
+    return difference.div(absolute+tolerance*reference.abs()).max().item()
+
+
 def contract(root):
     path = Path(root)/'ut/benchmark_contract.json'
     value = json.loads(path.read_text())
@@ -95,8 +103,11 @@ def benchmark_cases(raw, root):
         if any(type(validation.get(k)) is not type(v) or validation[k]!=v for k,v in required.items()):
             raise ValueError('Measured graph validation/reset contract is incomplete')
         error = validation.get('max_rel_err')
-        if type(error) not in (int,float) or not math.isfinite(error) or error<0 or error>policy['tolerance']:
-            raise ValueError('Measured graph output error exceeds the unchanged tolerance')
+        if type(error) not in (int,float) or not math.isfinite(error) or error<0:
+            raise ValueError('Invalid diagnostic relative error')
+        mixed=validation.get('max_mixed_error_ratio')
+        if type(mixed) not in (int,float) or not math.isfinite(mixed) or not 0<=mixed<=1:
+            raise ValueError('Measured graph output exceeds the unchanged mixed-tolerance bound')
         result.append({'test_case_id':sig, 'execution_time_ms':row['mean_ms'],
                        'params':row['params'], 'samples_ms':samples, 'median_ms':row['median_ms'],
                        'min_ms':row['min_ms'], 'validation':validation,
@@ -130,6 +141,9 @@ def correctness_cases(raw, root):
                 or row.get('checked_invocations')!=5 or row.get('tolerance')!=policy['tolerance']):
             raise ValueError('Incorrect CPU-truth challenge record')
         error = row.get('max_rel_err')
-        if type(error) not in (int,float) or not math.isfinite(error) or error<0 or error>policy['tolerance']:
-            raise ValueError('CPU-truth challenge error exceeds the unchanged tolerance')
+        if type(error) not in (int,float) or not math.isfinite(error) or error<0:
+            raise ValueError('Invalid diagnostic relative error')
+        mixed=row.get('max_mixed_error_ratio')
+        if type(mixed) not in (int,float) or not math.isfinite(mixed) or not 0<=mixed<=1:
+            raise ValueError('CPU-truth challenge exceeds the unchanged mixed-tolerance bound')
     return raw

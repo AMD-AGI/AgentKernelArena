@@ -162,7 +162,7 @@ def valid_report():
                 'input_seed':12345,
                 'expected_device':'cpu','fresh_inputs_per_replay':True,'measured_graph_validated':True,
                 'immutable_inputs_unchanged':True,'returned_aliases_checked':True,'tolerance':0.02,
-                'max_rel_err':0.001,'correctness_challenges':[{'kind':k,'passed':True} for k in policy['challenges']],
+                'max_rel_err':0.001,'max_mixed_error_ratio':0.1,'correctness_challenges':[{'kind':k,'passed':True} for k in policy['challenges']],
                 **policy['validation_contract']}})
     pins=contract.provenance(TASK,policy)
     source=pins['source_sha256']['source/fused_recurrent.py']
@@ -194,6 +194,15 @@ def test_complete_report_retains_both_ordered_raw_series():
     report=valid_report(); rows=contract.benchmark_cases(report,TASK)
     assert len(rows)==2
     assert [r['samples_ms'] for r in rows]==[r['samples_ms'] for r in report['cases']]
+
+
+def test_diagnostic_relative_error_is_not_the_mixed_tolerance_threshold():
+    report=valid_report()
+    report['cases'][0]['validation'].update(max_rel_err=0.06,max_mixed_error_ratio=0.4)
+    assert len(contract.benchmark_cases(report,TASK))==2
+    report['cases'][0]['validation']['max_mixed_error_ratio']=1.01
+    with pytest.raises(ValueError,match='mixed-tolerance'):
+        contract.benchmark_cases(report,TASK)
 
 
 @pytest.mark.parametrize('body',[

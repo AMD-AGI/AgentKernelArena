@@ -86,6 +86,10 @@ replay is validated before its buffers are overwritten. Full immutable input
 values, output alias/shape/dtype, finite values and the original mixed tolerance
 `0.02` are checked outside the event interval.
 
+The original diagnostic `max_rel_err` is retained separately from
+`max_mixed_error_ratio`. Acceptance requires the latter to be at most 1.0 using
+the unchanged `0.02` relative term and RMS-based absolute floor.
+
 The exact measured graph also runs zero-query, negated-query, small-query and
 scaled-query challenges after timing. Reports retain all samples, the complete
 case ABI, source/build identities, and 118 checked invocations including the

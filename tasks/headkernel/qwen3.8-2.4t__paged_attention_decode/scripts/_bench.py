@@ -20,7 +20,7 @@ import statistics
 import sys
 
 from _attention_inputs import CHALLENGES, CPUInputs, IMMUTABLE, TENSORS, case_params as describe_case
-from _graph_contract import contract, provenance, validate_request
+from _graph_contract import contract, provenance, validate_request, mixed_error_ratio
 
 
 WARMUP = 10
@@ -81,6 +81,7 @@ class ReplayState:
         self.capture_pending = False
         self.checked_invocations = 0
         self.worst_error = 0.0
+        self.worst_mixed_ratio = 0.0
 
     def validate(self):
         if self.outputs is None or self.capture_pending or not self.needs_validation:
@@ -98,9 +99,11 @@ class ReplayState:
                 or not self.torch.isfinite(actual).all()):
             raise RuntimeError('Attention result changed ABI or contains nonfinite data')
         ok,error=self.harness.correct(actual,self.expected,self.tol)
-        if not ok or not math.isfinite(error):
+        mixed=mixed_error_ratio(actual,self.expected,self.tol)
+        if not ok or not math.isfinite(error) or not math.isfinite(mixed) or mixed>1:
             raise RuntimeError(f'timed graph out failed tolerance {self.tol}: {error}')
         self.worst_error=max(self.worst_error,error)
+        self.worst_mixed_ratio=max(self.worst_mixed_ratio,mixed)
         self.checked_invocations += 1
         self.needs_validation = False
 
@@ -152,7 +155,8 @@ def correctness_case(torch, cases, harness, case, expected, meta, cpu_args, tol,
         results.append({"kind": kind, "passed": True})
     return {"sig": f"{case['sig']}|{case['regime']}", "params": actual,
             "expected_device": "cpu", "tolerance": tol, "checked_invocations": len(results),
-            "checks": results, "max_rel_err": state.worst_error}
+            "checks": results, "max_rel_err": state.worst_error,
+            "max_mixed_error_ratio":state.worst_mixed_ratio}
 
 
 def measure_case(torch, cases, harness, case, expected, meta, cpu_args, tol, seed):
@@ -208,6 +212,7 @@ def measure_case(torch, cases, harness, case, expected, meta, cpu_args, tol, see
                        "fresh_inputs_per_replay": True,
                        "correctness_challenges": challenge_results,
                        "max_rel_err": state.worst_error, "tolerance": tol,
+                       "max_mixed_error_ratio":state.worst_mixed_ratio,
                        "outputs": ['out'],
                        "inputs_varied": ['query'],
                        "restored_buffers": [],

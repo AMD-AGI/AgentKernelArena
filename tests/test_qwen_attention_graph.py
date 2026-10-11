@@ -210,7 +210,7 @@ def complete_report():
     validation={'checked_invocations':118,'timing_checked_invocations':114,'fresh_input_sets':120,
         'input_seed':12345,'expected_device':'cpu','fresh_inputs_per_replay':True,
         'measured_graph_validated':True,'immutable_inputs_unchanged':True,'returned_aliases_checked':True,
-        'tolerance':0.02,'max_rel_err':0.001,
+        'tolerance':0.02,'max_rel_err':0.001,'max_mixed_error_ratio':0.1,
         'correctness_challenges':[{'kind':k,'passed':True} for k in policy['challenges']],
         **policy['validation_contract']}
     source=pins['source_sha256']['source/pa_kernels.cuh']
@@ -240,3 +240,15 @@ def test_complete_attention_report_is_required(attack):
     elif attack=='missing_request':report.pop('request')
     else:report['request']['manifest_sha256']='0'*64
     with pytest.raises(ValueError):contract.benchmark_cases(report,TASK)
+
+
+def test_original_mixed_tolerance_accepts_small_near_zero_error():
+    reference=torch.tensor([0.0,1.0])
+    actual=torch.tensor([0.001,1.0])
+    harness=load('attention_original_comparison',TASK/'ut/harness_lib.py')
+    passed,diagnostic=harness.correct(actual,reference,0.02)
+    assert passed and diagnostic>0.02
+    assert contract.mixed_error_ratio(actual,reference,0.02)<1
+    actual[0]=0.1
+    assert not harness.correct(actual,reference,0.02)[0]
+    assert contract.mixed_error_ratio(actual,reference,0.02)>1

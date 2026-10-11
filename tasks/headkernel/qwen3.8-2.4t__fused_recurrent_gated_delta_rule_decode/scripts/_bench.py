@@ -20,7 +20,7 @@ import statistics
 import sys
 
 from _recurrent_inputs import CHALLENGES, CPUInputs, IMMUTABLE, case_params as describe_case
-from _graph_contract import contract, provenance, validate_request
+from _graph_contract import contract, provenance, validate_request, mixed_error_ratio
 
 
 WARMUP = 10
@@ -76,6 +76,7 @@ class ReplayState:
         self.capture_pending = False
         self.checked_invocations = 0
         self.worst_error = 0.0
+        self.worst_mixed_ratio = 0.0
 
     def validate(self):
         if self.outputs is None or self.capture_pending or not self.needs_validation:
@@ -101,9 +102,11 @@ class ReplayState:
                 if not actual[untouched].equal(self.cpu_inputs['initial_state'][untouched]):
                     raise RuntimeError('Recurrent kernel changed an unselected state slot')
             ok, error = self.harness.correct(actual, expected, self.tol)
-            if not ok or not math.isfinite(error):
+            mixed = mixed_error_ratio(actual,expected,self.tol)
+            if not ok or not math.isfinite(error) or not math.isfinite(mixed) or mixed>1:
                 raise RuntimeError(f"timed graph {name} failed tolerance {self.tol}: {error}")
             self.worst_error = max(self.worst_error, error)
+            self.worst_mixed_ratio = max(self.worst_mixed_ratio,mixed)
         self.checked_invocations += 1
         self.needs_validation = False
 
@@ -157,7 +160,8 @@ def correctness_case(torch, cases, harness, case, spec, geometry, expected, tol,
         results.append({"kind": kind, "passed": True})
     return {"sig": f"{case['sig']}|{case['regime']}", "params": actual,
             "expected_device": "cpu", "tolerance": tol, "checked_invocations": len(results),
-            "checks": results, "max_rel_err": state.worst_error}
+            "checks": results, "max_rel_err": state.worst_error,
+            "max_mixed_error_ratio":state.worst_mixed_ratio}
 
 
 def measure_case(torch, cases, harness, case, spec, geometry, expected, tol, seed):
@@ -213,6 +217,7 @@ def measure_case(torch, cases, harness, case, spec, geometry, expected, tol, see
                        "fresh_inputs_per_replay": True,
                        "correctness_challenges": challenge_results,
                        "max_rel_err": state.worst_error, "tolerance": tol,
+                       "max_mixed_error_ratio":state.worst_mixed_ratio,
                        "outputs": ['out', 'initial_state'],
                        "inputs_varied": list(VARIED_INPUTS),
                        "restored_buffers": ['initial_state'],

@@ -67,6 +67,9 @@ python3 scripts/task_runner.py performance
   The actual measured graph receives four additional challenges: zero query/key,
   zero state, an inactive row, and both branches of the softplus calculation.
   Every raw sample, exact case ABI, source hash and replay check is retained.
+  The original diagnostic `max_rel_err` is retained separately from
+  `max_mixed_error_ratio`, whose limit is 1.0 under the unchanged `0.02`
+  per-element relative term and RMS-based absolute floor.
 
 ## Starting point
 

@@ -11,7 +11,7 @@ target_kernel_functions:
 benchmark_quality:
   schema_version: 1
   adapter: qwen_recurrent_graph_v1
-  validator_sha256: 0d2f62015ac96f23471d164589f69caf6399665c4431a8a134aacd6cd0683af0
+  validator_sha256: 08503b6add253be76c637291a41ac73b9f035532285fed3a3442148e44e3e3c2
 
 harness_protection:
   freeze_task_inputs: true
