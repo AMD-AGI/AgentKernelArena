@@ -88,21 +88,26 @@ def performance(function, case, seed):
             invoke(function, x)
     torch.cuda.current_stream().wait_stream(warm_stream)
     timer = NativeGraphTimer(torch)
-    graph = torch.cuda.CUDAGraph(keep_graph=True)
-    with torch.cuda.graph(graph):
-        result = invoke(function, x)
-    timer.attach(graph)
-    timer.replay()
-    validate_completed(result, x, before_cpu, torch)
-    del before_cpu
-    samples = []
-    for iteration in range(ITERATIONS):
-        fresh = generate(case, seed + iteration + 1, "cuda")
-        samples.append(replay_with_fresh_input(timer, result, x, fresh, torch))
-    return {"benchmark_method": "cuda_graph", "warmup_iterations": WARMUP,
-            "fresh_input_replays": ITERATIONS, "poisoned_output_replays": ITERATIONS,
-            "oracle_checks": ITERATIONS + 1, "timings": sample_statistics(samples),
-            "graph_timer": timer.proof()}
+    try:
+        graph = torch.cuda.CUDAGraph(keep_graph=True)
+        with torch.cuda.graph(graph):
+            result = invoke(function, x)
+        timer.attach(graph)
+        timer.replay()
+        validate_completed(result, x, before_cpu, torch)
+        del before_cpu
+        samples = []
+        for iteration in range(ITERATIONS):
+            fresh = generate(case, seed + iteration + 1, "cuda")
+            samples.append(replay_with_fresh_input(timer, result, x, fresh, torch))
+        return {"benchmark_method": "cuda_graph", "warmup_iterations": WARMUP,
+                "fresh_input_replays": ITERATIONS, "poisoned_output_replays": ITERATIONS,
+                "oracle_checks": ITERATIONS + 1, "timings": sample_statistics(samples),
+                "graph_timer": timer.proof()}
+    finally:
+        # The local graph also remains live until this frame is cleared. Reset
+        # its HIP event nodes explicitly before releasing any event owner.
+        timer.close()
 
 
 def main():
