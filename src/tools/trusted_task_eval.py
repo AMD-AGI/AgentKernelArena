@@ -698,7 +698,7 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                     "trusted group plan commit/task differs")
             require(group_plan["phase_timeouts"] == {phase: contract["config"].get(phase + "_timeout") for phase in PHASES},
                     "trusted plan differs from original phase caps")
-            plan_admission.validate_scheduler(group_plan, plan_admission.scheduler_state(group_plan["job_id"]),
+            plan_admission.validate_scheduler(group_plan, plan_admission.plan_scheduler_state(group_plan),
                                                plan_admission.socket.gethostname())
             for binding in group_plan["bindings"]:
                 require(select_gpu(binding["render_device"]) == {k: v for k, v in binding.items() if k != "worker_id"},
@@ -743,7 +743,7 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 if group_plan is not None:
                     # Recheck the same grant before each complete phase; a
                     # preemption/restart invalidates the entire evaluation.
-                    plan_admission.validate_scheduler(group_plan, plan_admission.scheduler_state(group_plan["job_id"]),
+                    plan_admission.validate_scheduler(group_plan, plan_admission.plan_scheduler_state(group_plan),
                                                        plan_admission.socket.gethostname())
                     report = run_group_phase(image, task, staging, output, leg, request, group_plan, limits[phase], cache_source)
                 else:
