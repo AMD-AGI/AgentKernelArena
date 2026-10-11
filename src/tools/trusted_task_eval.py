@@ -1,4 +1,4 @@
-"""Fresh-container evaluation for tasks implementing the portable case contract.
+"""Fresh-container evaluation for portable contracts and supported Qwen graphs.
 
 This leaves the qualified native-quant evaluator unchanged. The invoking host,
 Git database, image and Docker daemon remain trusted infrastructure.
@@ -174,6 +174,9 @@ def relative_file(value):
 def package_contract(task):
     config = yaml.safe_load(read_regular(task / "config.yaml"))
     require(isinstance(config, dict), "invalid task configuration")
+    if config.get("trusted_evaluation") is None and config.get("benchmark_quality") is not None:
+        from src.tools import trusted_qwen_eval
+        return trusted_qwen_eval.package_contract(task, config)
     descriptor = config.get("trusted_evaluation", {})
     require(isinstance(descriptor, dict) and type(descriptor.get("schema_version")) is int
             and descriptor["schema_version"] == 1,
@@ -223,9 +226,22 @@ def package_contract(task):
 def prepare_reference(*, repo, commit, task_path, reference, staging, candidate_workspace,
                       output, scratch_explicit, fixture_local_mirror=None, fixture_oci_prefix=None,
                       fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES, timeout=1800):
-    extract_task(repo, commit, task_path, reference)
+    from src.tools import trusted_qwen_eval
+    qwen = task_path in {"tasks/headkernel/" + name for name in trusted_qwen_eval.PROFILES}
+    if qwen:
+        extract_task(repo, commit, task_path, reference, allow_internal_symlinks=True)
+    else:
+        extract_task(repo, commit, task_path, reference)
     contract = package_contract(reference)
     fixture_receipt = None
+    if "qwen_profile" in contract:
+        from src.tools import trusted_qwen_eval
+        require(scratch_explicit, "trusted Qwen fixture/cache staging requires an explicit scratch directory")
+        fixture_receipt = trusted_qwen_eval.prepare_fixtures(
+            repo, commit, task_path, reference, output, contract,
+            local_mirror=fixture_local_mirror, oci_prefix=fixture_oci_prefix,
+            max_files=fixture_max_files, max_bytes=fixture_max_bytes, timeout=timeout)
+        return contract, fixture_receipt
     if contract["fixtures"] is not None:
         require(scratch_explicit, "external fixtures require an explicit --scratch-dir with sufficient disk space")
         proof = materialize_fixtures(
@@ -274,7 +290,7 @@ def declared_failure_bundles(build):
     return bundles
 
 
-def preserve_diagnostics(build, output):
+def preserve_diagnostics(build, output, *, recursive=False, excluded=()):
     output.mkdir()
     records = {}
     try:
@@ -282,30 +298,34 @@ def preserve_diagnostics(build, output):
         def selected_sources():
             # Keep the original textual failure context even if its tensor
             # bundle is missing or invalid.
-            for source in sorted(build.iterdir()):
-                if source.suffix in (".json", ".jsonl", ".log"):
+            candidates = build.rglob("*") if recursive else build.iterdir()
+            for source in sorted(candidates):
+                if str(source.relative_to(build)) in excluded or source.is_dir():
+                    continue
+                if source.suffix in (".json", ".jsonl", ".log", *([".txt"] if recursive else [])):
                     yield source
             bundles.update(declared_failure_bundles(build))
             for name in sorted(bundles):
                 yield build / name
         for source in selected_sources():
-            require("\n" not in source.name and "\r" not in source.name,
+            relative = str(source.relative_to(build))
+            require("\n" not in relative and "\r" not in relative,
                     "diagnostic filenames cannot contain line breaks")
             digest = sha256(read_regular(source))
             if source.name in bundles:
                 require(digest == bundles[source.name]['sha256'], 'tensor failure bundle digest changed')
-            target = output / source.name
+            target = output / relative
             environment = os.environ.copy()
             environment["GOMAXPROCS"] = "1"
             with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="aka-diagnostic-") as listing:
-                listing.write(source.name + "\n")
+                listing.write(relative + "\n")
                 listing.flush()
                 subprocess.run(["rclone", "copy", str(build), str(output), "--files-from-raw", listing.name,
                                 "--transfers", "64000", "--progress", "--buffer-size", "0",
                                 "--multi-thread-streams", "0", "--config", os.devnull, "--no-traverse"],
                                check=True, timeout=300, env=environment)
             require(sha256(read_regular(target)) == digest, "diagnostic copy differs from phase output")
-            records[source.name] = digest
+            records[relative] = digest
     finally:
         (output / "hashes.json").write_text(json.dumps(records, indent=2) + "\n")
 
@@ -389,11 +409,12 @@ def preserve_container_exit(name, destination, before):
 
 
 def run_phase(image, task, staging, output, leg, request, render_device, timeout, cache_source=None,
-              container_resources=None):
+              container_resources=None, qwen_contract=None):
     phase = request["phase"]
     label = leg + "_" + phase
-    build = staging / (label + "_build")
+    build = task / "build" if qwen_contract is not None else staging / (label + "_build")
     build.mkdir()
+    omitted = set()
     cache = None
     if cache_source is not None:
         cache = staging / (label + "_jit")
@@ -404,6 +425,13 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     gpu_path.write_text(canonical(request["gpu"]))
     name = "aka-task-retest-" + uuid.uuid4().hex
     command = docker_command(image, task, build, render_device, name, cache)
+    if qwen_contract is not None:
+        from src.tools import trusted_qwen_eval
+        mounts, omitted = trusted_qwen_eval.runtime_mounts(task, build, qwen_contract)
+        mounts += ["--mount", f"type=bind,src={trusted_qwen_eval.PHASE_BRIDGE},dst=/trusted_qwen_phase.py,readonly",
+                   "--env", "HK_RUN_ROOT=/task/build/ledger-root"]
+        command[command.index(image):command.index(image)] = mounts
+        command[-1] = "/trusted_qwen_phase.py"
     # Existing finally cleanup owns removal. Automatic removal would discard
     # Docker's OOMKilled/ExitCode evidence before the host can inspect it.
     command = [argument for argument in command if argument != "--rm"]
@@ -422,8 +450,11 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
         command[image_index:image_index] = ["--env", "FLYDSL_RUNTIME_CACHE_DIR=/aiter-jit/" + fresh_flydsl_name]
         image_index = command.index(image)
     command[image_index:image_index] = ["--mount", f"type=bind,src={request_path},dst=/evaluation-request.json,readonly"]
-    command += [phase, "--request", "/evaluation-request.json"]
-    command += distribution_phase_arguments(request.get("distribution_correctness_mode"), phase)
+    if qwen_contract is not None:
+        command += ["--task", "/task", "--request", "/evaluation-request.json", "--timeout", str(timeout)]
+    else:
+        command += [phase, "--request", "/evaluation-request.json"]
+        command += distribution_phase_arguments(request.get("distribution_correctness_mode"), phase)
     primary = None
     memory_before = process_memory_snapshot()
     try:
@@ -446,7 +477,8 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
         except (OSError, subprocess.SubprocessError) as exc:
             failures.append(exc)
         try:
-            preserve_diagnostics(build, output / (label + ".diagnostics"))
+            options = {"recursive": True, "excluded": omitted} if qwen_contract is not None else {}
+            preserve_diagnostics(build, output / (label + ".diagnostics"), **options)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             failures.append(exc)
         for exc in failures:
@@ -485,10 +517,15 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                                      timeout, phase_timeouts)
         candidate = staging / "candidate"
         copy_cache(reference, candidate)
-        # Only these declared regular files are taken from the agent workspace.
-        for source in contract["sources"]:
-            (candidate / source).write_bytes(read_regular(candidate_workspace / source))
-        guard_sources(reference, candidate, contract["guard"])
+        qwen = "qwen_profile" in contract
+        if qwen:
+            from src.tools import trusted_qwen_eval
+            trusted_qwen_eval.admit_sources(reference, candidate, candidate_workspace, contract, guard_sources)
+        else:
+            # Only these declared regular files are taken from the agent workspace.
+            for source in contract["sources"]:
+                (candidate / source).write_bytes(read_regular(candidate_workspace / source))
+            guard_sources(reference, candidate, contract["guard"])
         gpu = select_gpu(render_device)
         manifest = contract["manifest"]
         image = manifest["runtime_image"]
@@ -502,12 +539,14 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
             (output / "cache_manifest.json").write_text(canonical(proof))
             cache_source = cache_root / "jit"
         results, reports, sources, scored_native, scored_portable = {}, {}, {}, {}, {}
+        phase_receipts = []
         challenge_seed = secrets.randbelow(2**30)
         for leg, task in (("reference", reference), ("candidate", candidate)):
             package = fingerprint(tree_manifest(task))
             sources[leg] = {source: sha256(read_regular(task / source)) for source in contract["sources"]}
             reports[leg] = {}
-            (task / "build").mkdir()
+            if not qwen:
+                (task / "build").mkdir()
             for phase in PHASES:
                 request = {"schema_version": 1, "request_id": secrets.token_hex(24), "phase": phase,
                            "manifest_sha256": fingerprint(manifest), "package_sha256": package,
@@ -515,10 +554,16 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 mode = contract["distribution_correctness_mode"]
                 if mode is not None and phase in ("compile", "correctness"):
                     request["distribution_correctness_mode"] = mode
+                options = {**resource_options, **({"qwen_contract": contract} if qwen else {})}
                 report = run_phase(image, task, staging, output, leg, request, render_device,
-                                   limits[phase], cache_source, **resource_options)
-                measured = validate_report(report, manifest, request)
-                validate_distribution_report(report, manifest, request, contract["distributions"], mode)
+                                   limits[phase], cache_source, **options)
+                if qwen:
+                    measured, quality_cases = trusted_qwen_eval.validate_phase(task, contract, phase, report, request)
+                    phase_receipt = strict_json(read_regular(task / "build/host_phase_receipt.json"))
+                    (task / "build").rename(staging / (leg + "_" + phase + "_completed_build"))
+                else:
+                    measured = validate_report(report, manifest, request)
+                    validate_distribution_report(report, manifest, request, contract["distributions"], mode)
                 # Ignore only the empty bind-mount point added after fingerprinting.
                 current = tree_manifest(task)
                 current.pop("build", None)
@@ -527,11 +572,21 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 filename = leg + "_" + phase + ".json"
                 (output / filename).write_bytes(encoded)
                 reports[leg][phase] = {"file": filename, "sha256": sha256(encoded)}
+                if qwen:
+                    phase_receipt.update(status="verified", report=reports[leg][phase],
+                                         diagnostics_directory=leg + "_" + phase + ".diagnostics")
+                    receipt_name = leg + "_" + phase + ".phase_receipt.json"
+                    receipt_bytes = canonical(phase_receipt).encode() + b"\n"
+                    (output / receipt_name).write_bytes(receipt_bytes)
+                    phase_receipts.append({"leg": leg, "phase": phase, "file": receipt_name,
+                                           "sha256": sha256(receipt_bytes)})
                 if phase == "performance":
                     results[leg] = measured
                     if contract['scoring_policy'] is not None:
                         evidence = load_native_measurements(task, contract['config'], report=report, request=request)
                         scored_native[leg] = as_test_cases(evidence, is_baseline=leg == 'reference')
+                    elif qwen:
+                        scored_portable[leg] = quality_cases
                     else:
                         scored_portable[leg] = portable_test_cases(report, manifest, request, sources[leg])
         cases = []
@@ -551,6 +606,9 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                   "reports": reports, "framework_task_validator_status": "not_asserted"}
         if container_resources:
             result["requested_container_resources"] = dict(container_resources)
+        if qwen:
+            require(len(phase_receipts) == 6, "all six independent Qwen phases are required")
+            result.update(report_contract="qwen_graph", fresh_phase_count=6, phase_receipts=phase_receipts)
         if contract["distributions"] is not None:
             result["observed_work_correctness"] = {
                 "mode": contract["distribution_correctness_mode"],
@@ -616,7 +674,7 @@ def main():
     parser.add_argument("--render-device")
     parser.add_argument("--stage-only", action="store_true", help="prepare a verified original task for a validator without GPU execution")
     parser.add_argument("--scratch-dir")
-    parser.add_argument("--fixture-local-mirror", help="trusted local mirror laid out by manifest object_key")
+    parser.add_argument("--fixture-local-mirror", help="trusted mirror using portable object_key or original headkernel fixture paths")
     parser.add_argument("--fixture-oci-prefix", help="host-approved exact OCI prefix for fixture download")
     parser.add_argument("--fixture-max-files", type=int, default=DEFAULT_MAX_FILES)
     parser.add_argument("--fixture-max-bytes", type=int, default=DEFAULT_MAX_BYTES)
