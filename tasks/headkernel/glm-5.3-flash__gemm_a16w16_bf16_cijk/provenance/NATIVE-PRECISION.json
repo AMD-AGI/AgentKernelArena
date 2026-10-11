@@ -71,7 +71,7 @@
     "native_partial_model_not_globally_exact": {
       "different_partial_elements_elsewhere": 9,
       "total_partial_elements": 131072,
-      "detail": "Near-halfway or cancellation discrepancies outside the target pair remain explicit; no GPU-derived partial substitution or wider error acceptance is introduced."
+      "detail": "Historical CPU-partial implementation: near-halfway or cancellation discrepancies outside the target pair remained explicit, and that implementation introduced no GPU-derived partial substitution or wider error acceptance. The current native reference preparation supersedes the CPU partial model as documented separately in this file."
     },
     "failure_evidence": "Original pending observed and partial bits are snapshotted before solver allocation; CPU reference bits are retained before fallback. Construction, budget, solve, and independent-witness-replay exceptions, including MemoryError, become NativeOrderProofError. The production receipt preserves these bits, exception type, stage, budget counters and case/fixture/leg/seed context.",
     "protected_helper": {

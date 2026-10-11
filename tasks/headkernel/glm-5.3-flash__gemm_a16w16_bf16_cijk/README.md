@@ -18,6 +18,12 @@ The earlier CPU matmul partial model is not exact: retained hardware traces disa
 
 The fast permutation search still falls back to exact inverse reachability, with each returned order replayed independently. The unchanged aggregate limits are eight groups, 65,536 paired states and 262,144 transitions. Budget exhaustion rejects; no interval or approximate outcome can pass. Accepted witnesses retain their actual partial bits, and failures retain original observed/partial/reference bits and failure context. This native arithmetic exception never applies to candidates. The new collection path needs fresh source-matched GPU validation before full qualification; retained capture and CPU tests do not substitute for it. See `provenance/NATIVE-PRECISION.json` for the instruction evidence and historical failures.
 
+The native and candidate numerical acceptance policies therefore differ: the
+pinned deployed baseline may pass through an exact native atomic-order witness
+when the candidate's mathematical accuracy contract would reject the same output.
+Report this distinction with native-baseline comparisons. The exception calibrates
+this pinned implementation; it does not establish arbitrary vendor-kernel correctness.
+
 The frozen `scoring_baseline` policy opts this task into native-production scoring.
 The host validates the enclosing request, current source hashes, native source
 provenance, runtime image, complete case ABI, raw samples, and replay checks for
