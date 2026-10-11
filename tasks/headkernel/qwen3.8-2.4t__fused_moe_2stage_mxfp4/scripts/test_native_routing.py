@@ -334,6 +334,36 @@ class ContractTests(unittest.TestCase):
             state.validate()
         self.assertEqual(native.reference_calls, 0)
 
+    def test_relocated_native_enums_keep_the_same_execution_identity(self):
+        def exports(module):
+            values = {}
+            for name, member, number in (('ActivationType', 'Silu', 0), ('QuantType', 'per_1x32', 3)):
+                kind = type(name, (), {'__module__': module})
+                instance = kind()
+                instance.name, instance.value = member, number
+                values[name] = kind
+                values[name + '_value'] = instance
+            return types.SimpleNamespace(**values)
+        ordinary = exports('aiter.jit.module_aiter_core')
+        relocated = exports('module_aiter_core')
+        records = []
+        for native in (ordinary, relocated):
+            registry = runtime.native_enum_identities(native)
+            record = runtime.native_value({'activation': native.ActivationType_value,
+                                           'quant_type': native.QuantType_value}, native_enums=registry)
+            records.append(record)
+        self.assertEqual(records[0], records[1])
+        self.assertEqual(records[0]['activation'], {'enum': 'aiter.jit.module_aiter_core.ActivationType',
+                                                   'name': 'Silu', 'value': 0})
+        self.assertEqual(contract.fingerprint(records[0]), contract.fingerprint(records[1]))
+        with self.assertRaisesRegex(ValueError, 'unsupported native launch metadata'):
+            runtime.native_value(relocated.ActivationType_value)
+        # A lookalike type with the ordinary module spelling is not an image export.
+        spoof = exports('aiter.jit.module_aiter_core')
+        with self.assertRaisesRegex(ValueError, 'unsupported native launch metadata'):
+            runtime.native_value(spoof.ActivationType_value,
+                                 native_enums=runtime.native_enum_identities(ordinary))
+
     def test_native_default_and_explicit_alias_have_identical_observed_arguments(self):
         @dataclasses.dataclass
         class Metadata:
@@ -352,6 +382,7 @@ class ContractTests(unittest.TestCase):
         for block in (32, 64, 128):
             native = object.__new__(runtime.NativeRuntime)
             native.torch = FakeTorch()
+            native.native_enums = {}
             native.dispatcher = lambda: Metadata(functools.partial(stage1, kernelName='moe1'),
                                                  functools.partial(stage2, kernelName='moe2'), block)
             native.sorting = lambda *args, **kwargs: [Tensor() for _ in range(5)]
