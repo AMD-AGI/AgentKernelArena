@@ -1,0 +1,457 @@
+{
+  "comparison_source": "Local Git objects for the supplied exact published commit; this does not claim origin default HEAD equals that commit.",
+  "decision": "Use this pinned handoff branch; the supplied published commit lacks the task and required evaluator changes.",
+  "framework_missing_or_different": [
+    {
+      "path": "HEADKERNELS.md",
+      "published_blob": "4046d14068509b6b890cf93ed753be7317e99bb4",
+      "qualified_blob": "33a90755e495d3f2225446509324024a3d18082a",
+      "status": "different"
+    },
+    {
+      "path": "README.md",
+      "published_blob": "2690b5694e9bb993f6e9c7bcdd4115c5fc13e406",
+      "qualified_blob": "be2074d92abc1bd35cd0b6b8b29b755ee47bce2b",
+      "status": "different"
+    },
+    {
+      "path": "agents/codex/auth_preflight.py",
+      "published_blob": "aa435f02e545697bc687a9f36419f0e06706b3dd",
+      "qualified_blob": "fc9e64a407a9857567dbb0397dfc9a8eb2fafd4b",
+      "status": "different"
+    },
+    {
+      "path": "agents/task_validator/README.md",
+      "published_blob": "49e61f4ca0d39c17bde4be476a74b045aa8355e2",
+      "qualified_blob": "500161610f4dc79564849af2ff8d74fb9094e29f",
+      "status": "different"
+    },
+    {
+      "path": "agents/task_validator/launch_agent.py",
+      "published_blob": "499e198f17ec1046983a62a2333b8047c5c04458",
+      "qualified_blob": "048000be32c7d23ebdbbc1687928156fba30e448",
+      "status": "different"
+    },
+    {
+      "path": "agents/task_validator/validation_prompt.py",
+      "published_blob": "a93a360c0b316784c0bce851ddd995ba7a4acaf4",
+      "qualified_blob": "6ae4541968fc2271609e1d15720d7371a04e7f14",
+      "status": "different"
+    },
+    {
+      "path": "docs/how-to/add-task.md",
+      "published_blob": "b05e8a3d3ec8341787762e22baa58acebe0d2074",
+      "qualified_blob": "00e3705947cd9ff8eaef3433f63d71da4c701a7b",
+      "status": "different"
+    },
+    {
+      "path": "docs/how-to/guarded-case-contract.md",
+      "published_blob": null,
+      "qualified_blob": "d8010a1ab8bf21a76911a346ae2c0bf92c3803a6",
+      "status": "missing"
+    },
+    {
+      "path": "docs/how-to/headkernel-upstream-runtime.md",
+      "published_blob": "f256c5701b2909966f6b4889131e979c064f28ab",
+      "qualified_blob": "8d5c2ac76fbddbf8d2c6f6d4506685d09af27661",
+      "status": "different"
+    },
+    {
+      "path": "docs/how-to/task-validator.md",
+      "published_blob": "fcd03e42e9863e75e2dde66d4350d598890b91f8",
+      "qualified_blob": "8973918f4c702ad2e429f2709cad8b9691ffd89d",
+      "status": "different"
+    },
+    {
+      "path": "docs/how-to/trusted-fixture-artifacts.md",
+      "published_blob": null,
+      "qualified_blob": "b4d6ab046b685356b7e1d55ac383e1640bb2bf1c",
+      "status": "missing"
+    },
+    {
+      "path": "docs/install/install.md",
+      "published_blob": "fcd5bb96c935ae85698884eb5c1b5ead46aaec4b",
+      "qualified_blob": "36e1a9b617f3f765a63ec5e82693bf56a637ab0c",
+      "status": "different"
+    },
+    {
+      "path": "docs/reference/api-reference.md",
+      "published_blob": "62ef1ad4c5110b19cd16567a9718eea4cc80420b",
+      "qualified_blob": "a84bc65c95751204651b3b0e3fe16fbbed83e5ee",
+      "status": "different"
+    },
+    {
+      "path": "docs/reference/headkernel-historical-setup.md",
+      "published_blob": null,
+      "qualified_blob": "066733c15a9e630b6c4b090ff63213bcd71a4713",
+      "status": "missing"
+    },
+    {
+      "path": "docs/reference/headkernel-sg520-refresh.md",
+      "published_blob": "2406ad76f9f420302bf396f46cc1fd53d208d296",
+      "qualified_blob": "521adb342809c3814727072bea96d8ec76c9fc2e",
+      "status": "different"
+    },
+    {
+      "path": "docs/reference/headkernel-superseded-attention.json",
+      "published_blob": null,
+      "qualified_blob": "e4250a68deb7d205783d2656a3355682fff87de6",
+      "status": "missing"
+    },
+    {
+      "path": "example_configs/headkernel_sg520_current_mi355x.yaml",
+      "published_blob": null,
+      "qualified_blob": "78116a11c37ae039b58ccc8c6c547b100d0cf9bf",
+      "status": "missing"
+    },
+    {
+      "path": "src/evaluator.py",
+      "published_blob": "3457dbb89dcb1df8226c0e33363bc46a837b6a00",
+      "qualified_blob": "5791f52984307e4283f6f8221a45dc65fa8e067d",
+      "status": "different"
+    },
+    {
+      "path": "src/harness_guard.py",
+      "published_blob": "a5b448e41a870e65ce6a44e110a22b6d985f4263",
+      "qualified_blob": "2d0c1bc680d3ea91b1f087b5d7c98541199cbda8",
+      "status": "different"
+    },
+    {
+      "path": "src/native_baseline.py",
+      "published_blob": null,
+      "qualified_blob": "5204f3785fc5be751d3307dc6d193655c08197ea",
+      "status": "missing"
+    },
+    {
+      "path": "src/paired_workload.py",
+      "published_blob": null,
+      "qualified_blob": "34b1bb627120b0fa82607e4a799cfb2bab63884e",
+      "status": "missing"
+    },
+    {
+      "path": "src/performance.py",
+      "published_blob": "a0ef662bb959d7bcf4d583c193c04b1a8332d009",
+      "qualified_blob": "b219e61f3f07d1d857e06af4fcf6fd797699e4d1",
+      "status": "different"
+    },
+    {
+      "path": "src/scripts/docker_benchmark.sh",
+      "published_blob": "adcfee905f3d06753aa393b28a145bf58e3c452f",
+      "qualified_blob": "34df222890810cbb37d3f8037d3977e1968bdcca",
+      "status": "different"
+    },
+    {
+      "path": "src/task_contract.py",
+      "published_blob": null,
+      "qualified_blob": "1c60fa7aad9788df683274967ce7b6bea8e996a0",
+      "status": "missing"
+    },
+    {
+      "path": "src/testcases.py",
+      "published_blob": "1cb701e1faba2a7c5eea908cda8a1e0e0aafed3a",
+      "qualified_blob": "1e77bc9336ce2dd36ac120b18c4dd003855ad4fe",
+      "status": "different"
+    },
+    {
+      "path": "src/tools/custom_perf_protocols.py",
+      "published_blob": null,
+      "qualified_blob": "95d8787a3672e0bc3a93e44c98cece99823b919b",
+      "status": "missing"
+    },
+    {
+      "path": "src/tools/gpu_binding.py",
+      "published_blob": null,
+      "qualified_blob": "55c93f80b64ebbc26b012d9aa6f1a9f3ed9e4514",
+      "status": "missing"
+    },
+    {
+      "path": "src/tools/materialize_task_contract.py",
+      "published_blob": null,
+      "qualified_blob": "648feadb0a473da018c8ec9a2a767fd0033ae48e",
+      "status": "missing"
+    },
+    {
+      "path": "src/tools/perf/README.md",
+      "published_blob": "2bc8e9a63f52375896e62d9f96842613d36b8499",
+      "qualified_blob": "073f564ffcd00dcce23821ec7aa251b8e86e3967",
+      "status": "different"
+    },
+    {
+      "path": "src/tools/perf/custom_protocols.json",
+      "published_blob": null,
+      "qualified_blob": "2ce750dfcdcd0501f437fa85c4c602dfca51c873",
+      "status": "missing"
+    },
+    {
+      "path": "src/tools/seed_aiter_jit_cache.py",
+      "published_blob": "ab8843b1214596112c996d01d7df4cc77c5f17b1",
+      "qualified_blob": "0e5ae31db505567ddb68c7fcdf600dcf94b9965a",
+      "status": "different"
+    },
+    {
+      "path": "src/tools/sync_perf_helpers.py",
+      "published_blob": "95771dc1fb931de9b4cd684d6fc1f4f0e5d724dc",
+      "qualified_blob": "0d4126ff0e70b5e5288689bbd369fb5a39cf85f9",
+      "status": "different"
+    },
+    {
+      "path": "src/tools/trusted_fixtures.py",
+      "published_blob": null,
+      "qualified_blob": "ca8b253f2459ecb6eb7b47099b4982e9009ff455",
+      "status": "missing"
+    },
+    {
+      "path": "src/tools/trusted_task_eval.py",
+      "published_blob": null,
+      "qualified_blob": "98bcb3eee4512a286d79fea34d24e5fed58231b1",
+      "status": "missing"
+    },
+    {
+      "path": "tests/paired_cpu_backend.py",
+      "published_blob": null,
+      "qualified_blob": "2a704f6a08aa083b381e48b40a128d4074507e86",
+      "status": "missing"
+    },
+    {
+      "path": "tests/paired_prefill_cpu_backend.py",
+      "published_blob": null,
+      "qualified_blob": "79a2e353dcc955f5b7320ab4dbf1df74741fad33",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_codex_auth_preflight.py",
+      "published_blob": "6632f7b0e55b1e5adb210b90b635ceeac26e8745",
+      "qualified_blob": "872aa98cdb9f316efc8a28dbabc6a161944d0e14",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_custom_perf_protocols.py",
+      "published_blob": null,
+      "qualified_blob": "83422fe7fe0f0a539cc969e865f641786fb07a85",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_generated_admission.py",
+      "published_blob": null,
+      "qualified_blob": "bf795971fbd310d57b3685bdc815cc1e628f2a11",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_mla_decode_dispatch.py",
+      "published_blob": null,
+      "qualified_blob": "6e64a39d397cfae05dcb705b8f4350a6a87f316a",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_mla_decode_distribution.py",
+      "published_blob": null,
+      "qualified_blob": "bf3e1284188dc801cde81492fb23f551e1846c46",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_mla_paired_reference.py",
+      "published_blob": null,
+      "qualified_blob": "da301ba2d640e150157e5c1f6ad71531d93ec31b",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_mla_write_ownership.py",
+      "published_blob": null,
+      "qualified_blob": "014d205f2c1f3a77c80d504ccf6bb876db28642b",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_observed_dispatch.py",
+      "published_blob": null,
+      "qualified_blob": "26791732aceb3e61e2497fe57ee055c40f4199ee",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_opus_output_semantics.py",
+      "published_blob": null,
+      "qualified_blob": "71f54c86701a99b568e7f3a367a5811610a393d6",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_paired_reference.py",
+      "published_blob": null,
+      "qualified_blob": "228da043d8dcbb601ce5bdf4a5e265ba562e4658",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_deepseek_work_distributions.py",
+      "published_blob": null,
+      "qualified_blob": "2d51e26bb58f113c66f8f11ba4ce24f9667b87d4",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_docker_benchmark.sh",
+      "published_blob": "d323903422c860f01101693bacb4e72c389350e7",
+      "qualified_blob": "bbe027b048a721464e1d5f34e7a9d02159f1a32c",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_gpu_binding.py",
+      "published_blob": null,
+      "qualified_blob": "adcb1ced00fe892ac13a6b2f0b017b7150077d79",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_headkernel_attention_disposition.py",
+      "published_blob": null,
+      "qualified_blob": "9682e11f68624d5eb9a6bdec5e6d3a5d9139d423",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_headkernel_benchmark_failures.py",
+      "published_blob": "c84ef4796070761427473d5f0bb6664ac2dd25cf",
+      "qualified_blob": "caf18f0780cfc8d1fe338a43629c0cca09c3a1ef",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_headkernel_correctness_binding.py",
+      "published_blob": "7aeec5ead466b1b96b1148dc1230730a77e959b1",
+      "qualified_blob": "b3a5943b04c042496951caaf4a53de1161438643",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_headkernel_performance_identity.py",
+      "published_blob": "b3007fe0f314a8ddbb7dcc5dbd41181b31fb9631",
+      "qualified_blob": "71adabf33dac7d782dd3db9b659edcc941c7923f",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_headkernel_portable_setup.py",
+      "published_blob": null,
+      "qualified_blob": "36cfc48cb3d1b05d80303f5b8686ce48b17fed7d",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_live_scale_output_contract.py",
+      "published_blob": null,
+      "qualified_blob": "ba87b1e255cd639f649f21e32dc9e1965e182807",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_minimax_exact_controls.py",
+      "published_blob": null,
+      "qualified_blob": "42af2e05a862b4d4d59a7899721f3c200cf390d5",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_minimax_paired_reference.py",
+      "published_blob": null,
+      "qualified_blob": "c83cab308218e65f912e7e199988e5d3f453869f",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_minimax_prefill_paired_reference.py",
+      "published_blob": null,
+      "qualified_blob": "69d20b93e428724c643a1518006431027df5d3a5",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_minimax_served_contract.py",
+      "published_blob": null,
+      "qualified_blob": "7836a207f8571a3d51a527964f548121f73d6824",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_moe_failure_persistence.py",
+      "published_blob": null,
+      "qualified_blob": "34db645beab5218e3a790689fb6450e719ccbe0e",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_moe_native_enums.py",
+      "published_blob": null,
+      "qualified_blob": "c432f1c4449370faff66bf780739e7b3a734ccf7",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_native_baseline_scoring.py",
+      "published_blob": null,
+      "qualified_blob": "cb159bdaa1de6bf83f8eb9f44442fd6972ebd8a3",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_perf_helper_materialization.py",
+      "published_blob": "9dc52278715f5753316bd2f14ae2ea853bb0287d",
+      "qualified_blob": "6a9b7fec12682a62826334cfa58dc0d8d13efa92",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_port_package_hash.py",
+      "published_blob": null,
+      "qualified_blob": "a194ae751f273a7d5432ec2df78d2fff8e86813f",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_seed_aiter_jit_cache.py",
+      "published_blob": "592475c909942ec819d9d3e02b31cca0a00a4359",
+      "qualified_blob": "668c62cd4474283459fb1b60286dc01ebcf72326",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_task_contract.py",
+      "published_blob": null,
+      "qualified_blob": "9af788fe9d746fe4f78d37bdd0eb3700bec8b20f",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_task_validator.py",
+      "published_blob": "c0ce19547be41ba0fa46197dffbb27a54b1d185c",
+      "qualified_blob": "534917bd3b2b753d387ba3156b00ec9ce58a6d78",
+      "status": "different"
+    },
+    {
+      "path": "tests/test_trusted_fixtures.py",
+      "published_blob": null,
+      "qualified_blob": "dd5c7f03c5dfe56e8fb412451f23cc3d51c7e65a",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_trusted_flydsl_cache.py",
+      "published_blob": null,
+      "qualified_blob": "e170b1fc0bfe792a3a3ba00df7e8d319ea67fbcb",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_trusted_harness_coverage.py",
+      "published_blob": null,
+      "qualified_blob": "c014153579a99fa07240acabd5918e5badc2f2c1",
+      "status": "missing"
+    },
+    {
+      "path": "tests/test_trusted_task_eval.py",
+      "published_blob": null,
+      "qualified_blob": "2810c098ae56aa95b02a2ae1784f8067c8bae068",
+      "status": "missing"
+    },
+    {
+      "path": "tools/headkernel-runtime-targets.json",
+      "published_blob": "9d4a67a621a8e87d6e7a03beab3b261cf3ce99e1",
+      "qualified_blob": "73fccba4c5384e193d0a6f5b130fa3314365560e",
+      "status": "different"
+    },
+    {
+      "path": "tools/prepare_headkernel_run.py",
+      "published_blob": null,
+      "qualified_blob": "f3235cf764e32e0310669673ee707fb6fbb36789",
+      "status": "missing"
+    }
+  ],
+  "framework_paths_compared": 361,
+  "github_commit_verification": {
+    "api": "https://api.github.com/repos/AMD-AGI/AgentKernelArena/commits/373cf51f5601d88e49c04058e984cde4134eb883",
+    "claim": "Exact supplied commit is publicly retrievable; no claim that the default branch or another branch currently points to it.",
+    "retrieved": true,
+    "tree": "2cb5c91a0d3c9f8feb0c1aa3956115e14f6ebca8",
+    "verified_utc": "2026-10-08T15:59:53.061464+00:00"
+  },
+  "identical": false,
+  "published_reference_commit": "373cf51f5601d88e49c04058e984cde4134eb883",
+  "published_task_present": false,
+  "qualified_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+  "task_tree_identical": false
+}

@@ -1,0 +1,9 @@
+# Qualified entry: only the two captured M=8192/H=16 MLA prefill cases.
+# Stage fixtures as described in ready/mla-prefill/README.md before running.
+agent:
+  template: claude_code
+tasks:
+  - headkernel/deepseek-v4-pro__unified_paged_attention_prefill
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
