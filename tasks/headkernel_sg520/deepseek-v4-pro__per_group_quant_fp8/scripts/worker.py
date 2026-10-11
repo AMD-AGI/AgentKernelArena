@@ -8,6 +8,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "ut"))
 from contract import ITERATIONS, SEEDS, WARMUP, package_identity, sample_statistics, write_report
+from graph_timer import NativeGraphTimer
 from native import baseline, build_proof, candidate, source_identity
 from oracle import compare, generate, invoke, load_cases, reference, validate_output_metadata
 
@@ -64,20 +65,15 @@ def correctness(function, case):
     return {"seeds": list(SEEDS), "negative_controls": True}
 
 
-def replay_with_fresh_input(graph, result, x, fresh, torch):
+def replay_with_fresh_input(timer, result, x, fresh, torch):
     """Copies and output poisoning are outside the device timing interval."""
     before_cpu = cpu_snapshot(fresh)
     x.copy_(fresh)
     result[0].view(torch.uint8).fill_(255)
     result[1].fill_(float("nan"))
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    graph.replay()
-    end.record()
-    torch.cuda.synchronize()
+    elapsed = timer.replay()
     validate_completed(result, x, before_cpu, torch)
-    return start.elapsed_time(end)
+    return elapsed
 
 
 def performance(function, case, seed):
@@ -91,20 +87,22 @@ def performance(function, case, seed):
         for _ in range(WARMUP):
             invoke(function, x)
     torch.cuda.current_stream().wait_stream(warm_stream)
-    graph = torch.cuda.CUDAGraph()
+    timer = NativeGraphTimer(torch)
+    graph = torch.cuda.CUDAGraph(keep_graph=True)
     with torch.cuda.graph(graph):
         result = invoke(function, x)
-    graph.replay()
-    torch.cuda.synchronize()
+    timer.attach(graph)
+    timer.replay()
     validate_completed(result, x, before_cpu, torch)
     del before_cpu
     samples = []
     for iteration in range(ITERATIONS):
         fresh = generate(case, seed + iteration + 1, "cuda")
-        samples.append(replay_with_fresh_input(graph, result, x, fresh, torch))
+        samples.append(replay_with_fresh_input(timer, result, x, fresh, torch))
     return {"benchmark_method": "cuda_graph", "warmup_iterations": WARMUP,
             "fresh_input_replays": ITERATIONS, "poisoned_output_replays": ITERATIONS,
-            "oracle_checks": ITERATIONS + 1, "timings": sample_statistics(samples)}
+            "oracle_checks": ITERATIONS + 1, "timings": sample_statistics(samples),
+            "graph_timer": timer.proof()}
 
 
 def main():

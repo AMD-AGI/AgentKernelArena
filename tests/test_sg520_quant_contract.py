@@ -146,6 +146,16 @@ def result_fixture(root, *, mode="performance", leg="candidate_native", pid=1234
                      "fresh_input_replays": 100, "poisoned_output_replays": 100,
                      "oracle_checks": 101, "warmup_iterations": 10,
                      "seeds": [0, 1], "negative_controls": True,
+                     "graph_timer": {"method": "hip_graph_event_record_nodes",
+                         "instantiated_after_event_insertion": True, "initial_timestamps_ms": [0.0, 0.1],
+                         "topology": {"api": "hipGraphAddEventRecordNode", "original_node_count": 1,
+                             "original_edge_count": 0, "original_root_count": 1, "original_sink_count": 1,
+                             "final_node_count": 3, "final_edge_count": 2,
+                             "original_nodes_and_edges_preserved": True, "all_original_roots_depend_on_begin": True,
+                             "end_depends_on_all_original_sinks": True},
+                         "replays": [{"begin_ms_from_anchor": 2.0 * (i + 1),
+                                      "end_ms_from_anchor": 2.0 * (i + 1) + 1, "elapsed_ms": 1.0}
+                                     for i in range(101)]},
                      "timings": CONTRACT.sample_statistics([1.0] * 100)})
     return request, {**request, "status": "ok", "pid": pid, "native_build": proof, "results": rows}
 
@@ -167,6 +177,11 @@ def result_fixture(root, *, mode="performance", leg="candidate_native", pid=1234
     lambda p: p["results"][0]["timings"]["samples_ms"].pop(),
     lambda p: p["results"][0]["timings"]["samples_ms"].__setitem__(0, float("nan")),
     lambda p: p["results"][0]["timings"]["samples_ms"].__setitem__(0, False),
+    lambda p: p["results"][0].pop("graph_timer"),
+    lambda p: p["results"][0]["graph_timer"]["replays"].pop(),
+    lambda p: p["results"][0]["graph_timer"]["replays"][1].update(elapsed_ms=0.01),
+    lambda p: p["results"][0]["graph_timer"]["replays"][1].update(begin_ms_from_anchor=2.0),
+    lambda p: p["results"][0]["graph_timer"]["topology"].update(original_nodes_and_edges_preserved=False),
     lambda p: p["native_build"].update(fresh_compilation=False),
     lambda p: p["native_build"].update(extension_sha256="forged"),
     lambda p: p["native_build"].update(source_tree_sha256="uncompiled"),
@@ -203,6 +218,7 @@ def test_score_has_all_three_cases_and_weights_are_diagnostic(tmp_path):
     assert [case["execution_time_ms"] for case in score_cases] == [1.0, 10.0, 100.0]
     assert [case["params"]["trace_call_count"] for case in score_cases] == [728, 488, 968]
     assert all(case["metadata"] == {"benchmark_method": "cuda_graph"} for case in score_cases)
+    assert all(set(row["graph_timer_proofs"]) == set(CONTRACT.LEGS) for row in report["paired_cases"])
     assert report["weighted_mean_ms"] == {
         leg: (728 + 488 * 10 + 968 * 100) / 2184 for leg in CONTRACT.LEGS
     }
@@ -277,27 +293,67 @@ def test_replay_requires_current_input_and_both_outputs(kind):
         assert actual[0].device == actual[1].device == input_.device == "cpu"
         assert (actual[0].value, actual[1].value) == (expected[0].value, expected[1].value)
 
-    def event(*, enable_timing):
-        assert enable_timing
-        return SimpleNamespace(record=lambda: log.append("event"), elapsed_time=lambda end: 0.25)
+    def timed_replay():
+        replay()
+        log.append("sync")
+        return 0.25
 
-    torch = SimpleNamespace(uint8="uint8", equal=lambda a, b: a.value == b.value,
-                            cuda=SimpleNamespace(Event=event, synchronize=lambda: log.append("sync")))
+    torch = SimpleNamespace(uint8="uint8", equal=lambda a, b: a.value == b.value)
     with (mock.patch.object(WORKER, "compare", compare),
           mock.patch.object(WORKER, "reference", reference),
           mock.patch.object(WORKER, "validate_output_metadata", side_effect=lambda actual, input_: log.append("metadata"))):
         if kind == "fresh":
-            assert WORKER.replay_with_fresh_input(SimpleNamespace(replay=replay), result, x,
+            assert WORKER.replay_with_fresh_input(SimpleNamespace(replay=timed_replay), result, x,
                                                  fresh, torch) == 0.25
             assert log[:10] == [("copy_to", "fresh", "cpu"), "copy_input", "poison_quant",
-                                "poison_scale", "event", "replay", "event", "sync", "metadata",
-                                ("copy_to", "quant", "cpu")]
+                                "poison_scale", "replay", "sync", "metadata",
+                                ("copy_to", "quant", "cpu"), ("copy_to", "scale", "cpu"),
+                                ("copy_to", "input", "cpu")]
             assert log.index("reference") > log.index(("copy_to", "input", "cpu"))
             assert log.index("compare") > log.index("reference")
         else:
             with pytest.raises(AssertionError):
-                WORKER.replay_with_fresh_input(SimpleNamespace(replay=replay), result, x,
+                WORKER.replay_with_fresh_input(SimpleNamespace(replay=timed_replay), result, x,
                                               fresh, torch)
+
+
+def test_performance_preserves_warmups_initial_check_and_all_fresh_replays():
+    log, seeds, validations = [], [], []
+    x = Buffer(1, log, "input")
+    result = (Buffer(0, log, "quant"), Buffer(0, log, "scale"))
+    graph = object()
+    stream = SimpleNamespace(wait_stream=lambda other: None)
+    torch = SimpleNamespace(uint8="uint8", cuda=SimpleNamespace(
+        Stream=lambda: stream, current_stream=lambda: stream,
+        stream=lambda value: contextlib.nullcontext(),
+        CUDAGraph=mock.Mock(return_value=graph), graph=lambda value: contextlib.nullcontext()))
+    timer = SimpleNamespace(attach=mock.Mock(), proof=lambda: {"test": "proof"})
+
+    def replay():
+        log.append("graph_replay")
+        result[0].value, result[1].value = x.value * 2, x.value * 3
+        return 0.25
+
+    timer.replay = replay
+
+    def generate(case, seed, device):
+        seeds.append(seed)
+        return x if len(seeds) == 1 else Buffer(seed, log, "fresh")
+
+    with (mock.patch.dict(sys.modules, {"torch": torch}),
+          mock.patch.object(WORKER, "NativeGraphTimer", return_value=timer),
+          mock.patch.object(WORKER, "generate", side_effect=generate),
+          mock.patch.object(WORKER, "invoke", return_value=result) as invoke,
+          mock.patch.object(WORKER, "validate_completed", side_effect=lambda *args: validations.append(args))):
+        payload = WORKER.performance(object(), CASES[0], 41)
+    torch.cuda.CUDAGraph.assert_called_once_with(keep_graph=True)
+    timer.attach.assert_called_once_with(graph)
+    assert invoke.call_count == 11  # Ten warmup calls and the single captured invocation.
+    assert log.count("graph_replay") == len(validations) == 101
+    assert log.count("copy_input") == log.count("poison_quant") == log.count("poison_scale") == 100
+    assert seeds == list(range(41, 142))
+    assert payload["timings"]["samples_ms"] == [0.25] * 100
+    assert payload["warmup_iterations"] == 10 and payload["oracle_checks"] == 101
 
 
 def test_validation_owns_cpu_snapshots_before_reference_can_change_gpu_storage():
