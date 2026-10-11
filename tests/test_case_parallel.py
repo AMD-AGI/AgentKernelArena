@@ -6,8 +6,10 @@ import os
 from pathlib import Path
 import shutil
 import time
+from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from src import task_contract
 from src.tools import case_parallel as cp
@@ -34,6 +36,7 @@ def plan_for(manifest, count=2):
             "baseline_commit": "c" * 40, "work_stop_unix": time.time() + 120,
             "task_path": "tasks/test/example", "manifest_sha256": cp.fingerprint(manifest),
             "runtime_image": manifest["runtime_image"], "assignments": assignments,
+            "phase_timeouts": {"compile": 10, "correctness": 20, "performance": 30},
             "assignment_sha256": cp.fingerprint(assignments),
             "bindings": [{"worker_id": i, "render_device": f"/dev/dri/renderD{128+i}", "drm_minor": 128+i,
                           "rocr_uuid": f"GPU-{i+1:016x}", "pci_bus_id": f"0000:{i+1:02x}:00.0", "kfd_node": str(i+1)} for i in range(count)],
@@ -258,3 +261,120 @@ def test_failure_cancels_owned_sibling_process_group(package):
     assert time.monotonic() - start < 5
     assert not (root / "build/should-not-exist").exists()
 
+
+def install_framework_inputs(root):
+    config = {"source_file_path": ["source/kernel.py"], "trusted_evaluation": {
+        "schema_version": 1, "case_manifest": "cases.json", "case_parallelism": {"schema_version": 1}}}
+    (root / "config.yaml").write_text(yaml.safe_dump(config))
+    (root / "ut").mkdir(exist_ok=True)
+    for name in ("case_parallel.py", "gpu_binding.py"):
+        shutil.copyfile(ROOT / "src/tools" / name, root / "ut" / name)
+    return config
+
+
+@pytest.mark.parametrize("attack", [None, "stripped", "shard", "receipt", "missing_phase", "helper_drift"])
+def test_real_framework_finalizer_requires_complete_receipt_chain(package, monkeypatch, attack):
+    from agents.task_validator.report_schema import finalize_report, validation_report_is_complete
+    from src import harness_guard
+    from test_task_validator import _valid_raw_report
+    root, manifest, request, plan = package
+    install_framework_inputs(root)
+    for phase in ("compile", "correctness", "performance"):
+        request["phase"], request["request_id"] = phase, "fresh-" + phase
+        assignments, paths = make_receipts(package)
+        result = cp.collect_workers(manifest, request, plan, assignments, [0, 0], paths)
+        report = task_contract.finalize_report({"schema_version": 1, "status": "ok", "request": copy.deepcopy(request),
+            "cases": result["rows"], "compiled": True, "compiled_specializations": result["compiled_specializations"],
+            "case_parallelism": result["case_parallelism"]}, manifest, request)
+        (root / f"build/{phase}_report.json").write_text(cp.canonical(report))
+    monkeypatch.setenv(cp.PLAN_ENV, plan["_plan_path"])
+    monkeypatch.setenv(cp.HASH_ENV, plan["_plan_sha256"])
+    if attack == "stripped":
+        del report["case_parallelism"]
+        del report["request"]["case_parallelism"]
+        del report["request"]["gpu_group"]
+    elif attack == "shard": report["cases"] = report["cases"][:2]
+    elif attack == "receipt": paths[0].write_text("{}")
+    elif attack == "missing_phase": (root / "build/correctness_report.json").unlink()
+    elif attack == "helper_drift": (root / "ut/case_parallel.py").write_text("# drift\n")
+    (root / "build/performance_report.json").write_text(cp.canonical(report))
+    (root / "validation_report.yaml").write_text(yaml.safe_dump(_valid_raw_report()))
+    monkeypatch.setattr(harness_guard, "describe_workspace_harness", lambda root: {
+        "enforced_during_optimization": True, "protected_paths": ["config.yaml"]})
+    final = finalize_report(root, expected_task_name="hip2hip/example")
+    assert validation_report_is_complete(root)
+    assert len(final["checks"]) == 12
+    assert final["overall_status"] == ("PASS" if attack is None else "FAIL")
+
+
+@pytest.mark.parametrize("attack", [None, "cancelled", "restarted", "wrong_job", "wrong_node", "cpu", "memory", "gpu", "missing_capacity"])
+def test_scheduler_admission_checks_fresh_allocation_without_old_job_assumptions(attack):
+    from src.tools.case_gpu_plan import validate_scheduler
+    plan = plan_for(manifest_for())
+    state = {"JobId": "12345", "JobState": "RUNNING", "Restarts": "0", "NodeList": "fresh-node",
+             "AllocTRES": "cpu=192,mem=1536G,gres/gpu=8"}
+    if attack == "cancelled": state["JobState"] = "CANCELLED"
+    elif attack == "restarted": state["Restarts"] = "1"
+    elif attack == "wrong_job": state["JobId"] = "99999"
+    elif attack == "wrong_node": state["NodeList"] = "foreign-node"
+    elif attack == "cpu": state["AllocTRES"] = "cpu=2,mem=1536G,gres/gpu=8"
+    elif attack == "memory": state["AllocTRES"] = "cpu=192,mem=2048M,gres/gpu=8"
+    elif attack == "gpu": state["AllocTRES"] = "cpu=192,mem=1536G,gres/gpu=1"
+    elif attack == "missing_capacity": state["AllocTRES"] = ""
+    if attack is None:
+        validate_scheduler(plan, state, "fresh-node.example")
+    else:
+        with pytest.raises(ValueError):
+            validate_scheduler(plan, state, "fresh-node.example")
+
+
+def test_worker_preflight_rejects_wrong_runtime_before_task_imports(package, monkeypatch):
+    root, manifest, request, plan = package
+    assignments = cp.prepare_assignments(root, manifest, request, plan, leg="framework")
+    assignment = assignments[0]
+    path = root / assignment["output_directory"] / "assignment.json"
+    path.write_text(cp.canonical(assignment))
+    monkeypatch.setenv(cp.PLAN_ENV, plan["_plan_path"])
+    monkeypatch.setenv(cp.HASH_ENV, plan["_plan_sha256"])
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", assignment["expected_gpu"]["rocr_uuid"])
+    for variable in ("HIP_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+        monkeypatch.setenv(variable, "0")
+    monkeypatch.setattr(cp.gpu_binding, "runtime_identity", lambda: {
+        "hsa_gpu_uuids": ["GPU-ffffffffffffffff"], "hip_device_count": 1, "hip_pci_bus_ids": ["0000:ff:00.0"]})
+    with pytest.raises(ValueError, match="preflight"):
+        cp.enter_worker(root, manifest, request, path)
+
+
+@pytest.mark.parametrize("attack", [None, "task_selection", "phase_cap", "physical_gpu", "commit", "image"])
+def test_host_admission_emits_exact_device_pool_and_readonly_plan(package, monkeypatch, attack):
+    from src.tools import case_gpu_plan as admission
+    root, manifest, _, plan = package
+    config = install_framework_inputs(root)
+    config.update({phase + "_timeout": value for phase, value in plan["phase_timeouts"].items()})
+    if attack == "phase_cap": config["performance_timeout"] += 1
+    (root / "config.yaml").write_text(yaml.safe_dump(config))
+    repo = root.parent / "repo"
+    task = repo / "tasks/test/example"
+    shutil.copytree(root, task)
+    run_config = {"agent": {"template": "task_validator"}, "tasks": ["test/example"]}
+    if attack == "task_selection": run_config["tasks"] = ["test/example", "test/other"]
+    (repo / "run.yaml").write_text(yaml.safe_dump(run_config))
+    state = {"JobId": "12345", "JobState": "RUNNING", "Restarts": "0", "NodeList": "fresh-node",
+             "AllocTRES": "cpu=192,mem=1536G,gres/gpu=8"}
+    monkeypatch.setattr(admission.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=("f" if attack == "commit" else "c") * 40))
+    def physical(render):
+        result = {k: v for k, v in next(b for b in plan["bindings"] if b["render_device"] == render).items() if k != "worker_id"}
+        if attack == "physical_gpu": result["rocr_uuid"] = "GPU-ffffffffffffffff"
+        return result
+    def run():
+        return admission.admit_plan(repo, plan["_plan_path"], plan["_plan_sha256"],
+            "foreign/image@sha256:" + "f" * 64 if attack == "image" else plan["runtime_image"], "run.yaml",
+            read_scheduler=lambda _: state, select_gpu=physical, hostname=lambda: "fresh-node")
+    if attack is not None:
+        with pytest.raises(ValueError): run()
+    else:
+        args = run()
+        assert "--device=/dev/kfd" in args and "--device=/dev/dri" not in args
+        assert [a for a in args if a.startswith("--device=/dev/dri/")] == ["--device=/dev/dri/renderD128", "--device=/dev/dri/renderD129"]
+        assert "ROCR_VISIBLE_DEVICES=GPU-0000000000000001,GPU-0000000000000002" in args
+        assert any(a.endswith("dst=/run/aka-case-gpu-plan.json,readonly") for a in args)

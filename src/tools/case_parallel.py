@@ -197,6 +197,9 @@ def validate_plan(plan, manifest, *, now=None):
         union.extend(selected)
     require(len(union) == len(ids) and set(union) == set(ids), "assignments are not an exact disjoint full case union")
     require(plan.get("assignment_sha256") == fingerprint(assignments), "assignment digest differs")
+    timeouts = plan.get("phase_timeouts", {})
+    require(isinstance(timeouts, dict) and set(timeouts) == _PHASES
+            and all(type(value) is int and value > 0 for value in timeouts.values()), "original phase caps required")
     validate_capacity(plan)
     return plan
 
@@ -260,7 +263,8 @@ def prepare_assignments(root, manifest, request, plan, *, leg):
             "worker_nonce": secrets.token_hex(24), "phase": request["phase"], "leg": leg,
             "case_ids": partition["case_ids"], "expected_gpu": binding,
             "output_directory": directory.relative_to(root).as_posix(),
-            "deadline_unix": plan["work_stop_unix"], "input_tree_sha256": tree})
+            "deadline_unix": min(plan["work_stop_unix"], time.time() + plan["phase_timeouts"][request["phase"]]),
+            "input_tree_sha256": tree})
     return assignments
 
 
@@ -328,7 +332,9 @@ def _specializations(compiled, ids, sources):
                 and row.get("source_sha256") == sources)
         minimax = (row.get("invoked_and_synchronized") is True
                    and isinstance(row.get("candidate_launch_evidence"), dict)
-                   and bool(row["candidate_launch_evidence"].get("engaged_kernels")))
+                   and bool(row["candidate_launch_evidence"].get("engaged_kernels"))
+                   and row["candidate_launch_evidence"].get("source_sha256") in sources.values()
+                   and bool(row["candidate_launch_evidence"].get("last_launches")))
         require(kimi or minimax, "per-case native compilation/engagement proof missing")
 
 
@@ -371,6 +377,10 @@ def finish_worker(context, *, rows, compiled_specializations, evidence):
 def collect_workers(manifest, request, plan, assignments, observed_exits, receipt_paths):
     """Reduce only an exact full union. Exit codes come from the coordinator."""
     _check_request(request, plan)
+    validate_plan(plan, manifest, now=0)
+    require(hashlib.sha256(plan["_plan_bytes"].encode()).hexdigest() == plan["_plan_sha256"]
+            and canonical(strict_json(plan["_plan_bytes"])) == canonical({k: v for k, v in plan.items() if not k.startswith("_")}),
+            "coordinator plan changed after admission")
     count = len(plan["bindings"])
     require(len(assignments) == count and len(observed_exits) == count and len(receipt_paths) == count,
             "missing worker result")
@@ -477,9 +487,7 @@ def run_workers(root, manifest, request, plan, entrypoint, *, leg):
             aiter = output / "aiter"
             if os.environ.get("AITER_JIT_DIR"):
                 shutil.copytree(os.environ["AITER_JIT_DIR"], aiter)
-            else:
-                aiter.mkdir()
-            env["AITER_JIT_DIR"] = str(aiter)
+                env["AITER_JIT_DIR"] = str(aiter)
             log = (output / "worker.log").open("xb")
             logs.append(log)
             processes.append(subprocess.Popen([sys.executable, "-B", str(entrypoint), request["phase"],

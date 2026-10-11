@@ -595,5 +595,7 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
         _maybe_post_clone_install(task_config, repo_dir, did_seed, logger)
 
     materialize_perf_helpers_in_workspace(workspace_path, logger=logger)
+    from src.case_parallelism import materialize_helpers
+    materialize_helpers(workspace_path, task_config)
 
     return workspace_path

@@ -51,6 +51,8 @@ def custom_protocol_family(task: Path, entrypoints: set[Path]) -> str | None:
         require(hashlib.sha256(_read_file(task, name)).hexdigest() in expected,
                 "custom protocol helper differs from its reviewed implementation: " + name)
     if protocol["family"] == "portable_case_contract":
+        from src.case_parallelism import verify_helpers
+        verify_helpers(task, _load_workspace_config(task))
         require(_read_file(task, "ut/evaluation_contract.py") == CANONICAL_CONTRACT.read_bytes(),
                 "portable evaluation contract differs from src/task_contract.py")
         validate_manifest(strict_json(_read_file(task, "cases.json")))

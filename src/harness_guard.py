@@ -377,6 +377,10 @@ def _trusted_evaluation_input_paths(root: Path) -> set[str]:
     ]
     if "fixture_manifest" in descriptor:
         required.append(descriptor["fixture_manifest"])
+    if "case_parallelism" in descriptor:
+        from src.case_parallelism import verify_helpers
+        verify_helpers(root, config)
+        required.extend(["ut/case_parallel.py", "ut/gpu_binding.py"])
     protected = _task_input_paths(root, root)
     editable = _editable_source_paths(root)
     for value in required:

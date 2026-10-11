@@ -29,6 +29,19 @@ fresh allocation. Optional `total_cpus` and `total_memory_gib` include that
 headroom. The helper never reduces task work or silently shrinks resource
 requests to make a plan fit.
 
+`phase_timeouts` records the task's existing positive integer `compile`,
+`correctness`, and `performance` timeouts. Host admission checks them against
+the original task config. Each worker deadline is the earlier of that phase
+cap and `work_stop_unix`.
+
+Use the existing `make docker-run CONFIG=<one-full-task-validator-config>`
+with both plan environment variables set. Host admission verifies the current
+Git commit, image, exact task selection, Slurm job state and restart generation,
+local node, allocated CPU/memory/GPU capacity, and every render-node UUID/PCI
+binding. It mounts the plan read-only and exposes only `/dev/kfd` and the granted
+render devices. The group container omits privileged mode; normal serial Docker
+behavior remains unchanged. Group plans are rejected by `docker-parallel-run`.
+
 Each worker receives the identical parent request through `--request` and a
 separate fresh `--case-worker` assignment. The assignment binds the parent,
 plan, fixed case mapping, worker nonce, source leg, physical GPU, cutoff and

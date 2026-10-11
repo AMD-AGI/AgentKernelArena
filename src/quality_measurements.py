@@ -125,6 +125,8 @@ def load_quality_measurements(root, config):
     if config.get('benchmark_quality') is not None:
         return _qwen_graph_cases(root, config, report)
     manifest = strict_json(read_task_file(root, config.get('trusted_evaluation', {}).get('case_manifest', 'cases.json')).decode())
+    from .case_parallelism import validate_measurement
+    validate_measurement(root, config, manifest, report)
     sources = {name: hashlib.sha256(read_task_file(root, name)).hexdigest() for name in config['source_file_path']}
     if not native_quant_config(config):
         require(config.get('trusted_evaluation', {}).get('schema_version') == 1, 'no protected quality report contract')

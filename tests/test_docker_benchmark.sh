@@ -256,8 +256,50 @@ forwarded_agents="$(PATH="$FAKE_BIN:$PATH" bash "$RUNNER" _container_check_agent
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950)
 assert_has "$PINNED_GFX950_IMAGE" "${args[@]}"
 assert_cache_args_present "" "${args[@]}"
+assert_has "--privileged" "${args[@]}"
 assert_not_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
 assert_has "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor-cache" "${args[@]}"
+
+# Host admission has separate CPU tests. Here capture the exact admitted argv
+# without GPU/scheduler calls and verify the real standard runner consumes it.
+python3() {
+    if [[ "${1:-}" == "-m" && "${2:-}" == "src.tools.case_gpu_plan" ]]; then
+        [[ "${FAKE_CASE_ADMISSION_FAIL:-0}" == "0" ]] || return 12
+        printf '%s\0' --mount "type=bind,src=/cpu-test-plan,dst=/run/aka-case-gpu-plan.json,readonly" \
+            --env AKA_CASE_GPU_PLAN=/run/aka-case-gpu-plan.json \
+            --env AKA_CASE_GPU_PLAN_SHA256=cpu-test-only \
+            --env ROCR_VISIBLE_DEVICES=GPU-0000000000000001,GPU-0000000000000002 \
+            --device=/dev/kfd --device=/dev/dri/renderD128 --device=/dev/dri/renderD136
+    else
+        "$REAL_PYTHON3" "$@"
+    fi
+}
+export -f python3
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_CASE_GPU_PLAN=/cpu-test-plan \
+    AKA_CASE_GPU_PLAN_SHA256=cpu-test-only AKA_CASE_RUN_CONFIG=cpu-test-full-task.yaml)
+assert_has "--device=/dev/dri/renderD128" "${args[@]}"
+assert_has "--device=/dev/dri/renderD136" "${args[@]}"
+assert_has "--cap-drop=ALL" "${args[@]}"
+assert_has "ROCR_VISIBLE_DEVICES=GPU-0000000000000001,GPU-0000000000000002" "${args[@]}"
+assert_has "type=bind,src=/cpu-test-plan,dst=/run/aka-case-gpu-plan.json,readonly" "${args[@]}"
+assert_not_has "--privileged" "${args[@]}"
+assert_not_has "--cap-add=SYS_ADMIN" "${args[@]}"
+assert_not_has "--device=/dev/dri" "${args[@]}"
+assert_not_has "--device=/dev/mem" "${args[@]}"
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_CASE_GPU_PLAN=/cpu-test-plan \
+    AKA_CASE_GPU_PLAN_SHA256=cpu-test-only AKA_CASE_RUN_CONFIG=cpu-test-full-task.yaml \
+    FAKE_CASE_ADMISSION_FAIL=1 >/dev/null; then
+    fail "rejected GPU grant reached Docker"
+fi
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_CASE_GPU_PLAN=/cpu-test-plan \
+    AKA_CASE_GPU_PLAN_SHA256=cpu-test-only AKA_CASE_RUN_CONFIG=cpu-test-full-task.yaml \
+    AKA_VISIBLE_GPU=0 >/dev/null; then
+    fail "group plan was combined with a serial GPU mask"
+fi
+if AKA_CASE_GPU_PLAN=/cpu-test-plan bash "$RUNNER" parallel-run >/dev/null 2>&1; then
+    fail "group plan entered the partial-validator task scheduler"
+fi
+unset -f python3
 
 # Allocation owners can label every preflight/worker container without changing
 # the standard runner or accepting arbitrary extra Docker arguments.
