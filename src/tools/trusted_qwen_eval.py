@@ -238,6 +238,16 @@ def validate_phase(task, contract, phase, report, request):
                 "Qwen compilation source/symbol coverage differs")
         if profile["task_type"] == "hip2hip":
             native = strict_json(read_regular(build / "native_compile_report.json"))
-            require(report.get("native_compile") == native and native.get("source_sha256") == request["source_sha256"],
+            # The native loader attests its complete build context, whereas
+            # the host request names only the submitted editable device source.
+            context_paths = (*contract["sources"], "ut/native/pa_ragged.cuh",
+                             "ut/native/pa_common.cuh", "ut/native/pa_ragged.cpp.jinja",
+                             "ut/native/pa_ragged.py")
+            context = {name: sha256(read_regular(task / name)) for name in context_paths}
+            submitted = {name: context[name] for name in contract["sources"]}
+            require(report.get("native_compile") == native
+                    and native.get("source_sha256") == context
+                    and request["source_sha256"] == submitted
+                    and native.get("compiled_header_sha256") == submitted["source/pa_kernels.cuh"],
                     "native Qwen compilation is not bound to the submitted device source")
     return [], []
