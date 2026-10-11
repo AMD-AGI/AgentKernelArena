@@ -85,6 +85,14 @@ def test_fresh_inputs_preserve_contract_and_cover_numerical_challenges():
         if kind=='inactive_last_row': assert expected[0][-1].eq(0).all()
 
 
+def test_recorded_state_routes_cannot_be_replaced_by_metadata():
+    args=fixed_args()  # The second recorded row is inactive, unlike SPEC.
+    case={'args':{'kwargs':args},'sig':SPEC['sig'],'regime':SPEC['regime'],'m':SPEC['m']}
+    expected=inputs.case_params(args,SPEC,GEO)
+    with pytest.raises(RuntimeError,match='Captured recurrent state routing'):
+        bench.case_params(case,SPEC,GEO,expected)
+
+
 def compare(actual, expected, tolerance):
     error = float((actual.float()-expected.float()).abs().max())
     return bool(torch.allclose(actual,expected,atol=tolerance,rtol=tolerance)),error

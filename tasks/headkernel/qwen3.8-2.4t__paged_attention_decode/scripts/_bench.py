@@ -252,10 +252,12 @@ def main():
     captured=cases.load_live_case(device='cpu')
     cpu_args=tuple(captured['args']['positional'])
     values=[]
-    for value in cpu_args:
+    for index,value in enumerate(cpu_args):
         if isinstance(value,torch.Tensor):
             tensor=torch.empty_strided(value.shape,value.stride(),dtype=value.dtype,device='cuda')
-            tensor.copy_(value);values.append(tensor)
+            if index not in (0,1):
+                tensor.copy_(value)
+            values.append(tensor)
         else:values.append(value)
     live=[{**{k:captured[k] for k in ('sig','regime','m')},'args':{'positional':tuple(values),'fresh':False}}]
     if len(policy['cases'])!=1:

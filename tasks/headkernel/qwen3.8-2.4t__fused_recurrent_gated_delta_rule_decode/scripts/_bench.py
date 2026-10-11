@@ -137,6 +137,8 @@ class TimedGraph:
 
 
 def case_params(case, spec, geometry, expected):
+    if case['args']['kwargs']['ssm_state_indices'].detach().cpu().tolist()!=list(spec['state_indices']):
+        raise RuntimeError('Captured recurrent state routing differs from protected metadata')
     actual = describe_case(case['args']['kwargs'], spec, geometry)
     if actual != expected:
         raise RuntimeError('Timed inputs differ from the complete recorded recurrent ABI')
@@ -258,7 +260,8 @@ def main():
         for name, value in item['args']['kwargs'].items():
             if isinstance(value, torch.Tensor):
                 copied = torch.empty_strided(value.shape, value.stride(), dtype=value.dtype, device='cuda')
-                copied.copy_(value)
+                if name!='out':
+                    copied.copy_(value)
                 values[name] = copied
             else:
                 values[name] = value
