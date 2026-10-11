@@ -1,0 +1,13 @@
+{
+  "accepted_gain": false,
+  "archive_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261011/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/7bc14698-207740/",
+  "compatible_checkout_commit": "5854b2ac7a55fb287fc1b5d4d6fd4741f0b51476",
+  "guide": "ready/current/minimax-fp4/README.md",
+  "qualified_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "raw_samples": 4200,
+  "ready_receipt": "ready/current/minimax-fp4/READY.json",
+  "schema": "current-ready-index-entry-v1",
+  "source_controls": 168,
+  "status": "SCOPED_QUALIFICATION_AND_FULL_OCI_READBACK_VERIFIED",
+  "task": "headkernel/minimax-m3__gemm_afp4wfp4_kernel"
+}

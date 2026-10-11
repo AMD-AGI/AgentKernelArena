@@ -1,0 +1,60 @@
+{
+  "CPU_regressions": {
+    "failed": 0,
+    "junit_sha256": "c4d94d79107adf818d550923d330f2af8edcb73b58b247f5142a846168fe5b37",
+    "passed": 179,
+    "skipped": 0
+  },
+  "changed_pinned_files_review": {
+    "HEADKERNELS.md": "Documentation update; no executable behavior.",
+    "src/quality_measurements.py": "Reviewed Qwen adapter additions. The active portable FP4 functions and non-Qwen loader branch have identical ASTs; all nine retained reports and both quality decisions are identical through qualified and current modules.",
+    "src/tools/perf/custom_protocols.json": "Other task protocol updates; the single matched FP4 portable_case_contract record has the identical fingerprint in both checkouts.",
+    "src/tools/trusted_native_eval.py": "Contained symlink extraction is opt-in and remains disabled for FP4. The additive streaming hash fixes already-declared large failure exports; ordinary source/text reads retain their previous 64 MiB boundary.",
+    "src/tools/trusted_qwen_eval.py": "New Qwen support is not selected for the FP4 task.",
+    "src/tools/trusted_qwen_phase.py": "New Qwen bridge is not selected for the FP4 task.",
+    "src/tools/trusted_task_eval.py": "Added Qwen paths are not selected by the FP4 portable contract. Default ingress, fixture preparation, source guard, phase requests, device binding, report validation and raw-quality scoring remain active. Diagnostic recursion remains off; bounded large-artifact hashing improves failure export outside device timing."
+  },
+  "compatible_checkout_commit": "5854b2ac7a55fb287fc1b5d4d6fd4741f0b51476",
+  "compatible_pins": {
+    "files": 257,
+    "sha256": "679ddf7b14e21b2821ff4874ab75eeffc81d14e74e1bb02d486ab1acfc867834"
+  },
+  "qualification_identity": {
+    "GPU_reports_retain_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+    "accepted_gain": false,
+    "new_GPU_run_claimed": false,
+    "serving_E2E_gain_claimed": false
+  },
+  "qualified_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "qualified_pins": {
+    "files": 255,
+    "sha256": "8d791a00f0263d9397e477c14ed498500a26d266cd32e7ac8992bcc802b0365e"
+  },
+  "reviewed_utc": "2026-10-11T14:01:30.131631+00:00",
+  "runtime_comparison": {
+    "identical_outputs": true,
+    "raw_reports": 9,
+    "raw_samples": 4200,
+    "sha256": "401c05f11fddaa1d5477b28fcb489f8d87993017d786e170d151d732667eec6a",
+    "source_controls": 168
+  },
+  "schema": "scoped-fp4-runtime-compatibility-v1",
+  "scope": {
+    "cases": 14,
+    "later_commits_covered": false,
+    "other_tasks_covered": false
+  },
+  "status": "APPROVED",
+  "task": "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel",
+  "task_tree": "795611e8f0c602084338e47bd5f3a601da8b8744",
+  "task_tree_equal": true,
+  "unchanged_quality_function_ASTs": {
+    "load_quality_measurements_except_Qwen_dispatch_name": true,
+    "native_quant_config": true,
+    "portable_test_cases": true,
+    "quality_required": true,
+    "require_fixed_work": true,
+    "validated_work_ids": true,
+    "workspace_quality": true
+  }
+}

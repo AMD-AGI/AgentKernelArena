@@ -1,0 +1,149 @@
+{
+  "accepted_gain": false,
+  "archive": {
+    "all_objects_downloaded_and_verified": true,
+    "manifest_member_verified": true,
+    "objects": {
+      "MANIFEST.json": {
+        "bytes": 55361,
+        "sha256": "ff1c08d95e86c881146bb09095b36beae0a648e40f6b86a25ef42c4fe7900446"
+      },
+      "PACKAGE.json": {
+        "bytes": 2201,
+        "sha256": "529653544e9981f823760b409b4668bdc028a144609b694f18c20fca6cf66781"
+      },
+      "SHA256SUMS": {
+        "bytes": 268,
+        "sha256": "2cc74287d26345aef962581b846b64d0700f93aa0f590e3b23062c9caaed632b"
+      },
+      "minimax-fp4-current-complete-207740.tar.gz": {
+        "bytes": 2729384,
+        "sha256": "c5180c1398666ec93e11585d28f4e541405dd0de0700ca85f9beaa27a1a9b9bd"
+      }
+    },
+    "original_evidence_files_preserved": 228,
+    "payload_files_rehashed": 246,
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261011/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/7bc14698-207740/",
+    "receipt": {
+      "name": "ARCHIVE-VERIFIED.json",
+      "sha256": "70b15a040bc7acf11046b522ff5592e92277d763c92014622a2a8f4d36a5e99a"
+    }
+  },
+  "case_ids": [
+    "minimax_fp4_gemm-3a7fdbd87850bb198cc5d195",
+    "minimax_fp4_gemm-5025c4a82b1173cbec322444",
+    "minimax_fp4_gemm-57b35df7010c720a04ba9055",
+    "minimax_fp4_gemm-5a5dadbee0955f5a2d2416fb",
+    "minimax_fp4_gemm-6478a87796f9c08911ad8ca7",
+    "minimax_fp4_gemm-6b486657a64e92e5ceaabe21",
+    "minimax_fp4_gemm-7ffa029ca80a67b44dd36927",
+    "minimax_fp4_gemm-8b1dd7634b2fad2fff797556",
+    "minimax_fp4_gemm-948dfb4bd8a7f0c441a2800d",
+    "minimax_fp4_gemm-a635d180d26a4a864e74b384",
+    "minimax_fp4_gemm-b1cbbd86dbf205af4776abf3",
+    "minimax_fp4_gemm-cf943532266ffa96814ac366",
+    "minimax_fp4_gemm-d97642bef8ccc3e359df7733",
+    "minimax_fp4_gemm-fee098cae09ebb4f2694b19f"
+  ],
+  "compatible_inputs": {
+    "approval": "COMPATIBILITY-5854b2ac.json",
+    "commit": "5854b2ac7a55fb287fc1b5d4d6fd4741f0b51476",
+    "file": "COMPATIBLE-INPUT-PINS.json",
+    "files": 257,
+    "sha256": "679ddf7b14e21b2821ff4874ab75eeffc81d14e74e1bb02d486ab1acfc867834"
+  },
+  "editable_file": "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/source/kernel.py",
+  "editable_kernel": "_gemm_afp4wfp4_kernel",
+  "entry_config": "example_configs/ready_minimax_fp4_mi355x.yaml",
+  "entry_files_sha256": {
+    "COMPATIBILITY-5854b2ac.json": "2ec50a9f40930568462023401b1a6b085b0bdb752e66d891d016c4a5fa926712",
+    "verify.py": "87034a15467221aea40736a2448f8ea7f495dc67fa9d2ba4c65eb94baf77b4b7"
+  },
+  "fixtures": {
+    "bytes": 2044395146,
+    "files": 74,
+    "manifest": "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/fixtures/EXTERNAL-MANIFEST.json",
+    "manifest_sha256": "38b9e7e8952710b8fc87621520ca3c1203d7d8366dc830d9e92bdb588c21f037",
+    "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/minimax-original-head-v3-194969/"
+  },
+  "historical_ready_entry_changed": false,
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "proofs": {
+    "framework_marker_sha256": "ac5ec0c91d3cbd00296d35e18d7b2617f056ec70d00c16505cd79dea3111fc39",
+    "framework_report_sha256": "38925ee58de879325aeb37bc795806c0d15a6d692d3eaa8b4b3f335dec76271b",
+    "original_FINAL_sha256": "add00ce349dd635b682d6ae961ecdff5e9775bdeb565b499d6def8d8e9e7ddf0",
+    "recovery_receipt_sha256": "f28047a69a9986e277d04d04f4e126eefb9c4700565886490beac9efb5982d27",
+    "trusted_measurement_sha256": "9b58a7a92bb28219fef706309cb21c3074fb2798b8f4dd842428e02caed547e7"
+  },
+  "qualification": {
+    "MONITOR_COMPLETE_originally_missing": true,
+    "accepted_gain": false,
+    "allocation_cancelled_utc": "2026-10-11T12:49:55Z",
+    "automatic_retry_selection": false,
+    "completed_utc": "2026-10-11T12:49:54.362495Z",
+    "finalization_recovery": "Both exact reconstructed hashes match the original pre-cancellation FINAL.json; original intermediate files retained.",
+    "framework_checks_passed": 12,
+    "framework_samples": 1400,
+    "job": "207740",
+    "parity_NVMe_log_not_mirrored": true,
+    "parity_exit_receipt_present": true,
+    "physical_gpu": 6,
+    "retirement_receipt_present": true,
+    "same_source_raw_ratio": 1.0310508755769854,
+    "sample_trimming": false,
+    "source_controls": 168,
+    "trusted_phases_passed": 6,
+    "trusted_samples": 2800
+  },
+  "qualified_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "qualified_framework_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "qualified_inputs": {
+    "commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+    "file": "INPUT-PINS.json",
+    "files": 255,
+    "sha256": "8d791a00f0263d9397e477c14ed498500a26d266cd32e7ac8992bcc802b0365e"
+  },
+  "qualified_trusted_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "ready_tasks": [
+    "headkernel/minimax-m3__gemm_afp4wfp4_kernel"
+  ],
+  "runtime": {
+    "aiter_jit_source": "/sgl-workspace/aiter/aiter/jit",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+  },
+  "schema": "current-scoped-ready-entry-v1",
+  "scope": {
+    "cases": 14,
+    "later_runtime_tips_covered": false,
+    "model_level_ready": false,
+    "other_tasks_ready": false
+  },
+  "serving_E2E_gain_claimed": false,
+  "source_negative_sha256": {
+    "no_op": "7df4767df99d091c2766916d401f5d12e009a96a85fcdcd5e7f8923e766f65f2",
+    "wrong_output": "dbd4f9e1255675ee367fc3769316eac0de8b20a42934ed4675227ecd96d26fcb"
+  },
+  "source_sha256": "66d8611eae70089b20639eae8dc94ae4df1d7a5cf537317575ea89adf9944fbf",
+  "task": "headkernel/minimax-m3__gemm_afp4wfp4_kernel",
+  "task_tree": "795611e8f0c602084338e47bd5f3a601da8b8744",
+  "validator_config": "example_configs/validate_ready_minimax_fp4_mi355x.yaml"
+}
