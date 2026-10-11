@@ -15,6 +15,9 @@ import unittest
 from unittest import mock
 import yaml
 
+from src.perf_helper_materialization import configured_performance_entrypoints
+from src.tools.custom_perf_protocols import custom_protocol_family
+
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks/headkernel"
 SCRIPTS = TASKS / "qwen3.8-2.4t__paged_attention_decode/scripts"
@@ -428,8 +431,12 @@ class BenchmarkReportTests(unittest.TestCase):
 class SuiteCopiesTests(unittest.TestCase):
     def test_all_headkernel_benchmark_and_runner_copies_match(self):
         for filename in ("_bench.py", "task_runner.py"):
+            # Registered legacy protocols share the old templates. Canonical
+            # graph adapters and blocked entrypoints have separate contracts.
             legacy = [task for task in TASKS.iterdir() if (task / "config.yaml").is_file()
-                      and not yaml.safe_load((task / "config.yaml").read_text()).get("trusted_evaluation")]
+                      and custom_protocol_family(task, configured_performance_entrypoints(task))
+                      == "legacy_headkernel"]
+            self.assertTrue(legacy)
             paths = [task / "scripts" / filename for task in legacy]
             self.assertTrue(all(path.is_file() for path in paths))
             template = TASKS.parents[1] / "tools/templates" / filename
