@@ -98,11 +98,11 @@ def validate_one(case):
     tuned_gemm.solMap[backend] = observed
     args = cases.make_args(case, seed=7000)
     try:
-        warm = cases.candidate_call(args)
+        warm = cases.native_baseline_call(args)
         torch.cuda.synchronize()
         del warm
         output, device_events = _profile_names(
-            torch, lambda: cases.candidate_call(args)
+            torch, lambda: cases.native_baseline_call(args)
         )
         torch.cuda.synchronize()
         output_shape_ok = list(output.shape) == [int(case["m"]), int(case["n"])]

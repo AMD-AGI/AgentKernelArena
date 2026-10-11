@@ -46,9 +46,19 @@ def baseline_call(args):
     return torch.nn.functional.linear(args["A"], args["B"], bias=None)
 
 
+def native_baseline_call(args):
+    # Selection validation describes the native image, while baseline_call is
+    # the independent mathematical reference used by numerical checks.
+    import sys
+    dispatch = sys.modules.get("dense_dispatch_contract")
+    native = importlib.import_module("aiter.tuned_gemm")
+    function = dispatch.native_baseline_callable() if dispatch is not None else native.gemm_a16w16
+    return function(args["A"], args["B"], bias=None, otype=_torch().bfloat16)
+
+
 def candidate_call(args):
-    tuned_gemm = importlib.import_module("aiter.tuned_gemm")
-    return tuned_gemm.gemm_a16w16(
+    dispatch = importlib.import_module("dense_dispatch_contract")
+    return dispatch.call_candidate(
         args["A"], args["B"], bias=None, otype=_torch().bfloat16
     )
 

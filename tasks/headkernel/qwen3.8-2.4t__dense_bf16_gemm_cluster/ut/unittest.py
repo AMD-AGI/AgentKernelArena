@@ -237,21 +237,24 @@ def _run_case(case_id):
     torch = importlib.import_module("torch")
     if not torch.cuda.is_available():
         raise RuntimeError("dense GEMM UT requires a ROCm/CUDA device")
-    tuned_gemm = importlib.import_module("aiter.tuned_gemm")
-    config = _runtime_config(torch, tuned_gemm, case)
+    dispatch = importlib.import_module("dense_dispatch_contract")
+    implementation = dispatch.candidate_dispatch_module()
+    config = _runtime_config(torch, implementation, case)
     config_ok = _config_matches(config, case)
     if not config_ok:
         raise RuntimeError(f"live dispatcher config drift for {case_id}: {config}")
 
-    baseline_identity = _callable_identity(torch.nn.functional.linear)
-    candidate_identity = _callable_identity(tuned_gemm.gemm_a16w16)
-    identity_ok = baseline_identity != candidate_identity
+    baseline_identity = _callable_identity(dispatch.native_baseline_callable())
+    reference_identity = _callable_identity(torch.nn.functional.linear)
+    candidate_identity = dispatch.candidate_identity()
+    identity_ok = implementation.gemm_a16w16 is not dispatch.native_baseline_callable()
     if not identity_ok:
         raise RuntimeError("baseline and candidate resolved to the same callable identity")
 
     original_backend, engagement = _install_backend_observer(
-        tuned_gemm, case["expected_backend"]
+        implementation, case["expected_backend"]
     )
+    source_calls_before = dispatch.candidate_call_count()
     tol = float(case.get("tol", META["tol"]))
     eager = []
     replay = None
@@ -285,9 +288,10 @@ def _run_case(case_id):
         timing_ok, timing = _timing_smoke(case)
         ok = ok and timing_ok
         engagement_ok = engagement["calls"] > 0
-        ok = ok and engagement_ok and identity_ok and config_ok
+        source_calls = dispatch.candidate_call_count() - source_calls_before
+        ok = ok and engagement_ok and source_calls > 0 and identity_ok and config_ok
     finally:
-        tuned_gemm.solMap[case["expected_backend"]] = original_backend
+        implementation.solMap[case["expected_backend"]] = original_backend
 
     result = {
         "schema_version": 1,
@@ -313,11 +317,13 @@ def _run_case(case_id):
                 for key, value in config.items()
             },
             "backend_hook_calls": engagement["calls"],
+            "candidate_source_calls": source_calls,
             "device_selection_evidence": selection,
         },
         "oracle": {
             "policy": "runtime_frozen_torch_linear",
             "baseline_identity": baseline_identity,
+            "reference_identity": reference_identity,
             "candidate_identity": candidate_identity,
             "reference_io_sha256": "",
             "random_draws": int(META["random_draws"]),
@@ -339,6 +345,7 @@ def _run_case(case_id):
             "callable_contract": contract_ok,
             "negative_control": negative_ok,
             "distinct_baseline_candidate": identity_ok,
+            "candidate_source_engaged": source_calls > 0,
             "smoke_timing": timing_ok,
         },
         "correctness": correctness,
