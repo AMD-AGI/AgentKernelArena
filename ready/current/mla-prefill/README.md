@@ -16,9 +16,18 @@ The qualified framework and trusted runtime commit is
 `7bc14698e1044931a3c893b3dbabc9676b0e57e6`, with task tree
 `b659474a77efd6d2e4b795011b669d06e634d595` and source SHA-256
 `a71cbe21053ba78fc09d0ecc4e34bb03f0b2bd5d95da906b7fd6b8ec171b1883`.
-This entry requires that exact checkout's pinned inputs. It does not carry
-the qualification forward to later shared runtime, registry or harness changes.
-The [historical entry](../../mla-prefill/README.md) retains its original evidence.
+This entry verifies **505 pinned inputs** from that exact checkout, including
+the quality-admission module and its command-line gate.
+
+The separate [compatibility approval](COMPATIBILITY-0df9540d.json) covers
+`0df9540d1db9462cf0e2d108f7f653f34c2ae94f` for these two MLA cases. Its review
+found identical task inputs and MLA runtime behavior, with 158 CPU regressions
+passing. The GPU reports retain their original `7bc14698` identities. The
+verifier continues to enforce the qualified snapshot's pins, and the setup
+below uses that snapshot. The compatibility approval covers only its named
+revision; later branch tips require their own identity or compatibility review.
+The [historical entry](../../mla-prefill/README.md) retains its original evidence
+and pins.
 
 Only `pa_prefill_16mx1_16nx4_kernel` in `source/pa_sparse_prefill_opus.h` is
 editable. Preserve both cases, seeds 42/43, 10 warmups, 100 measured replays,

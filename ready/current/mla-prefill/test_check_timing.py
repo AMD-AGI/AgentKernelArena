@@ -14,6 +14,28 @@ spec=importlib.util.spec_from_file_location('mla_current_quality',HERE/'check_ti
 gate=importlib.util.module_from_spec(spec);spec.loader.exec_module(gate)
 
 class Checks(unittest.TestCase):
+    def assert_changed_evaluator_input_rejected(self, source):
+        pins=json.loads((HERE/'INPUT-PINS.json').read_text())
+        self.assertTrue(source in pins['files'],'Missing evaluator input pin: '+source)
+        spec=importlib.util.spec_from_file_location('mla_input_mutation_verifier',HERE/'verify.py')
+        verifier=importlib.util.module_from_spec(spec);spec.loader.exec_module(verifier)
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary)
+            for name,row in pins['files'].items():
+                target=root/name;target.parent.mkdir(parents=True,exist_ok=True)
+                if row['kind']=='symlink':target.symlink_to(row['target'])
+                else:shutil.copy2(REPO/name,target)
+            verifier.verify(root)
+            (root/source).write_text('raise RuntimeError("changed evaluator input")\n')
+            with self.assertRaises(ValueError) as raised:verifier.verify(root)
+            self.assertEqual(str(raised.exception),'Qualified input changed: '+source)
+
+    def test_changed_quality_measurements_rejected(self):
+        self.assert_changed_evaluator_input_rejected('src/quality_measurements.py')
+
+    def test_changed_quality_gate_cli_rejected(self):
+        self.assert_changed_evaluator_input_rejected('src/tools/benchmark_quality_gate.py')
+
     def test_current_complete_control_passes_without_gain(self):
         quality=gate.read_and_assess(PROOF)
         self.assertEqual(quality['status'],'pass')

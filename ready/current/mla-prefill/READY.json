@@ -47,7 +47,7 @@
     "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/"
   },
   "historical_ready_entry_changed": false,
-  "input_pins_sha256": "45efc7403dfeeb69d1fe262cd36a93377bfa1f4e24e4d3b882e429341db1db29",
+  "input_pins_sha256": "8fc5d99247f89d164f7cbeb4d19b3b867735f11fc07642c4c6fd7aab62687e66",
   "later_runtime_compatibility_claimed": false,
   "measurement": {
     "benchmark_iterations": 100,

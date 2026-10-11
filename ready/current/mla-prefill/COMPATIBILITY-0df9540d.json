@@ -1,0 +1,156 @@
+{
+  "approval_basis": {
+    "CPU_regressions_failed": 0,
+    "CPU_regressions_passed": 158,
+    "CPU_regressions_skipped": 0,
+    "old_and_current_CPU_contract_quality_protocol_results_identical": true,
+    "runtime_comparison": {
+      "contract_sha256": "d69be60d8d090c6287220e75437cc00849f59e19f7c7705a32159fe68e1baf63",
+      "custom_protocol_family": "portable_case_contract",
+      "matched_registry_entry_sha256": "600ce6db48b1483bbaafe7f11d13d4a9988efe366c6cce5a4a161a03ec68cd6f",
+      "quality_comparison": {
+        "accepted_arithmetic_mean_speedup": null,
+        "accepted_gain": false,
+        "candidate_source": {
+          "source/pa_sparse_prefill_opus.h": "a71cbe21053ba78fc09d0ecc4e34bb03f0b2bd5d95da906b7fd6b8ec171b1883"
+        },
+        "comparison_status": "unchanged_source_control",
+        "complete_case_count": 2,
+        "failed_cases": [],
+        "gain_eligible": false,
+        "policy": {
+          "expected_samples": 100,
+          "max_over_median": 10.0,
+          "p95_over_p05": 10.0,
+          "single_sample_share": 0.1
+        },
+        "raw_arithmetic_mean_speedup": 0.9855112940583893,
+        "reference_source": {
+          "source/pa_sparse_prefill_opus.h": "a71cbe21053ba78fc09d0ecc4e34bb03f0b2bd5d95da906b7fd6b8ec171b1883"
+        },
+        "schema": "benchmark-quality-v1",
+        "source_changed": false,
+        "status": "pass"
+      },
+      "quality_required": true,
+      "qwen_contract_selected": false
+    },
+    "shared_changes_reviewed": {
+      "src/quality_measurements.py": "New Qwen profiles/adapters; active MLA functions and non-Qwen loader branch identical. Actual retained reports produce identical admissions.",
+      "src/tools/perf/custom_protocols.json": "Changes select DS quant and GLM timers; the sole matched MLA registry entry is byte-equivalent.",
+      "src/tools/trusted_native_eval.py": "Optional contained-symlink extraction defaults false; MLA remains on prior regular-file path. Core native utilities unchanged.",
+      "src/tools/trusted_qwen_eval.py and src/tools/trusted_qwen_phase.py": "New supported Qwen branches; no MLA execution selected.",
+      "src/tools/trusted_task_eval.py": "Qwen package/mount/phase/receipt branches are not selected by MLA. Existing MLA source ingress, container request binding, phase sequence, validation, raw quality and cleanup behavior retained. Diagnostic generalization retains default top-level behavior."
+    },
+    "task_tree_equal": true,
+    "unchanged_core_paths": [
+      {
+        "path": "src/task_contract.py",
+        "unchanged_git_object": "1c60fa7aad9788df683274967ce7b6bea8e996a0"
+      },
+      {
+        "path": "src/benchmark_quality.py",
+        "unchanged_git_object": "02a111ea24b12c5f20de8a301cac679f47ae003c"
+      },
+      {
+        "path": "src/performance.py",
+        "unchanged_git_object": "041c46f9f9f74512d66a1e8a4bf0ce2b2fdbef14"
+      },
+      {
+        "path": "src/evaluator.py",
+        "unchanged_git_object": "7e2e5ac85128f5990e5aca67017df21042feb825"
+      },
+      {
+        "path": "src/score.py",
+        "unchanged_git_object": "79156d2dada3c431b17d453f1897b45aa14d87dd"
+      },
+      {
+        "path": "src/harness_guard.py",
+        "unchanged_git_object": "d65b473b769c97f3f80f943318f0c473959b3579"
+      },
+      {
+        "path": "src/perf_helper_materialization.py",
+        "unchanged_git_object": "c3cef62bacc552f015d71f044919bfefa891f495"
+      },
+      {
+        "path": "src/tools/custom_perf_protocols.py",
+        "unchanged_git_object": "95d8787a3672e0bc3a93e44c98cece99823b919b"
+      },
+      {
+        "path": "src/native_baseline.py",
+        "unchanged_git_object": "447eff65548d98d43aa7d164de2299cddc3f28a4"
+      },
+      {
+        "path": "src/tools/gpu_binding.py",
+        "unchanged_git_object": "58993826dda896fca869c4fb22331aeabaf08159"
+      },
+      {
+        "path": "src/tools/seed_aiter_jit_cache.py",
+        "unchanged_git_object": "0e5ae31db505567ddb68c7fcdf600dcf94b9965a"
+      },
+      {
+        "path": "src/tools/trusted_fixtures.py",
+        "unchanged_git_object": "ca8b253f2459ecb6eb7b47099b4982e9009ff455"
+      },
+      {
+        "path": "agents/task_validator",
+        "unchanged_git_object": "81a5f95ca94697c79ae1c11b893c01dbb1959638"
+      },
+      {
+        "path": "tools/prepare_headkernel_run.py",
+        "unchanged_git_object": "87d6a3daab1311113f41fbaa3c4eb6c39941c1b3"
+      },
+      {
+        "path": "tools/headkernel-runtime-targets.json",
+        "unchanged_git_object": "405192549867ecd7b9c3757d567c92a2ca1d7edb"
+      },
+      {
+        "path": "tools/headkernel-artifacts.json",
+        "unchanged_git_object": "57a9d51545006e314c2763953c39bcb83f29a940"
+      }
+    ],
+    "unchanged_quality_function_ASTs": {
+      "load_quality_measurements_non_Qwen_path": true,
+      "native_quant_config": true,
+      "portable_test_cases": true,
+      "quality_required": true,
+      "require_fixed_work": true,
+      "validated_work_ids": true,
+      "workspace_quality": true
+    }
+  },
+  "compatible_checkout_commit": "0df9540d1db9462cf0e2d108f7f653f34c2ae94f",
+  "evidence": {
+    "CPU_regression_report_sha256": "dd8e97003a10090d0e6b13cbbfc60dc28e272d5ee0566d26d6dd87dcaa70ec4e",
+    "independent_source_review_sha256": "bac3714d414548d59d3267c6134984aff8e74f6f4a3f7f9e2ceb685839ce0745",
+    "qualified_archive_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261011/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/7bc14698-207740/",
+    "qualified_archive_sha256": "cc3159c484c69d8be39d19eef06b94c80e5953bcc40dbf87801d8dc8f172a329"
+  },
+  "qualification_identity": {
+    "GPU_reports_retain_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+    "accepted_gain": false,
+    "new_GPU_run_claimed": false,
+    "serving_E2E_gain_claimed": false
+  },
+  "qualified_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "reviewed_utc": "2026-10-11T13:14:45.971006+00:00",
+  "reviewer": "all_tasks_inventory independent reviewer",
+  "schema": "scoped-mla-runtime-compatibility-v1",
+  "scope": {
+    "H": 16,
+    "case_count": 2,
+    "later_commits_covered": false,
+    "legacy_M_1_and_64_covered": false,
+    "logical_M": 8192,
+    "other_tasks_covered": false
+  },
+  "status": "APPROVED",
+  "task": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
+  "task_tree": "b659474a77efd6d2e4b795011b669d06e634d595",
+  "verification_policy": {
+    "INPUT_PINS_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+    "documented_setup_uses_qualified_snapshot": true,
+    "historical_ready_entry_changed": false,
+    "verify_py_accepts_compatible_checkout": false
+  }
+}
