@@ -126,6 +126,9 @@ def validate_replay(stamp, previous):
 class NativeGraphTimer:
     def __init__(self, torch):
         self.torch = torch
+        self.graph = None
+        self.closed = False
+        self.instantiated = False
         self.anchor = torch.cuda.Event(enable_timing=True)
         self.begin = torch.cuda.Event(enable_timing=True)
         self.end = torch.cuda.Event(enable_timing=True)
@@ -135,18 +138,36 @@ class NativeGraphTimer:
         self.end.synchronize()
         self.initial = [self.anchor.elapsed_time(self.begin), self.anchor.elapsed_time(self.end)]
         self.previous = tuple(self.initial)
-        self.graph = None
         self.replays = []
 
     def attach(self, graph):
-        require(self.graph is None, "graph timer is already attached")
+        require(not self.closed and self.graph is None, "graph timer is closed or already attached")
+        # Own the graph before adding event nodes so the caller's finally block
+        # can reset even a partially modified or uninstantiated graph.
+        self.graph = graph
         self.hip, self.topology = add_timing_nodes(graph, self.begin, self.end)
         # Keep the HIP library and event owners alive for the retained graph.
         graph.instantiate()
-        self.graph = graph
+        self.instantiated = True
+
+    def close(self):
+        """Destroy graph references to events while their Python owners live."""
+        if self.graph is None:
+            self.closed = True
+            return
+        try:
+            self.torch.cuda.synchronize()
+        finally:
+            # Attempt reset even if synchronization reports a device error.
+            # If reset itself fails, retain ownership and propagate the error;
+            # never report successful cleanup or a completed performance call.
+            self.graph.reset()
+            self.graph = None
+            self.instantiated = False
+            self.closed = True
 
     def replay(self):
-        require(self.graph is not None, "graph timer has no instantiated graph")
+        require(self.graph is not None and self.instantiated, "graph timer has no instantiated graph")
         self.graph.replay()
         self.torch.cuda.synchronize()
         stamp = {"begin_ms_from_anchor": self.anchor.elapsed_time(self.begin),
@@ -157,7 +178,7 @@ class NativeGraphTimer:
         return stamp["elapsed_ms"]
 
     def proof(self):
-        require(self.graph is not None, "graph timer was never attached")
+        require(self.graph is not None and self.instantiated, "graph timer has no instantiated graph")
         return {"method": METHOD, "topology": self.topology, "initial_timestamps_ms": self.initial,
                 "replays": self.replays, "instantiated_after_event_insertion": True}
 

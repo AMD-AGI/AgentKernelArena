@@ -327,7 +327,7 @@ def test_performance_preserves_warmups_initial_check_and_all_fresh_replays():
         Stream=lambda: stream, current_stream=lambda: stream,
         stream=lambda value: contextlib.nullcontext(),
         CUDAGraph=mock.Mock(return_value=graph), graph=lambda value: contextlib.nullcontext()))
-    timer = SimpleNamespace(attach=mock.Mock(), proof=lambda: {"test": "proof"})
+    timer = SimpleNamespace(attach=mock.Mock(), proof=lambda: {"test": "proof"}, close=mock.Mock())
 
     def replay():
         log.append("graph_replay")
@@ -348,12 +348,40 @@ def test_performance_preserves_warmups_initial_check_and_all_fresh_replays():
         payload = WORKER.performance(object(), CASES[0], 41)
     torch.cuda.CUDAGraph.assert_called_once_with(keep_graph=True)
     timer.attach.assert_called_once_with(graph)
+    timer.close.assert_called_once_with()
     assert invoke.call_count == 11  # Ten warmup calls and the single captured invocation.
     assert log.count("graph_replay") == len(validations) == 101
     assert log.count("copy_input") == log.count("poison_quant") == log.count("poison_scale") == 100
     assert seeds == list(range(41, 142))
     assert payload["timings"]["samples_ms"] == [0.25] * 100
     assert payload["warmup_iterations"] == 10 and payload["oracle_checks"] == 101
+
+
+@pytest.mark.parametrize('failure', ['attach', 'replay', 'oracle', 'cleanup'])
+def test_performance_cleanup_on_failure_prevents_successful_result(failure):
+    log = []
+    x = Buffer(1, log, 'input')
+    result = (Buffer(0, log, 'quant'), Buffer(0, log, 'scale'))
+    graph = object()
+    stream = SimpleNamespace(wait_stream=lambda other: None)
+    torch = SimpleNamespace(uint8='uint8', cuda=SimpleNamespace(
+        Stream=lambda: stream, current_stream=lambda: stream,
+        stream=lambda value: contextlib.nullcontext(),
+        CUDAGraph=lambda **kwargs: graph, graph=lambda value: contextlib.nullcontext()))
+    timer = SimpleNamespace(attach=mock.Mock(), replay=mock.Mock(return_value=0.25),
+                            close=mock.Mock(), proof=lambda: {'test': 'proof'})
+    oracle = mock.Mock()
+    selected = {'attach': timer.attach, 'replay': timer.replay,
+                'oracle': oracle, 'cleanup': timer.close}[failure]
+    selected.side_effect = RuntimeError(failure)
+    with (mock.patch.dict(sys.modules, {'torch': torch}),
+          mock.patch.object(WORKER, 'NativeGraphTimer', return_value=timer),
+          mock.patch.object(WORKER, 'generate', return_value=x),
+          mock.patch.object(WORKER, 'invoke', return_value=result),
+          mock.patch.object(WORKER, 'validate_completed', oracle),
+          pytest.raises(RuntimeError, match=failure)):
+        WORKER.performance(object(), CASES[0], 41)
+    timer.close.assert_called_once_with()
 
 
 def test_validation_owns_cpu_snapshots_before_reference_can_change_gpu_storage():

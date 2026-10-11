@@ -1,8 +1,10 @@
 """CPU checks for HIP graph topology and per-replay timing evidence."""
 
 import importlib.util
+import gc
 from pathlib import Path
 from types import SimpleNamespace
+import weakref
 
 import pytest
 
@@ -213,3 +215,125 @@ def test_anchor_rounding_does_not_replace_direct_positive_event_interval():
     stamp["elapsed_ms"] = 0.0
     with pytest.raises(ValueError):
         TIMER.validate_replay(stamp, (999_999.0, 999_999.0))
+
+
+def lifecycle_timer(monkeypatch):
+    """Track owner release independently from the graph's retained lifetime."""
+    log, events = [], []
+    state = {'stamp': 0, 'reset': False}
+
+    class Event:
+        def __init__(self):
+            self.name = len(events)
+            events.append(weakref.ref(self))
+
+        def record(self):
+            state['stamp'] += 1
+            self.stamp = state['stamp']
+
+        def synchronize(self):
+            pass
+
+        def elapsed_time(self, other):
+            return other.stamp - self.stamp
+
+        def __del__(self):
+            log.append(('event_released', self.name, state['reset']))
+
+    def event(*, enable_timing):
+        assert enable_timing
+        return Event()
+
+    def sync():
+        log.append('synchronize')
+
+    def reset():
+        assert all(owner() is not None for owner in events)
+        assert log[-1] == 'synchronize'
+        state['reset'] = True
+        log.append('reset_while_events_live')
+
+    torch = SimpleNamespace(cuda=SimpleNamespace(Event=event, synchronize=sync))
+    timer = TIMER.NativeGraphTimer(torch)
+    graph = SimpleNamespace(instantiate=lambda: log.append('instantiate'), reset=reset)
+    monkeypatch.setattr(TIMER, 'add_timing_nodes', lambda *args: (object(), topology()))
+    return timer, graph, torch, log, events, state
+
+
+def test_close_resets_graph_before_event_owners_even_with_external_graph_reference(monkeypatch):
+    timer, graph, _, log, events, state = lifecycle_timer(monkeypatch)
+    timer.attach(graph)
+    timer.close()
+    assert timer.graph is None and timer.closed and not timer.instantiated
+    assert state['reset'] and all(owner() is not None for owner in events)
+    timer.close()
+    assert log.count('reset_while_events_live') == log.count('synchronize') == 1
+    del timer
+    gc.collect()
+    assert graph is not None  # The caller's local graph still outlives the timer.
+    assert all(owner() is None for owner in events)
+    releases = [row for row in log if isinstance(row, tuple)]
+    assert len(releases) == 3 and all(row[2] is True for row in releases)
+
+
+@pytest.mark.parametrize('stage', ['event_insertion', 'instantiation'])
+def test_partial_attachment_still_owns_graph_for_exception_cleanup(monkeypatch, stage):
+    timer, graph, _, log, events, _ = lifecycle_timer(monkeypatch)
+
+    def fail(*args):
+        assert timer.graph is graph and all(owner() is not None for owner in events)
+        raise RuntimeError(stage)
+
+    if stage == 'event_insertion':
+        monkeypatch.setattr(TIMER, 'add_timing_nodes', fail)
+    else:
+        graph.instantiate = fail
+    with pytest.raises(RuntimeError, match=stage):
+        try:
+            timer.attach(graph)
+        finally:
+            timer.close()
+    assert timer.closed and timer.graph is None
+    assert log[-2:] == ['synchronize', 'reset_while_events_live']
+
+
+def test_sync_failure_still_resets_graph_and_is_not_suppressed(monkeypatch):
+    timer, graph, torch, log, _, state = lifecycle_timer(monkeypatch)
+    timer.attach(graph)
+
+    def fail_sync():
+        log.append('synchronize')
+        raise RuntimeError('device synchronization failed')
+
+    torch.cuda.synchronize = fail_sync
+    with pytest.raises(RuntimeError, match='device synchronization failed'):
+        timer.close()
+    assert state['reset'] and timer.closed and timer.graph is None
+
+
+def test_reset_failure_retains_owners_and_does_not_claim_closed(monkeypatch):
+    timer, graph, _, log, events, state = lifecycle_timer(monkeypatch)
+    timer.attach(graph)
+
+    def fail_reset():
+        assert all(owner() is not None for owner in events)
+        raise RuntimeError('graph reset failed')
+
+    graph.reset = fail_reset
+    with pytest.raises(RuntimeError, match='graph reset failed'):
+        timer.close()
+    assert timer.graph is graph and not timer.closed and not state['reset']
+    assert all(owner() is not None for owner in events)
+    assert log.count('synchronize') == 1  # No implicit cleanup retry.
+
+
+def test_closed_timer_cannot_be_reused(monkeypatch):
+    timer, graph, _, log, _, _ = lifecycle_timer(monkeypatch)
+    timer.close()
+    assert timer.closed and log == []
+    with pytest.raises(ValueError, match='closed'):
+        timer.attach(graph)
+    with pytest.raises(ValueError, match='instantiated'):
+        timer.replay()
+    with pytest.raises(ValueError, match='instantiated'):
+        timer.proof()
