@@ -75,7 +75,14 @@ configs budget 100, 110, and 300 minutes per correctness phase for FlyDSL,
 Opus1, and Opus2 respectively. These include headroom over proportional prior
 runtime estimates and are not measured exhaustive runtimes.
 Tasks without this opt-in retain their previous command/request shape and
-receive the caller-supplied timeout unchanged in every trusted phase.
+receive the caller-supplied timeout unchanged in every trusted phase by default.
+For either policy, the host may supply `--compile-timeout`,
+`--correctness-timeout`, and `--performance-timeout` to cap individual phases.
+These positive integer caps can only shorten the existing limits, including
+declared exhaustive limits. They do not change task files, requests, case
+coverage, or sample counts. The final trusted measurement records the effective
+limits as `phase_timeouts_seconds`. These options are unavailable with
+`--stage-only`, which runs no evaluation phases.
 
 The ordinary optimizer freezes every non-editable file shipped by the task
 before launching the agent. For `trusted_evaluation` packages, this protection

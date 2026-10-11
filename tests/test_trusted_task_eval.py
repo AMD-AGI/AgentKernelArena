@@ -160,7 +160,8 @@ def phase_report(request, manifest, timing):
     return finalize_report(report, manifest, request)
 
 
-def test_exhaustive_six_phase_orchestration_binds_mode_challenge_and_budgets(packaged_task, tmp_path, monkeypatch):
+@pytest.mark.parametrize("host_caps", [None, {"compile": 100, "correctness": 4000, "performance": 9}])
+def test_exhaustive_six_phase_orchestration_binds_mode_challenge_and_budgets(packaged_task, tmp_path, monkeypatch, host_caps):
     repo, task, _, candidate, manifest = packaged_task
     config = yaml.safe_load((task / "config.yaml").read_text())
     config["trusted_evaluation"]["distribution_correctness_mode"] = trusted.EXHAUSTIVE_CORRECTNESS
@@ -231,7 +232,7 @@ def test_exhaustive_six_phase_orchestration_binds_mode_challenge_and_budgets(pac
     monkeypatch.setattr(trusted, 'portable_test_cases', quality_adapter)
     result = trusted.trusted_retest(repo=repo, commit=commit, task_path="tasks/example", candidate_workspace=candidate,
                                    output=tmp_path / "exhaustive-result", scratch_dir=tmp_path / "scratch",
-                                   render_device="unused", timeout=5000)
+                                   render_device="unused", timeout=5000, phase_timeouts=host_caps)
     assert result["status"] == "measured"
     assert result["observed_work_correctness"]["settings_per_leg"] == 2
     assert result["observed_work_correctness"]["all_observed_settings_correctness"] is True
@@ -241,7 +242,8 @@ def test_exhaustive_six_phase_orchestration_binds_mode_challenge_and_budgets(pac
     assert len({request["challenge_seed"] for _, request, _ in calls}) == 1
     for _, request, timeout in calls:
         phase = request["phase"]
-        assert timeout == {"compile": 8, "correctness": 5000, "performance": 11}[phase]
+        expected = {"compile": 8, "correctness": 5000, "performance": 11}[phase]
+        assert timeout == min(expected, (host_caps or {}).get(phase, expected))
         assert request.get("distribution_correctness_mode") == (None if phase == "performance" else trusted.EXHAUSTIVE_CORRECTNESS)
 
 
@@ -249,7 +251,8 @@ def test_exhaustive_six_phase_orchestration_binds_mode_challenge_and_budgets(pac
     {"compile_timeout": 1800, "correctness_timeout": 1800, "performance_timeout": 7200},
     {"compile_timeout": 0, "correctness_timeout": True, "performance_timeout": "legacy-value"},
 ])
-def test_non_exhaustive_contract_preserves_timeouts_requests_and_commands(packaged_task, tmp_path, monkeypatch, declared_timeouts):
+@pytest.mark.parametrize("host_caps", [None, {"compile": 1800, "correctness": 3600, "performance": 9000}])
+def test_non_exhaustive_contract_preserves_timeouts_requests_and_commands(packaged_task, tmp_path, monkeypatch, declared_timeouts, host_caps):
     """The exhaustive opt-in must not change prior timeout validation/forwarding."""
     repo, task, _, candidate, manifest = packaged_task
     config = yaml.safe_load((task / "config.yaml").read_text())
@@ -277,14 +280,29 @@ def test_non_exhaustive_contract_preserves_timeouts_requests_and_commands(packag
     monkeypatch.setattr(trusted, "run_phase", run_phase)
     result = trusted.trusted_retest(repo=repo, commit=commit, task_path="tasks/example", candidate_workspace=candidate,
                                    output=tmp_path / "legacy-result", scratch_dir=tmp_path / "scratch",
-                                   render_device="unused", timeout=7200)
+                                   render_device="unused", timeout=7200, phase_timeouts=host_caps)
     assert result["status"] == "measured" and "observed_work_correctness" not in result
     assert len(calls) == 6 and len({request["request_id"] for _, request, _ in calls}) == 6
     assert len({request["challenge_seed"] for _, request, _ in calls}) == 1
+    expected_limits = {phase: min(7200, (host_caps or {}).get(phase, 7200)) for phase in trusted.PHASES}
+    assert result["phase_timeouts_seconds"] == expected_limits
     for _, request, timeout in calls:
-        assert timeout == 7200
+        assert timeout == expected_limits[request["phase"]]
         assert set(request) == {"schema_version", "request_id", "phase", "manifest_sha256", "package_sha256",
                                 "source_sha256", "challenge_seed", "gpu"}
+
+
+@pytest.mark.parametrize("host_caps", [{"unknown": 10}, {"compile": 0}, {"compile": True},
+                                       {"compile": "10"}, {"performance": -1}, []])
+def test_invalid_host_phase_caps_fail_before_staging(tmp_path, monkeypatch, host_caps):
+    def unexpected(*args, **kwargs):
+        pytest.fail("invalid budgets must fail before task staging")
+    monkeypatch.setattr(trusted, "prepare_reference", unexpected)
+    with pytest.raises(ValueError, match="phase timeout"):
+        trusted.trusted_retest(repo=tmp_path / "repo", commit="a" * 40, task_path="tasks/example",
+                              candidate_workspace=tmp_path / "candidate", output=tmp_path / "output",
+                              scratch_dir=tmp_path / "scratch", render_device="unused", phase_timeouts=host_caps)
+    assert not (tmp_path / "output").exists()
 
 
 @pytest.mark.parametrize("missing_case", [False, True])
