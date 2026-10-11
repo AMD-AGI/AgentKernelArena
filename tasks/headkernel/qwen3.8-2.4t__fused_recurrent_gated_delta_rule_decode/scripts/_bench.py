@@ -1,414 +1,288 @@
 #!/usr/bin/env python3
-"""Native arena-methodology timing for a head-kernel task.
+"""Protected graph timing for both recorded packed recurrent-decode cases.
 
-Replays the argument records frozen in ``ut/reference_io.pt`` -- the same live
-captures the correctness oracle is built from -- against the op's production
-callable, and times each one with 10 warmup + 100 measured iterations, reported
-as the mean of per-iteration cuda-event device times.
-
-Run by ``scripts/task_runner.py performance`` in a subprocess whose PYTHONPATH
-carries the GEAK candidate overlay, so the callable resolved here is the code in
-``source/``. Exits 4 only when replay is unsupported and no candidate call was
-attempted; execution, case-builder and malformed-capture errors must not fall back.
+The workspace-materialized canonical helper owns capture, events and sampling.
+This adapter supplies new CPU-generated inputs and poisons both graph outputs
+outside timing, then checks each completed invocation against CPU-owned truth.
 """
 from __future__ import annotations
 
 import argparse
-import ast
-import importlib
+import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import math
 import os
+from pathlib import Path
+import secrets
+import statistics
 import sys
 
-EXIT_NO_RECORDS = 4
-MAX_CASES = 24          # captures can hold hundreds of near-identical records
+from _recurrent_inputs import CHALLENGES, CPUInputs, IMMUTABLE, case_params as describe_case
+from _graph_contract import contract, provenance
 
 
-class UnsupportedReplay(ValueError):
-    """A captured representation has no generic reconstruction implementation."""
+WARMUP = 10
+SAMPLES = 100
+VARIED_INPUTS = ('mixed_qkv', 'a', 'b', 'A_log', 'dt_bias', 'initial_state')
 
 
-def resolve(dotted):
-    mod_name, _, attr = dotted.partition(":")
-    obj = importlib.import_module(mod_name)
-    for part in attr.split("."):
-        if part:
-            obj = getattr(obj, part)
-    # The candidate overlay loads source/ as a TOP-LEVEL module (candidate_bind
-    # names e.g. impl_module "geak_flydsl_moe_kernels"), so a kernel that does a
-    # lazy relative import inside a function -- the DeepSeek MoE stages do seven
-    # of them, `from .kernels.mixed_moe_gemm_2stage import ...` -- raises
-    # "attempted relative import with no known parent package" as soon as that
-    # branch is taken. Python resolves a relative import against the __package__
-    # of the module the CODE lives in, so the fix belongs on the function's own
-    # globals, not on the seam module. Point it at the seam's package so the
-    # relative form resolves exactly as it does in the unshadowed module.
-    # Which package the relative form is relative TO: if the seam module is itself
-    # a package (has __path__, e.g. aiter.ops.flydsl/) then `.kernels` means
-    # aiter.ops.flydsl.kernels and __package__ is the module's own dotted name;
-    # if it is a plain module inside a package, __package__ is its parent.
-    seam = sys.modules.get(mod_name)
-    pkg = mod_name if hasattr(seam, "__path__") else mod_name.rpartition(".")[0]
-    g = getattr(obj, "__globals__", None)
-    if pkg and isinstance(g, dict) and not g.get("__package__"):
-        g["__package__"] = pkg
-    return obj
+def _load(name, path):
+    # Explicit loader also supports the frozen baseline's .py.orig suffix.
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    loader.exec_module(module)
+    return module
 
 
-def _dtype(torch, spec):
-    """torch dtype from the several spellings the captures use.
-
-    Returns None for a missing or empty value -- ``packed_view_dtype`` is
-    present but EMPTY on most records, and feeding "" to getattr(torch, ...)
-    raises AttributeError rather than meaning "no re-view".
-    """
-    if spec is None or spec == "":
-        return None
-    if isinstance(spec, str):
-        return getattr(torch, spec.replace("torch.", ""), None)
-    return spec
+def verify_frozen_source(ut, meta):
+    provenance = meta["source_provenance"]
+    path = ut / provenance["baseline_ref"]
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if digest != provenance["source_sha256"]:
+        raise RuntimeError("frozen native baseline source hash mismatch")
+    return digest
 
 
-def _literal(spec):
-    """Rebuild a non-tensor argument the capture stored by repr.
-
-    Enum members repr as ``<QuantType.per_1x32: 3>``, which is not a literal, so
-    fall back to resolving the dotted name against its module.
-    """
-    text = spec.strip()
-    try:
-        return ast.literal_eval(text)
-    except (SyntaxError, ValueError):
-        pass
-    if text.startswith("<") and ":" in text:                # <QuantType.per_1x32: 3>
-        dotted = text[1:text.index(":")].strip()
-        cls, _, member = dotted.rpartition(".")
-        for mod in ("aiter", "aiter.utility.fp4_utils", "aiter.jit.core"):
-            try:
-                obj = importlib.import_module(mod)
-                return getattr(getattr(obj, cls.rpartition(".")[2]), member)
-            except (ImportError, AttributeError):
-                continue
-    raise UnsupportedReplay(f"cannot rebuild {spec!r}")
+def verify_candidate_binding(cases, ut):
+    expected = hashlib.sha256((ut.parent/'source/fused_recurrent.py').read_bytes()).hexdigest()
+    launcher = cases._current_fn()
+    kernel = launcher.__globals__['fused_recurrent_gated_delta_rule_packed_decode_kernel']
+    functions = {'launcher':launcher, 'device_kernel':kernel.fn}
+    for role, function in functions.items():
+        path = Path(function.__code__.co_filename)
+        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise RuntimeError(f'{role} is not bound to the submitted source bytes')
+    return {'launcher_source_sha256':expected, 'device_source_sha256':expected,
+            'device_kernel':'fused_recurrent_gated_delta_rule_packed_decode_kernel'}
 
 
-def unsnap(x, device, torch, shared=None):
-    """Rebuild live arguments from the snapshots an oracle stores.
+class ReplayState:
+    """Preparation/validation state; all timing belongs to the shared helper."""
 
-    Captures across the GEAK generations in this suite use several encodings.
-    Handling only ``__tensor__`` (which is all this script used to do) silently
-    skipped every record of any oracle that uses the others, which read as "the
-    oracle carries no replayable records" and dropped the task onto the GEAK
-    fallback path.
-    """
-    shared = shared or {}
-    if isinstance(x, dict):
-        # A back-reference into the blob's deduplicated pool. Big operands - MoE
-        # expert weights, the gated-delta recurrent state - are stored once.
-        if "__shared__" in x and len(x) == 1:
-            name = x["__shared__"]
-            if name not in shared:
-                raise KeyError(f"oracle references shared operand {name!r} that is not in "
-                               f"blob['shared'] (have: {sorted(shared)[:8]})")
-            return unsnap(shared[name], device, torch, shared)
-        if x.get("__tensor__"):
-            t = x["data"]
-            t = t.to(device) if hasattr(t, "to") else t
-            # Sub-byte dtypes are stored as uint8 and re-viewed on the way out.
-            # Two generations spell that differently: the newer one names the
-            # target dtype in `packed_view_dtype`, the older one sets `bitcast`
-            # to the STORAGE dtype and keeps the target in `dtype`. Both are
-            # frequently present but empty, which is not a dtype.
-            view = _dtype(torch, x.get("packed_view_dtype"))
-            if view is None and x.get("bitcast"):
-                view = _dtype(torch, x.get("dtype"))
-            if view is not None and hasattr(t, "view") and getattr(t, "dtype", None) != view:
-                t = t.view(view)
-            stride, shape = x.get("stride"), x.get("shape")
-            if stride is not None and shape is not None and hasattr(t, "as_strided"):
-                # An explicit stride is part of the contract for these ops; do not
-                # flatten it by calling .contiguous().
-                return t.as_strided(tuple(shape), tuple(stride))
-            return t.contiguous() if x.get("contiguous", True) and hasattr(t, "contiguous") else t
-        # An output or workspace buffer the callable writes into: recreate it
-        # empty rather than carrying its bytes in the oracle.
-        if x.get("__tensor_factory__"):
-            dtype = _dtype(torch, x.get("dtype"))
-            shape, stride = tuple(x["shape"]), x.get("stride")
-            if stride:
-                return torch.empty_strided(shape, tuple(stride), dtype=dtype, device=device)
-            return torch.empty(shape, dtype=dtype, device=device)
-        if "__torch_dtype__" in x:
-            return _dtype(torch, x["__torch_dtype__"])
-        if "__repr__" in x:
-            return _literal(x["__repr__"])
-        if "__enum__" in x:
-            # {"__enum__": "<module>:<Qualname>", "name": "<member>"} -- the member
-            # name is in "name", not in the "__enum__" path.
-            mod_name, _, qual = str(x["__enum__"]).partition(":")
-            obj = importlib.import_module(mod_name)
-            for part in qual.split("."):
-                obj = getattr(obj, part)
-            return obj[x["name"]] if "name" in x else obj(x["value"])
-        return {k: unsnap(v, device, torch, shared) for k, v in x.items()}
-    if isinstance(x, (list, tuple)):
-        return type(x)(unsnap(v, device, torch, shared) for v in x)
-    if hasattr(x, "to") and hasattr(x, "device"):
-        return x.to(device)
-    return x
+    def __init__(self, torch, cases, harness, args, spec, geometry, tol, seed):
+        self.torch, self.cases, self.harness = torch, cases, harness
+        self.args = dict(args)
+        self.input_source = CPUInputs(torch, spec, geometry, seed)
+        self.cpu_inputs = None
+        self.expected = None
+        self.next_kind = "ordinary"
+        self.needs_validation = False
+        self.tol = tol
+        self.outputs = None
+        self.capture_pending = False
+        self.checked_invocations = 0
+        self.worst_error = 0.0
 
+    def validate(self):
+        if self.outputs is None or self.capture_pending or not self.needs_validation:
+            return
+        if (not isinstance(self.outputs, tuple) or len(self.outputs) != 2
+                or self.outputs[0] is not self.args['out']
+                or self.outputs[1] is not self.args['initial_state']):
+            raise RuntimeError('Recurrent callable must return the two supplied buffers')
+        for name in IMMUTABLE:
+            if not self.args[name].detach().cpu().equal(self.cpu_inputs[name]):
+                raise RuntimeError(f"timed callable mutated {name}")
+        for name, value, expected in zip(('out', 'initial_state'), self.outputs, self.expected):
+            if expected.device.type != "cpu":
+                raise RuntimeError("expected output escaped CPU ownership")
+            actual = value.detach().cpu()
+            if (actual.shape != expected.shape or actual.dtype != expected.dtype
+                    or not self.torch.isfinite(actual).all()):
+                raise RuntimeError('Recurrent result changed shape/dtype or contains nonfinite data')
+            if name == 'initial_state':
+                untouched = self.torch.ones(actual.shape[0], dtype=self.torch.bool)
+                slots = self.cpu_inputs['ssm_state_indices'].long()
+                untouched[slots[slots >= 0]] = False
+                if not actual[untouched].equal(self.cpu_inputs['initial_state'][untouched]):
+                    raise RuntimeError('Recurrent kernel changed an unselected state slot')
+            ok, error = self.harness.correct(actual, expected, self.tol)
+            if not ok or not math.isfinite(error):
+                raise RuntimeError(f"timed graph {name} failed tolerance {self.tol}: {error}")
+            self.worst_error = max(self.worst_error, error)
+        self.checked_invocations += 1
+        self.needs_validation = False
 
-def record_args(rec, device, torch, shared=None):
-    """(args, kwargs) for one record, tolerating the capture spellings."""
-    raw = rec.get("args")
-    if raw is None:
-        raw = rec.get("pos")
-    kw = rec.get("kwargs")
-    if kw is None:
-        kw = rec.get("kw")                   # geak-attn-oracle-v1 spelling
-    if raw is None and kw is None:
-        return None, None
-    if raw is not None and not isinstance(raw, (list, tuple)):
-        raise ValueError("captured positional arguments must be a list or tuple")
-    if kw is not None and not isinstance(kw, dict):
-        raise ValueError("captured keyword arguments must be a mapping")
-    args = unsnap(list(raw or ()), device, torch, shared)
-    kwargs = unsnap(dict(kw or {}), device, torch, shared)
-    return args, kwargs
+    def prepare(self):
+        # The preceding replay has completed (or is ordered on this same stream).
+        # Captured allocations are not initialized until their first replay.
+        self.validate()
+        self.capture_pending = False
+        self.cpu_inputs, self.expected = self.input_source.next(self.next_kind)
+        for name in (*IMMUTABLE, 'initial_state'):
+            self.args[name].copy_(self.cpu_inputs[name])
+        # State is both input and output and must be restored, never poisoned.
+        # The separate public output must be written by every actual replay.
+        self.args['out'].fill_(float('nan'))
+        self.needs_validation = True
+
+    def run(self):
+        self.outputs = self.cases.call({'kwargs':self.args, 'fresh':False})
+        self.capture_pending = self.torch.cuda.is_current_stream_capturing()
+        return self.outputs
 
 
-def time_call(call, torch, warmup, iters):
-    """Mean / median / min per-call device milliseconds."""
-    if warmup < 0 or iters < 1:
-        raise ValueError("nonnegative warmup and positive measured counts required")
-    for _ in range(warmup):
-        call()
-    torch.cuda.synchronize()
+class TimedGraph:
+    """Receive the canonical helper's exact measured graph and output tuple."""
 
-    starts = [torch.cuda.Event(enable_timing=True) for _ in range(iters)]
-    ends = [torch.cuda.Event(enable_timing=True) for _ in range(iters)]
-    for i in range(iters):
-        starts[i].record()
-        call()
-        ends[i].record()
-    torch.cuda.synchronize()
+    def _bind(self, rerun, outputs=None):
+        self._rerun, self.outputs = rerun, outputs
 
-    samples = [s.elapsed_time(e) for s, e in zip(starts, ends)]
-    if any(type(value) not in (int, float) or not math.isfinite(value) or value <= 0
-           for value in samples):
-        raise ValueError("invalid device-event duration")
-    samples.sort()
-    n = len(samples)
-    median = samples[n // 2] if n % 2 else 0.5 * (samples[n // 2 - 1] + samples[n // 2])
-    return {"mean_ms": sum(samples) / n, "median_ms": median, "min_ms": samples[0]}
+    def rerun(self):
+        return self._rerun()
 
 
-def _load_module(name, path):
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(name, path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+def case_params(case, spec, geometry, expected):
+    actual = describe_case(case['args']['kwargs'], spec, geometry)
+    if actual != expected:
+        raise RuntimeError('Timed inputs differ from the complete recorded recurrent ABI')
+    return actual
 
 
-def native_cases(ut_dir, meta, torch):
-    """Time the op through the package's own case builder.
+def correctness_case(torch, cases, harness, case, spec, geometry, expected, tol, seed):
+    actual = case_params(case, spec, geometry, expected)
+    state = ReplayState(torch, cases, harness, case['args']['kwargs'], spec, geometry, tol, seed)
+    results = []
+    for kind in ("ordinary", *CHALLENGES):
+        state.next_kind = kind
+        state.prepare()
+        state.run()
+        state.validate()
+        results.append({"kind": kind, "passed": True})
+    return {"sig": f"{case['sig']}|{case['regime']}", "params": actual,
+            "expected_device": "cpu", "tolerance": tol, "checked_invocations": len(results),
+            "checks": results, "max_rel_err": state.worst_error}
 
-    Some ops are value-independent, so their UT regenerates a deterministic
-    baseline at run time instead of freezing hundreds of MB of tensors. Those
-    packages have no ``reference_io.pt`` to replay -- but they do expose the
-    live geometries through ``cases.py``, which is how their own unit test
-    builds them. Using that is strictly better than the alternative of reporting
-    no measurement at all, and it keeps the arena's 10/100 methodology.
 
-    Returns a list of ``(sig, regime, callable)`` or [] when the package has no
-    such entry point.
-    """
-    cases_py = os.path.join(ut_dir, "cases.py")
-    harness = os.path.join(ut_dir, "harness_lib.py")
-    if not os.path.isfile(cases_py):
-        return []
+def measure_case(torch, cases, harness, case, spec, geometry, expected, tol, seed):
+    from _aka_benchmark import benchmark_cuda_graph_or_events_samples
 
-    # The UT sets this at module scope, before aiter is imported, so the
-    # dispatcher picks the solutions that were actually observed live. Without
-    # it the replay would time aiter's stock config and measure a different
-    # kernel than the one this task is defined by.
-    if meta.get("dispatch_config"):
-        os.environ["AITER_CONFIG_GEMM_BF16"] = os.path.join(ut_dir, meta["dispatch_config"])
-
-    sys.path.insert(0, ut_dir)
-    try:
-        h = _load_module("harness_lib", harness)
-    finally:
-        sys.path[:] = [p for p in sys.path if os.path.abspath(p or ".") != ut_dir]
-    sys.modules.pop("unittest", None)
-    cases = _load_module("_hk_cases", cases_py)
-
-    out = []
-    # Spelling A: per-case builder keyed off the meta case map (dense GEMM).
-    if hasattr(cases, "timing_case") and hasattr(cases, "candidate_call"):
-        if hasattr(cases, "selected_cases"):
-            selected = cases.selected_cases(meta, meta.get("ledger_ids") or [])
-        else:
-            selected = list((cases.case_map(meta) or {}).values())
-        for case in selected:
-            t = cases.timing_case(case)
-            out.append((t["sig"], t.get("regime", ""),
-                        (lambda a=t["args"]: cases.candidate_call(a))))
-    # Spelling B: whole-workload builder (add+RMSNorm).
-    elif hasattr(cases, "timing_cases") and hasattr(cases, "call"):
-        for t in cases.timing_cases(h, meta):
-            out.append((t["sig"], t.get("regime", ""),
-                        (lambda a=t["args"]: cases.call(a))))
-    else:
-        return []
-    if not out:
-        raise ValueError("native case builder returned no timing cases")
-    return out
+    actual = case_params(case, spec, geometry, expected)
+    state = ReplayState(torch, cases, harness, case['args']['kwargs'], spec, geometry, tol, seed)
+    timed = TimedGraph()
+    samples, metadata = benchmark_cuda_graph_or_events_samples(
+        state.run, warmup=WARMUP, repetition=SAMPLES,
+        prepare_fn=state.prepare, timed_run=timed,
+    )
+    if (metadata.get("benchmark_method") != "cuda_graph"
+            or metadata.get("benchmark_warmup") != WARMUP
+            or metadata.get("benchmark_samples") != SAMPLES
+            or metadata.get("benchmark_effective_repeats") != 1
+            or "benchmark_fallback_reason" in metadata
+            or len(samples) != SAMPLES
+            or any(not math.isfinite(v) or v <= 0 for v in samples)):
+        raise RuntimeError("canonical helper did not return the required graph measurements")
+    # prepare() checks the last measured replay before resetting it. rerun()
+    # then validates the exact measured graph once more, outside the sample set.
+    result = timed.rerun()
+    if result is not state.outputs or result is not timed.outputs:
+        raise RuntimeError("validation is not bound to the measured graph outputs")
+    state.validate()
+    # 10 warmups, 2 estimate replays, 1 final prime, 100 samples and 1 rerun.
+    if state.checked_invocations != WARMUP + SAMPLES + 4:
+        raise RuntimeError("not every completed warmup/replay was validated")
+    timing_checked = state.checked_invocations
+    challenge_results = []
+    for kind in CHALLENGES:
+        state.next_kind = kind
+        if timed.rerun() is not state.outputs:
+            raise RuntimeError("challenge is not bound to the measured graph")
+        state.validate()
+        challenge_results.append({"kind": kind, "passed": True})
+    if state.checked_invocations != timing_checked + len(CHALLENGES):
+        raise RuntimeError("not every post-timing correctness challenge was validated")
+    return {
+        "sig": f"{case['sig']}|{case['regime']}",
+        "params": actual,
+        "mean_ms": statistics.mean(samples),
+        "median_ms": statistics.median(samples),
+        "min_ms": min(samples),
+        "samples_ms": samples,
+        **metadata,
+        "validation": {"checked_invocations": state.checked_invocations,
+                       "timing_checked_invocations": timing_checked,
+                       "fresh_input_sets": state.input_source.generated,
+                       "input_seed": seed,
+                       "expected_device": "cpu",
+                       "fresh_inputs_per_replay": True,
+                       "correctness_challenges": challenge_results,
+                       "max_rel_err": state.worst_error, "tolerance": tol,
+                       "outputs": ['out', 'initial_state'],
+                       "inputs_varied": list(VARIED_INPUTS),
+                       "restored_buffers": ['initial_state'],
+                       "poisoned_buffers": ['out'],
+                       "untouched_state_unchanged": True,
+                       "immutable_inputs_unchanged": True,
+                       "returned_aliases_checked": True,
+                       "measured_graph_validated": True},
+    }
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--ut", required=True, help="path to the task's ut/ directory")
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--warmup", type=int, default=10)
-    ap.add_argument("--iters", type=int, default=100)
-    args = ap.parse_args()
-
-    oracle = os.path.join(args.ut, "reference_io.pt")
-    meta_path = os.path.join(args.ut, "meta.json")
-    meta_early = json.load(open(meta_path)) if os.path.isfile(meta_path) else {}
-
-    if not os.path.isfile(oracle):
-        # No frozen blob. Before giving up, try the package's own case builder.
-        try:
-            import torch
-        except Exception as exc:
-            print(f"cannot import torch: {exc}", file=sys.stderr)
-            return 2
-        if not torch.cuda.is_available():
-            print("no CUDA/HIP device visible", file=sys.stderr)
-            return 2
-        native = native_cases(args.ut, meta_early, torch)
-        if not native:
-            print("no ut/reference_io.pt and no usable ut/cases.py entry point",
-                  file=sys.stderr)
-            return EXIT_NO_RECORDS
-        cases = []
-        for sig, regime, call in native:
-            timing = time_call(call, torch, args.warmup, args.iters)
-            cases.append({"sig": f"{sig}|{regime}" if regime else sig,
-                          "params": {"regime": regime, "source": "ut/cases.py live geometry"},
-                          **timing})
-            torch.cuda.empty_cache()
-        with open(args.out, "w") as fh:
-            json.dump({"target": meta_early.get("target_callable"), "timer": "cuda_event",
-                       "warmup": args.warmup, "iters": args.iters,
-                       "case_source": "ut/cases.py live geometries (no frozen oracle)",
-                       "cases": cases}, fh, indent=2)
-        for c in cases:
-            print(f"[time] {c['sig']}: mean {c['mean_ms']:.6f} ms "
-                  f"(median {c['median_ms']:.6f}, min {c['min_ms']:.6f})")
-        return 0
-
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--ut", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--warmup", type=int, default=WARMUP)
+    parser.add_argument("--iters", type=int, default=SAMPLES)
+    parser.add_argument("--correctness-only", action="store_true")
+    args = parser.parse_args()
+    args.out.unlink(missing_ok=True)
+    if (args.warmup, args.iters) != (WARMUP, SAMPLES):
+        raise ValueError("Recurrent decode requires exactly 10 warmups and 100 reported samples")
     import torch
-    if not torch.cuda.is_available():
-        print("no CUDA/HIP device visible", file=sys.stderr)
-        return 2
-    device = "cuda"
+    torch.set_num_threads(min(torch.get_num_threads(), 8))
 
-    blob = torch.load(oracle, map_location="cpu", weights_only=False)
-    if not isinstance(blob, dict):
-        raise ValueError("oracle must be a mapping")
-    records = blob.get("records")
-    if records is not None and not isinstance(records, (list, tuple)):
-        raise ValueError("oracle records must be a list or tuple")
-    if not records:
-        print("oracle carries no 'records' - synthetic-spec layout, cannot replay",
-              file=sys.stderr)
-        return EXIT_NO_RECORDS
-
-    # Prefer meta.json's target_callable over the blob's. They differ for the
-    # paged-attention capture, where the blob names the sglang alias
-    # (sglang...aiter_backend:paged_attention_ragged) while candidate_bind
-    # rebinds aiter.ops.attention:paged_attention_ragged. Timing the alias can
-    # resolve to the unmodified production function, i.e. measure the wrong code.
-    meta = json.load(open(meta_path)) if os.path.isfile(meta_path) else {}
-    target = meta.get("target_callable") or blob.get("target")
-    if not target:
-        raise ValueError("no target callable recorded")
-    fn = resolve(target)
-    shared = blob.get("shared")
-    if shared is None:
-        shared = {}
-    if not isinstance(shared, dict):
-        raise ValueError("oracle shared operands must be a mapping")
-
-    cases, seen = [], set()
-    for i, rec in enumerate(records):
-        if len(cases) >= MAX_CASES:
-            break
-        sig = rec.get("sig") or f"record{i}"
-        regime = (rec.get("regime") or "").lower()
-        key = (sig, regime)
-        if key in seen:
-            continue
-        seen.add(key)
-
-        # Only a known unsupported representation may be skipped. Corrupt data
-        # and failed candidate invocations invalidate the whole measurement.
-        try:
-            pos, kw = record_args(rec, device, torch, shared)
-        except UnsupportedReplay as exc:
-            print(f"[skip] {sig}: cannot rebuild arguments: {type(exc).__name__}: {exc}",
-                  file=sys.stderr)
-            continue
-        if pos is None:
-            continue
-        timing = time_call(lambda: fn(*pos, **kw), torch, args.warmup, args.iters)
-        operands = list(pos) + [kw[k] for k in sorted(kw)]   # some ops are kwargs-only
-        shapes = [list(t.shape) for t in operands if hasattr(t, "shape")][:4]
-        cases.append({"sig": f"{sig[:60]}|{regime}" if regime else sig[:60],
-                      "params": {"regime": regime, "operand_shapes": shapes},
-                      **timing})
-        del pos, kw
-        torch.cuda.empty_cache()
-
-    if not cases:
-        # No arguments could be reconstructed; no candidate invocation failed.
-        # Try the package's own builder before declaring replay unsupported.
-        print("no record could be replayed directly; trying ut/cases.py",
-              file=sys.stderr)
-        native = native_cases(args.ut, meta, torch)
-        for sig, regime, call in native:
-            timing = time_call(call, torch, args.warmup, args.iters)
-            cases.append({"sig": f"{sig}|{regime}" if regime else sig,
-                          "params": {"regime": regime,
-                                     "source": "ut/cases.py live geometry"},
-                          **timing})
-            torch.cuda.empty_cache()
-    if not cases:
-        print("no record could be replayed", file=sys.stderr)
-        return EXIT_NO_RECORDS
-
-    with open(args.out, "w") as fh:
-        json.dump({"target": target, "timer": "cuda_event",
-                   "warmup": args.warmup, "iters": args.iters,
-                   "cases": cases}, fh, indent=2)
-    for c in cases:
-        print(f"[time] {c['sig']}: mean {c['mean_ms']:.6f} ms "
-              f"(median {c['median_ms']:.6f}, min {c['min_ms']:.6f})")
-    return 0
+    meta = json.loads((args.ut / "meta.json").read_text())
+    harness = _load("_recurrent_timing_harness", args.ut / "harness_lib.py")
+    cases = _load("_recurrent_timing_cases", args.ut / "cases.py")
+    verify_frozen_source(args.ut, meta)
+    policy = contract(args.ut.parent)
+    pins = provenance(args.ut.parent, policy)
+    pins['source_binding'] = verify_candidate_binding(cases, args.ut)
+    specs = meta["workload"]["cases"]
+    # Reconstruct the recorded ABI on CPU. Captured expected tensors never
+    # enter GPU memory; only the callable operands receive GPU buffers.
+    recorded = cases.eager_cases(harness, meta, device='cpu')
+    live = []
+    for item in recorded:
+        values = {}
+        for name, value in item['args']['kwargs'].items():
+            if isinstance(value, torch.Tensor):
+                copied = torch.empty_strided(value.shape, value.stride(), dtype=value.dtype, device='cuda')
+                copied.copy_(value)
+                values[name] = copied
+            else:
+                values[name] = value
+        live.append({**{k:item[k] for k in ('sig','regime','m')}, 'args':{'kwargs':values,'fresh':False}})
+    del recorded
+    if len(live) != 2 or len(specs) != 2:
+        raise RuntimeError("Recurrent timing requires both recorded live cases")
+    rows = []
+    for offset, (case, spec) in enumerate(zip(live, specs)):
+        if (case["sig"], case["regime"], case["m"]) != (spec["sig"], spec["regime"], spec["m"]):
+            raise RuntimeError("timing case identity differs from the frozen live contract")
+        expected = policy['cases'][offset]['params']
+        if args.correctness_only:
+            row = correctness_case(torch, cases, harness, case, spec, meta['geometry'], expected, float(meta["tol"]), 41000 + offset)
+            print(f"[CPU-truth:{row['sig']}] PASS ordinary and four numerical challenges", flush=True)
+        else:
+            row = measure_case(torch, cases, harness, case, spec, meta['geometry'], expected, float(meta["tol"]), secrets.randbits(63))
+            print(f"{row['sig']}: {row['mean_ms']:.6f} ms (cuda_graph, {SAMPLES} samples)", flush=True)
+        rows.append(row)
+    # Publish only after both complete; failed runs cannot leave a partial report.
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = args.out.with_name(args.out.name + f".tmp-{os.getpid()}")
+    payload = ({"status": "ok", "mode": "cpu_truth_correctness", "cases": rows}
+               if args.correctness_only else
+               {"timer": "cuda_graph", "warmup": WARMUP, "iters": SAMPLES, "cases": rows})
+    payload.update(pins)
+    tmp.write_text(json.dumps(payload, indent=2) + "\n")
+    tmp.replace(args.out)
 
 
 if __name__ == "__main__":
-    try:
-        return_code = main()
-    except SystemExit as exc:
-        if exc.code != EXIT_NO_RECORDS:
-            raise
-        print("unexpected exit 4 during benchmark execution; replay is not unsupported", file=sys.stderr)
-        return_code = 1
-    sys.exit(return_code)
+    main()

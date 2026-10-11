@@ -1,0 +1,328 @@
+{
+  "schema": "qwen-protected-graph-v1",
+  "task": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+  "tolerance": 0.02,
+  "source_paths": [
+    "source/fused_recurrent.py"
+  ],
+  "cases": [
+    {
+      "test_case_id": "decode_b64_live|decode",
+      "params": {
+        "regime": "decode",
+        "m": 64,
+        "B": 64,
+        "H": 2,
+        "HV": 16,
+        "K": 128,
+        "V": 128,
+        "qkv_dim": 2560,
+        "state_pool_slots": 199,
+        "scale": 0.08838834764831845,
+        "use_qk_l2norm_in_kernel": true,
+        "state_indices": [
+          8,
+          29,
+          30,
+          92,
+          93,
+          153,
+          154,
+          15,
+          16,
+          74,
+          75,
+          76,
+          131,
+          132,
+          185,
+          186,
+          42,
+          43,
+          95,
+          96,
+          143,
+          144,
+          191,
+          192,
+          40,
+          41,
+          85,
+          86,
+          127,
+          128,
+          169,
+          170,
+          10,
+          11,
+          50,
+          51,
+          83,
+          84,
+          117,
+          118,
+          149,
+          150,
+          177,
+          178,
+          5,
+          6,
+          32,
+          33,
+          56,
+          57,
+          72,
+          73,
+          97,
+          98,
+          109,
+          110,
+          121,
+          122,
+          133,
+          134,
+          139,
+          140,
+          145,
+          146
+        ],
+        "tensors": {
+          "mixed_qkv": {
+            "shape": [
+              64,
+              2560
+            ],
+            "stride": [
+              2560,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "a": {
+            "shape": [
+              64,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "b": {
+            "shape": [
+              64,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "A_log": {
+            "shape": [
+              16
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.float32"
+          },
+          "dt_bias": {
+            "shape": [
+              16
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "ssm_state_indices": {
+            "shape": [
+              64
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32"
+          },
+          "initial_state": {
+            "shape": [
+              199,
+              16,
+              128,
+              128
+            ],
+            "stride": [
+              262144,
+              16384,
+              128,
+              1
+            ],
+            "dtype": "torch.float32"
+          },
+          "out": {
+            "shape": [
+              64,
+              1,
+              16,
+              128
+            ],
+            "stride": [
+              2048,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          }
+        }
+      }
+    },
+    {
+      "test_case_id": "decode_b1_live|decode",
+      "params": {
+        "regime": "decode",
+        "m": 1,
+        "B": 1,
+        "H": 2,
+        "HV": 16,
+        "K": 128,
+        "V": 128,
+        "qkv_dim": 2560,
+        "state_pool_slots": 199,
+        "scale": 0.08838834764831845,
+        "use_qk_l2norm_in_kernel": true,
+        "state_indices": [
+          2
+        ],
+        "tensors": {
+          "mixed_qkv": {
+            "shape": [
+              1,
+              2560
+            ],
+            "stride": [
+              2560,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "a": {
+            "shape": [
+              1,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "b": {
+            "shape": [
+              1,
+              16
+            ],
+            "stride": [
+              16,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "A_log": {
+            "shape": [
+              16
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.float32"
+          },
+          "dt_bias": {
+            "shape": [
+              16
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "ssm_state_indices": {
+            "shape": [
+              1
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32"
+          },
+          "initial_state": {
+            "shape": [
+              199,
+              16,
+              128,
+              128
+            ],
+            "stride": [
+              262144,
+              16384,
+              128,
+              1
+            ],
+            "dtype": "torch.float32"
+          },
+          "out": {
+            "shape": [
+              1,
+              1,
+              16,
+              128
+            ],
+            "stride": [
+              2048,
+              2048,
+              128,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          }
+        }
+      }
+    }
+  ],
+  "challenges": [
+    "zero_query_key",
+    "zero_state",
+    "inactive_last_row",
+    "softplus_branch"
+  ],
+  "validation_contract": {
+    "outputs": [
+      "out",
+      "initial_state"
+    ],
+    "inputs_varied": [
+      "mixed_qkv",
+      "a",
+      "b",
+      "A_log",
+      "dt_bias",
+      "initial_state"
+    ],
+    "restored_buffers": [
+      "initial_state"
+    ],
+    "poisoned_buffers": [
+      "out"
+    ],
+    "untouched_state_unchanged": true
+  },
+  "workload_provenance": "Preserved TP8/EP8 capture with FP32 Mamba state; not the newer TP8/EP1 BF16-state workload",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "source_binding": {
+    "source_path": "source/fused_recurrent.py",
+    "device_kernel": "fused_recurrent_gated_delta_rule_packed_decode_kernel"
+  }
+}
