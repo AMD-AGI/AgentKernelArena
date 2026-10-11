@@ -1,90 +1,101 @@
-# qwen3.8-2.4t__paged_attention_decode
+# Qwen captured native paged-attention decode
 
-**Qwen3.8-2.4T-A95B-MXFP4** head kernel - `paged_attention_ll4mi_QKV_mfma16_kernel` (AITER / CK asm, decode).
+This task covers the original TP8/EP8, page-size-1 ragged-attention capture.
+It does not represent the newer TP8/EP1, page-size-16 unified-attention workload.
 
-| field | value |
-|---|---|
-| GPU time share | 6.84% |
-| empirical roofline | 48.2% memory-bound |
-| optimized roofline | - |
-| e2e uplift measured | Stage-A scenario +0.25% (NOT measured) |
-| device symbol | `paged_attention_ll4mi_QKV_mfma16_kernel` |
-| production seam | `aiter.ops.attention:paged_attention_ragged` |
-| serving contract | ISL 8192 / OSL 1024 / CONC 64 / TP 8 |
-| image | `harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix` |
-| owner | Li, Zeping <zepingl@amd.com> |
-| info rows | Q38-9 |
+The public ABI remains `aiter.ops.attention:paged_attention_ragged`. The one
+recorded case has BF16 query/output `[64,8,256]`, compact BF16 K/V caches
+`[521351,1,1,256]`, all 521351 referenced pages, and the complete original
+ragged metadata and scale tensors. The 71,926,272-byte scratch buffer, 256-token
+partitions, 44 maximum partitions, NHD layout, and all other captured arguments
+remain unchanged. The full ABI is frozen in `ut/benchmark_contract.json`.
 
-## Layout
+The runtime is the exact SGLang 0.5.20 image digest in `config.yaml`.
+The capture and original oracle came from the documented 0.5.18 environment;
+new qualification does not relabel that provenance or claim a new serving run.
 
-```
-config.yaml              arena task schema + a headkernel: provenance block
-scripts/task_runner.py   compile | correctness | performance
-scripts/_bench.py        native 10 warmup / 100 measured timing
-source/                  THE EDITABLE KERNEL - change only this
-ut/                      frozen GEAK op package (oracle, harness, overlays)
-ut/kernel_src/           symlinks back into source/ - same bytes, two views
-```
+## Native implementation and edit boundary
 
-Edit targets:
+The actual image-native HIP implementation is included in
+[`source/pa_kernels.cuh`](source/pa_kernels.cuh). Only these two device bodies
+may be edited:
 
-- `paged_attention_ragged` in `source/attention_candidate.py`
+- `_paged_attention_kernel`
+- `_paged_attention_ll4mi_reduce_kernel`
 
-## Running it
+Their includes, preprocessing, declarations and signatures remain frozen.
+The reused `ut/cpp_body_guard.py` rejects scope escapes, host constructors and
+changed preprocessing before compilation. The Python ABI wrapper
+`source/attention_candidate.py`, the source-routing alias, original baseline,
+compile loader, launch template and support headers are immutable inputs.
 
-On one GPU from the optimization pool (never the serving set), inside the image above:
+The frozen loader compiles the same native GOLDEN specialization used by the
+recorded head-size-256 case. Its binary/cache namespace includes a fresh process
+nonce plus the submitted device-header and frozen compile-context hashes. It checks the actual copied
+header before accepting a cached binary. The graph adapter separately verifies
+the active Python wrapper, native build binding, and device-source digest.
+The original image-native callable remains the correctness baseline.
+
+[`ut/native_source_manifest.json`](ut/native_source_manifest.json) records the
+exact image-source files and the explicit host-loading adaptations. This is a
+native-source extraction, not a port or a claim that image Git metadata denotes
+a clean upstream checkout.
+
+## Original fixture and portable preparation
+
+The original `ut/reference_io.pt` is a separate **536,480,065-byte** object with
+SHA-256 `9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56`.
+Its object path is declared in
+[`tools/headkernel-artifacts.json`](../../../tools/headkernel-artifacts.json).
+Use the existing `src/tools/prepare_head_kernel_artifacts.py` helper from the
+repository root with `--task qwen3.8-2.4t__paged_attention_decode` and a local
+NVMe-backed `--suite-root`; `--download` verifies the original byte count,
+SHA-256 and task metadata before installation. No regenerated golden or reduced
+KV-page subset substitutes for the original fixture.
+
+Use a verified assigned GPU and the exact declared image. Inside the prepared
+task workspace, the configured commands remain:
 
 ```bash
-cd <task>
 python3 scripts/task_runner.py compile
 python3 scripts/task_runner.py correctness
 python3 scripts/task_runner.py performance
 ```
 
-- **compile** AST-parses `source/` and asserts every target symbol is defined there.
-  No GPU needed.
-- **correctness** runs `ut/unittest.py`: the frozen live-capture oracle
-  (`ut/reference_io.pt`) plus random-value parity against the live baseline leg,
-  at tol `0.02`. Exit 0 pass, 1 correctness fail, 2 environment,
-  3 harness incomplete.
-- **performance** replays the captured argument records from `ut/reference_io.pt`
-  with 10 warmup + 100 measured iterations and reports the mean cuda-event device
-  time. If a record cannot be rebuilt it falls back to the GEAK interleaved
-  median-of-3 legs and says so in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
+Compilation builds the real HIP specialization from the submitted header.
+Correctness retains the frozen capture checks, random query parity, original
+device engagement checks and output/input contracts, then runs independent CPU
+mathematical challenges. Current selection evidence is written under
+`ut/reports/`; the historical `ut/selection_validation.json` is not overwritten.
 
-Must survive in `source/` (not optimization targets - the two-leg UT resolves its
-frozen baseline through them, and `task_runner.py compile` fails if one is gone):
+## Measured graph and CPU truth
 
-- `baseline_callable`
-- `_BASELINE`
-- `direct_register_custom_op`
+The materialized canonical `_aka_benchmark.py` helper owns graph capture and
+device events: **10 warmups, 100 ordered raw samples, one graph replay per
+sample**. Graph failure is a failed run, with no event or median fallback.
 
-## Starting point
+Every preparation generates a new legal BF16 query from a CPU RNG with a fresh
+run seed recorded in the report. Captured K/V pages, routing metadata and scale
+tensors stay fixed. Expected softmax-attention outputs are computed and retained
+on CPU. Only callable operands enter GPU memory; expected answers do not.
 
-`source/` is the **stock** file from the pinned runtime image plus 22 line(s)
-of unit-test harness shim (an `importlib` import and a `baseline_callable()`
-accessor, so the candidate overlay can still reach the unshadowed production
-function). Nothing has been pre-optimized - the first measured speedup on this
-task is by construction a null run, and small deviations from 1.00x are
-timing-slot bias rather than optimization.
+Before each replay, the query is copied into its stable buffer, output is
+poisoned with NaN, and every scratch byte is set to `0xff` (NaNs in both its
+FP32 statistics and BF16 partition-output regions). The preceding completed
+replay is validated before its buffers are overwritten. Full immutable input
+values, output alias/shape/dtype, finite values and the original mixed tolerance
+`0.02` are checked outside the event interval.
 
-## Provenance
+The original diagnostic `max_rel_err` is retained separately from
+`max_mixed_error_ratio`. Acceptance requires the latter to be at most 1.0 using
+the unchanged `0.02` relative term and RMS-based absolute floor.
 
-Copied paged_attention_decode_task from `/shared_nfs/zepingl/qwen38/HeadKernel/20260913T180016Z/tasks` on 2026-09-14.
-Prior optimization results (`_candidate_best/`, `accepted_overlay/`, tuning sweeps,
-patches) were deliberately **not** copied - a benchmark that ships the answer
-measures nothing. They remain in the upstream package.
-**1 oracle blob(s) (0.54 GB) are real copies, not hardlinks** - the upstream file belongs to another user and
-`fs.protected_hardlinks` forbids linking it. Run `tools/relink_oracles.py` as root
-to convert them back and reclaim the space.
-This package shipped no README. `ut/meta.json` (oracle policy, tolerance, case
-geometries), `ut/selection_validation.json` (proof the two legs resolve to
-different code) and `ut/negative_check.json` (proof a corrupted output is
-rejected) are what it records instead - read those before trusting a speedup.
+The exact measured graph also runs zero-query, negated-query, small-query and
+scaled-query challenges after timing. Reports retain all samples, the complete
+case ABI, source/build identities, and 118 checked invocations including the
+four challenges. They cannot omit a case, trim a sample, change the reported
+mean, or substitute a different method.
 
-**Note.** the live capture yielded exactly one decode geometry (M=64, 521351 referenced KV pages). The callable must return the supplied output buffer and leave query/KV/metadata/scales unchanged - the UT checks that, not just the values. source/ also stubs direct_register_custom_op so loading the overlay copy does not re-register the torch.library schemas the production module already owns; keep it.
-
-## SGLang 0.5.20 source refresh
-
-The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.
+Fresh compatible-GPU execution and a complete framework-finalized PASS are
+still required for this repaired task. No optimization or serving gain is
+claimed by the preparation work.

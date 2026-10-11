@@ -1,0 +1,23 @@
+{
+  "schema": "closed-gpu-source-v1",
+  "frozen_files": {
+    "source/attention_candidate.py": "9e622d4e05c033fb0d05fcabedfd94a8a43106b006a160482cbe2c5c4ab2a16c",
+    "ut/native/pa_ragged.py": "1147f0ced832f28ea73dfb9ec99d8e14385b2cce3dca7af88fd86497d4b5806e",
+    "ut/native/pa_ragged.cuh": "a0134cca858169cf4894fb7ce76b5cd304ee673f2dcbb6f1c178efb60cd0f5aa",
+    "ut/native/pa_common.cuh": "8be2aa3be37de86b97c757d0fff6a1de11200d9bc102350c64e79217b6661a7d",
+    "ut/native/pa_ragged.cpp.jinja": "68e47ec52735c39b3f702874a93abaa60b35535740c93745a3ec30b65bc041c9"
+  },
+  "sources": {
+    "source/pa_kernels.cuh": {
+      "language": "hip",
+      "reference": "ut/native/pa_kernels.cuh.orig",
+      "markers": [
+        "__inline__ __device__ void\n_paged_attention_kernel(",
+        "__inline__ __device__ void _paged_attention_ll4mi_reduce_kernel("
+      ]
+    }
+  },
+  "source_aliases": {
+    "ut/kernel_src/attention_candidate.py": "../../source/attention_candidate.py"
+  }
+}

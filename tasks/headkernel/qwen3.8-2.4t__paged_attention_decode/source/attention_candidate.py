@@ -2,7 +2,10 @@
 # Copyright (C) 2024-2026, Advanced Micro Devices, Inc. All rights reserved.
 
 import importlib
+import importlib.util
 import math
+from pathlib import Path
+import sys
 
 import torch
 import triton
@@ -13,9 +16,20 @@ from aiter.ops.enum import Enum, MlaVersion, QuantType
 from aiter.ops.triton.gluon.pa_decode_gluon import pa_decode_gluon
 from aiter.utility.dtypes import _aiter_dtype_id
 from csrc.cpp_itfs.pa.pa import paged_attention_rocm as paged_attention_rocm_core
-from csrc.cpp_itfs.pa.pa_ragged import (
-    paged_attention_ragged as paged_attention_ragged_core,
-)
+def _load_task_native_ragged():
+    origin = Path(__file__).resolve()
+    roots = [root for root in origin.parents
+             if (root/'ut/native/pa_ragged.py').is_file() and (root/'source/pa_kernels.cuh').is_file()]
+    if len(roots)!=1:
+        raise RuntimeError('Cannot resolve the task-local native paged-attention package')
+    name = '_qwen_task_native_pa_ragged'
+    spec = importlib.util.spec_from_file_location(name,roots[0]/'ut/native/pa_ragged.py')
+    module = importlib.util.module_from_spec(spec);sys.modules[name]=module
+    spec.loader.exec_module(module)
+    return module.paged_attention_ragged
+
+_TASK_NATIVE_PAGED_ATTENTION = _load_task_native_ragged()
+paged_attention_ragged_core = _TASK_NATIVE_PAGED_ATTENTION
 from csrc.cpp_itfs.pa.pa_v1 import paged_attention_v1 as paged_attention_v1_core
 
 from aiter.jit.core import compile_ops, is_experimental_enabled

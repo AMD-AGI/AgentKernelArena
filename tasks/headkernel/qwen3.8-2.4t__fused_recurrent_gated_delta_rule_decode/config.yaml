@@ -8,6 +8,11 @@ target_kernel_functions:
   - fused_recurrent_gated_delta_rule_packed_decode
   - fused_recurrent_gated_delta_rule_packed_decode_kernel
 
+benchmark_quality:
+  schema_version: 1
+  adapter: qwen_recurrent_graph_v1
+  validator_sha256: 08503b6add253be76c637291a41ac73b9f035532285fed3a3442148e44e3e3c2
+
 harness_protection:
   freeze_task_inputs: true
   reject_new_source_symlinks: true

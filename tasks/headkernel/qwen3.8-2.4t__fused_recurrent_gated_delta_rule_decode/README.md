@@ -36,9 +36,9 @@ The public launcher, other functions, imports, module code, signatures, and
 decorators remain frozen. The guard also protects the full task input closure,
 including the hydrated oracle, baseline, state-index/case metadata, selection
 evidence, and source alias. Only generated reports and the rebuilt candidate
-overlay are excluded. This protection repair does not qualify the legacy
-performance path; fresh graph timing with restored state and validated outputs
-is still required before this task can be marked ready.
+overlay are excluded. The task-local source guard additionally rejects host
+callbacks and introspection inside the editable JIT body. Fresh GPU and full
+framework validation of this repaired task are required before readiness.
 
 ## Running it
 
@@ -57,11 +57,19 @@ python3 scripts/task_runner.py performance
   (`ut/reference_io.pt`) plus random-value parity against the live baseline leg,
   at tol `0.02`. Exit 0 pass, 1 correctness fail, 2 environment,
   3 harness incomplete.
-- **performance** replays the captured argument records from `ut/reference_io.pt`
-  with 10 warmup + 100 measured iterations and reports the mean cuda-event device
-  time. If a record cannot be rebuilt it falls back to the GEAK interleaved
-  median-of-3 legs and says so in `build/performance_report.json`.
-  A run whose unit test did not pass reports no cases at all.
+- **performance** reconstructs the complete recorded ABI on CPU, then uses the
+  materialized canonical graph helper for 10 warmups and 100 ordered samples
+  per case. Before every replay, fresh legal CPU values are copied into the
+  inputs and complete state pool, and `out` is poisoned with NaN. CPU truth
+  checks both returned buffers, including exact preservation of untouched
+  state slots, before the next reset. Restoration, poisoning and validation
+  are outside the event interval. Graph failure has no event or median fallback.
+  The actual measured graph receives four additional challenges: zero query/key,
+  zero state, an inactive row, and both branches of the softplus calculation.
+  Every raw sample, exact case ABI, source hash and replay check is retained.
+  The original diagnostic `max_rel_err` is retained separately from
+  `max_mixed_error_ratio`, whose limit is 1.0 under the unchanged `0.02`
+  per-element relative term and RMS-based absolute floor.
 
 ## Starting point
 
@@ -91,3 +99,7 @@ rejected) are what it records instead - read those before trusting a speedup.
 ## SGLang 0.5.20 source refresh
 
 The candidate and frozen native source now bind to the digest in `ut/runtime_refresh.json`. Existing shapes, captured tensors, tolerances, samples, and harness checks are preserved from the documented SGLang 0.5.18 workload. Historical PASS artifacts apply to that capture runtime. Validation and dispatch verification in SGLang 0.5.20 are pending; no new serving capture or performance gain is claimed.
+
+The preserved contract uses FP32 Mamba state. It is not the newer TP8/EP1
+workload with BF16 Mamba state. New capture evidence must identify that separate
+contract rather than replacing or relabeling these original fixtures.

@@ -20,7 +20,9 @@ from src.tools.custom_perf_protocols import custom_protocol_family
 
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks/headkernel"
-SCRIPTS = TASKS / "qwen3.8-2.4t__paged_attention_decode/scripts"
+# Exercise the actual legacy template. Qwen attention now has a native,
+# protected graph adapter with separate state/ABI regressions.
+SCRIPTS = TASKS.parents[1] / "tools/templates"
 MISSING = object()
 
 
@@ -450,8 +452,9 @@ class SuiteCopiesTests(unittest.TestCase):
                 if bound:
                     self.assertEqual(len({path.read_bytes() for path in bound}), 1)
                 paths = [path for path in paths if path not in bound]
-            self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
-            self.assertEqual(paths[0].read_bytes(), template.read_bytes(), filename)
+            if paths:
+                self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
+                self.assertEqual(paths[0].read_bytes(), template.read_bytes(), filename)
 
 
 if __name__ == "__main__":

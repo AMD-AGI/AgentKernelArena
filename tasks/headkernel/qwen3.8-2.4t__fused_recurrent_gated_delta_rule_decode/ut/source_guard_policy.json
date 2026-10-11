@@ -1,0 +1,13 @@
+{
+  "schema": "closed-gpu-source-v1",
+  "sources": {
+    "source/fused_recurrent.py": {
+      "language": "triton",
+      "targets": [
+        "fused_recurrent_gated_delta_rule_packed_decode_kernel"
+      ],
+      "reference": "ut/baseline_ref/fused_recurrent.py.orig"
+    }
+  },
+  "frozen_files": {}
+}

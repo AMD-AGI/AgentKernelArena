@@ -1,0 +1,51 @@
+{
+  "schema": "qwen-native-paged-attention-source-v1",
+  "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+  "upstream_image_metadata_commit": "4ad99832823dde2315b361cbd3b54b1c5c12acd5",
+  "image_metadata_not_clean_upstream_claim": true,
+  "source_files": {
+    "csrc/cpp_itfs/pa/pa_ragged.py": {
+      "sha256": "aaf8d513f70e62419df51ec413f4c285ddc9c0e4111f81e3595ae89a5b7e138f",
+      "bytes": 7756,
+      "image_layer": 20
+    },
+    "csrc/cpp_itfs/pa/pa_ragged.cuh": {
+      "sha256": "a0134cca858169cf4894fb7ce76b5cd304ee673f2dcbb6f1c178efb60cd0f5aa",
+      "bytes": 9143,
+      "image_layer": 20
+    },
+    "csrc/cpp_itfs/pa/pa_kernels.cuh": {
+      "sha256": "76f165a169697f3eeba563eeb02b233aaf67e3e5bb52fc0149707cc3a61ada73",
+      "bytes": 109369,
+      "image_layer": 20
+    },
+    "csrc/cpp_itfs/pa/pa_common.cuh": {
+      "sha256": "8be2aa3be37de86b97c757d0fff6a1de11200d9bc102350c64e79217b6661a7d",
+      "bytes": 10347,
+      "image_layer": 20
+    },
+    "csrc/cpp_itfs/pa/pa_ragged.cpp.jinja": {
+      "sha256": "68e47ec52735c39b3f702874a93abaa60b35535740c93745a3ec30b65bc041c9",
+      "bytes": 6585
+    }
+  },
+  "editable_device_source": "source/pa_kernels.cuh",
+  "editable_device_bodies": [
+    "_paged_attention_kernel",
+    "_paged_attention_ll4mi_reduce_kernel"
+  ],
+  "native_math_unchanged": true,
+  "host_adaptations": [
+    "private task-local compilation template and device header",
+    "candidate-source-hash-specific binary cache namespace",
+    "frozen GOLDEN kernel route for the recorded head-size256 ABI",
+    "frozen Python ABI wrapper and original image-native baseline",
+    "fresh per-process build nonce prevents adopting a prepopulated candidate binary"
+  ],
+  "runtime_dependencies": [
+    "HIP compiler/runtime in pinned image",
+    "AITER csrc/include and CK headers in pinned image",
+    "csrc.cpp_itfs.utils and torch_utils in pinned image"
+  ],
+  "workload_scope": "Original TP8/EP8 page1 ragged attention; not the newer page16 unified-attention workload"
+}

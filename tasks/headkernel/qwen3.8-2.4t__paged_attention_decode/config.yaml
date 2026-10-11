@@ -2,10 +2,29 @@
 # Head kernel from the 2026-09-14 info table, rows: Q38-9
 
 source_file_path:
-  - source/attention_candidate.py
+  - source/pa_kernels.cuh
 
 target_kernel_functions:
-  - paged_attention_ragged
+  - _paged_attention_kernel
+  - _paged_attention_ll4mi_reduce_kernel
+
+benchmark_quality:
+  schema_version: 1
+  adapter: qwen_paged_attention_graph_v1
+  validator_sha256: 10a3f31ce5741d8331c7125dcb798f723513656b2eac7ce7cf818cd68c2c156e
+
+harness_protection:
+  freeze_task_inputs: true
+  reject_new_source_symlinks: true
+  runtime_outputs:
+    - ut/negative_check.json
+    - ut/result.json
+    - ut/reports
+    - ut/_cand_overlay
+
+platform_support:
+  required_arch: gfx950
+  status: active
 
 compile_command:
   - python3 scripts/task_runner.py compile
@@ -16,7 +35,7 @@ correctness_command:
 performance_command:
   - python3 scripts/task_runner.py performance
 
-task_type: triton2triton
+task_type: hip2hip
 
 task_result_template: null
 
@@ -29,24 +48,24 @@ prompt:
     It is 6.84% of de-inflated GPU time in the serving profile
     (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 48.2% memory-bound of its empirical roofline.
 
-    Edit only:
-      source/attention_candidate.py
-
-    Entry points that must keep their signatures:
-      paged_attention_ragged
-
-    Do NOT remove these - they are not optimization targets, but the two-leg unit
-    test resolves its frozen baseline through them, and deleting one turns a
-    working kernel into an unexplained correctness failure:
-      baseline_callable
-      _BASELINE
-      direct_register_custom_op
+    Edit only the bodies of _paged_attention_kernel and
+    _paged_attention_ll4mi_reduce_kernel in source/pa_kernels.cuh. These are the
+    actual native HIP device implementations from the pinned SGLang 0.5.20
+    image. Includes, preprocessing, declarations, signatures, host launch code,
+    the Python ABI wrapper, oracle aliases and registration shims are frozen.
+    The task-local source guard rejects host code or scope escapes before any
+    candidate is compiled or invoked. A source-hash-specific native build must
+    consume the submitted device header; using an unrelated cached binary is
+    not a valid candidate run.
 
     The production seam is `aiter.ops.attention:paged_attention_ragged`; correctness is judged
     against a frozen live-server capture, not a re-derived reference, so the kernel
     must stay faithful to the deployed contract (dtypes, layouts, quantization).
 
-    Note: the live capture yielded exactly one decode geometry (M=64, 521351 referenced KV pages). The callable must return the supplied output buffer and leave query/KV/metadata/scales unchanged - the UT checks that, not just the values. source/ also stubs direct_register_custom_op so loading the overlay copy does not re-register the torch.library schemas the production module already owns; keep it.
+    Note: the original TP8/EP8 page1 capture yielded exactly one decode geometry
+    (M=64, 521351 referenced KV pages). The callable must return the supplied
+    output buffer and leave query/KV/metadata/scales unchanged. Preserve the
+    full recorded ABI; it is not the newer TP8/EP1 page16 unified-attention task.
   cheatsheet: null
 
 # ---------------------------------------------------------------------------
@@ -68,10 +87,6 @@ headkernel:
   # Symbols the UT resolves its frozen baseline through. They are not
   # optimization targets, but deleting one turns a working kernel into an
   # opaque correctness FAIL, so scripts/task_runner.py compile checks them.
-  preserve_symbols:
-    - baseline_callable
-    - _BASELINE
-    - direct_register_custom_op
   # source/ is the stock runtime-image file plus 22 line(s) of UT harness shim (the two-leg
   # UT resolves its frozen baseline through them). Nothing has been pre-optimized.
   info_rows:
@@ -82,4 +97,5 @@ headkernel:
       optimized_roofline: null
       e2e_uplift: "Stage-A scenario +0.25% (NOT measured)"
   symbol_locations:
-    paged_attention_ragged: source/attention_candidate.py
+    _paged_attention_kernel: source/pa_kernels.cuh
+    _paged_attention_ll4mi_reduce_kernel: source/pa_kernels.cuh

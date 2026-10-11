@@ -154,7 +154,8 @@
   "schema_version": 1,
   "selection_validation": {
     "contract": "standalone_device_profiler_engagement",
-    "path": "selection_validation.json"
+    "path": "selection_validation.json",
+    "runtime_report": "reports/selection_validation.json"
   },
   "served_regimes": [
     "decode"
@@ -168,13 +169,14 @@
       "preserve baseline_callable and suppress duplicate torch.library registration"
     ],
     "candidate_source": "source/attention_candidate.py",
-    "kernel_source_complete": true,
+    "kernel_source_complete": false,
     "original_path": "/sgl-workspace/aiter/aiter/ops/attention.py",
     "repo": "aiter",
     "repo_commit": "4ad99832823dde2315b361cbd3b54b1c5c12acd5",
     "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
     "runtime_image_id": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
-    "source_sha256": "cb269e7b056ef6ef7c0b05fd44d21d0fa3a3de072f97c61cd31e74320c29f492"
+    "source_sha256": "cb269e7b056ef6ef7c0b05fd44d21d0fa3a3de072f97c61cd31e74320c29f492",
+    "role": "Preserved Python interface provenance; actual device source is in native_device_source_provenance"
   },
   "synthesized": false,
   "target_callable": "aiter.ops.attention:paged_attention_ragged",
@@ -262,5 +264,13 @@
     "current_runtime_dispatch_identity_claimed": false,
     "case_count": 1,
     "tolerances_warmups_samples_and_guards_unchanged": true
+  },
+  "native_device_source_provenance": {
+    "manifest": "native_source_manifest.json",
+    "source": "source/pa_kernels.cuh",
+    "sha256": "76f165a169697f3eeba563eeb02b233aaf67e3e5bb52fc0149707cc3a61ada73",
+    "kernel_source_complete": true,
+    "original_path": "/sgl-workspace/aiter/csrc/cpp_itfs/pa/pa_kernels.cuh",
+    "native_math_unchanged": true
   }
 }
