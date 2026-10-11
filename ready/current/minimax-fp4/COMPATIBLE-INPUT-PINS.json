@@ -1,0 +1,1295 @@
+{
+  "files": {
+    ".dockerignore": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "36b461618fc5358b4fc693a3fc1a554e2209025f409847e5e02336a8947da103"
+    },
+    ".gitignore": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "c36442f71bf391949566195d1fb2d907decaf4ee319a834aef70b93ac9d8a070"
+    },
+    ".pre-commit-config.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e496f6d4aed342fe6e37b9a32b386aa2bde87f7463be02b8dd787d6b4aa351d7"
+    },
+    ".readthedocs.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "b958cd7059d965226f42e66a372e5d53e3711b136c4eb9823dd140cf7d201fc6"
+    },
+    "AGENTS.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "76d5a80a55e72e0b22c07b1b34a308efe32690e24aab50aac6cf0c6761a78d40"
+    },
+    "CLAUDE.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49"
+    },
+    "CONTRIBUTING.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e4216609f8ea443497fe3263ee2f6b6e07c1a975a253ca30cd87d74d318aa866"
+    },
+    "HEADKERNELS.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8cc69045563236b51bc7c8307c55cc467a2546ecf3d4ba811890fa3af7d153bb"
+    },
+    "HEADKERNELS_UPSTREAM.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2d0cf39c1f90c7cac967aebe3a1d97d1f4c3b09a24bb201cafc0cbcdbf72ac48"
+    },
+    "LICENSE": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1"
+    },
+    "MANIFEST.tsv": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "bb09bd8a5f855c85e71bcd298ed625c2cfe3d2163e092c8dcf520f9088416a9e"
+    },
+    "Makefile": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "27f64a853306bd7c60c753940dd4ce0716ec444a6ca47297aaf58ee6e5da25c1"
+    },
+    "README.md": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "1ccf93239d129610b31f1a901cf41f7d4708e9ce3236f57fdd257c0a707bfcc4"
+    },
+    "SECURITY.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "29066d8c860926eeca3752e656e7e376ba758007b938de23f3cd8bcbc349b5cb"
+    },
+    "agents/__init__.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "1c8f9d8456a15f08ff114d392140a5cfb581ab1da5aa292c49a89f6e5e25d795"
+    },
+    "agents/claude_code/agent_config.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "a1903790935bf2aceb77113860f4e12903639a8699422d9f4a718d64105486d6"
+    },
+    "agents/claude_code/launch_agent.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "ac593402732a33b765294aa9a2588d8353afc210978f901d215996a367404997"
+    },
+    "agents/codex/agent_config.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2f8d2a5aed259935d8ee875369296627519c2c389796f23666af4ed566661e8f"
+    },
+    "agents/codex/auth_preflight.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4de8ee0ddf771d52dc34b8012badb11b99d728bc50bf65c7b85b6d7b63592c80"
+    },
+    "agents/codex/launch_agent.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "413f47c0857bcb189eeda543ac9f7e51ddf49208b6fe4a2f59595f8a057c0f84"
+    },
+    "agents/cursor/agent_config.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "4280354b0d0051cf82f9bc8c200d129673104700b34b3e0f9e5035ca42394152"
+    },
+    "agents/cursor/launch_agent.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "71701849f4d8c14cf3308ac35a1957a7a7595ddc280bda3d354c5bce051536f3"
+    },
+    "agents/forge/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "6b2670d1d52ba89ca9b40727ca7a659b80a33ccad0d5df43c7d64a003b552d01"
+    },
+    "agents/forge/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "6cee4b5f8191b792fa54c227ab6d069739851b02fcf35b436345095794ddfd69"
+    },
+    "agents/forge/agent_config.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3d6ef7ea45565151d069e9ce7f6ce53d6ce86f322e24d01d2234eae00bcc7476"
+    },
+    "agents/forge/drivers/arena_task_adapter.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "fcfa1266fef8096773cae7b54e76a473118e53fee98b7862a8a82588685d5381"
+    },
+    "agents/forge/launch_agent.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f29d8b7973098a0e81cc0de2accffcaeb476464c7f8e04354a29e134acf3a869"
+    },
+    "agents/geak_v4/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c2c7805b74511e4e076f29f04bd77c27496d48ee93b7b94b2065128c818bf1d5"
+    },
+    "agents/geak_v4/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "1428025c9da5ca31b2c4e9358888e0f42977e386ec59e2d3e38d3fdf6bc1d393"
+    },
+    "agents/geak_v4/agent_config.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "61e972ec75d20cf0e30ca123fcdaef906b5d122a9edc40dc953dec668cad2338"
+    },
+    "agents/geak_v4/launch_agent.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "061226597d225acf9d8b37c73f1e7c7eddac9270e7065e698ea2bc65dd86dd43"
+    },
+    "agents/geak_v4/workflow_runner.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "b8bb4aa88a8952e20dc104ba8a7c9d43c62583ef2b6b4697b9e790bfe1b5900a"
+    },
+    "agents/quality_loop/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e276ccd0b55276e7d222a79532ce7ab78899b3b05b0fcc63a3a003e6d51e2e94"
+    },
+    "agents/quality_loop/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "1ec6de5dfe1194fc09fc5cf1e2a7a5cde36933c753e9ebfaad388d09e7e98594"
+    },
+    "agents/quality_loop/__main__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "853d4e52213626812f0c0364edc7226a995327f4d71c3f551e19e5521bea3a23"
+    },
+    "agents/quality_loop/agent_config.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2bd1b56bd1fb647a3eda6c49700b0027d262683ffbd79f31bc2663bbd4336cdb"
+    },
+    "agents/quality_loop/backend.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0929325445a486a04730aefc06aead068976d7c0b8b45f4edcbcea4fffe1c614"
+    },
+    "agents/quality_loop/config.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "413c47728112cbcace06933e74856e038a1ab76b54caeff3af0062b4cfb0287c"
+    },
+    "agents/quality_loop/filesystem.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "18fb3c533c73af47fc6e846b0c7c40ee3aa9bfe1dc625cc2b8d0c80cf71dc98c"
+    },
+    "agents/quality_loop/github.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "15d9675c6a98ca0c878bbed4b3483120b642322050de90ee72e684bb9910f4eb"
+    },
+    "agents/quality_loop/host.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "176111f54460d16e20864a1e7dae1389bf7056a027929a3f9692ad508674d8cc"
+    },
+    "agents/quality_loop/orchestrator.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c83393a8db9ab16cf6379864ad801677e559abd48e1ffcf0f2ec0081f72d6dae"
+    },
+    "agents/quality_loop/prompts.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "70585d06b6ceb4a3d455b407e822f7b0e33facbe32ce982d0ce3615095652ca6"
+    },
+    "agents/quality_loop/state.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "68948bd64e26467c8114ccae9d73fb4c6c10fad79640a38eff32e829bf7ef8aa"
+    },
+    "agents/task_validator/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "eca27d3c5e8818359228885d54f0b0b750499d7ac71056b94d63c7bbc34a5176"
+    },
+    "agents/task_validator/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "agents/task_validator/agent_config.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f68e158ec6017367aa72c7b2a22ac4d430c468a5459c8f5a0b0870c0d56851d0"
+    },
+    "agents/task_validator/launch_agent.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c9a9688283a069a61f672c67b560fe09bf300b4102494a982818746595b5d0d9"
+    },
+    "agents/task_validator/report_schema.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c46f71471fad28b1a59411057d48a95d069f930c7d1f873b87802bbbe7ee04af"
+    },
+    "agents/task_validator/validation_postprocessing.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "1dce6e0e417af3a3d2505b2eb04928668125f623a00380a48f617116aa3ddc1e"
+    },
+    "agents/task_validator/validation_prompt.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c03bb327146c60127b3faa1215fce635f88b74e549e226682b28c0bb34c91e10"
+    },
+    "benchmark-creating-instruction.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "09fbfd8be9c4a1b374fb5c9ffa945431181b024c087b0470e907202ad45ee34f"
+    },
+    "docker/eval-tools/gpu-asan/Dockerfile": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0b347d99d88827394a5aacf4d197784da1a11133e49a1eda7f5436b69412f6ea"
+    },
+    "docker/eval-tools/gpu-asan/packages.sha256": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f9f0eff3a26e7cb581a95059661bc38224e7d750891f3b9bc386f3edb3d87578"
+    },
+    "docker/eval-tools/hip-fpsan/Dockerfile": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "44f019989bb2d286af594db3c047dc087fab7e5e6808e074b06793175985002a"
+    },
+    "docker/eval-tools/hip-fpsan/sources.lock.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "057d6a36245170dfde17abfc3195d00c77855d135056e37fd2559bee5701981d"
+    },
+    "docker/eval-tools/images.lock.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8dff24ddd139a1a90a69f66900991b438ee58effeaa6487fbf93f977ad48429a"
+    },
+    "docker/eval-tools/rocjitsu-sanitizers/Dockerfile": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "9e7fffbf73482ec0a3b69fd896723c974a11ea590383d84a41adcacc0634abf1"
+    },
+    "docker/eval-tools/rocjitsu-sanitizers/sources.lock.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "859cf76454ed54ac89bdb0f925d3c9e28a0a06836e4a894f1682f53982b704a5"
+    },
+    "docker/eval-tools/rocjitsu-sanitizers/waitcheck-capi.cpp": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c681e19767a8c8f0633db95214b4815f3b8ad8c5adb4b3d59ac8e8802cde7707"
+    },
+    "docker/eval-tools/rocjitsu/Dockerfile": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "871e4c58d33cc08aeb976e58d1161ec1e4b997b044f7126463282f01c1f68297"
+    },
+    "docker/eval-tools/rocjitsu/rocjitsu-wrapper": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "9fbf46850a13e87c70c0d3d6143e1457bab460e9989fd62b20a2b2308e3adf7d"
+    },
+    "docker/eval-tools/rocjitsu/sources.lock.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "63619aadef76be1d284d6ae4b4ed73cb9a4e7e2d182f2b58eb9dc53211398720"
+    },
+    "docker/eval-tools/triton-fpsan/Dockerfile": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "928621c2c5cb77146df8880b230dfb438b8d1d2950d748dfb0c28be2c297aabe"
+    },
+    "docker/eval-tools/triton-fpsan/requirements.lock": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e3b8823a79183330e667bb9de501881961d173995d49dbe82b35a27f4852b18d"
+    },
+    "docker/rdna4/.dockerignore": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "235a873d4771bbcca95a343358d566bb6ee91970bf4f71185f85b8e8b21786ef"
+    },
+    "docker/rdna4/Dockerfile": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2a00234fc6eb933939cf8e4b6f5aa2a6f3780b9f022194e73de198361f59860a"
+    },
+    "docker/rdna4/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e126b35a96d61072a3068cc149f7682c8b9f0925bc11b1c0040568de2ee40652"
+    },
+    "docker/rdna4/prepare_runtime.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "da51a43fdec8c5fc6c030bdb3bdcc020e6a206f341f7cdf19ce224dbda2ddc2e"
+    },
+    "docker/rdna4/requirements.lock": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "46817cb120ad226526578a40a5261a7e0abe02657e3c6a8b83bb4ea6ac66d402"
+    },
+    "example_configs/ready_minimax_fp4_mi355x.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "75e4776559bb83f0a90d7eef747e93e2bc6c860ac0cf060b5cf9001495c61a93"
+    },
+    "example_configs/validate_ready_minimax_fp4_mi355x.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f2459c6ed8a70485457b67c702b1b01c94f6a607d4b74d34e6c9afc768273eec"
+    },
+    "main.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "b724696e50f0db265526ffadb2b441d2e82aa74d39c2fab3c01d291400ee791d"
+    },
+    "src/benchmark_quality.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "d751ec2472c81bb561b91ee8536c7dff06cfa52e5461e082a361e960dd37339c"
+    },
+    "src/eval_tools/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "50df796c8b7c1ca65f42c0a88ff738f573fc834303aa4785aee56f45a5ee79d8"
+    },
+    "src/eval_tools/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "bb9293d18696e48028ca1594c4384e7d504fc53e4b2b003e23ff53a8dfc4aecf"
+    },
+    "src/eval_tools/__main__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5202e4a91485e31bb6633b0924c239501078e8cb6b3f0db847a6ee215957cdfd"
+    },
+    "src/eval_tools/adapters/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "7af4d937dff5283d7d2e703b0ab0a26f377736a4031a3160ef7f33d365c404c1"
+    },
+    "src/eval_tools/adapters/consan_entrypoint.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "bed8af78b994a936ef633a69cf0b1de39eeda81c43737d9c79d795074f02a3c0"
+    },
+    "src/eval_tools/adapters/flydsl_aot.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4365a5e8b0fec74405bb8f95292c922f5d91b5952b293c7107e13bcca586b0b9"
+    },
+    "src/eval_tools/adapters/hip_source.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8c198ee683d9b9d9d570cae542f823c6f1195f9ac57210eee2f9e5da3b8c2039"
+    },
+    "src/eval_tools/adapters/native_code_object.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "a20c2bff8dd4f32a6d7626dfa8d728d60b4f8f82400cf1bc168481ce024e254e"
+    },
+    "src/eval_tools/adapters/native_launcher.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e4101d4465f938830322d1e73d23e1f26a2a7d768f0f2985eb6646c75b5d3e25"
+    },
+    "src/eval_tools/adapters/replay_capsule.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "18295a78b54d0dc7886ed5782a6a40b906b3b6cd8a784b6494d6ef19600a1f1e"
+    },
+    "src/eval_tools/adapters/rocjitsu_replay.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f781a37ee4a79451c38e0d31398feb16c4def8a80bb9f0d74342eeb2ffe33871"
+    },
+    "src/eval_tools/adapters/rocjitsu_replay_entrypoint.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "d4bcd056e42f682cbb7623be2ba8e9166dcdff9024a7aac0b630495eb9eccf45"
+    },
+    "src/eval_tools/adapters/triton_aot.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "d7a490ab4a40b07277b2bf8954faf3ecbe1c2152d863d6391ac96a12614f53fe"
+    },
+    "src/eval_tools/adapters/waitcheck_entrypoint.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "2b9e529bc95add820633bb05f207d8ffae34354d5099d7c38852393bbc8ca4f8"
+    },
+    "src/eval_tools/config.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "d5fb1ddfa04e5fb7761701b477cba5a7d6859450c4bdfc8d6a0546ce8f996139"
+    },
+    "src/eval_tools/contracts.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "baeddcd3d25386686a7a64caba70229ea25bba3190cefd964240d2eb2b5c4441"
+    },
+    "src/eval_tools/evidence.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "ed87bd197bd587c55cd1ea23d0badf6fa2e1c99c413b9387127acb20d76ea7f2"
+    },
+    "src/eval_tools/execution.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c1a04431ae7da2902d2ab2a21dc68214db57d469f19c1c3cff8baa3c8278caf2"
+    },
+    "src/eval_tools/factory.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3b2de88279f8f1a8af271a90a115c1f31464a3ab8bfc0e3e9d548dc968bf8f89"
+    },
+    "src/eval_tools/manager.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "33e315c217fc4ae1af3a79d1371e3b49c3d8cca4c8e53ac576484bcf113fd544"
+    },
+    "src/eval_tools/plugins/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "602adab5f63733783d66dac1cc0ce0ff46ebfa004e89a7669d1f449e3e29081a"
+    },
+    "src/eval_tools/plugins/attestation.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e94614814046bfbf48d01f47b3d26ac066dff5212c366c6d89866e4709511665"
+    },
+    "src/eval_tools/plugins/base.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "7f9c2861612ec06825b04bdfd9dd637a54d227b2ce975dc4783a64ab52271af9"
+    },
+    "src/eval_tools/plugins/consan.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "dbc72a22f575ebcad3be5d031ebe024436958c2e1bfda7542e301d54686bcb43"
+    },
+    "src/eval_tools/plugins/gpu_asan.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "309a3a9346b614e44548f2a67ee7dc772ba104173d9d55b0c3facd2bdbcf9a72"
+    },
+    "src/eval_tools/plugins/hip_fpsan.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "79adc48dca253a11e4d6cf35b14c842fe117f1cfc318c2e8f8c93d64168aff36"
+    },
+    "src/eval_tools/plugins/parsers.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0da60946b63461551e6374b8c3a2bb148ec8e119ce50164994dfb7c49b4aebf8"
+    },
+    "src/eval_tools/plugins/registry.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "635d18686b881830a8fa2f45ba52417f7d1ef59caeff138f6266b178e58dc066"
+    },
+    "src/eval_tools/plugins/rocjitsu.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8752a1deeca5537a7c0daebf2b0f797229a1c1734053ced0fa1f9ad87ab486f7"
+    },
+    "src/eval_tools/plugins/triton_fpsan.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c5a45679e31a84cab1cf610f5cda9b0f1904d9d80bc601fc7be31abcf170a444"
+    },
+    "src/eval_tools/plugins/waitcheck.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "84bcd297faee71d79f95357ef36a51ba6e463c1d03ff26876fee2eae67e198ec"
+    },
+    "src/eval_tools/probes/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "658e24493cc3c188c048f4f9520fd1108f22b5193ea8d16f29732e5f932dd95a"
+    },
+    "src/eval_tools/probes/consan_module_launcher.hip": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e24fa26c8f972d384d6275e2fb299d5fcfc60d6b96fc1fced25029d75d124e68"
+    },
+    "src/eval_tools/probes/consan_probe.hip": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e0cda3602208b8a6914b8b8ea0cacdde933fdba0447b4b9189f7f5893334acb1"
+    },
+    "src/eval_tools/probes/gpu_asan_probe.hip": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "36bc3480daaf7e301f2d4c0babefbf82ff80431052a2964aa05fb88d288a52ed"
+    },
+    "src/eval_tools/probes/hip_fpsan_probe.hip": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8e9610b8a84d2ee0144546505abbaac500126f259bf29a73e81f0e7f4c82d934"
+    },
+    "src/eval_tools/probes/rocjitsu_race_probe.hip": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e59929777e85572058885feb124b183fbc62c9b9b33ffe9c771de032e3ef477d"
+    },
+    "src/eval_tools/probes/triton_asan_probe.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5e020fbab2e82f8bde2ecb08ce589ee47beb191a5cf526e2ed7b713beff8345f"
+    },
+    "src/eval_tools/probes/triton_fpsan_probe.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "6cd5bb1302e5f08a0960c5d6b9462a68e0348504fbe6a3103ae88a1a4b67e94b"
+    },
+    "src/eval_tools/probes/waitcheck_probe.hip": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4dddc495dbae36fa77463d0740951ed2d66a6b0bf163c15a4d16028bc8b1a36b"
+    },
+    "src/eval_tools/registry.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2db2ff17c2884b8bae5d478bda50e7cd31db1283be6942ef74a5c60e72221732"
+    },
+    "src/eval_tools/reporting.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "fae7a7eed66b62e7bd279c02dcd7764c63aed56cc23363619b0a9e8255f7a19f"
+    },
+    "src/eval_tools/runtime_client.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5afaf78c3917f2e34c580e329d4c8d373299d96f4b78b19928ce979bd39ced0d"
+    },
+    "src/eval_tools/task_profile.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "df2ee3ff3adcd22988085b006c1992abe564066e56f7da719791b340c463a43c"
+    },
+    "src/eval_tools/worker.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "34561ead05fe11b882d61bcda8b4dfbe344100154cf4750ece37abfed945c402"
+    },
+    "src/evaluator.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "56a94b9db277ca2a151ecb780f9b39366079e063a69c6bef69d00fab53f00335"
+    },
+    "src/evaluator_utils.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f876720f9a6dc5157fc166ab1c83fd013086126a65bb577652c0474c08ee7379"
+    },
+    "src/harness_guard.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "36e5fde11ea9bb15f0b0d50e86c23da3e500f8905964dfcf53391f67ac67343a"
+    },
+    "src/held_out/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4287e6bf3608bf541cc31f734f8177aad5ee580219684a9861e6ca17c1dcf7c4"
+    },
+    "src/held_out/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "eb66ba368e3edae2eb62a90290a3c6d283197f2166257e2af273c38d3afcefd5"
+    },
+    "src/held_out/generate_heldout.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "9e3e4faab1a33f95e177103fc661b5f0b17545276f7637c5a6e701c23aedd302"
+    },
+    "src/held_out/injection.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "ac570bb78aedf60841b5bc6420d160043796ba98cf5952ace257011ff4efca6c"
+    },
+    "src/held_out/run_heldout_eval.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "398b73fa0eee4344c177e7b1761d76c480eb95ac64a7254bcc67b112537f490c"
+    },
+    "src/jit_rebuild.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5366a62f65224cf2193127dcfb0438cb12fe2a9309120ffb00cb51c540ec421a"
+    },
+    "src/module_registration.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "4bbd59fad30d849f9d0d860cc6d0d882da9bd53f6e13d320a0b1c02ea32b5482"
+    },
+    "src/native_baseline.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5c6f283231dbdb03de27df4a49d1ad8af9e072df56ab00ef81bb4353e5a58099"
+    },
+    "src/paired_workload.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "571fcb856b8d867047d3bc85d45a8d6d841cc74a7a1970f75f54c858ec6e1ef6"
+    },
+    "src/perf_helper_materialization.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "47d357fc080cc879d68429b53342fd8edfc5532d09033d8df710a495ecc1fbfa"
+    },
+    "src/performance.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "471f4297e6c83a8ba39fa57f4aec2ca3680a2b3f1593d5ed81e241395ab35670"
+    },
+    "src/plotting.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8e73949c22e92b8359839607e17d941827bb45b15918dfafdf8d6d04a32ddd6b"
+    },
+    "src/postprocessing.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "8f187e4e36b94726fc0da54a8159205c6fd8998265bf6dff134cf132d8577b41"
+    },
+    "src/preprocessing.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "a9b8552f443d01d9e652241611d7d5a907dfb10e8f08d071a6042d4668072df2"
+    },
+    "src/prompt_builder.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "b724a6e187a90f736cc7dc7d506a338c35eb1a83efea0291cd3360d269496dd0"
+    },
+    "src/prompts/__init__.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "src/prompts/cheatsheet/MI300X_architecture.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "74d04ed956d7bb5dc645416ed8e4efb746d1aae110c8b50d7e0aea731594610c"
+    },
+    "src/prompts/cheatsheet/MI355X_architecture.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f1ed182bf47652b4baa794719bea55adcadf178d1132236896f631cd743ee04e"
+    },
+    "src/prompts/cheatsheet/RDNA4_architecture.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5f8eb098506bd5a7f4b44e855cc96c236b1c34265af50ee4f78c89674933fe8d"
+    },
+    "src/prompts/cheatsheet/default_cheatsheet.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "d68b6fdb8a964908b4e1ead04b5277820df642353da1408321221f912d2ae36c"
+    },
+    "src/prompts/cheatsheet/flydsl_cheatsheet.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3f5b37ff20cb1eb6720e5ba1ca718d296b3aaaf63aaec73575b687206f4f97d6"
+    },
+    "src/prompts/cheatsheet/hip_cheatsheet.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4e5df86b76ee3f06897aa4e05a7aa10a696cc304d7e35f7715260c72319ae813"
+    },
+    "src/prompts/cheatsheet/hip_rdna_cheatsheet.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "546e98cb1a368bb550856c3b448920dc3aa95a188b943a888fc80540df2b3b5b"
+    },
+    "src/prompts/cheatsheet/tilelang_cheatsheet.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "d4aea58a71e5f3a5a3f1063f16bea433d5ffad2e4f4d28dab7cc824d911331e3"
+    },
+    "src/prompts/cheatsheet/triton_cheatsheet.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5d21e350ea0940fe20b674da655835e8d08f39e758af01c485449d006b478b58"
+    },
+    "src/prompts/cheatsheet/triton_rdna_cheatsheet.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8a90f9ab44f79fc22333fff170fb440ce0b5c99cab336ea2c15d7db4b42894c5"
+    },
+    "src/prompts/task_result_template.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "74adaafedd6d3afc341ced599991bdfe9e45d3ae6e0ce0340f8729ce489fbd2b"
+    },
+    "src/prompts/task_result_template_double_output.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "888e2beecb63bfaa79b4e7423ffc0965edfcb23b9957042073324dbdc008cce1"
+    },
+    "src/prompts/task_result_template_double_output_perf.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "5168764405ad7ff36aa5130dccd72310f82ceefea475fcde0af75fca308918d9"
+    },
+    "src/prompts/task_result_template_four_output_perf.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "9edad9aaf406bdd1e8d1b381f8d041620ce702a9d3605d7c396fae63ee183b9a"
+    },
+    "src/prompts/task_result_template_triple_output_perf.yaml": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "9d4da178020977bceb89e1feda0a40628fcfa3b8555165c6d0fa2b88b205b77a"
+    },
+    "src/prompts/task_type.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "07dd7a6b4b7cf4f76e76c1d7b7bdc328e4bdcf82d38c786c05f10300230d2f87"
+    },
+    "src/quality_measurements.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2bffe7b35ed7e32de84d59803ecf13527317edc675da20e60626e5ef23a05cdf"
+    },
+    "src/runtime_env.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3b6f9846dacee890a390b5fe7af53fe2fc8367417cf76d11763d94853fad98a1"
+    },
+    "src/score.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "c68a6d2e6720c500e8ab85acbca65408147f276194f5c4572a2cf4bda6424fdf"
+    },
+    "src/scripts/docker_benchmark.sh": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "2eee02afa6ff1214bfe2303b88505c8a13eedc232b12b5c56d0acc079a237841"
+    },
+    "src/scripts/seed_aiter_cache.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e73cfd2259a4b87ab502e5f634a13dad8fede56a2efee26869745f782a5137f6"
+    },
+    "src/scripts/slurm_benchmark.sh": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "0ee2c376c497802b0ce0870d33e23c054346c272d45780bc768cbc0dda153ed8"
+    },
+    "src/task_contract.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75"
+    },
+    "src/tasks.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "7c3f4119e429550226466df322a28f370b829aaf6cd17b32fe274304760f2897"
+    },
+    "src/testcases.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "7e99956a79cf20ed72512d92252d8635d16d53dd87d8032474b9edb9f7e74761"
+    },
+    "src/tools/benchmark_quality_gate.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c3f7cf34aaf07501e00e2773f65cdf28530189d52827faf26b1f64ad7872d9d4"
+    },
+    "src/tools/compare_runs.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "98f733eece4f1766a3c7e82c305814128bb6fc0ad17f77e0224684c246e8d6ed"
+    },
+    "src/tools/custom_perf_protocols.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "675a2b15e9db5af944835022126421640ef1cc4bbd0cd1e413824e906702a751"
+    },
+    "src/tools/gpu_binding.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4b2ada8584cce3e92301e4a3bdb8e8abfcfb8ec62b0be250d727fc24372b899b"
+    },
+    "src/tools/materialize_perf_helpers.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8b7c188069b346c157a56c99dad49f5f327bcb245b9e34eb3085e19095fb49a6"
+    },
+    "src/tools/materialize_task_contract.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4f0640d797293592fa7c80a7ab935f9effa74c5b25f999d2bbbb15ecd4c753d5"
+    },
+    "src/tools/perf/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8bf4b6926c29d57401ca7578b5b503faabded9b3a2a2311f824c359998d67366"
+    },
+    "src/tools/perf/aka_benchmark.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "40d97860647ee0a939b80c76f1de4a79758cff67fa6aa008670c42a202a82ed3"
+    },
+    "src/tools/perf/custom_protocols.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "a67356d2d39d38dae88e066635a0d504f00e4cacebbc8ab0f622063c2dc007e3"
+    },
+    "src/tools/perf/native_hip_graph_benchmark.hpp": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "cc772efcd4097647d0ed344ee2c49b2bb5d39ea48eea42ce9c0d618f9b53eb82"
+    },
+    "src/tools/perf/performance_utils_pytest.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0da0691dafd29201ffbb5541d61de406c319508c6901cbeeec0af4aa1f90c3cf"
+    },
+    "src/tools/perf/vllm_cuda_graph_block.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3b7b0ca24a2d3abd36efe6876539561ec14d7709e3979130c0737f9192237f51"
+    },
+    "src/tools/prepare_head_kernel_artifacts.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "d21de99f2dd0bede0a0b2789b7f82919bc10f3b57647281b0c9d514fd1c63a80"
+    },
+    "src/tools/seed_aiter_jit_cache.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "a6941d31c2213ee133846f3a5fba1c3257d3eb0bfa0f8e22b4098ddd01350447"
+    },
+    "src/tools/sync_perf_helpers.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "460d739dae31efb36816cc10dbb0cc8e6cb35602ecd91bd36e405944cbd2687f"
+    },
+    "src/tools/trusted_fixtures.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "4b122fd1297672f7b25f10d1b19d850bef034e2f387cf220f3283d645e22639f"
+    },
+    "src/tools/trusted_native_eval.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5205dd661b67aae13672117000c971bcd396e3f7bf329a18abbc1c6d11e32fe0"
+    },
+    "src/tools/trusted_qwen_eval.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "bbc15998e1ff2009d8f3217ad5f7af6ee42838d008e668c3de191d7ffc9d9b33"
+    },
+    "src/tools/trusted_qwen_phase.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2f30f7922464d4b3bdbc90b57b41c5e9d382b6ad716ca70978145c9943abab27"
+    },
+    "src/tools/trusted_task_eval.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "1a7ffc03fcead53f1b01962586c48635c351c0137064a40618d1188a92656c17"
+    },
+    "src/utils/report_generation.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "4d4317726c52eabb87c7e7cd6bd9bc47c7846a4137837161896f3f93161b0784"
+    },
+    "src/utils/utils.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "6ea614d4ed2029cee83841bc40c09fe544053f0ade1ef1463541df231f87cd10"
+    },
+    "src/visualization/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3ebac4e7f6e16015f6dbf6827f0e2adb153e51d942033ab60675bd28ef71b64e"
+    },
+    "src/visualization/__init__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "bb1684218b98d6c382f8384fc4b6057316a91f3520b63fc61afeb0d1926ff3f4"
+    },
+    "src/visualization/__main__.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "5a1eb1e9fefd5e1ba77f690960eab5bcf8d240f6dfb511dab6574f4298ad847a"
+    },
+    "src/visualization/build_data.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "7bad690413b3747a61b7bed12c7eb896c0ff48cf3719d426350b67e9591f0fc5"
+    },
+    "src/visualization/frontend/dashboard/app.js": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c998720098fe19074c7c31c13e79d50ed3985114ed5acfd09decd7bf4caf0c6d"
+    },
+    "src/visualization/frontend/dashboard/styles.css": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3675bb3e6fab88ce5bbddaa5fdaa94d9c4b53fdb694c4e4c84b933db6ed7578a"
+    },
+    "src/visualization/frontend/index.html": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "36f5b29d10178695d78bd94c30cd25bbc8de0a578eb6f9fcbead220565ffad6c"
+    },
+    "src/visualization/paths.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0e8f5e9dfa4d0cec55139f88428e628a7cc6d62d924d767322772629a39a9e9e"
+    },
+    "src/visualization/server.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "9cf3ce13470bd2b0d358f00c158c4401326fbc76713341441b71b94d1515c7b7"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/CAPTURE-ADMISSION.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "6e469ef2d27ab4439d63923d8c074035bc341746612aa10cac2bcafbfb208bfd"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/README.md": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "80c9e6b535408328137178f9094a0072167e771e8d1dd17ff9345cff8a1fbd4e"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/SOURCE-PROVENANCE.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "34355c890ecaa5e98a50c3d400cc68d078dbc501d4fd42f5a2dbb76559c9cbda"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/capture/INTEGRATION.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0bc01aed3bf0cf412121a7bb1b7a2cc922b97b8c3bfb2b399e1dfd10f705e9ee"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/capture/adapter.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "fee74c5b53eb62e3657e09703a34a0f6bdd07cc402a9f0cd86bb19ddee1e32e7"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/cases.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "72e2d6ca920ad288804d58ba03bca6da257f1cdceed55688b77cddd486b25869"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/config.yaml": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "1fde1a593add9ea40a2389bf33cc57f629780b761c887f22984407ef40bfd3b1"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/fixtures/EXTERNAL-MANIFEST.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "38b9e7e8952710b8fc87621520ca3c1203d7d8366dc830d9e92bdb588c21f037"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/provenance/FULL-WORKLOAD-194969.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "837ac5ff4c44a03f0a325fc1a415404586bd3907902affc25758fddf2fdef4bc"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/provenance/HISTORICAL-NOT-BUILT.txt": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "d169edb8ba374cf2165aa0072f9e59f6fd81cc951ea5a26d60e822e7726dc26a"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/provenance/NATIVE-CAPTURE-BINDING-REPAIR.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e9cbfa6f7290712f0509e58d134eb93ef33eaa394f7581e1941518e07d319be9"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/provenance/OBSERVED-PRESENCE.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f075e7f38eeeb94e3de5f9a4212983f9a27e7969443deaf32cf900b0eb20892f"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/provenance/VALIDATOR-HASH-BOUNDARY-194969.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "c86f322baaaa34462b211d404deb76e689b01298ca044f2a75a3c2a9a02d6c83"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/scripts/check_draft.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "290cb4f37430c4d2891abc58813d47a27c6701176d1461797c97b26201321f99"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/scripts/check_source_binding.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "6649cbc592fe1682eeef82cf91e0cdbe9ca51ef9b9de42f3cf39c822c473c168"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/scripts/import_capture.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e1021600534cca6fa483ce9f37d4c81f023d9e28160ebaef25dda37c7c65bc3c"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/scripts/make_source_controls.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3cc53007ff8dd74e212e35f7e93319ad2dc7ee117f98ecccb0d5ffe6760aa337"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/scripts/native_smoke.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "91b7c54230ede60f12e25ed8d1a64f8e5d9330986033c3671ef7e2ad055944ef"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/scripts/prepare_native_smoke.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "ff8080afe4b3af0400f63861709645174ad9ce22b734e6938b58bb1669cdb36e"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/scripts/task_runner.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8c2e194299313e543b6157222e395d89ca77502f68e0c68ddebe9375fdadbecf"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/source/kernel.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "66d8611eae70089b20639eae8dc94ae4df1d7a5cf537317575ea89adf9944fbf"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/task_definition.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "061c174388f3b369f44daf20af58ac87caf0f536de076b1da030d3a8ca2a3ee0"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/tests/test_admission.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e79442881c8159f793891529f4aed0e40f4f4fccf93cebcd47e53a3f49a00798"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/tests/test_compat_import.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "faa9229a2e536c05efecba1a831bbf5c4a9d2d8b0fec0ed94b652c94ec9cd143"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/tests/test_draft.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "e5653e64b4d56b39e46e436da4e1534ae0dc8347cf20deb0857771b65ef6dcfa"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/tests/test_package_hash.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "89d87f3fbe917e5212c618f138e377cc740d510ca0256badf518cdebc8709f43"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/tests/test_smoke_protocol.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2b644afc81d13774516ad36346d301bce528379d7504e1ecfec82a3c6451b922"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/tests/test_write_ownership.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "9907dd81615c4c57ff7ec8aed2858a0c1f6c09dde49c081a08d227fb0d1c1f8d"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/admission.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0dfd2250830c789d552e52ca13a9544f176f0e3f5bed9876f0be462db94e664e"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/binding.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "42967484c96589c708e17143e40b0d9104f24fccee3495288bc4555254b73691"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/capture_contract.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0bbb4c8dcbcec81f96275f812442d7fd3e8a707d6a6ae9abb5b71c466af97e66"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/evaluation_contract.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/fixture_codec.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "502d14650ef6f3b685776ed0b7a0cc219e274a7025d6c606988eb9484dae17c8"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/native/quark_linear.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "a39b1c745c354782e91aaf54ec1673638aeaa7601acb19b35569a22653976570"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/native/triton_compat.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "39b69b1c44d4d7ef1a88e4c082d422ac320f5bec150474a1865831bffce5ed64"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/native/wrapper.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "6d7da580b9465905a092996287c05af9920402fb7c14b5d9c1e71de40456a09c"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/reference.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8a8aa1ddcdc32611cbd9075ba75821e804ba80c447da61507db09de34ddcbc53"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/reference/kernel.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "66d8611eae70089b20639eae8dc94ae4df1d7a5cf537317575ea89adf9944fbf"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/runtime.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "3804a04972a5aa79123e346318e944df636ab272dc85ff909b8b37f24034f273"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/source_guard.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "f84d8e5c6c1c870f8865c2c7bbc1d24477d50ad5cb3e89ab19f8408a3cb12213"
+    },
+    "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/ut/write_ownership.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "a04bd37eea227520f579f105537c7aa4cc2778e200ca5e7ec120aa912898c2a7"
+    },
+    "tools/build_suite.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "7c88094afda56b57071e5713acd9439e0d6ba064bfcaa4c72f027cb8ccaba1f3"
+    },
+    "tools/clean.sh": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "1b98252ebdc7cc16573ce5422139019d2d1b6c9bcbee37dcdca4423a3ceef249"
+    },
+    "tools/emit_manifest.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "4c3a5970db773069359ba016909425c75571da99b92c354758028bdd5b31cdfe"
+    },
+    "tools/headkernel-artifacts.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2cfaa201c704dbffa97903f4ed3279be9675c68e90ca30af57618e4a11a726b1"
+    },
+    "tools/headkernel-public-runtimes.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8ddd0dfe2142467362f9ba9fc29e549b82db32cd9b728138b8c4300c31f80f35"
+    },
+    "tools/headkernel-publication.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "391a238a70d47c3e6eb2ac1e39fbe3ab52680977f5ddbb50754282502df4e0df"
+    },
+    "tools/headkernel-reported-results.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "8f60ec075dacda3e31d0dcc2f70dc5cd590d9e004c53996fe10d6bc175843022"
+    },
+    "tools/headkernel-runtime-targets.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "aa7f43ad19a8d11f364c1010ac2ee89faf5a0999399f37c1942e5699d13a68f7"
+    },
+    "tools/headkernel-setup-artifacts.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "fd8f22cb31b2761ca1d8532ab7685e69f2212ce850d10551352ae908b33c754d"
+    },
+    "tools/headkernel-setup.SHA256SUMS": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "2e097379a171aeded0e9f3069f34d1f196683328fd74ce258f8b522a3026857d"
+    },
+    "tools/headkernel-sg520-refresh.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "98e7ac154d2b01f2f6d293f1d3c2f1dab43051a3428c29d0908d25d2bc56bf40"
+    },
+    "tools/manifest.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "7ae7fb94ee8b3117cb357764405926824a993f7bfcf58c605be98f501f8415fb"
+    },
+    "tools/prepare_headkernel_run.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "0334b747889312085bc78891307566d38e6180d7cd2ed75216ed792cc0d6b0f1"
+    },
+    "tools/relay.sh": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "925491c0b58adffe355de566568247ef358e13f1da5c087377bc96075741422f"
+    },
+    "tools/relink_oracles.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "28ab4f40761f96c794827ec7d02ec24712bbd2f984f3a4fd4b313e9d4f8b9359"
+    },
+    "tools/run_on_gpu.sh": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "6073c954a41489ce807f338785ed660824eb92e039bb93b067e0b0966a3d4119"
+    },
+    "tools/summarize_runs.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "7b5413a51b38533f0de497e2aefff88679aaa1d59b2adc0c99947ab70b055489"
+    },
+    "tools/templates/_bench.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "aafe92b3f7c809f96a87930f5dd8e60e1c2d161fdf57debb5a2a1bcd2cc94419"
+    },
+    "tools/templates/task_runner.py": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "44b9311111588a4c66c5f31df03951c578b05c62af39f96a67717a833ddf6865"
+    },
+    "tools/upstream-source/SOURCE-MANIFEST.json": {
+      "git_mode": "100644",
+      "kind": "file",
+      "sha256": "608a6637ec9fa58748cfa359640677615cc2e5c438a5122ee14198a11ca8a31d"
+    },
+    "tools/validate_suite.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "856e9fd8caf9e4cfb46baed5c15c3452864e46b0481701f1c3c267462b71c7da"
+    },
+    "tools/validate_task.py": {
+      "git_mode": "100755",
+      "kind": "file",
+      "sha256": "61b261315992f79e60cbd033a0b527628815283e66c703025d0cc59116ff64e2"
+    }
+  },
+  "pinned_commit": "5854b2ac7a55fb287fc1b5d4d6fd4741f0b51476",
+  "policy": "Every tracked file in src/, agents/, tools/, docker/, the FP4 task, root-level files and both scoped configs; no quality-policy or quality-admission module omitted. External fixture objects remain bound by their tracked manifest.",
+  "qualified_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "schema": "exact-qualified-runtime-pins-v1",
+  "task": "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel",
+  "task_tree": "795611e8f0c602084338e47bd5f3a601da8b8744"
+}
