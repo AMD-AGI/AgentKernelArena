@@ -2,10 +2,19 @@
 # Head kernel from the 2026-09-14 info table, rows: Q38-1, Q38-2, Q38-3
 
 source_file_path:
-  - source/moe_candidate.py
+  - source/routing.py
 
 target_kernel_functions:
-  - fused_moe
+  - select_routes
+
+benchmark_quality:
+  schema_version: 1
+  adapter: qwen_mxfp4_moe_graph_v1
+  validator_sha256: 89dc2f7a012c442e911fd187847e64848d65ed4e05b63d798ce6b275bd83dcf4
+
+harness_protection:
+  freeze_task_inputs: true
+  reject_new_source_symlinks: true
 
 compile_command:
   - python3 scripts/task_runner.py compile
@@ -16,7 +25,14 @@ correctness_command:
 performance_command:
   - python3 scripts/task_runner.py performance
 
+harness_path: scripts/_bench.py
+
 task_type: triton2triton
+
+platform_support:
+  required_arch: gfx950
+  status: active
+  skip_reason: null
 
 task_result_template: null
 
@@ -35,21 +51,23 @@ prompt:
       - mfma_moe2_afp4_wfp4_bf16_cshuffle_t32x128x256 [atomic_bnt2 -> atomic]  (11.58% GPU, roofline 75.47% memory-bound)
       - FMoE 2-stage - S1 t64x128 + S2 atomic -> S1 t128x64 + S2 atomic_persist  (15.73% GPU, roofline 22.6% memory-bound)
 
-    Edit only:
-      source/moe_candidate.py
+    This is a constrained native routing task. The SG520 device implementation is
+    image-owned and verified against the protected native source checksum.
+    Edit only source/routing.py. Keep the zero-argument select_routes signature
+    and return a literal dictionary naming both captured cases exactly once.
+    Each value must be captured, block32, block64, or block128. The latter three
+    change only the native block_size_M hint. Unsupported native combinations
+    fail the entire task; they are never skipped or replaced by a fallback.
 
-    Entry points that must keep their signatures:
-      fused_moe
-
-    Do NOT remove these - they are not optimization targets, but the two-leg unit
-    test resolves its frozen baseline through them, and deleting one turns a
-    working kernel into an unexplained correctness failure:
-      baseline_callable
-      _BASELINE
-
-    The production seam is `aiter.fused_moe:fused_moe`; correctness is judged
-    against a frozen live-server capture, not a re-derived reference, so the kernel
-    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+    The file is parsed as data and is never imported or executed. Imports,
+    callbacks, helper functions, decorators, expressions and module statements
+    are outside the task boundary. Preserve the captured packed weights, scales,
+    top-k routes, expert mask, shapes, strides, dtypes, activation and quantization.
+    Both original cases must pass the captured oracle, three fresh hidden-input
+    draws, fresh-output/input-immutability checks, two graph replay values,
+    output corruption and no-op controls, and both native stage engagement checks.
+    Performance uses 10 warmups and 100 ordered single-replay graph samples;
+    every completed replay is checked using CPU-owned observations.
   cheatsheet: null
 
 # ---------------------------------------------------------------------------
@@ -67,15 +85,9 @@ headkernel:
   tol: 0.02
   oracle: "frozen live-capture ut/reference_io.pt"
   source_package: P/fused_moe_mxfp4_task
-  source_seed: "stock+harness-shim"
-  # Symbols the UT resolves its frozen baseline through. They are not
-  # optimization targets, but deleting one turns a working kernel into an
-  # opaque correctness FAIL, so scripts/task_runner.py compile checks them.
-  preserve_symbols:
-    - baseline_callable
-    - _BASELINE
-  # source/ is the stock runtime-image file plus 10 line(s) of UT harness shim (the two-leg
-  # UT resolves its frozen baseline through them). Nothing has been pre-optimized.
+  source_seed: "captured native routing policy"
+  optimization_scope: native_block_size_routing
+  fixture_topology: SG518 TP8/EP8; 64 local experts of 512
   info_rows:
     - row: "Q38-1"
       info_kernel: "mfma_moe1_silu_mul_afp4_wfp4_bf16_t32x128x256_pm1_async_v32 -> t32x32x256"
@@ -96,4 +108,4 @@ headkernel:
       optimized_roofline: "23.7% memory-bound"
       e2e_uplift: "E1 FMoE 6-row +1.025%; E3 E1+E2 native stack +3.922%"
   symbol_locations:
-    fused_moe: source/moe_candidate.py
+    select_routes: source/routing.py
