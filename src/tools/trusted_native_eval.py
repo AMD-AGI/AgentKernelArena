@@ -67,7 +67,7 @@ def read_regular(path):
         os.close(directory)
 
 
-def extract_task(repo, commit, task_path, destination):
+def extract_task(repo, commit, task_path, destination, *, allow_internal_symlinks=False):
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         raise ValueError("--commit must be an explicit full Git commit hash")
     relative = PurePosixPath(task_path)
@@ -79,6 +79,7 @@ def extract_task(repo, commit, task_path, destination):
         raise ValueError("Git object is not the requested commit")
     archive = subprocess.check_output(git + ["archive", "--format=tar", commit, "--", str(relative)])
     destination.mkdir()
+    links = []
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         for member in tar:
             name = PurePosixPath(member.name)
@@ -96,8 +97,18 @@ def extract_task(repo, commit, task_path, destination):
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with tar.extractfile(member) as handle:
                     target.write_bytes(handle.read())
+            elif member.issym() and allow_internal_symlinks:
+                links.append((target, member.linkname))
             else:
                 raise ValueError("unsupported task package: only regular files and directories are accepted")
+    for target, link in links:
+        if PurePosixPath(link).is_absolute():
+            raise ValueError("committed task symlink escapes its package")
+        link_target = (target.parent / link).resolve(strict=True)
+        if not link_target.is_relative_to(destination.resolve()) or not link_target.is_file():
+            raise ValueError("committed task symlink must target a regular in-package file")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(link)
     return resolved
 
 
