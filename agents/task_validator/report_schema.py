@@ -504,6 +504,23 @@ def _atomic_yaml_dump(path: Path, data: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
+def _bind_integrity_requirement(workspace: Path, report: dict, previous: Any) -> dict | None:
+    """Cover the lifecycle and attempt with the report digest, even in archives."""
+    from src.validator_integrity import REPORT_LIFECYCLE, integrity_marker_requirement
+
+    requirement = integrity_marker_requirement(workspace)
+    if requirement is not None:
+        report["validator_integrity"] = {
+            "required": True, "lifecycle": REPORT_LIFECYCLE,
+            "attempt": requirement["attempt"],
+        }
+    elif isinstance(previous, dict) and "validator_integrity" in previous:
+        # Re-normalizing an archived report must not erase its obligation just
+        # because the external active.json did not travel with the workspace.
+        report["validator_integrity"] = previous["validator_integrity"]
+    return requirement
+
+
 def finalize_report(
     workspace: str | Path,
     *,
@@ -586,13 +603,35 @@ def finalize_report(
         expected_task_name=expected_task_name,
         framework_error=framework_error,
     )
+    requirement = _bind_integrity_requirement(workspace_path, report, raw_report)
     _atomic_yaml_dump(report_path, report)
     digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
-    _atomic_yaml_dump(
-        marker_path,
-        {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest},
-    )
+    marker = {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest}
+    if requirement is not None:
+        marker["validator_integrity"] = requirement
+    _atomic_yaml_dump(marker_path, marker)
     return report
+
+
+def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> None:
+    """Record a failed audit without running any task-controlled helper code."""
+    report_path = workspace / REPORT_FILENAME
+    try:
+        raw = yaml.safe_load(report_path.read_text()) if report_path.is_file() and not report_path.is_symlink() else None
+    except (OSError, yaml.YAMLError):
+        raw = None
+    if isinstance(raw, dict) and isinstance(raw.get("checks"), dict):
+        raw["checks"]["harness_integrity"] = {
+            "status": "FAIL", "details": error, "post_validator_integrity_verified": False,
+        }
+    report = normalize_report(raw, expected_task_name=task_name, framework_error=error)
+    requirement = _bind_integrity_requirement(workspace, report, raw)
+    _atomic_yaml_dump(report_path, report)
+    _atomic_yaml_dump(workspace / COMPLETION_MARKER_FILENAME, {
+        "validation_schema_version": REPORT_SCHEMA_VERSION,
+        "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+        "validator_integrity": requirement or {"required": True, "status": "PENDING"},
+    })
 
 
 def validation_report_is_complete(workspace: str | Path) -> bool:
@@ -626,4 +665,7 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
         for name in CHECK_NAMES
     ):
         return False
-    return report.get("overall_status") == compute_overall_status(report)
+    if report.get("overall_status") != compute_overall_status(report):
+        return False
+    from src.validator_integrity import completion_integrity_matches
+    return completion_integrity_matches(workspace_path, marker, report)

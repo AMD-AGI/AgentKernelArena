@@ -54,8 +54,10 @@ make docker-parallel-run \
 ```
 
 Parallel resume skips only validator tasks with a framework-finalized schema-v3
-report and matching completion digest. A partial, legacy, or manually copied
-`validation_report.yaml` is rerun.
+report and matching completion digest. New `main.py` runs also require the
+completed post-validator integrity receipt described below. A partial or
+unfinalized report, or a report whose required integrity check is pending, is
+rerun.
 
 ## Validator configuration
 
@@ -148,6 +150,70 @@ same protected performance entrypoint, so a task runner does not need an in-proc
 reference timing path. Judgment-heavy WARN/FAIL results include source-line or runtime
 case evidence; genuinely unavailable evidence is reported as WARN rather than inferred
 as a failure.
+
+## Post-validator input integrity
+
+`main.py` snapshots the protected workspace inputs before launching the validator
+and compares them again after the launcher returns, before accepting completion.
+The comparison therefore follows the complete compile, correctness, performance,
+and report-finalization flow, including any whole-case workers. A launcher error
+still triggers this comparison. A report or `.validation_complete` marker written
+before the comparison finishes cannot complete or resume the new audit.
+
+Validation rejects changed or deleted protected inputs, changed path types or
+symlink targets, and newly added protected files. Added files remain in place as
+failure evidence: removing them after the commands ran would not establish which
+inputs the commands used. Ordinary optimization retains its existing behavior of
+discarding newly added protected files before centralized evaluation.
+
+Tasks with `trusted_evaluation` or
+`harness_protection.freeze_task_inputs: true` additionally freeze the original
+bytes of their declared submission sources for this audit, using the existing
+repository-aware source-path resolver. This includes kernel function bodies that
+are editable during optimization. Other tasks retain their existing masked-source
+boundary. Complete-input protection retains the configured runtime-output
+exclusions: build outputs (including `build/private` worker data), declared
+`harness_protection.runtime_outputs`, validator audit directories, and bytecode
+caches do not become new protected inputs merely because the commands create them.
+
+The framework retains a separate attempt directory outside the task workspace:
+
+```text
+<run-directory>/.validator-integrity/<workspace-name>/<attempt>/
+  before.json
+  sources/manifest.json       # present when raw source freezing applies
+  sources/files/...
+  result.json
+```
+
+`before.json` records the actual pre-launch digests, path/link observations, and
+source fingerprint. `result.json` records the observed comparison, any errors,
+and the report digest. Every harness digest states its scope: full file bytes,
+an AST with editable Python bodies masked, or the existing co-located harness
+AST mask. The separate declared-source fingerprint covers full source bytes,
+presence, and source alias identity. A masked digest must not be described as a
+full-byte source check. If changed topology prevents a safe after-scan, that
+observation is unavailable (`null`), not a fabricated matching hash.
+
+The workspace receives the same receipt as `validation_integrity.json`.
+`.validation_complete` binds its hash, attempt identity, integrity status, and
+the finalized report. The report itself declares the required integrity lifecycle
+and attempt identity, covered by its report digest. Removing integrity metadata
+from an archived marker cannot turn that report into a legacy completion; its
+matching marker and receipt remain required. Archive **the report, completion
+marker, and integrity receipt together**; they allow the completed audit to be checked after copying
+the workspace. Preserve the outside attempt directory as well when retaining
+original source copies and incomplete attempts. Pending checks, missing or
+altered required receipts, and failed receipt publication do not qualify as
+complete. A finalized integrity failure is recorded as a failed audit and can
+never qualify as a PASS.
+
+`framework_guard_enforced` in the report describes the configured optimization
+guard. The post-validator receipt supplies the observed enforcement evidence for
+this particular audit. Existing schema-v3 reports created outside this new
+`main.py` lifecycle retain their prior compatibility; they do not retroactively
+prove the new post-run checks. These receipts establish input integrity, not a
+filesystem/process sandbox, GPU-worker retirement, or global device idleness.
 
 ## Result template
 
