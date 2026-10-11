@@ -131,7 +131,8 @@ class Tests(unittest.TestCase):
                 stack.enter_context(patch.object(production_comparison.task,'ROOT',Path(directory)))
                 stack.enter_context(patch.object(production_comparison,'compare',side_effect=calibrate))
                 stack.enter_context(patch.dict(production_comparison.CONTEXT,context,clear=True))
-                stack.enter_context(patch.object(native_precision,'asm_partials',return_value=parts))
+                stack.enter_context(patch.object(native_precision,'prepare_native_reference',return_value={
+                    'partials':parts,'input_fingerprint':native_precision._input_fingerprint(inputs),'evidence':{}}))
                 stack.enter_context(patch.object(native_precision,'exact_pair_orders',side_effect=lambda *args:exact_pair_orders(*args,max_orders=0)))
                 stack.enter_context(fault())
                 with self.assertRaises(NativeOrderProofError) as caught:production_comparison.main()

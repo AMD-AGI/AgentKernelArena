@@ -19,9 +19,16 @@ def compare(request=None):
     for case in manifest['cases']:
         CONTEXT.update(case_id=case['case_id'],live_fixture=case['live_fixture'],phase='captured_fixture_calibration',seed=1,challenge_base=challenge)
         tensors,port,observe,initialize,verify,reset,reference=task.build_state(case,1,module)
+        native_reference=None
         def reset_live(seed):
+            nonlocal native_reference
             CONTEXT['seed']=seed*2+1
-            return reset(seed*2+1)
+            reference=reset(seed*2+1)
+            from native_precision import prepare_native_reference
+            # Both measured legs receive identical reference preparation outside
+            # the timing interval. No reference GPU output survives preparation.
+            native_reference=prepare_native_reference(case,reference[1])
+            return reference
         family=case['live_fixture']['capture_family'];provenance=task.strict_json((task.ROOT/'provenance/NATIVE-BASELINE.json').read_text())
         if family=='fp8_gemm':
             native_module=importlib.import_module('aiter.ops.gemm_op_a8w8')
@@ -46,7 +53,7 @@ def compare(request=None):
         for label,invoke in [('candidate_port',port),('native_production',production)]:
             CONTEXT['phase']=label
             def leg_verify(ref,_native=label=='native_production'):
-                record=verify(ref,native=_native)
+                record=verify(ref,native=_native,native_reference=native_reference)
                 if record and record['strict_failure_elements']:precision_proofs.append({'seed':CONTEXT['seed'],**record})
             reference=reset_live(challenge);initialize();invoke();torch.cuda.synchronize();leg_verify(reference)
             stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())

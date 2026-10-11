@@ -1,5 +1,5 @@
 {
-  "schema": "source-derived-native-ASM-bf16-calibration-v1",
+  "schema": "source-bound-native-ASM-split-reference-v2",
   "source_sha256": {
     "aiter/tuned_gemm.py": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
     "csrc/py_itfs_cu/asm_gemm_a16w16.cu": "e4e44924230209e00c627297373e434c1c43abb650cc77f0303f21ac5e2a1639",
@@ -13,7 +13,7 @@
     "atomic_updates": "0x52d0..0x5340 global_atomic_pk_add_bf16 after LDS layout transpose; one shared arrival order per adjacent BF16 pair; round to nearest even after each atomic update.",
     "initialization": "0x2ca0..0x2d18: split0 waits for semaphore and clears output before release."
   },
-  "acceptance": "Original rtol0.01/atol0.02 first on every native element. Each failing pair must equal an explicit shared legal order of16 input-derived BF16 partials bit for bit. The existing fast order search is followed by inverse subset reachability under protected aggregate work limits. Every fallback witness is independently replayed before acceptance. Budget exhaustion or solver/replay exceptions reject without tolerance expansion or interval-based acceptance.",
+  "acceptance": "Original rtol0.01/atol0.02 first on every native element. Each failing pair must equal one explicit shared legal order of16 input-derived BF16 partials obtained from the pinned native kernel with other K partitions zeroed. Every full partial matrix is independently checked against CPU FP64 mathematics using the existing candidate pointwise and scale-relative thresholds. Exact-order work limits and independent witness replay remain unchanged. Candidates never use this exception.",
   "candidate_float32": {
     "rtol": 1.3e-06,
     "atol": 1e-05,
@@ -90,5 +90,32 @@
       "limit_basis": "The independently enumerated113-outcome fixture plus its jointly unreachable target consumes1group,4,174states and39,119transitions. Fixed limits retain headroom while bounding unobserved work; exhaustion remains a proof failure.",
       "exhaustion": "NativeOrderProofError with original pending pair bits, protected limits, aggregate counters, exhausted resource and failure stage; never acceptance."
     }
+  },
+  "native_partial_reference": {
+    "method": "pinned_native_zero_masked_K_partitions",
+    "scope": "Only the existing BF16 M64/N128/K4096 ASM splitK16 configuration",
+    "protected_function": "ut/native_precision.py:prepare_native_reference",
+    "calls_per_reference": 16,
+    "partitions": 16,
+    "K_elements_per_partition": 256,
+    "independent_check": "CPU FP64 dot for each full partial matrix, rounded to BF16, then existing candidate_close pointwise AND scale-relative checks",
+    "candidate_thresholds_changed": false,
+    "reference_results_retained_on": "CPU only",
+    "preparation": "Same fresh input reference preparation outside timing for both measured comparison legs",
+    "witness": "Accepted exact-order witnesses include the actual BF16 partial bits",
+    "GPU_validation_status": "pending_fresh_lane_grant"
+  },
+  "superseded_CPU_model": {
+    "function": "asm_partials",
+    "used_for_runtime_acceptance": false,
+    "retained_CPU_matmul_BF16_partial_mismatches": 9,
+    "captured_MFMA_updates_not_equal_to_single_round_dot16_plus_C": 32,
+    "captured_target_updates": 320,
+    "nearest_fixed_eight_product_rule": {
+      "update_mismatches": 2,
+      "full_FP32_partial_mismatches": 3189,
+      "full_BF16_partial_mismatches": 1
+    },
+    "reason": "The discrepancy occurs inside hardware MFMA accumulation before BF16 conversion, and is not explained by denormals or a conversion-constant change. No data-fit correction is used."
   }
 }

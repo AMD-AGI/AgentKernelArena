@@ -592,6 +592,25 @@
           "42967484c96589c708e17143e40b0d9104f24fccee3495288bc4555254b73691"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "Pinned native zero-masked K partitions supply CPU-owned partials, each independently checked against CPU FP64 mathematics. Both timed legs use symmetric reference preparation; unchanged candidate thresholds and exact shared BF16-order witnesses remain mandatory.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "0ef1d195ce6bc2eada838b3090fc6e5ab6d9be44a31c4b77f1198f7bbfe93fa7"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "52ccedb239e447b328978860e6fe9689fb53cd83290d13df6aa24387e1ac35c3"
+        ],
+        "ut/native_precision.py": [
+          "743cf53aa536b528016b744e228ddd72317fb1a0821a1aba81e1aa57776ce189"
+        ],
+        "ut/native_order_exact.py": [
+          "1b306a02afb375ed28253013e25d1e423d8f5c4f0effd85c1768f5acbabb5ae8"
+        ]
+      }
     }
   ]
 }
