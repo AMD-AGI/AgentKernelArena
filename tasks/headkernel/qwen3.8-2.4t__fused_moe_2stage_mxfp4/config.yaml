@@ -7,6 +7,15 @@ source_file_path:
 target_kernel_functions:
   - select_routes
 
+benchmark_quality:
+  schema_version: 1
+  adapter: qwen_mxfp4_moe_graph_v1
+  validator_sha256: 89dc2f7a012c442e911fd187847e64848d65ed4e05b63d798ce6b275bd83dcf4
+
+harness_protection:
+  freeze_task_inputs: true
+  reject_new_source_symlinks: true
+
 compile_command:
   - python3 scripts/task_runner.py compile
 

@@ -21,6 +21,11 @@ _QWEN_GRAPH_PROFILES = {
         'targets': ['gemma_fused_add_rmsnorm', '_gemma_fused_add_rmsnorm_kernel'],
         'op_kind': 'fused_add_rmsnorm', 'cases': 2,
     },
+    'qwen_mxfp4_moe_graph_v1': {
+        'task_type': 'triton2triton', 'sources': ['source/routing.py'], 'targets': ['select_routes'],
+        'op_kind': 'moe', 'cases': 2, 'native_routing': True, 'routing_kind': 'moe',
+        'validator': 'scripts/_routing_contract.py',
+    },
 }
 
 
@@ -185,7 +190,8 @@ def _qwen_graph_cases(root, config, report):
 def _qwen_native_routing_cases(root, profile, report, manifest, metadata, sources, namespace):
     """Use the protected literal-route validator, never execute selector code."""
     from .native_baseline import read_task_file
-    require(manifest.get('native_routing', {}).get('kind') == profile['routing_kind'],
+    routing = manifest.get('native_routing')
+    require(isinstance(routing, dict) and routing.get('kind') == profile['routing_kind'],
             'Qwen native routing kind differs from its registered profile')
     native_path = 'ut/' + manifest['source_provenance']['baseline_ref']
     read_task_file(root, native_path)  # Enforce regular task-contained paths before the validator reads them.
@@ -197,6 +203,7 @@ def _qwen_native_routing_cases(root, profile, report, manifest, metadata, source
             and source['meta_sha256'] == hashlib.sha256(metadata).hexdigest(),
             'Qwen native routing source/metadata differs')
     raw = strict_json(read_task_file(root, 'build/reports/' + request['run_id'] + '/raw.json').decode())
+    require(isinstance(raw, dict), 'Qwen native routing raw report must be a mapping')
     rows = namespace['validate_payload'](raw, manifest, request)
     rows = [dict(row, test_case_id=row['sig'], execution_time_ms=row['mean_ms']) for row in rows]
     require(len(rows) == profile['cases'] and report.get('test_cases') == rows

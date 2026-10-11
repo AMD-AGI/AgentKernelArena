@@ -72,6 +72,14 @@ Every phase has a new request id and atomically publishes a complete report to
 `ut/negative_check.json`, capture metadata and telemetry remain immutable.
 `ut/unittest.py` is a compatibility entrypoint for the complete correctness phase.
 
+Ordinary framework scoring and task validation require the explicit
+`qwen_mxfp4_moe_graph_v1` quality adapter. It rechecks the protected request and
+complete raw report, retaining all samples and the selector's byte hash. Gain
+attribution uses the validated effective routing choices: unchanged choices,
+including comment-only edits, earn no speedup. An extreme timing outlier in
+either leg rejects the complete comparison. The harness guard freezes the full
+task input package while keeping the constrained selector editable.
+
 CPU regressions exercise the literal boundary, unchanged-source normalization,
 complete report validation, native hint routing, mutation rejection before the
 reference, and the actual canonical graph adapter with a simulated device. Run
