@@ -1,5 +1,6 @@
 """Protected Kimi entrypoint; the frozen fixture adapter supplies native bindings."""
 import argparse
+import gc
 import hashlib
 import importlib.util
 import json
@@ -101,36 +102,43 @@ def main():
             print(json.dumps(progress),flush=True)
             if case['calls_per_sample'] != 1:
                 raise ValueError('Each scored Kimi graph replay must represent one native call')
-            prepared = runtime.prepare_case(case)
-            callbacks = prepared.callbacks
-            if not isinstance(callbacks, FreshCallbacks):
-                raise TypeError('Native fixture adapter must use the protected FreshCallbacks')
-            callbacks.replay = prepared.invoke_candidate
-            callbacks.check_once(request['challenge_seed'])
-            if canonical(prepared.observe()) != canonical(case):
-                raise ValueError('Compiled native case does not match the frozen ABI')
-            engagement = prepared.native_engagement()
-            if (engagement.get('source_sha256') != request['source_sha256']
-                    or engagement.get('candidate_invoked') is not True
-                    or engagement.get('independent_reference_invoked') is not True):
-                raise ValueError('Current candidate and independent native reference were not engaged')
-            compiled.append({'case_id': case['case_id'], **engagement})
-            if args.phase == 'compile':
-                progress.update(state='case_complete',cases_completed=len(compiled),observed_unix=time.time())
+            prepared = callbacks = graph = None
+            try:
+                prepared = runtime.prepare_case(case)
+                callbacks = prepared.callbacks
+                if not isinstance(callbacks, FreshCallbacks):
+                    raise TypeError('Native fixture adapter must use the protected FreshCallbacks')
+                callbacks.replay = prepared.invoke_candidate
+                callbacks.check_once(request['challenge_seed'])
+                if canonical(prepared.observe()) != canonical(case):
+                    raise ValueError('Compiled native case does not match the frozen ABI')
+                engagement = prepared.native_engagement()
+                if (engagement.get('source_sha256') != request['source_sha256']
+                        or engagement.get('candidate_invoked') is not True
+                        or engagement.get('independent_reference_invoked') is not True):
+                    raise ValueError('Current candidate and independent native reference were not engaged')
+                compiled.append({'case_id': case['case_id'], **engagement})
+                if args.phase == 'compile':
+                    progress.update(state='case_complete',cases_completed=len(compiled),observed_unix=time.time())
+                    (build/(args.phase+'_progress.json')).write_text(canonical(progress)+'\n')
+                    continue
+                graph = capture(prepared, callbacks, request['challenge_seed'], torch)
+                if args.phase == 'correctness':
+                    row = callbacks.correctness_row(case, policy, observe=prepared.observe,
+                        corrupt_outputs=prepared.corrupt_outputs, challenge_seed=request['challenge_seed'])
+                else:
+                    row = callbacks.performance_row(case, policy, observe=prepared.observe,
+                        challenge_seed=request['challenge_seed'])
+                report['cases'].append(row)
+                progress.update(state='case_complete',cases_completed=len(report['cases']),observed_unix=time.time())
                 (build/(args.phase+'_progress.json')).write_text(canonical(progress)+'\n')
-                continue
-            graph = capture(prepared, callbacks, request['challenge_seed'], torch)
-            if args.phase == 'correctness':
-                row = callbacks.correctness_row(case, policy, observe=prepared.observe,
-                    corrupt_outputs=prepared.corrupt_outputs, challenge_seed=request['challenge_seed'])
-            else:
-                row = callbacks.performance_row(case, policy, observe=prepared.observe,
-                    challenge_seed=request['challenge_seed'])
-            report['cases'].append(row)
-            progress.update(state='case_complete',cases_completed=len(report['cases']),observed_unix=time.time())
-            (build/(args.phase+'_progress.json')).write_text(canonical(progress)+'\n')
-            print(json.dumps(progress),flush=True)
-            del graph, prepared, callbacks
+                print(json.dumps(progress),flush=True)
+            finally:
+                # Bound callbacks and graph replays form cycles with Prepared.
+                # Release them at the case boundary, outside all timed replays,
+                # including the compile-only continue above.
+                graph = callbacks = prepared = None
+                gc.collect()
         report.update(compiled=True, compiled_specializations=compiled,
                       oracle_order='CPU input truth before candidate; CPU output and post-input snapshots before reference')
         report = finalize_report(report, manifest, request)
