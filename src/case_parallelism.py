@@ -45,6 +45,9 @@ def validate_measurement(root, config, manifest, report):
     active = bool(os.environ.get(protocol.PLAN_ENV) or os.environ.get(protocol.HASH_ENV))
     group = bool(report.get("case_parallelism") or report.get("request", {}).get("case_parallelism")
                  or report.get("request", {}).get("gpu_group"))
+    request_id = report.get("request", {}).get("request_id")
+    if isinstance(request_id, str) and protocol._TOKEN.fullmatch(request_id):
+        group = group or (Path(root) / "build/case-parallel" / request_id).exists()
     if not active and not group:
         return
     protocol.require(enabled(config), "group report from a task without opt-in")
@@ -60,6 +63,9 @@ def validate_framework_reports(root, config):
     performance = strict_json(protocol._regular(performance_path).read_bytes()) if performance_path.is_file() else {}
     group = bool(performance.get("case_parallelism") or performance.get("request", {}).get("case_parallelism")
                  or performance.get("request", {}).get("gpu_group"))
+    request_id = performance.get("request", {}).get("request_id")
+    if isinstance(request_id, str) and protocol._TOKEN.fullmatch(request_id):
+        group = group or (root / "build/case-parallel" / request_id).exists()
     if not active and not group:
         return
     protocol.require(enabled(config), "framework GPU group requires task opt-in")
@@ -71,6 +77,9 @@ def validate_framework_reports(root, config):
         request = report.get("request", {})
         protocol.require(request.get("phase") == phase, "framework phase report differs")
         validate_measurement(root, config, manifest, report)
+        protocol.require(all(worker["assignment"]["leg"] == "framework"
+                             for worker in report["case_parallelism"]["workers"]),
+                         "framework phase contains a foreign trusted source leg")
         validate_report(report, manifest, request)
         identity = (request["case_parallelism"]["plan_sha256"], request["case_parallelism"]["assignment_sha256"],
                     protocol.fingerprint(request["source_sha256"]), request["package_sha256"])
@@ -78,4 +87,3 @@ def validate_framework_reports(root, config):
         protocol.require(request["request_id"] not in requests, "framework phase reused a request")
         requests.add(request["request_id"])
         group_identity = identity
-

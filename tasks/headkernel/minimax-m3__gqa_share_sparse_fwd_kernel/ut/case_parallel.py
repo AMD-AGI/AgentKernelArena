@@ -6,7 +6,6 @@ the ordinary full-manifest numerical and source validators remain mandatory.
 """
 from __future__ import annotations
 
-import argparse
 import copy
 import hashlib
 import json
@@ -16,7 +15,6 @@ from pathlib import Path, PurePosixPath
 import re
 import secrets
 import signal
-import shutil
 import subprocess
 import sys
 import time
@@ -47,6 +45,14 @@ def canonical(value):
 
 def fingerprint(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def strict_json(data):
@@ -109,7 +115,7 @@ def input_tree_identity(root):
                 continue
             require(not path.is_symlink(), "input tree contains a symlink: " + str(relative))
             if path.is_file():
-                entries[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+                entries[relative.as_posix()] = file_sha256(path)
     return fingerprint(entries)
 
 
@@ -453,6 +459,38 @@ def _stop_workers(processes):
         process.wait()
 
 
+def _cache_manifest(root):
+    root = Path(root).resolve(strict=True)
+    entries = {}
+    for path in sorted(root.rglob("*")):
+        name = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            require(path.resolve(strict=True).is_relative_to(root), "cache symlink escapes template")
+            entries[name] = {"symlink": str(path.readlink())}
+        elif path.is_dir():
+            entries[name] = {"directory": True}
+        else:
+            require(path.is_file(), "unsupported cache node")
+            entries[name] = {"sha256": file_sha256(path)}
+    return entries
+
+
+def _copy_cache(source, destination, *, deadline, log):
+    before = _cache_manifest(source)
+    require(not destination.exists() and not destination.is_symlink(), "worker cache already exists")
+    destination.mkdir()
+    # rclone does not create empty directories by default. Preserve those too.
+    for name, entry in before.items():
+        if entry.get("directory"):
+            (destination / name).mkdir(parents=True, exist_ok=True)
+    remaining = deadline - time.time()
+    require(remaining > 0, "deadline expired while preparing caches")
+    subprocess.run(["rclone", "copy", str(source), str(destination), "--links", "--transfers", "64000",
+                    "--progress", "--buffer-size", "0"], check=True, timeout=remaining,
+                   env={**os.environ, "GOMAXPROCS": "1"}, stdout=log, stderr=subprocess.STDOUT)
+    require(_cache_manifest(source) == before == _cache_manifest(destination), "worker cache parity failed")
+
+
 def run_workers(root, manifest, request, plan, entrypoint, *, leg):
     """One new exec interpreter per GPU; never fork initialized HIP state."""
     root = Path(root).resolve(strict=True)
@@ -471,6 +509,8 @@ def run_workers(root, manifest, request, plan, entrypoint, *, leg):
             handlers[signum] = signal.signal(signum, cancelled)
         for assignment in assignments:
             output = root / assignment["output_directory"]
+            log = (output / "worker.log").open("xb")
+            logs.append(log)
             envelope = output / "assignment.json"
             _write(envelope, assignment)
             env = os.environ.copy()
@@ -486,11 +526,9 @@ def run_workers(root, manifest, request, plan, entrypoint, *, leg):
             # every worker an independent writable cache directory.
             aiter = output / "aiter"
             if os.environ.get("AITER_JIT_DIR"):
-                shutil.copytree(os.environ["AITER_JIT_DIR"], aiter)
+                _copy_cache(os.environ["AITER_JIT_DIR"], aiter, deadline=assignment["deadline_unix"], log=log)
                 env["AITER_JIT_DIR"] = str(aiter)
-            log = (output / "worker.log").open("xb")
-            logs.append(log)
-            processes.append(subprocess.Popen([sys.executable, "-B", str(entrypoint), request["phase"],
+            processes.append(subprocess.Popen([sys.executable, "-I", "-B", str(entrypoint), request["phase"],
                 "--request", str(parent), "--case-worker", str(envelope)], cwd=root, env=env,
                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True))
             receipts.append(output / "receipt.json")
@@ -519,8 +557,11 @@ def validate_group_report(root, manifest, report, *, required=False):
     request = report.get("request", {})
     metadata = report.get("case_parallelism")
     active = bool(os.environ.get(PLAN_ENV) or os.environ.get(HASH_ENV))
+    request_id = request.get("request_id")
+    recorded = (isinstance(request_id, str) and _TOKEN.fullmatch(request_id)
+                and (Path(root) / "build/case-parallel" / request_id).exists())
     if not metadata and not request.get("case_parallelism") and not request.get("gpu_group"):
-        require(not required and not active, "group report provenance was stripped")
+        require(not required and not active and not recorded, "group report provenance was stripped")
         return
     require(isinstance(metadata, dict) and metadata.get("schema") == "whole-case-full-report-v1", "missing full group receipt")
     raw = metadata.get("plan_bytes")

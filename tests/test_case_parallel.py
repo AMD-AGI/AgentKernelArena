@@ -111,6 +111,17 @@ def test_binding_preserves_original_parent_fields(package):
     assert cp.bind_request(request, plan) == request
 
 
+def test_archived_group_request_cannot_strip_its_receipt_chain(package):
+    root, manifest, request, plan = package
+    assignments, paths = make_receipts(package)
+    union = cp.collect_workers(manifest, request, plan, assignments, [0, 0], paths)
+    serial_looking = copy.deepcopy(request)
+    serial_looking.pop("case_parallelism")
+    serial_looking.pop("gpu_group")
+    with pytest.raises(ValueError, match="stripped"):
+        cp.validate_group_report(root, manifest, {"request": serial_looking, "cases": union["rows"]})
+
+
 @pytest.mark.parametrize("count", [69, 40, 24, 16])
 def test_original_full_domain_partition(count):
     manifest = manifest_for(count)
