@@ -134,9 +134,14 @@ def source_context(task, meta=None):
         context["resolved_native_configs"] = {row["sig"]: dense_route_config(row, routes[row["sig"]])
                                               for row in specs(meta)}
         identity["resolved_native_configs"] = context["resolved_native_configs"]
+        context["effective_source_sha256"] = fingerprint(identity)
+        context["execution_identity_mode"] = "resolved_native_config"
     else:
-        identity["routes"] = routes
-    context["effective_source_sha256"] = fingerprint(identity)
+        # The captured None hint resolves through image-native get_2stage_cfgs.
+        # A label/argument hash cannot tell whether block32 aliases that default.
+        context["effective_source_sha256"] = None
+        context["execution_identity_mode"] = "runtime_resolved_native_arguments"
+    context["declared_policy_sha256"] = fingerprint({**identity, "routes": routes})
     return context
 
 
@@ -170,6 +175,74 @@ def validate_request(request, task, mode):
     expected = make_request(task, mode, request.get("run_id", ""))
     require(request == expected, "request/source/metadata/case binding changed")
     return expected
+
+
+MOE_METADATA_FIELDS = {
+    "stage1", "stage2", "block_m", "ksplit", "run_1stage", "has_bias",
+    "use_non_temporal_load", "fuse_quant", "stage2_has_bias", "flat", "output_aux",
+    "prequant", "skip_inter_quant", "route_bucket", "expected_sorted_blocks",
+    "min_sorted_blocks", "max_sorted_blocks",
+}
+
+
+def validate_moe_execution(row, spec, request):
+    """Validate observations of resolved native arguments, not a guessed default."""
+    observed = row.get("resolved_execution")
+    require(isinstance(observed, dict) and set(observed) == {
+        "schema", "effective_block_size_M", "metadata", "sorting", "stages"}
+        and observed["schema"] == "qwen-moe-resolved-native-v1", "resolved MoE execution is missing")
+    block = observed["effective_block_size_M"]
+    require(type(block) is int and block > 0, "invalid resolved native MoE block")
+    metadata = observed["metadata"]
+    require(isinstance(metadata, list) and len(metadata) == 2
+            and all(isinstance(item, dict) and set(item) == MOE_METADATA_FIELDS
+                    and type(item["block_m"]) is int and item["block_m"] > 0
+                    and item["run_1stage"] is False and item["stage1"] and item["stage2"]
+                    for item in metadata), "complete native MoE metadata was not observed")
+    for name, arity, block_index in (("sorting", 9, 5), ("stages", 11, 10)):
+        calls = observed[name]
+        require(isinstance(calls, list) and len(calls) == 1 and isinstance(calls[0], dict)
+                and set(calls[0]) == {"args", "kwargs"} and isinstance(calls[0]["args"], list)
+                and len(calls[0]["args"]) == arity and isinstance(calls[0]["kwargs"], dict)
+                and calls[0]["args"][block_index] == block,
+                "native sorting/stage arguments do not bind the resolved block")
+    route = request["source"]["routes"][spec["sig"]]
+    declared = None if route == "captured" else int(route[5:])
+    require(block == (metadata[0]["block_m"] if declared is None else declared),
+            "resolved MoE block contradicts the declared native arguments")
+    require(row.get("native_dispatch") == {"declared_block_size_M": declared,
+            "native_block_m": metadata[0]["block_m"], "effective_block_size_M": block},
+            "declared and resolved MoE dispatch evidence disagree")
+    observations = row.get("resolved_execution_observations")
+    captures = row.get("resolved_capture_observations")
+    require(type(observations) is int and type(captures) is int
+            and observations > captures >= 1, "no observed native graph capture identity")
+    if request["mode"] == "performance":
+        require(observations == WARMUP + 2 and captures == 2,
+                "every warmup and both graphs must bind the same native execution")
+    fingerprint(observed)  # Reject non-JSON/nonfinite native metadata.
+    return observed
+
+
+def effective_execution_identity(payload, meta, request):
+    """Return the identity eligible for comparing native execution performance.
+
+    Dense configs resolve from protected case metadata on CPU. MoE defaults are
+    dynamic: only complete observed native arguments from the protected worker
+    can produce an execution identity. Policy labels never enter the MoE hash.
+    """
+    if meta["native_routing"]["kind"] == "dense":
+        return request["source"]["effective_source_sha256"]
+    rows = payload.get("cases")
+    expected = specs(meta)
+    require(isinstance(rows, list) and len(rows) == len(expected)
+            and [row.get("sig") for row in rows] == [spec["sig"] + "|" + spec["regime"] for spec in expected],
+            "complete ordered MoE cases required for execution identity")
+    execution = [{"sig": spec["sig"], "params": case_params(meta, spec),
+                  "native": validate_moe_execution(row, spec, request)} for row, spec in zip(rows, expected)]
+    return fingerprint({"schema": "qwen-moe-effective-execution-v1",
+                        "native_source_sha256": request["source"]["native_source_sha256"],
+                        "runtime_image": request["runtime_image"], "cases": execution})
 
 
 def validate_payload(payload, meta, request):
@@ -219,4 +292,7 @@ def validate_payload(payload, meta, request):
             require(validation.get("checked_invocations", 0) >= 4
                     and validation.get("negative_controls") == {"no_op": "rejected", "wrong_output": "rejected"},
                     "incomplete captured/fresh correctness or negative controls")
+    if meta["native_routing"]["kind"] == "moe":
+        require(payload.get("effective_execution_sha256") == effective_execution_identity(payload, meta, request),
+                "effective native execution identity is missing or differs from resolved arguments")
     return rows

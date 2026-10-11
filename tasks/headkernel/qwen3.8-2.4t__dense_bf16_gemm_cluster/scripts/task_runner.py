@@ -21,7 +21,7 @@ BUILD_DIR = os.path.join(TASK_DIR, "build")
 UT_DIR = os.path.join(TASK_DIR, "ut")
 CONFIG = os.path.join(TASK_DIR, "config.yaml")
 ROUTING_PROTOCOL = "qwen_native_route_graph_v1"
-ROUTING_CONTRACT_SHA256 = "4d4bb698a08dcc95ee291dfc2ed58ff2f5d71f371067f01cba0cc58d280b4076"
+ROUTING_CONTRACT_SHA256 = "2063ae92b141be9b920beec212c5823ce0ed9a7766f0d45187a10881abc7c294"
 
 
 def load_config():
