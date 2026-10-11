@@ -158,37 +158,39 @@ def admit_sources(reference, candidate, source_workspace, contract, guard_source
         guard_sources(reference, candidate, "ut/source_guard.py")
 
 
-def runtime_mounts(task, build, contract):
-    """Keep Git inputs read-only while old UTs create declared runtime files."""
+def runtime_mounts(task, build, contract, *, runtime_root=None):
+    """Protect complete UT entries against parent-directory replacement.
+
+    Legacy atomic result writes need a writable UT root. Every other top-level
+    entry is an immutable mount point, and its backing directory is never
+    exposed through the writable build mount while the container runs.
+    """
     outputs = contract["config"]["harness_protection"].get("runtime_outputs", [])
     outputs = [Path(name) for name in outputs if Path(name).parts[0] == "ut"]
     if not outputs:
         return [], set()
-    require(all(not name.is_absolute() and ".." not in name.parts for name in outputs),
+    require(all(len(name.parts) == 2 and name.parts[0] == "ut" and ".." not in name.parts for name in outputs),
             "invalid Qwen runtime output path")
-    runtime = build / ".runtime-ut"
+    runtime = Path(runtime_root) if runtime_root is not None else build.with_name(build.name + "-ut-runtime")
+    require(not runtime.resolve().is_relative_to(task.resolve())
+            and not runtime.resolve().is_relative_to(build.resolve()),
+            "UT runtime backing must not be exposed by the task or build mounts")
     runtime.mkdir()
     mounts = ["--mount", f"type=bind,src={runtime},dst=/task/ut"]
     omitted = set()
-    alias_directories = {Path(name).parent for name in contract["qwen_aliases"]}
-    for relative in sorted(alias_directories):
-        (runtime / relative.relative_to("ut")).mkdir(parents=True)
-        mounts += ["--mount", f"type=bind,src={task / relative},dst=/task/{relative},readonly"]
-    for source in sorted((task / "ut").rglob("*")):
+    for source in sorted((task / "ut").iterdir()):
         relative = source.relative_to(task)
-        if any(relative == parent or relative.is_relative_to(parent) for parent in alias_directories):
+        if relative in outputs:
             continue
-        if any(relative == out or relative.is_relative_to(out) for out in outputs):
-            continue
+        require(not source.is_symlink() and (source.is_file() or source.is_dir())
+                and source.resolve().is_relative_to(task.resolve()), "invalid protected Qwen UT entry")
+        target = runtime / source.name
         if source.is_dir():
-            continue
-        require(source.is_file() and source.resolve().is_relative_to(task.resolve()),
-                "Qwen UT input must resolve to a regular in-package file")
-        target = runtime / source.relative_to(task / "ut")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.touch()
+            target.mkdir()
+        else:
+            target.touch()
+            omitted.add(".runtime-ut/" + source.name)
         mounts += ["--mount", f"type=bind,src={source.resolve()},dst=/task/{relative},readonly"]
-        omitted.add(str(target.relative_to(build)))
     return mounts, omitted
 
 

@@ -104,8 +104,8 @@ def extract_task(repo, commit, task_path, destination, *, allow_internal_symlink
     for target, link in links:
         if PurePosixPath(link).is_absolute():
             raise ValueError("committed task symlink escapes its package")
-        resolved = (target.parent / link).resolve(strict=True)
-        if not resolved.is_relative_to(destination.resolve()) or not resolved.is_file():
+        link_target = (target.parent / link).resolve(strict=True)
+        if not link_target.is_relative_to(destination.resolve()) or not link_target.is_file():
             raise ValueError("committed task symlink must target a regular in-package file")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.symlink_to(link)

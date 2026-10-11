@@ -415,6 +415,7 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     build = task / "build" if qwen_contract is not None else staging / (label + "_build")
     build.mkdir()
     omitted = set()
+    ut_runtime = None
     cache = None
     if cache_source is not None:
         cache = staging / (label + "_jit")
@@ -427,7 +428,8 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     command = docker_command(image, task, build, render_device, name, cache)
     if qwen_contract is not None:
         from src.tools import trusted_qwen_eval
-        mounts, omitted = trusted_qwen_eval.runtime_mounts(task, build, qwen_contract)
+        ut_runtime = staging / (label + "_ut_runtime")
+        mounts, omitted = trusted_qwen_eval.runtime_mounts(task, build, qwen_contract, runtime_root=ut_runtime)
         mounts += ["--mount", f"type=bind,src={trusted_qwen_eval.PHASE_BRIDGE},dst=/trusted_qwen_phase.py,readonly",
                    "--env", "HK_RUN_ROOT=/task/build/ledger-root"]
         command[command.index(image):command.index(image)] = mounts
@@ -472,9 +474,12 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             failures.append(exc)
         try:
-            subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL,
-                           stderr=subprocess.DEVNULL, check=False, timeout=30)
-        except (OSError, subprocess.SubprocessError) as exc:
+            removal = subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL, check=False, timeout=30)
+            if ut_runtime is not None and ut_runtime.exists():
+                require(removal.returncode == 0, "Qwen container removal failed; UT outputs remain private")
+                ut_runtime.rename(build / ".runtime-ut")
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
             failures.append(exc)
         try:
             options = {"recursive": True, "excluded": omitted} if qwen_contract is not None else {}

@@ -47,13 +47,14 @@ def test_readonly_UT_inputs_are_preserved_while_declared_outputs_are_fresh(tmp_p
     contract = trusted.package_contract(task)
     build = tmp_path / "build"
     build.mkdir()
-    mounts, omitted = adapter.runtime_mounts(task, build, contract)
-    assert f"type=bind,src={build / '.runtime-ut'},dst=/task/ut" in mounts
+    runtime = tmp_path / "ut-runtime"
+    mounts, omitted = adapter.runtime_mounts(task, build, contract, runtime_root=runtime)
+    assert f"type=bind,src={runtime},dst=/task/ut" in mounts
     for relative in ("ut/meta.json", "ut/harness_lib.py", "ut/benchmark_contract.json", "ut/source_guard.py"):
         assert f"type=bind,src={task / relative},dst=/task/{relative},readonly" in mounts
         assert ".runtime-ut/" + relative.removeprefix("ut/") in omitted
     assert not any("dst=/task/ut/result.json,readonly" in value for value in mounts)
-    assert not (build / ".runtime-ut/result.json").exists()
+    assert not (runtime / "result.json").exists()
     assert f"type=bind,src={task / 'ut/kernel_src'},dst=/task/ut/kernel_src,readonly" in mounts
 
 
@@ -103,6 +104,13 @@ def committed_dense(tmp_path):
     (candidate / "build").mkdir()
     (candidate / "build/performance_report.json").write_text('{"speedup":999999}')
     return repo, commit, task_path, candidate
+
+
+def test_internal_alias_extraction_preserves_commit_return_value(committed_dense, tmp_path):
+    repo, commit, task_path, _ = committed_dense
+    extracted = tmp_path / "extracted"
+    assert trusted.extract_task(repo, commit, task_path, extracted, allow_internal_symlinks=True) == commit
+    assert (extracted / "ut/kernel_src/tuned_gemm_candidate.py").is_symlink()
 
 
 def producer_phase(task, contract, phase, host_request, *, outlier=False):

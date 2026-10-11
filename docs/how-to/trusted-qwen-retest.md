@@ -42,8 +42,11 @@ documented SG518 TP8/EP8 capture; it does not assert a new serving capture.
 Task inputs remain read-only and phase containers have no network, agent auth,
 or Docker socket mount. The old recurrent and attention correctness runners write
 declared outputs under `ut/`, so those directories receive fresh writable output
-areas with the committed inputs and source-alias directories mounted read-only
-inside them. They cannot replace the protected inputs. Original Git source
+areas with every protected top-level file and complete subtree mounted read-only
+at its own entry. Protected parent directories are mount points and cannot be
+renamed and replaced. The writable backing tree stays outside all other container
+mounts while the phase runs; it moves into the evidence build only after container
+removal succeeds. Original Git source
 aliases are accepted only when explicitly declared and contained in the task;
 new candidate-source symlinks are rejected.
 
