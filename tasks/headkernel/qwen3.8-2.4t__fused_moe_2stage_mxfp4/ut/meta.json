@@ -1,13 +1,5 @@
 {
   "baseline_frozen": true,
-  "baseline_overlay": "baseline_overlay",
-  "candidate_bind": {
-    "file": "kernel_src/moe_candidate.py",
-    "impl_attr": "fused_moe",
-    "impl_module": "moe_candidate",
-    "kind": "rebind",
-    "target": "aiter.fused_moe:fused_moe"
-  },
   "capture": {
     "budget_exceeded": false,
     "num_cases": 2,
@@ -126,10 +118,10 @@
   "source_provenance": {
     "baseline_ref": "baseline_ref/fused_moe.py.orig",
     "candidate_adaptations": [
-      "preserve baseline_callable for the two-leg oracle"
+      "literal-only block_size_M policy parsed without candidate Python execution"
     ],
-    "candidate_source": "source/moe_candidate.py",
-    "kernel_source_complete": true,
+    "candidate_source": "source/routing.py",
+    "kernel_source_complete": false,
     "original_path": "/sgl-workspace/aiter/aiter/fused_moe.py",
     "repo": "aiter",
     "repo_commit": "4ad99832823dde2315b361cbd3b54b1c5c12acd5",
@@ -236,5 +228,20 @@
     "current_runtime_dispatch_identity_claimed": false,
     "case_count": 2,
     "tolerances_warmups_samples_and_guards_unchanged": true
+  },
+  "native_routing": {
+    "protocol": "qwen_native_route_graph_v1",
+    "kind": "moe",
+    "policy_source": "source/routing.py",
+    "editable_target": "select_routes",
+    "choices": [
+      "captured",
+      "block32",
+      "block64",
+      "block128"
+    ],
+    "scope": "Native SG520 fused_moe block_size_M routing; device source is image-owned.",
+    "captured_fixture_topology": "SG518 TP8/EP8; 64 local experts of 512",
+    "reports": "build/reports/<request_id>/"
   }
 }
