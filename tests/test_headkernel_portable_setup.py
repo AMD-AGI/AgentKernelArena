@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+from copy import deepcopy
 from pathlib import Path
 import tempfile
 import unittest
@@ -17,14 +18,27 @@ class PortableSetupTests(unittest.TestCase):
     def setUp(self):
         self.catalog = json.loads((ROOT/'tools/headkernel-runtime-targets.json').read_text())
 
-    def test_manifest_native_staging_selection_resolves_task_contracts(self):
+    def test_all_23_staging_protocols_resolve_task_contracts(self):
         current = prepare.selected_tasks(self.catalog, None)
-        self.assertEqual(len(current), 18)
+        self.assertEqual(len(current), 23)
         self.assertEqual(len(current), self.catalog['fixture_preparation_task_count'])
         for row in current:
             config = yaml.safe_load((ROOT/row['capture_config']).read_text())
-            self.assertEqual(config['platform_support']['status'], 'active')
-            self.assertEqual(row['capture_image'], self.catalog['images']['sglang_v0520']['pull_reference'])
+            self.assertEqual(config.get('platform_support', {}).get('status', 'active'), 'active')
+            self.assertEqual(row['runtime_image'], self.catalog['images']['sglang_v0520']['pull_reference'])
+            if row['preparation_protocol'] == prepare.LEGACY_PROTOCOL:
+                self.assertTrue(prepare.requires_legacy_protocol(ROOT, row))
+                path = ROOT / row['legacy_artifact_manifest']
+                self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), row['legacy_artifact_manifest_sha256'])
+                manifest = prepare.legacy_artifacts.load_manifest(path)
+                assets = prepare.legacy_artifacts.select_artifacts(manifest, [prepare.legacy_task_name(row['task'])])
+                self.assertEqual(row['fixture_oci_prefix'], manifest.oci_remote_root)
+                self.assertEqual(row['fixture_asset_count'], len(assets))
+                self.assertEqual(row['fixture_declared_bytes'], sum(item.size_bytes for item in assets))
+                self.assertIsNone(row['fixture_manifest'])
+                continue
+            self.assertEqual(row['preparation_protocol'], prepare.TRUSTED_PROTOCOL)
+            self.assertFalse(prepare.requires_legacy_protocol(ROOT, row))
             if row['fixture_manifest']:
                 path = ROOT/row['fixture_manifest']
                 self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), row['fixture_manifest_sha256'])
@@ -39,6 +53,7 @@ class PortableSetupTests(unittest.TestCase):
         self.assertEqual(len(qwen), 5)
         for row in qwen:
             self.assertEqual(row['scope'], 'source_refreshed_sg520')
+            self.assertEqual(row['preparation_protocol'], prepare.LEGACY_PROTOCOL)
             self.assertEqual(row['runtime_image'], image)
             self.assertEqual(row['primary_target'], 'sglang_v0520')
             self.assertIn('v0.5.18-', row['capture_image'])
@@ -49,11 +64,43 @@ class PortableSetupTests(unittest.TestCase):
             config = yaml.safe_load((ROOT / row['capture_config']).read_text())
             self.assertEqual(config['headkernel']['docker'], image)
             self.assertTrue((ROOT / row['environment_and_setup_guide']).is_file())
-        # The existing materializer does not implement the Qwen task-local input route.
-        with self.assertRaises(ValueError):
-            prepare.selected_tasks(self.catalog, ['headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster'])
+            self.assertEqual(prepare.selected_tasks(self.catalog, [row['task']]), [row])
+        self.assertEqual(sum(row['fixture_asset_count'] for row in qwen), 3)
+        self.assertEqual(sum(row['fixture_declared_bytes'] for row in qwen), 3664105258)
         with self.assertRaises(ValueError):
             prepare.selected_tasks(self.catalog, ['headkernel/unknown'])
+
+    def test_both_scopes_require_an_explicit_valid_legacy_protocol(self):
+        qwen = next(row for row in self.catalog['tasks'] if row['scope'] == 'source_refreshed_sg520')
+        changes = {
+            'missing_protocol': lambda row: row.pop('preparation_protocol'),
+            'unsupported_protocol': lambda row: row.update(preparation_protocol='guess_from_scope'),
+            'missing_fixture_declaration': lambda row: row.pop('fixture_manifest'),
+            'external_manifest': lambda row: row.update(fixture_manifest='fixtures/EXTERNAL-MANIFEST.json'),
+            'wrong_registry': lambda row: row.update(legacy_artifact_manifest='../untrusted.json'),
+            'missing_registry_pin': lambda row: row.pop('legacy_artifact_manifest_sha256'),
+            'malformed_registry_pin': lambda row: row.update(legacy_artifact_manifest_sha256='not-a-digest'),
+        }
+        for scope in prepare.PREPARATION_SCOPES:
+            valid = {**qwen, 'scope':scope}
+            self.assertEqual(prepare.selected_tasks({'tasks':[valid]}, None), [valid])
+            for name, change in changes.items():
+                with self.subTest(scope=scope, mutation=name):
+                    invalid = deepcopy(valid)
+                    change(invalid)
+                    with self.assertRaises(ValueError):
+                        prepare.selected_tasks({'tasks':[invalid]}, None)
+        invalid = {**qwen, 'preparation_protocol':prepare.TRUSTED_PROTOCOL}
+        with self.assertRaises(ValueError):
+            prepare.selected_tasks({'tasks':[invalid]}, None)
+
+    def test_trusted_protocol_is_explicit_and_duplicate_catalog_tasks_are_rejected(self):
+        row = deepcopy(next(row for row in self.catalog['tasks'] if row['preparation_protocol'] == prepare.TRUSTED_PROTOCOL))
+        del row['preparation_protocol']
+        with self.assertRaises(ValueError):
+            prepare.selected_tasks({'tasks':[row]}, None)
+        with self.assertRaises(ValueError):
+            prepare.selected_tasks({'tasks':[self.catalog['tasks'][0]] * 2}, None)
 
     def test_unified_selection_contains_all_23_current_sources_without_promoting_history(self):
         rows = self.catalog['tasks']

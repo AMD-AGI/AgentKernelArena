@@ -16,6 +16,8 @@ from src.tools import prepare_head_kernel_artifacts as legacy_artifacts
 
 LEGACY_PROTOCOL = 'headkernel_artifacts_v1'
 LEGACY_MANIFEST = 'tools/headkernel-artifacts.json'
+TRUSTED_PROTOCOL = 'trusted_task_v1'
+PREPARATION_SCOPES = {'refreshed_sg520', 'source_refreshed_sg520'}
 
 
 def require(value, message):
@@ -24,11 +26,36 @@ def require(value, message):
 
 
 def selected_tasks(catalog, requested):
-    active = {row['task']: row for row in catalog['tasks'] if row.get('scope') == 'refreshed_sg520'}
+    rows = [row for row in catalog['tasks'] if row.get('scope') in PREPARATION_SCOPES]
+    active = {row['task']: row for row in rows}
+    require(len(active) == len(rows), 'Duplicate task IDs in the preparation catalog')
     names = list(requested) if requested else list(active)
-    require(names and len(names) == len(set(names)), 'Select distinct refreshed task IDs')
-    require(all(name in active for name in names), 'Task is outside the explicit refreshed catalog selection')
-    return [active[name] for name in names]
+    require(names and len(names) == len(set(names)), 'Select distinct catalog task IDs')
+    require(all(name in active for name in names), 'Task is outside the explicit preparation catalog selection')
+    selected = [active[name] for name in names]
+    for row in selected:
+        preparation_protocol(row)
+    return selected
+
+
+def preparation_protocol(row):
+    """A supported scope never substitutes for an explicit input protocol."""
+    protocol = row.get('preparation_protocol')
+    require(protocol in (TRUSTED_PROTOCOL, LEGACY_PROTOCOL),
+            'Task requires an explicit supported preparation protocol')
+    if row.get('scope') == 'source_refreshed_sg520':
+        require(protocol == LEGACY_PROTOCOL,
+                'Source-refreshed Qwen setup requires headkernel_artifacts_v1')
+    if protocol == LEGACY_PROTOCOL:
+        legacy_task_name(row['task'])
+        require('fixture_manifest' in row and row['fixture_manifest'] is None,
+                'Legacy preparation must explicitly set fixture_manifest to null')
+        require(row.get('legacy_artifact_manifest') == LEGACY_MANIFEST,
+                'Legacy preparation must name the committed original-artifact registry')
+        digest = row.get('legacy_artifact_manifest_sha256')
+        require(isinstance(digest, str) and re.fullmatch('[0-9a-f]{64}', digest),
+                'Legacy preparation requires a full artifact-registry SHA-256 pin')
+    return protocol
 
 
 def legacy_task_name(task):
@@ -118,7 +145,7 @@ def main():
     p.add_argument('--commit', required=True, help='full trusted Git commit')
     p.add_argument('--output', type=Path, required=True, help='new directory outside the source checkout')
     p.add_argument('--scratch-dir', type=Path, required=True)
-    p.add_argument('--task', action='append', help='headkernel/TASK; repeat, or omit for the explicit refreshed catalog selection')
+    p.add_argument('--task', action='append', help='task path relative to tasks/; repeat, or omit for all 23 explicitly registered tasks')
     source = p.add_mutually_exclusive_group(required=True)
     source.add_argument('--use-manifest-oci-prefixes', action='store_true', help='approve the exact committed task prefixes')
     source.add_argument('--fixture-local-mirror', type=Path, help='object-key layout; supported for one task at a time')
@@ -138,8 +165,7 @@ def main():
     prepared = []
     for row in tasks:
         task_path = 'tasks/' + row['task']
-        protocol = row.get('preparation_protocol')
-        require(protocol in (None, 'trusted_task_v1', LEGACY_PROTOCOL), 'Unsupported task preparation protocol')
+        protocol = preparation_protocol(row)
         if protocol == LEGACY_PROTOCOL:
             prepared.append(prepare_legacy_task(arena, row,
                 runtime_image=catalog['images']['sglang_v0520']['pull_reference'],

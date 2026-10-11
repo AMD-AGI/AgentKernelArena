@@ -1,7 +1,7 @@
 # Unified selection for all 23 SG0.5.20 source tasks in head-kernels-top5.
 # No current merged-framework qualification is claimed by this selection.
-# Stage the 18 manifest/native contracts with the existing preparation helper;
-# use task-local setup for the five source-refreshed Qwen tasks. See HEADKERNELS.md.
+# Prepare all 23 through their explicit catalog protocols before running.
+# Qwen uses the pinned original-object registry; other tasks keep their trusted staging route.
 agent:
   template: task_validator
 tasks:
