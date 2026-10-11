@@ -6,6 +6,7 @@ import copy
 import importlib.util
 import json
 import math
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -172,6 +173,20 @@ class FakeRuntime:
 
 
 class ContractTests(unittest.TestCase):
+    @unittest.skipUnless(hasattr(os, 'mkfifo'), 'requires POSIX FIFO support')
+    def test_fifo_policy_is_rejected_without_opening_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task = Path(tmp) / 'task'
+            source = task / contract.POLICY_FILE
+            source.parent.mkdir(parents=True)
+            os.mkfifo(source)
+            # This trap makes the regression safe even if the guard regresses:
+            # opening the FIFO is forbidden rather than allowed to hang the test.
+            with patch.object(Path, 'read_bytes', side_effect=AssertionError('FIFO was opened')) as read:
+                with self.assertRaisesRegex(ValueError, 'task-local regular file'):
+                    contract.source_context(task, META)
+                read.assert_not_called()
+
     def test_policy_is_literal_data_only(self):
         source = (TASK / contract.POLICY_FILE).read_bytes()
         self.assertEqual(set(contract.parse_policy(source, META).values()), {'captured'})

@@ -45,8 +45,9 @@ python3 scripts/task_runner.py correctness
 python3 scripts/task_runner.py performance
 ```
 
-Compilation syntax-checks the literal selector and the protected native source.
-GPU compilation and dispatch occur during correctness. Correctness checks the
+The compile phase performs CPU policy syntax validation and syntax-checks the
+protected native Python source. It does not compile a GPU kernel. Native GPU
+compilation and dispatch occur during correctness. Correctness checks the
 frozen captured output, three fresh hidden-input draws, fresh independent output
 storage, input immutability, two fresh graph values, no-op and corrupted graph
 outputs, both MoE device stages, and the original two-repeat eager timing smoke.

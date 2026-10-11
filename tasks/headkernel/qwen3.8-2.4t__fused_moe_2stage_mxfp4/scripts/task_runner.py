@@ -40,7 +40,7 @@ def evaluate(mode, timeout):
         payload = {'status': 'ok', 'request': request,
                    'parsed_sources': ['source/routing.py'],
                    'symbols_found': {'select_routes': 'source/routing.py'},
-                   'compile_scope': 'syntax and literal policy; native GPU compilation occurs in correctness'}
+                   'compile_scope': 'CPU policy syntax validation and protected native Python syntax; no GPU compilation'}
     else:
         env = dict(os.environ)
         for name in list(env):
