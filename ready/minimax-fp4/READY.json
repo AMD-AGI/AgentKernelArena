@@ -1,0 +1,171 @@
+{
+  "case_ids": [
+    "minimax_fp4_gemm-3a7fdbd87850bb198cc5d195",
+    "minimax_fp4_gemm-5025c4a82b1173cbec322444",
+    "minimax_fp4_gemm-57b35df7010c720a04ba9055",
+    "minimax_fp4_gemm-5a5dadbee0955f5a2d2416fb",
+    "minimax_fp4_gemm-6478a87796f9c08911ad8ca7",
+    "minimax_fp4_gemm-6b486657a64e92e5ceaabe21",
+    "minimax_fp4_gemm-7ffa029ca80a67b44dd36927",
+    "minimax_fp4_gemm-8b1dd7634b2fad2fff797556",
+    "minimax_fp4_gemm-948dfb4bd8a7f0c441a2800d",
+    "minimax_fp4_gemm-a635d180d26a4a864e74b384",
+    "minimax_fp4_gemm-b1cbbd86dbf205af4776abf3",
+    "minimax_fp4_gemm-cf943532266ffa96814ac366",
+    "minimax_fp4_gemm-d97642bef8ccc3e359df7733",
+    "minimax_fp4_gemm-fee098cae09ebb4f2694b19f"
+  ],
+  "editable_file": "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/source/kernel.py",
+  "editable_kernel": "_gemm_afp4wfp4_kernel",
+  "entry_config": "example_configs/ready_minimax_fp4_mi355x.yaml",
+  "fixtures": {
+    "bytes": 2044395146,
+    "files": 74,
+    "manifest": "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel/fixtures/EXTERNAL-MANIFEST.json",
+    "manifest_sha256": "38b9e7e8952710b8fc87621520ca3c1203d7d8366dc830d9e92bdb588c21f037",
+    "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/minimax-original-head-v3-194969/"
+  },
+  "mandatory_post_evaluation": {
+    "all_six_reports_and_112_source_controls_required": true,
+    "command": "python3 ready/minimax-fp4/check_timing.py --measurement-dir TRUSTED_RESULTS --output NEW_QUALITY_RECEIPT.json",
+    "quality_module_commit": "0ed45cdd4cbff6cf305adffc50f937d549314884",
+    "quality_module_sha256": "d7d0829186a6f2dc2f8c8c69394294b54680c5ddf1d030c1e71d4faca44a332d",
+    "trim_or_automatic_retry": false,
+    "unchanged_source_gain_eligible": false
+  },
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "proofs": {
+    "archive_and_fixture_readback": {
+      "sha256": "22baeb21dea10dd6d9780dae53841e5546f50896db275237e9a58b8ec5d521fb",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/PRESERVATION-RECEIPT.json"
+    },
+    "archive_manifest": {
+      "sha256": "142212be85c78e34c0382c0cb255f06001bbcc9c35c7e45f3e6bd4bdb2d0a120",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/ARCHIVE-MANIFEST.json"
+    },
+    "framework_audit": {
+      "sha256": "97eb6e088703f94144f37cedf2260e51784efa67e2cb0089d80388354a2e5c36",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/framework-and-interruption-audit/AUDIT.json"
+    },
+    "framework_binding_disclosure": {
+      "sha256": "e58727b3d7105bc81a5dc04a356da85b37f84201b1a6d97f0a2a5c4280f6e25b",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/metadata/FRAMEWORK-BINDING-DISCLOSURE.json"
+    },
+    "framework_content_hash": {
+      "sha256": "4f4f75d8e52cf424b19ae81b8394923d52423c7036f46ab07696a038e9583ec5",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/metadata/FRAMEWORK-CONTENT-HASH-AUDIT.json"
+    },
+    "framework_hash_order_correction": {
+      "sha256": "60f9737a6a0f89d6f31ae736da505aed7252d85cd6677c00862d7d91dd14444a",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/metadata/FRAMEWORK-HASH-ORDER-RESOLUTION.json"
+    },
+    "framework_image_recovery": {
+      "sha256": "70e2546cf623267cf3e472ac5dab386afc0b27aedf119230dcdfa4b04965c33a",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/metadata/FRAMEWORK-BINDING-RECOVERY.json"
+    },
+    "framework_report": {
+      "sha256": "1c74f29fab4583f8ba1fe8af678d33d6373ec531bf1e22f49765cbbf8e4ce734",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/framework-and-interruption-audit/framework-final/validation_report.yaml"
+    },
+    "historical_false_acceptance": {
+      "sha256": "b4b4639e93f06cbebab93178f1f07ce1e91a781ab8321329f8252f728be4a42f",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/history/old-source-negatives/control/BLOCKER.json"
+    },
+    "interrupted_comparison": {
+      "sha256": "d7f3e01ce14e7ece5361da887eca5f4f5434c6b878a8801a805b3b42af68e690",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/history/interrupted-201262/FINAL.json"
+    },
+    "retirement": {
+      "sha256": "43e299c4eaa38c08c26ca35d092a7646ec2975907ed6d6216ed1e3cf719e9fb8",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/run/RETIREMENT.json"
+    },
+    "timing": {
+      "sha256": "19a294e25537bcdb570e522c592f148a8bddf6a14a73bd058f5c049570779fbd",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/control/BENCHMARK-QUALITY.json"
+    },
+    "timing_checker_tests": {
+      "sha256": "7be7af9b77f3317edb21f62fe70d2155c1b97053c1b078616a9cf023e93723d1",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/control/TIMING-CHECKER-TESTS.json"
+    },
+    "trusted_audit": {
+      "sha256": "e848bfae7f3c0d40ca96b663c0ba27ac0edf2a601ed1fc043256e49a68adb258",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/control/TRUSTED-AUDIT.json"
+    },
+    "trusted_measurement": {
+      "sha256": "8b8d001544747c19e57d512e20c4951887343ecef76ecd48539a15838343c887",
+      "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/trusted/trusted_measurement.json"
+    }
+  },
+  "publication_gate": {
+    "approval_must_match_ready_head_and_archive_manifest": true,
+    "approval_receipt_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261008/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/0ed45cdd-201533-generation5/PUBLICATION-APPROVAL.json",
+    "framework_binding_disclosure_must_be_explicitly_accepted": true,
+    "note": "Publication approval is an external receipt bound to the final branch head; the receipt cannot be embedded in the commit it approves.",
+    "required_reviewer": "fresh_profile_resume"
+  },
+  "qualification": {
+    "accepted_gain": false,
+    "all_fixture_objects_readback_verified": 74,
+    "framework_binding_disclosure_required": true,
+    "framework_checks_passed": 12,
+    "framework_commit": "0ed45cdd4cbff6cf305adffc50f937d549314884",
+    "framework_finalized_before_cancellation": true,
+    "framework_raw_samples": 1400,
+    "framework_source_control_rejections": 56,
+    "gain_eligible": false,
+    "provisional_task_and_broad_catalog_status": "Preserved at the qualified pin; this scoped receipt covers only the selected task.",
+    "raw_samples_total": 4200,
+    "same_source": true,
+    "same_source_mean_ratio": 0.9912581069296023,
+    "source_controls_per_correctness": 56,
+    "status": "COMPLETE_WITH_DISCLOSED_FRAMEWORK_BINDING_LIMITATIONS",
+    "timing_quality": "pass",
+    "trusted_phases_passed": 6,
+    "trusted_raw_samples": 2800,
+    "trusted_source_control_rejections": 112
+  },
+  "qualified_commit": "0ed45cdd4cbff6cf305adffc50f937d549314884",
+  "ready_tasks": [
+    "headkernel/minimax-m3__gemm_afp4wfp4_kernel"
+  ],
+  "runtime": {
+    "aiter_jit_source": "/sgl-workspace/aiter/aiter/jit",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "runtime_version": "SGLang 0.5.20"
+  },
+  "schema": "qualified-kernel-entry-v1",
+  "scope": {
+    "cases": 14,
+    "full_captured_native_case_coverage": true,
+    "model_level_ready": false,
+    "optimization_gain_claim": false,
+    "other_tasks_ready": false,
+    "serving_e2e_gain_claim": false
+  },
+  "source_negative_sha256": {
+    "no_op": "7df4767df99d091c2766916d401f5d12e009a96a85fcdcd5e7f8923e766f65f2",
+    "wrong_output": "dbd4f9e1255675ee367fc3769316eac0de8b20a42934ed4675227ecd96d26fcb"
+  },
+  "source_sha256": "66d8611eae70089b20639eae8dc94ae4df1d7a5cf537317575ea89adf9944fbf",
+  "task_tree": "795611e8f0c602084338e47bd5f3a601da8b8744",
+  "validator_config": "example_configs/validate_ready_minimax_fp4_mi355x.yaml"
+}

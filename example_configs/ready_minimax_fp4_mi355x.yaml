@@ -1,0 +1,9 @@
+# Scoped entry for all 14 captured MiniMax FP4 GEMM cases.
+# Materialize the pinned fixtures using ready/minimax-fp4/README.md first.
+agent:
+  template: claude_code
+tasks:
+  - headkernel/minimax-m3__gemm_afp4wfp4_kernel
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
