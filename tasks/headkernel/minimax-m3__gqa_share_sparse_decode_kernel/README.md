@@ -72,3 +72,9 @@ Paired performance compares each candidate graph replay with one deferred frozen
 The score consumer requires the hash-pinned `ut/paired_input_validation.py` hook through `task_local_paired_inputs_v1`. The hook rebuilds every warmup and measured control/address signature from protected fixture geometry and the request seed, reconciles the recorded sampling receipt and all 100 raw timings, and fails closed when CPU reconstruction is unavailable. Rehashing a forged schedule cannot replace the protected reconstruction.
 
 The private reference transfers ownership of each newly returned output before launch-count or launch-configuration checks. A failed setup invocation therefore clears that output even when the invocation does not return to graph setup. Cleanup preserves the original validation error, and this ownership hook is not used for candidate invocations.
+
+The package identity excludes the top-level `build/`, `.validator_audit/`, and
+`.validator_torch_extensions/` runtime directories. This lets the framework append
+audit logs and build local Torch extensions during evaluation. Same-named nested
+directories, source files, cases, and fixtures remain covered by the integrity
+check. This runtime-path fix requires a fresh GPU/framework validation report.

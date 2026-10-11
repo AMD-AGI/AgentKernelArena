@@ -30,7 +30,9 @@ def tree_identity():
     entries = {}
     for path in sorted(ROOT.rglob("*")):
         relative = path.relative_to(ROOT)
-        if relative.parts[0] == "build" or "__pycache__" in relative.parts or path.suffix == ".pyc":
+        if relative.parts[0] in {"build", ".validator_audit", ".validator_torch_extensions"}:
+            continue
+        if "__pycache__" in relative.parts or path.suffix == ".pyc":
             continue
         if path.is_symlink():
             require(path.resolve().is_relative_to(ROOT.resolve()), "task symlink escapes package")
