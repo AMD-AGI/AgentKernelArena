@@ -1,10 +1,9 @@
-"""Source-bound, exact native ASM calibration; never a candidate tolerance.
+"""Source-bound native ASM calibration; never a candidate tolerance.
 
-The pinned ASM rounds each256-term FP32 partial with bits+0x8000, then
-atomically adds packed BF16 pairs. A failing pair must equal one explicit
-legal order bit for bit. A fast search falls back to exact inverse reachability;
-results without an explicit shared-order witness, including proofs stopped by
-the protected aggregate work budget, are rejected.
+The pinned ASM's internal MFMA reduction is not a CPU BLAS dot product.
+Obtain its BF16 partials from isolated K partitions of the protected native
+kernel, check them independently against CPU mathematics, and require an
+explicit shared atomic-add order for every pair outside the normal tolerance.
 """
 from functools import lru_cache
 import hashlib
@@ -75,10 +74,88 @@ def round_asm_partial(value):
 
 
 def asm_partials(inputs):
+    """Historical CPU approximation, retained for diagnostics only."""
     import torch
     A=inputs['A'].float();B=inputs['B'].float()
     if A.shape[1]!=4096 or B.shape[0]!=4096:raise AssertionError('Unknown ASM K partition')
     return torch.stack([round_asm_partial(A[:,start:start+256]@B[start:start+256]) for start in range(0,4096,256)])
+
+
+def _input_fingerprint(inputs):
+    import torch
+    h=hashlib.sha256()
+    for name in ('A','B'):
+        value=inputs[name]
+        if value.device.type!='cpu':raise AssertionError('Native reference inputs must be CPU-owned')
+        h.update(json.dumps([name,str(value.dtype),list(value.shape),list(value.stride())]).encode())
+        h.update(value.contiguous().view(torch.uint8).numpy().tobytes())
+    return h.hexdigest()
+
+
+def _collect_native_partials(inputs):
+    """Run the original kernel, not a fitted model or an instrumented derivative.
+
+    Each workgroup processes one disjoint K partition. With all other A
+    partitions zero, their atomic additions are zero, exposing the original
+    BF16 partial without depending on the arrival order. GPU temporaries do
+    not escape this function; expected values and returned partials stay on CPU.
+    """
+    import torch
+    native=importlib.import_module('aiter.tuned_gemm')
+    if not torch.version.hip or 'gfx950' not in torch.cuda.get_device_properties(0).gcnArchName:
+        raise RuntimeError('Pinned native split reference requires gfx950 ROCm')
+    A=inputs['A'];B=inputs['B']
+    a=torch.empty_strided(A.shape,A.stride(),dtype=A.dtype,device='cuda')
+    b=torch.empty_strided(B.shape,B.stride(),dtype=B.dtype,device='cuda');b.copy_(B)
+    pieces=[]
+    for start in range(0,4096,256):
+        a.zero_();a[:,start:start+256].copy_(A[:,start:start+256])
+        output=native.gemm_a16w16(a,b.t(),bias=None,otype=a.dtype,scale_a=None,scale_b=None,scale_c=None)
+        if (output.dtype!=torch.bfloat16 or output.device!=a.device or tuple(output.shape)!=(64,128)
+                or tuple(output.stride())!=(128,1)
+                or output.untyped_storage().data_ptr() in (a.untyped_storage().data_ptr(),b.untyped_storage().data_ptr())):
+            raise AssertionError('Native split reference output ABI differs')
+        pieces.append(output.detach().to(device='cpu',copy=True))
+        masked=torch.zeros_like(A);masked[:,start:start+256].copy_(A[:,start:start+256])
+        if not torch.equal(a.cpu(),masked) or not torch.equal(b.cpu(),B):
+            raise AssertionError('Native split reference mutated its inputs')
+        # Do not leave reference answers in reusable GPU output allocations.
+        output.fill_(float('nan'))
+    torch.cuda.synchronize()
+    return torch.stack(pieces)
+
+
+def prepare_native_reference(case,inputs):
+    """Prepare the same protected reference outside timing for both legs."""
+    import torch
+    A=inputs['A'];B=inputs['B']
+    if (case['live_fixture']['capture_family']!='bf16_gemm' or A.dtype!=torch.bfloat16
+            or (tuple(A.shape),tuple(B.shape))!=((64,4096),(4096,128))):return None
+    if any(x.device.type!='cpu' for x in inputs.values()):raise AssertionError('Native reference requires CPU inputs')
+    if B.dtype!=A.dtype or A.stride()!=(4096,1) or B.stride()!=(1,4096):
+        raise AssertionError('Native split reference input ABI differs')
+    if not all(bool(torch.isfinite(x).all()) for x in (A,B)):raise AssertionError('Nonfinite native reference inputs')
+    verify_native_sources()
+    dispatch=dispatch_for(inputs)
+    if dispatch!={'libtype':'asm','kernelName':KERNEL,'splitK':16}:
+        raise AssertionError('Unsupported native split reference dispatch')
+    parts=_collect_native_partials(inputs)
+    if parts.device.type!='cpu' or parts.dtype!=torch.bfloat16 or tuple(parts.shape)!=(16,64,128):
+        raise AssertionError('Native split reference must return all16 CPU BF16 partials')
+    checks=[]
+    for split,start in enumerate(range(0,4096,256)):
+        # No CPU summation order is asserted to match MFMA bit for bit. This is
+        # a separate mathematical accuracy check, using the unchanged candidate
+        # pointwise AND scale-relative limits on every full partial matrix.
+        expected=(A[:,start:start+256].double()@B[start:start+256].double()).to(torch.bfloat16)
+        try:checks.append(candidate_close(parts[split],expected))
+        except AssertionError as error:
+            raise AssertionError('Native split reference fails independent CPU mathematics: split '+str(split)) from error
+    return {'partials':parts,'input_fingerprint':_input_fingerprint(inputs),
+        'evidence':{'method':'pinned_native_zero_masked_K_partitions','native_dispatch':dispatch,
+            'partition_size':256,'partitions':16,'CPU_FP64_partial_checks':checks,
+            'partial_sha256':hashlib.sha256(parts.contiguous().view(torch.uint8).numpy().tobytes()).hexdigest(),
+            'GPU_truth_retained':False}}
 
 
 class NativeOrderProofError(AssertionError):
@@ -162,7 +239,7 @@ def exact_pair_orders(parts,observed,positions,*,max_orders=65536):
         'witnesses':[{'row':int(positions[i,0]),'pair_column':int(positions[i,1]),'arrival_order':witnesses[i]} for i in range(len(positions))]}
 
 
-def calibrate(case,inputs,actual,expected,*,dispatch=None,check_sources=True):
+def calibrate(case,inputs,actual,expected,*,dispatch=None,check_sources=True,native_reference=None):
     import torch
     if actual.device.type!='cpu' or expected.device.type!='cpu' or any(x.device.type!='cpu' for x in inputs.values()):raise AssertionError('Native proof and inputs must stay on CPU')
     if not bool(torch.isfinite(actual.float()).all()) or not bool(torch.isfinite(expected.float()).all()):raise AssertionError('Nonfinite native output/reference')
@@ -178,11 +255,22 @@ def calibrate(case,inputs,actual,expected,*,dispatch=None,check_sources=True):
     positions=bad.reshape(bad.shape[0],-1,2).any(dim=2).nonzero()
     # Retain reference bits before the fallback allocates its tables/caches.
     reference_pairs={(row,pair):[int(x)&65535 for x in expected[row,2*pair:2*pair+2].contiguous().view(torch.int16).tolist()] for row,pair in positions.tolist()}
-    try:proof=exact_pair_orders(asm_partials(inputs),actual,positions)
+    reference=prepare_native_reference(case,inputs) if native_reference is None else native_reference
+    if reference is None or reference['input_fingerprint']!=_input_fingerprint(inputs):
+        raise AssertionError('Native split reference belongs to different input bytes')
+    parts=reference['partials']
+    if parts.device.type!='cpu' or parts.dtype!=torch.bfloat16 or tuple(parts.shape)!=(16,64,128):
+        raise AssertionError('Invalid native split reference partials')
+    try:proof=exact_pair_orders(parts,actual,positions)
     except NativeOrderProofError as error:
         error.native_precision_evidence['case_id']=case['case_id']
         for pair in error.native_precision_evidence['failed_pairs']:
             pair['CPU_reference_bf16_bits']=reference_pairs[pair['row'],pair['pair_column']]
         raise
-    record.update(exact_exception_pairs=len(positions),native_dispatch=dispatch,proof=proof)
+    for witness in proof['witnesses']:
+        row,column=witness['row'],2*witness['pair_column']
+        witness['partial_bf16_bits']=[[int(x)&65535 for x in values]
+            for values in parts[:,row,column:column+2].contiguous().view(torch.int16).tolist()]
+    record.update(exact_exception_pairs=len(positions),native_dispatch=dispatch,proof=proof,
+        native_partial_reference=reference['evidence'])
     return record

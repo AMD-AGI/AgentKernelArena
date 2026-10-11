@@ -50,8 +50,8 @@ headkernel:
   native_dispatch: Pinned AITER dense dispatcher for wrapper records; direct ATen
     mm for direct records
   validation_status: final_complete_real_capture_contract_pending_fresh_gpu_framework
-  oracle: independent CPU FP32 matmul from quantized/dequantized operands; no GPU
-    oracle buffers exist
+  oracle: CPU-owned mathematical candidate truth; pinned vendor split references
+    independently checked against CPU FP64 mathematics certify native atomic results
   count_scope: actual per-rank notifications across complete64-request served prefill
     and decode workload
   performance_baseline: Pinned native production on matched fresh inputs; frozen-port
