@@ -1,0 +1,13 @@
+{
+  "task": "headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
+  "guide": "ready/current/mla-prefill/README.md",
+  "receipt": "ready/current/mla-prefill/READY.json",
+  "qualified_framework_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "qualified_trusted_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "compatible_checkout_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "task_tree": "b659474a77efd6d2e4b795011b669d06e634d595",
+  "later_runtime_compatibility_claimed": false,
+  "accepted_gain": false,
+  "verification": "python3 ready/current/mla-prefill/verify.py --repo QUALIFIED_CHECKOUT",
+  "whole_suite_ready": false
+}

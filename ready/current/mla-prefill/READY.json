@@ -1,0 +1,116 @@
+{
+  "accepted_gain": false,
+  "archive": {
+    "all_objects_downloaded_and_verified": true,
+    "objects": {
+      "PRESERVATION.json": {
+        "bytes": 1740,
+        "sha256": "0b2eb737ee416fc5068cf5415df941c24b8a98a7c1d9c15f7eb7111cafc24c1b"
+      },
+      "PRESERVED-MANIFEST.json": {
+        "bytes": 25178,
+        "sha256": "911492278e6c11abc48a25fde77f7a21ffecb1d2101698bcda731dfb8d691587"
+      },
+      "READBACK-GATE.json": {
+        "bytes": 11277,
+        "sha256": "01bb9939845b8ac1bd511b9cc8e95b4e3b5545496082cdef5e16b63182de1893"
+      },
+      "mla-current-complete-207740.tar.gz": {
+        "bytes": 725662,
+        "sha256": "cc3159c484c69d8be39d19eef06b94c80e5953bcc40dbf87801d8dc8f172a329"
+      }
+    },
+    "payload_files_rehashed": 116,
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261011/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/7bc14698-207740/",
+    "receipt": {
+      "name": "ARCHIVE-VERIFIED.json",
+      "sha256": "559b8ba425de7c195fdf592530413b3c6323a859887b06cc10b83f058877f183"
+    }
+  },
+  "case_ids": [
+    "deepseek_mla_prefill-2800f2114cb8548cf5fdd0ba",
+    "deepseek_mla_prefill-fff723d1365f8696979e5779"
+  ],
+  "compatible_checkout_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "editable_file": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/source/pa_sparse_prefill_opus.h",
+  "editable_kernel": "pa_prefill_16mx1_16nx4_kernel",
+  "entry_config": "example_configs/ready_ds_mla_prefill_mi355x.yaml",
+  "entry_files_sha256": {
+    "check_timing.py": "1a91301d9a74fb20547b9c184ebb4ed347ef9d3ba519376a32d8a98fd359baba",
+    "verify.py": "1311f942b71024a10c0a38e6fb7e29070dbe0f2c54586dcb8120f84979f86fe3"
+  },
+  "fixtures": {
+    "bytes": 1413573052,
+    "files": 25,
+    "manifest": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill/fixtures/EXTERNAL-MANIFEST.json",
+    "manifest_sha256": "f998110ec4d0451bd43ecbbea9e63d595027732f429b45cf850f2ea7495b19d4",
+    "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/deepseek-final-v7-mixed/"
+  },
+  "historical_ready_entry_changed": false,
+  "input_pins_sha256": "45efc7403dfeeb69d1fe262cd36a93377bfa1f4e24e4d3b882e429341db1db29",
+  "later_runtime_compatibility_claimed": false,
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      42,
+      43
+    ],
+    "initialize_outputs": "each_replay",
+    "method": "cuda_graph",
+    "negative_controls": [
+      "no_op",
+      "wrong_output"
+    ],
+    "refresh_inputs": "each_replay",
+    "validate_outputs": "each_replay",
+    "warmup_iterations": 10
+  },
+  "proofs": {
+    "final_qualification_sha256": "2e4eff0c38e42ce376bc8cfd0bffb4f661e5657a54e52b3e0e742f1ede9d7d46",
+    "framework_report_sha256": "2fae9e4f43a05d9c07801c70ef3e24e151c6ddd02e552487fb5e76a1279e24b9",
+    "readback_gate_sha256": "01bb9939845b8ac1bd511b9cc8e95b4e3b5545496082cdef5e16b63182de1893",
+    "trusted_measurement_sha256": "b450681a21ab48f0d767a936afbb8a3655854a8d643ee1826ffa4084f93dbff6"
+  },
+  "qualification": {
+    "accepted_gain": false,
+    "all_final_checkpoint_files_rehashed": 37,
+    "allocation_cancelled_utc": "2026-10-11T12:49:55Z",
+    "automatic_retries": false,
+    "final_framework_checkpoint": 67,
+    "finalized_before_cancellation": true,
+    "finalized_utc": "2026-10-11T12:47:05.237890+00:00",
+    "framework_checks_passed": 12,
+    "framework_samples": 200,
+    "job": "207740",
+    "raw_same_source_mean_ratio": 0.9855112940583893,
+    "samples_trimmed": false,
+    "trusted_phases_passed": 6,
+    "trusted_samples": 400
+  },
+  "qualified_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "qualified_framework_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "qualified_trusted_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "ready_tasks": [
+    "headkernel/deepseek-v4-pro__unified_paged_attention_prefill"
+  ],
+  "runtime": {
+    "aiter_jit_source": "/sgl-workspace/aiter/aiter/jit",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+  },
+  "schema": "current-scoped-ready-entry-v1",
+  "scope": {
+    "H": 16,
+    "cases": 2,
+    "legacy_M_1_and_64_covered": false,
+    "logical_M": 8192,
+    "model_level_ready": false,
+    "other_tasks_ready": false
+  },
+  "source_sha256": "a71cbe21053ba78fc09d0ecc4e34bb03f0b2bd5d95da906b7fd6b8ec171b1883",
+  "task": "headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
+  "task_tree": "b659474a77efd6d2e4b795011b669d06e634d595",
+  "validator_config": "example_configs/validate_ready_ds_mla_prefill_mi355x.yaml"
+}
