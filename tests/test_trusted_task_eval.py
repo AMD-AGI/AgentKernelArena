@@ -1,6 +1,7 @@
 """Generic trusted retest stages declared sources and checks complete case ABI."""
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -76,6 +77,38 @@ def test_failed_diagnostic_copy_preserves_original_phase_exception(tmp_path, mon
         trusted.run_phase(image,tmp_path/'task',staging,output,'reference',{'phase':'performance','gpu':{}},'/dev/dri/renderD0',1)
     assert caught.value is original_error
     assert any('declared failure tensor is missing' in note for note in caught.value.__notes__)
+
+
+def test_declared_large_failure_bundle_survives_export(tmp_path, monkeypatch):
+    if shutil.which("rclone") is None:
+        pytest.skip("diagnostic preservation requires rclone")
+    build = tmp_path / "build"
+    build.mkdir()
+    payload = build / "native.tensor_failure.pt"
+    size = (64 << 20) + 1
+    with payload.open("wb") as stream:
+        stream.truncate(size)
+    with payload.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    manifest = {"schema": "trusted-tensor-failure-v1", "bundle": {
+        "file": payload.name, "bytes": size, "sha256": digest}}
+    (build / "native.tensor_failure.json").write_text(json.dumps(manifest))
+    read_regular = trusted.read_regular
+
+    def no_large_materialization(path):
+        assert Path(path).suffix != ".pt", "tensor artifact must be hashed as a stream"
+        return read_regular(path)
+
+    monkeypatch.setattr(trusted, "read_regular", no_large_materialization)
+    output = tmp_path / "preserved"
+    trusted.preserve_diagnostics(build, output)
+    assert (output / payload.name).stat().st_size == size
+    with (output / payload.name).open("rb") as stream:
+        assert hashlib.file_digest(stream, "sha256").hexdigest() == digest
+    assert json.loads((output / "hashes.json").read_text())[payload.name] == digest
+    # The wider artifact hash must not weaken the existing source/text reader.
+    with pytest.raises(ValueError, match="64 MiB"):
+        read_regular(payload)
 
 
 @pytest.mark.parametrize('malformed',['[]','null'])

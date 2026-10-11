@@ -155,6 +155,13 @@ Docker inspection dump. Failed inspection is recorded as unavailable, so exit
 137 alone is not labelled as OOM. A failed phase still propagates its original
 exception and cannot publish a successful measurement.
 
+If a failed verifier declares a tensor bundle, diagnostic export verifies its
+declared size and SHA256 using bounded streaming reads before and after the
+copy. This supports the existing 2 GiB bundle limit without materializing a
+second copy in host memory. The ordinary source and text reader retains its
+64 MiB limit, and both paths reject symlink traversal or files that change
+during inspection.
+
 Transfers use `rclone --transfers 64000 --progress --buffer-size 0`,
 `GOMAXPROCS=1`, two checkers, disabled multithread streams, and explicit lists of
 at most 24 objects. Batches target at most 64 MiB; a larger individual asset is
