@@ -93,6 +93,15 @@ Historical CUDA-event timings describe the previous benchmark method. This
 harness change requires fresh trusted and framework GPU qualification; the old
 numbers are not graph timings or a declared event fallback.
 
+The framework requires the explicit `qwen_rmsnorm_graph_v1` quality adapter for
+ordinary scoring and task validation. It checks the complete raw report with the
+hash-bound task validator and binds each invocation to its current source and
+workload metadata. All 100 samples remain in the arithmetic mean. An extreme
+outlier in either comparison leg rejects the comparison; unchanged source is a
+control and earns no speedup. A stable stock-source run may still pass task
+validation, which makes no optimization claim. Other Qwen report contracts do
+not acquire this adapter merely by enabling a Boolean flag.
+
 ## Starting point
 
 `source/` is the **stock** upstream code, byte-identical to

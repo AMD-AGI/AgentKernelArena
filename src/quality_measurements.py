@@ -21,7 +21,8 @@ def native_quant_config(config):
 
 
 def quality_required(config):
-    return bool(config.get('scoring_baseline') is not None
+    return bool(config.get('benchmark_quality') is not None
+                or config.get('scoring_baseline') is not None
                 or config.get('trusted_evaluation', {}).get('schema_version') == 1
                 or native_quant_config(config))
 
@@ -84,6 +85,8 @@ def load_quality_measurements(root, config):
     from .native_baseline import read_task_file
     root = Path(root)
     report = strict_json(read_task_file(root, 'build/performance_report.json').decode())
+    if config.get('benchmark_quality') is not None:
+        return _qwen_rmsnorm_graph_cases(root, config, report)
     manifest = strict_json(read_task_file(root, config.get('trusted_evaluation', {}).get('case_manifest', 'cases.json')).decode())
     sources = {name: hashlib.sha256(read_task_file(root, name)).hexdigest() for name in config['source_file_path']}
     if not native_quant_config(config):
@@ -104,6 +107,57 @@ def load_quality_measurements(root, config):
             metadata={'params': {'trace_call_count': row['trace_call_count']}, 'benchmark_method': 'cuda_graph',
                       'benchmark_quality_required': True, 'benchmark_quality_case': deepcopy(dict(proof))})
         result.append(attach_case_quality(case_result, proof))
+    return result
+
+
+def _qwen_rmsnorm_graph_cases(root, config, report):
+    """Revalidate the supported RMSNorm protocol before creating authority.
+
+    This adapter does not enable the other Qwen report formats. Its protected,
+    hash-bound CPU validator supplies the complete existing case/metadata checks;
+    candidate code is never imported by this consumer.
+    """
+    from .native_baseline import read_task_file
+    policy = config['benchmark_quality']
+    require(isinstance(policy, dict) and set(policy) == {'schema_version', 'adapter', 'validator_sha256'}
+            and type(policy['schema_version']) is int and policy['schema_version'] == 1
+            and policy['adapter'] == 'qwen_rmsnorm_graph_v1', 'unsupported benchmark-quality adapter')
+    source = 'source/minimax_m3_rmsnorm.py'
+    require(config.get('task_type') == 'triton2triton' and config.get('source_file_path') == [source]
+            and config.get('target_kernel_functions') == ['gemma_fused_add_rmsnorm', '_gemma_fused_add_rmsnorm_kernel'],
+            'RMSNorm quality adapter target contract differs')
+    validator_path = root / 'scripts/task_runner.py'
+    validator = read_task_file(root, 'scripts/task_runner.py')
+    require(hashlib.sha256(validator).hexdigest() == policy['validator_sha256'], 'RMSNorm quality validator changed')
+    metadata = read_task_file(root, 'ut/meta.json')
+    manifest = strict_json(metadata.decode())
+    require(isinstance(manifest, dict) and manifest.get('op_kind') == 'fused_add_rmsnorm',
+            'unsupported RMSNorm metadata contract')
+    sources = {source: hashlib.sha256(read_task_file(root, source)).hexdigest()}
+    require(isinstance(report, dict), 'RMSNorm performance report must be a mapping')
+    request = report.get('request', {})
+    require(report.get('status') == 'ok' and report.get('timer') == 'cuda_graph'
+            and report.get('warmup_iterations') == 10 and report.get('benchmark_iterations') == 100,
+            'RMSNorm performance report is incomplete')
+    require(isinstance(request, dict) and type(request.get('schema_version')) is int and request['schema_version'] == 1
+            and request.get('phase') == 'performance' and isinstance(request.get('request_id'), str)
+            and bool(request['request_id']) and request.get('source_sha256') == sources
+            and request.get('manifest_sha256') == hashlib.sha256(metadata).hexdigest(),
+            'RMSNorm performance request/source/metadata binding differs')
+    raw = strict_json(read_task_file(root, 'build/_bench_raw.json').decode())
+    namespace = {'__file__': str(validator_path.resolve()), '__name__': '_protected_rmsnorm_quality_validator'}
+    exec(compile(validator, str(validator_path), 'exec'), namespace)
+    rows = namespace['_benchmark_cases'](raw)
+    require(report.get('test_cases') == rows, 'RMSNorm published cases differ from validated raw measurements')
+    result = []
+    for row in rows:
+        proof = case_quality(row['test_case_id'], case_ids=[r['test_case_id'] for r in rows],
+            sources=sources, request_id=request['request_id'], manifest_sha256=request['manifest_sha256'],
+            kind='portable', series={'candidate': row['samples_ms']})
+        case = TestCaseResult(row['test_case_id'], execution_time_ms=proof['series']['candidate']['raw_mean_ms'],
+            metadata={**{key: value for key, value in row.items() if key not in ('test_case_id', 'execution_time_ms')},
+                      'benchmark_quality_required': True, 'benchmark_quality_case': deepcopy(dict(proof))})
+        result.append(attach_case_quality(case, proof))
     return result
 
 
