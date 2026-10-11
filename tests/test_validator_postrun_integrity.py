@@ -1,5 +1,6 @@
 """Exercise the real main/finalizer boundary without running a GPU or an agent."""
 import json
+import hashlib
 import logging
 from pathlib import Path
 import shutil
@@ -174,6 +175,84 @@ def test_pending_main_audit_cannot_be_resumed_or_archived_as_pass(tmp_path):
     assert not validation_report_is_complete(root)
     archive = tmp_path / "archive" / "task"
     shutil.copytree(root, archive)
+    assert not validation_report_is_complete(archive)
+
+
+@pytest.mark.parametrize("state", ["pending", "corrupt_receipt", "missing_receipt"])
+def test_archived_required_integrity_cannot_be_downgraded_by_stripping_marker(tmp_path, state):
+    root = tmp_path / "run" / "task"
+    config = task_files(root)
+    context = begin_validator_integrity(root, config, snapshot_workspace_harness(root, strict=True))
+    write_report(root)
+    if state != "pending":
+        assert finish_validator_integrity(context, task_name="triton2triton/example")
+    archive = tmp_path / "archive" / "task"
+    shutil.copytree(root, archive, symlinks=True)
+    assert not (archive.parent / ".validator-integrity").exists()
+    if state != "pending":
+        assert validation_report_is_complete(archive)
+        receipt = archive / "validation_integrity.json"
+        if state == "corrupt_receipt":
+            receipt.write_text(receipt.read_text() + " ")
+        else:
+            receipt.unlink()
+    assert not validation_report_is_complete(archive)
+    report_path = archive / "validation_report.yaml"
+    report_bytes = report_path.read_bytes()
+    assert yaml.safe_load(report_bytes)["overall_status"] == "PASS"
+    marker_path = archive / ".validation_complete"
+    marker = yaml.safe_load(marker_path.read_text())
+    original_hash = marker["report_sha256"]
+    del marker["validator_integrity"]
+    marker_path.write_text(yaml.safe_dump(marker))
+    assert report_path.read_bytes() == report_bytes
+    assert marker["report_sha256"] == original_hash == hashlib.sha256(report_bytes).hexdigest()
+    assert not validation_report_is_complete(archive)
+
+
+def test_direct_finalizer_without_integrity_lifecycle_remains_compatible(tmp_path):
+    root = tmp_path / "run" / "task"
+    task_files(root)
+    write_report(root)
+    report = yaml.safe_load((root / "validation_report.yaml").read_text())
+    marker = yaml.safe_load((root / ".validation_complete").read_text())
+    assert "validator_integrity" not in report and "validator_integrity" not in marker
+    assert validation_report_is_complete(root)
+    archive = tmp_path / "archive" / "task"
+    shutil.copytree(root, archive)
+    assert validation_report_is_complete(archive)
+
+
+def test_archive_marker_and_receipt_cannot_substitute_report_attempt(monkeypatch, tmp_path):
+    completed, workspace, _ = run_validator(monkeypatch, tmp_path)
+    assert completed
+    archive = tmp_path / "archive" / "task"
+    shutil.copytree(workspace, archive)
+    report_path = archive / "validation_report.yaml"
+    report_bytes = report_path.read_bytes()
+    report = yaml.safe_load(report_bytes)
+    assert report["validator_integrity"]["required"] is True
+    receipt_path = archive / "validation_integrity.json"
+    receipt = json.loads(receipt_path.read_text())
+    receipt["attempt"] = "substituted-attempt"
+    receipt_path.write_text(json.dumps(receipt))
+    marker_path = archive / ".validation_complete"
+    marker = yaml.safe_load(marker_path.read_text())
+    marker["validator_integrity"]["attempt"] = receipt["attempt"]
+    marker["validator_integrity"]["receipt_sha256"] = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    marker_path.write_text(yaml.safe_dump(marker))
+    assert report_path.read_bytes() == report_bytes
+    assert not validation_report_is_complete(archive)
+
+
+def test_renormalizing_archive_preserves_required_lifecycle(monkeypatch, tmp_path):
+    completed, workspace, _ = run_validator(monkeypatch, tmp_path)
+    assert completed
+    archive = tmp_path / "archive" / "task"
+    shutil.copytree(workspace, archive)
+    before = yaml.safe_load((archive / "validation_report.yaml").read_text())
+    after = finalize_report(archive, expected_task_name="triton2triton/example")
+    assert after["validator_integrity"] == before["validator_integrity"]
     assert not validation_report_is_complete(archive)
 
 

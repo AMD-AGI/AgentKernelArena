@@ -504,6 +504,23 @@ def _atomic_yaml_dump(path: Path, data: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
+def _bind_integrity_requirement(workspace: Path, report: dict, previous: Any) -> dict | None:
+    """Cover the lifecycle and attempt with the report digest, even in archives."""
+    from src.validator_integrity import REPORT_LIFECYCLE, integrity_marker_requirement
+
+    requirement = integrity_marker_requirement(workspace)
+    if requirement is not None:
+        report["validator_integrity"] = {
+            "required": True, "lifecycle": REPORT_LIFECYCLE,
+            "attempt": requirement["attempt"],
+        }
+    elif isinstance(previous, dict) and "validator_integrity" in previous:
+        # Re-normalizing an archived report must not erase its obligation just
+        # because the external active.json did not travel with the workspace.
+        report["validator_integrity"] = previous["validator_integrity"]
+    return requirement
+
+
 def finalize_report(
     workspace: str | Path,
     *,
@@ -586,11 +603,10 @@ def finalize_report(
         expected_task_name=expected_task_name,
         framework_error=framework_error,
     )
+    requirement = _bind_integrity_requirement(workspace_path, report, raw_report)
     _atomic_yaml_dump(report_path, report)
     digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
     marker = {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest}
-    from src.validator_integrity import integrity_marker_requirement
-    requirement = integrity_marker_requirement(workspace_path)
     if requirement is not None:
         marker["validator_integrity"] = requirement
     _atomic_yaml_dump(marker_path, marker)
@@ -609,11 +625,12 @@ def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> 
             "status": "FAIL", "details": error, "post_validator_integrity_verified": False,
         }
     report = normalize_report(raw, expected_task_name=task_name, framework_error=error)
+    requirement = _bind_integrity_requirement(workspace, report, raw)
     _atomic_yaml_dump(report_path, report)
     _atomic_yaml_dump(workspace / COMPLETION_MARKER_FILENAME, {
         "validation_schema_version": REPORT_SCHEMA_VERSION,
         "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
-        "validator_integrity": {"required": True, "status": "PENDING"},
+        "validator_integrity": requirement or {"required": True, "status": "PENDING"},
     })
 
 

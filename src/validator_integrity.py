@@ -20,6 +20,7 @@ from .harness_guard import HarnessIntegrityError, WorkspaceSnapshot, verify_work
 
 
 EXPORT_NAME = "validation_integrity.json"
+REPORT_LIFECYCLE = "framework_post_validator_integrity_v1"
 
 
 def _sha256(path: Path) -> str:
@@ -190,9 +191,18 @@ def completion_integrity_matches(workspace: Path, marker: dict, report: dict) ->
     descriptor = marker.get("validator_integrity")
     active_path = _control_directory(workspace) / "active.json"
     if descriptor is None:
-        return not active_path.exists()  # Preserve explicitly historical/direct finalizer reports.
+        # Only reports without a bound lifecycle can use legacy compatibility.
+        # Removing marker metadata must not bypass a new archived audit.
+        return "validator_integrity" not in report and not active_path.exists()
     try:
+        declaration = report.get("validator_integrity")
+        if (not isinstance(declaration, dict) or declaration.get("required") is not True
+                or declaration.get("lifecycle") != REPORT_LIFECYCLE
+                or not isinstance(declaration.get("attempt"), str) or not declaration["attempt"]):
+            return False
         if not isinstance(descriptor, dict) or descriptor.get("required") is not True:
+            return False
+        if descriptor.get("attempt") != declaration["attempt"]:
             return False
         if descriptor.get("status") not in {"PASS", "FAIL"} or descriptor.get("receipt") != EXPORT_NAME:
             return False

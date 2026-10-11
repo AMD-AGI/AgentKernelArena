@@ -197,8 +197,11 @@ observation is unavailable (`null`), not a fabricated matching hash.
 
 The workspace receives the same receipt as `validation_integrity.json`.
 `.validation_complete` binds its hash, attempt identity, integrity status, and
-the finalized report. Archive **the report, completion marker, and integrity
-receipt together**; they allow the completed audit to be checked after copying
+the finalized report. The report itself declares the required integrity lifecycle
+and attempt identity, covered by its report digest. Removing integrity metadata
+from an archived marker cannot turn that report into a legacy completion; its
+matching marker and receipt remain required. Archive **the report, completion
+marker, and integrity receipt together**; they allow the completed audit to be checked after copying
 the workspace. Preserve the outside attempt directory as well when retaining
 original source copies and incomplete attempts. Pending checks, missing or
 altered required receipts, and failed receipt publication do not qualify as
