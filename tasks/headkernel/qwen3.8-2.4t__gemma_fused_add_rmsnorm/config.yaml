@@ -11,7 +11,7 @@ target_kernel_functions:
 benchmark_quality:
   schema_version: 1
   adapter: qwen_rmsnorm_graph_v1
-  validator_sha256: 015a4e33b6c50301643bf64df8300de9e60f6271e8196091aa87edd0f01336a3
+  validator_sha256: fca75a4161e243422185afb2d32676b02b5be70040b8c2cc0d024f4dde3314b4
 
 harness_protection:
   freeze_task_inputs: true
@@ -52,6 +52,10 @@ prompt:
     The host helper `_num_warps`, public launcher `gemma_fused_add_rmsnorm`,
     imports, other functions, and module-level code are frozen. The shipped
     ut/kernel_src symlink must continue to point to that same candidate source file.
+    The editable body must stay within the closed Triton GPU grammar enforced by
+    ut/source_guard.py: GPU arithmetic, memory operations, tensor casts, and
+    numeric constexpr tuning are allowed; host callbacks, runtime introspection,
+    imports, and Python object mutation are rejected before any phase runs.
 
     Entry points that must keep their signatures:
       gemma_fused_add_rmsnorm

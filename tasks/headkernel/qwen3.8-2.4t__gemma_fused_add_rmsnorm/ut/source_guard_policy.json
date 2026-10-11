@@ -1,0 +1,13 @@
+{
+  "schema": "closed-gpu-source-v1",
+  "sources": {
+    "source/minimax_m3_rmsnorm.py": {
+      "language": "triton",
+      "targets": [
+        "_gemma_fused_add_rmsnorm_kernel"
+      ],
+      "reference": "ut/baseline_ref/minimax_m3_rmsnorm.py.orig"
+    }
+  },
+  "frozen_files": {}
+}
