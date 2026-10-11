@@ -13,7 +13,7 @@ import sys
 # The controller uses -I; add only this protected scripts directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _routing_contract import (CHECKED, PREPARED, PROTOCOL, SAMPLES, WARMUP,
-                               fingerprint, require, specs, strict_json,
+                               effective_execution_identity, fingerprint, require, specs, strict_json,
                                validate_payload, validate_request)
 from _moe_runtime import NativeRuntime, ReplayState, cpu_snapshot
 
@@ -125,6 +125,9 @@ def correctness_case(runtime, spec, route, seed):
     engagement = engagement_and_smoke(state)
     return {'sig': spec['sig'] + '|' + spec['regime'], 'params': state.params,
             'selected_route': route, 'native_dispatch': state.dispatch,
+            'resolved_execution': state.resolved_execution,
+            'resolved_execution_observations': state.execution_observations,
+            'resolved_capture_observations': state.capture_observations,
             'validation': {**validation(state), 'negative_controls': {'no_op': 'rejected', 'wrong_output': 'rejected'},
                            'random_draws': int(runtime.meta['random_draws']), 'graph_replay_values': 2,
                            'fresh_outputs': True, 'prior_output_unchanged': True,
@@ -155,8 +158,13 @@ def measure_case(runtime, spec, route, seed, preflight):
     state.validate()
     require(state.checked_invocations == CHECKED and state.generated == PREPARED,
             'not every measured graph invocation was refreshed and checked')
+    require(state.execution_observations == WARMUP + 2 and state.capture_observations == 2,
+            'native arguments must be observed in every warmup and both captured graphs')
     return {'sig': spec['sig'] + '|' + spec['regime'], 'params': state.params,
             'selected_route': route, 'native_dispatch': state.dispatch,
+            'resolved_execution': state.resolved_execution,
+            'resolved_execution_observations': state.execution_observations,
+            'resolved_capture_observations': state.capture_observations,
             'mean_ms': math.fsum(samples) / len(samples), 'median_ms': statistics.median(samples),
             'min_ms': min(samples), 'max_ms': max(samples), 'samples_ms': samples, **metadata,
             'validation': {**validation(state), 'outputs_poisoned_before_replay': True,
@@ -187,6 +195,7 @@ def main():
         print(f"[checked] {row['sig']} route={route} max_rel_err={row['validation']['max_rel_err']:.6g}", flush=True)
     payload = {'status': 'ok', 'protocol': PROTOCOL, 'request': request,
                'request_sha256': fingerprint(request), 'cases': rows}
+    payload['effective_execution_sha256'] = effective_execution_identity(payload, meta, request)
     if request['mode'] == 'performance':
         payload.update(timer='cuda_graph', warmup=WARMUP, iters=SAMPLES)
     validate_request(request, task, request['mode'])

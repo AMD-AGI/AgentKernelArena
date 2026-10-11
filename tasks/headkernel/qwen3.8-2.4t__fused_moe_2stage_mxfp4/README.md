@@ -20,6 +20,32 @@ Imports, callbacks, decorators, extra functions, module statements, dynamic
 expressions, changed cases, and unlisted route values are rejected at compile.
 This scope does not permit arbitrary device-source optimization.
 
+Route labels are declarations, not execution identities. The native implementation
+resolves an omitted block hint through `get_2stage_cfgs(...).block_m`; it can
+therefore launch the same work as an explicit block choice. Before runtime,
+`source_context` retains the declared-policy hash and leaves the effective MoE
+source identity unresolved. During each warmup and both graph captures, the
+protected observer records complete deterministic native metadata and the actual
+arguments passed to sorting and the two-stage callable. It rejects changes
+between these invocations. Callable identities use module/function names and
+bound configuration values, without process addresses.
+
+Each report separates the declared hint, native default, and observed effective
+block. Its `effective_execution_sha256` binds the resolved per-case native
+arguments/configuration, original case ABI, image and native source checksum.
+The declared label and source formatting are excluded. The quality consumer
+recomputes this identity through `effective_execution_identity`; an aliased
+route edit remains an unchanged-execution control and cannot earn a gain.
+No static default or alias is asserted without runtime observations.
+
+For a short GPU diagnostic before full qualification, run
+`python3 scripts/probe_native_routes.py --out build/native-route-probe.json`
+in the same prepared SG520 task workspace. It checks both original captured
+cases, records each observed default, and verifies the matching explicit hint's
+native execution descriptor. The report is marked non-scoreable and does not
+qualify the task. It does not replace runtime verification in correctness and
+performance.
+
 The protected runtime verifies the installed SG520 `fused_moe.py` against
 `source_provenance` in [ut/meta.json](ut/meta.json) and its frozen source copy.
 Baseline reference calls use that image-native function directly. Both the
