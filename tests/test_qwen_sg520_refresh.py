@@ -33,29 +33,32 @@ def test_native_source_and_existing_callable_contract(name, count):
     assert refresh["current_runtime_GPU_validation"] == "PENDING_ROOT_ASSIGNED_GPU_REPLAY"
     assert not refresh["current_runtime_workload_capture_claimed"]
     assert meta["capture_source_provenance"]["runtime_image"] != IMAGE
-    if name == "fused_moe_2stage_mxfp4":
-        # The refresh artifact records the historical native-copy candidate.
-        # The current candidate is a literal policy over that protected runtime;
-        # it must not be mislabeled as another copy of the device implementation.
-        assert refresh["candidate_sha256"] == "05b51d1575ffa9b6f77d9370d874c360e91567901f605c761b37177655f78132"
+    if name in {"dense_bf16_gemm_cluster", "fused_moe_2stage_mxfp4"}:
         assert meta["runtime_refresh"] == refresh
         assert cfg["source_file_path"] == ["source/routing.py"]
         assert cfg["target_kernel_functions"] == ["select_routes"]
         assert meta["source_provenance"]["candidate_source"] == "source/routing.py"
         assert meta["source_provenance"]["kernel_source_complete"] is False
-        assert cfg["headkernel"]["optimization_scope"] == "native_block_size_routing"
-        assert meta["native_routing"]["kind"] == "moe"
-        assert meta["native_routing"]["captured_fixture_topology"] == "SG518 TP8/EP8; 64 local experts of 512"
-        module_spec = importlib.util.spec_from_file_location(
-            "_qwen_moe_refresh_contract", task / "scripts/_routing_contract.py")
-        contract = importlib.util.module_from_spec(module_spec)
-        module_spec.loader.exec_module(contract)
+        spec = importlib.util.spec_from_file_location("_qwen_refresh_contract", task / "scripts/_routing_contract.py")
+        contract = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(contract)
         context = contract.source_context(task)
-        assert context["protocol"] == meta["native_routing"]["protocol"]
-        assert context["routes"] == {"decode_m64_live": "captured", "prefill_m8192_live": "captured"}
         assert context["source_file_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
         assert context["native_source_sha256"] == refresh["native_source_sha256"]
-        assert context["fixture_sha256"] == meta["reference_io_sha256"]
+        if name == "fused_moe_2stage_mxfp4":
+            # This pin identifies the historical native-copy candidate.
+            assert refresh["candidate_sha256"] == "05b51d1575ffa9b6f77d9370d874c360e91567901f605c761b37177655f78132"
+            assert cfg["headkernel"]["optimization_scope"] == "native_block_size_routing"
+            assert meta["native_routing"]["kind"] == "moe"
+            assert meta["native_routing"]["captured_fixture_topology"] == "SG518 TP8/EP8; 64 local experts of 512"
+            assert context["protocol"] == meta["native_routing"]["protocol"]
+            assert context["routes"] == {"decode_m64_live": "captured", "prefill_m8192_live": "captured"}
+            assert context["fixture_sha256"] == meta["reference_io_sha256"]
+        else:
+            assert cfg["headkernel"]["optimization_surface"] == "constrained_native_backend_routing"
+            protected = task / meta["source_provenance"]["protected_native_source"]
+            assert hashlib.sha256(protected.read_bytes()).hexdigest() == refresh["candidate_sha256"]
+            assert context["routes"] == {row["sig"]: "recorded" for row in meta["workload"]["cases"]}
         return
     assert hashlib.sha256(source.read_bytes()).hexdigest() == refresh["candidate_sha256"]
     candidate_functions = {n.name: n for n in ast.parse(source.read_text()).body if isinstance(n, ast.FunctionDef)}

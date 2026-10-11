@@ -244,12 +244,12 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     assert problems == []
     assert sum(counts.values()) == config_count
     assert counts == {
-        "canonical_python": 221,
+        "canonical_python": 222,
         "native_graph_driver": 6,
         "rocmbench_adapter": 61,
         "vllm_adapter": 139,
         "portable_case_contract": 17,
-        "legacy_headkernel": 5,
+        "legacy_headkernel": 4,
         "isolated_native_graph": 1,
         "blocked_entrypoint": 1,
     }
