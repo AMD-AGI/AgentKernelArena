@@ -41,21 +41,28 @@ def to_device(torch, tensor):
     return value
 
 
-def native_value(value, torch=None):
+def native_enum_identities(native):
+    """Bind enum types to verified image exports, independent of cache imports."""
+    return {getattr(native, name): 'aiter.jit.module_aiter_core.' + name
+            for name in ('ActivationType', 'QuantType')}
+
+
+def native_value(value, torch=None, native_enums=None):
     """Canonical native launch data, never address-bearing callable reprs."""
+    if native_enums and type(value) in native_enums:
+        # Relocating the verified AITER cache changes pybind's __module__.
+        # Accept only the exact types exported by the verified native module;
+        # retain the ordinary-image spelling in the canonical execution hash.
+        name, number = getattr(value, 'name', None), getattr(value, 'value', None)
+        require(isinstance(name, str) and type(number) in (int, str), 'invalid native enum')
+        return {'enum': native_enums[type(value)], 'name': name, 'value': number}
     if value is None or type(value) is bool:
         return value
     if isinstance(value, str):
         return str(value)
     if isinstance(value, enum.Enum):
         return {'enum': type(value).__module__ + '.' + type(value).__qualname__,
-                'name': value.name, 'value': native_value(value.value, torch)}
-    if type(value).__module__.startswith('aiter') and type(value).__name__ in ('ActivationType', 'QuantType', 'GateMode'):
-        # AITER image builds can expose these enums through pybind rather than
-        # Python's Enum base. Their stable name/value still describes the ABI.
-        name, number = getattr(value, 'name', None), getattr(value, 'value', None)
-        require(isinstance(name, str) and type(number) in (int, str), 'invalid native enum')
-        return {'enum': type(value).__module__ + '.' + type(value).__qualname__, 'name': name, 'value': number}
+                'name': value.name, 'value': native_value(value.value, torch, native_enums)}
     if type(value).__module__ == 'numpy' and type(value).__name__ == 'bool_':
         return bool(value)
     if isinstance(value, numbers.Integral):
@@ -71,16 +78,16 @@ def native_value(value, torch=None):
     if type(value).__module__ == 'torch' and type(value).__name__ == 'dtype':
         return {'dtype': str(value)}
     if isinstance(value, functools.partial):
-        return {'partial': native_value(value.func, torch),
-                'args': native_value(value.args, torch), 'kwargs': native_value(value.keywords, torch)}
+        return {'partial': native_value(value.func, torch, native_enums),
+                'args': native_value(value.args, torch, native_enums), 'kwargs': native_value(value.keywords, torch, native_enums)}
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {field.name: native_value(getattr(value, field.name), torch)
+        return {field.name: native_value(getattr(value, field.name), torch, native_enums)
                 for field in dataclasses.fields(value)}
     if isinstance(value, (list, tuple)):
-        return [native_value(item, torch) for item in value]
+        return [native_value(item, torch, native_enums) for item in value]
     if isinstance(value, dict):
         require(all(type(key) is str for key in value), 'non-string native configuration key')
-        return {key: native_value(item, torch) for key, item in value.items()}
+        return {key: native_value(item, torch, native_enums) for key, item in value.items()}
     if callable(value):
         module = getattr(value, '__module__', None)
         name = getattr(value, '__qualname__', None) or getattr(value, '__name__', None)
@@ -101,6 +108,7 @@ class NativeRuntime:
         require(torch.cuda.is_available(), 'a ROCm GPU is required')
         require(str(torch.cuda.get_device_properties(0).gcnArchName).split(':')[0] == 'gfx950',
                 'captured native MoE task requires gfx950')
+        self.native_enums = native_enum_identities(self.native)
         self.fn = self.native.fused_moe
         self.collector = None
         self.sorting = self.native.moe_sorting
@@ -128,7 +136,7 @@ class NativeRuntime:
         if self.collector is not None:
             require(len(args) > 5, 'native sorting block argument was not observed')
             self.launch_observation['sorting'].append({
-                'args': native_value(args, self.torch), 'kwargs': native_value(kwargs, self.torch)})
+                'args': native_value(args, self.torch, self.native_enums), 'kwargs': native_value(kwargs, self.torch, self.native_enums)})
         result = self.sorting(*args, **kwargs)
         if self.collector is not None:
             self.collector.scratch = list(result)
@@ -137,14 +145,14 @@ class NativeRuntime:
     def _dispatch(self, *args, **kwargs):
         result = self.dispatcher(*args, **kwargs)
         if self.collector is not None:
-            self.launch_observation['metadata'].append(native_value(result, self.torch))
+            self.launch_observation['metadata'].append(native_value(result, self.torch, self.native_enums))
         return result
 
     def _two_stages(self, *args, **kwargs):
         if self.collector is not None:
             require(len(args) > 10, 'native stage block argument was not observed')
             self.launch_observation['stages'].append({
-                'args': native_value(args, self.torch), 'kwargs': native_value(kwargs, self.torch)})
+                'args': native_value(args, self.torch, self.native_enums), 'kwargs': native_value(kwargs, self.torch, self.native_enums)})
         return self.two_stages(*args, **kwargs)
 
     def call(self, kwargs, route='captured', collector=None):

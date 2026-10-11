@@ -28,7 +28,9 @@ source identity unresolved. During each warmup and both graph captures, the
 protected observer records complete deterministic native metadata and the actual
 arguments passed to sorting and the two-stage callable. It rejects changes
 between these invocations. Callable identities use module/function names and
-bound configuration values, without process addresses.
+bound configuration values, without process addresses. AITER activation and
+quantization enums bind to the exact types exported by the verified native
+module; relocating its verified JIT cache preserves their canonical identities.
 
 Each report separates the declared hint, native default, and observed effective
 block. Its `effective_execution_sha256` binds the resolved per-case native
