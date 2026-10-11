@@ -42,6 +42,9 @@ if __package__:
     from .trusted_fixtures import DEFAULT_MAX_BYTES, DEFAULT_MAX_FILES, load_fixture_manifest, materialize_fixtures
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    # Isolated Python omits the script directory, so add only this trusted
+    # helper directory rather than depending on the caller's working directory.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from gpu_binding import command_with_binding, select_gpu, validate_preflight
     from seed_aiter_jit_cache import copy_cache, seed_image_cache, tree_manifest
     from trusted_native_eval import docker_command, extract_task, read_regular, sha256

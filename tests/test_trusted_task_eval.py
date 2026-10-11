@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -12,6 +13,16 @@ import yaml
 from src.task_contract import finalize_report
 from src.tools import trusted_task_eval as trusted
 from src.tools.materialize_task_contract import materialize
+
+
+def test_direct_cli_imports_helpers_in_isolated_python(tmp_path):
+    # The staging launcher uses -I, which omits the script's directory from
+    # sys.path. It must find its trusted siblings from any working directory.
+    (tmp_path / "gpu_binding.py").write_text("raise AssertionError('ambient helper imported')\n")
+    result = subprocess.run([sys.executable, "-I", str(Path(trusted.__file__).resolve()), "--help"],
+                            cwd=tmp_path, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert "--stage-only" in result.stdout
 
 
 def test_jsonl_failure_context_survives_disposable_build_cleanup(tmp_path, monkeypatch):

@@ -153,6 +153,45 @@ def test_common_helper_copies_and_canonical_contract_match():
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda p: p.name)
+def test_package_identity_excludes_only_top_level_validator_runtime(task, tmp_path, modules):
+    # Exercise the real task hash implementation without importing a GPU runtime.
+    source = ast.parse((task / "scripts/task_runner.py").read_text())
+    function, = [node for node in source.body
+                 if isinstance(node, ast.FunctionDef) and node.name == "tree_identity"]
+    namespace = {"ROOT": tmp_path, "fingerprint": modules["evaluation_contract"].fingerprint,
+                 "require": modules["evaluation_contract"].require,
+                 "sha": modules["served_contract"].sha}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(task / "scripts/task_runner.py"), "exec"), namespace)
+    identity = namespace["tree_identity"]
+    (tmp_path / "source").mkdir()
+    (tmp_path / "source/kernel.py").write_text("original kernel")
+    (tmp_path / "cases.json").write_text("original cases")
+    (tmp_path / "fixtures").mkdir()
+    (tmp_path / "fixtures/input.bin").write_bytes(b"original captured input")
+    before = identity()
+    for name in (".validator_audit", ".validator_torch_extensions"):
+        runtime = tmp_path / name
+        runtime.mkdir()
+        (runtime / "active.log").write_text("first runtime event")
+        assert identity() == before
+        (runtime / "active.log").write_text("appended runtime event")
+        assert identity() == before
+        nested = tmp_path / "source" / name
+        nested.mkdir()
+        (nested / "protected.py").write_text("nested protected code")
+        assert identity() != before
+        (nested / "protected.py").unlink()
+        nested.rmdir()
+    for relative in ("source/kernel.py", "cases.json", "fixtures/input.bin"):
+        path = tmp_path / relative
+        original = path.read_bytes()
+        path.write_bytes(original + b" changed")
+        assert identity() != before
+        path.write_bytes(original)
+    assert identity() == before
+
+
+@pytest.mark.parametrize("task", TASKS, ids=lambda p: p.name)
 def test_shipped_source_passes_guard(modules, task):
     assert modules["source_guard"].validate_sources(task, task)
 

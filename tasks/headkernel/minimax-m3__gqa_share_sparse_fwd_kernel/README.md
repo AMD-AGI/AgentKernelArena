@@ -67,3 +67,9 @@ Paired performance keeps the original recorded-state selection and all 40 cases,
 The `task_local_paired_inputs_v1` receipt contract requires the protected CPU reconstruction hook. It rebuilds all 110 input signatures using the unchanged `seed % len(states)` selection, verifies paging and sparse-address tensor bytes, and reconciles the state receipt against all 100 raw candidate samples. The performance timeout remains 19,800 seconds.
 
 The private reference transfers ownership of each newly returned output before launch-count or launch-configuration checks. A failed setup invocation therefore clears that output even when the invocation does not return to graph setup. Cleanup preserves the original validation error, and this ownership hook is not used for candidate invocations.
+
+The package identity excludes the top-level `build/`, `.validator_audit/`, and
+`.validator_torch_extensions/` runtime directories. This lets the framework append
+audit logs and build local Torch extensions during evaluation. Same-named nested
+directories, source files, cases, and fixtures remain covered by the integrity
+check. This runtime-path fix requires a fresh GPU/framework validation report.
