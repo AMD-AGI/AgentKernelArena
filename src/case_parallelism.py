@@ -30,7 +30,8 @@ def verify_helpers(root, config):
 def materialize_helpers(root, config):
     """Install absent helpers before the harness snapshot; reject existing drift."""
     if not enabled(config):
-        protocol.require(not os.environ.get(protocol.PLAN_ENV), "selected task did not opt into a GPU group")
+        protocol.require(not (os.environ.get(protocol.PLAN_ENV) or os.environ.get(protocol.HASH_ENV)),
+                         "selected task did not opt into a GPU group")
         return
     root = Path(root)
     for name in ("case_parallel.py", "gpu_binding.py"):

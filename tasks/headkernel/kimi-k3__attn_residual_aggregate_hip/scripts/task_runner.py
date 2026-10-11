@@ -169,6 +169,17 @@ def validate_full_payload(payload, manifest, request):
             raise ValueError('Full-task native engagement differs from the bound sources')
 
 
+def finalize_case_union(manifest, request, union):
+    """The framework and trusted host share one complete-case finalizer."""
+    payload = {'compiled': True, 'compiled_specializations': union['compiled_specializations'],
+               'cases': union['rows'],
+               'oracle_order': 'CPU input truth before candidate; CPU output and post-input snapshots before reference'}
+    validate_full_payload(payload, manifest, request)
+    report = {'schema_version': 1, 'status': 'ok', 'request': request, **payload,
+              'case_parallelism': union['case_parallelism']}
+    return finalize_report(report, manifest, request)
+
+
 def runtime_on_gpu(manifest, request, *, build=None):
     runtime = load_runtime(manifest, request, **({'build': build} if build is not None else {}))
     import torch
@@ -237,25 +248,19 @@ def main():
             print(json.dumps({'status': 'partition_complete', 'phase': args.phase,
                               'assigned_case_count': len(case_ids), 'full_case_count': len(manifest['cases'])}))
             return
-        parallel_evidence = None
         if plan is not None:
             # This parent remains CPU-only. All device work lives in the new
             # interpreters launched and joined by the shared protected helper.
             request = parallel.bind_request(request, plan)
             combined = parallel.run_workers(ROOT, manifest, request, plan, Path(__file__).resolve(), leg='framework')
-            payload = {'compiled': True, 'compiled_specializations': combined['compiled_specializations'],
-                       'cases': combined['rows'],
-                       'oracle_order': 'CPU input truth before candidate; CPU output and post-input snapshots before reference'}
-            parallel_evidence = combined['case_parallelism']
+            report = finalize_case_union(manifest, request, combined)
         else:
             runtime, torch = runtime_on_gpu(manifest, request)
             payload = evaluate_cases(runtime, manifest, args.phase, request, torch,
                                      progress=progress_writer(build, args.phase))
-        validate_full_payload(payload, manifest, request)
-        report = {'schema_version': 1, 'status': 'ok', 'request': request, **payload}
-        if parallel_evidence is not None:
-            report['case_parallelism'] = parallel_evidence
-        report = finalize_report(report, manifest, request)
+            validate_full_payload(payload, manifest, request)
+            report = {'schema_version': 1, 'status': 'ok', 'request': request, **payload}
+            report = finalize_report(report, manifest, request)
         temporary = output.with_suffix('.tmp')
         temporary.write_text(canonical(report)+'\n')
         temporary.replace(output)

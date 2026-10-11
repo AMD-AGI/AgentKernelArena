@@ -295,6 +295,14 @@ def complete_report(manifest, request, payload, cpu_runtime, *, parallel=None):
     return finalize_report(report, manifest, request)
 
 
+
+def finalize_case_union(manifest, request, union):
+    """Use the same complete paired comparison for framework and trusted host."""
+    payload = {**union, "kernel_engagement": parent_engagement(manifest, request, union)}
+    cpu_runtime = {"scope": "Per-worker CPU policies are retained in the whole-case receipts"}
+    return complete_report(manifest, request, payload, cpu_runtime, parallel=union["case_parallelism"])
+
+
 def worker_requested(arguments):
     return any(arg == "--case-worker" or arg.startswith("--case-worker=") for arg in arguments)
 
@@ -341,7 +349,7 @@ def main():
             request = bind_request(request, plan)
     if plan is not None:
         union = run_workers(ROOT, manifest, request, plan, Path(__file__).resolve(), leg="framework")
-        payload = {**union, "kernel_engagement": parent_engagement(manifest, request, union)}
+        payload = union
         parallel = union["case_parallelism"]
         cpu_runtime = {"scope": "Per-worker CPU policies are retained in the whole-case receipts"}
     else:
@@ -359,7 +367,8 @@ def main():
                 "kernel_engagement": payload["kernel_engagement"], "cpu_runtime": cpu_runtime,
                 "source_sha256": sources, "package_before_sha256": package, "package_after_sha256": after})
         return 0
-    report = complete_report(manifest, request, payload, cpu_runtime, parallel=parallel)
+    report = (finalize_case_union(manifest, request, payload) if plan is not None else
+              complete_report(manifest, request, payload, cpu_runtime, parallel=parallel))
     write_report(args.phase, report)
     print(args.phase.capitalize() + ": PASS")
     return 0

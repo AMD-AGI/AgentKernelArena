@@ -476,6 +476,7 @@ def _cache_manifest(root):
 
 
 def _copy_cache(source, destination, *, deadline, log):
+    source = Path(source).resolve(strict=True)
     before = _cache_manifest(source)
     require(not destination.exists() and not destination.is_symlink(), "worker cache already exists")
     destination.mkdir()

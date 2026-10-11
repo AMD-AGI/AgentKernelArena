@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
+import os
 from pathlib import Path
 import re
 import socket
@@ -16,7 +18,7 @@ from src.tools import case_parallel as cp
 
 def scheduler_state(job_id):
     result = subprocess.run(["scontrol", "show", "job", "-o", str(job_id)], check=True,
-                            capture_output=True, text=True, timeout=20)
+                            capture_output=True, text=True, timeout=20, env={**os.environ, "TZ": "UTC"})
     return dict(re.findall(r"(?:^|\s)([A-Za-z][A-Za-z0-9_]*)=(\S*)", result.stdout))
 
 
@@ -26,6 +28,12 @@ def validate_scheduler(plan, state, node):
     cp.require(state.get("Restarts") == str(plan["restart_generation"]), "allocation restart generation changed")
     cp.require(state.get("NodeList") == plan["node"] and node.split(".")[0] == plan["node"].split(".")[0],
                "allocation/host node differs")
+    try:
+        ending = datetime.fromisoformat(state["EndTime"])
+        end = (ending if ending.tzinfo is not None else ending.replace(tzinfo=timezone.utc)).timestamp()
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Whole-case parallelism: scheduler lease end is missing or invalid") from exc
+    cp.require(plan["work_stop_unix"] <= end, "plan work cutoff exceeds the scheduler lease")
     tres = dict(item.split("=", 1) for item in state.get("AllocTRES", "").split(",") if "=" in item)
     memory = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([KMGT]?)", tres.get("mem", ""))
     cp.require(memory is not None and tres.get("cpu", "").isdigit()

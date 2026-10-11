@@ -318,12 +318,13 @@ def test_real_framework_finalizer_requires_complete_receipt_chain(package, monke
     assert final["overall_status"] == ("PASS" if attack is None else "FAIL")
 
 
-@pytest.mark.parametrize("attack", [None, "cancelled", "restarted", "wrong_job", "wrong_node", "cpu", "memory", "gpu", "missing_capacity"])
+@pytest.mark.parametrize("attack", [None, "cancelled", "restarted", "wrong_job", "wrong_node", "cpu", "memory", "gpu", "missing_capacity", "lease"])
 def test_scheduler_admission_checks_fresh_allocation_without_old_job_assumptions(attack):
     from src.tools.case_gpu_plan import validate_scheduler
     plan = plan_for(manifest_for())
     state = {"JobId": "12345", "JobState": "RUNNING", "Restarts": "0", "NodeList": "fresh-node",
-             "AllocTRES": "cpu=192,mem=1536G,gres/gpu=8"}
+             "AllocTRES": "cpu=192,mem=1536G,gres/gpu=8",
+             "EndTime": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time()+3600))}
     if attack == "cancelled": state["JobState"] = "CANCELLED"
     elif attack == "restarted": state["Restarts"] = "1"
     elif attack == "wrong_job": state["JobId"] = "99999"
@@ -332,6 +333,7 @@ def test_scheduler_admission_checks_fresh_allocation_without_old_job_assumptions
     elif attack == "memory": state["AllocTRES"] = "cpu=192,mem=2048M,gres/gpu=8"
     elif attack == "gpu": state["AllocTRES"] = "cpu=192,mem=1536G,gres/gpu=1"
     elif attack == "missing_capacity": state["AllocTRES"] = ""
+    elif attack == "lease": state["EndTime"] = "2020-01-01T00:00:00"
     if attack is None:
         validate_scheduler(plan, state, "fresh-node.example")
     else:
@@ -371,7 +373,8 @@ def test_host_admission_emits_exact_device_pool_and_readonly_plan(package, monke
     if attack == "task_selection": run_config["tasks"] = ["test/example", "test/other"]
     (repo / "run.yaml").write_text(yaml.safe_dump(run_config))
     state = {"JobId": "12345", "JobState": "RUNNING", "Restarts": "0", "NodeList": "fresh-node",
-             "AllocTRES": "cpu=192,mem=1536G,gres/gpu=8"}
+             "AllocTRES": "cpu=192,mem=1536G,gres/gpu=8",
+             "EndTime": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time()+3600))}
     monkeypatch.setattr(admission.subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=("f" if attack == "commit" else "c") * 40))
     def physical(render):
         result = {k: v for k, v in next(b for b in plan["bindings"] if b["render_device"] == render).items() if k != "worker_id"}

@@ -37,7 +37,7 @@ cap and `work_stop_unix`.
 Use the existing `make docker-run CONFIG=<one-full-task-validator-config>`
 with both plan environment variables set. Host admission verifies the current
 Git commit, image, exact task selection, Slurm job state and restart generation,
-local node, allocated CPU/memory/GPU capacity, and every render-node UUID/PCI
+lease end, local node, allocated CPU/memory/GPU capacity, and every render-node UUID/PCI
 binding. It mounts the plan read-only and exposes only `/dev/kfd` and the granted
 render devices. The group container omits privileged mode; normal serial Docker
 behavior remains unchanged. Group plans are rejected by `docker-parallel-run`.
@@ -66,3 +66,21 @@ before scoring. All original task-validator checks remain required.
 CPU tests cover receipt integrity, exact unions, fresh-process dispatch and
 failure cancellation. They do not qualify GPU behavior or eight-GPU scaling;
 a fresh original full-task GPU validator pass remains required.
+
+The trusted host retest accepts `--case-gpu-plan PATH` and
+`--case-gpu-plan-sha256 SHA` instead of `--render-device`. It retains the source,
+fixture, image and cache checks of the ordinary trusted path. Each phase uses
+one fresh restricted container per binding, then waits for the complete union
+before advancing. Eight bindings produce 48 fresh worker containers across the
+three phases and both source legs. Every container has its own writable build
+mount and keeps the parent request unchanged. The host observes exits and
+retains per-worker logs, container state and receipts; failure cancels the
+owned sibling containers.
+
+The task exposes a CPU-only `finalize_case_union(manifest, request, union)`
+hook shared by its normal parent path and trusted host path. The host invokes
+that protected hook in a fresh isolated Python process which cannot import
+candidate sources or Torch/Triton. Numerical validation and native paired input
+validation still consume the complete original manifest. Trusted measurement
+reports record `gpu_group` and the receipt directories; they do not assert a
+framework task-validator PASS.

@@ -8,7 +8,7 @@
     "provenance/FIXTURE-FILES.txt": "51aaac2ec259f90e67443383c9e6877df1bec9ae08bc9e200b537f44970c7406",
     "provenance/LOGICAL-SCOPE.json": "e578bfa262ee22516eccdfe7b1241ba20356ae2e369e3a3faf2c875819c75e33",
     "provenance/SOURCE.json": "33a5be4ca20fda7df72677cee300f8952279edeca1462c8f6660da5b8b7e7cdf",
-    "scripts/task_runner.py": "ba91df0adf1fa4c8cbdf99fdb1411666c3225174de1e9e8d14a6bb1253b9214d",
+    "scripts/task_runner.py": "8bcfb6d6008c97bca5f6ef13655687ba20ad63a56579f9529012adfbadbe7a6c",
     "ut/cpp_body_guard.py": "b51f41072d8967244294dbf12184b0d991e8be53e61c8de729cc6a1ce78fc667",
     "ut/cpu_policy.py": "8f47109bc3375d19022b40d8c0ba77ddf97394bc35032d61db22dacefda94de5",
     "ut/evaluation_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
