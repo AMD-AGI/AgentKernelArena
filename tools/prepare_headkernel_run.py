@@ -7,10 +7,15 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.tools.trusted_task_eval import stage_trusted_task
+from src.tools import prepare_head_kernel_artifacts as legacy_artifacts
+
+LEGACY_PROTOCOL = 'headkernel_artifacts_v1'
+LEGACY_MANIFEST = 'tools/headkernel-artifacts.json'
 
 
 def require(value, message):
@@ -22,8 +27,66 @@ def selected_tasks(catalog, requested):
     active = {row['task']: row for row in catalog['tasks'] if row.get('scope') == 'refreshed_sg520'}
     names = list(requested) if requested else list(active)
     require(names and len(names) == len(set(names)), 'Select distinct refreshed task IDs')
-    require(all(name in active for name in names), 'Task is outside the refreshed selection; Qwen uses its preserved setup')
+    require(all(name in active for name in names), 'Task is outside the explicit refreshed catalog selection')
     return [active[name] for name in names]
+
+
+def legacy_task_name(task):
+    relative = Path(task)
+    require(len(relative.parts) == 2 and relative.parts[0] == 'headkernel'
+            and relative.name not in ('.', '..'), 'Legacy artifacts require headkernel/TASK')
+    return relative.name
+
+
+def prepare_legacy_task(arena, row, *, runtime_image, use_manifest_oci_prefixes, fixture_local_mirror=None):
+    """Hydrate registered original fixtures through their existing verified helper.
+
+    This protocol does not interpret an old GEAK capture as an EXTERNAL-MANIFEST
+    or create a trusted-evaluation declaration. Its receipt asserts preparation
+    of the committed historical contract only, never qualification or a newer
+    workload topology.
+    """
+    require(row.get('preparation_protocol') == LEGACY_PROTOCOL,
+            'Legacy tasks require an explicit headkernel_artifacts_v1 preparation protocol')
+    require(row.get('fixture_manifest') is None,
+            'Legacy artifacts cannot be passed to the EXTERNAL-MANIFEST staging path')
+    require(row.get('legacy_artifact_manifest') == LEGACY_MANIFEST,
+            'Legacy protocol must name the committed original-artifact registry')
+    manifest_path = arena / LEGACY_MANIFEST
+    require(manifest_path.is_file() and not manifest_path.is_symlink(), 'Legacy artifact registry must be a regular file')
+    digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    require(digest == row.get('legacy_artifact_manifest_sha256'), 'Legacy artifact registry pin differs from the trusted commit')
+    name = legacy_task_name(row['task'])
+    task = arena / 'tasks/headkernel' / name
+    config = yaml.safe_load((task / 'config.yaml').read_text())
+    require(config.get('headkernel', {}).get('docker') == runtime_image,
+            'Legacy task runtime image differs from the selected catalog image')
+    require(config.get('trusted_evaluation') is None, 'A trusted-evaluation task must use its own staging protocol')
+    manifest = legacy_artifacts.load_manifest(manifest_path)
+    artifacts = legacy_artifacts.select_artifacts(manifest, [name])
+    suite = arena / 'tasks/headkernel'
+    if fixture_local_mirror is not None:
+        actions = legacy_artifacts.prepare_artifacts(artifacts, suite, mirror=fixture_local_mirror)
+    else:
+        require(use_manifest_oci_prefixes, 'Approve the committed original OCI prefix or supply a local mirror')
+        actions = legacy_artifacts.download_artifacts(artifacts, suite, manifest.oci_remote_root)
+    legacy_artifacts.prepare_artifacts(artifacts, suite, verify_only=True)
+    return {'task':row['task'], 'preparation_protocol':LEGACY_PROTOCOL,
+            'legacy_artifact_manifest':LEGACY_MANIFEST, 'legacy_artifact_manifest_sha256':digest,
+            'fixture_oci_prefix':manifest.oci_remote_root, 'actions':actions,
+            'artifacts':[{'path':a.path, 'bytes':a.size_bytes, 'sha256':a.sha256} for a in artifacts],
+            'inputs':'verified_original_fixtures' if artifacts else 'explicitly_registered_fixture_free_task',
+            'workload_scope':'preserved_committed_task_contract', 'qualification':False}
+
+
+def requires_legacy_protocol(arena, row):
+    """Reject a scope-only catalog edit that would silently omit original data."""
+    if not row['task'].startswith('headkernel/'):
+        return False
+    name = legacy_task_name(row['task'])
+    manifest = legacy_artifacts.load_manifest(arena / LEGACY_MANIFEST)
+    config = yaml.safe_load((arena / 'tasks/headkernel' / name / 'config.yaml').read_text())
+    return name in manifest.tasks and config.get('trusted_evaluation') is None
 
 
 def install_prepared_task(arena, task_path, stage, originals):
@@ -55,7 +118,7 @@ def main():
     p.add_argument('--commit', required=True, help='full trusted Git commit')
     p.add_argument('--output', type=Path, required=True, help='new directory outside the source checkout')
     p.add_argument('--scratch-dir', type=Path, required=True)
-    p.add_argument('--task', action='append', help='headkernel/TASK; repeat, or omit for all 18 refreshed tasks')
+    p.add_argument('--task', action='append', help='headkernel/TASK; repeat, or omit for the explicit refreshed catalog selection')
     source = p.add_mutually_exclusive_group(required=True)
     source.add_argument('--use-manifest-oci-prefixes', action='store_true', help='approve the exact committed task prefixes')
     source.add_argument('--fixture-local-mirror', type=Path, help='object-key layout; supported for one task at a time')
@@ -75,6 +138,16 @@ def main():
     prepared = []
     for row in tasks:
         task_path = 'tasks/' + row['task']
+        protocol = row.get('preparation_protocol')
+        require(protocol in (None, 'trusted_task_v1', LEGACY_PROTOCOL), 'Unsupported task preparation protocol')
+        if protocol == LEGACY_PROTOCOL:
+            prepared.append(prepare_legacy_task(arena, row,
+                runtime_image=catalog['images']['sglang_v0520']['pull_reference'],
+                use_manifest_oci_prefixes=a.use_manifest_oci_prefixes,
+                fixture_local_mirror=a.fixture_local_mirror))
+            continue
+        require(not requires_legacy_protocol(arena, row),
+                'Registered legacy task requires explicit headkernel_artifacts_v1 preparation; scope alone is insufficient')
         manifest_path = row.get('fixture_manifest')
         if manifest_path is None:
             prepared.append({'task':row['task'], 'inputs':'self_contained_declared_generated_cases'})
@@ -96,7 +169,6 @@ def main():
         prepared.append({'task':row['task'], 'stage_receipt':str((stage/'staging_receipt.json').relative_to(output)),
                          'package_sha256':receipt['package_sha256']})
     subprocess.run(['git','-C',str(arena),'diff','--exit-code','--','tasks'], check=True)
-    import yaml
     config = {'agent':{'template':'task_validator'}, 'tasks':[row['task'] for row in tasks],
               'target_gpu_model':'MI355X', 'log_directory':'logs', 'workspace_directory_prefix':'workspace'}
     config_path = arena / 'example_configs/prepared_headkernel_run.yaml'
