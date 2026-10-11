@@ -1,12 +1,14 @@
 # Consolidated top-five head kernels
 
-`head-kernels-top5` is the single source branch for **23 SG0.5.20 task mappings across five models**. It contains the refreshed task sources, shared framework, five historical ready-subset guides, and workload archive links. The [runtime catalog](tools/headkernel-runtime-targets.json) and [unified validator selection](example_configs/headkernel_sg520_current_mi355x.yaml) enumerate the same 23 tasks.
+`head-kernels-top5` is the single source branch for **23 SG0.5.20 task mappings across five models**. It contains the refreshed task sources, shared framework, five historical ready-subset guides, two completed October 11 qualification handoffs, and workload archive links. The [runtime catalog](tools/headkernel-runtime-targets.json) and [unified validator selection](example_configs/headkernel_sg520_current_mi355x.yaml) enumerate the same 23 tasks.
 
-**Qualification is still incomplete.** Five subsets retain qualification at their original pinned commits; the other 18 tasks remain unfinished. The merged framework also needs fresh validation for all 23 tasks. Matching a historical task tree does not qualify changed scoring, guards, report handling, or GPU binding. No current merged-checkout verification, complete model-workload readiness, or serving/E2E gain is claimed.
+**The full 23-task branch remains unqualified.** [MLA prefill](ready/current/mla-prefill/README.md) and [MiniMax FP4](ready/current/minimax-fp4/README.md) have completed trusted and framework evidence at `7bc14698`, with fully verified OCI archives and separately named compatible revisions. Those scoped results remain valid within their recorded limits. A later checkout needs matching evidence or explicit compatibility for changed task sources, scoring, guards, report handling and GPU binding. No complete model-workload readiness or serving/E2E gain is claimed.
 
-Start with the [consolidated task and evidence index](docs/reference/headkernel-ready-subsets.md). It links the five guides in this checkout, their immutable historical versions, the remaining gates, and the portable OCI workload archives. The original `ready/*/INPUT-PINS.json` and verification scripts remain strict historical records. They are expected to reject this merged checkout because shared framework and documentation files differ; do not rewrite those pins or treat their historical receipts as current validation.
+Start with the [consolidated task and evidence index](docs/reference/headkernel-ready-subsets.md). It links the completed October 11 handoffs, five historical guides, remaining gates, and portable OCI workload archives. Each current guide states which input revisions its verifier accepts. The original `ready/*/INPUT-PINS.json` and verification scripts remain strict historical records and may reject this merged checkout because shared framework and documentation files differ. Preserve those pins and the original identities of every report.
 
-| Model | SG0.5.20 source tasks | Historical ready subsets | Other unfinished tasks |
+Status-documentation corrections do not broaden those accepted input sets. A verifier that pins a README or guide may reject its updated text even when executable inputs are unchanged. Use the guide's accepted snapshot until a separate compatibility review explicitly covers the new revision; these documentation changes introduce no new qualification claim.
+
+| Model | SG0.5.20 source tasks | Historical ready subsets | Tasks without a historical subset receipt |
 | --- | ---: | ---: | ---: |
 | DeepSeek V4 Pro | 6 | 2 | 4 |
 | GLM 5.3 Flash | 3 | 0 | 3 |
@@ -29,7 +31,9 @@ The consolidation base is `ba5b1c90877ca826901f2f56c0f1c02a4600d8b0`. These sour
 | Full Qwen source refresh and RMSNorm handoff | `f501ef65403bdf76a122918c405f6494bc6eab38` | All five Qwen SG0.5.20 source mappings, including the four unfinished tasks; [historical RMSNorm receipt](ready/qwen-rmsnorm/READY.json) applies only to its explicit trusted/protected qualification route. |
 | Published top-five documentation | `8fa0d73c81e55100d8e32d1963d6b247764fe56a` | Earlier published task index; superseded current-status wording is reconciled here without changing historical evidence. |
 
-All five historical ready task trees matched their qualified trees at the consolidation base. Shared framework pins differ, including the timing-quality module for Qwen. The RMSNorm authoritative timing-quality adapter is integrated, with current GPU validation pending. The other four Qwen tasks still need benchmark repairs and authoritative admission. Historical manual trusted-route qualification does not discharge these current checks.
+All five historical ready task trees matched their qualified trees at the consolidation base. Subsequent integration includes all five Qwen timing-quality adapters, the maintained four-task [Qwen trusted evaluator](docs/how-to/trusted-qwen-retest.md), the closed RMSNorm source guard, native graph-event timing and quantization lifetime repairs, and [complete-case GPU groups](docs/how-to/whole-case-parallelism.md) for Kimi aggregation and MiniMax attention, including explicit verified Spur reservation admission. Source integration does not complete their remaining GPU qualification gates.
+
+The framework also enforces [post-validator input integrity](docs/how-to/task-validator.md): current completion binds the normalized report, marker, integrity receipt and actual input observations. Older framework-only passes and the RMSNorm run with a post-run observation gap retain their original scope. Prepared replacement packages require their planned complete runs; an older ready-docs branch is not a substitute for those results.
 
 ## Prepare and validate the current sources
 

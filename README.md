@@ -5,11 +5,14 @@ DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T in this
 checkout. Start at [HEADKERNELS.md](HEADKERNELS.md) for source provenance,
 per-task preparation and the unified validator selection.
 
-The [task and evidence index](docs/reference/headkernel-ready-subsets.md) links
-five **historically qualified subsets** and the other 18 unfinished tasks.
-Their guides and strict input pins are retained in `ready/`; they do not qualify
-the merged framework. Fresh validation of this checkout remains pending for all
-23 tasks. No complete model-workload readiness or serving/E2E gain is claimed.
+The [task and evidence index](docs/reference/headkernel-ready-subsets.md) records
+**completed October 11 MLA prefill and MiniMax FP4 qualifications**, five
+historical ready subsets, and the remaining task gates. Completed results keep
+their actual execution commits and explicitly reviewed compatibility limits.
+The full 23-task branch remains unqualified; later source, scoring, guard and
+framework changes require matching evidence or an explicit compatibility review.
+Historical input pins remain intact. No complete model-workload readiness or
+serving/E2E gain is claimed.
 
 AgentKernelArena is a controlled experimentation platform for developing AI agents on real GPU kernel optimization tasks. It enables reproducible A/B testing across models, prompts, tools, and agent policies, while providing objective compilation, correctness, and performance signals that can serve as rewards for agent reinforcement learning.
 

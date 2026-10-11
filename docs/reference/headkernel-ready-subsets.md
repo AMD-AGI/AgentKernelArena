@@ -1,4 +1,4 @@
-# Consolidated head-kernel tasks and historical evidence
+# Consolidated head-kernel tasks and qualification evidence
 
 Status for **2026-10-11**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. The completed October 11 qualifications below have fresh trusted and framework evidence, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
 
@@ -10,7 +10,7 @@ These receipts retain the actual GPU execution revision, `7bc14698e1044931a3c893
 
 | Task | Guide and verified evidence | Scope |
 | --- | --- | --- |
-| `headkernel/deepseek-v4-pro__unified_paged_attention_prefill` | [Current MLA prefill handoff](../../ready/current/mla-prefill/README.md): six trusted phases, all 12 framework checks, 400 trusted and 200 framework samples; OCI archive fully read back. | Both published M8192/H16 cases. The guide links explicit `0df9540d` compatibility; its strict historical input verifier remains bound to the qualified revision. |
+| `headkernel/deepseek-v4-pro__unified_paged_attention_prefill` | [Current MLA prefill handoff](../../ready/current/mla-prefill/README.md): six trusted phases, all 12 framework checks, 400 trusted and 200 framework samples; OCI archive fully read back. | Both published M8192/H16 cases. The guide links explicit `0df9540d` compatibility; its 505-input verifier remains bound to the qualified snapshot. |
 | `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [Current MiniMax FP4 handoff](../../ready/current/minimax-fp4/README.md): six trusted phases, all 12 framework checks, 4,200 samples and 168 controls; OCI archive fully read back. | All 14 cases. Final report and marker were recovered byte-for-byte against hashes saved before preemption. The verifier accepts the qualified inputs and separately reviewed `5854b2ac` inputs. |
 
 Both are unchanged-source controls with **no accepted optimization gain**. The archive guides disclose the original evidence and any recovery or transport limits. Other completed individual phases, framework-only passes and interrupted runs remain partial qualification evidence.
@@ -64,29 +64,39 @@ rclone copy "$WORKLOAD_INDEX" /path/to/local-nvme/workload-index \
 
 The recovered supplements preserve 690 files from the 24 formerly unexamined historical rank directories. Producer failures and partial outcomes remain unchanged. Primary MiniMax 194969 collected no Torch profile; the 16 sampled traces from 194299 and 15 traces from 194550 remain separate, with 194550 TP0 DECODE still missing. The historical analyzer sources `intake.py` and `quant_inventory.py` remain unavailable and disclosed. Full model weights are external at verified immutable public revisions; package-specific guides describe retrieval without requiring the original cluster or NFS paths.
 
-## Eighteen unfinished task qualifications
+## Remaining gates for the other historical subsets
 
-These 18 tasks do not have one of the five historical ready-subset receipts. All need complete current qualification; the five historical subsets also need merged-framework revalidation. Names in the second column follow `headkernel/<model>__<task>`; the model column supplies the exact prefix. CPU preparation, targeted diagnostics, and partial GPU phases do not substitute for complete qualification.
+The two completed October 11 handoffs above do not discharge the remaining gates for the other three historical subsets. Their original published receipts remain unchanged.
+
+| Task | Remaining gate |
+| --- | --- |
+| DeepSeek `per_group_quant_fp8` | Preserve the earlier timing rejection and the later native-event SIGSEGV as separate attempts. Input-freeze and graph/event lifetime repairs are integrated; their full current qualification remains pending. |
+| Kimi `lean_attention_decode` | Complete current framework/trusted validation and applicable runtime compatibility review, preserving the historical sampled-length scope. |
+| Qwen `gemma_fused_add_rmsnorm` | A closed-guard framework run at `31d7bdde` passed 12 checks and 200 samples, but its final input-observation gap holds current ready publication. The reviewed `8956e210` package requires the planned full run with all 44 input observations, report/marker/integrity binding, automatic mirroring and owned retirement. Retained `294e65a0` numerical evidence keeps its explicit compatibility scope. |
+
+## Eighteen tasks without historical ready-subset receipts
+
+These 18 tasks do not have one of the five historical ready-subset receipts. Their complete qualification remains pending. Names in the second column follow `headkernel/<model>__<task>`; the model column supplies the exact prefix. CPU preparation, targeted diagnostics, framework-only passes and partial GPU phases keep their stated scopes. Current framework completion also requires the [post-validator integrity chain](../how-to/task-validator.md); a prior PASS does not silently establish compatibility with that changed lifecycle.
 
 | Model prefix | Task | Current remaining gate |
 | --- | --- | --- |
 | `deepseek-v4-pro` | `unified_paged_attention_decode` | Complete framework and six-phase trusted qualification of the expanded four-case contract, including nine observed KV widths. |
 | `deepseek-v4-pro` | `moe_stage1_grouped_gemm_silu_flydsl` | Complete current qualification of the expanded observed-distribution contract. Older fixed-case checks do not cover it. |
 | `deepseek-v4-pro` | `moe_stage1_grouped_gemm_silu_opus_a8w4` | Complete current distribution qualification; an older performance attempt did not finish. |
-| `deepseek-v4-pro` | `moe_stage2_down_proj_reduce_opus_a8w4` | Prior run stopped during reference correctness after 42/375 settings. Full comparison, framework qualification, and evidence readback remain outstanding. |
+| `deepseek-v4-pro` | `moe_stage2_down_proj_reduce_opus_a8w4` | Job 207739 stopped during reference correctness after 362/375 settings: 195/195 prefill and 167/180 decode. Full comparison, framework qualification and evidence readback remain outstanding. |
 | `glm-5.3-flash` | `ck_gemm_a8w8_blockscale_bpreshuffle` | Native HIP graph-event timing is integrated and the full reference correctness gate passed. Complete trusted/native comparison and framework qualification were interrupted and remain pending. |
 | `glm-5.3-flash` | `gemm_a16w16_bf16_cijk` | Native partial-reference acceptance was repaired and all 20 reference correctness cases passed. Complete trusted/native timing and framework qualification remain pending after preemption. |
 | `glm-5.3-flash` | `fused_moe_kernel` | Original native graph-versus-eager failure remains unresolved. A later diagnostic did not reproduce it and did not qualify the task. |
 | `kimi-k3` | `dense_bf16_gemm_cijk` | Full 40-case native, trusted, and framework qualification. A targeted stream diagnostic covers only its recorded case. |
-| `kimi-k3` | `attn_residual_aggregate_hip` | Complete 69-case qualification. Interrupted performance observations reached 26/69 trusted cases and 13/69 framework cases. |
+| `kimi-k3` | `attn_residual_aggregate_hip` | Complete 69-case qualification using the integrated complete-case route. Job 207739 preserved reference compile/correctness for all 69 cases; its last performance snapshot recorded 18/69 trusted and 11/69 framework cases before cancellation. |
 | `kimi-k3` | `moe_gemm1_stage1` | Fresh qualification of the current routing and paired-work contract; older routing snapshots are not current qualification. |
 | `kimi-k3` | `moe_gemm2_stage2` | Fresh qualification of the current routing and paired-work contract; older routing snapshots are not current qualification. |
-| `minimax-m3` | `decode_score_kernel` | Complete current framework and trusted qualification of the 16-case paired contract. |
-| `minimax-m3` | `gqa_share_sparse_decode_kernel` | Complete current framework and trusted qualification of the 24-case paired contract. |
-| `minimax-m3` | `gqa_share_sparse_fwd_kernel` | Complete current framework and trusted qualification of the 40-case paired contract. |
-| `qwen3.8-2.4t` | `dense_bf16_gemm_cluster` | A five-case framework pass and its 500 samples are archived. Fresh complete trusted comparison remains pending after preemption. |
+| `minimax-m3` | `decode_score_kernel` | Complete current framework and trusted qualification of the 16-case paired contract through the integrated complete-case route; interrupted samples are not a completed union. |
+| `minimax-m3` | `gqa_share_sparse_decode_kernel` | Complete current framework and trusted qualification of the 24-case paired contract through the integrated complete-case route. |
+| `minimax-m3` | `gqa_share_sparse_fwd_kernel` | Complete current framework and trusted qualification of the 40-case paired contract through the integrated complete-case route. The earlier timeout replacement was prepared but not launched before external preemption. |
+| `qwen3.8-2.4t` | `dense_bf16_gemm_cluster` | A five-case framework pass at `8cdd7b0d` and its 500 samples are archived. The later trusted run passed reference compile/correctness but was interrupted during performance. Complete trusted and applicable current framework-integrity gates remain pending. |
 | `qwen3.8-2.4t` | `fused_moe_2stage_mxfp4` | Native enum identity across relocated verified caches was repaired. Full trusted comparison and framework finalization remain pending; raw GPU phases alone do not qualify it. |
 | `qwen3.8-2.4t` | `fused_recurrent_gated_delta_rule_decode` | Authoritative source-bound admission is integrated. Both trusted and framework runs were interrupted before completion. |
-| `qwen3.8-2.4t` | `paged_attention_decode` | A framework pass with 100 samples is archived. The host compile-context comparison was repaired; complete trusted qualification remains pending. |
+| `qwen3.8-2.4t` | `paged_attention_decode` | A framework pass at `0df9540d` with 100 samples is archived. The host compile-context comparison was repaired; complete trusted qualification and the prepared post-integrity framework run remain pending. |
 
 Two configured historical packages are outside the 23 active mappings: DeepSeek `dsa_sparse_mla_attn` is superseded in this recipe by unified paged prefill/decode, and GLM `elementwise_copy_cluster` recorded aliases rather than materialized GPU copies. Full original served MoE payload capture and broader coverage beyond the published scopes also remain separate outstanding work.
