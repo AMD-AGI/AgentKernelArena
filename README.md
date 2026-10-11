@@ -4,6 +4,12 @@ This branch contains 18 refreshed SG0.5.20 head-kernel tasks and five preserved
 Qwen tasks. See [HEADKERNELS.md](HEADKERNELS.md) for the portable setup, captured
 inputs, historical results and pending qualification status.
 
+For the current SGLang 0.5.20 refresh, use the [published ready-subset index](docs/reference/headkernel-ready-subsets.md).
+It links five independently reviewed, GPU-qualified task subsets at their exact
+commits, with setup, fixture downloads and scoring checks. The complete top-five
+suite remains unqualified; the restored tasks in this branch are a historical
+snapshot, and the refreshed subsets live on the linked ready branches.
+
 AgentKernelArena is a controlled experimentation platform for developing AI agents on real GPU kernel optimization tasks. It enables reproducible A/B testing across models, prompts, tools, and agent policies, while providing objective compilation, correctness, and performance signals that can serve as rewards for agent reinforcement learning.
 
 ## Overview
