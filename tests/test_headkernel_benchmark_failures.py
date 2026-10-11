@@ -17,7 +17,9 @@ import yaml
 
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks/headkernel"
-SCRIPTS = TASKS / "qwen3.8-2.4t__paged_attention_decode/scripts"
+# Exercise the actual legacy template. Qwen attention now has a native,
+# protected graph adapter with separate state/ABI regressions.
+SCRIPTS = TASKS.parents[1] / "tools/templates"
 MISSING = object()
 
 
@@ -429,7 +431,8 @@ class SuiteCopiesTests(unittest.TestCase):
     def test_all_headkernel_benchmark_and_runner_copies_match(self):
         for filename in ("_bench.py", "task_runner.py"):
             legacy = [task for task in TASKS.iterdir() if (task / "config.yaml").is_file()
-                      and not yaml.safe_load((task / "config.yaml").read_text()).get("trusted_evaluation")]
+                      and not yaml.safe_load((task / "config.yaml").read_text()).get("trusted_evaluation")
+                      and not yaml.safe_load((task / "config.yaml").read_text()).get("harness_protection",{}).get("freeze_task_inputs")]
             paths = [task / "scripts" / filename for task in legacy]
             self.assertTrue(all(path.is_file() for path in paths))
             template = TASKS.parents[1] / "tools/templates" / filename
@@ -443,8 +446,9 @@ class SuiteCopiesTests(unittest.TestCase):
                 if bound:
                     self.assertEqual(len({path.read_bytes() for path in bound}), 1)
                 paths = [path for path in paths if path not in bound]
-            self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
-            self.assertEqual(paths[0].read_bytes(), template.read_bytes(), filename)
+            if paths:
+                self.assertEqual(len({path.read_bytes() for path in paths}), 1, filename)
+                self.assertEqual(paths[0].read_bytes(), template.read_bytes(), filename)
 
 
 if __name__ == "__main__":

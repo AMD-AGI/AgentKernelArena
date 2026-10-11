@@ -1,0 +1,2 @@
+# Keep the digest-verified image launch template byte-for-byte, including its spacing.
+ut/native/pa_ragged.cpp.jinja -whitespace

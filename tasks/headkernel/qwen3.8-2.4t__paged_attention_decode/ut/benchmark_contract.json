@@ -1,0 +1,167 @@
+{
+  "schema": "qwen-protected-graph-v1",
+  "task": "headkernel/qwen3.8-2.4t__paged_attention_decode",
+  "tolerance": 0.02,
+  "source_paths": [
+    "source/pa_kernels.cuh"
+  ],
+  "cases": [
+    {
+      "test_case_id": "decode_m64_live|decode",
+      "params": {
+        "regime": "decode",
+        "m": 64,
+        "positional_argument_count": 19,
+        "tensors": {
+          "out": {
+            "shape": [
+              64,
+              8,
+              256
+            ],
+            "stride": [
+              2048,
+              256,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "workspace_buffer": {
+            "shape": [
+              71926272
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.uint8"
+          },
+          "query": {
+            "shape": [
+              64,
+              8,
+              256
+            ],
+            "stride": [
+              2048,
+              256,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "key_cache": {
+            "shape": [
+              521351,
+              1,
+              1,
+              256
+            ],
+            "stride": [
+              256,
+              256,
+              256,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "value_cache": {
+            "shape": [
+              521351,
+              1,
+              1,
+              256
+            ],
+            "stride": [
+              256,
+              256,
+              256,
+              1
+            ],
+            "dtype": "torch.bfloat16"
+          },
+          "kv_indptr": {
+            "shape": [
+              65
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32"
+          },
+          "kv_page_indices": {
+            "shape": [
+              521351
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32"
+          },
+          "kv_last_page_lens": {
+            "shape": [
+              198
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.int32"
+          },
+          "k_scale": {
+            "shape": [
+              1
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.float32"
+          },
+          "v_scale": {
+            "shape": [
+              1
+            ],
+            "stride": [
+              1
+            ],
+            "dtype": "torch.float32"
+          }
+        },
+        "scale": 0.0625,
+        "block_size": 1,
+        "max_num_partitions": 44,
+        "alibi_slopes": null,
+        "kv_cache_dtype": "auto",
+        "kv_cache_layout": "NHD",
+        "logits_soft_cap": 0.0,
+        "fp8_out_scale": null,
+        "partition_size": 256,
+        "default_mtp": 1,
+        "captured_reference_io_sha256": "9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56"
+      }
+    }
+  ],
+  "challenges": [
+    "zero_query",
+    "negated_query",
+    "small_query",
+    "scaled_query"
+  ],
+  "validation_contract": {
+    "outputs": [
+      "out"
+    ],
+    "inputs_varied": [
+      "query"
+    ],
+    "restored_buffers": [],
+    "poisoned_buffers": [
+      "out",
+      "workspace_buffer"
+    ]
+  },
+  "source_binding": {
+    "source_path": "source/pa_kernels.cuh",
+    "launcher_path": "source/attention_candidate.py",
+    "device_kernel": "paged_attention_ll4mi_QKV_mfma16_kernel"
+  },
+  "workload_provenance": "Original TP8/EP8 page1 ragged attention; not the newer TP8/EP1 page16 unified-attention workload",
+  "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
+}

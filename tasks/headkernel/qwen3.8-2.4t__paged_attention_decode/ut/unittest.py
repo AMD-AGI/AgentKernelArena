@@ -149,7 +149,9 @@ def _run(case_id, cases):
         "deepest_verified": True,
         **engagement,
     }
-    _write_json(os.path.join(HERE, META["selection_validation"]["path"]), selection)
+    # Preserve the historical selection input; publish this run's proof as an
+    # output without changing the protected capture/routing evidence.
+    _write_json(os.path.join(HERE, "reports", "selection_validation.json"), selection)
     _write_json(
         os.path.join(HERE, META["negative_check"]),
         {"schema_version": 1, "status": "PASS" if negative_ok else "FAIL", **negative},
