@@ -72,6 +72,85 @@ def capture(prepared, callbacks, seed, torch):
     return graph
 
 
+def run_case(runtime, case, phase, request, policy, torch):
+    """Run one complete case using the original protected callbacks and cleanup."""
+    prepared = callbacks = graph = None
+    try:
+        prepared = runtime.prepare_case(case)
+        callbacks = prepared.callbacks
+        if not isinstance(callbacks, FreshCallbacks):
+            raise TypeError('Native fixture adapter must use the protected FreshCallbacks')
+        callbacks.replay = prepared.invoke_candidate
+        callbacks.check_once(request['challenge_seed'])
+        if canonical(prepared.observe()) != canonical(case):
+            raise ValueError('Compiled native case does not match the frozen ABI')
+        engagement = prepared.native_engagement()
+        if (engagement.get('source_sha256') != request['source_sha256']
+                or engagement.get('candidate_invoked') is not True
+                or engagement.get('independent_reference_invoked') is not True):
+            raise ValueError('Current candidate and independent native reference were not engaged')
+        compiled = {'case_id': case['case_id'], **engagement}
+        if phase == 'compile':
+            return compiled, None
+        graph = capture(prepared, callbacks, request['challenge_seed'], torch)
+        if phase == 'correctness':
+            row = callbacks.correctness_row(case, policy, observe=prepared.observe,
+                corrupt_outputs=prepared.corrupt_outputs, challenge_seed=request['challenge_seed'])
+        else:
+            row = callbacks.performance_row(case, policy, observe=prepared.observe,
+                challenge_seed=request['challenge_seed'])
+        return compiled, row
+    finally:
+        # Bound callbacks and graph replays form cycles with Prepared.
+        # Collect outside timing, including the compile-only return above.
+        graph = callbacks = prepared = None
+        gc.collect()
+
+
+def select_cases(manifest, case_ids=None):
+    """Select complete immutable case records, never a replacement manifest."""
+    cases = manifest['cases']
+    if case_ids is None:
+        return cases
+    if (not isinstance(case_ids, list) or not case_ids
+            or any(not isinstance(value, str) or not value for value in case_ids)
+            or len(set(case_ids)) != len(case_ids)):
+        raise ValueError('Case selection must be a nonempty list of distinct IDs')
+    wanted = set(case_ids)
+    selected = [case for case in cases if case['case_id'] in wanted]
+    if [case['case_id'] for case in selected] != case_ids:
+        raise ValueError('Selected cases must be known and in full-manifest order')
+    return selected
+
+
+def evaluate_cases(runtime, manifest, phase, request, torch, *, case_ids=None, progress=None):
+    """Return raw complete-case payloads; the caller owns final report scope."""
+    if phase not in ('compile', 'correctness', 'performance'):
+        raise ValueError('Unknown evaluation phase')
+    cases = select_cases(manifest, case_ids)
+    policy = manifest['measurement']
+    compiled, rows = [], []
+    for case in cases:
+        event = {'phase': phase, 'case_id': case['case_id'], 'cases_completed': len(compiled),
+                 'case_count': len(cases), 'state': 'preparing_full_shape', 'observed_unix': time.time()}
+        if case_ids is not None:
+            event['full_case_count'] = len(manifest['cases'])
+            event['worker_case_selection'] = True
+        if progress is not None:
+            progress(event, True)
+        if case['calls_per_sample'] != 1:
+            raise ValueError('Each scored Kimi graph replay must represent one native call')
+        receipt, row = run_case(runtime, case, phase, request, policy, torch)
+        compiled.append(receipt)
+        if phase != 'compile':
+            rows.append(row)
+        event.update(state='case_complete', cases_completed=len(compiled), observed_unix=time.time())
+        if progress is not None:
+            progress(event, phase != 'compile')
+    return {'compiled': True, 'compiled_specializations': compiled, 'cases': rows,
+            'oracle_order': 'CPU input truth before candidate; CPU output and post-input snapshots before reference'}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('phase', choices=('compile', 'correctness', 'performance'))
@@ -92,55 +171,12 @@ def main():
         import torch
         if not torch.version.hip or 'gfx950' not in torch.cuda.get_device_properties(0).gcnArchName:
             raise RuntimeError('The pinned ROCm gfx950 runtime is required')
-        policy = manifest['measurement']
-        report = {'schema_version': 1, 'status': 'ok', 'request': request, 'cases': []}
-        compiled = []
-        for case in manifest['cases']:
-            progress={'phase':args.phase,'case_id':case['case_id'],'cases_completed':len(compiled),'case_count':len(manifest['cases']),
-                      'state':'preparing_full_shape','observed_unix':time.time()}
-            (build/(args.phase+'_progress.json')).write_text(canonical(progress)+'\n')
-            print(json.dumps(progress),flush=True)
-            if case['calls_per_sample'] != 1:
-                raise ValueError('Each scored Kimi graph replay must represent one native call')
-            prepared = callbacks = graph = None
-            try:
-                prepared = runtime.prepare_case(case)
-                callbacks = prepared.callbacks
-                if not isinstance(callbacks, FreshCallbacks):
-                    raise TypeError('Native fixture adapter must use the protected FreshCallbacks')
-                callbacks.replay = prepared.invoke_candidate
-                callbacks.check_once(request['challenge_seed'])
-                if canonical(prepared.observe()) != canonical(case):
-                    raise ValueError('Compiled native case does not match the frozen ABI')
-                engagement = prepared.native_engagement()
-                if (engagement.get('source_sha256') != request['source_sha256']
-                        or engagement.get('candidate_invoked') is not True
-                        or engagement.get('independent_reference_invoked') is not True):
-                    raise ValueError('Current candidate and independent native reference were not engaged')
-                compiled.append({'case_id': case['case_id'], **engagement})
-                if args.phase == 'compile':
-                    progress.update(state='case_complete',cases_completed=len(compiled),observed_unix=time.time())
-                    (build/(args.phase+'_progress.json')).write_text(canonical(progress)+'\n')
-                    continue
-                graph = capture(prepared, callbacks, request['challenge_seed'], torch)
-                if args.phase == 'correctness':
-                    row = callbacks.correctness_row(case, policy, observe=prepared.observe,
-                        corrupt_outputs=prepared.corrupt_outputs, challenge_seed=request['challenge_seed'])
-                else:
-                    row = callbacks.performance_row(case, policy, observe=prepared.observe,
-                        challenge_seed=request['challenge_seed'])
-                report['cases'].append(row)
-                progress.update(state='case_complete',cases_completed=len(report['cases']),observed_unix=time.time())
-                (build/(args.phase+'_progress.json')).write_text(canonical(progress)+'\n')
-                print(json.dumps(progress),flush=True)
-            finally:
-                # Bound callbacks and graph replays form cycles with Prepared.
-                # Release them at the case boundary, outside all timed replays,
-                # including the compile-only continue above.
-                graph = callbacks = prepared = None
-                gc.collect()
-        report.update(compiled=True, compiled_specializations=compiled,
-                      oracle_order='CPU input truth before candidate; CPU output and post-input snapshots before reference')
+        def progress(event, emit):
+            (build/(args.phase+'_progress.json')).write_text(canonical(event)+'\n')
+            if emit:
+                print(json.dumps(event), flush=True)
+        payload = evaluate_cases(runtime, manifest, args.phase, request, torch, progress=progress)
+        report = {'schema_version': 1, 'status': 'ok', 'request': request, **payload}
         report = finalize_report(report, manifest, request)
         temporary = output.with_suffix('.tmp')
         temporary.write_text(canonical(report)+'\n')
