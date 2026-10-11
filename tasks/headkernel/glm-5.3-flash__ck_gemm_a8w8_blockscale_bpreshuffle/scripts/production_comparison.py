@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import secrets
 import task_runner as task
+from hip_graph_timing import capture_timed_graph
 
 
 def main(request=None):
@@ -43,17 +44,9 @@ def main(request=None):
         for label,invoke in [('candidate_port',port),('native_production',production)]:
             verify_leg=partial(verify,native=label=='native_production')
             reference=reset_live(challenge);initialize();invoke();torch.cuda.synchronize();verify_leg(reference)
-            stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(stream):
-                for _ in range(3):invoke()
-            torch.cuda.current_stream().wait_stream(stream)
-            graph=torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph):
-                for _ in range(case['calls_per_sample']):invoke()
-            def measure(call):
-                begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
-                begin.record();call();end.record();end.synchronize();return begin.elapsed_time(end)
-            legs[label]=task.checked_replays(case,policy,reset_inputs=reset_live,initialize_outputs=initialize,replay=graph.replay,verify=verify_leg,measure=measure,observe=observe,seed=challenge)
+            timing=capture_timed_graph(torch,invoke,case['calls_per_sample'])
+            legs[label]=task.checked_replays(case,policy,reset_inputs=reset_live,initialize_outputs=initialize,replay=timing.replay,verify=verify_leg,measure=timing.measure,observe=observe,seed=challenge)
+            legs[label]['graph_timing']=timing.proof()
         means={label:sum(row['samples_ms'])/len(row['samples_ms']) for label,row in legs.items()}
         ratio=means['native_production']/means['candidate_port']
         comparisons.append({'case_id':case['case_id'],'live_fixture':case['live_fixture'],'native_output_parity':True,

@@ -11,6 +11,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'ut'))
 from evaluation_contract import canonical,fingerprint,strict_json,validate_manifest,observe_case,checked_replays,finalize_report
 from source_guard import validate_sources
+from hip_graph_timing import capture_timed_graph
 
 
 def source_hash():return hashlib.sha256((ROOT/'source/kernels.py').read_bytes()).hexdigest()
@@ -136,17 +137,10 @@ def main():
                 controls=negative_controls(tensors,initialize,verify,reference)
             results.append({'case':observe(),'correct':True,'seeds':policy['correctness_seeds'],'negative_controls':controls})
         else:
-            stream=torch.cuda.Stream();stream.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(stream):
-                for _ in range(3):invoke()
-            torch.cuda.current_stream().wait_stream(stream)
-            graph=torch.cuda.CUDAGraph()
-            with torch.cuda.graph(graph):
-                for _ in range(case['calls_per_sample']):invoke()
-            def measure(call):
-                begin=torch.cuda.Event(enable_timing=True);end=torch.cuda.Event(enable_timing=True)
-                begin.record();call();end.record();end.synchronize();return begin.elapsed_time(end)
-            results.append(checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,replay=graph.replay,verify=verify,measure=measure,observe=observe,seed=request['challenge_seed']))
+            timing=capture_timed_graph(torch,invoke,case['calls_per_sample'])
+            row=checked_replays(case,policy,reset_inputs=reset,initialize_outputs=initialize,replay=timing.replay,verify=verify,measure=timing.measure,observe=observe,seed=request['challenge_seed'])
+            row['graph_timing']=timing.proof()
+            results.append(row)
         del tensors,invoke,observe,initialize,verify,reset,reference
     if package_hash()!=before:raise ValueError('Protected package changed during evaluation')
     report=finalize_report({'schema_version':1,'status':'ok','request':request,'compiled':True,'cases':results,'compiled_kernels':compiled,'oracle_device':'cpu','runtime_source_sha256':source_hash(),'implementation':'submitted_triton_port','comparison_baseline':'frozen_triton_port','stock_source_equivalence':False},manifest,request)
