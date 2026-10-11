@@ -64,7 +64,7 @@ The superseded legacy overlays and historical geometry fallbacks were removed. T
 
 Paired performance keeps the original recorded-state selection and all 40 cases, while measuring one deferred frozen-reference graph per candidate replay on the same CPU-owned snapshot. Both legs retain 10 checked warmups and 100 device samples, with symmetric graph setup and reference outputs cleared before the next candidate. The primary metric is the ratio of matched protected-reference and candidate means, with original mathematical checks unchanged. Input receipts are independently reconstructed from the protected captured control geometry and original state sampler; no new histogram weighting is introduced. This requires the shared paired-reference consumer and fresh GPU qualification.
 
-The `task_local_paired_inputs_v1` receipt contract requires the protected CPU reconstruction hook. It rebuilds all 110 input signatures using the unchanged `seed % len(states)` selection, verifies paging and sparse-address tensor bytes, and reconciles the state receipt against all 100 raw candidate samples. The performance timeout remains 19,800 seconds.
+The `task_local_paired_inputs_v1` receipt contract requires the protected CPU reconstruction hook. It rebuilds all 110 input signatures using the unchanged `seed % len(states)` selection, verifies paging and sparse-address tensor bytes, and reconciles the state receipt against all 100 raw candidate samples. The performance resource timeout is 32,400 seconds.
 
 The private reference transfers ownership of each newly returned output before launch-count or launch-configuration checks. A failed setup invocation therefore clears that output even when the invocation does not return to graph setup. Cleanup preserves the original validation error, and this ownership hook is not used for candidate invocations.
 
@@ -73,3 +73,5 @@ The package identity excludes the top-level `build/`, `.validator_audit/`, and
 audit logs and build local Torch extensions during evaluation. Same-named nested
 directories, source files, cases, and fixtures remain covered by the integrity
 check. This runtime-path fix requires a fresh GPU/framework validation report.
+
+An explicitly admitted `AKA_CASE_GPU_PLAN` enables whole-case GPU workers through the protected task-local helpers. Each case retains its complete paired execution and all 10 warmups/100 measured replays on one assigned device. Workers emit private, non-scoreable receipts; one coordinator verifies the entire original case union before the existing report finalizers run. Without a plan the runner keeps its serial one-GPU behavior. One full-task framework-finalized validator PASS remains required.

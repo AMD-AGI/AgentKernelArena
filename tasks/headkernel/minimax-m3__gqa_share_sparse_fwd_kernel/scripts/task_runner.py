@@ -194,16 +194,85 @@ class CaseEvaluation:
         return performance(self, manifest, request)
 
 
+
+def evaluate_cases(manifest, definition, request, *, cases=None, worker=False):
+    """Run complete original cases; only the full-task caller finalizes reports."""
+    if cases is None:
+        cases = manifest["cases"]
+    ids = [case["case_id"] for case in cases]
+    require(ids and len(ids) == len(set(ids)), "case selection must be nonempty and distinct")
+    selected = [case for case in manifest["cases"] if case["case_id"] in set(ids)]
+    require(fingerprint(cases) == fingerprint(selected), "case selection changed original records or order")
+    from minimax_native import Operator
+    operator = Operator(ROOT, definition)
+    rows, specializations, completed = [], [], []
+    for case in cases:
+        started = time.monotonic()
+        print(json.dumps({"phase": request["phase"], "case_id": case["case_id"], "event": "start"}), flush=True)
+        evaluation = CaseEvaluation(case, definition, operator, paired=request["phase"] == "performance",
+            paired_seed=request["challenge_seed"] + manifest["measurement"]["warmup_iterations"] + manifest["measurement"]["benchmark_iterations"])
+        if request["phase"] == "correctness":
+            rows.append(evaluation.correctness(manifest["measurement"]))
+        elif request["phase"] == "performance":
+            rows.append(evaluation.performance(manifest["measurement"], request["challenge_seed"], manifest=manifest, request=request))
+            specializations.append(evaluation.paired_specialization)
+        if worker and request["phase"] != "performance":
+            proof = operator.proof()
+            require(proof["source_sha256"] == request["source_sha256"][definition["source_file"]]
+                    and set(proof["engaged_kernels"]) == set(definition["kernels"]),
+                    "whole-case native engagement is incomplete")
+            specializations.append({"case_id": case["case_id"], "source_sha256": request["source_sha256"],
+                "candidate_invoked": True, "invoked_and_synchronized": True, "kernel_engagement": proof})
+        del evaluation
+        completed.append(case["case_id"])
+        print(json.dumps({"phase": request["phase"], "case_id": case["case_id"], "event": "complete",
+                          "wall_seconds": time.monotonic() - started}), flush=True)
+    return {"rows": rows, "compiled_specializations": specializations,
+            "kernel_engagement": operator.proof(), "completed_case_ids": completed}
+
+
+def parent_engagement(manifest, request, union):
+    """Retain an actual worker launch proof after complete specialization coverage."""
+    compiled = union["compiled_specializations"]
+    require([row["case_id"] for row in compiled] == [case["case_id"] for case in manifest["cases"]],
+            "full-task compiled specialization coverage differs")
+    key = "candidate_launch_evidence" if request["phase"] == "performance" else "kernel_engagement"
+    # This is the actual final original case's proof, matching the serial field.
+    # All worker proofs remain in the full compiled-specialization records.
+    return compiled[-1][key]
+
+
+def complete_report(manifest, request, payload, cpu_runtime, *, parallel=None):
+    report = {"schema_version": 1, "status": "ok", "request": request, "cases": payload["rows"],
+              "kernel_engagement": payload["kernel_engagement"], "task_validator_status": "pending",
+              "cpu_runtime": cpu_runtime, "capture_scope": manifest["capture"], "speedup_claim": False}
+    if request["phase"] == "compile":
+        report["compiled"] = True
+    if parallel is not None:
+        report["case_parallelism"] = parallel
+        report["compiled_specializations"] = payload["compiled_specializations"]
+    if request["phase"] == "performance":
+        from paired_reference import attach_comparison
+        report["compiled_specializations"] = payload["compiled_specializations"]
+        attach_comparison(ROOT, report, manifest, request)
+    return finalize_report(report, manifest, request)
+
+
+def worker_requested(arguments):
+    return any(arg == "--case-worker" or arg.startswith("--case-worker=") for arg in arguments)
+
+
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("phase", choices=("compile", "correctness", "performance"))
     parser.add_argument("--request", type=Path)
+    parser.add_argument("--case-worker", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    (ROOT / "build").mkdir(exist_ok=True)
-    report_path = ROOT / "build" / (args.phase + "_report.json")
-    report_path.unlink(missing_ok=True)
-    cpu_runtime = configure_cpu_threads()
-    (ROOT / "build" / ("cpu_runtime_" + args.phase + ".json")).write_text(json.dumps(cpu_runtime) + "\n")
+    if args.case_worker is None:
+        (ROOT / "build").mkdir(exist_ok=True)
+        (ROOT / "build" / (args.phase + "_report.json")).unlink(missing_ok=True)
+    else:
+        require(args.request is not None, "internal worker requires the unchanged parent request")
     manifest, definition = load_cases(ROOT)
     validate_sources(ROOT, ROOT)
     package = tree_identity()
@@ -220,46 +289,55 @@ def main():
                 "unknown evaluation environment control")
         require(name not in os.environ or os.environ[name] == value, "runtime environment conflicts with captured path")
         os.environ[name] = value
-    from minimax_native import Operator
-    operator = Operator(ROOT, definition)
-    rows = []
-    paired_specializations = []
-    for case in manifest["cases"]:
-        started = time.monotonic()
-        print(json.dumps({"phase": args.phase, "case_id": case["case_id"], "event": "start"}), flush=True)
-        evaluation = CaseEvaluation(case, definition, operator, paired=args.phase == "performance",
-            paired_seed=request["challenge_seed"] + manifest["measurement"]["warmup_iterations"] + manifest["measurement"]["benchmark_iterations"])
-        if args.phase == "correctness":
-            rows.append(evaluation.correctness(manifest["measurement"]))
-        elif args.phase == "performance":
-            rows.append(evaluation.performance(manifest["measurement"], request["challenge_seed"], manifest=manifest, request=request))
-            paired_specializations.append(evaluation.paired_specialization)
-        del evaluation
-        print(json.dumps({"phase": args.phase, "case_id": case["case_id"], "event": "complete",
-                          "wall_seconds": time.monotonic() - started}), flush=True)
-    require(tree_identity() == package and sha(ROOT / definition["source_file"]) == sources[definition["source_file"]],
+    context = plan = parallel = None
+    enabled = args.case_worker is not None or request.get("case_parallelism") is not None or any(
+        name in os.environ for name in ("AKA_CASE_GPU_PLAN", "AKA_CASE_GPU_PLAN_SHA256"))
+    if enabled:
+        # Both paths enter the shared verifier before importing Torch or native code.
+        from case_parallel import bind_request, enter_worker, finish_worker, load_plan, run_workers
+        if args.case_worker is not None:
+            context = enter_worker(ROOT, manifest, request, args.case_worker)
+        else:
+            plan = load_plan(ROOT, manifest, request)
+            require(plan is not None, "explicit whole-case mode requires an admitted GPU plan")
+            request = bind_request(request, plan)
+    if plan is not None:
+        union = run_workers(ROOT, manifest, request, plan, Path(__file__).resolve(), leg="framework")
+        payload = {**union, "kernel_engagement": parent_engagement(manifest, request, union)}
+        parallel = union["case_parallelism"]
+        cpu_runtime = {"scope": "Per-worker CPU policies are retained in the whole-case receipts"}
+    else:
+        cpu_runtime = configure_cpu_threads()
+        diagnostics = context.output_directory if context is not None else ROOT / "build"
+        (diagnostics / ("cpu_runtime_" + args.phase + ".json")).write_text(json.dumps(cpu_runtime) + "\n")
+        payload = evaluate_cases(manifest, definition, request,
+            cases=context.cases if context is not None else None, worker=context is not None)
+    after = tree_identity()
+    require(after == package and sha(ROOT / definition["source_file"]) == sources[definition["source_file"]],
             "source or protected package changed during evaluation")
-    report = {"schema_version": 1, "status": "ok", "request": request, "cases": rows,
-              "kernel_engagement": operator.proof(), "task_validator_status": "pending",
-              "cpu_runtime": cpu_runtime,
-              "capture_scope": manifest["capture"], "speedup_claim": False}
-    if args.phase == "compile":
-        report["compiled"] = True
-    if args.phase == "performance":
-        from paired_reference import attach_comparison
-        report["compiled_specializations"] = paired_specializations
-        attach_comparison(ROOT, report, manifest, request)
-    report = finalize_report(report, manifest, request)
+    if context is not None:
+        finish_worker(context, rows=payload["rows"], compiled_specializations=payload["compiled_specializations"],
+            evidence={"completed_case_ids": payload["completed_case_ids"],
+                "kernel_engagement": payload["kernel_engagement"], "cpu_runtime": cpu_runtime,
+                "source_sha256": sources, "package_before_sha256": package, "package_after_sha256": after})
+        return 0
+    report = complete_report(manifest, request, payload, cpu_runtime, parallel=parallel)
     write_report(args.phase, report)
     print(args.phase.capitalize() + ": PASS")
     return 0
 
 
-if __name__ == "__main__":
+def entrypoint():
     try:
-        raise SystemExit(main())
+        return main()
     except Exception as error:
-        phase = sys.argv[1] if len(sys.argv) > 1 else "unknown"
-        (ROOT / "build").mkdir(exist_ok=True)
-        write_report(phase, {"schema_version": 1, "status": "fail", "error": f"{type(error).__name__}: {error}", "cases": []})
+        # A child failure must never overwrite its coordinator's public report.
+        if not worker_requested(sys.argv[1:]):
+            phase = sys.argv[1] if len(sys.argv) > 1 else "unknown"
+            (ROOT / "build").mkdir(exist_ok=True)
+            write_report(phase, {"schema_version": 1, "status": "fail", "error": f"{type(error).__name__}: {error}", "cases": []})
         raise
+
+
+if __name__ == "__main__":
+    raise SystemExit(entrypoint())
