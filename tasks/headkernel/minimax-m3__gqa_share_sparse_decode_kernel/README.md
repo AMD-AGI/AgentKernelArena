@@ -78,3 +78,5 @@ The package identity excludes the top-level `build/`, `.validator_audit/`, and
 audit logs and build local Torch extensions during evaluation. Same-named nested
 directories, source files, cases, and fixtures remain covered by the integrity
 check. This runtime-path fix requires a fresh GPU/framework validation report.
+
+An explicitly admitted `AKA_CASE_GPU_PLAN` enables whole-case GPU workers through the protected task-local helpers. Each assigned case retains all original recorded and targeted correctness controls, its complete paired execution, and all 10 warmups/100 measured replays on one device. Workers emit private, non-scoreable receipts; one coordinator verifies the entire original case union before the unchanged control, paired-reference, and report finalizers run. Without a plan the runner remains serial on one GPU. One full-task framework-finalized validator PASS remains required.

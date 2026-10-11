@@ -558,6 +558,8 @@ def finalize_report(
             try:
                 from src.quality_measurements import quality_required, workspace_quality
                 config = yaml.safe_load(config_path.read_text()) or {}
+                from src.case_parallelism import validate_framework_reports
+                validate_framework_reports(workspace_path, config)
                 if quality_required(config) and _status(checks.get('performance', {}).get('status')) == 'PASS':
                     benchmark = checks.setdefault('benchmark_integrity', {})
                     try:

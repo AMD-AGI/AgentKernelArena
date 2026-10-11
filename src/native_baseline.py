@@ -215,6 +215,8 @@ def load_native_measurements(root, config, *, report=None, request=None):
     if report is None:
         report = strict_json(read_task_file(root, 'build/performance_report.json').decode())
     request = report.get('request', {}) if request is None else request
+    from .case_parallelism import validate_measurement
+    validate_measurement(root, config, manifest, report)
     sources = {name: hashlib.sha256(read_task_file(root, name)).hexdigest() for name in config['source_file_path']}
     provenance_bytes = read_task_file(root, policy['native_source_manifest'])
     provenance_sha = hashlib.sha256(provenance_bytes).hexdigest()

@@ -46,6 +46,8 @@ harness_protection:
   reject_new_source_symlinks: true
 trusted_evaluation:
   schema_version: 1
+  case_parallelism:
+    schema_version: 1
   case_manifest: cases.json
   fixture_manifest: fixtures/EXTERNAL-MANIFEST.json
   contract_file: ut/evaluation_contract.py

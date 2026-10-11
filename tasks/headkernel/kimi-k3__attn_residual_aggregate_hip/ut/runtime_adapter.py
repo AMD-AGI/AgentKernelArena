@@ -34,14 +34,17 @@ def tensor_views(metadata,groups,torch,device):
 
 
 class Runtime:
-    def __init__(self,root,manifest,request):
+    def __init__(self,root,manifest,request,*,build=None):
         self.root=Path(root);self.manifest=manifest;self.request=request
+        self.build=Path(build) if build is not None else self.root/'build'
+        if not self.build.resolve().is_relative_to((self.root/'build').resolve()):
+            raise ValueError('Runtime diagnostics must remain inside the task build directory')
         previous=list(sys.path);sys.path[:]=[p for p in sys.path if Path(p or '.').resolve()!=(self.root/'ut').resolve()]
         try:
             import unittest.mock
             import torch
         finally:sys.path[:]=previous
-        self.torch=torch;self.cpu_thread_policy=configure_cpu_threads(torch,self.root/'build')
+        self.torch=torch;self.cpu_thread_policy=configure_cpu_threads(torch,self.build)
         self.native=bindings(self.root)
         self.expected=strict_json((self.root/'ut/expected_abi.json').read_text())
     def prepare_case(self,case):return Prepared(self,case)
@@ -222,4 +225,4 @@ class Prepared:
             'reference_callable':self.runtime.native['reference'].__module__+':attn_res_hip'}
 
 
-def create_runtime(root,manifest,request):return Runtime(root,manifest,request)
+def create_runtime(root,manifest,request,*,build=None):return Runtime(root,manifest,request,build=build)

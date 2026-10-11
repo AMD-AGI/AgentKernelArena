@@ -958,6 +958,15 @@ build_docker_args() {
     local cache_suffix="${AKA_CACHE_SUFFIX:-}"
     local cache_postfix=""
     local container_username
+    local case_group=0 case_args_file
+    local -a case_group_args=()
+    if [[ -n "${AKA_CASE_GPU_PLAN:-}" || -n "${AKA_CASE_GPU_PLAN_SHA256:-}" ]]; then
+        [[ -n "${AKA_CASE_GPU_PLAN:-}" && -n "${AKA_CASE_GPU_PLAN_SHA256:-}" && -n "${AKA_CASE_RUN_CONFIG:-}" ]] \
+            || die "A GPU group requires an explicit plan, digest and one full-task run config"
+        [[ -z "${AKA_VISIBLE_GPU:-}" && -z "${AKA_WORKER_ID:-}" ]] \
+            || die "A whole-case GPU group cannot also select a serial or task-parallel worker GPU"
+        case_group=1
+    fi
     # Arbitrary host UIDs need not exist in the image's passwd database.
     # Python getpass (used by TorchInductor/AITER) also accepts USER/LOGNAME.
     container_username="$(id -un 2>/dev/null)" || container_username="aka-$HOST_UID"
@@ -971,6 +980,18 @@ build_docker_args() {
     # Parallel runs finish their preflight before starting any workers, so the
     # first container builds a missing default and subsequent containers reuse it.
     ensure_runtime_image
+
+    if [[ "$case_group" == "1" ]]; then
+        case_args_file="$(mktemp)"
+        if ! (cd "$HOST_ROOT" && python3 -m src.tools.case_gpu_plan --repo "$HOST_ROOT" \
+                --plan "$AKA_CASE_GPU_PLAN" --sha256 "$AKA_CASE_GPU_PLAN_SHA256" \
+                --image "$SELECTED_IMAGE" --config "$AKA_CASE_RUN_CONFIG") > "$case_args_file"; then
+            rm -f "$case_args_file"
+            die "Whole-case GPU group admission failed"
+        fi
+        mapfile -d '' -t case_group_args < "$case_args_file"
+        rm -f "$case_args_file"
+    fi
 
     docker_args=(run --rm --entrypoint bash)
     if [[ -n "${AKA_DOCKER_LABEL_FILE:-}" ]]; then
@@ -987,8 +1008,6 @@ build_docker_args() {
     docker_args+=(
         --ipc=host
         --network=host
-        --privileged
-        --cap-add=SYS_ADMIN
         --cap-add=SYS_PTRACE
         --security-opt=seccomp=unconfined
         --user "${HOST_UID}:${HOST_GID}"
@@ -1013,6 +1032,11 @@ build_docker_args() {
         -e "PATH=${container_path}"
         -w "$CONTAINER_WORKDIR"
     )
+    if [[ "$case_group" == "1" ]]; then
+        docker_args+=(--cap-drop=ALL --cap-add=SYS_PTRACE "${case_group_args[@]}")
+    else
+        docker_args+=(--privileged --cap-add=SYS_ADMIN)
+    fi
 
     # Only agent state is bind-mounted beneath HOME, so its parent may be
     # root-owned. AITER initializes ~/.aiter during import and seeds it from
@@ -1122,12 +1146,14 @@ build_docker_args() {
         fi
     done
 
-    add_device_if_present /dev/kfd
-    add_device_if_present /dev/dri
+    if [[ "$case_group" == "0" ]]; then
+        add_device_if_present /dev/kfd
+        add_device_if_present /dev/dri
+    fi
     # Spur authorizes Docker device passthrough against the active allocation
     # and rejects /dev/mem. It is not required by AgentKernelArena's kernel
     # tasks, so the Slurm wrapper disables this optional mount explicitly.
-    if [[ "${AKA_SKIP_DEV_MEM:-0}" != "1" ]]; then
+    if [[ "$case_group" == "0" && "${AKA_SKIP_DEV_MEM:-0}" != "1" ]]; then
         add_device_if_present /dev/mem
     fi
 
@@ -1778,6 +1804,13 @@ case "${1:-}" in
     run)
         shift
         config_name="$(extract_config_name "$@")"
+        if [[ -n "${AKA_CASE_GPU_PLAN:-}" || -n "${AKA_CASE_GPU_PLAN_SHA256:-}" ]]; then
+            export AKA_CASE_RUN_CONFIG="$config_name"
+            for group_arg in "$@"; do
+                [[ "$group_arg" != --resume* && "$group_arg" != --parallel* ]] \
+                    || die "Whole-case GPU groups require a fresh complete framework run"
+            done
+        fi
         select_runtime_for_config "$config_name"
         configure_geak_v4_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
@@ -1791,6 +1824,8 @@ case "${1:-}" in
         trap - EXIT
         ;;
     parallel-run)
+        [[ -z "${AKA_CASE_GPU_PLAN:-}" && -z "${AKA_CASE_GPU_PLAN_SHA256:-}" ]] \
+            || die "Whole-case GPU groups use one docker-run full-task validator"
         shift
         run_parallel "$@"
         ;;

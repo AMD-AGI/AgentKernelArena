@@ -12,12 +12,15 @@ import math
 import os
 import re
 import secrets
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+import threading
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -413,9 +416,14 @@ def preserve_container_exit(name, destination, before):
 
 
 def run_phase(image, task, staging, output, leg, request, render_device, timeout, cache_source=None,
-              container_resources=None, qwen_contract=None):
+              container_resources=None, qwen_contract=None, worker_assignment=None, case_plan=None,
+              group_control=None):
     phase = request["phase"]
     label = leg + "_" + phase
+    if worker_assignment is not None:
+        require(qwen_contract is None and case_plan is not None, "unsupported case worker contract")
+        label += "_worker_" + str(worker_assignment["worker_id"])
+    expected_gpu = request["gpu"] if worker_assignment is None else worker_assignment["expected_gpu"]
     build = task / "build" if qwen_contract is not None else staging / (label + "_build")
     build.mkdir()
     omitted = set()
@@ -427,7 +435,7 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     request_path = staging / (label + "_request.json")
     request_path.write_text(canonical(request))
     gpu_path = staging / (label + "_gpu.json")
-    gpu_path.write_text(canonical(request["gpu"]))
+    gpu_path.write_text(canonical(expected_gpu))
     name = "aka-task-retest-" + uuid.uuid4().hex
     command = docker_command(image, task, build, render_device, name, cache)
     if qwen_contract is not None:
@@ -441,7 +449,7 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
     # Existing finally cleanup owns removal. Automatic removal would discard
     # Docker's OOMKilled/ExitCode evidence before the host can inspect it.
     command = [argument for argument in command if argument != "--rm"]
-    command = command_with_binding(command, image, request["gpu"], GPU_BINDING_HELPER, gpu_path)
+    command = command_with_binding(command, image, expected_gpu, GPU_BINDING_HELPER, gpu_path)
     image_index = command.index(image)
     command[image_index:image_index] = container_resource_arguments(container_resources)
     image_index = command.index(image)
@@ -456,17 +464,41 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
         command[image_index:image_index] = ["--env", "FLYDSL_RUNTIME_CACHE_DIR=/aiter-jit/" + fresh_flydsl_name]
         image_index = command.index(image)
     command[image_index:image_index] = ["--mount", f"type=bind,src={request_path},dst=/evaluation-request.json,readonly"]
+    if worker_assignment is not None:
+        from src.tools import case_parallel
+        private_output = build / Path(worker_assignment["output_directory"]).relative_to("build")
+        private_output.mkdir(parents=True)
+        assignment_path = staging / (label + "_assignment.json")
+        assignment_path.write_text(canonical(worker_assignment))
+        image_index = command.index(image)
+        command[image_index:image_index] = [
+            "--mount", f"type=bind,src={assignment_path},dst=/case-worker-assignment.json,readonly",
+            "--mount", f"type=bind,src={case_plan['_plan_path']},dst=/run/aka-case-gpu-plan.json,readonly",
+            "--env", case_parallel.PLAN_ENV + "=/run/aka-case-gpu-plan.json",
+            "--env", case_parallel.HASH_ENV + "=" + case_plan["_plan_sha256"]]
     if qwen_contract is not None:
         command += ["--task", "/task", "--request", "/evaluation-request.json", "--timeout", str(timeout)]
     else:
         command += [phase, "--request", "/evaluation-request.json"]
         command += distribution_phase_arguments(request.get("distribution_correctness_mode"), phase)
+        if worker_assignment is not None:
+            command += ["--case-worker", "/case-worker-assignment.json"]
     primary = None
     memory_before = process_memory_snapshot()
     try:
+        if group_control is not None:
+            group_control.register(name)
         with (output / (label + ".log")).open("xb") as log:
-            subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
-        validate_preflight(strict_json(read_regular(build / "gpu_preflight.json")), request["gpu"])
+            if group_control is None:
+                subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=timeout)
+            else:
+                run_case_container(command, log, timeout, group_control)
+        validate_preflight(strict_json(read_regular(build / "gpu_preflight.json")), expected_gpu)
+        if worker_assignment is not None:
+            destination = task / worker_assignment["output_directory"] / "receipt.json"
+            with destination.open("xb") as stream:
+                stream.write(read_regular(private_output / "receipt.json"))
+            return destination
         return strict_json(read_regular(build / (phase + "_report.json")))
     except BaseException as exc:
         primary = exc
@@ -486,7 +518,7 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             failures.append(exc)
         try:
-            options = {"recursive": True, "excluded": omitted} if qwen_contract is not None else {}
+            options = {"recursive": True, "excluded": omitted} if qwen_contract is not None or worker_assignment is not None else {}
             preserve_diagnostics(build, output / (label + ".diagnostics"), **options)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             failures.append(exc)
@@ -494,14 +526,131 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
             if primary is None:
                 raise exc
             primary.add_note("Additional diagnostic/cleanup failure: " + str(exc))
+        if group_control is not None:
+            group_control.finished(name)
 
 
-def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, render_device, scratch_dir=None, timeout=7200,
+def run_case_container(command, log, timeout, control):
+    """Observe the real Docker exit and interrupt the CLI on group failure."""
+    process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    deadline = time.monotonic() + timeout
+    try:
+        while process.poll() is None:
+            require(not control.cancelled.is_set(), "owned case group was cancelled")
+            require(time.monotonic() < deadline, "owned case container timed out")
+            time.sleep(0.1)
+        require(process.returncode == 0, "owned case container exited with code " + str(process.returncode))
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+
+
+class CaseGroupControl:
+    """Cancel only the fresh containers owned by this phase; never retry."""
+    def __init__(self):
+        self.cancelled = threading.Event()
+        self.lock = threading.Lock()
+        self.names = set()
+
+    def register(self, name):
+        with self.lock:
+            require(not self.cancelled.is_set(), "case group was cancelled before container launch")
+            self.names.add(name)
+
+    def finished(self, name):
+        with self.lock:
+            self.names.discard(name)
+
+    def stop(self):
+        self.cancelled.set()
+        with self.lock:
+            names = sorted(self.names)
+        for name in names:
+            # Stop retains Docker ExitCode/OOMKilled evidence for run_phase's
+            # existing inspection and final removal. Repeated stops also close
+            # the short race between registration and Docker daemon creation.
+            try:
+                subprocess.run(["docker", "stop", "--time", "1", name], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                # Worker supervisors also terminate their CLI and force-remove
+                # their container in run_phase's existing finally cleanup.
+                pass
+
+
+def run_group_phase(image, task, staging, output, leg, request, plan, timeout, cache_source=None):
+    from src.tools import case_parallel
+    assignments = case_parallel.prepare_assignments(task, plan["_manifest"], request,
+        {k: v for k, v in plan.items() if k != "_manifest"}, leg=leg)
+    stop = min(time.time() + min(timeout, plan["phase_timeouts"][request["phase"]]), plan["work_stop_unix"])
+    for assignment in assignments:
+        assignment["deadline_unix"] = min(assignment["deadline_unix"], stop)
+    resources = {"cpus": plan["resources"]["cpus_per_worker"], "memory_gib": plan["resources"]["memory_gib_per_worker"]}
+    control = CaseGroupControl()
+    pool = ThreadPoolExecutor(max_workers=len(assignments))
+    futures = []
+    handlers = {}
+    def cancelled(signum, _frame):
+        raise InterruptedError("trusted case group received signal " + str(signum))
+    try:
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            handlers[signum] = signal.signal(signum, cancelled)
+        for assignment in assignments:
+            futures.append(pool.submit(run_phase, image, task, staging, output, leg, request,
+                assignment["expected_gpu"]["render_device"], max(1, int(stop - time.time())), cache_source,
+                container_resources=resources, worker_assignment=assignment, case_plan=plan, group_control=control))
+        pending = set(futures)
+        while pending:
+            require(time.time() < stop, "case group phase deadline expired")
+            completed, pending = wait(pending, timeout=min(0.2, max(0, stop - time.time())), return_when=FIRST_COMPLETED)
+            for future in completed:
+                future.result()
+        paths = [future.result() for future in futures]
+        require(case_parallel.input_tree_identity(task) == assignments[0]["input_tree_sha256"], "staged worker inputs changed")
+        union = case_parallel.collect_workers(plan["_manifest"], request, plan, assignments, [0] * len(paths), paths)
+        union_path = staging / (leg + "_" + request["phase"] + "_union.json")
+        request_path = staging / (leg + "_" + request["phase"] + "_parent_request.json")
+        report_path = staging / (leg + "_" + request["phase"] + "_full_report.json")
+        union_path.write_text(canonical(union))
+        request_path.write_text(canonical(request))
+        require(time.time() < stop, "case group deadline expired before finalization")
+        subprocess.run([sys.executable, "-I", "-B", str(Path(__file__).with_name("case_finalize.py")),
+            "--task", str(task), "--request", str(request_path), "--union", str(union_path),
+            "--output", str(report_path)], check=True, timeout=max(1, stop - time.time()))
+        report = strict_json(read_regular(report_path))
+        case_parallel.validate_group_report(task, plan["_manifest"], report, required=True)
+        # Preserve the exact chain under one per-leg root for later audits.
+        for worker in union["workers"]:
+            archived = output / (leg + "_group_receipts") / worker["receipt_path"]
+            archived.parent.mkdir(parents=True, exist_ok=True)
+            with archived.open("xb") as stream:
+                stream.write(read_regular(task / worker["receipt_path"]))
+        return report
+    except BaseException:
+        control.cancelled.set()
+        while any(not future.done() for future in futures):
+            control.stop()
+            wait(futures, timeout=0.2)
+        raise
+    finally:
+        for signum, previous in handlers.items():
+            signal.signal(signum, previous)
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
+def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, render_device=None, scratch_dir=None, timeout=7200,
                    fixture_local_mirror=None, fixture_oci_prefix=None,
                    fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES,
-                   phase_timeouts=None, container_resources=None):
+                   phase_timeouts=None, container_resources=None, case_gpu_plan=None, case_gpu_plan_sha256=None):
     # Reject malformed host budgets before staging fixtures or selecting a GPU.
     evaluation_timeouts({}, None, timeout, phase_timeouts)
+    require(bool(render_device) != bool(case_gpu_plan) and bool(case_gpu_plan) == bool(case_gpu_plan_sha256),
+            "select exactly one render device or complete case GPU plan/digest")
     repo, candidate_workspace = Path(repo).resolve(), Path(candidate_workspace).resolve()
     output = Path(output).absolute()
     scratch = Path(scratch_dir or tempfile.gettempdir()).resolve()
@@ -535,9 +684,34 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
             for source in contract["sources"]:
                 (candidate / source).write_bytes(read_regular(candidate_workspace / source))
             guard_sources(reference, candidate, contract["guard"])
-        gpu = select_gpu(render_device)
         manifest = contract["manifest"]
         image = manifest["runtime_image"]
+        group_plan = None
+        if case_gpu_plan is not None:
+            from src.case_parallelism import enabled, verify_helpers
+            from src.tools import case_parallel, case_gpu_plan as plan_admission
+            require(not qwen and enabled(contract["config"]), "trusted case group task did not opt in")
+            verify_helpers(reference, contract["config"])
+            group_plan = case_parallel.load_plan(reference, manifest, {"manifest_sha256": fingerprint(manifest)},
+                path=case_gpu_plan, sha256=case_gpu_plan_sha256)
+            require(group_plan["task_path"] == task_path and group_plan["baseline_commit"] == commit,
+                    "trusted group plan commit/task differs")
+            require(group_plan["phase_timeouts"] == {phase: contract["config"].get(phase + "_timeout") for phase in PHASES},
+                    "trusted plan differs from original phase caps")
+            plan_admission.validate_scheduler(group_plan, plan_admission.scheduler_state(group_plan["job_id"]),
+                                               plan_admission.socket.gethostname())
+            for binding in group_plan["bindings"]:
+                require(select_gpu(binding["render_device"]) == {k: v for k, v in binding.items() if k != "worker_id"},
+                        "trusted group physical binding differs")
+            granted_resources = {"cpus": group_plan["resources"]["cpus_per_worker"],
+                                 "memory_gib": group_plan["resources"]["memory_gib_per_worker"]}
+            require(container_resources is None or container_resources == granted_resources,
+                    "container resources differ from the explicit group grant")
+            group_plan["_manifest"] = manifest
+            limits = {phase: min(value, group_plan["phase_timeouts"][phase]) for phase, value in limits.items()}
+            gpu = None
+        else:
+            gpu = select_gpu(render_device)
         image_record = json.loads(subprocess.check_output(["docker", "image", "inspect", image], text=True))[0]
         require(any(item.endswith("@" + image.rsplit("@", 1)[1]) for item in image_record.get("RepoDigests", [])),
                 "local image does not attest the requested digest")
@@ -560,12 +734,21 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 request = {"schema_version": 1, "request_id": secrets.token_hex(24), "phase": phase,
                            "manifest_sha256": fingerprint(manifest), "package_sha256": package,
                            "source_sha256": sources[leg], "challenge_seed": challenge_seed, "gpu": gpu}
+                if group_plan is not None:
+                    request = case_parallel.bind_request(request, group_plan)
                 mode = contract["distribution_correctness_mode"]
                 if mode is not None and phase in ("compile", "correctness"):
                     request["distribution_correctness_mode"] = mode
                 options = {**resource_options, **({"qwen_contract": contract} if qwen else {})}
-                report = run_phase(image, task, staging, output, leg, request, render_device,
-                                   limits[phase], cache_source, **options)
+                if group_plan is not None:
+                    # Recheck the same grant before each complete phase; a
+                    # preemption/restart invalidates the entire evaluation.
+                    plan_admission.validate_scheduler(group_plan, plan_admission.scheduler_state(group_plan["job_id"]),
+                                                       plan_admission.socket.gethostname())
+                    report = run_group_phase(image, task, staging, output, leg, request, group_plan, limits[phase], cache_source)
+                else:
+                    report = run_phase(image, task, staging, output, leg, request, render_device,
+                                       limits[phase], cache_source, **options)
                 if qwen:
                     measured, quality_cases = trusted_qwen_eval.validate_phase(task, contract, phase, report, request)
                     phase_receipt = strict_json(read_regular(task / "build/host_phase_receipt.json"))
@@ -573,9 +756,12 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 else:
                     measured = validate_report(report, manifest, request)
                     validate_distribution_report(report, manifest, request, contract["distributions"], mode)
-                # Ignore only the empty bind-mount point added after fingerprinting.
+                # Build outputs are outside the staged input identity. The
+                # serial path retains its original empty bind-mount point.
                 current = tree_manifest(task)
                 current.pop("build", None)
+                if group_plan is not None:
+                    current = {name: value for name, value in current.items() if not name.startswith("build/")}
                 require(fingerprint(current) == package, "protected staged task files changed")
                 encoded = canonical(report).encode() + b"\n"
                 filename = leg + "_" + phase + ".json"
@@ -613,6 +799,12 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                   "manifest_sha256": fingerprint(manifest), "full_case_coverage": True, "cases": cases,
                   "arithmetic_mean_speedup": math.fsum(row["speedup"] for row in cases) / len(cases),
                   "reports": reports, "framework_task_validator_status": "not_asserted"}
+        if group_plan is not None:
+            result.pop("gpu")
+            result.update(gpu_group=group_plan["bindings"], case_parallelism={
+                "plan_sha256": group_plan["_plan_sha256"], "assignment_sha256": group_plan["assignment_sha256"],
+                "fresh_worker_containers": len(group_plan["bindings"]) * len(PHASES) * 2,
+                "receipt_directories": {leg: leg + "_group_receipts" for leg in ("reference", "candidate")}})
         if container_resources:
             result["requested_container_resources"] = dict(container_resources)
         if qwen:
@@ -681,6 +873,8 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--candidate-workspace")
     parser.add_argument("--render-device")
+    parser.add_argument("--case-gpu-plan")
+    parser.add_argument("--case-gpu-plan-sha256")
     parser.add_argument("--stage-only", action="store_true", help="prepare a verified original task for a validator without GPU execution")
     parser.add_argument("--scratch-dir")
     parser.add_argument("--fixture-local-mirror", help="trusted mirror using portable object_key or original headkernel fixture paths")
@@ -701,21 +895,23 @@ def main():
     phase_timeouts = {phase: getattr(args, phase + "_timeout") for phase in PHASES
                       if getattr(args, phase + "_timeout") is not None}
     if args.stage_only:
-        if not args.scratch_dir or args.candidate_workspace or args.render_device or phase_timeouts:
+        if not args.scratch_dir or args.candidate_workspace or args.render_device or phase_timeouts or args.case_gpu_plan or args.case_gpu_plan_sha256:
             parser.error("--stage-only requires --scratch-dir and accepts no candidate workspace, GPU device or phase timeouts")
         result = stage_trusted_task(repo=args.repo, commit=args.commit, task_path=args.task, output=args.output,
                                    scratch_dir=args.scratch_dir, timeout=args.timeout, **fixtures)
         print(json.dumps(result))
         return
-    if not args.candidate_workspace or not args.render_device:
-        parser.error("retesting requires --candidate-workspace and --render-device")
+    if (not args.candidate_workspace or bool(args.render_device) == bool(args.case_gpu_plan)
+            or bool(args.case_gpu_plan) != bool(args.case_gpu_plan_sha256)):
+        parser.error("retesting requires --candidate-workspace and exactly one render device or case GPU plan/digest")
     resources = {key: value for key, value in
                  (("cpus", args.container_cpus), ("memory_gib", args.container_memory_gib))
                  if value is not None}
     result = trusted_retest(repo=args.repo, commit=args.commit, task_path=args.task,
                             candidate_workspace=args.candidate_workspace, output=args.output,
                             render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout,
-                            phase_timeouts=phase_timeouts, container_resources=resources or None, **fixtures)
+                            phase_timeouts=phase_timeouts, container_resources=resources or None,
+                            case_gpu_plan=args.case_gpu_plan, case_gpu_plan_sha256=args.case_gpu_plan_sha256, **fixtures)
     print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
                       "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
     if result['status'] == 'rejected_timing_quality':

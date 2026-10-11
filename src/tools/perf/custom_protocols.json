@@ -656,6 +656,117 @@
           "a02afe64d91f99d33005dfcd60cad734ac648af04ad5db6fc4e5b41af83a0846"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "FreshCallbacks times one graph replay with owned CPU observations and canonical per-replay validation. Explicit complete-case GPU groups preserve the full parent request and canonical receipt chain.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "8bcfb6d6008c97bca5f6ef13655687ba20ad63a56579f9529012adfbadbe7a6c"
+      ],
+      "files_sha256": {
+        "ut/fresh_runner.py": [
+          "faa2d89dc5f5966746b9fe6af74a6ebb33afc379283b99b54489fab63495458c"
+        ],
+        "ut/case_parallel.py": [
+          "e7ca867978144c3fd920d5649723812fe06cad73fda79f300df8f8271e08e13f"
+        ],
+        "ut/gpu_binding.py": [
+          "4b2ada8584cce3e92301e4a3bdb8e8abfcfb8ec62b0be250d727fc24372b899b"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "MiniMax protected-reference paired performance with independently reconstructed input receipts. Explicit complete-case GPU groups preserve the full parent request and canonical receipt chain.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "14316b269fa7533f55742e9b6fb29e6177b3a506cc319b3aa1faa58c429ac713"
+      ],
+      "files_sha256": {
+        "ut/evaluation_contract.py": [
+          "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75"
+        ],
+        "ut/minimax_data.py": [
+          "c0d52f60b05d33cba932cd552bd7fd43a8613ac196aa676438a1b6cd25efd11a"
+        ],
+        "ut/minimax_fixtures.py": [
+          "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e"
+        ],
+        "ut/minimax_native.py": [
+          "ddc7188cc8003a4db592a6e00be5f680d42ec535042fa71db905694e05ab7c41"
+        ],
+        "ut/minimax_paired.py": [
+          "70ab3fa9b38299896362c1fbf86500c190143cf041e99ae816d97c9f503a4ceb"
+        ],
+        "ut/minimax_work.py": [
+          "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26"
+        ],
+        "ut/paired_input_validation.py": [
+          "d6730ea6a4b994070eebce0bfa3cfb348b7cf13ea71960e5fbb7ac5bbac57b5f"
+        ],
+        "ut/paired_reference.py": [
+          "aed5e416cc66c155ac73f40dbccbe72d86049013f5e410628e3d9ee76bd4fce3"
+        ],
+        "ut/paired_state_controls.py": [
+          "240906c540899e7e77480f7a60c148daee485130383aa6751f30c8e9467851bb"
+        ],
+        "ut/served_contract.py": [
+          "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2"
+        ],
+        "ut/case_parallel.py": [
+          "e7ca867978144c3fd920d5649723812fe06cad73fda79f300df8f8271e08e13f"
+        ],
+        "ut/gpu_binding.py": [
+          "4b2ada8584cce3e92301e4a3bdb8e8abfcfb8ec62b0be250d727fc24372b899b"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "MiniMax protected-reference paired performance with independently reconstructed input receipts. Explicit complete-case GPU groups preserve the full parent request and canonical receipt chain.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "c0142e1e3b072858ea687b6b275669b1286c8952f0a30c52af9d84e0cd3152ff"
+      ],
+      "files_sha256": {
+        "ut/evaluation_contract.py": [
+          "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75"
+        ],
+        "ut/minimax_data.py": [
+          "2f7a9d5a9010961eed4e14d22a49616090a5f84b0862f8c0f23bf0176350cbcd"
+        ],
+        "ut/minimax_fixtures.py": [
+          "e08a7b10537b9736e1ce27a6ae9f0c4fd4b92fc1b7a56a3291848723f4a9ba2e"
+        ],
+        "ut/minimax_native.py": [
+          "ddc7188cc8003a4db592a6e00be5f680d42ec535042fa71db905694e05ab7c41"
+        ],
+        "ut/minimax_paired.py": [
+          "51c362bf922791c8da3234d91fb48d3a3fab13133832324f003e236503cc51e1"
+        ],
+        "ut/minimax_work.py": [
+          "0a6917e9f17dd55adc206e2bf1ca482f04426db7ee130acb52f4748700466f26"
+        ],
+        "ut/paired_input_validation.py": [
+          "773c092881c73825b72c6758ec9b3ffaa70cf316b4967a2dc86158fa3eb7df32"
+        ],
+        "ut/paired_reference.py": [
+          "aed5e416cc66c155ac73f40dbccbe72d86049013f5e410628e3d9ee76bd4fce3"
+        ],
+        "ut/served_contract.py": [
+          "675a23fbcaac5b93dfe6281f86eecfa775b03bd6db20759ded04ef44ad5358e2"
+        ],
+        "ut/workload_controls.py": [
+          "77eae163f89ed8701f981c3a2c5a6c00b4571972392b416e7dce587eb1c27aa2"
+        ],
+        "ut/case_parallel.py": [
+          "e7ca867978144c3fd920d5649723812fe06cad73fda79f300df8f8271e08e13f"
+        ],
+        "ut/gpu_binding.py": [
+          "4b2ada8584cce3e92301e4a3bdb8e8abfcfb8ec62b0be250d727fc24372b899b"
+        ]
+      }
     }
   ]
 }
