@@ -42,6 +42,30 @@ binding. It mounts the plan read-only and exposes only `/dev/kfd` and the grante
 render devices. The group container omits privileged mode; normal serial Docker
 behavior remains unchanged. Group plans are rejected by `docker-parallel-run`.
 
+Native Slurm admission remains the default and requires its `AllocTRES`
+allocation counters. A Spur plan must explicitly set `scheduler_provider:
+spur`; this invokes only `/usr/local/bin/spur show job <id>`. There is no PATH
+lookup for Spur and no automatic fallback between providers. Slash-containing
+keys such as `CPUs/Task` are preserved. User command text cannot override the
+controller's job fields.
+
+Spur's text display exposes request fields, so they are not relabelled as
+`AllocTRES`. The supported Spur mode requires `spur_allocation.schema` to be
+`spur-recorded-reservation-v1`, with exact JSON strings and SHA-256 digests for
+the root-owned `ready`, `assignment`, `binding`, and `renders` receipts. The
+plan's `allocation_receipt_sha256` must match the readiness receipt. This is an
+explicit recorded root reservation: the readiness resource profile must agree
+with every available controller request field for one node and one task,
+including CPU count, memory, GPU count and GPU type. Missing or conflicting
+evidence rejects admission.
+
+The same receipts must bind the current job, node, start time and restart
+generation, and the complete scheduler-assigned GPU-ID set to the actual render
+device set observed inside that job's mount namespace. Physical UUID/BDF/render
+identities are checked again on the host. Individual scheduler registry IDs are
+never assumed equal to AMD-SMI ordinals. Historical receipts can be used as CPU
+test fixtures; a current cancelled job always fails the fresh controller check.
+
 Each worker receives the identical parent request through `--request` and a
 separate fresh `--case-worker` assignment. The assignment binds the parent,
 plan, fixed case mapping, worker nonce, source leg, physical GPU, cutoff and
