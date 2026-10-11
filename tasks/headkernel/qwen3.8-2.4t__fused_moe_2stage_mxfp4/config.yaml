@@ -10,7 +10,7 @@ target_kernel_functions:
 benchmark_quality:
   schema_version: 1
   adapter: qwen_mxfp4_moe_graph_v1
-  validator_sha256: 89dc2f7a012c442e911fd187847e64848d65ed4e05b63d798ce6b275bd83dcf4
+  validator_sha256: 2063ae92b141be9b920beec212c5823ce0ed9a7766f0d45187a10881abc7c294
 
 harness_protection:
   freeze_task_inputs: true

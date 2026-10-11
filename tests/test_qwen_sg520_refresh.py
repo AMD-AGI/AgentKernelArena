@@ -60,6 +60,21 @@ def test_native_source_and_existing_callable_contract(name, count):
             assert hashlib.sha256(protected.read_bytes()).hexdigest() == refresh["candidate_sha256"]
             assert context["routes"] == {row["sig"]: "recorded" for row in meta["workload"]["cases"]}
         return
+    if name == "paged_attention_decode":
+        # The old refresh pin remains Python-interface provenance. The new
+        # editable HIP body has its own exact image-source manifest.
+        provenance = meta["native_device_source_provenance"]
+        manifest = json.loads((task / "ut" / provenance["manifest"]).read_text())
+        assert manifest["image"] == IMAGE
+        assert cfg["task_type"] == "hip2hip"
+        assert cfg["source_file_path"] == [provenance["source"]] == [manifest["editable_device_source"]]
+        assert cfg["target_kernel_functions"] == manifest["editable_device_bodies"]
+        expected = manifest["source_files"]["csrc/cpp_itfs/pa/pa_kernels.cuh"]["sha256"]
+        assert hashlib.sha256(source.read_bytes()).hexdigest() == provenance["sha256"] == expected
+        assert source.read_bytes() == (task / "ut/native/pa_kernels.cuh.orig").read_bytes()
+        assert refresh["candidate_sha256"] == meta["runtime_refresh"]["candidate_sha256"]
+        assert refresh["candidate_sha256"] != expected
+        return
     assert hashlib.sha256(source.read_bytes()).hexdigest() == refresh["candidate_sha256"]
     candidate_functions = {n.name: n for n in ast.parse(source.read_text()).body if isinstance(n, ast.FunctionDef)}
     native_functions = {n.name: n for n in ast.parse(native.read_text()).body if isinstance(n, ast.FunctionDef)}

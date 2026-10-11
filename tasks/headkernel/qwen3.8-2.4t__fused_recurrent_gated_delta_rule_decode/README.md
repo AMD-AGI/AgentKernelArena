@@ -103,3 +103,10 @@ The candidate and frozen native source now bind to the digest in `ut/runtime_ref
 The preserved contract uses FP32 Mamba state. It is not the newer TP8/EP1
 workload with BF16 Mamba state. New capture evidence must identify that separate
 contract rather than replacing or relabeling these original fixtures.
+
+Ordinary Arena scoring and framework finalization enforce the task's explicit
+`benchmark_quality` adapter. The consumer checks the current protected validator,
+source and workload bindings, complete raw/published reports, and every ordered
+100-sample timing series. Missing, stale or unstable evidence cannot earn an
+accepted speedup or a framework PASS. Stable unchanged-source runs remain valid
+task controls with no accepted gain.

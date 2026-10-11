@@ -71,3 +71,12 @@ python3 scripts/task_runner.py compile
 python3 scripts/task_runner.py correctness
 python3 scripts/task_runner.py performance
 ```
+
+Ordinary Arena scoring and framework finalization enforce the task's explicit
+`benchmark_quality` adapter. The consumer checks the current protected validator,
+source and workload bindings, complete raw/published reports, and every ordered
+100-sample timing series. Missing, stale or unstable evidence cannot earn an
+accepted speedup or a framework PASS. Stable unchanged-source runs remain valid
+task controls with no accepted gain. For native routing, equivalent resolved
+backend configurations or observed MoE launch arguments remain unchanged
+controls even when their policy labels differ.

@@ -26,6 +26,27 @@ _QWEN_GRAPH_PROFILES = {
         'op_kind': 'moe', 'cases': 2, 'native_routing': True, 'routing_kind': 'moe',
         'validator': 'scripts/_routing_contract.py',
     },
+    'qwen_dense_bf16_graph_v1': {
+        'task_type': 'triton2triton', 'sources': ['source/routing.py'], 'targets': ['select_routes'],
+        'op_kind': 'gemm', 'cases': 5, 'native_routing': True, 'routing_kind': 'dense',
+        'validator': 'scripts/task_runner.py', 'routing_contract': 'scripts/_routing_contract.py',
+        'raw_directory': 'build/native-routing-runs',
+    },
+    'qwen_recurrent_graph_v1': {
+        'task_type': 'triton2triton', 'sources': ['source/fused_recurrent.py'],
+        'targets': ['fused_recurrent_gated_delta_rule_packed_decode',
+                    'fused_recurrent_gated_delta_rule_packed_decode_kernel'],
+        'op_kind': 'stateful_recurrence', 'cases': 2, 'bound_graph_provenance': True,
+        'task': 'headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode',
+        'validator': 'scripts/_graph_contract.py', 'case_contract': 'ut/benchmark_contract.json',
+    },
+    'qwen_paged_attention_graph_v1': {
+        'task_type': 'hip2hip', 'sources': ['source/pa_kernels.cuh'],
+        'targets': ['_paged_attention_kernel', '_paged_attention_ll4mi_reduce_kernel'],
+        'op_kind': 'attn', 'cases': 1, 'bound_graph_provenance': True,
+        'task': 'headkernel/qwen3.8-2.4t__paged_attention_decode',
+        'validator': 'scripts/_graph_contract.py', 'case_contract': 'ut/benchmark_contract.json',
+    },
 }
 
 
@@ -157,6 +178,9 @@ def _qwen_graph_cases(root, config, report):
     if profile.get('native_routing'):
         exec(compile(validator, str(validator_path), 'exec'), namespace)
         return _qwen_native_routing_cases(root, profile, report, manifest, metadata, sources, namespace)
+    if profile.get('bound_graph_provenance'):
+        exec(compile(validator, str(validator_path), 'exec'), namespace)
+        return _qwen_bound_graph_cases(root, profile, report, metadata, sources, namespace)
     request = report.get('request', {})
     require(report.get('status') == 'ok' and report.get('timer') == 'cuda_graph'
             and report.get('warmup_iterations') == 10 and report.get('benchmark_iterations') == 100,
@@ -195,6 +219,18 @@ def _qwen_native_routing_cases(root, profile, report, manifest, metadata, source
             'Qwen native routing kind differs from its registered profile')
     native_path = 'ut/' + manifest['source_provenance']['baseline_ref']
     read_task_file(root, native_path)  # Enforce regular task-contained paths before the validator reads them.
+    controller = namespace
+    support = profile.get('routing_contract')
+    if support is not None:
+        from types import SimpleNamespace
+        code = read_task_file(root, support)
+        require(hashlib.sha256(code).hexdigest() == controller['ROUTING_CONTRACT_SHA256'],
+                'Qwen native routing validator dependency changed')
+        namespace = {'__file__': str((root / support).resolve()), '__name__': '_protected_native_routing_contract'}
+        exec(compile(code, str(root / support), 'exec'), namespace)
+        # Reuse the dense controller's extra native backend/config checks and
+        # normalization, with exact checked helper bytes rather than .pyc imports.
+        controller['_routing_contract'] = lambda: SimpleNamespace(**namespace)
     request = report.get('request')
     require(isinstance(request, dict), 'Qwen native routing request is missing')
     request = namespace['validate_request'](request, root, 'performance')
@@ -202,18 +238,69 @@ def _qwen_native_routing_cases(root, profile, report, manifest, metadata, source
     require(len(sources) == 1 and source['source_file_sha256'] == next(iter(sources.values()))
             and source['meta_sha256'] == hashlib.sha256(metadata).hexdigest(),
             'Qwen native routing source/metadata differs')
-    raw = strict_json(read_task_file(root, 'build/reports/' + request['run_id'] + '/raw.json').decode())
+    raw_path = profile.get('raw_directory', 'build/reports') + '/' + request['run_id'] + '/raw.json'
+    raw = strict_json(read_task_file(root, raw_path).decode())
     require(isinstance(raw, dict), 'Qwen native routing raw report must be a mapping')
-    rows = namespace['validate_payload'](raw, manifest, request)
-    rows = [dict(row, test_case_id=row['sig'], execution_time_ms=row['mean_ms']) for row in rows]
-    require(len(rows) == profile['cases'] and report.get('test_cases') == rows
-            and all(report.get(key) == value for key, value in raw.items()),
+    if support is not None:
+        require(strict_json(read_task_file(root, 'build/performance_request.json').decode()) == request,
+                'Qwen dense performance request differs from publication')
+        require(strict_json(read_task_file(root, 'build/_bench_raw.json').decode()) == raw,
+                'Qwen dense raw mirror differs from the archived measurement')
+        rows = controller['_routing_cases'](raw)
+        require(report.get('status') == 'ok' and report.get('protocol') == namespace['PROTOCOL']
+                and report.get('timer') == 'cuda_graph' and report.get('warmup_iterations') == 10
+                and report.get('benchmark_iterations') == 100 and report.get('complete_raw_report') == raw_path,
+                'Qwen dense performance publication is incomplete')
+    else:
+        rows = namespace['validate_payload'](raw, manifest, request)
+        rows = [dict(row, test_case_id=row['sig'], execution_time_ms=row['mean_ms']) for row in rows]
+        require(all(report.get(key) == value for key, value in raw.items()),
+                'Qwen native routing publication differs from raw measurements')
+    require(len(rows) == profile['cases'] and report.get('test_cases') == rows,
             'Qwen native routing publication differs from complete raw measurements')
-    # The selector's restricted literal grammar makes this effective identity
-    # exact: comments/formatting cannot turn identical GPU routes into a gain.
-    return _qwen_validated_graph_cases(rows, source['effective_source_sha256'], request['run_id'],
+    # Resolve execution only after validating the complete raw report. Dense
+    # aliases share native configs; MoE defaults need observed native arguments.
+    effective_source = namespace['effective_execution_identity'](raw, manifest, request)
+    return _qwen_validated_graph_cases(rows, effective_source, request['run_id'],
         source['meta_sha256'], {'benchmark_source_file_sha256': sources,
                                'benchmark_source_identity_kind': 'validated_native_routing'})
+
+
+def _qwen_bound_graph_cases(root, profile, report, metadata, sources, namespace):
+    """Consume complete source/ABI-bound producer reports without changing replay."""
+    from .native_baseline import read_task_file
+    contract_bytes = read_task_file(root, profile['case_contract'])
+    contract_sha256 = hashlib.sha256(contract_bytes).hexdigest()
+    contract = strict_json(contract_bytes.decode())
+    require(isinstance(contract, dict) and contract.get('schema') == 'qwen-protected-graph-v1'
+            and contract.get('task') == profile['task'] and contract.get('source_paths') == profile['sources'],
+            'Qwen graph case contract differs from its registered profile')
+    binding = contract.get('source_binding', {})
+    require(isinstance(binding, dict), 'Qwen graph source-binding contract is invalid')
+    if binding.get('launcher_path'):
+        read_task_file(root, binding['launcher_path'])
+    raw_bytes = read_task_file(root, 'build/_bench_raw.json')
+    raw = strict_json(raw_bytes.decode())
+    require(isinstance(raw, dict) and raw.get('source_sha256') == sources
+            and raw.get('case_contract_sha256') == contract_sha256
+            and report.get('status') == 'ok' and report.get('timer') == 'cuda_graph'
+            and report.get('warmup_iterations') == 10 and report.get('benchmark_iterations') == 100,
+            'Qwen graph source/contract/report binding differs')
+    require(report.get('request') == raw.get('request'),
+            'Qwen graph raw/published invocation differs')
+    require(all(report.get(key) == raw.get(key) for key in ('source_sha256', 'case_contract_sha256', 'source_binding')),
+            'Qwen graph published provenance differs from raw measurement')
+    rows = namespace['benchmark_cases'](raw, root)
+    require(len(rows) == profile['cases'] and report.get('test_cases') == rows,
+            'Qwen graph publication differs from complete validated raw measurement')
+    # The producer records actual fresh input seeds, full source/ABI binding,
+    # and every ordered sample. Hash that complete validated artifact as the
+    # measurement identity; no new timing orchestration or data is synthesized.
+    identity = hashlib.sha256(raw_bytes).hexdigest()
+    manifest_sha256 = fingerprint({'ut/meta.json': hashlib.sha256(metadata).hexdigest(),
+                                  profile['case_contract']: contract_sha256})
+    return _qwen_validated_graph_cases(rows, sources, identity, manifest_sha256,
+        {'benchmark_measurement_identity_kind': 'complete_bound_graph_report_sha256'})
 
 
 def _qwen_validated_graph_cases(rows, sources, request_id, manifest_sha256, extra_metadata=None):
