@@ -71,6 +71,7 @@ def test_changed_portable_runner_or_helper_is_rejected(tmp_path, relative):
     (EXAMPLES[2][0], "ut/harness_lib.py"),
     (EXAMPLES[3][0], "scripts/worker.py"),
     (EXAMPLES[3][0], "ut/contract.py"),
+    (EXAMPLES[3][0], "ut/graph_timer.py"),
 ])
 def test_changed_legacy_or_native_timer_is_rejected(tmp_path, example, relative):
     task, _ = stage_protocol(tmp_path, example)
