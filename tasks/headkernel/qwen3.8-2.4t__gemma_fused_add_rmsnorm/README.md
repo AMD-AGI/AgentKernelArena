@@ -34,6 +34,14 @@ The authoritative harness guard preserves its signature and decorators and
 freezes the host helper `_num_warps`, public launcher `gemma_fused_add_rmsnorm`,
 imports, other functions, and module-level code. Host helpers can mutate the
 timing environment before graph replay, so their bodies remain frozen.
+The task runner also checks the editable body against `ut/source_guard.py`
+and its RMSNorm-specific `ut/source_guard_policy.json` before compile,
+correctness, or performance can load candidate code. The policy binds the body
+and its frozen surrounding source to `ut/baseline_ref/minimax_m3_rmsnorm.py.orig`.
+GPU arithmetic, memory operations, tensor casts, and numeric constexpr tuning
+remain editable. Host callbacks (including constexpr calls), runtime
+introspection, imports, and Python object mutation are outside the allowed
+Triton grammar. This is a source boundary check, not a compiler or process sandbox.
 The guard freezes the complete task input package, including
 the UT oracle, metadata, live-shape evidence, routing helpers, baseline overlay,
 and baseline reference. The shipped `ut/kernel_src/minimax_m3_rmsnorm.py`

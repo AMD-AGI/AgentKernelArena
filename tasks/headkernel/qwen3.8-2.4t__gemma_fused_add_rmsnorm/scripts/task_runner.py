@@ -545,6 +545,18 @@ def main():
     os.makedirs(BUILD_DIR, exist_ok=True)
     cfg = load_config()
 
+    # Validate before any candidate import or Triton compilation in every phase.
+    prior = list(sys.path)
+    try:
+        sys.path.insert(0, UT_DIR)
+        spec = importlib.util.spec_from_file_location(
+            "protected_rmsnorm_source_guard", os.path.join(UT_DIR, "source_guard.py"))
+        guard = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(guard)
+        guard.validate_sources(TASK_DIR, TASK_DIR)
+    finally:
+        sys.path[:] = prior
+
     if args.mode == "compile":
         ok, err = run_compile(cfg)
         print(f"Compilation: {'PASS' if ok else 'FAIL'}")

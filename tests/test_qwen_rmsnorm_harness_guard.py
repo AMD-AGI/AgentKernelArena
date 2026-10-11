@@ -24,13 +24,14 @@ CRITICAL = [
     "ut/baseline_overlay/_overlay_manifest.json", "ut/baseline_ref/minimax_m3_rmsnorm.py.orig",
     "ut/layout_validation.json", "ut/selection_validation.json", "ut/runtime_refresh.json",
     "ut/attempts/001_unverified_graph_capture/meta.json",
+    "ut/source_guard.py", "ut/source_guard_policy.json", "ut/cpp_body_guard.py",
 ]
 
 
 @pytest.fixture
 def workspace(tmp_path):
     target = tmp_path / "workspace"
-    shutil.copytree(TASK, target, symlinks=True)
+    shutil.copytree(TASK, target, symlinks=True, ignore=shutil.ignore_patterns("__pycache__", "build"))
     materialize_perf_helpers_in_workspace(target)
     return target
 
