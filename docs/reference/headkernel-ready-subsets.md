@@ -18,7 +18,7 @@ At the consolidation base, all five task trees matched their historical qualifie
 | `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [MiniMax FP4 GEMM](../../ready/minimax-fp4/README.md) | [`ef7474dd`](https://github.com/AMD-AGI/AgentKernelArena/blob/ef7474dd9e29e74428ca09b4c488832db1fd220e/ready/minimax-fp4/README.md) | All 14 captured cases, with disclosed and independently accepted historical framework receipt limits. |
 | `headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm` | [Qwen fused add + RMSNorm](../../ready/qwen-rmsnorm/README.md) | [`f501ef65`](https://github.com/AMD-AGI/AgentKernelArena/blob/f501ef65403bdf76a122918c405f6494bc6eab38/ready/qwen-rmsnorm/README.md) | BF16 8192×8192 and 64×8192. Historical manual trusted-route numerical evidence and protected framework PASS are connected by an explicit compatibility review. This does not qualify current ordinary scoring. |
 
-These are unchanged-source controls, not accepted optimization gains. Qwen's current ordinary path needs authoritative timing-quality admission and source-bound validation. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
+These are unchanged-source controls, not accepted optimization gains. Qwen RMSNorm's authoritative ordinary timing-quality adapter is integrated, with current GPU validation pending. The other four Qwen tasks still need benchmark repairs, authoritative admission and source-bound validation. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
 
 ## Current runtime and input preparation
 
@@ -28,7 +28,7 @@ All 23 source tasks target Linux amd64 and MI355X (`gfx950`) with the following 
 docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
 ```
 
-The [portable setup guide](../how-to/headkernel-upstream-runtime.md) covers the 18 manifest/native task contracts supported by the existing fixture materializer. Qwen's five source-refreshed tasks use their task-local setup; automatic staging of all 23 is not implemented by that helper. The unified config selects all 23 only after their respective inputs are available.
+The [portable setup guide](../how-to/headkernel-upstream-runtime.md) covers unified preparation of all 23 tasks. Each catalog row declares a protocol: `trusted_task_v1` retains the 18 manifest/native routes, while `headkernel_artifacts_v1` verifies Qwen's original whole-object fixtures or explicit fixture-free registration. The helper does not interpret legacy Qwen data as an `EXTERNAL-MANIFEST` or claim a new capture or qualification.
 
 Qwen source/runtime refresh does not replace its SG0.5.18 shape and fixture provenance. That capture used TP8/EP8, page 1 attention and FP32 model-default Mamba. The later retained measured metadata record 103483 instead describes TP8/EP1, context 11264, page 16 attention and BF16 Mamba, without a complete image/raw-log record. A new complete SG0.5.20 Qwen capture, matching actual dispatch and tensor contracts, remains pending. Do not equate it with the non-Qwen context 9218 recipe or infer current coverage from older shapes.
 
