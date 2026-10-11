@@ -42,11 +42,14 @@ task_result_template: null
 prompt:
   source_code: null
   instructions: |
-    Optimize the Qwen3.8-2.4T-A95B-MXFP4 head kernel `paged_attention_ll4mi_QKV_mfma16_kernel` (AITER / CK asm) for maximum GPU
-    throughput on MI355X (gfx950) while keeping it numerically correct.
+    Optimize the Qwen3.8-2.4T-A95B-MXFP4 paged-attention decode head kernel using
+    its image-native AITER HIP implementation (GOLDEN specialization) for maximum
+    GPU throughput on MI355X (gfx950) while keeping it numerically correct.
 
-    It is 6.84% of de-inflated GPU time in the serving profile
-    (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 48.2% memory-bound of its empirical roofline.
+    The 2026-09-14 info table records 6.84% of de-inflated GPU time in the serving
+    profile (ISL 8192 / OSL 1024 / CONC 64 / TP 8), at 48.2% memory-bound of its
+    empirical roofline. These are historical measurements from the original
+    serving profile.
 
     Edit only the bodies of _paged_attention_kernel and
     _paged_attention_ll4mi_reduce_kernel in source/pa_kernels.cuh. These are the
@@ -58,9 +61,11 @@ prompt:
     consume the submitted device header; using an unrelated cached binary is
     not a valid candidate run.
 
-    The production seam is `aiter.ops.attention:paged_attention_ragged`; correctness is judged
-    against a frozen live-server capture, not a re-derived reference, so the kernel
-    must stay faithful to the deployed contract (dtypes, layouts, quantization).
+    The production seam is `aiter.ops.attention:paged_attention_ragged`.
+    Correctness retains the frozen live-server capture and native random-query
+    parity checks, and adds independent CPU softmax references for fresh queries
+    and measured-graph challenges. Preserve the captured dtypes, layouts,
+    quantization and full callable contract.
 
     Note: the original TP8/EP8 page1 capture yielded exactly one decode geometry
     (M=64, 521351 referenced KV pages). The callable must return the supplied
@@ -76,19 +81,19 @@ headkernel:
   owner: "Li, Zeping <zepingl@amd.com>"
   docker: "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96"
   serving: ISL 8192 / OSL 1024 / CONC 64 / TP 8
-  backend: AITER / CK asm
+  backend: AITER native HIP / GOLDEN
   regime: decode
   device_symbol: paged_attention_ll4mi_QKV_mfma16_kernel
   target_callable: "aiter.ops.attention:paged_attention_ragged"
   tol: 0.02
-  oracle: "frozen live-capture ut/reference_io.pt"
+  oracle: "frozen live-capture ut/reference_io.pt; native random-query parity; independent CPU softmax references for fresh queries and measured-graph challenges"
+  # Historical source-package provenance from the original task extraction.
   source_package: P/paged_attention_decode_task
-  source_seed: "stock+harness-shim"
-  # Symbols the UT resolves its frozen baseline through. They are not
-  # optimization targets, but deleting one turns a working kernel into an
-  # opaque correctness FAIL, so scripts/task_runner.py compile checks them.
-  # source/ is the stock runtime-image file plus 22 line(s) of UT harness shim (the two-leg
-  # UT resolves its frozen baseline through them). Nothing has been pre-optimized.
+  source_seed: "stock image-native HIP device bodies; frozen Python/FFI launch scaffolding"
+  # Compilation builds the native GOLDEN specialization from the submitted
+  # HIP header after enforcing the device-body edit boundary.
+  # The rows below preserve historical 2026-09-14 info-table measurements and
+  # the explicitly unmeasured Stage-A scenario.
   info_rows:
     - row: "Q38-9"
       info_kernel: paged_attention_ll4mi_QKV_mfma16_kernel
