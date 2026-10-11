@@ -2,7 +2,13 @@
   "schema_version": 1,
   "task_id": "dense_bf16_gemm_task",
   "short_name": "dense_bf16_gemm_dispatch",
-  "ledger_ids": ["hk04", "hk05", "hk06", "hk07", "hk08"],
+  "ledger_ids": [
+    "hk04",
+    "hk05",
+    "hk06",
+    "hk07",
+    "hk08"
+  ],
   "case_entrypoints": {
     "hk04": "prefill_m16384_n4608_k8192",
     "hk05": "decode_m64_n32_k8192",
@@ -24,21 +30,30 @@
   "source_provenance": {
     "baseline_ref": "baseline_ref/tuned_gemm.py.orig",
     "candidate_adaptations": [],
-    "candidate_source": "kernel_src/tuned_gemm_candidate.py",
+    "candidate_source": "source/tuned_gemm_candidate.py",
     "kernel_source_complete": true,
     "original_path": "/sgl-workspace/aiter/aiter/tuned_gemm.py",
     "repo": "aiter",
-    "repo_commit": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
-    "runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
-    "runtime_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
+    "repo_commit": "4ad99832823dde2315b361cbd3b54b1c5c12acd5",
+    "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "runtime_image_id": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51"
   },
   "baseline_callable": "torch.nn.functional:linear",
   "baseline_frozen_by": {
     "image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
     "image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
   },
-  "candidate_backends": ["hipblaslt", "torch", "flydsl", "asm"],
-  "served_regimes": ["prefill", "decode"],
+  "candidate_backends": [
+    "hipblaslt",
+    "torch",
+    "flydsl",
+    "asm"
+  ],
+  "served_regimes": [
+    "prefill",
+    "decode"
+  ],
   "random_draws": 3,
   "tol": 0.02,
   "regime": {
@@ -57,13 +72,19 @@
   },
   "dispatch_config": "live_dispatch_rows.csv",
   "workload": {
-    "served_regimes": ["prefill", "decode"],
+    "served_regimes": [
+      "prefill",
+      "decode"
+    ],
     "serving_weight_model": {
       "isl": 8192,
       "osl": 1024,
       "conc": 64,
       "prefill_chunk": 16384,
-      "analytic_calls": {"prefill": 64, "decode": 1024}
+      "analytic_calls": {
+        "prefill": 64,
+        "decode": 1024
+      }
     },
     "cases": [
       {
@@ -75,8 +96,14 @@
         "n": 4608,
         "k": 8192,
         "dtype": "torch.bfloat16",
-        "a_stride": [8192, 1],
-        "b_stride": [8192, 1],
+        "a_stride": [
+          8192,
+          1
+        ],
+        "b_stride": [
+          8192,
+          1
+        ],
         "expected_backend": "hipblaslt",
         "expected_solidx": 438243,
         "expected_split_k": 0,
@@ -92,8 +119,14 @@
         "n": 32,
         "k": 8192,
         "dtype": "torch.bfloat16",
-        "a_stride": [8192, 1],
-        "b_stride": [8192, 1],
+        "a_stride": [
+          8192,
+          1
+        ],
+        "b_stride": [
+          8192,
+          1
+        ],
         "expected_backend": "torch",
         "expected_solidx": 0,
         "expected_split_k": 0,
@@ -109,8 +142,14 @@
         "n": 512,
         "k": 8192,
         "dtype": "torch.bfloat16",
-        "a_stride": [8192, 1],
-        "b_stride": [8192, 1],
+        "a_stride": [
+          8192,
+          1
+        ],
+        "b_stride": [
+          8192,
+          1
+        ],
         "expected_backend": "flydsl",
         "expected_solidx": 3358,
         "expected_split_k": 8,
@@ -127,8 +166,14 @@
         "n": 4608,
         "k": 8192,
         "dtype": "torch.bfloat16",
-        "a_stride": [8192, 1],
-        "b_stride": [8192, 1],
+        "a_stride": [
+          8192,
+          1
+        ],
+        "b_stride": [
+          8192,
+          1
+        ],
         "expected_backend": "asm",
         "expected_solidx": 5,
         "expected_split_k": 3,
@@ -144,8 +189,14 @@
         "n": 8192,
         "k": 256,
         "dtype": "torch.bfloat16",
-        "a_stride": [256, 1],
-        "b_stride": [256, 1],
+        "a_stride": [
+          256,
+          1
+        ],
+        "b_stride": [
+          256,
+          1
+        ],
         "expected_backend": "flydsl",
         "expected_solidx": 2138,
         "expected_split_k": 1,
@@ -164,5 +215,37 @@
   "negative_check": "negative_check.json",
   "geak_commit": "267a7594d847f3a6f55955202fe4ec3178deb38c",
   "num_cases": 5,
-  "notes": "The task owns one pure GEMM contract. The five case IDs preserve independent live shape/backend identities. Serving startup and unrelated model kernels are outside the UT loop."
+  "notes": "The task owns one pure GEMM contract. The five case IDs preserve independent live shape/backend identities. Serving startup and unrelated model kernels are outside the UT loop.",
+  "capture_source_provenance": {
+    "baseline_ref": "baseline_ref/tuned_gemm.py.orig",
+    "candidate_adaptations": [],
+    "candidate_source": "kernel_src/tuned_gemm_candidate.py",
+    "kernel_source_complete": true,
+    "original_path": "/sgl-workspace/aiter/aiter/tuned_gemm.py",
+    "repo": "aiter",
+    "repo_commit": "d9e5ef7ce08ee7045d583aed768cff41aa9210fe",
+    "runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+    "runtime_image_id": "sha256:760dd38b9b6f2bd11c13011d470eb8e377c3f0d71284a090a710d64a23bd789f"
+  },
+  "runtime_refresh": {
+    "schema": "qwen-sg520-source-refresh-v1",
+    "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "sglang_version": "0.5.20",
+    "native_source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
+    "prior_native_source_sha256": "81b7289f77e02adcd8472ba8bde0f20bb534be46009d2c01e78361d4297ae2ef",
+    "native_source_changed": true,
+    "candidate_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
+    "model": "Qwen3.8-2.4T-A95B-MXFP4",
+    "capture_model_repository": "amd/Qwen3.8-2.4T-A95B-Quark-MXFP4",
+    "capture_model_snapshot": "1122ff36878499eb1e44823999e7de10ddfabd3b",
+    "capture_model_config_sha256": "03c45bb8de155ff683727782a526002b2aab9a2ae4b782f84e74152f4d57f01d",
+    "capture_runtime_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
+    "capture_shapes_and_oracles_unchanged": true,
+    "historical_validation_applies_only_to_capture_runtime": true,
+    "current_runtime_GPU_validation": "PENDING_ROOT_ASSIGNED_GPU_REPLAY",
+    "current_runtime_workload_capture_claimed": false,
+    "current_runtime_dispatch_identity_claimed": false,
+    "case_count": 5,
+    "tolerances_warmups_samples_and_guards_unchanged": true
+  }
 }
