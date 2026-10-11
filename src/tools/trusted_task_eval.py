@@ -80,6 +80,18 @@ def phase_timeout(config, phase, maximum):
     return min(maximum, limit)
 
 
+def evaluation_timeouts(config, mode, maximum, overrides=None):
+    """Apply explicit host caps without changing legacy task timeout policy."""
+    require(type(maximum) is int and maximum > 0, "timeout must be a positive integer")
+    overrides = {} if overrides is None else overrides
+    require(isinstance(overrides, dict) and set(overrides) <= set(PHASES),
+            "phase timeouts must name only compile, correctness or performance")
+    for limit in overrides.values():
+        require(type(limit) is int and limit > 0, "phase timeout must be a positive integer")
+    return {phase: min(phase_timeout(config, phase, maximum) if mode is not None else maximum,
+                       overrides.get(phase, maximum)) for phase in PHASES}
+
+
 def distribution_contract(task, manifest, mode):
     """Read the manifest-bound registry without importing task executable code."""
     if mode is None:
@@ -355,7 +367,9 @@ def run_phase(image, task, staging, output, leg, request, render_device, timeout
 
 def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, render_device, scratch_dir=None, timeout=7200,
                    fixture_local_mirror=None, fixture_oci_prefix=None,
-                   fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES):
+                   fixture_max_files=DEFAULT_MAX_FILES, fixture_max_bytes=DEFAULT_MAX_BYTES, phase_timeouts=None):
+    # Reject malformed host budgets before staging fixtures or selecting a GPU.
+    evaluation_timeouts({}, None, timeout, phase_timeouts)
     repo, candidate_workspace = Path(repo).resolve(), Path(candidate_workspace).resolve()
     output = Path(output).absolute()
     scratch = Path(scratch_dir or tempfile.gettempdir()).resolve()
@@ -374,6 +388,8 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
             candidate_workspace=candidate_workspace, output=output, scratch_explicit=scratch_dir is not None,
             fixture_local_mirror=fixture_local_mirror, fixture_oci_prefix=fixture_oci_prefix,
             fixture_max_files=fixture_max_files, fixture_max_bytes=fixture_max_bytes, timeout=timeout)
+        limits = evaluation_timeouts(contract["config"], contract["distribution_correctness_mode"],
+                                     timeout, phase_timeouts)
         candidate = staging / "candidate"
         copy_cache(reference, candidate)
         # Only these declared regular files are taken from the agent workspace.
@@ -406,9 +422,8 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                 mode = contract["distribution_correctness_mode"]
                 if mode is not None and phase in ("compile", "correctness"):
                     request["distribution_correctness_mode"] = mode
-                limit = phase_timeout(contract["config"], phase, timeout) if mode is not None else timeout
                 report = run_phase(image, task, staging, output, leg, request, render_device,
-                                   limit, cache_source)
+                                   limits[phase], cache_source)
                 measured = validate_report(report, manifest, request)
                 validate_distribution_report(report, manifest, request, contract["distributions"], mode)
                 # Ignore only the empty bind-mount point added after fingerprinting.
@@ -435,6 +450,7 @@ def trusted_retest(*, repo, commit, task_path, candidate_workspace, output, rend
                           "reference_ms": baseline["execution_time_ms"], "candidate_ms": optimized["execution_time_ms"],
                           "speedup": ratio})
         result = {"schema_version": 1, "status": "measured", "trusted_commit": commit, "task_path": task_path,
+                  "phase_timeouts_seconds": limits,
                   "image": image, "local_image_id": image_record["Id"], "source_sha256": sources,
                   "gpu": gpu,
                   "manifest_sha256": fingerprint(manifest), "full_case_coverage": True, "cases": cases,
@@ -510,14 +526,19 @@ def main():
     parser.add_argument("--fixture-max-files", type=int, default=DEFAULT_MAX_FILES)
     parser.add_argument("--fixture-max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     parser.add_argument("--timeout", type=int, default=7200)
+    for phase in PHASES:
+        parser.add_argument("--" + phase + "-timeout", type=int,
+                            help="optional host cap for each " + phase + " phase; cannot exceed --timeout")
     args = parser.parse_args()
     if Path("/.dockerenv").exists():
         parser.error("run from a trusted host outside the agent container")
     fixtures = dict(fixture_local_mirror=args.fixture_local_mirror, fixture_oci_prefix=args.fixture_oci_prefix,
                     fixture_max_files=args.fixture_max_files, fixture_max_bytes=args.fixture_max_bytes)
+    phase_timeouts = {phase: getattr(args, phase + "_timeout") for phase in PHASES
+                      if getattr(args, phase + "_timeout") is not None}
     if args.stage_only:
-        if not args.scratch_dir or args.candidate_workspace or args.render_device:
-            parser.error("--stage-only requires --scratch-dir and accepts no candidate workspace or GPU device")
+        if not args.scratch_dir or args.candidate_workspace or args.render_device or phase_timeouts:
+            parser.error("--stage-only requires --scratch-dir and accepts no candidate workspace, GPU device or phase timeouts")
         result = stage_trusted_task(repo=args.repo, commit=args.commit, task_path=args.task, output=args.output,
                                    scratch_dir=args.scratch_dir, timeout=args.timeout, **fixtures)
         print(json.dumps(result))
@@ -526,7 +547,8 @@ def main():
         parser.error("retesting requires --candidate-workspace and --render-device")
     result = trusted_retest(repo=args.repo, commit=args.commit, task_path=args.task,
                             candidate_workspace=args.candidate_workspace, output=args.output,
-                            render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout, **fixtures)
+                            render_device=args.render_device, scratch_dir=args.scratch_dir, timeout=args.timeout,
+                            phase_timeouts=phase_timeouts, **fixtures)
     print(json.dumps({"measurement": str(Path(args.output) / "trusted_measurement.json"),
                       "arithmetic_mean_speedup": result["arithmetic_mean_speedup"]}))
     if result['status'] == 'rejected_timing_quality':
