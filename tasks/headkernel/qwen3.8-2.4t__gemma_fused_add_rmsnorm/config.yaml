@@ -8,6 +8,11 @@ target_kernel_functions:
   - gemma_fused_add_rmsnorm
   - _gemma_fused_add_rmsnorm_kernel
 
+benchmark_quality:
+  schema_version: 1
+  adapter: qwen_rmsnorm_graph_v1
+  validator_sha256: 015a4e33b6c50301643bf64df8300de9e60f6271e8196091aa87edd0f01336a3
+
 harness_protection:
   freeze_task_inputs: true
   reject_new_source_symlinks: true
