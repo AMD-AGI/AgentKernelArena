@@ -12,6 +12,7 @@ import tempfile
 
 from native import source_identity
 from oracle import load_cases
+from graph_timer import validate_timing_proof
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +91,7 @@ def validate_worker(payload, request, pid, cases):
             statistics = sample_statistics(actual.get("samples_ms"))
             if actual != statistics:
                 raise ValueError("timing summary does not match its device samples")
+            validate_timing_proof(row.get("graph_timer"), actual["samples_ms"])
     return payload
 
 
@@ -145,7 +147,8 @@ def performance_report(manifest, cases, results, identity):
     for index, case in enumerate(cases):
         paired.append({"case_id": case["case_id"], "shape": case["shape"],
                        "trace_call_count": case["trace_call_count"], "graph_correctness": True,
-                       "timings": {leg: results[leg]["results"][index]["timings"] for leg in LEGS}})
+                       "timings": {leg: results[leg]["results"][index]["timings"] for leg in LEGS},
+                       "graph_timer_proofs": {leg: results[leg]["results"][index]["graph_timer"] for leg in LEGS}})
     weight_sum = sum(case["trace_call_count"] for case in cases)
     weighted = {leg: math.fsum(row["trace_call_count"] * row["timings"][leg]["mean_ms"]
                               for row in paired) / weight_sum for leg in LEGS}
