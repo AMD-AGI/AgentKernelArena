@@ -57,6 +57,8 @@ platform_support:
   status: active
 trusted_evaluation:
   schema_version: 1
+  case_parallelism:
+    schema_version: 1
   case_manifest: cases.json
   contract_file: ut/evaluation_contract.py
   source_guard: ut/source_guard.py

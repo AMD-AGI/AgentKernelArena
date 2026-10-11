@@ -1,15 +1,20 @@
 """Exercise protected MiniMax CLI control flow with CPU-only device workers."""
 from copy import deepcopy
 import importlib.util
+import hashlib
 import json
+import os
 from pathlib import Path
 import sys
+import time
 from types import ModuleType, SimpleNamespace
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = ["minimax-m3__gqa_share_sparse_fwd_kernel"]
+TASKS = ["minimax-m3__gqa_share_sparse_fwd_kernel",
+         "minimax-m3__gqa_share_sparse_decode_kernel", "minimax-m3__decode_score_kernel"]
 
 
 @pytest.fixture(params=TASKS)
@@ -27,21 +32,24 @@ def runner(request, monkeypatch, tmp_path):
     working = tmp_path / "task"
     (working / "build").mkdir(parents=True)
     (working / "provenance").mkdir()
+    (working / "config.yaml").write_bytes((task / "config.yaml").read_bytes())
+    (working / "cases.json").write_bytes((task / "cases.json").read_bytes())
     (working / "provenance/PAIRED-REFERENCE.json").write_bytes((task / "provenance/PAIRED-REFERENCE.json").read_bytes())
     monkeypatch.setattr(module, "ROOT", working)
+    real_tree_identity = module.tree_identity
     monkeypatch.setattr(module, "load_cases", lambda root: (manifest, definition))
     monkeypatch.setattr(module, "validate_sources", lambda *args: True)
-    monkeypatch.setattr(module, "tree_identity", lambda: "CPU_TEST_PACKAGE")
+    monkeypatch.setattr(module, "tree_identity", lambda: "a" * 64)
     monkeypatch.setattr(module, "sha", lambda path: definition["source_sha256"])
     for name in ("AKA_CASE_GPU_PLAN", "AKA_CASE_GPU_PLAN_SHA256"):
         monkeypatch.delenv(name, raising=False)
     return SimpleNamespace(module=module, manifest=manifest, definition=definition, root=working,
-                           task=task, monkeypatch=monkeypatch)
+                           task=task, monkeypatch=monkeypatch, real_tree_identity=real_tree_identity)
 
 
 def phase_request(runner, phase):
     return {"schema_version": 1, "request_id": "CPU_TEST_REQUEST", "phase": phase,
-            "manifest_sha256": runner.module.fingerprint(runner.manifest), "package_sha256": "CPU_TEST_PACKAGE",
+            "manifest_sha256": runner.module.fingerprint(runner.manifest), "package_sha256": runner.module.tree_identity(),
             "source_sha256": {runner.definition["source_file"]: runner.definition["source_sha256"]},
             "challenge_seed": 317}
 
@@ -49,7 +57,7 @@ def phase_request(runner, phase):
 def payload(runner, request, cases=None):
     cases = runner.manifest["cases"] if cases is None else cases
     proof = {"source_sha256": runner.definition["source_sha256"],
-             "engaged_kernels": runner.definition["kernels"], "last_launches": [],
+             "engaged_kernels": runner.definition["kernels"], "last_launches": [{"CPU_TEST_ONLY": True}],
              "production_namespace_rebound": False, "CPU_TEST_ONLY": True}
     rows, compiled = [], []
     for case in cases:
@@ -59,10 +67,20 @@ def payload(runner, request, cases=None):
                "samples_ms": [2.0] * 100, "warmup_iterations": 10, "fresh_input_resets": 100,
                "output_initializations": 100, "oracle_checks": 100, "benchmark_method": "cuda_graph"}
         row["paired_reference"] = {"case_id": case["case_id"], "CPU_TEST_ONLY": True}
+        if runner.definition["kind"] in ("decode_score", "sparse_decode"):
+            from workload_controls import RecordedControls
+            controls = RecordedControls(case)
+            policy = runner.manifest["measurement"]
+            row["workload_control_coverage"] = controls.coverage(
+                policy, controls.targeted_variants(), controls.original_plan(policy))
+            draws = [controls.choose(request["challenge_seed"] + i) for i in range(110)]
+            row["workload_control_sampling"] = controls.sampling(
+                request["challenge_seed"], draws, policy, row["samples_ms"])
         if request["phase"] != "compile":
             rows.append(row)
         compiled.append({"case_id": case["case_id"], "kernel_engagement": proof,
-                         "candidate_launch_evidence": proof})
+                         "candidate_launch_evidence": proof, "invoked_and_synchronized": True,
+                         "source_sha256": request["source_sha256"]})
     return {"rows": rows, "compiled_specializations": compiled, "kernel_engagement": proof,
             "completed_case_ids": [c["case_id"] for c in cases]}
 
@@ -261,3 +279,79 @@ def test_real_worker_loop_keeps_full_manifest_policy_and_original_case_objects(r
     if phase != "compile":
         assert [case_id for event, case_id in calls if event == phase] == ids
         assert len(result["rows"]) == len(selected)
+
+
+@pytest.fixture
+def canonical_parallel(runner):
+    path = Path(os.environ.get("MINIMAX_CASE_PARALLEL_HELPER", ROOT / "src/tools/case_parallel.py"))
+    if not path.exists():
+        pytest.skip("Canonical whole-case helper must be integrated or explicitly supplied")
+    runner.monkeypatch.syspath_prepend(str(path.parent))
+    runner.monkeypatch.delitem(sys.modules, "gpu_binding", raising=False)
+    spec = importlib.util.spec_from_file_location("_canonical_parallel_for_minimax", path)
+    module = importlib.util.module_from_spec(spec)
+    runner.monkeypatch.setitem(sys.modules, spec.name, module)
+    spec.loader.exec_module(module)
+    runner.monkeypatch.setitem(sys.modules, "case_parallel", module)
+    source = runner.root / runner.definition["source_file"]
+    source.parent.mkdir(parents=True)
+    source.write_bytes((runner.task / runner.definition["source_file"]).read_bytes())
+    runner.monkeypatch.setattr(runner.module, "tree_identity", runner.real_tree_identity)
+    bindings = [{"worker_id": i, "render_device": f"/dev/dri/renderD{128 + 8*i}", "drm_minor": 128 + 8*i,
+                 "kfd_node": str(i + 2), "rocr_uuid": f"GPU-{i:016x}", "pci_bus_id": f"0002:00:{i+1:02x}.0"}
+                for i in range(8)]
+    assignments = [{"worker_id": i, "case_ids": [c["case_id"] for c in runner.manifest["cases"][i::8]]} for i in range(8)]
+    config = yaml.safe_load((runner.task / "config.yaml").read_text())
+    plan = {"schema": "case-gpu-plan-v1", "authorized": True, "plan_id": "CPU_TEST_ONLY_NOT_A_REAL_GRANT",
+            "job_id": "999999", "node": "CPU_TEST_ONLY", "restart_generation": 0,
+            "allocation_receipt_sha256": "b" * 64, "baseline_commit": "c" * 40,
+            "work_stop_unix": time.time() + 600, "task_path": "tasks/headkernel/" + runner.task.name,
+            "manifest_sha256": module.fingerprint(runner.manifest), "runtime_image": runner.manifest["runtime_image"],
+            "bindings": bindings, "assignments": assignments, "assignment_sha256": module.fingerprint(assignments),
+            "phase_timeouts": {phase: config[phase + "_timeout"] for phase in ("compile", "correctness", "performance")},
+            "resources": {"cpus_per_worker": 1, "memory_gib_per_worker": 1, "coordinator_cpus": 1,
+                          "coordinator_memory_gib": 1, "total_cpus": 9, "total_memory_gib": 9},
+            "allocation_capacity": {"cpus": 9, "memory_gib": 9, "gpus": 8}}
+    plan_path = runner.root.parent / "CPU_TEST_PLAN.json"
+    plan_path.write_text(json.dumps(plan))
+    plan_path.chmod(0o444)
+    runner.monkeypatch.setenv("AKA_CASE_GPU_PLAN", str(plan_path))
+    runner.monkeypatch.setenv("AKA_CASE_GPU_PLAN_SHA256", hashlib.sha256(plan_path.read_bytes()).hexdigest())
+    return module
+
+
+@pytest.mark.parametrize("phase", ["compile", "correctness", "performance"])
+def test_actual_shared_receipt_collector_and_full_parent_finalizer(runner, canonical_parallel, phase):
+    """Only device execution is mocked; use real assignments, receipts and reducer."""
+    helper = canonical_parallel
+    request = phase_request(runner, phase)
+    argv(runner, request)
+    def execute_cpu_workers(root, manifest, parent, plan, entrypoint, *, leg):
+        assignments = helper.prepare_assignments(root, manifest, parent, plan, leg=leg)
+        receipts = []
+        for assignment in assignments:
+            directory = root / assignment["output_directory"]
+            assignment_path = directory / "assignment.json"
+            assignment_path.write_text(json.dumps(assignment))
+            expected = assignment["expected_gpu"]
+            with runner.monkeypatch.context() as patch:
+                patch.setenv("ROCR_VISIBLE_DEVICES", expected["rocr_uuid"])
+                for name in ("HIP_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL"):
+                    patch.setenv(name, "0")
+                patch.setattr(helper.gpu_binding, "runtime_identity", lambda: {
+                    "hsa_gpu_uuids": [expected["rocr_uuid"]], "hip_device_count": 1,
+                    "hip_pci_bus_ids": [expected["pci_bus_id"]]})
+                context = helper.enter_worker(root, manifest, parent, assignment_path)
+                result = payload(runner, parent, context.cases)
+                helper.finish_worker(context, rows=result["rows"], compiled_specializations=result["compiled_specializations"],
+                                     evidence={"completed_case_ids": result["completed_case_ids"]})
+            receipts.append(directory / "receipt.json")
+        return helper.collect_workers(manifest, parent, plan, assignments, [0] * 8, receipts)
+    runner.monkeypatch.setattr(helper, "run_workers", execute_cpu_workers)
+    runner.monkeypatch.setattr(runner.module, "configure_cpu_threads", lambda: pytest.fail("coordinator constructed runtime"))
+    assert runner.module.entrypoint() == 0
+    report = json.loads((runner.root / "build" / (phase + "_report.json")).read_text())
+    helper.validate_group_report(runner.root, runner.manifest, report, required=True)
+    assert len(report["case_parallelism"]["workers"]) == 8
+    assert len(report["case_parallelism"]["case_gpu_mapping"]) == len(runner.manifest["cases"])
+    assert len(report["compiled_specializations"]) == len(runner.manifest["cases"])

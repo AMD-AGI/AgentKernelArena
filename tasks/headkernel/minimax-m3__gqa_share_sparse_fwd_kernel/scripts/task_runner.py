@@ -222,7 +222,7 @@ def evaluate_cases(manifest, definition, request, *, cases=None, worker=False):
                     and set(proof["engaged_kernels"]) == set(definition["kernels"]),
                     "whole-case native engagement is incomplete")
             specializations.append({"case_id": case["case_id"], "source_sha256": request["source_sha256"],
-                "candidate_invoked": True, "invoked_and_synchronized": True, "kernel_engagement": proof})
+                "candidate_invoked": True, "invoked_and_synchronized": True, "candidate_launch_evidence": proof})
         del evaluation
         completed.append(case["case_id"])
         print(json.dumps({"phase": request["phase"], "case_id": case["case_id"], "event": "complete",
@@ -236,10 +236,9 @@ def parent_engagement(manifest, request, union):
     compiled = union["compiled_specializations"]
     require([row["case_id"] for row in compiled] == [case["case_id"] for case in manifest["cases"]],
             "full-task compiled specialization coverage differs")
-    key = "candidate_launch_evidence" if request["phase"] == "performance" else "kernel_engagement"
     # This is the actual final original case's proof, matching the serial field.
     # All worker proofs remain in the full compiled-specialization records.
-    return compiled[-1][key]
+    return compiled[-1]["candidate_launch_evidence"]
 
 
 def complete_report(manifest, request, payload, cpu_runtime, *, parallel=None):
@@ -290,7 +289,8 @@ def main():
         require(name not in os.environ or os.environ[name] == value, "runtime environment conflicts with captured path")
         os.environ[name] = value
     context = plan = parallel = None
-    enabled = args.case_worker is not None or request.get("case_parallelism") is not None or any(
+    enabled = args.case_worker is not None or any(
+        request.get(name) is not None for name in ("case_parallelism", "gpu_group")) or any(
         name in os.environ for name in ("AKA_CASE_GPU_PLAN", "AKA_CASE_GPU_PLAN_SHA256"))
     if enabled:
         # Both paths enter the shared verifier before importing Torch or native code.
