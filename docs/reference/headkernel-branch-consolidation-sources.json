@@ -1,0 +1,212 @@
+{
+  "schema_version": 1,
+  "canonical_branch": "head-kernels-top5",
+  "audited_commit": "d4e077c66bfe7957020c0e9c7460ab9c62dc6c87",
+  "scope": "Only the nine related top-five branches listed here; content coverage and supersession, not GPU qualification or an instruction to delete refs.",
+  "proof_method": "Git ancestry, stable patch IDs, targeted blob/tree equality and current helper regression checks. Equivalent patches do not imply source-branch ancestry.",
+  "retired_suite": {
+    "path": "tasks/head_kernels",
+    "replacement_commit": "a16f2203276ee1a97fe3f4784982aa3caa84b0ea",
+    "reason": "The adapted suite was deliberately replaced by upstream task packages, OCI artifacts and public-image provenance. Its planner, direct verifier, extraction tools and layout tests were removed.",
+    "current_task_roots": [
+      "tasks/headkernel",
+      "tasks/headkernel_sg520"
+    ],
+    "current_guides": [
+      "HEADKERNELS.md",
+      "docs/how-to/headkernel-upstream-runtime.md",
+      "tools/headkernel-runtime-targets.json"
+    ],
+    "policy": "Keep current task definitions and qualification limits; do not restore obsolete paths or infer new passes from old reports."
+  },
+  "branches": [
+    {
+      "branch": "docs/top5-ready-index-20261009",
+      "tip": "8fa0d73c81e55100d8e32d1963d6b247764fe56a",
+      "disposition": "already_in_history",
+      "reason": "The published ready-index tip is an ancestor of the audited consolidation commit."
+    },
+    {
+      "branch": "codex/top5-runtime-status-docs",
+      "tip": "e558381133e3c46cebe72a79af7bd7add0fbdd94",
+      "disposition": "patch_already_in_history",
+      "reason": "The native/runtime/framework status distinction was integrated; its legacy documents were later replaced.",
+      "proofs": [
+        {
+          "source_commit": "e558381133e3c46cebe72a79af7bd7add0fbdd94",
+          "equivalent_commit": "75e40a19397638be91dc438b41072833eeb00ef1",
+          "stable_patch_id": "02160999131bed8228a783ed4e36bf57629cea8f",
+          "equivalent_commit_in_audited_history": true
+        }
+      ]
+    },
+    {
+      "branch": "codex/top5-snapshot-status-docs",
+      "tip": "015add853cf5d04c042080c01acebfa68b06e636",
+      "disposition": "patch_already_in_history",
+      "reason": "Snapshot-era status scoping was integrated; its legacy documents were later replaced.",
+      "proofs": [
+        {
+          "source_commit": "015add853cf5d04c042080c01acebfa68b06e636",
+          "equivalent_commit": "36fa4ae838399d9d69ce4fb11424126c17c8b9ba",
+          "stable_patch_id": "f1a1deec8532b4072d1aa3e2257c49708157e2f9",
+          "equivalent_commit_in_audited_history": true
+        }
+      ]
+    },
+    {
+      "branch": "ready/qwen-rmsnorm-two-case-a4d4fe4a",
+      "tip": "a8548b77e18986aebb1f0d60343639cd3cc701f0",
+      "disposition": "patches_and_current_content_already_covered",
+      "reason": "All three guard patches are present under equivalent commits. The task, shared guard and guard tests match. Preserve the newer host phase-cap guidance in docs/how-to/guarded-case-contract.md.",
+      "proofs": [
+        {
+          "source_commit": "c310df808d3c3a8eab6535a4568650922f21f0ce",
+          "equivalent_commit": "cbbf05e7a6e0ffdc943356067300661841802671",
+          "stable_patch_id": "67196dc0380b6ce920822e730b501b1d7d346def",
+          "equivalent_commit_in_audited_history": true
+        },
+        {
+          "source_commit": "ecde5df12c111792ea04ba34bae2aafad9314dce",
+          "equivalent_commit": "8cfcf910e3dab28bb8b22601e9cf3ce190fbc126",
+          "stable_patch_id": "67f848e6c11d0432fc48d80ca414918971f77329",
+          "equivalent_commit_in_audited_history": true
+        },
+        {
+          "source_commit": "a8548b77e18986aebb1f0d60343639cd3cc701f0",
+          "equivalent_commit": "a4d4fe4a73e831b29c4467978534e21b24faa0c8",
+          "stable_patch_id": "ea4d1645b0d30f2666c207452704ab629130d769",
+          "equivalent_commit_in_audited_history": true
+        }
+      ],
+      "task_tree_proof": {
+        "path": "tasks/headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+        "tree": "6339dec51c41c218c42b3e3e5c447c899bfc7ae2",
+        "same_at": [
+          "a8548b77e18986aebb1f0d60343639cd3cc701f0",
+          "57fb634c69047120f6ee5b1cf6cd6c9d3df43047",
+          "f501ef65403bdf76a122918c405f6494bc6eab38"
+        ]
+      }
+    },
+    {
+      "branch": "draft/top5-direct-verification-20260920",
+      "tip": "d25885180f0cc3a84244d9b258b52e7e0254b7f5",
+      "disposition": "integrated_then_retired_workflow",
+      "reason": "The isolation fix is patch-identical to the integrated change. The original verifier implementation was integrated, then removed with the adapted suite; its planner/config differences are historical.",
+      "proofs": [
+        {
+          "source_commit": "d25885180f0cc3a84244d9b258b52e7e0254b7f5",
+          "equivalent_commit": "8fe62a39a615585790b11b6476c4e34694f777cf",
+          "stable_patch_id": "674d2078bf7d72ea1f4804cc015f5aafe03a6308",
+          "equivalent_commit_in_audited_history": true
+        }
+      ],
+      "verifier_blob_proof": {
+        "path": "src/tools/verify_head_kernels.py",
+        "blob": "a143b77e4c8c073e9b49f276304b2b2fddb54d7e",
+        "same_at": [
+          "aea9df09ba7ee2464d5a30254d20e296a02602a8",
+          "6ef652e9e6bd498bcd482203fafa6f95b43d2743"
+        ]
+      }
+    },
+    {
+      "branch": "codex/top5-final-fidelity-docs",
+      "tip": "f477f6da4c82075f3681076505e2f9748e950227",
+      "disposition": "retired_suite_documentation",
+      "reason": "The two documentation changes duplicate the backup branch and describe the retired 18-task layout and old public-image matrix; current qualification records supersede that scope.",
+      "proofs": [
+        {
+          "source_commit": "4625974ca3e9dcae4b4df7734ac40125e231bfdd",
+          "equivalent_commit": "4e894be45797a3f7c429ae7c9be0d788cdb5d824",
+          "stable_patch_id": "bfad622f073a6e27c265d9f334b856599a4d803a",
+          "equivalent_commit_in_audited_history": false
+        },
+        {
+          "source_commit": "f477f6da4c82075f3681076505e2f9748e950227",
+          "equivalent_commit": "e3afdbf6a9604f9c65bcbc80f7c4d8ab8a63c331",
+          "stable_patch_id": "dde464f99ee49f0e8349851264897a64c4f93380",
+          "equivalent_commit_in_audited_history": false
+        }
+      ]
+    },
+    {
+      "branch": "backup/head-kernels-top5-integration-20260920T1707",
+      "tip": "1db3f2ed7e1ccdbd71738f695cee102bf64dd8e3",
+      "disposition": "selected_generic_subset_only",
+      "reason": "Generated-task conversions and task-specific historical notes target the retired layout. Preserve their history; carry only the generic timing-worker subset described below."
+    },
+    {
+      "branch": "head_kernels_top5_device_trace_20260920",
+      "tip": "05692acc63834fdf07590e5591f5831a68efefeb",
+      "disposition": "legacy_feature_requires_port",
+      "reason": "The unique baseline-trace diagnostic imports retired planner/verifier modules. Its idea is not claimed to be implemented by the current trusted evaluator; using it requires a separate port.",
+      "proofs": [
+        {
+          "source_commit": "05692acc63834fdf07590e5591f5831a68efefeb",
+          "equivalent_commit": "2929e8ddc7cf09e1fab798b8cb00d90bf4705678",
+          "stable_patch_id": "e41177a10f95bdb1394ea62153a8676aa054b757",
+          "equivalent_commit_in_audited_history": false
+        }
+      ],
+      "legacy_files": [
+        "src/tools/trace_head_kernels.py",
+        "src/tools/head_kernel_trace_worker.py",
+        "docs/how-to/head-kernel-device-trace.md"
+      ]
+    },
+    {
+      "branch": "head_kernels_top5_parallel_verify_20260920",
+      "tip": "894578d433b4f89bcafa78b625069c801855f5b2",
+      "disposition": "legacy_feature_requires_port",
+      "reason": "The direct-verification sharding feature and exact matrices depend on the retired planner and old 0.5.17/0.5.18 task IDs. Preserve history without restoring those configs over current suites.",
+      "proofs": [
+        {
+          "source_commit": "1170612b56ae15bf6f95615a071e0dab0571cdee",
+          "equivalent_commit": "45bc8c9cbde5f1117bd447486430269a3d041aba",
+          "stable_patch_id": "fef1e3a8674795fae5a8e67210b1c1a75afbf71e",
+          "equivalent_commit_in_audited_history": false
+        },
+        {
+          "source_commit": "894578d433b4f89bcafa78b625069c801855f5b2",
+          "equivalent_commit": "919bd6b48d8132f253c8c682a08eb1ba5fd77e2c",
+          "stable_patch_id": "9093fcf34a86b1974eba4f5989a035c65f68b900",
+          "equivalent_commit_in_audited_history": false
+        }
+      ],
+      "legacy_files": [
+        "src/tools/verify_head_kernels.py",
+        "src/scripts/top5_head_kernels.py",
+        "example_configs/top5_parallel_verify_public_v0517_mi355x.yaml",
+        "example_configs/top5_parallel_verify_public_v0518_mi355x.yaml"
+      ]
+    }
+  ],
+  "selected_generic_content": {
+    "source_commit": "e3d8af29ab78ec124d203f12981d5252ea5b0133",
+    "files": [
+      "docs/how-to/add-task.md",
+      "tests/test_perf_helper_materialization.py"
+    ],
+    "guidance": "A controller declares its actual canonical timing worker through task-relative harness_path; helper materialization and audit retain their existing checks.",
+    "test_functions": [
+      "test_generated_controller_declares_the_real_canonical_worker",
+      "test_generated_controller_cannot_declare_a_missing_or_noncanonical_worker"
+    ],
+    "parametrized_cases": 5,
+    "excluded_content": "Old generated-task configs, model-specific controller assertions and test_generated_head_kernel_configs_declare_the_executed_worker depend on the retired layout."
+  },
+  "deferred_source_specific_work": {
+    "commits": [
+      "15f431043dfa32617bb31da67b558e83bc389666",
+      "1db3f2ed7e1ccdbd71738f695cee102bf64dd8e3"
+    ],
+    "topic": "Qwen dense candidate binding independent of cached native operators, including overlay rebuild preservation.",
+    "current_task": "tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster",
+    "disposition": "Not claimed covered. At the audited commit, the package uses a generic overlay and torch_compile_guard candidate. A source-specific SG0.5.20 port and review is required; this consolidation does not replace its current contract or assert a numerical failure."
+  },
+  "qualification_status_changed": false,
+  "branch_deletion_authorized_by_this_inventory": false,
+  "selected_content_changes_task_or_runtime_code": false
+}
