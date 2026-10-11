@@ -1,8 +1,19 @@
 # Consolidated head-kernel tasks and historical evidence
 
-Status for **2026-10-11**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits; 18 task qualifications remain unfinished. **The merged framework has not been qualified for any of the 23 tasks.** Whole-suite readiness, complete model-workload qualification and serving/E2E gains remain unestablished.
+Status for **2026-10-11**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. The completed October 11 qualifications below have fresh trusted and framework evidence, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
 
 Use [HEADKERNELS.md](../../HEADKERNELS.md) for the consolidation sources and [the unified validator config](../../example_configs/headkernel_sg520_current_mi355x.yaml) for task selection. All task paths and five preserved guides are in this branch. The [runtime catalog](../../tools/headkernel-runtime-targets.json) distinguishes current source/runtime selection, historical capture provenance and pending qualification.
+
+## Completed October 11 qualifications
+
+These receipts retain the actual GPU execution revision, `7bc14698e1044931a3c893b3dbabc9676b0e57e6`. Their guides identify separately reviewed compatible revisions and the exact input sets each verifier accepts. A later branch tip needs its own compatibility assessment; copying a receipt does not qualify changed code.
+
+| Task | Guide and verified evidence | Scope |
+| --- | --- | --- |
+| `headkernel/deepseek-v4-pro__unified_paged_attention_prefill` | [Current MLA prefill handoff](../../ready/current/mla-prefill/README.md): six trusted phases, all 12 framework checks, 400 trusted and 200 framework samples; OCI archive fully read back. | Both published M8192/H16 cases. The guide links explicit `0df9540d` compatibility; its strict historical input verifier remains bound to the qualified revision. |
+| `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [Current MiniMax FP4 handoff](../../ready/current/minimax-fp4/README.md): six trusted phases, all 12 framework checks, 4,200 samples and 168 controls; OCI archive fully read back. | All 14 cases. Final report and marker were recovered byte-for-byte against hashes saved before preemption. The verifier accepts the qualified inputs and separately reviewed `5854b2ac` inputs. |
+
+Both are unchanged-source controls with **no accepted optimization gain**. The archive guides disclose the original evidence and any recovery or transport limits. Other completed individual phases, framework-only passes and interrupted runs remain partial qualification evidence.
 
 ## Five historical ready subsets
 
@@ -18,7 +29,7 @@ At the consolidation base, all five task trees matched their historical qualifie
 | `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [MiniMax FP4 GEMM](../../ready/minimax-fp4/README.md) | [`ef7474dd`](https://github.com/AMD-AGI/AgentKernelArena/blob/ef7474dd9e29e74428ca09b4c488832db1fd220e/ready/minimax-fp4/README.md) | All 14 captured cases, with disclosed and independently accepted historical framework receipt limits. |
 | `headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm` | [Qwen fused add + RMSNorm](../../ready/qwen-rmsnorm/README.md) | [`f501ef65`](https://github.com/AMD-AGI/AgentKernelArena/blob/f501ef65403bdf76a122918c405f6494bc6eab38/ready/qwen-rmsnorm/README.md) | BF16 8192×8192 and 64×8192. Historical manual trusted-route numerical evidence and protected framework PASS are connected by an explicit compatibility review. This does not qualify current ordinary scoring. |
 
-These are unchanged-source controls, not accepted optimization gains. Qwen RMSNorm's authoritative ordinary timing-quality adapter is integrated, with current GPU validation pending. The other four Qwen tasks still need benchmark repairs, authoritative admission and source-bound validation. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
+These are unchanged-source controls, not accepted optimization gains. All five Qwen timing-quality adapters are integrated. Fresh complete source-bound qualification and final integrity checks remain outstanding for the Qwen set. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
 
 ## Current runtime and input preparation
 
@@ -63,8 +74,8 @@ These 18 tasks do not have one of the five historical ready-subset receipts. All
 | `deepseek-v4-pro` | `moe_stage1_grouped_gemm_silu_flydsl` | Complete current qualification of the expanded observed-distribution contract. Older fixed-case checks do not cover it. |
 | `deepseek-v4-pro` | `moe_stage1_grouped_gemm_silu_opus_a8w4` | Complete current distribution qualification; an older performance attempt did not finish. |
 | `deepseek-v4-pro` | `moe_stage2_down_proj_reduce_opus_a8w4` | Prior run stopped during reference correctness after 42/375 settings. Full comparison, framework qualification, and evidence readback remain outstanding. |
-| `glm-5.3-flash` | `ck_gemm_a8w8_blockscale_bpreshuffle` | New publication review rejected the incomplete 5/6-phase comparison. Candidate performance lacks 28 matched series / 2,800 samples and final completion evidence. |
-| `glm-5.3-flash` | `gemm_a16w16_bf16_cijk` | No proposed fixed native MFMA arithmetic rule passes the required gate. Acceptance repair and full qualification remain unresolved. |
+| `glm-5.3-flash` | `ck_gemm_a8w8_blockscale_bpreshuffle` | Native HIP graph-event timing is integrated and the full reference correctness gate passed. Complete trusted/native comparison and framework qualification were interrupted and remain pending. |
+| `glm-5.3-flash` | `gemm_a16w16_bf16_cijk` | Native partial-reference acceptance was repaired and all 20 reference correctness cases passed. Complete trusted/native timing and framework qualification remain pending after preemption. |
 | `glm-5.3-flash` | `fused_moe_kernel` | Original native graph-versus-eager failure remains unresolved. A later diagnostic did not reproduce it and did not qualify the task. |
 | `kimi-k3` | `dense_bf16_gemm_cijk` | Full 40-case native, trusted, and framework qualification. A targeted stream diagnostic covers only its recorded case. |
 | `kimi-k3` | `attn_residual_aggregate_hip` | Complete 69-case qualification. Interrupted performance observations reached 26/69 trusted cases and 13/69 framework cases. |
@@ -73,9 +84,9 @@ These 18 tasks do not have one of the five historical ready-subset receipts. All
 | `minimax-m3` | `decode_score_kernel` | Complete current framework and trusted qualification of the 16-case paired contract. |
 | `minimax-m3` | `gqa_share_sparse_decode_kernel` | Complete current framework and trusted qualification of the 24-case paired contract. |
 | `minimax-m3` | `gqa_share_sparse_fwd_kernel` | Complete current framework and trusted qualification of the 40-case paired contract. |
-| `qwen3.8-2.4t` | `dense_bf16_gemm_cluster` | SG0.5.20 sources are integrated; authoritative ordinary timing-quality admission, source-bound GPU tests and framework qualification remain pending. |
-| `qwen3.8-2.4t` | `fused_moe_2stage_mxfp4` | SG0.5.20 sources are integrated; authoritative ordinary timing-quality admission, source-bound GPU tests and framework qualification remain pending. |
-| `qwen3.8-2.4t` | `fused_recurrent_gated_delta_rule_decode` | SG0.5.20 sources are integrated; authoritative ordinary timing-quality admission, source-bound GPU tests and framework qualification remain pending. |
-| `qwen3.8-2.4t` | `paged_attention_decode` | SG0.5.20 sources are integrated; authoritative ordinary timing-quality admission, source-bound GPU tests and framework qualification remain pending. |
+| `qwen3.8-2.4t` | `dense_bf16_gemm_cluster` | A five-case framework pass and its 500 samples are archived. Fresh complete trusted comparison remains pending after preemption. |
+| `qwen3.8-2.4t` | `fused_moe_2stage_mxfp4` | Native enum identity across relocated verified caches was repaired. Full trusted comparison and framework finalization remain pending; raw GPU phases alone do not qualify it. |
+| `qwen3.8-2.4t` | `fused_recurrent_gated_delta_rule_decode` | Authoritative source-bound admission is integrated. Both trusted and framework runs were interrupted before completion. |
+| `qwen3.8-2.4t` | `paged_attention_decode` | A framework pass with 100 samples is archived. The host compile-context comparison was repaired; complete trusted qualification remains pending. |
 
 Two configured historical packages are outside the 23 active mappings: DeepSeek `dsa_sparse_mla_attn` is superseded in this recipe by unified paged prefill/decode, and GLM `elementwise_copy_cluster` recorded aliases rather than materialized GPU copies. Full original served MoE payload capture and broader coverage beyond the published scopes also remain separate outstanding work.
