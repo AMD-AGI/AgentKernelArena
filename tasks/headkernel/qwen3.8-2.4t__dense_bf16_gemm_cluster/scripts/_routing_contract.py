@@ -97,6 +97,19 @@ def parse_policy(raw, meta):
     return result
 
 
+def dense_route_config(spec, route):
+    """Resolve a literal to the exact configuration passed to the native GEMM.
+
+    Request identity, invocation and report validation share this resolver so
+    aliases of a recorded native backend cannot create an apparent source gain.
+    """
+    require(route in CHOICES["dense"], "unapproved dense route")
+    if route == "recorded":
+        return {"libtype": spec["expected_backend"], "solidx": int(spec["expected_solidx"]),
+                "splitK": int(spec["expected_split_k"]), "kernelName": spec["expected_kernel"]}
+    return {"libtype": route, "solidx": 0, "splitK": 0, "kernelName": "native"}
+
+
 def source_context(task, meta=None):
     task = Path(task).resolve()
     meta_path = task / "ut/meta.json"
@@ -114,9 +127,16 @@ def source_context(task, meta=None):
     context = {"protocol": PROTOCOL, "kind": meta["native_routing"]["kind"], "routes": routes,
                "source_file_sha256": hashlib.sha256(raw).hexdigest(), "meta_sha256": file_sha(meta_path),
                "native_source_sha256": native_sha, "fixture_sha256": meta.get("reference_io_sha256") or None}
-    # Formatting/comments cannot turn an unchanged route policy into a gain.
-    context["effective_source_sha256"] = fingerprint({key: context[key] for key in
-        ("protocol", "kind", "routes", "native_source_sha256")})
+    # Raw labels/bytes bind the request. Dense execution identity uses resolved
+    # configs: hk05 recorded and torch, for example, invoke the same native op.
+    identity = {key: context[key] for key in ("protocol", "kind", "native_source_sha256")}
+    if context["kind"] == "dense":
+        context["resolved_native_configs"] = {row["sig"]: dense_route_config(row, routes[row["sig"]])
+                                              for row in specs(meta)}
+        identity["resolved_native_configs"] = context["resolved_native_configs"]
+    else:
+        identity["routes"] = routes
+    context["effective_source_sha256"] = fingerprint(identity)
     return context
 
 

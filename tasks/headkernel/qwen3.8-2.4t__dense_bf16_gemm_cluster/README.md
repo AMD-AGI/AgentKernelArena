@@ -51,9 +51,11 @@ nonfinite samples, or an unchecked replay fail the complete result.
 Reports and per-case diagnostics are written under `build/`, with a fresh request
 and retained raw report for every run. Historical `ut/selection_validation.json`,
 `ut/negative_check.json`, `ut/runtime_refresh.json`, native source copies and all
-other task inputs remain immutable. The source policy's semantic fingerprint is
-separate from its file hash, so formatting-only policy edits are unchanged-source
-controls. The authoritative quality adapter owns any accepted comparison or gain.
+other task inputs remain immutable. The source policy's semantic fingerprint uses
+the resolved native configurations and native source checksum, separately from
+its file hash. Formatting changes and equivalent route names, such as hk05
+`recorded` and `torch`, remain unchanged-source controls. The authoritative
+quality adapter owns any accepted comparison or gain.
 
 The image and native source pin are recorded in `ut/runtime_refresh.json` and
 `ut/meta.json`. The preserved geometry/selection evidence came from the documented

@@ -5,18 +5,10 @@ import importlib
 import math
 from pathlib import Path
 
-from _routing_contract import case_params, file_sha, require
+from _routing_contract import case_params, dense_route_config as route_config, file_sha, require
 
 BACKENDS = {"hipblaslt": "hipb_gemm", "torch": "torch_gemm", "asm": "asm_gemm",
             "flydsl": "flydsl_gemm", "triton": "triton_gemm"}
-
-
-def route_config(spec, route):
-    require(route in ("recorded", "torch", "triton"), "unapproved dense route")
-    if route == "recorded":
-        return {"libtype": spec["expected_backend"], "solidx": int(spec["expected_solidx"]),
-                "splitK": int(spec["expected_split_k"]), "kernelName": spec["expected_kernel"]}
-    return {"libtype": route, "solidx": 0, "splitK": 0, "kernelName": "native"}
 
 
 class DenseCase:

@@ -74,6 +74,31 @@ def test_comments_and_mapping_order_do_not_create_source_gain(workspace):
     assert before["effective_source_sha256"] == after["effective_source_sha256"]
 
 
+def test_recorded_torch_alias_has_identical_executed_configs_and_source_identity(workspace):
+    before = contract.source_context(workspace)
+    routes = dict(before["routes"], decode_m64_n32_k8192="torch")
+    (workspace / "source/routing.py").write_text("def select_routes():\n    return " + repr(routes) + "\n")
+    after = contract.source_context(workspace)
+    assert before["source_file_sha256"] != after["source_file_sha256"]
+    assert before["routes"] != after["routes"]
+    actual_configs = [{row["sig"]: runtime.route_config(row, context["routes"][row["sig"]])
+                       for row in contract.specs(META)} for context in (before, after)]
+    assert len(actual_configs[0]) == 5 and actual_configs[0] == actual_configs[1]
+    assert before["resolved_native_configs"] == after["resolved_native_configs"] == actual_configs[0]
+    assert actual_configs[0]["decode_m64_n32_k8192"] == {
+        "libtype": "torch", "solidx": 0, "splitK": 0, "kernelName": "native"}
+    assert before["effective_source_sha256"] == after["effective_source_sha256"]
+
+
+def test_changed_native_configuration_changes_effective_source_identity(workspace):
+    before = contract.source_context(workspace)
+    routes = dict(before["routes"], decode_m64_n32_k8192="triton")
+    (workspace / "source/routing.py").write_text("def select_routes():\n    return " + repr(routes) + "\n")
+    after = contract.source_context(workspace)
+    assert before["resolved_native_configs"] != after["resolved_native_configs"]
+    assert before["effective_source_sha256"] != after["effective_source_sha256"]
+
+
 def test_policy_fifo_is_rejected_without_opening_it(workspace):
     path = workspace / "source/routing.py"
     path.unlink(); os.mkfifo(path)

@@ -21,7 +21,7 @@ BUILD_DIR = os.path.join(TASK_DIR, "build")
 UT_DIR = os.path.join(TASK_DIR, "ut")
 CONFIG = os.path.join(TASK_DIR, "config.yaml")
 ROUTING_PROTOCOL = "qwen_native_route_graph_v1"
-ROUTING_CONTRACT_SHA256 = "89dc2f7a012c442e911fd187847e64848d65ed4e05b63d798ce6b275bd83dcf4"
+ROUTING_CONTRACT_SHA256 = "4d4bb698a08dcc95ee291dfc2ed58ff2f5d71f371067f01cba0cc58d280b4076"
 
 
 def load_config():
@@ -64,17 +64,14 @@ def _validate_dense_payload(contract, raw, meta, request):
                 "graph count metadata must contain integers, not boolean flags")
         binding = validation.get("native_binding", {})
         route = request["source"]["routes"][spec["sig"]]
-        backend = spec["expected_backend"] if route == "recorded" else route
+        expected_config = contract.dense_route_config(spec, route)
+        backend = expected_config["libtype"]
         names = {"torch": "torch_gemm", "triton": "triton_gemm", "hipblaslt": "hipb_gemm",
                  "asm": "asm_gemm", "flydsl": "flydsl_gemm"}
         contract.require(binding.get("native_source_sha256") == request["source"]["native_source_sha256"]
             and binding.get("backend") == backend and binding.get("function") == names[backend]
             and binding.get("editable_python_executed") is False,
             "actual native backend/source binding differs from the literal route")
-        expected_config = ({"libtype": backend, "solidx": int(spec["expected_solidx"]),
-                            "splitK": int(spec["expected_split_k"]), "kernelName": spec["expected_kernel"]}
-                           if route == "recorded" else
-                           {"libtype": backend, "solidx": 0, "splitK": 0, "kernelName": "native"})
         observed_config = binding.get("native_config", {})
         contract.require(observed_config == expected_config and all(type(observed_config[key]) is type(value)
                          for key, value in expected_config.items()), "native configuration differs from the route")

@@ -104,4 +104,4 @@ harness_protection:
 benchmark_quality:
   schema_version: 1
   adapter: qwen_native_route_graph_v1
-  validator_sha256: 600ae236fcd49d90311355e8e2cac832d857d9f3177fb624a88b4c6de2c6aff4
+  validator_sha256: 415c4ba873a7cc00454c88917c7164bcbea39acb597f38f46e39ec5283465a36
