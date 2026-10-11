@@ -12,6 +12,17 @@ KIMI_FIELDS = {'input_seed', 'work_value', 'actual_control_hashes', 'private_cpu
 MLA_FIELDS = {'input_seed', 'length', 'kv_indices_sha256', 'kv_indptr_sha256', 'private_cpu_storage_bytes'}
 MINIMAX_FIELDS = {'input_seed', 'variant_id', 'actual_tensor_controls_sha256', 'addressing', 'private_cpu_storage_bytes'}
 
+# Add profiles only after reviewing their protected complete raw-report producer.
+# Sharing a report shape is not permission to admit a legacy summary-only task.
+_QWEN_GRAPH_PROFILES = {
+    'qwen_rmsnorm_graph_v1': {
+        'task_type': 'triton2triton',
+        'sources': ['source/minimax_m3_rmsnorm.py'],
+        'targets': ['gemma_fused_add_rmsnorm', '_gemma_fused_add_rmsnorm_kernel'],
+        'op_kind': 'fused_add_rmsnorm', 'cases': 2,
+    },
+}
+
 
 def native_quant_config(config):
     # This is the existing trusted_native_eval contract, not a task-name rule.
@@ -86,7 +97,7 @@ def load_quality_measurements(root, config):
     root = Path(root)
     report = strict_json(read_task_file(root, 'build/performance_report.json').decode())
     if config.get('benchmark_quality') is not None:
-        return _qwen_rmsnorm_graph_cases(root, config, report)
+        return _qwen_graph_cases(root, config, report)
     manifest = strict_json(read_task_file(root, config.get('trusted_evaluation', {}).get('case_manifest', 'cases.json')).decode())
     sources = {name: hashlib.sha256(read_task_file(root, name)).hexdigest() for name in config['source_file_path']}
     if not native_quant_config(config):
@@ -110,10 +121,10 @@ def load_quality_measurements(root, config):
     return result
 
 
-def _qwen_rmsnorm_graph_cases(root, config, report):
-    """Revalidate the supported RMSNorm protocol before creating authority.
+def _qwen_graph_cases(root, config, report):
+    """Revalidate an explicitly supported Qwen protocol before creating authority.
 
-    This adapter does not enable the other Qwen report formats. Its protected,
+    A profile does not enable other Qwen report formats. Its protected,
     hash-bound CPU validator supplies the complete existing case/metadata checks;
     candidate code is never imported by this consumer.
     """
@@ -121,41 +132,98 @@ def _qwen_rmsnorm_graph_cases(root, config, report):
     policy = config['benchmark_quality']
     require(isinstance(policy, dict) and set(policy) == {'schema_version', 'adapter', 'validator_sha256'}
             and type(policy['schema_version']) is int and policy['schema_version'] == 1
-            and policy['adapter'] == 'qwen_rmsnorm_graph_v1', 'unsupported benchmark-quality adapter')
-    source = 'source/minimax_m3_rmsnorm.py'
-    require(config.get('task_type') == 'triton2triton' and config.get('source_file_path') == [source]
-            and config.get('target_kernel_functions') == ['gemma_fused_add_rmsnorm', '_gemma_fused_add_rmsnorm_kernel'],
-            'RMSNorm quality adapter target contract differs')
-    validator_path = root / 'scripts/task_runner.py'
-    validator = read_task_file(root, 'scripts/task_runner.py')
-    require(hashlib.sha256(validator).hexdigest() == policy['validator_sha256'], 'RMSNorm quality validator changed')
+            and isinstance(policy['adapter'], str) and policy['adapter'] in _QWEN_GRAPH_PROFILES,
+            'unsupported benchmark-quality adapter')
+    profile = _QWEN_GRAPH_PROFILES[policy['adapter']]
+    require(config.get('task_type') == profile['task_type'] and config.get('source_file_path') == profile['sources']
+            and config.get('target_kernel_functions') == profile['targets'],
+            'Qwen quality adapter target contract differs')
+    validator_name = profile.get('validator', 'scripts/task_runner.py')
+    validator_path = root / validator_name
+    validator = read_task_file(root, validator_name)
+    require(hashlib.sha256(validator).hexdigest() == policy['validator_sha256'], 'Qwen quality validator changed')
     metadata = read_task_file(root, 'ut/meta.json')
     manifest = strict_json(metadata.decode())
-    require(isinstance(manifest, dict) and manifest.get('op_kind') == 'fused_add_rmsnorm',
-            'unsupported RMSNorm metadata contract')
-    sources = {source: hashlib.sha256(read_task_file(root, source)).hexdigest()}
-    require(isinstance(report, dict), 'RMSNorm performance report must be a mapping')
+    require(isinstance(manifest, dict) and manifest.get('op_kind') == profile['op_kind']
+            and manifest.get('num_cases') == profile['cases'], 'unsupported Qwen metadata contract')
+    sources = {source: hashlib.sha256(read_task_file(root, source)).hexdigest() for source in profile['sources']}
+    require(isinstance(report, dict), 'Qwen performance report must be a mapping')
+    namespace = {'__file__': str(validator_path.resolve()), '__name__': '_protected_qwen_quality_validator'}
+    if profile.get('native_routing'):
+        exec(compile(validator, str(validator_path), 'exec'), namespace)
+        return _qwen_native_routing_cases(root, profile, report, manifest, metadata, sources, namespace)
     request = report.get('request', {})
     require(report.get('status') == 'ok' and report.get('timer') == 'cuda_graph'
             and report.get('warmup_iterations') == 10 and report.get('benchmark_iterations') == 100,
-            'RMSNorm performance report is incomplete')
+            'Qwen performance report is incomplete')
     require(isinstance(request, dict) and type(request.get('schema_version')) is int and request['schema_version'] == 1
             and request.get('phase') == 'performance' and isinstance(request.get('request_id'), str)
             and bool(request['request_id']) and request.get('source_sha256') == sources
             and request.get('manifest_sha256') == hashlib.sha256(metadata).hexdigest(),
-            'RMSNorm performance request/source/metadata binding differs')
+            'Qwen performance request/source/metadata binding differs')
+    manifest_sha256 = request['manifest_sha256']
+    case_contract = profile.get('case_contract')
+    if case_contract is not None:
+        contract_sha256 = hashlib.sha256(read_task_file(root, case_contract)).hexdigest()
+        require(request.get('case_contract_sha256') == contract_sha256, 'Qwen protected case contract binding differs')
+        manifest_sha256 = fingerprint({'ut/meta.json': request['manifest_sha256'], case_contract: contract_sha256})
     raw = strict_json(read_task_file(root, 'build/_bench_raw.json').decode())
-    namespace = {'__file__': str(validator_path.resolve()), '__name__': '_protected_rmsnorm_quality_validator'}
+    if case_contract is not None:
+        require(isinstance(raw, dict) and raw.get('source_sha256') == sources
+                and raw.get('case_contract_sha256') == request['case_contract_sha256'],
+                'Qwen raw measurement source/contract binding differs')
+    if isinstance(raw, dict) and 'request' in raw:
+        require(raw['request'] == request, 'Qwen raw/published invocation differs')
     exec(compile(validator, str(validator_path), 'exec'), namespace)
-    rows = namespace['_benchmark_cases'](raw)
-    require(report.get('test_cases') == rows, 'RMSNorm published cases differ from validated raw measurements')
+    validate = namespace[profile.get('validator_function', '_benchmark_cases')]
+    rows = validate(raw, root) if profile.get('validator_with_root') else validate(raw)
+    require(isinstance(rows, list) and len(rows) == profile['cases'] and report.get('test_cases') == rows,
+            'Qwen published cases differ from complete validated raw measurements')
+    return _qwen_validated_graph_cases(rows, sources, request['request_id'], manifest_sha256)
+
+
+def _qwen_native_routing_cases(root, profile, report, manifest, metadata, sources, namespace):
+    """Use the protected literal-route validator, never execute selector code."""
+    from .native_baseline import read_task_file
+    require(manifest.get('native_routing', {}).get('kind') == profile['routing_kind'],
+            'Qwen native routing kind differs from its registered profile')
+    native_path = 'ut/' + manifest['source_provenance']['baseline_ref']
+    read_task_file(root, native_path)  # Enforce regular task-contained paths before the validator reads them.
+    request = report.get('request')
+    require(isinstance(request, dict), 'Qwen native routing request is missing')
+    request = namespace['validate_request'](request, root, 'performance')
+    source = request['source']
+    require(len(sources) == 1 and source['source_file_sha256'] == next(iter(sources.values()))
+            and source['meta_sha256'] == hashlib.sha256(metadata).hexdigest(),
+            'Qwen native routing source/metadata differs')
+    raw = strict_json(read_task_file(root, 'build/reports/' + request['run_id'] + '/raw.json').decode())
+    rows = namespace['validate_payload'](raw, manifest, request)
+    rows = [dict(row, test_case_id=row['sig'], execution_time_ms=row['mean_ms']) for row in rows]
+    require(len(rows) == profile['cases'] and report.get('test_cases') == rows
+            and all(report.get(key) == value for key, value in raw.items()),
+            'Qwen native routing publication differs from complete raw measurements')
+    # The selector's restricted literal grammar makes this effective identity
+    # exact: comments/formatting cannot turn identical GPU routes into a gain.
+    return _qwen_validated_graph_cases(rows, source['effective_source_sha256'], request['run_id'],
+        source['meta_sha256'], {'benchmark_source_file_sha256': sources,
+                               'benchmark_source_identity_kind': 'validated_native_routing'})
+
+
+def _qwen_validated_graph_cases(rows, sources, request_id, manifest_sha256, extra_metadata=None):
     result = []
     for row in rows:
+        require(row.get('benchmark_method') == 'cuda_graph' and 'benchmark_fallback_reason' not in row
+                and row.get('benchmark_warmup') == 10 and row.get('benchmark_samples') == 100
+                and row.get('benchmark_effective_repeats') == 1
+                and isinstance(row.get('validation'), dict)
+                and row['validation'].get('measured_graph_validated') is True,
+                'Qwen graph method or replay validation is incomplete')
         proof = case_quality(row['test_case_id'], case_ids=[r['test_case_id'] for r in rows],
-            sources=sources, request_id=request['request_id'], manifest_sha256=request['manifest_sha256'],
+            sources=sources, request_id=request_id, manifest_sha256=manifest_sha256,
             kind='portable', series={'candidate': row['samples_ms']})
         case = TestCaseResult(row['test_case_id'], execution_time_ms=proof['series']['candidate']['raw_mean_ms'],
             metadata={**{key: value for key, value in row.items() if key not in ('test_case_id', 'execution_time_ms')},
+                      **(extra_metadata or {}),
                       'benchmark_quality_required': True, 'benchmark_quality_case': deepcopy(dict(proof))})
         result.append(attach_case_quality(case, proof))
     return result
