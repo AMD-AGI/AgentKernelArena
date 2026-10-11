@@ -482,7 +482,8 @@
       "description": "MiniMax protected-reference paired performance with independently reconstructed input receipts.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "2d3185aed8f1fc79e6b5d65cd6418d5d8fee706e4d898ec5a3573cc2448af286"
+        "2d3185aed8f1fc79e6b5d65cd6418d5d8fee706e4d898ec5a3573cc2448af286",
+        "06e4c56c8c883c3084dc2140157635633291340104e7b2e2ecd314cb0669e248"
       ],
       "files_sha256": {
         "ut/evaluation_contract.py": [
@@ -522,7 +523,8 @@
       "description": "MiniMax protected-reference paired performance with independently reconstructed input receipts.",
       "entrypoint": "scripts/task_runner.py",
       "entrypoint_sha256": [
-        "cc550fe7123028755a110e540e8ba822c08a714c63dacc7a833b44961588ee38"
+        "cc550fe7123028755a110e540e8ba822c08a714c63dacc7a833b44961588ee38",
+        "dcf949b14d2699f034c3483d178239dd2738460d72263b3213142fe12d8dd8f3"
       ],
       "files_sha256": {
         "ut/evaluation_contract.py": [
