@@ -8,6 +8,8 @@ The non-Qwen recording recipe is 64 requests, ISL8192, OSL1024, C64, TP8, contex
 
 On a trusted ROCm host, install Git, Python3 with PyYAML, rclone and Docker. Configure rclone's `oci` remote to access the exact prefix in each selected task's `fixtures/EXTERNAL-MANIFEST.json`. This is an OCI object-store remote, distinct from the Docker image registry. Credentials stay on the host. Choose a trusted full Git commit containing the task, case manifest, external-asset manifest and setup helper.
 
+Also install and authenticate the host CLI selected by the validator before starting cache preparation or long validation. The stock `task_validator` backend is `claude_code`; an explicit profile may select any supported validator backend. Follow the [CLI installation instructions](../install/install.md#install-agent-clis), [host authentication setup](../install/install.md#configure-authentication-and-providers), and [validator backend configuration](task-validator.md#validator-configuration). Installing the CLI without authenticating it is insufficient. Use the same selected configuration for the CLI check and the validation run.
+
 The following creates a separate clean Arena checkout and materializes the exact task package with the existing trusted fixture materializer. It preserves the original Git task tree, checks that tracked task content is unchanged, retains staging receipts and creates a standard validator config. The helper chooses file/byte limits from the committed manifest; DeepSeek decode has more than the default16,384 assets.
 
 ```bash
@@ -26,18 +28,24 @@ The `headkernel_artifacts_v1` route verifies the pinned `tools/headkernel-artifa
 
 ## Run the standard Arena validator
 
-Read `PREPARATION.json` and the per-task staging receipts. Configure the chosen validator backend and its ordinary authentication in `arena/example_configs/prepared_headkernel_run.yaml` and the normal agent configuration. Run from the prepared checkout:
+Read `PREPARATION.json` and the per-task staging receipts. Select the validator backend/profile in `arena/example_configs/prepared_headkernel_run.yaml` and the normal agent configuration, with its CLI already installed and authenticated on the host. Run the selected CLI preflight before enabling AITER cache preparation or launching validation:
 
 ```bash
 cd "$PREPARED_ROOT/arena"
 export AKA_DOCKER_IMAGE=$(python3 -c 'import json; print(json.load(open("tools/headkernel-runtime-targets.json"))["images"]["sglang_v0520"]["pull_reference"])')
+export AKA_SKIP_DEV_MEM=1
+# Check the selected CLI first, without preparing the AITER cache.
+AKA_AITER_JIT_SOURCE= make docker-check-agents CONFIG=example_configs/prepared_headkernel_run.yaml
 export AKA_AITER_JIT_SOURCE=/sgl-workspace/aiter/aiter/jit
 make docker-smoke
-make docker-check-agents CONFIG=example_configs/prepared_headkernel_run.yaml
 make docker-run CONFIG=example_configs/prepared_headkernel_run.yaml
 ```
 
+These kernel benchmarks need `/dev/kfd` and the selected GPU's render-device access; they do not need `/dev/mem`. `AKA_SKIP_DEV_MEM=1` omits that optional passthrough, avoiding rejection on hosts that restrict it. Clearing `AKA_AITER_JIT_SOURCE` for `docker-check-agents` also prevents an inherited cache setting from delaying a missing-CLI or authentication failure. If the selected backend/profile changes, repeat the CLI check before validation.
+
 The image override is an exact digest. `AKA_AITER_JIT_SOURCE` asks the standard Docker runner to copy and verify the image's complete native JIT cache into a private writable cache. It preserves image-precompiled entries and avoids root-owned cache and CSV-write failures; it does not use another campaign's cache. The refreshed task sources and declared fixtures contain their replay requirements. No shared model tree, external architecture patch, cluster lock script, Spur or Slurm command is part of this route.
+
+Host CLI authentication and driver-access setup leave task sources, cases, tolerances, warmups, sample counts and timing boundaries unchanged. A successful startup check is not task qualification.
 
 Inspect the **framework-finalized** `validation_report.yaml` and completion marker for the exact prepared package. Require `overall_status: PASS`; a partial report, WARN, stale report or direct UT success is not a replacement. Standard task protection preserves fixture and harness files. For optimization, use the same prepared task package with an ordinary agent run config and change only the agent selection; do not regenerate or substitute fixture data.
 
