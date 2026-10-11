@@ -26,6 +26,7 @@ EXAMPLES = [
     ("headkernel/minimax-m3__decode_score_kernel", "portable_case_contract"),
     ("headkernel/minimax-m3__gqa_share_sparse_decode_kernel", "portable_case_contract"),
     ("headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk", "portable_case_contract"),
+    ("headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle", "portable_case_contract"),
 ]
 
 
@@ -85,6 +86,9 @@ def test_changed_legacy_or_native_timer_is_rejected(tmp_path, example, relative)
     ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "ut/candidate_precision.py"),
     ("headkernel/kimi-k3__dense_bf16_gemm_cijk", "ut/native_precision.py"),
     ("headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk", "scripts/production_comparison.py"),
+    ("headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk", "ut/hip_graph_timing.py"),
+    ("headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle", "ut/hip_graph_timing.py"),
+    ("headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle", "scripts/production_comparison.py"),
     ("headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk", "ut/native_precision.py"),
     ("headkernel/glm-5.3-flash__gemm_a16w16_bf16_cijk", "ut/native_order_exact.py"),
     ("headkernel/minimax-m3__gemm_afp4wfp4_kernel", "ut/runtime.py"),

@@ -612,6 +612,47 @@
           "1b306a02afb375ed28253013e25d1e423d8f5c4f0effd85c1768f5acbabb5ae8"
         ]
       }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "GLM FP8 protected native HIP event-record graph timing; original graph work and exact replay correctness remain unchanged, with timestamp freshness checked on every replay.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "087821f1fb4135dbc7481f8e566953afb4e37ddcc44e28e32511eb85b9d6cce7"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "b73d45783deb5d36abcd5161dc28662d639dfd0d385f536bece13cad73147326"
+        ],
+        "ut/candidate_precision.py": [
+          "9fa6c8689949e727788bbc77036b735445a28c56cab935e2082b99cabd6fb39a"
+        ],
+        "ut/hip_graph_timing.py": [
+          "a02afe64d91f99d33005dfcd60cad734ac648af04ad5db6fc4e5b41af83a0846"
+        ]
+      }
+    },
+    {
+      "family": "portable_case_contract",
+      "description": "GLM BF16/FP32 protected native HIP event-record graph timing; original graph work and exact replay correctness remain unchanged, with timestamp freshness checked on every replay.",
+      "entrypoint": "scripts/task_runner.py",
+      "entrypoint_sha256": [
+        "4203210ef84805449dd101af1c3f955c7c97283bfc96abba686a35238330ca1a"
+      ],
+      "files_sha256": {
+        "scripts/production_comparison.py": [
+          "b49a249fe1413c38f80f6ea41f05dbd96cb31db831a7ad23ae09a204372c79df"
+        ],
+        "ut/native_precision.py": [
+          "743cf53aa536b528016b744e228ddd72317fb1a0821a1aba81e1aa57776ce189"
+        ],
+        "ut/native_order_exact.py": [
+          "1b306a02afb375ed28253013e25d1e423d8f5c4f0effd85c1768f5acbabb5ae8"
+        ],
+        "ut/hip_graph_timing.py": [
+          "a02afe64d91f99d33005dfcd60cad734ac648af04ad5db6fc4e5b41af83a0846"
+        ]
+      }
     }
   ]
 }
