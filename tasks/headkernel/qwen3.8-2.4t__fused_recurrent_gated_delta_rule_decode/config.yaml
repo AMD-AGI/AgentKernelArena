@@ -8,6 +8,18 @@ target_kernel_functions:
   - fused_recurrent_gated_delta_rule_packed_decode
   - fused_recurrent_gated_delta_rule_packed_decode_kernel
 
+harness_protection:
+  freeze_task_inputs: true
+  reject_new_source_symlinks: true
+  runtime_outputs:
+    - ut/negative_check.json
+    - ut/result.json
+    - ut/reports
+    - ut/_cand_overlay
+  editable_python_function_bodies:
+    source/fused_recurrent.py:
+      - fused_recurrent_gated_delta_rule_packed_decode_kernel
+
 compile_command:
   - python3 scripts/task_runner.py compile
 
@@ -30,8 +42,11 @@ prompt:
     It is 6.44% of de-inflated GPU time in the serving profile
     (ISL 8192 / OSL 1024 / CONC 64 / TP 8), currently at 53.5% memory-bound of its empirical roofline.
 
-    Edit only:
-      source/fused_recurrent.py
+    Edit only the body of fused_recurrent_gated_delta_rule_packed_decode_kernel
+    in source/fused_recurrent.py. The launcher, all other functions, imports,
+    decorators, signatures, and module-level code remain frozen. The case and
+    routing metadata, captured oracle, baseline, and timing/checking code are
+    immutable evaluation inputs.
 
     Entry points that must keep their signatures:
       fused_recurrent_gated_delta_rule_packed_decode
