@@ -67,6 +67,39 @@ def read_regular(path):
         os.close(directory)
 
 
+def hash_regular_file(path, *, max_bytes):
+    """Hash a size-bounded artifact without loading it or following symlinks."""
+    if type(max_bytes) is not int or not 0 <= max_bytes <= 2 << 30:
+        raise ValueError("artifact hash limit must be between zero and 2 GiB")
+    path = Path(os.path.abspath(path))
+    directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in path.parts[1:-1]:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        with os.fdopen(fd, "rb") as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes:
+                raise ValueError("artifact must be a regular file within its declared size limit")
+            digest = hashlib.sha256()
+            count = 0
+            while block := handle.read(min(8 << 20, max_bytes - count + 1)):
+                count += len(block)
+                if count > max_bytes:
+                    raise ValueError("artifact grew beyond its declared size limit")
+                digest.update(block)
+            after = os.fstat(handle.fileno())
+            if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+                after.st_size, after.st_mtime_ns, after.st_ctime_ns
+            ) or count != before.st_size:
+                raise ValueError("artifact changed while being hashed")
+            return digest.hexdigest()
+    finally:
+        os.close(directory)
+
+
 def extract_task(repo, commit, task_path, destination):
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         raise ValueError("--commit must be an explicit full Git commit hash")

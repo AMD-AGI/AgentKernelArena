@@ -39,7 +39,7 @@ if __package__:
     )
     from .gpu_binding import command_with_binding, select_gpu, validate_preflight
     from .seed_aiter_jit_cache import copy_cache, seed_image_cache, tree_manifest
-    from .trusted_native_eval import docker_command, extract_task, read_regular, sha256
+    from .trusted_native_eval import docker_command, extract_task, hash_regular_file, read_regular, sha256
     from .trusted_fixtures import DEFAULT_MAX_BYTES, DEFAULT_MAX_FILES, load_fixture_manifest, materialize_fixtures
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -48,7 +48,7 @@ else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from gpu_binding import command_with_binding, select_gpu, validate_preflight
     from seed_aiter_jit_cache import copy_cache, seed_image_cache, tree_manifest
-    from trusted_native_eval import docker_command, extract_task, read_regular, sha256
+    from trusted_native_eval import docker_command, extract_task, hash_regular_file, read_regular, sha256
     from trusted_fixtures import DEFAULT_MAX_BYTES, DEFAULT_MAX_FILES, load_fixture_manifest, materialize_fixtures
 
     from task_contract import (
@@ -291,7 +291,11 @@ def preserve_diagnostics(build, output):
         for source in selected_sources():
             require("\n" not in source.name and "\r" not in source.name,
                     "diagnostic filenames cannot contain line breaks")
-            digest = sha256(read_regular(source))
+            def diagnostic_digest(path):
+                if source.name in bundles:
+                    return hash_regular_file(path, max_bytes=bundles[source.name]['bytes'])
+                return sha256(read_regular(path))
+            digest = diagnostic_digest(source)
             if source.name in bundles:
                 require(digest == bundles[source.name]['sha256'], 'tensor failure bundle digest changed')
             target = output / source.name
@@ -304,7 +308,7 @@ def preserve_diagnostics(build, output):
                                 "--transfers", "64000", "--progress", "--buffer-size", "0",
                                 "--multi-thread-streams", "0", "--config", os.devnull, "--no-traverse"],
                                check=True, timeout=300, env=environment)
-            require(sha256(read_regular(target)) == digest, "diagnostic copy differs from phase output")
+            require(diagnostic_digest(target) == digest, "diagnostic copy differs from phase output")
             records[source.name] = digest
     finally:
         (output / "hashes.json").write_text(json.dumps(records, indent=2) + "\n")
