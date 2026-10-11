@@ -39,14 +39,21 @@ def moe(tmp_path, monkeypatch):
     load("_bench", "_bench.py")
     fixture = load("_moe_quality_cpu_fixture", "test_native_routing.py")
     config = yaml.safe_load((root / "config.yaml").read_text())
-    def emit(samples, run_id="a" * 48):
-        raw, _ = fixture.ContractTests().payload()
+    template, _ = fixture.ContractTests().payload()
+    def emit(samples, run_id="a" * 48, captured_block=32):
+        raw = copy.deepcopy(template)
         request = contract.make_request(root, "performance", run_id)
         raw.update(request=request, request_sha256=contract.fingerprint(request))
         for row, spec in zip(raw["cases"], contract.specs(fixture.META)):
-            row.update(selected_route=request["source"]["routes"][spec["sig"]],
+            route = request["source"]["routes"][spec["sig"]]
+            block = captured_block if route == "captured" else int(route[5:])
+            row.update(selected_route=route,
+                       resolved_execution=fixture.example_execution(block),
+                       native_dispatch={"declared_block_size_M": None if route == "captured" else block,
+                                        "native_block_m": block, "effective_block_size_M": block},
                        samples_ms=list(samples), mean_ms=math.fsum(samples) / 100,
                        median_ms=statistics.median(samples), min_ms=min(samples), max_ms=max(samples))
+        raw["effective_execution_sha256"] = contract.effective_execution_identity(raw, fixture.META, request)
         rows = contract.validate_payload(raw, fixture.META, request)
         report = {**copy.deepcopy(raw), "test_cases": [
             dict(row, test_case_id=row["sig"], execution_time_ms=row["mean_ms"]) for row in rows]}
@@ -58,7 +65,8 @@ def moe(tmp_path, monkeypatch):
     return root, config, emit
 
 
-@pytest.mark.parametrize("scenario", ["changed_route", "unchanged", "comment_only", "baseline_outlier", "candidate_outlier"])
+@pytest.mark.parametrize("scenario", ["changed_route", "unchanged", "comment_only", "equivalent_alias",
+                                      "baseline_outlier", "candidate_outlier"])
 def test_moe_ordinary_scoring_requires_effective_route_change_and_complete_quality(moe, monkeypatch, scenario):
     root, config, emit = moe
     calls = []
@@ -79,7 +87,8 @@ def test_moe_ordinary_scoring_requires_effective_route_change_and_complete_quali
     if scenario == "comment_only":
         source.write_text("# formatting is not a different GPU route\n" + source.read_text())
     elif scenario != "unchanged":
-        source.write_text(source.read_text().replace('"captured"', '"block32"', 1))
+        route = '"block32"' if scenario == "equivalent_alias" else '"block64"'
+        source.write_text(source.read_text().replace('"captured"', route, 1))
     result = evaluator.evaluate_kernel(root, config, baseline)
     evaluator.write_task_result(root, result, baseline, "qwen-moe", "CPU-test", create_plots=False)
     saved = yaml.safe_load((root / "task_result.yaml").read_text())
@@ -97,7 +106,8 @@ def test_moe_ordinary_scoring_requires_effective_route_change_and_complete_quali
 
 
 @pytest.mark.parametrize("mutation", ["missing_case", "samples", "shape", "state_validation", "selected_route",
-                                      "source", "effective_source", "published_case", "validator", "missing_raw"])
+                                      "source", "effective_source", "published_case", "validator", "missing_raw",
+                                      "execution_missing", "execution_digest", "execution_block", "execution_capture"])
 def test_moe_quality_rejects_partial_or_unbound_real_producer_reports(moe, mutation):
     root, config, emit = moe
     raw, report, path = emit([1.0] * 100)
@@ -120,6 +130,14 @@ def test_moe_quality_rejects_partial_or_unbound_real_producer_reports(moe, mutat
     elif mutation == "validator":
         with (root / "scripts/_routing_contract.py").open("a") as stream:
             stream.write("\nraise AssertionError('changed validator must not execute')\n")
+    elif mutation == "execution_missing":
+        raw["cases"][0].pop("resolved_execution")
+    elif mutation == "execution_digest":
+        raw["effective_execution_sha256"] = "0" * 64
+    elif mutation == "execution_block":
+        raw["cases"][0]["resolved_execution"]["effective_block_size_M"] = 128
+    elif mutation == "execution_capture":
+        raw["cases"][0]["resolved_capture_observations"] = 0
     path.write_text(json.dumps(raw))
     if mutation == "missing_raw":
         path.unlink()
@@ -156,3 +174,26 @@ def test_moe_adapter_inputs_are_in_the_authoritative_guard(moe):
     assert "source/routing.py" not in protected
     assert config["benchmark_quality"]["validator_sha256"] == hashlib.sha256(
         (root / "scripts/_routing_contract.py").read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize("block", [32, 64, 128])
+def test_each_explicit_hint_alias_uses_observed_execution_identity(moe, block):
+    from src.benchmark_quality import comparison_quality
+    from agents.task_validator.report_schema import finalize_report
+    from test_task_validator import _valid_raw_report
+    root, config, emit = moe
+    emit([2.0] * 100, "a" * 48, captured_block=block)
+    before = load_quality_measurements(root, config)
+    source = root / "source/routing.py"
+    source.write_text(source.read_text().replace('"captured"', '"block' + str(block) + '"', 1))
+    emit([1.0] * 100, "b" * 48, captured_block=block)
+    after = load_quality_measurements(root, config)
+    quality = comparison_quality(before, after)
+    assert quality["raw_arithmetic_mean_speedup"] == 2.0
+    assert quality["comparison_status"] == "unchanged_source_control"
+    assert quality["accepted_arithmetic_mean_speedup"] is None
+    assert quality["accepted_gain"] is False
+    (root / "validation_report.yaml").write_text(yaml.safe_dump(_valid_raw_report()))
+    finalized = finalize_report(root, expected_task_name="hip2hip/example")
+    assert finalized["overall_status"] == "PASS"
+    assert finalized["checks"]["benchmark_integrity"]["benchmark_quality"]["accepted_gain"] is False

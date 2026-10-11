@@ -101,8 +101,8 @@ Every phase has a new request id and atomically publishes a complete report to
 Ordinary framework scoring and task validation require the explicit
 `qwen_mxfp4_moe_graph_v1` quality adapter. It rechecks the protected request and
 complete raw report, retaining all samples and the selector's byte hash. Gain
-attribution uses the validated effective routing choices: unchanged choices,
-including comment-only edits, earn no speedup. An extreme timing outlier in
+attribution uses the validated observed native launch arguments: equivalent
+defaults and explicit hints, including comment-only edits, earn no speedup. An extreme timing outlier in
 either leg rejects the complete comparison. The harness guard freezes the full
 task input package while keeping the constrained selector editable.
 
@@ -123,3 +123,12 @@ TP8/EP1 serving capture. Fresh full GPU task-validator qualification is required
 before this modified task can be treated as qualified. Historical profile shares
 and serving uplifts in `config.yaml` remain provenance, not results from this
 routing task.
+
+Ordinary Arena scoring and framework finalization enforce the task's explicit
+`benchmark_quality` adapter. The consumer checks the current protected validator,
+source and workload bindings, complete raw/published reports, and every ordered
+100-sample timing series. Missing, stale or unstable evidence cannot earn an
+accepted speedup or a framework PASS. Stable unchanged-source runs remain valid
+task controls with no accepted gain. For native routing, equivalent resolved
+backend configurations or observed MoE launch arguments remain unchanged
+controls even when their policy labels differ.
