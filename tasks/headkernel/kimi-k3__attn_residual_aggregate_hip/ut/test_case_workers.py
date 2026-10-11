@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 import weakref
@@ -12,6 +13,7 @@ import pytest
 
 from evaluation_contract import canonical, fingerprint, validate_report
 import test_replay_contract as replay_fixture
+import runtime_adapter
 
 
 TASK = Path(__file__).resolve().parents[1]
@@ -144,3 +146,28 @@ def test_case_failure_stops_the_selected_sequence_and_returns_no_payload():
     with patch.object(runner, 'run_case', fail), pytest.raises(AssertionError, match='oracle failure'):
         runner.evaluate_cases(None, full, 'performance', {}, None, case_ids=selected)
     assert called == selected[:1]
+
+
+@pytest.mark.parametrize('private', [False, True])
+def test_runtime_cpu_policy_uses_the_owned_worker_directory(tmp_path, private):
+    (tmp_path / 'ut').mkdir()
+    (tmp_path / 'ut/expected_abi.json').write_text('{}')
+    destination = tmp_path / 'build' / 'worker-0' if private else tmp_path / 'build'
+    destination.mkdir(parents=True)
+    pool = {'threads': 16}
+    torch = SimpleNamespace(get_num_threads=lambda: pool['threads'],
+                            set_num_threads=lambda value: pool.update(threads=value),
+                            get_num_interop_threads=lambda: 1)
+    with patch.dict(sys.modules, torch=torch), patch.object(runtime_adapter, 'bindings', return_value={}):
+        options = {'build': destination} if private else {}
+        runtime = runtime_adapter.create_runtime(tmp_path, {'measurement': {}}, {}, **options)
+    assert runtime.root == tmp_path and runtime.build == destination
+    assert (destination / 'cpu_thread_policy.json').is_file()
+    assert runtime.cpu_thread_policy['intraop_after'] == 8
+    if private:
+        assert not (tmp_path / 'build/cpu_thread_policy.json').exists()
+
+
+def test_runtime_diagnostic_directory_cannot_escape_task_build(tmp_path):
+    with pytest.raises(ValueError, match='inside the task build'):
+        runtime_adapter.create_runtime(tmp_path, {}, {}, build=tmp_path / 'outside')

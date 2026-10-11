@@ -40,7 +40,7 @@ def request_for(phase, manifest, path):
             'origin': 'protected-kimi-task-runner'}
 
 
-def load_runtime(manifest, request):
+def load_runtime(manifest, request, *, build=None):
     path = ROOT/'ut/runtime_adapter.py'
     if not path.is_file():
         raise RuntimeError('Current Kimi fixture/native runtime_adapter.py is not installed; task is not qualified')
@@ -49,7 +49,9 @@ def load_runtime(manifest, request):
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    return module.create_runtime(ROOT, manifest, request)
+    if build is None:
+        return module.create_runtime(ROOT, manifest, request)
+    return module.create_runtime(ROOT, manifest, request, build=build)
 
 
 def capture(prepared, callbacks, seed, torch):
