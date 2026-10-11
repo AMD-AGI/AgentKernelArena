@@ -1,6 +1,7 @@
 """CPU checks for the audited Qwen image refresh and preserved capture ABI."""
 import ast
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -27,12 +28,27 @@ def test_native_source_and_existing_callable_contract(name, count):
     source = task / cfg["source_file_path"][0]
     native = task / "ut" / meta["source_provenance"]["baseline_ref"]
     assert hashlib.sha256(native.read_bytes()).hexdigest() == refresh["native_source_sha256"]
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == refresh["candidate_sha256"]
     assert cfg["headkernel"]["docker"] == meta["source_provenance"]["runtime_image"] == IMAGE
     assert meta["num_cases"] == refresh["case_count"] == count
     assert refresh["current_runtime_GPU_validation"] == "PENDING_ROOT_ASSIGNED_GPU_REPLAY"
     assert not refresh["current_runtime_workload_capture_claimed"]
     assert meta["capture_source_provenance"]["runtime_image"] != IMAGE
+    if name == "dense_bf16_gemm_cluster":
+        assert meta["runtime_refresh"] == refresh
+        assert cfg["source_file_path"] == ["source/routing.py"]
+        assert cfg["target_kernel_functions"] == ["select_routes"]
+        assert meta["source_provenance"]["candidate_source"] == "source/routing.py"
+        assert meta["source_provenance"]["kernel_source_complete"] is False
+        assert cfg["headkernel"]["optimization_surface"] == "constrained_native_backend_routing"
+        protected = task / meta["source_provenance"]["protected_native_source"]
+        assert hashlib.sha256(protected.read_bytes()).hexdigest() == refresh["candidate_sha256"]
+        spec = importlib.util.spec_from_file_location("_dense_refresh_contract", task / "scripts/_routing_contract.py")
+        contract = importlib.util.module_from_spec(spec); spec.loader.exec_module(contract)
+        context = contract.source_context(task)
+        assert context["routes"] == {row["sig"]: "recorded" for row in meta["workload"]["cases"]}
+        assert context["native_source_sha256"] == refresh["native_source_sha256"]
+        return
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == refresh["candidate_sha256"]
     candidate_functions = {n.name: n for n in ast.parse(source.read_text()).body if isinstance(n, ast.FunctionDef)}
     native_functions = {n.name: n for n in ast.parse(native.read_text()).body if isinstance(n, ast.FunctionDef)}
     for symbol in cfg["target_kernel_functions"]:
