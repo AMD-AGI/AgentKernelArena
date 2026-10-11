@@ -82,6 +82,48 @@ def test_phase_bridge_runs_existing_compile_and_binds_the_exact_host_request(tmp
         adapter.validate_phase(task, contract, "compile", report, dict(request, request_id="b" * 48))
 
 
+@pytest.mark.parametrize("attack", [None, "submitted_header", "support_header", "missing_support",
+                                    "extra_source", "compiled_header", "publication"])
+def test_attention_compile_binds_native_context_and_submitted_header(tmp_path, attack):
+    task = clone(ROOT / "tasks/headkernel/qwen3.8-2.4t__paged_attention_decode", tmp_path / "task")
+    build = task / "build"
+    build.mkdir()
+    contract = trusted.package_contract(task)
+    context = {name: trusted.sha256(trusted.read_regular(task / name)) for name in (
+        "source/pa_kernels.cuh", "ut/native/pa_ragged.cuh", "ut/native/pa_common.cuh",
+        "ut/native/pa_ragged.cpp.jinja", "ut/native/pa_ragged.py")}
+    native = {"schema": "qwen-native-compile-v1", "source_sha256": context,
+              "compiled_header_sha256": context["source/pa_kernels.cuh"]}
+    request = {"phase": "compile", "request_id": "a" * 48,
+               "source_sha256": {"source/pa_kernels.cuh": context["source/pa_kernels.cuh"]}}
+    if attack == "submitted_header":
+        request["source_sha256"]["source/pa_kernels.cuh"] = "0" * 64
+    elif attack == "support_header":
+        native["source_sha256"]["ut/native/pa_ragged.cuh"] = "0" * 64
+    elif attack == "missing_support":
+        native["source_sha256"].pop("ut/native/pa_common.cuh")
+    elif attack == "extra_source":
+        native["source_sha256"]["unexpected.cuh"] = "0" * 64
+    elif attack == "compiled_header":
+        native["compiled_header_sha256"] = "0" * 64
+    report = {"status": "ok", "parsed_sources": contract["sources"],
+              "symbols_found": {name: contract["sources"][0] for name in contract["config"]["target_kernel_functions"]},
+              "native_compile": deepcopy(native)}
+    if attack == "publication":
+        report["native_compile"]["compiled_header_sha256"] = "0" * 64
+    (build / "native_compile_report.json").write_text(json.dumps(native))
+    report_bytes = json.dumps(report).encode()
+    (build / "compile_report.json").write_bytes(report_bytes)
+    (build / "host_phase_receipt.json").write_text(json.dumps({
+        "schema": "trusted-qwen-phase-v1", "host_request": request, "returncode": 0,
+        "producer_report_sha256": trusted.sha256(report_bytes)}))
+    if attack is None:
+        assert adapter.validate_phase(task, contract, "compile", report, request) == ([], [])
+    else:
+        with pytest.raises(ValueError, match="not bound to the submitted device source"):
+            adapter.validate_phase(task, contract, "compile", report, request)
+
+
 @pytest.fixture
 def committed_dense(tmp_path):
     repo = tmp_path / "repo"
