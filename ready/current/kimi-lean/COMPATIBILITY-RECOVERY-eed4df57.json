@@ -1,0 +1,98 @@
+{
+  "accepted_gain": false,
+  "archive_sha256": "345b4afca29befa36727210b79bca5318eae840bbfaa4b19dd0bb188ce038b7a",
+  "archive_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/kimi-k3__lean_attention_decode/eed4df57-fw209907-trusted20c1a949-200712-cpu-recovery/kimi-lean-eed4df57-fw209907-retained20c1a949-cpu-recovery.tar.gz",
+  "compatible_checkout_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "complete_qualification": true,
+  "framework": {
+    "actual_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+    "all_12_checks": "PASS",
+    "backend": "codex",
+    "candidate_samples": 100,
+    "case_count": 1,
+    "checked_pairs": 110,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "current_quality_sha256": "8c9e427eaeb439aa9078c5e1b824c73b14dad224df964dd8ff4d00871c72addc",
+    "effort": "max",
+    "exit_code": 0,
+    "gpu": 1,
+    "integrity_sha256": "797476ed4a3aa315ed778c7f16bfa37a08831b0e664de5cbb7561b707501cc06",
+    "job": "209907",
+    "marker_sha256": "949b91b11e87350aa2ad787ef96b7096f31bf3cfc7a77cd5cf9740431639a054",
+    "model": "gpt-5.6-sol",
+    "negative_controls": {
+      "no_op": true,
+      "wrong_output": true
+    },
+    "node": "crsuse2-m2m-213",
+    "owned_containers_absent": true,
+    "performance_report_sha256": "c8c1cf5affbf63251c0d677d8e58b8f2802beff3d4685bcd240844c1ae54f8cc",
+    "reference_samples": 100,
+    "retirement_sha256": "d22ad5314f0f6c3f37fddc48801209c9c27a2a929931171b4944394325ce24f7",
+    "validation_report_sha256": "08860c13ee9bc01281e29c254e37533d81927b64d3c1070669c3a298b49de79e",
+    "warmups": 10
+  },
+  "gain_eligible": false,
+  "global_gpu_idle_claimed": false,
+  "input_evidence": {
+    "count": 39,
+    "fixture_blobs_observed": 14,
+    "method": "Actual captured canonical post-validator observations, independently approved; no invented host FINAL input receipts.",
+    "proof_sha256": "90edb9ca07382b221aad0d3fa57f66ea30e82722f69a9b6f65594a560061c9dd",
+    "raw_harness_before_after": 38,
+    "separate_raw_declared_source": 1
+  },
+  "later_checkouts_automatically_qualified": false,
+  "partial_phase_or_sample_splicing": false,
+  "publication_complete_sha256": "eed91c5221863164363485f228989bd5e0b97b22e2e45bc01cc1bf823237c6d5",
+  "publication_complete_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/kimi-k3__lean_attention_decode/eed4df57-fw209907-trusted20c1a949-200712-cpu-recovery/COMPLETE.json",
+  "recovery": {
+    "framework_completed_before_capture_and_preemption": true,
+    "new_GPU_execution": false,
+    "original_FINAL_created": false,
+    "original_failure_unchanged": {
+      "RESULT.json": "6ec213d8fb74cb602e9bb81d9a236eb6ddf83f596ac94e5c47548d7b05a16716",
+      "SEQUENCE-EXIT.json": "721a6f822fd87402b610064a4b6517232dee4d01647ba12d3be0605005feb0f0",
+      "STATUS.json": "a2984e79a72201a6a70baa5f20b9296b447987d7f576fae3ed74850aa9fe22d7"
+    },
+    "original_host_error": "ModuleNotFoundError: No module named yaml",
+    "original_host_status": "INCOMPLETE_OR_REJECTED",
+    "recovery_final_archive_member": "recovery/RECOVERY-FINAL.json",
+    "recovery_review_archive_member": "recovery/RECOVERY-INDEPENDENT-REVIEW.json",
+    "recovery_review_sha256": "bf142fdbe0ddb0bffefa905c104eadd905716d37742653539e19abeefbf6e503",
+    "separate_recovery_final_sha256": "19c43019e72f1e43d4a14bf53d5e56eb81b2c3339f3868713b75d0089b1355eb"
+  },
+  "retained_trusted_execution_relabelled": false,
+  "schema": "kimi-lean-retained-trusted-fresh-framework-cpu-recovery-compatibility-v1",
+  "scope": {
+    "batch": 64,
+    "exhaustive_length_timing": false,
+    "page_size": 1,
+    "sampled_sequence_lengths": [
+      8193,
+      9216
+    ],
+    "structural_cases": 1
+  },
+  "serving_or_E2E_capture_claimed": false,
+  "status": "APPROVED_COMPLETE_SCOPED_QUALIFICATION_BY_CPU_RECOVERY",
+  "task": "headkernel/kimi-k3__lean_attention_decode",
+  "task_tree": "4c3c322f6970a887e0ec5559da76b5f11ae000cf",
+  "trusted": {
+    "actual_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+    "actual_job": "200712",
+    "compatibility_review_checks": 188,
+    "compatibility_review_sha256": "e3b3ae1757e99187f0086b6badca82499b46542ebb7a4c189377e39e17ee714d",
+    "compiled_controls_job": "201533",
+    "historical_identity_preserved": true,
+    "measurement_sha256": "d00291cecf0f8b963adbca57a15a4583e85a390f3630575df6f10d94947cae92",
+    "phase_or_sample_splicing": false,
+    "retained_files": 108,
+    "six_complete_phases": true
+  },
+  "trusted_compatibility_review_sha256": "e3b3ae1757e99187f0086b6badca82499b46542ebb7a4c189377e39e17ee714d"
+}

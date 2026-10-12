@@ -1,0 +1,187 @@
+{
+  "accepted_gain": false,
+  "archive": {
+    "all_payload_hashes_verified_from_remote_stream": true,
+    "all_remote_objects_readback_verified": 8,
+    "archive_bytes": 2601722,
+    "archive_file": "kimi-lean-eed4df57-fw209907-retained20c1a949-cpu-recovery.tar.gz",
+    "archive_sha256": "345b4afca29befa36727210b79bca5318eae840bbfaa4b19dd0bb188ce038b7a",
+    "complete_receipt": "COMPLETE.json",
+    "complete_sha256": "eed91c5221863164363485f228989bd5e0b97b22e2e45bc01cc1bf823237c6d5",
+    "manifest_sha256": "54049f8db36ff01b8ed6c12a6c2075978359a0e6b42193b8c61b3a17df14027b",
+    "objects": {
+      "MANIFEST.json": {
+        "bytes": 93588,
+        "sha256": "54049f8db36ff01b8ed6c12a6c2075978359a0e6b42193b8c61b3a17df14027b"
+      },
+      "PACKAGE.json": {
+        "bytes": 954,
+        "sha256": "4b1d1f8d16d43b6f1a5924657cb0150a9d899e771f964befb7a0a601e8ae41d4"
+      },
+      "PUBLICATION-READBACK.json": {
+        "bytes": 1733,
+        "sha256": "ac5c84f9ec413c7bcc8df6f9e331a90496a41da5aee388a561d9aa62f0f52b0f"
+      },
+      "README-PUBLICATION.md": {
+        "bytes": 2050,
+        "sha256": "2223cb8108fc207c5eb05d341d4522f2acab201fe5c53a11d396d9d9851c5f73"
+      },
+      "RECOVERY-FINAL.json": {
+        "bytes": 4264,
+        "sha256": "19c43019e72f1e43d4a14bf53d5e56eb81b2c3339f3868713b75d0089b1355eb"
+      },
+      "SHA256SUMS": {
+        "bytes": 464,
+        "sha256": "cc74f0dd969a8f430061d7417fda9cf3166bcb5e98b9a1b61e1843b88a71090c"
+      },
+      "kimi-lean-eed4df57-fw209907-retained20c1a949-cpu-recovery.tar.gz": {
+        "bytes": 2601722,
+        "sha256": "345b4afca29befa36727210b79bca5318eae840bbfaa4b19dd0bb188ce038b7a"
+      }
+    },
+    "payload_files": 384,
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/kimi-k3__lean_attention_decode/eed4df57-fw209907-trusted20c1a949-200712-cpu-recovery/",
+    "public_readback_sha256": "ac5c84f9ec413c7bcc8df6f9e331a90496a41da5aee388a561d9aa62f0f52b0f",
+    "recovery_final_sha256": "19c43019e72f1e43d4a14bf53d5e56eb81b2c3339f3868713b75d0089b1355eb"
+  },
+  "case_ids": [
+    "_decode_lean_attention_fwd-616b10700cd40ae2986c1283"
+  ],
+  "compatibility": {
+    "changed_candidate_requires_new_complete_current_evaluation": true,
+    "file": "COMPATIBILITY-RECOVERY-eed4df57.json",
+    "old_measurements_relabelled": false,
+    "recovery_review_sha256": "bf142fdbe0ddb0bffefa905c104eadd905716d37742653539e19abeefbf6e503",
+    "trusted_review_checks": 188,
+    "trusted_review_sha256": "e3b3ae1757e99187f0086b6badca82499b46542ebb7a4c189377e39e17ee714d"
+  },
+  "compatible_checkout_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "editable_file": "tasks/headkernel/kimi-k3__lean_attention_decode/source/decode_attention.py",
+  "editable_kernel": "_lean_attention_decode_kernel",
+  "fixtures": {
+    "blob_files": 14,
+    "body_in_evidence_archive": false,
+    "bytes": 632810514,
+    "files": 15,
+    "manifest": "tasks/headkernel/kimi-k3__lean_attention_decode/fixtures/EXTERNAL-MANIFEST.json",
+    "original_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-actual-v4-no-stack-194550/"
+  },
+  "framework": {
+    "actual_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+    "all_12_checks": "PASS",
+    "backend": "codex",
+    "candidate_samples": 100,
+    "case_count": 1,
+    "checked_pairs": 110,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "current_quality_sha256": "8c9e427eaeb439aa9078c5e1b824c73b14dad224df964dd8ff4d00871c72addc",
+    "effort": "max",
+    "exit_code": 0,
+    "gpu": 1,
+    "integrity_sha256": "797476ed4a3aa315ed778c7f16bfa37a08831b0e664de5cbb7561b707501cc06",
+    "job": "209907",
+    "marker_sha256": "949b91b11e87350aa2ad787ef96b7096f31bf3cfc7a77cd5cf9740431639a054",
+    "model": "gpt-5.6-sol",
+    "negative_controls": {
+      "no_op": true,
+      "wrong_output": true
+    },
+    "node": "crsuse2-m2m-213",
+    "owned_containers_absent": true,
+    "performance_report_sha256": "c8c1cf5affbf63251c0d677d8e58b8f2802beff3d4685bcd240844c1ae54f8cc",
+    "reference_samples": 100,
+    "retirement_sha256": "d22ad5314f0f6c3f37fddc48801209c9c27a2a929931171b4944394325ce24f7",
+    "validation_report_sha256": "08860c13ee9bc01281e29c254e37533d81927b64d3c1070669c3a298b49de79e",
+    "warmups": 10
+  },
+  "gain_eligible": false,
+  "global_gpu_idle_claimed": false,
+  "input_observations": {
+    "count": 39,
+    "fixture_blobs_observed": 14,
+    "method": "Actual captured canonical post-validator observations, independently approved; no invented host FINAL input receipts.",
+    "proof_sha256": "90edb9ca07382b221aad0d3fa57f66ea30e82722f69a9b6f65594a560061c9dd",
+    "raw_harness_before_after": 38,
+    "separate_raw_declared_source": 1
+  },
+  "later_branch_tips_automatically_covered": false,
+  "measurement": {
+    "benchmark_iterations": 100,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "framework_checked_pairs": 110,
+    "fresh_framework_candidate_samples": 100,
+    "fresh_framework_reference_samples": 100,
+    "fresh_inputs_and_initialized_outputs_each_measured_replay": true,
+    "method": "GPU graph replay",
+    "no_op_wrong_output_controls": true,
+    "port_series_is_candidate_alias_not_extra_samples": true,
+    "warmup_iterations": 10
+  },
+  "preparation_tool": "tools/prepare_headkernel_run.py",
+  "qualified_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "qualified_framework_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "qualified_trusted_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+  "ready_tasks": [
+    "headkernel/kimi-k3__lean_attention_decode"
+  ],
+  "recovery": {
+    "framework_completed_before_capture_and_preemption": true,
+    "new_GPU_execution": false,
+    "original_FINAL_created": false,
+    "original_failure_unchanged": {
+      "RESULT.json": "6ec213d8fb74cb602e9bb81d9a236eb6ddf83f596ac94e5c47548d7b05a16716",
+      "SEQUENCE-EXIT.json": "721a6f822fd87402b610064a4b6517232dee4d01647ba12d3be0605005feb0f0",
+      "STATUS.json": "a2984e79a72201a6a70baa5f20b9296b447987d7f576fae3ed74850aa9fe22d7"
+    },
+    "original_host_error": "ModuleNotFoundError: No module named yaml",
+    "original_host_status": "INCOMPLETE_OR_REJECTED",
+    "recovery_final_archive_member": "recovery/RECOVERY-FINAL.json",
+    "recovery_review_archive_member": "recovery/RECOVERY-INDEPENDENT-REVIEW.json",
+    "recovery_review_sha256": "bf142fdbe0ddb0bffefa905c104eadd905716d37742653539e19abeefbf6e503",
+    "separate_recovery_final_sha256": "19c43019e72f1e43d4a14bf53d5e56eb81b2c3339f3868713b75d0089b1355eb"
+  },
+  "runtime": {
+    "architecture": "gfx950",
+    "catalog": "tools/headkernel-runtime-targets.json",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64",
+    "image_key": "sglang_v0520"
+  },
+  "schema": "current-scoped-ready-entry-v1",
+  "scope": {
+    "batch": 64,
+    "exhaustive_length_timing": false,
+    "page_size": 1,
+    "sampled_sequence_lengths": [
+      8193,
+      9216
+    ],
+    "structural_cases": 1
+  },
+  "serving_or_E2E_capture_claimed": false,
+  "setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
+  "source_sha256": "34ca0066e2716e1ffad048ec7cbb3a25af13eeb61e99034a663fed6277bf691a",
+  "status": "SCOPED_TASK_READINESS_APPROVED_BY_EXPLICIT_CPU_RECOVERY",
+  "task": "headkernel/kimi-k3__lean_attention_decode",
+  "task_tree": "4c3c322f6970a887e0ec5559da76b5f11ae000cf",
+  "trusted_measurement": {
+    "actual_commit": "20c1a949b07e0d2530315ee666cae8a178edad69",
+    "actual_job": "200712",
+    "compatibility_review_checks": 188,
+    "compatibility_review_sha256": "e3b3ae1757e99187f0086b6badca82499b46542ebb7a4c189377e39e17ee714d",
+    "compiled_controls_job": "201533",
+    "historical_identity_preserved": true,
+    "measurement_sha256": "d00291cecf0f8b963adbca57a15a4583e85a390f3630575df6f10d94947cae92",
+    "phase_or_sample_splicing": false,
+    "retained_files": 108,
+    "six_complete_phases": true
+  }
+}
