@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -125,6 +126,41 @@ def test_missing_file_after_transfer_rejects_cache_parity(image_package, tmp_pat
     monkeypatch.setattr(subprocess, "run", lose_file)
     with pytest.raises(ValueError, match="parity failed"):
         seed.copy_cache(image_package / "jit", tmp_path / "copy")
+
+
+def test_copy_preserves_executable_inputs_and_regular_nonexecutables(image_package, tmp_path):
+    source = image_package / "jit"
+    script = source / "check.py"
+    script.write_text("#!/usr/bin/env python3\nprint('fixture')\n")
+    script.chmod(0o755)
+    output = tmp_path / "copy"
+    manifest = seed.copy_cache(source, output)
+    assert seed.tree_manifest(output) == manifest
+    assert stat.S_IMODE((output / "check.py").stat().st_mode) == 0o755
+    assert (output / "module_quant.so").stat().st_mode & 0o111 == 0
+    assert (output / "alias.so").readlink() == (source / "alias.so").readlink()
+
+
+@pytest.mark.parametrize("mutation", ["bytes", "executable_mode", "extra_file"])
+def test_copy_mode_preservation_does_not_accept_unexpected_mutations(image_package, tmp_path, monkeypatch, mutation):
+    source = image_package / "jit"
+    script = source / "check.py"
+    script.write_text("print('original')\n")
+    script.chmod(0o755)
+    output = tmp_path / "copy"
+    original = subprocess.run
+    def change(command, **kwargs):
+        result = original(command, **kwargs)
+        if mutation == "bytes":
+            (output / "check.py").write_text("print('changed')\n")
+        elif mutation == "executable_mode":
+            script.chmod(0o644)
+        else:
+            (output / "extra.py").write_text("VALUE = 1\n")
+        return result
+    monkeypatch.setattr(subprocess, "run", change)
+    with pytest.raises(ValueError, match="parity failed|executable mode changed"):
+        seed.copy_cache(source, output)
 
 
 def test_seed_verification_rejects_forged_manifest(tmp_path, monkeypatch):

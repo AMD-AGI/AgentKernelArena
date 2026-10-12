@@ -43,6 +43,8 @@ def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
     destination = Path(destination)
     destination.mkdir()
     before = tree_manifest(source)
+    executable_bits = {name: (Path(source) / name).stat().st_mode & 0o111
+                       for name, entry in before.items() if entry["type"] == "file"}
     copy_env = os.environ.copy()
     copy_env["GOMAXPROCS"] = "1"
     files = []
@@ -76,6 +78,18 @@ def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
         raise ValueError("complete AITER JIT cache parity failed") from exc
     if not unchanged or copied != before:
         raise ValueError("complete AITER JIT cache parity failed")
+    # rclone's local copy creates regular files without executable bits. Task
+    # packages also use this helper, so preserve those trusted source bits
+    # after the complete byte/path/link parity check, without changing its schema.
+    for name, expected in executable_bits.items():
+        if (Path(source) / name).stat().st_mode & 0o111 != expected:
+            raise ValueError("source executable mode changed during copy")
+        target = destination / name
+        mode = stat.S_IMODE(target.stat().st_mode)
+        if mode & 0o111 != expected:
+            target.chmod((mode & ~0o111) | expected)
+        if target.stat().st_mode & 0o111 != expected:
+            raise ValueError("copied executable mode differs from source")
     return before
 
 
