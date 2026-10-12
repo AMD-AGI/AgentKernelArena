@@ -102,7 +102,7 @@ class PortableSetupTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             prepare.selected_tasks({'tasks':[self.catalog['tasks'][0]] * 2}, None)
 
-    def test_unified_selection_contains_all_23_current_sources_without_promoting_history(self):
+    def test_unified_selection_keeps_history_and_binds_scoped_qualifications(self):
         rows = self.catalog['tasks']
         config = yaml.safe_load((ROOT / 'example_configs/headkernel_sg520_current_mi355x.yaml').read_text())
         self.assertEqual(len(rows), 23)
@@ -113,11 +113,38 @@ class PortableSetupTests(unittest.TestCase):
         self.assertEqual(self.catalog['refresh_scope']['excluded_models'], [])
         self.assertEqual(len(self.catalog['refresh_scope']['models']), 5)
         self.assertFalse(self.catalog['ready'])
-        self.assertTrue(all(not row['ready'] and not row['framework_qualified']
-                            and not row['trusted_retest_qualified'] for row in rows))
+        qualified = [row for row in rows if row.get('scoped_qualification')]
+        self.assertEqual({row['task'] for row in qualified}, {
+            'headkernel/deepseek-v4-pro__unified_paged_attention_prefill',
+            'headkernel/minimax-m3__gemm_afp4wfp4_kernel',
+            'headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm',
+        })
+        for row in rows:
+            approved = 'scoped_qualification' in row
+            for flag in ('ready', 'framework_qualified', 'trusted_retest_qualified'):
+                self.assertEqual(row[flag], approved)
+            if not approved:
+                continue
+            evidence = row['scoped_qualification']
+            receipt = json.loads((ROOT / evidence['receipt']).read_text())
+            review = json.loads((ROOT / evidence['compatibility_review']).read_text())
+            self.assertIn(row['task'], receipt['ready_tasks'])
+            self.assertTrue((ROOT / evidence['guide']).is_file())
+            self.assertEqual(evidence['framework_execution_commit'], receipt['qualified_framework_commit'])
+            self.assertEqual(evidence['trusted_execution_commit'], receipt['qualified_trusted_commit'])
+            reviewed_commit = review.get('compatible_checkout_commit', review.get('current_commit'))
+            self.assertEqual(evidence['compatible_checkout_commit'], reviewed_commit)
+            self.assertEqual(evidence['new_framework_run_at_compatible_checkout'],
+                             evidence['framework_execution_commit'] == reviewed_commit)
+            self.assertFalse(evidence['new_trusted_retest_at_compatible_checkout'])
+            self.assertFalse(evidence['accepted_gain'])
+            self.assertFalse(evidence['model_serving_qualification_claimed'])
+            self.assertFalse(evidence['strict_snapshot_verifier_acceptance_changed'])
         historical = [row for row in rows if 'historical_ready_receipt' in row]
         self.assertEqual(len(historical), 5)
-        self.assertEqual(self.catalog['unfinished_task_count'], len(rows) - len(historical))
+        self.assertEqual(self.catalog['unfinished_task_count'], len(rows) - len(qualified))
+        self.assertEqual(self.catalog['tasks_without_historical_ready_receipt_count'],
+                         len(rows) - len(historical))
         for row in historical:
             receipt = json.loads((ROOT / row['historical_ready_receipt']).read_text())
             self.assertIn(row['task'], receipt['ready_tasks'])

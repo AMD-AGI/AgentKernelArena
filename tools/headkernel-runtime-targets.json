@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "updated_date": "2026-10-11",
-  "description": "Consolidated head-kernels-top5 mapping for all 23 SG0.5.20 source tasks. Five subsets retain historical qualification; 18 tasks remain unfinished, and all 23 require current merged-framework validation. Unified preparation uses explicit trusted_task_v1 or headkernel_artifacts_v1 protocols and does not change historical capture provenance.",
+  "updated_date": "2026-10-12",
+  "description": "Consolidated head-kernels-top5 mapping for all 23 SG0.5.20 source tasks. Five historical subsets are preserved; completed scoped qualifications link their exact execution and compatibility revisions. Full-branch qualification remains pending. Unified preparation uses explicit trusted_task_v1 or headkernel_artifacts_v1 protocols and does not change historical capture provenance.",
   "primary_sglang": "sglang_v0520",
   "alternate_sglang": "sglang_v0519",
   "current_vllm": "vllm_v0290",
@@ -24,9 +24,9 @@
     "manifest_digest": "sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
     "latest_matching_evidence_only": true,
     "allow_alternate_targets": false,
-    "status": "all_sources_integrated_pending_merged_framework_and_task_qualification",
+    "status": "all_sources_integrated_scoped_qualifications_recorded_full_branch_pending",
     "task_evidence": "task_local_contracts_and_retained_capture_provenance",
-    "gpu_validation": "fresh_source_matched_current_framework_reports_required",
+    "gpu_validation": "Completed scoped evidence is linked per task; remaining qualifications require complete source-matched framework and trusted evidence.",
     "ready": false,
     "active_task_count": 23,
     "qualification_claimed": false
@@ -208,10 +208,10 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
-      "ready": false,
-      "framework_qualified": false,
-      "trusted_retest_qualified": false,
+      "task_compatibility": "scoped_qualification_approved_at_named_commit",
+      "ready": true,
+      "framework_qualified": true,
+      "trusted_retest_qualified": true,
       "workload": "sg520_64x8192x1024_c64_tp8",
       "source_run": null,
       "target_callable": "sglang.kernels.ops.attention.dsv4.unified_kv_kernels.paged_prefill:sparse_attn_v4_paged_prefill",
@@ -234,7 +234,22 @@
       "historical_ready_guide": "ready/mla-prefill/README.md",
       "historical_ready_receipt": "ready/mla-prefill/READY.json",
       "historical_published_commit": "55c8f713b06b206e0ae1d389e6726e65140078c0",
-      "preparation_protocol": "trusted_task_v1"
+      "preparation_protocol": "trusted_task_v1",
+      "scoped_qualification": {
+        "status": "APPROVED_SCOPED_TASK_READINESS",
+        "compatible_checkout_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+        "framework_execution_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+        "trusted_execution_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+        "guide": "ready/current/mla-prefill/README.md",
+        "receipt": "ready/current/mla-prefill/READY.json",
+        "compatibility_review": "docs/reference/mla-fp4-compatibility-18bb4d67.json",
+        "case_count": 2,
+        "new_framework_run_at_compatible_checkout": false,
+        "new_trusted_retest_at_compatible_checkout": false,
+        "accepted_gain": false,
+        "model_serving_qualification_claimed": false,
+        "strict_snapshot_verifier_acceptance_changed": false
+      }
     },
     {
       "task": "headkernel/glm-5.3-flash__ck_gemm_a8w8_blockscale_bpreshuffle",
@@ -573,10 +588,10 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
-      "ready": false,
-      "framework_qualified": false,
-      "trusted_retest_qualified": false,
+      "task_compatibility": "scoped_qualification_approved_at_named_commit",
+      "ready": true,
+      "framework_qualified": true,
+      "trusted_retest_qualified": true,
       "workload": "sg520_64x8192x1024_c64_tp8",
       "source_run": "minimax-original-head-v3-194969",
       "target_callable": "aiter.ops.triton.gemm.basic.gemm_afp4wfp4:gemm_afp4wfp4_",
@@ -599,7 +614,22 @@
       "historical_ready_guide": "ready/minimax-fp4/README.md",
       "historical_ready_receipt": "ready/minimax-fp4/READY.json",
       "historical_published_commit": "ef7474dd9e29e74428ca09b4c488832db1fd220e",
-      "preparation_protocol": "trusted_task_v1"
+      "preparation_protocol": "trusted_task_v1",
+      "scoped_qualification": {
+        "status": "APPROVED_SCOPED_TASK_READINESS",
+        "compatible_checkout_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+        "framework_execution_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+        "trusted_execution_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+        "guide": "ready/current/minimax-fp4/README.md",
+        "receipt": "ready/current/minimax-fp4/READY.json",
+        "compatibility_review": "docs/reference/mla-fp4-compatibility-18bb4d67.json",
+        "case_count": 14,
+        "new_framework_run_at_compatible_checkout": false,
+        "new_trusted_retest_at_compatible_checkout": false,
+        "accepted_gain": false,
+        "model_serving_qualification_claimed": false,
+        "strict_snapshot_verifier_acceptance_changed": false
+      }
     },
     {
       "task": "headkernel/minimax-m3__gqa_share_sparse_decode_kernel",
@@ -812,11 +842,11 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "historical_subset_pending_merged_framework_revalidation",
+      "task_compatibility": "scoped_qualification_approved_at_named_commit",
       "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
-      "ready": false,
-      "framework_qualified": false,
-      "trusted_retest_qualified": false,
+      "ready": true,
+      "framework_qualified": true,
+      "trusted_retest_qualified": true,
       "historical_ready_guide": "ready/qwen-rmsnorm/README.md",
       "historical_ready_receipt": "ready/qwen-rmsnorm/READY.json",
       "historical_published_commit": "f501ef65403bdf76a122918c405f6494bc6eab38",
@@ -838,8 +868,23 @@
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors",
       "fixture_asset_count": 0,
       "fixture_declared_bytes": 0,
-      "ordinary_quality_admission": "RMSNorm_adapter_integrated_pending_current_GPU_validation",
-      "ordinary_quality_adapter_commit": "582d5ed66dd0c196045696e8e8f535d656d45999"
+      "ordinary_quality_admission": "PASS_in_framework_18bb4d67_job209533",
+      "ordinary_quality_adapter_commit": "582d5ed66dd0c196045696e8e8f535d656d45999",
+      "scoped_qualification": {
+        "status": "APPROVED_SCOPED_TASK_READINESS",
+        "compatible_checkout_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+        "framework_execution_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+        "trusted_execution_commit": "294e65a0b68a316de424d83ccfa4334ddc088456",
+        "guide": "ready/current/qwen-rmsnorm/README.md",
+        "receipt": "ready/current/qwen-rmsnorm/READY.json",
+        "compatibility_review": "ready/current/qwen-rmsnorm/COMPATIBILITY-18bb4d67.json",
+        "case_count": 2,
+        "new_framework_run_at_compatible_checkout": true,
+        "new_trusted_retest_at_compatible_checkout": false,
+        "accepted_gain": false,
+        "model_serving_qualification_claimed": false,
+        "strict_snapshot_verifier_acceptance_changed": false
+      }
     },
     {
       "task": "headkernel/qwen3.8-2.4t__paged_attention_decode",
@@ -884,7 +929,8 @@
     "reported_results": "tools/headkernel-reported-results.json",
     "image_layers_downloaded": 0,
     "gpu_validation_performed": false,
-    "task_validator_pass": false
+    "task_validator_pass": false,
+    "scope": "Original runtime/source mapping preparation only; subsequent task qualification is recorded in each scoped_qualification."
   },
   "ready": false,
   "refreshed_task_count": 23,
@@ -1075,7 +1121,8 @@
   "source_refreshed_qwen_task_count": 5,
   "fixture_preparation_task_count": 23,
   "historical_ready_subset_count": 5,
-  "unfinished_task_count": 18,
+  "unfinished_task_count": 20,
+  "tasks_without_historical_ready_receipt_count": 18,
   "consolidation": {
     "branch": "head-kernels-top5",
     "base_commit": "ba5b1c90877ca826901f2f56c0f1c02a4600d8b0",
@@ -1084,7 +1131,8 @@
     "unified_validator_config": "example_configs/headkernel_sg520_current_mi355x.yaml",
     "merged_framework_qualification": "PENDING",
     "historical_input_pins_rewritten": false,
-    "current_qualification_claimed": false
+    "current_qualification_claimed": false,
+    "qualification_scope": "complete_23_task_branch"
   },
   "setup_scopes": {
     "refreshed_sg520": "Current manifest/native task contracts selected only with an explicit supported preparation protocol.",
@@ -1117,11 +1165,19 @@
     "published_evidence_retracted": false
   },
   "ordinary_scoring_review": {
-    "status": "pending_merged_framework_revalidation",
+    "status": "scoped_qualifications_recorded_full_branch_pending",
     "current_ready": false,
     "historical_ready_routes_remain_scoped_to_original_pins": true,
     "qwen_historical_RMSNorm_evidence": "explicit_manual_trusted_route_and_protected_framework_only",
-    "qwen_rmsnorm_authoritative_timing_quality_admission": "adapter_integrated_pending_current_GPU_validation",
-    "qwen_other_four_tasks": "benchmark_repairs_and_authoritative_quality_admission_pending"
+    "qwen_rmsnorm_authoritative_timing_quality_admission": "PASS_in_framework_18bb4d67_job209533",
+    "qwen_other_four_tasks": "adapters_integrated_complete_scoped_qualification_pending",
+    "scope": "complete_23_task_branch; per-task approvals are in scoped_qualification"
+  },
+  "qualification_status_semantics": {
+    "task_flags": "ready, framework_qualified and trusted_retest_qualified describe only the completed scoped qualification in that row; they do not qualify arbitrary later checkouts or changed candidates.",
+    "framework_qualified": "The framework evidence component is accepted for the named scope and execution commit; individual framework-only results remain separately documented.",
+    "trusted_retest_qualified": "Completed trusted evidence is accepted at its original execution commit under the linked compatibility review; this does not claim a new trusted retest at the compatible checkout.",
+    "global_flags": "Top-level ready, refresh_scope qualification_claimed and consolidation current_qualification_claimed concern the complete 23-task branch.",
+    "qualification_counts": "unfinished_task_count counts tasks without an approved scoped qualification. tasks_without_historical_ready_receipt_count preserves the separate consolidation count of tasks without a historical ready-subset receipt."
   }
 }

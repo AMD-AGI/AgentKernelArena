@@ -2,7 +2,7 @@
 
 Status for **2026-10-12**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. The completed qualifications below retain their actual trusted and framework execution identities, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
 
-Use [HEADKERNELS.md](../../HEADKERNELS.md) for the consolidation sources and [the unified validator config](../../example_configs/headkernel_sg520_current_mi355x.yaml) for task selection. All task paths and five preserved guides are in this branch. The [runtime catalog](../../tools/headkernel-runtime-targets.json) distinguishes current source/runtime selection, historical capture provenance and pending qualification.
+Use [HEADKERNELS.md](../../HEADKERNELS.md) for the consolidation sources and [the unified validator config](../../example_configs/headkernel_sg520_current_mi355x.yaml) for task selection. All task paths and five preserved guides are in this branch. The [runtime catalog](../../tools/headkernel-runtime-targets.json) distinguishes current source/runtime selection, historical capture provenance and pending qualification. Its task readiness flags apply only to the linked exact-commit scoped approvals; global readiness remains false for the complete 23-task branch.
 
 ## Completed October 11 qualifications
 
