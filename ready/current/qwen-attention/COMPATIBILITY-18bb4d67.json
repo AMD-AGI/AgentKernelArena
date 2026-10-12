@@ -1,0 +1,72 @@
+{
+  "schema": "qwen-attention-final-compatibility-portable-v1",
+  "status": "PASS_COMPATIBLE_COMBINED_QUALIFICATION",
+  "current_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "task": "headkernel/qwen3.8-2.4t__paged_attention_decode",
+  "scope": "One declared case decode_m64_live|decode; complete trusted and complete framework gates retained at their actual execution commits.",
+  "complete_qualification": true,
+  "accepted_gain": false,
+  "gain_eligible": false,
+  "reviewed_utc": "2026-10-12T15:49:36.659228+00:00",
+  "original_review": {
+    "sha256": "eb172f6acbeaeb66b621006a6eabb3a4da1e9d6e134152f49cb3f77499af01de",
+    "archive_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__paged_attention_decode/18bb4d67-trusted-209572-fw8956e210-208015/qwen-attention-18bb4d67-209572-fw8956e210-208015.tar.gz",
+    "archive_member": "compatibility/FINAL-COMPATIBILITY-REVIEW.json",
+    "checks_count": 644,
+    "all_checks_passed": true
+  },
+  "trusted": {
+    "job": 209572,
+    "execution_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+    "six_fresh_phases": true,
+    "final_sha256": "1130b7ade2d993fb32e4676b9daea1295fda2cd29e0fe27025b79589164f1417",
+    "finished_unix": 1791819730.5290682,
+    "reported_preemption_unix": 1791819740,
+    "completion_margin_seconds": 9.470931768417358
+  },
+  "framework": {
+    "job": 208015,
+    "execution_commit": "8956e210472abff5fc9d133fbe4ccd2c65064f79",
+    "checks": 12,
+    "final_sha256": "e8e592b1230384c51095fa0d8331c52388ed4e3affccf12c4aacc4ab906853ff",
+    "publication_receipt_sha256": "a4774214401f3a4bcfd3b92724be13af0d2ef2c5981194d283a5dfc69de69da2",
+    "original_publication_receipt_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__paged_attention_decode/8956e210-framework-208015/ARCHIVE-VERIFIED.json"
+  },
+  "compatibility": {
+    "task_trees": {
+      "8956e210": "6db803b57903194e979f206a59f3dc3a956212e1",
+      "18bb4d67": "6db803b57903194e979f206a59f3dc3a956212e1"
+    },
+    "changed_paths": [
+      "HEADKERNELS.md",
+      "README.md",
+      "agents/task_validator/report_schema.py",
+      "agents/task_validator/validation_prompt.py",
+      "docs/how-to/headkernel-upstream-runtime.md",
+      "docs/how-to/task-validator.md",
+      "docs/how-to/whole-case-parallelism.md",
+      "docs/reference/headkernel-ready-subsets.md",
+      "src/tools/case_gpu_plan.py",
+      "src/tools/seed_aiter_jit_cache.py",
+      "src/tools/trusted_native_eval.py",
+      "src/tools/trusted_task_eval.py",
+      "tests/fixtures/spur_running_207815.json",
+      "tests/test_seed_aiter_jit_cache.py",
+      "tests/test_spur_case_admission.py",
+      "tests/test_trusted_native_eval.py",
+      "tests/test_validator_report_production.py"
+    ],
+    "new_framework_execution_claimed": false,
+    "existing_review_archive_member": "ATTENTION-FRAMEWORK-COMPATIBILITY.json"
+  },
+  "contamination_assessment": "All six attention phases independently bind HIP device count 1 to GPU0 physical UUID GPU-83d8d279dc7c9d6e and BDF 0002:00:03.0, with observed 16 CPU/64 GiB container limits and clean non-OOM exits. Raw timing series pass the quality policy with low dispersion. The concurrent unqualified MoE framework wrapper bypass on GPU2 does not establish cross-GPU contamination of attention. CPU/shared-system interference cannot be excluded categorically; observed timing quality supplies no basis to reject this unchanged-source qualification control.",
+  "exclusions": [
+    "Job 209533 incomplete attention trusted run excluded; no phase splicing.",
+    "MoE qualification and all-Qwen readiness are outside scope.",
+    "No optimization gain: reference and candidate source SHA256 identical.",
+    "Global GPU idle not verified or claimed.",
+    "OCI readback reused from durable prior verified publication receipt; no new cloud readback.",
+    "No node, SSH, Docker, scheduler, or GPU calls performed during review."
+  ],
+  "publication_followup": "The new combined archive was fully streamed back after the original independent review; READY.json pins its COMPLETE receipt."
+}

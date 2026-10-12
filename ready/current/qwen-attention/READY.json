@@ -1,0 +1,151 @@
+{
+  "schema": "current-scoped-ready-entry-v1",
+  "status": "SCOPED_TASK_READINESS_APPROVED_BY_EXPLICIT_COMPATIBILITY",
+  "task": "headkernel/qwen3.8-2.4t__paged_attention_decode",
+  "ready_tasks": [
+    "headkernel/qwen3.8-2.4t__paged_attention_decode"
+  ],
+  "qualified_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "compatible_checkout_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "qualified_framework_commit": "8956e210472abff5fc9d133fbe4ccd2c65064f79",
+  "qualified_trusted_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "task_tree": "6db803b57903194e979f206a59f3dc3a956212e1",
+  "editable_file": "tasks/headkernel/qwen3.8-2.4t__paged_attention_decode/source/pa_kernels.cuh",
+  "editable_kernels": [
+    "_paged_attention_kernel",
+    "_paged_attention_ll4mi_reduce_kernel"
+  ],
+  "source_sha256": "76f165a169697f3eeba563eeb02b233aaf67e3e5bb52fc0149707cc3a61ada73",
+  "case_ids": [
+    "decode_m64_live|decode"
+  ],
+  "scope": {
+    "cases": 1,
+    "case_id": "decode_m64_live|decode",
+    "m": 64,
+    "dtype": "bfloat16",
+    "page_size": 1,
+    "kv_cache_layout": "NHD",
+    "partition_size": 256,
+    "positional_arguments": 19,
+    "other_tasks_or_serving_capture_covered": false
+  },
+  "measurement": {
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "trusted_samples": 200,
+    "framework_samples": 100,
+    "method": "GPU graph replay",
+    "fresh_queries_and_CPU_softmax_references": true,
+    "captured_KV_and_routing_preserved": true,
+    "event_fallback_allowed": false
+  },
+  "runtime": {
+    "catalog": "tools/headkernel-runtime-targets.json",
+    "image_key": "sglang_v0520",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64"
+  },
+  "preparation_tool": "tools/prepare_headkernel_run.py",
+  "setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
+  "trusted_measurement": {
+    "job": "209572",
+    "commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+    "phases": 6,
+    "cases": 1,
+    "raw_samples": 200,
+    "measurement_sha256": "55a669cbe3ad205f8a78cf4a3960d5068914e11b0b1aad9d9491fa5cde2bd0c4",
+    "FINAL_sha256": "1130b7ade2d993fb32e4676b9daea1295fda2cd29e0fe27025b79589164f1417",
+    "retirement_sha256": "5f92c0681e08b4eb9eea467fcae07a002d20ae01cc2926d2470f9117db49ad1a",
+    "finished_utc": "2026-10-12T15:42:10.529+00:00",
+    "retirement_utc": "2026-10-12T15:42:09.519+00:00",
+    "phase_input_observations": 12,
+    "input_entries_per_observation": 37,
+    "new_trusted_comparison_executed": true,
+    "source_control_unchanged": true
+  },
+  "framework": {
+    "job": "208015",
+    "commit": "8956e210472abff5fc9d133fbe4ccd2c65064f79",
+    "checks_passed": 12,
+    "cases": 1,
+    "raw_samples": 100,
+    "checked_invocations": 118,
+    "report_sha256": "7f06aa5bab3fc5ae2ee14bceb591418d5e65db7ffa3185c9f97f456a0b130336",
+    "marker_sha256": "04a703cbcbfaa981a038ee7a11e065f189230c07e7c0bf593f683ce96054f8dc",
+    "integrity_sha256": "c0fca126d9543258254e72a1683b75fe90cec18f6777b84c4bda31434519d175",
+    "FINAL_sha256": "e8e592b1230384c51095fa0d8331c52388ed4e3affccf12c4aacc4ab906853ff",
+    "retirement_sha256": "b4c8afa58e5d84de9b65d8d91048c569749ed523f8c20be0037fab4a61c8dbec",
+    "finished_utc": "2026-10-11T17:29:54.569+00:00",
+    "current_completion_checker_accepts": true,
+    "final_workspace_entries_verified": 37,
+    "new_framework_execution_at_compatible_checkout": false,
+    "original_publication_receipt": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__paged_attention_decode/8956e210-framework-208015/ARCHIVE-VERIFIED.json",
+    "original_publication_receipt_sha256": "a4774214401f3a4bcfd3b92724be13af0d2ef2c5981194d283a5dfc69de69da2"
+  },
+  "fixtures": {
+    "registry": "tools/headkernel-artifacts.json",
+    "registry_sha256": "2cfaa201c704dbffa97903f4ed3279be9675c68e90ca30af57618e4a11a726b1",
+    "files": 1,
+    "bytes": 536480065,
+    "oci_object": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors/qwen3.8-2.4t__paged_attention_decode/ut/reference_io.pt",
+    "sha256": "9c40d52c145027f8affca9e41bbf1100189fde724d42d085ac6296d57020ac56",
+    "body_in_evidence_archive": false,
+    "provenance": "Original SG0.5.18 TP8/EP8 page-1 ragged capture; no new SG0.5.20 serving capture."
+  },
+  "compatibility": {
+    "file": "COMPATIBILITY-18bb4d67.json",
+    "original_review_sha256": "eb172f6acbeaeb66b621006a6eabb3a4da1e9d6e134152f49cb3f77499af01de",
+    "checks_passed": 644,
+    "status": "PASS_COMPATIBLE_COMBINED_QUALIFICATION",
+    "applies_to_exact_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+    "old_measurements_relabelled": false,
+    "changed_candidate_requires_new_complete_current_evaluation": true
+  },
+  "archive": {
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__paged_attention_decode/18bb4d67-trusted-209572-fw8956e210-208015/",
+    "archive_file": "qwen-attention-18bb4d67-209572-fw8956e210-208015.tar.gz",
+    "archive_bytes": 5082565,
+    "archive_sha256": "3ec8176964863adbbe66f41fa571436d3583ef38384fc04f3c27f043a91a199f",
+    "manifest_sha256": "c936d7ee5c74ee2191d3c5207a58fc6367bcce3945b6afaf24240860b782b0a0",
+    "complete_receipt": "COMPLETE.json",
+    "complete_sha256": "1fffb085ccdba9ddd0304ef4d817df0e089d4085374827f00f31161d4ccd84aa",
+    "objects": {
+      "MANIFEST.json": {
+        "bytes": 210199,
+        "sha256": "c936d7ee5c74ee2191d3c5207a58fc6367bcce3945b6afaf24240860b782b0a0"
+      },
+      "PACKAGE.json": {
+        "bytes": 3965,
+        "sha256": "77198a6444eb6db2be2608fbc8a1bf5ae12c1853b3d1d74467fe8618294696a5"
+      },
+      "README-PUBLICATION.md": {
+        "bytes": 1813,
+        "sha256": "2b1958fe1bf7b47392e562147319088c11fa3e440c73025f966c2f6f35e9be56"
+      },
+      "SHA256SUMS": {
+        "bytes": 369,
+        "sha256": "4423c70b9c5e7879133bdd0346d3e18e693e8635695099fbf304e4e53b8c0f59"
+      },
+      "qwen-attention-18bb4d67-209572-fw8956e210-208015.tar.gz": {
+        "bytes": 5082565,
+        "sha256": "3ec8176964863adbbe66f41fa571436d3583ef38384fc04f3c27f043a91a199f"
+      },
+      "PUBLICATION-READBACK.json": {
+        "bytes": 1338,
+        "sha256": "b14e5b5695e15f2bf73fb0362c47981259d3ed81c3d340a6aec1a49973c7ef0d"
+      }
+    },
+    "payload_files": 786,
+    "payload_symlinks": 15,
+    "all_remote_objects_readback_verified": 7,
+    "all_payload_hashes_verified_from_remote_stream": true
+  },
+  "accepted_gain": false,
+  "gain_eligible": false,
+  "new_sglang_serving_capture_claimed": false,
+  "global_gpu_idle_claimed": false,
+  "strict_snapshot_verifier_acceptance_changed": false,
+  "later_branch_tips_automatically_covered": false
+}

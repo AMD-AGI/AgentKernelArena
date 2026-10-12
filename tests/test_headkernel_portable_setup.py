@@ -118,6 +118,7 @@ class PortableSetupTests(unittest.TestCase):
             'headkernel/deepseek-v4-pro__unified_paged_attention_prefill',
             'headkernel/minimax-m3__gemm_afp4wfp4_kernel',
             'headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm',
+            'headkernel/qwen3.8-2.4t__paged_attention_decode',
         })
         for row in rows:
             approved = 'scoped_qualification' in row
@@ -136,7 +137,8 @@ class PortableSetupTests(unittest.TestCase):
             self.assertEqual(evidence['compatible_checkout_commit'], reviewed_commit)
             self.assertEqual(evidence['new_framework_run_at_compatible_checkout'],
                              evidence['framework_execution_commit'] == reviewed_commit)
-            self.assertFalse(evidence['new_trusted_retest_at_compatible_checkout'])
+            self.assertEqual(evidence['new_trusted_retest_at_compatible_checkout'],
+                             evidence['trusted_execution_commit'] == reviewed_commit)
             self.assertFalse(evidence['accepted_gain'])
             self.assertFalse(evidence['model_serving_qualification_claimed'])
             self.assertFalse(evidence['strict_snapshot_verifier_acceptance_changed'])
