@@ -1,6 +1,6 @@
 # Consolidated head-kernel tasks and qualification evidence
 
-Status for **2026-10-12**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. The completed qualifications below retain their actual trusted and framework execution identities, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
+Status for **2026-10-12**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. **Seven tasks have completed scoped qualifications; 16 remain unfinished.** The completed qualifications below retain their actual trusted and framework execution identities, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
 
 Use [HEADKERNELS.md](../../HEADKERNELS.md) for the consolidation sources and [the unified validator config](../../example_configs/headkernel_sg520_current_mi355x.yaml) for task selection. All task paths and five preserved guides are in this branch. The [runtime catalog](../../tools/headkernel-runtime-targets.json) distinguishes current source/runtime selection, historical capture provenance and pending qualification. Its task readiness flags apply only to the linked exact-commit scoped approvals; global readiness remains false for the complete 23-task branch.
 
@@ -40,6 +40,12 @@ The [1,334-check compatibility review](../../ready/current/qwen-recurrent/COMPAT
 [Current Qwen MXFP4 MoE](../../ready/current/qwen-moe/README.md) joins a fresh `096452d9` framework PASS on job 209857 with the completed `eed4df57` trusted comparison on job 209670. Both original captured cases passed all 12 framework checks and all six trusted phases, with 200 framework and 400 trusted samples. The replay audit, eight mirrored integrity observations and owned retirement passed before framework FINAL at **2026-10-12 19:08:01 UTC**.
 
 The [exact compatibility review](../../ready/current/qwen-moe/COMPATIBILITY-096452d9.json) records unchanged task, timing, numerical, quality and trusted-runtime code. The trusted execution retains its original eed4 identity; no new trusted run at 096 is claimed. All eight OCI publication objects were read back, including every byte and mode of 313 archive members. No gain or new serving capture is claimed. The earlier framework WARN remains unchanged and is not promoted.
+
+## Completed October 12 Kimi Lean qualification
+
+[Current Kimi Lean attention decode](../../ready/current/kimi-lean/README.md) is the seventh completed scoped task, approved at `eed4df57` for the original B64, page-1 structural case and sampled sequence lengths 8193–9216. The actual framework execution on job 209907 passed all 12 checks, with **100 candidate + 100 reference samples**, 110 checked pairs and all **39 canonical post-validator input observations**, before preemption. Its owned containers retired before the host wrapper failed while importing PyYAML.
+
+The [explicit compatibility and CPU-recovery approval](../../ready/current/kimi-lean/COMPATIBILITY-RECOVERY-eed4df57.json) preserves that host failure and binds a separate `RECOVERY-FINAL.json`; it invents no original `FINAL.json` or missing host input receipts. The complete trusted comparison remains attributed to `20c1a949`/job 200712, with compiled controls separately attributed to job 201533. All eight publication objects and 384 payload files passed full streamed readback. **No new GPU execution during recovery, trusted rerun, exhaustive length timing, accepted optimization gain or serving/E2E gain is claimed.**
 
 ## Additional completed framework evidence
 
@@ -128,12 +134,11 @@ The guide records the original server arguments and source-path mapping. Retaine
 
 ## Remaining gates for the other historical subsets
 
-The completed MLA, FP4 and RMSNorm handoffs above do not discharge the remaining gates for DeepSeek quantization and Kimi Lean decode. Their original published receipts remain unchanged.
+The completed scoped handoffs above do not discharge the remaining gate for DeepSeek quantization. Kimi Lean now has the explicitly approved recovery handoff above; all original historical receipts remain unchanged.
 
 | Task | Remaining gate |
 | --- | --- |
 | DeepSeek `per_group_quant_fp8` | Preserve the earlier timing rejection and the later native-event SIGSEGV as separate attempts. Input-freeze and graph/event lifetime repairs are integrated; their full current qualification remains pending. |
-| Kimi `lean_attention_decode` | Complete current framework/trusted validation and applicable runtime compatibility review, preserving the historical sampled-length scope. |
 
 ## Eighteen tasks without historical ready-subset receipts
 

@@ -117,6 +117,7 @@ class PortableSetupTests(unittest.TestCase):
         self.assertEqual({row['task'] for row in qualified}, {
             'headkernel/deepseek-v4-pro__unified_paged_attention_prefill',
             'headkernel/minimax-m3__gemm_afp4wfp4_kernel',
+            'headkernel/kimi-k3__lean_attention_decode',
             'headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm',
             'headkernel/qwen3.8-2.4t__paged_attention_decode',
             'headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode',
