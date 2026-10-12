@@ -7,7 +7,14 @@ import argparse
 import ast
 import hashlib
 import json
+import os
 from pathlib import Path
+
+# Admission is by exact reviewed bytes. The AST checks below explain that known
+# version's binding; they are not a sound verifier for arbitrary Python rewrites.
+REVIEWED_HELPER_SHA256 = frozenset({
+    '40d97860647ee0a939b80c76f1de4a79758cff67fa6aa008670c42a202a82ed3',
+})
 
 
 def require(value, message):
@@ -31,6 +38,9 @@ def attribute_calls(node, receiver, attribute):
 
 
 def audit_helper(source):
+    raw = source.encode('utf-8') if isinstance(source, str) else source
+    digest = hashlib.sha256(raw).hexdigest()
+    require(digest in REVIEWED_HELPER_SHA256, 'unreviewed canonical helper bytes')
     tree = ast.parse(source)
     functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
     main = functions['benchmark_cuda_graph_or_events_samples']
@@ -69,32 +79,57 @@ def audit_helper(source):
     require(any(k.arg is None and isinstance(k.value, ast.Name) and k.value.id == 'capture_kwargs'
                 for k in assignments[0].value.keywords), 'final capture does not receive output holder')
     return {'source_binding': 'same final graph variable and captured output holder',
+            'reviewed_helper_sha256': digest,
             'measured_call_line': measured[0].lineno, 'validation_closure_line': replay.lineno,
             'binding_line': bindings[0].lineno}
 
 
 def audit_evidence(helper, report_path, integrity_path, performance_path):
     import yaml
-    report = yaml.safe_load(Path(report_path).read_text())
-    integrity = json.loads(Path(integrity_path).read_text())
-    performance = json.loads(Path(performance_path).read_text())
+    # Check hashes and explain bindings from the same byte snapshots.
+    helper_raw = Path(helper).read_bytes()
+    report_raw = Path(report_path).read_bytes()
+    integrity_raw = Path(integrity_path).read_bytes()
+    performance_raw = Path(performance_path).read_bytes()
+    helper_digest = hashlib.sha256(helper_raw).hexdigest()
+    performance_digest = hashlib.sha256(performance_raw).hexdigest()
+    helper_proof = audit_helper(helper_raw)
+    report = yaml.safe_load(report_raw)
+    integrity = json.loads(integrity_raw)
+    performance = json.loads(performance_raw)
     require(integrity['status'] == 'PASS' and integrity['raw_declared_sources_unchanged'] is True,
             'retained source integrity did not pass')
-    require(integrity['validation_report_sha256'] == sha(report_path), 'final report hash differs')
-    require(integrity['harness']['before_digests']['scripts/_aka_benchmark.py'] == sha(helper)
+    require(integrity['validation_report_sha256'] == hashlib.sha256(report_raw).hexdigest(), 'final report hash differs')
+    require(integrity['harness']['before_digests']['scripts/_aka_benchmark.py'] == helper_digest
             == integrity['harness']['after_digests']['scripts/_aka_benchmark.py'], 'executed helper hash differs')
     quality = report['checks']['benchmark_integrity']['benchmark_quality']
-    require(quality['status'] == 'pass' and quality['performance_report_sha256'] == sha(performance_path),
+    require(quality['status'] == 'pass' and quality['performance_report_sha256'] == performance_digest,
             'current quality/performance binding differs')
     require(performance['status'] == 'ok' and performance['cases'], 'performance report is incomplete')
     for row in performance['cases']:
         require(row['validation']['measured_graph_validated'] is True,
                 'executed harness did not confirm measured replay validation')
-    return {'status': 'EVIDENCE_CHAIN_AUDITED', **audit_helper(Path(helper).read_text()),
-            'helper_sha256': sha(helper), 'performance_sha256': sha(performance_path),
+    return {'status': 'EVIDENCE_CHAIN_AUDITED', **helper_proof,
+            'helper_sha256': helper_digest, 'performance_sha256': performance_digest,
             'case_count': len(performance['cases']), 'retained_overall_status': report['overall_status'],
             'exported_graph_handles_or_per_sample_pointer_ids': False,
             'scope': 'frozen source binding plus executed assertion receipts; no result promotion'}
+
+
+def write_fresh_result(output, result, evidence_paths):
+    output = Path(output)
+    resolved = output.resolve()
+    for evidence in evidence_paths:
+        evidence = Path(evidence)
+        require(resolved != evidence.resolve(), 'audit output aliases an evidence input')
+        if output.exists() and evidence.exists():
+            require(not output.samefile(evidence), 'audit output aliases an evidence input')
+    encoded = (json.dumps(result, indent=2) + '\n').encode('utf-8')
+    # O_EXCL also rejects existing and dangling symlinks. O_NOFOLLOW makes the
+    # final-component policy explicit; exclusivity protects a race after checks.
+    descriptor = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(descriptor, 'wb') as stream:
+        stream.write(encoded)
 
 
 def main():
@@ -103,7 +138,7 @@ def main():
         parser.add_argument('--' + name, required=True, type=Path)
     args = parser.parse_args()
     result = audit_evidence(args.helper, args.report, args.integrity, args.performance)
-    args.out.write_text(json.dumps(result, indent=2) + '\n')
+    write_fresh_result(args.out, result, (args.helper, args.report, args.integrity, args.performance))
     print(json.dumps(result))
 
 

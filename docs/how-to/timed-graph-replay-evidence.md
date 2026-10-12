@@ -21,12 +21,18 @@ python3 -m src.tools.audit_timed_graph_replay \
   --out replay-evidence-audit.json
 ```
 
-The audit checks the final timing and validation callback bindings, captured-output
+The audit admits only explicitly reviewed canonical helper byte hashes; unknown
+versions, including graph-rebinding edits, are rejected. Its AST checks explain the
+reviewed version rather than attempting to validate arbitrary rewrites. It checks
+the final timing and validation callback bindings, captured-output
 binding, helper hashes before and after execution, finalized report hash, current
 quality/performance hash, and the successful measured-replay assertions in the raw
 cases. Negative tests substitute a different graph, replay callback, or output and
 require rejection. The checker recognizes this specific helper structure; it is
 not a verifier for arbitrary Python, graph binaries, or malicious runtime libraries.
+The output must be a new path: aliases of evidence inputs, existing files, and
+symlinks are rejected. Exclusive, no-follow creation prevents overwriting evidence
+even if another process creates the output after the alias checks.
 
 This is source-bound execution evidence. Existing reports do not export process-local
 graph handles, output pointer traces, or per-sample input generation IDs. Those values
