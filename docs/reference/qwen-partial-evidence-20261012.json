@@ -1,0 +1,53 @@
+{
+  "schema": "headkernel-partial-evidence-publication-v1",
+  "source_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "job": "209670",
+  "complete_task_qualification": false,
+  "accepted_gain": false,
+  "readback": {
+    "uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/partial-evidence/qwen-209670-publication/REMOTE-READBACK.json",
+    "sha256": "192185bd3b504ea2ea90508eed22d871faa5e62e0ec29515b410fad91f42a115",
+    "observed_utc": "2026-10-12T18:12:16.201045+00:00",
+    "export_objects_verified": 19,
+    "archive_members_verified": 279,
+    "receipt_remote_readback_verified": true
+  },
+  "tasks": [
+    {
+      "task": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster",
+      "task_tree": "35a79fa817f1d2d72c86e8f2f410f7faf69f419a",
+      "scope": "FRAMEWORK_PASS_TRUSTED_REQUIRED",
+      "gpu": 3,
+      "framework_checks_passed": 12,
+      "cases": 5,
+      "samples": 500,
+      "final_utc": "2026-10-12T16:50:39.670+00:00",
+      "remote_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/partial-evidence/qwen3.8-2.4t__dense_bf16_gemm_cluster/eed4df57-framework-209670-gpu3/",
+      "export_manifest": "EXPORT-MANIFEST.json",
+      "export_manifest_sha256": "f1bd966a1fe0a65d26cafcc42c0e447fde055ee21ce620f4e99968a36b215b62",
+      "archive": "dense-framework-eed4df57-209670-gpu3.tar.gz",
+      "archive_bytes": 954368,
+      "archive_sha256": "b438c26f23c97721b31eaf4ce9241dc19f999baeac48168c91941c2e756f541e",
+      "remaining_gate": "Complete fresh trusted comparison, followed by explicit combined qualification review."
+    },
+    {
+      "task": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+      "task_tree": "21fdf3f28ca1efbe8053c90f708ed15f74678bbc",
+      "scope": "TRUSTED_PASS_FRAMEWORK_WARN",
+      "gpu": 2,
+      "trusted_phases_passed": 6,
+      "cases": 2,
+      "samples": 400,
+      "final_utc": "2026-10-12T16:50:01.573+00:00",
+      "remote_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/partial-evidence/qwen3.8-2.4t__fused_moe_2stage_mxfp4/eed4df57-trusted-209670-gpu2/",
+      "export_manifest": "EXPORT-MANIFEST.json",
+      "export_manifest_sha256": "5de463c861f6a1551511a0a3c7c5f6d8a3300d9ced1898c02bf3dce276587fbc",
+      "archive": "payload.tar.gz",
+      "archive_bytes": 893280,
+      "archive_sha256": "cf81580c4e28bd39ae4bc10fced58c4718efe1a91226ff80a4b767484e44c4be",
+      "retained_framework_status": "WARN",
+      "retained_framework_replay_validation_valid": null,
+      "remaining_gate": "Fresh complete framework PASS, followed by explicit combined qualification review. The retained WARN is unchanged."
+    }
+  ]
+}
