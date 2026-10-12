@@ -27,7 +27,7 @@ performance_command:
 
 harness_path: scripts/_bench.py
 
-task_type: triton2triton
+task_type: native_routing
 
 platform_support:
   required_arch: gfx950

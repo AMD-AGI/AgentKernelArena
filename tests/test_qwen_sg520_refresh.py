@@ -35,6 +35,7 @@ def test_native_source_and_existing_callable_contract(name, count):
     assert meta["capture_source_provenance"]["runtime_image"] != IMAGE
     if name in {"dense_bf16_gemm_cluster", "fused_moe_2stage_mxfp4"}:
         assert meta["runtime_refresh"] == refresh
+        assert cfg["task_type"] == "native_routing"
         assert cfg["source_file_path"] == ["source/routing.py"]
         assert cfg["target_kernel_functions"] == ["select_routes"]
         assert meta["source_provenance"]["candidate_source"] == "source/routing.py"
@@ -55,7 +56,6 @@ def test_native_source_and_existing_callable_contract(name, count):
             assert context["routes"] == {"decode_m64_live": "captured", "prefill_m8192_live": "captured"}
             assert context["fixture_sha256"] == meta["reference_io_sha256"]
         else:
-            assert cfg["task_type"] == "native_routing"
             assert cfg["headkernel"]["optimization_surface"] == "constrained_native_backend_routing"
             protected = task / meta["source_provenance"]["protected_native_source"]
             assert hashlib.sha256(protected.read_bytes()).hexdigest() == refresh["candidate_sha256"]

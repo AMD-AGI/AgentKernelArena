@@ -6,6 +6,12 @@ through a constrained `block_size_M` policy. The editable file is
 mapping for both original captured cases. The evaluator parses this mapping as
 data and never imports or executes candidate Python.
 
+The task declares `task_type: native_routing`, so optimization and validation
+prompts describe the literal policy boundary and frozen native implementations.
+The trusted quality profile requires that same task type. All twelve validator
+checks, both captured cases, and the existing correctness and timing protocol
+remain required.
+
 | Case | Hidden states | Top-k routes | Capture topology |
 | --- | --- | --- | --- |
 | `decode_m64_live` | BF16 `[64, 8192]`, stride `[8192, 1]` | `[64, 10]` | TP8/EP8, 64 local experts of 512 |

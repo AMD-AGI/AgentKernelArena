@@ -22,7 +22,7 @@ _QWEN_GRAPH_PROFILES = {
         'op_kind': 'fused_add_rmsnorm', 'cases': 2,
     },
     'qwen_mxfp4_moe_graph_v1': {
-        'task_type': 'triton2triton', 'sources': ['source/routing.py'], 'targets': ['select_routes'],
+        'task_type': 'native_routing', 'sources': ['source/routing.py'], 'targets': ['select_routes'],
         'op_kind': 'moe', 'cases': 2, 'native_routing': True, 'routing_kind': 'moe',
         'validator': 'scripts/_routing_contract.py',
     },
