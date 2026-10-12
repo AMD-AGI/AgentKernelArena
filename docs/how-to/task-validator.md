@@ -136,6 +136,21 @@ must exit zero, and stale JSON/YAML output cannot override a failure. The final
 CLI exits nonzero when any task validation fails. WARN is non-failing but requires
 review.
 
+Before ending, the validator must run the canonical read-only report checker
+shown in its prompt. `checks` must be a mapping containing each of the 12 named
+checks exactly once. Lists, missing checks, unknown checks and duplicate YAML
+keys are rejected. The checker reuses the existing normalization rules and does
+not execute task code, alter reports, or write a completion marker. A correctly
+formed report of a failed task passes the format check; the task remains failed.
+Report-format corrections use only the observations already collected and never
+authorize rerunning commands or changing measurements or findings.
+
+Finalization independently enforces the same strict YAML parsing and preserves
+the exact submitted draft under `submitted_report` in the finalized report,
+including its SHA-256. UTF-8 drafts are retained as text and other bytes as
+base64. This keeps format failures diagnosable in the existing report archive;
+it does not repair or promote an earlier failed run.
+
 For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
 methods. CPU/host timing, missing or mixed methods, candidate-triggered fallback,
 invalid/partial cases, missing state restore, or demonstrably asymmetric timed work

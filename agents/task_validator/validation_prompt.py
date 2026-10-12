@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shlex
 import tempfile
 import sys
 from pathlib import Path
@@ -83,7 +84,7 @@ checks:
     status: ""                        # PASS | WARN | FAIL
     details: ""
   result_template_compatibility:
-    status: ""                        # PASS | FAIL
+    status: ""                        # PASS | WARN | FAIL (never SKIP)
     evidence: []
     details: ""
   benchmark_integrity:
@@ -323,6 +324,11 @@ def build_validation_prompt(task_config_dir: str, workspace: str, eval_config: d
     task_type = task_config.get("task_type")
     family_guidance = _task_family_guidance(task_type)
     framework_facts = _trusted_framework_facts(workspace, task_type)
+    draft_check_command = shlex.join([
+        str(python_path), str(Path(__file__).with_name("report_schema.py").resolve()),
+        "--check-draft", str(Path(workspace) / "validation_report.yaml"),
+        "--task-name", task_name,
+    ])
 
     return f"""# AgentKernelArena Task Validator (schema v{REPORT_SCHEMA_VERSION})
 
@@ -349,7 +355,9 @@ validator run itself contains only the current implementation.
 
 Perform all 12 checks below in order and write `{workspace}/validation_report.yaml`
 using the exact schema at the end. Run each applicable command exactly once; never
-retry, fix, or optimize. Record every configured command separately in `attempts[]`.
+retry, fix, or optimize task code/commands. Record every configured command separately
+in `attempts[]`. The final report-format check below may correct only report structure
+using already recorded evidence; it never authorizes another task command.
 
 Use observable violations, not absence of proof, for FAIL. For judgment-heavy fields,
 use `null` and WARN when the available workspace/runtime evidence is genuinely
@@ -611,4 +619,29 @@ status, inject authoritative guard coverage, and reject missing checks.
 ```yaml
 {VALIDATION_REPORT_SCHEMA}
 ```
+
+## Required final report-format check
+
+`checks` MUST be one YAML mapping keyed by exactly the 12 names above, each appearing
+once. Do not write a list of named checks, duplicate keys, numbered keys, or omit a
+check. Lists belong only in fields such as `attempts` and `evidence`.
+In particular, `result_template_compatibility` cannot SKIP just because the optional
+`task_result_template` is null; review the actual result flow as described in check 10.
+
+After writing the report, and again after any report edit, run this trusted framework
+helper as your final command before ending. This explicit read-only helper is allowed
+outside the task workspace; it only checks report data against the canonical schema.
+
+```bash
+{draft_check_command}
+```
+
+Require exit code 0 and `schema_status: PASS`. A correctly formed report of a failed
+or warned task can pass this format check; `projected_task_status` is not a request to
+change the findings. If the helper reports errors, correct only the report structure
+from the observations already collected, then check it again. Preserve every failure,
+timeout, warning and measured value. Never rerun a task command to repair this file,
+invent missing evidence, edit task inputs, or create the framework completion marker.
+Do not finish with an unchecked report; if evidence is unavailable, report that
+limitation truthfully instead of changing the outcome to obtain PASS.
 """

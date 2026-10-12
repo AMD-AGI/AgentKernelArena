@@ -8,6 +8,7 @@ the aggregate status.  This module provides that trust boundary.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +83,57 @@ HARD_BENCHMARK_REVIEW_FIELDS = (
     "timing_boundaries_valid",
 )
 ADVISORY_BENCHMARK_REVIEW_FIELDS = ("replay_validation_valid",)
+
+
+class _ReportLoader(yaml.SafeLoader):
+    """Reject ambiguous report mappings instead of silently taking the last key."""
+
+    def construct_mapping(self, node, deep=False):
+        self.flatten_mapping(node)
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicate = key in seen
+                seen.add(key)
+            except TypeError as exc:
+                raise yaml.constructor.ConstructorError(
+                    None, None, "report mapping key must be hashable", key_node.start_mark
+                ) from exc
+            if duplicate:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"duplicate report mapping key: {key!r}", key_node.start_mark
+                )
+        return super().construct_mapping(node, deep=deep)
+
+
+def _load_report_yaml(content):
+    return yaml.load(content, Loader=_ReportLoader)
+
+
+def check_draft_report(path: str | Path, *, expected_task_name: str) -> dict[str, Any]:
+    """Check report data with the canonical normalizer; never run task helpers."""
+    content = None
+    try:
+        path = Path(path)
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("Draft report must be a regular file")
+        content = path.read_bytes()
+        normalized = normalize_report(
+            _load_report_yaml(content), expected_task_name=expected_task_name
+        )
+        errors = normalized["validation_errors"]
+        task_status = normalized["overall_status"]
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
+        errors = [str(exc)]
+        task_status = None
+    return {
+        "schema_status": "FAIL" if errors else "PASS",
+        "projected_task_status": task_status,
+        "report_sha256": hashlib.sha256(content).hexdigest() if content is not None else None,
+        "errors": errors,
+        "scope": "Report format only; no task commands, finalization or completion marker.",
+    }
 
 
 def _utc_timestamp() -> str:
@@ -534,10 +586,11 @@ def finalize_report(
     marker_path.unlink(missing_ok=True)
 
     raw_report: Any = None
+    submitted_bytes: bytes | None = None
     if report_path.exists():
         try:
-            with report_path.open() as handle:
-                raw_report = yaml.safe_load(handle)
+            submitted_bytes = report_path.read_bytes()
+            raw_report = _load_report_yaml(submitted_bytes)
         except Exception as exc:  # Malformed agent output is data, not a launcher crash.
             framework_error = framework_error or f"Unable to parse agent report: {exc}"
 
@@ -603,6 +656,15 @@ def finalize_report(
         expected_task_name=expected_task_name,
         framework_error=framework_error,
     )
+    if submitted_bytes is not None:
+        # Keep the exact pre-normalization draft inside the existing mirrored
+        # report. A failed attempt must remain diagnosable after the agent exits.
+        submitted = {"sha256": hashlib.sha256(submitted_bytes).hexdigest()}
+        try:
+            submitted["raw_yaml"] = submitted_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            submitted["raw_base64"] = base64.b64encode(submitted_bytes).decode("ascii")
+        report["submitted_report"] = submitted
     requirement = _bind_integrity_requirement(workspace_path, report, raw_report)
     _atomic_yaml_dump(report_path, report)
     digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
@@ -617,7 +679,7 @@ def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> 
     """Record a failed audit without running any task-controlled helper code."""
     report_path = workspace / REPORT_FILENAME
     try:
-        raw = yaml.safe_load(report_path.read_text()) if report_path.is_file() and not report_path.is_symlink() else None
+        raw = _load_report_yaml(report_path.read_bytes()) if report_path.is_file() and not report_path.is_symlink() else None
     except (OSError, yaml.YAMLError):
         raw = None
     if isinstance(raw, dict) and isinstance(raw.get("checks"), dict):
@@ -625,6 +687,8 @@ def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> 
             "status": "FAIL", "details": error, "post_validator_integrity_verified": False,
         }
     report = normalize_report(raw, expected_task_name=task_name, framework_error=error)
+    if isinstance(raw, dict) and "submitted_report" in raw:
+        report["submitted_report"] = raw["submitted_report"]
     requirement = _bind_integrity_requirement(workspace, report, raw)
     _atomic_yaml_dump(report_path, report)
     _atomic_yaml_dump(workspace / COMPLETION_MARKER_FILENAME, {
@@ -642,10 +706,8 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
     if not report_path.is_file() or not marker_path.is_file():
         return False
     try:
-        with marker_path.open() as handle:
-            marker = yaml.safe_load(handle)
-        with report_path.open() as handle:
-            report = yaml.safe_load(handle)
+        marker = _load_report_yaml(marker_path.read_bytes())
+        report = _load_report_yaml(report_path.read_bytes())
     except Exception:
         return False
     if not isinstance(marker, dict) or not isinstance(report, dict):
@@ -669,3 +731,16 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
         return False
     from src.validator_integrity import completion_integrity_matches
     return completion_integrity_matches(workspace_path, marker, report)
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(description="Read-only canonical validator draft report check")
+    parser.add_argument("--check-draft", type=Path, required=True)
+    parser.add_argument("--task-name", required=True)
+    arguments = parser.parse_args()
+    result = check_draft_report(arguments.check_draft, expected_task_name=arguments.task_name)
+    print(json.dumps(result, indent=2))
+    raise SystemExit(0 if result["schema_status"] == "PASS" else 1)
