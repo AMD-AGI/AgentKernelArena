@@ -130,6 +130,9 @@ def extract_task(repo, commit, task_path, destination, *, allow_internal_symlink
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with tar.extractfile(member) as handle:
                     target.write_bytes(handle.read())
+                # Match safe archive extraction while retaining Git's
+                # executable bit for protected launch/UT scripts.
+                target.chmod((member.mode & 0o777) & ~0o022)
             elif member.issym() and allow_internal_symlinks:
                 links.append((target, member.linkname))
             else:

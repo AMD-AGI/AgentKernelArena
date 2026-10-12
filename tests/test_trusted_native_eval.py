@@ -7,6 +7,7 @@ import math
 import os
 import pwd
 import shutil
+import stat
 import subprocess
 import uuid
 from pathlib import Path
@@ -18,6 +19,27 @@ from src.tools import trusted_native_eval as trusted
 
 TASK_PATH = "tasks/headkernel_sg520/deepseek-v4-pro__per_group_quant_fp8"
 REAL_TASK = Path(__file__).resolve().parents[1] / TASK_PATH
+
+
+def test_extract_task_preserves_safe_committed_executable_modes(tmp_path):
+    repo = tmp_path / "repo"
+    task = repo / "tasks/example"
+    (task / "ut").mkdir(parents=True)
+    executable = task / "ut/check.py"
+    executable.write_text("#!/usr/bin/env python3\nprint('fixture')\n")
+    executable.chmod(0o755)
+    regular = task / "ut/helper.py"
+    regular.write_text("VALUE = 1\n")
+    regular.chmod(0o644)
+    for command in (["init", "-q"], ["add", "."],
+                    ["-c", "user.name=CPU Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture"]):
+        subprocess.run(["git", "-C", str(repo), *command], check=True)
+    commit = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    output = tmp_path / "extracted"
+    trusted.extract_task(repo, commit, "tasks/example", output)
+    assert (output / "ut/check.py").read_bytes() == executable.read_bytes()
+    assert stat.S_IMODE((output / "ut/check.py").stat().st_mode) == 0o755
+    assert stat.S_IMODE((output / "ut/helper.py").stat().st_mode) == 0o644
 
 
 @pytest.fixture
