@@ -582,6 +582,22 @@ validation combines with a demonstrated state/reset defect that makes the timing
 unsound. Canonical 10 warmups / 100 samples and diagnostic repeat metadata are also
 recommendations and may produce WARN, not FAIL.
 
+For executable identity, trace the graph object passed to the final reported timing
+loop and the graph object closed over by the post-timing replay callback. A frozen
+helper that binds that same object and its captured output, together with executed
+harness checks of returned-output identity and validation against the current
+prepared inputs, supplies positive replay-identity evidence. Corroborate the helper
+hash and the successful replay-validation fields in the current protected report;
+an unbound boolean or validation of a separate eager call is insufficient. The
+read-only `src.tools.audit_timed_graph_replay` tool can retrospectively audit completed
+attempts against retained helper, report, and integrity hashes without changing the
+result; that completed-attempt audit is not a prerequisite for the initial report.
+It does not audit arbitrary Python implementations. Exact executable identity
+does not require serializing the CUDA graph binary or publishing process-local
+pointer addresses, and fresh input values need not produce bitwise-identical outputs
+across samples. Keep WARN when the binding or executed validation evidence is absent,
+and FAIL for an observed wrong/stale replay; do not infer PASS from this guidance alone.
+
 Populate every structured field with true, false, or null. `false` means an observable
 violation, while `null` means the evidence is genuinely unavailable and produces WARN.
 PASS requires every field true; WARN may contain null fields or absent exact replay
