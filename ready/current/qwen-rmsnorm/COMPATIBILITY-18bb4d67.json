@@ -1,0 +1,97 @@
+{
+  "GPU_node_scheduler_calls": false,
+  "change_review": {
+    "compile_correctness_CPU_truth_and_raw_validator_functions_AST_identical": true,
+    "main_changes": "Read-only closed-GPU source admission before task execution.",
+    "numerical_and_timing_files_directly_compared": 11,
+    "other_changes": "Complete input closure, symlink rejection, explicit quality adapter, and stricter post-validator/report production checks; covered by fresh framework evidence.",
+    "quality_statistics_series_and_comparison_functions_AST_identical": true,
+    "run_performance_changes": "Add request/source/metadata binding before benchmark subprocess and after raw validation; no device timing or arithmetic changes.",
+    "source_reference_oracle_cases_inputs_benchmark_graph_helper_byte_identical": true
+  },
+  "current_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "current_framework": {
+    "FINAL_sha256": "d386d1f87e013edb34318be508524ab61fed55e95f552ef00d817ad349a9c920",
+    "cases": 2,
+    "complete_post_validator_integrity_chain": true,
+    "final_workspace_entries_verified": 44,
+    "framework_checks_passed": 12,
+    "framework_report_sha256": "135651d2d112e598f3742f44a45bae40e4c7c134467f538556a01f6791d758fa",
+    "job": "209533",
+    "mirrored_report_files_rehashed": 15,
+    "owned_retirement_verified": true,
+    "quality_recomputed": "pass",
+    "raw_samples": 200,
+    "source_observations": {
+      "entries": 44,
+      "observed": 43,
+      "sole_allowed_exception": "scripts/_aka_benchmark.py not materialized in source tree; actual final workspace copy present and verified"
+    },
+    "archive_directory": "current/"
+  },
+  "current_task_tree": "9e02b0ab5b238e8e288c05ffb958866e45e78a94",
+  "decision": {
+    "accepted_gain": false,
+    "changed_candidate_requires_new_complete_current_trusted_evaluation": true,
+    "cross_attempt_phase_or_sample_splicing": false,
+    "fresh_trusted_run_required_for_this_delta": false,
+    "new_trusted_comparison_executed": false,
+    "old_failed_frameworks_promoted": false,
+    "old_measurements_relabelled": false,
+    "serving_E2E_gain": false
+  },
+  "publication_conditions": [
+    "Publish current framework evidence plus this explicit old/new compatibility link and original trusted archive references.",
+    "Complete the new publication manifest and OCI readback; this review does not assert that in-progress publication is finished."
+  ],
+  "required_code_or_GPU_fixes": [],
+  "retained_trusted": {
+    "archive_files_rehashed": 190,
+    "commit": "294e65a0b68a316de424d83ccfa4334ddc088456",
+    "compiled_control_rows_verified": 72,
+    "compiled_variants_and_shapes": 12,
+    "current_quality_recomputed": "pass",
+    "current_semantic_checker_pass": true,
+    "job": "203064",
+    "old_identities_retained": true,
+    "phase_exit_input_parity_publication_and_container_removal_verified": true,
+    "raw_same_source_ratio": 0.9516030119763009,
+    "raw_samples": 400,
+    "receipt_sha256": "c54782038793cd4766b9d18ab084400fdbd1849ffc5707cf773478378bc2fc64",
+    "result_sha256": "85a12dd482b4a074b2add4c14cddefb5e6c524431890b7911697fbaa5d3a9e00",
+    "rows_sha256": "c3a8e79fd9e27020e479bd3ed83285bcd91565676fa502c20249bf06024d1810",
+    "six_phases_complete": true,
+    "task_tree": "d94df4d6fe1705e66e00b5077d335d86eb090fc4",
+    "archive_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261009/qualification-evidence/qwen3.8-2.4t__gemma_fused_add_rmsnorm/294e65a0-203064-generation0-complete-trusted/"
+  },
+  "reviewed_utc": "2026-10-12T15:15:22.310750+00:00",
+  "reviewer": "guard_attack_review",
+  "schema": "qwen-rmsnorm-final-numerical-compatibility-portable-v1",
+  "scope": {
+    "dtype": "bfloat16",
+    "eps": 1e-06,
+    "other_tasks_or_serving_capture_covered": false,
+    "samples_per_case": 100,
+    "shapes": [
+      [
+        8192,
+        8192
+      ],
+      [
+        64,
+        8192
+      ]
+    ],
+    "tolerance": 0.02,
+    "warmups": 10
+  },
+  "source_or_historical_evidence_edits": false,
+  "status": "APPROVED_SCOPED_TASK_READINESS_BY_EXPLICIT_COMPATIBILITY",
+  "task": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+  "original_review": {
+    "sha256": "8270a6d671e06d675c51d3660387b3b9fa8be0128c5ed429d4d3649d91be8859",
+    "archive_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__gemma_fused_add_rmsnorm/18bb4d67-framework-209533/rmsnorm-18bb4d67-framework-209533-evidence.tar.gz",
+    "archive_member": "compatibility/FINAL-NUMERICAL-COMPATIBILITY-REVIEW.json",
+    "path_conversion": "Original local run/archive locations are replaced with published archive references in this portable summary."
+  }
+}

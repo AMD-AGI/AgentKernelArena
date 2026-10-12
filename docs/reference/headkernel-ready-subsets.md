@@ -1,6 +1,6 @@
 # Consolidated head-kernel tasks and qualification evidence
 
-Status for **2026-10-12**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. The completed October 11 qualifications below have fresh trusted and framework evidence, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
+Status for **2026-10-12**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. The completed qualifications below retain their actual trusted and framework execution identities, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
 
 Use [HEADKERNELS.md](../../HEADKERNELS.md) for the consolidation sources and [the unified validator config](../../example_configs/headkernel_sg520_current_mi355x.yaml) for task selection. All task paths and five preserved guides are in this branch. The [runtime catalog](../../tools/headkernel-runtime-targets.json) distinguishes current source/runtime selection, historical capture provenance and pending qualification.
 
@@ -16,6 +16,12 @@ These receipts retain the actual GPU execution revision, `7bc14698e1044931a3c893
 The [explicit `18bb4d67` compatibility review](mla-fp4-compatibility-18bb4d67.json) approves reuse of both completed qualifications for their unchanged published scopes at `18bb4d67bea577f6951f51a95cf524c9c425f952`. It records unchanged task and measurement code and confirms that the preserved report/marker pairs pass the current read-only legacy archive completion gate. The GPU reports remain labeled `7bc14698`; this approval claims **no new GPU execution or observed post-validator lifecycle at `18bb4d67`**. It is separate from the strict snapshot verifiers: their accepted pins and all old reports remain unchanged. New live runs still require current post-run integrity, and changed candidates, new shapes, group execution, model/serving qualification and later branch tips require their own evidence or review.
 
 Both are unchanged-source controls with **no accepted optimization gain**. The archive guides disclose the original evidence and any recovery or transport limits. Other completed individual phases, framework-only passes and interrupted runs remain partial qualification evidence.
+
+## Completed October 12 RMSNorm qualification
+
+[Current Qwen fused add + RMSNorm](../../ready/current/qwen-rmsnorm/README.md) is approved for the two BF16 shapes 8192×8192 and 64×8192 at `18bb4d67`. Job 209533 passed all 12 framework checks and 200 ordered samples, with the full post-validator integrity chain, all 44 final workspace entries and owned-container retirement verified before `FINAL` at **2026-10-12 15:09:40 UTC**.
+
+The [explicit numerical compatibility approval](../../ready/current/qwen-rmsnorm/COMPATIBILITY-18bb4d67.json) retains the six trusted phases, 400 samples and 72 compiled controls from `294e65a0`, job 203064, without relabeling that execution or claiming a new trusted comparison. The new archive and all seven remote objects passed full readback, including 300 payload files and two relative symlinks. **No accepted optimization or serving/E2E gain is claimed.** Earlier failed frameworks and historical pins remain unchanged; changed candidates require complete current evaluation.
 
 ## Additional completed framework evidence
 
@@ -39,7 +45,7 @@ At the consolidation base, all five task trees matched their historical qualifie
 | `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [MiniMax FP4 GEMM](../../ready/minimax-fp4/README.md) | [`ef7474dd`](https://github.com/AMD-AGI/AgentKernelArena/blob/ef7474dd9e29e74428ca09b4c488832db1fd220e/ready/minimax-fp4/README.md) | All 14 captured cases, with disclosed and independently accepted historical framework receipt limits. |
 | `headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm` | [Qwen fused add + RMSNorm](../../ready/qwen-rmsnorm/README.md) | [`f501ef65`](https://github.com/AMD-AGI/AgentKernelArena/blob/f501ef65403bdf76a122918c405f6494bc6eab38/ready/qwen-rmsnorm/README.md) | BF16 8192×8192 and 64×8192. Historical manual trusted-route numerical evidence and protected framework PASS are connected by an explicit compatibility review. This does not qualify current ordinary scoring. |
 
-These are unchanged-source controls, not accepted optimization gains. All five Qwen timing-quality adapters are integrated. Complete source-bound qualification remains outstanding for the Qwen set; the framework-only results above retain their separate scope. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
+These are unchanged-source controls, not accepted optimization gains. All five Qwen timing-quality adapters are integrated. RMSNorm now has the completed scoped handoff above; complete source-bound qualification remains outstanding for the other four Qwen tasks. The framework-only results retain their separate scope. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
 
 ## Current runtime and input preparation
 
@@ -92,13 +98,12 @@ The guide records the original server arguments and source-path mapping. Retaine
 
 ## Remaining gates for the other historical subsets
 
-The two completed October 11 handoffs above do not discharge the remaining gates for the other three historical subsets. Their original published receipts remain unchanged.
+The completed MLA, FP4 and RMSNorm handoffs above do not discharge the remaining gates for DeepSeek quantization and Kimi Lean decode. Their original published receipts remain unchanged.
 
 | Task | Remaining gate |
 | --- | --- |
 | DeepSeek `per_group_quant_fp8` | Preserve the earlier timing rejection and the later native-event SIGSEGV as separate attempts. Input-freeze and graph/event lifetime repairs are integrated; their full current qualification remains pending. |
 | Kimi `lean_attention_decode` | Complete current framework/trusted validation and applicable runtime compatibility review, preserving the historical sampled-length scope. |
-| Qwen `gemma_fused_add_rmsnorm` | A closed-guard framework run at `31d7bdde` passed 12 checks and 200 samples but had a final input-observation gap. The later `8956e210` run failed official report formatting despite retained numerical samples and an input-integrity PASS. A valid complete framework result remains required; retained `294e65a0` numerical evidence keeps its explicit compatibility scope. |
 
 ## Eighteen tasks without historical ready-subset receipts
 

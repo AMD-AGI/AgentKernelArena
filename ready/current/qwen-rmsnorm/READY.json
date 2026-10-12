@@ -1,0 +1,146 @@
+{
+  "schema": "current-scoped-ready-entry-v1",
+  "status": "SCOPED_TASK_READINESS_APPROVED_BY_EXPLICIT_COMPATIBILITY",
+  "task": "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm",
+  "ready_tasks": [
+    "headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm"
+  ],
+  "qualified_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "compatible_checkout_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "qualified_framework_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "qualified_trusted_commit": "294e65a0b68a316de424d83ccfa4334ddc088456",
+  "task_tree": "9e02b0ab5b238e8e288c05ffb958866e45e78a94",
+  "source_sha256": "e7e81662d1989eacd46b757b0240111ef9caae31a77fb3035ca2b9196307198d",
+  "editable_file": "tasks/headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm/source/minimax_m3_rmsnorm.py",
+  "editable_kernel": "_gemma_fused_add_rmsnorm_kernel",
+  "entry_config": "example_configs/ready_qwen_rmsnorm_mi355x.yaml",
+  "validator_config": "example_configs/validate_ready_qwen_rmsnorm_mi355x.yaml",
+  "runtime": {
+    "catalog": "tools/headkernel-runtime-targets.json",
+    "image_key": "sglang_v0520",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64"
+  },
+  "scope": {
+    "dtype": "bfloat16",
+    "eps": 1e-06,
+    "other_tasks_or_serving_capture_covered": false,
+    "samples_per_case": 100,
+    "shapes": [
+      [
+        8192,
+        8192
+      ],
+      [
+        64,
+        8192
+      ]
+    ],
+    "tolerance": 0.02,
+    "warmups": 10
+  },
+  "measurement": {
+    "warmup_iterations": 10,
+    "samples_per_case": 100,
+    "method": "GPU graph replay",
+    "fresh_CPU_generated_inputs_per_replay": true,
+    "expected_outputs_computed_on_CPU": true,
+    "event_fallback_allowed": false,
+    "external_tensor_fixtures": 0
+  },
+  "framework": {
+    "job": "209533",
+    "commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+    "task_tree": "9e02b0ab5b238e8e288c05ffb958866e45e78a94",
+    "checks_passed": 12,
+    "cases": 2,
+    "raw_samples": 200,
+    "checked_invocations": 236,
+    "completed_utc": "2026-10-12T15:09:40.074997+00:00",
+    "report_sha256": "135651d2d112e598f3742f44a45bae40e4c7c134467f538556a01f6791d758fa",
+    "marker_sha256": "e4764973558e7e4f07b9fd96a699b6687e39cd262b2398a027cddfe7bc567955",
+    "integrity_sha256": "41712812f7ed048b5caeca3a8cebc9d2b186e78f4bec9e1ebe5e1571c0a18cf7",
+    "FINAL_sha256": "d386d1f87e013edb34318be508524ab61fed55e95f552ef00d817ad349a9c920",
+    "retirement_sha256": "d5bac78f87924b8aad16b39d67aed7dae190a73420dcb98afb7bab496b01dabd",
+    "owned_containers_retired_before_FINAL": true,
+    "final_workspace_entries_verified": 44,
+    "source_entries_observed": 43,
+    "generated_helper_absence_from_source_explained": true,
+    "full_post_validator_integrity_chain_verified": true
+  },
+  "trusted_measurement": {
+    "commit": "294e65a0b68a316de424d83ccfa4334ddc088456",
+    "job": "203064",
+    "task_tree": "d94df4d6fe1705e66e00b5077d335d86eb090fc4",
+    "raw_samples": 400,
+    "receipt_sha256": "c54782038793cd4766b9d18ab084400fdbd1849ffc5707cf773478378bc2fc64",
+    "result_sha256": "85a12dd482b4a074b2add4c14cddefb5e6c524431890b7911697fbaa5d3a9e00",
+    "rows_sha256": "c3a8e79fd9e27020e479bd3ed83285bcd91565676fa502c20249bf06024d1810",
+    "six_phases_complete": true,
+    "phases": 6,
+    "compiled_controls": 72,
+    "archive_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261009/qualification-evidence/qwen3.8-2.4t__gemma_fused_add_rmsnorm/294e65a0-203064-generation0-complete-trusted/",
+    "archive_manifest_sha256": "19f89e9b94383c1e449d06bd64103e54ffd28c0abbbe7a54b4254343d65a50cb",
+    "new_trusted_comparison_executed": false
+  },
+  "compatibility": {
+    "file": "COMPATIBILITY-18bb4d67.json",
+    "original_review_sha256": "8270a6d671e06d675c51d3660387b3b9fa8be0128c5ed429d4d3649d91be8859",
+    "status": "APPROVED_SCOPED_TASK_READINESS_BY_EXPLICIT_COMPATIBILITY",
+    "applies_to_exact_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+    "old_measurements_relabelled": false,
+    "changed_candidate_requires_new_complete_current_trusted_evaluation": true
+  },
+  "archive": {
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__gemma_fused_add_rmsnorm/18bb4d67-framework-209533/",
+    "archive_file": "rmsnorm-18bb4d67-framework-209533-evidence.tar.gz",
+    "archive_bytes": 1169093,
+    "archive_sha256": "b79e7b08969c65fa99d787af22f5fdcaa1059969f59110cf08dae05fd79fcd3b",
+    "manifest_sha256": "f30f31d2ea307e2aa8d733feb158f5f08e4d6cc6e851de93f609d2daec82638f",
+    "complete_receipt": "COMPLETE.json",
+    "complete_sha256": "7607c2f6440f5eaff56f04e099363da768998c9721f5911781f29a8e093f08cd",
+    "objects": {
+      "MANIFEST.json": {
+        "bytes": 75154,
+        "sha256": "f30f31d2ea307e2aa8d733feb158f5f08e4d6cc6e851de93f609d2daec82638f"
+      },
+      "PACKAGE.json": {
+        "bytes": 2852,
+        "sha256": "837f09bab02f41d9630cbf5d65310ec681e62a340667d3fc772faf315d30993f"
+      },
+      "README.md": {
+        "bytes": 2110,
+        "sha256": "e2f39966e2208651300a7319df4a041d15355d78ec806176b707d3aaebd3f46e"
+      },
+      "SHA256SUMS": {
+        "bytes": 351,
+        "sha256": "49c0fc96d7b350467ba76a1277d716b97b32dbb5065ce3fa9a088b53431d0f5b"
+      },
+      "rmsnorm-18bb4d67-framework-209533-evidence.tar.gz": {
+        "bytes": 1169093,
+        "sha256": "b79e7b08969c65fa99d787af22f5fdcaa1059969f59110cf08dae05fd79fcd3b"
+      },
+      "PUBLICATION-READBACK.json": {
+        "bytes": 1616,
+        "sha256": "59e9324fed2c4be9e28c3634dbd4f4669e4bb2cc77054a22f83ec35a4d2e05a0"
+      }
+    },
+    "payload_files": 300,
+    "payload_symlinks": 2,
+    "all_remote_objects_readback_verified": 7,
+    "all_payload_hashes_verified_from_remote_stream": true
+  },
+  "framework_input_manifest": {
+    "archive_member": "current/CURRENT-INPUT-MANIFEST.json",
+    "sha256": "894d3041540252b0a0287c14a48c9ba70d731c5d58584cf127ad489e04d89415",
+    "entries": 44
+  },
+  "historical_ready_entry_or_pins_modified": false,
+  "new_snapshot_verifier_acceptance_claimed": false,
+  "later_branch_tips_automatically_covered": false,
+  "accepted_gain": false,
+  "serving_E2E_gain_claimed": false,
+  "new_sglang_serving_capture_claimed": false
+}
