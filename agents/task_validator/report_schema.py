@@ -9,7 +9,11 @@ the aggregate status.  This module provides that trust boundary.
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import hashlib
+import os
+import stat
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -83,6 +87,63 @@ HARD_BENCHMARK_REVIEW_FIELDS = (
     "timing_boundaries_valid",
 )
 ADVISORY_BENCHMARK_REVIEW_FIELDS = ("replay_validation_valid",)
+MAX_REPORT_BYTES = 8 * 1024 * 1024
+
+
+@contextmanager
+def _report_parent(path: Path):
+    """Anchor report operations to directory descriptors without following links."""
+    path = Path(path).absolute()
+    if ".." in path.parts:
+        raise ValueError("Report path must not traverse parent directories")
+    descriptors = []
+    chain = []
+    try:
+        parent = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(parent)
+        for component in path.parts[1:-1]:
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            descriptors.append(child)
+            chain.append((parent, component, os.fstat(child)))
+            parent = child
+        yield parent
+        for directory, component, before in chain:
+            after = os.stat(component, dir_fd=directory, follow_symlinks=False)
+            if not stat.S_ISDIR(after.st_mode) or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino):
+                raise ValueError("Report parent directory changed during access")
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _read_regular_report(path: Path) -> bytes:
+    """Bound and stabilize one regular report read, including its parent path."""
+    path = Path(path)
+    with _report_parent(path) as parent:
+        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_REPORT_BYTES:
+                raise ValueError("Report must be a regular file of at most 8 MiB")
+            chunks = []
+            remaining = MAX_REPORT_BYTES + 1
+            while remaining:
+                chunk = os.read(descriptor, min(remaining, 65536))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            content = b"".join(chunks)
+            after = os.fstat(descriptor)
+            current = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+            identity = lambda value: (value.st_dev, value.st_ino, value.st_mode,
+                                      value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+            if (len(content) != before.st_size or len(content) > MAX_REPORT_BYTES
+                    or identity(before) != identity(after) or identity(before) != identity(current)):
+                raise ValueError("Report changed or was replaced during read")
+        finally:
+            os.close(descriptor)
+    return content
 
 
 class _ReportLoader(yaml.SafeLoader):
@@ -116,9 +177,7 @@ def check_draft_report(path: str | Path, *, expected_task_name: str) -> dict[str
     content = None
     try:
         path = Path(path)
-        if path.is_symlink() or not path.is_file():
-            raise ValueError("Draft report must be a regular file")
-        content = path.read_bytes()
+        content = _read_regular_report(path)
         normalized = normalize_report(
             _load_report_yaml(content), expected_task_name=expected_task_name
         )
@@ -550,10 +609,19 @@ def normalize_report(
 
 
 def _atomic_yaml_dump(path: Path, data: Mapping[str, Any]) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("w") as handle:
-        yaml.safe_dump(dict(data), handle, default_flow_style=False, sort_keys=False)
-    temporary.replace(path)
+    temporary = f".{path.name}.{uuid.uuid4().hex}.tmp"
+    with _report_parent(path) as parent:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=parent)
+        try:
+            with os.fdopen(descriptor, "w") as handle:
+                yaml.safe_dump(dict(data), handle, default_flow_style=False, sort_keys=False)
+            os.replace(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=parent)
+            except FileNotFoundError:
+                pass
 
 
 def _bind_integrity_requirement(workspace: Path, report: dict, previous: Any) -> dict | None:
@@ -583,13 +651,17 @@ def finalize_report(
     workspace_path = Path(workspace)
     report_path = workspace_path / REPORT_FILENAME
     marker_path = workspace_path / COMPLETION_MARKER_FILENAME
-    marker_path.unlink(missing_ok=True)
+    with _report_parent(marker_path) as parent:
+        try:
+            os.unlink(marker_path.name, dir_fd=parent)
+        except FileNotFoundError:
+            pass
 
     raw_report: Any = None
     submitted_bytes: bytes | None = None
     if report_path.exists():
         try:
-            submitted_bytes = report_path.read_bytes()
+            submitted_bytes = _read_regular_report(report_path)
             raw_report = _load_report_yaml(submitted_bytes)
         except Exception as exc:  # Malformed agent output is data, not a launcher crash.
             framework_error = framework_error or f"Unable to parse agent report: {exc}"
@@ -667,7 +739,7 @@ def finalize_report(
         report["submitted_report"] = submitted
     requirement = _bind_integrity_requirement(workspace_path, report, raw_report)
     _atomic_yaml_dump(report_path, report)
-    digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(_read_regular_report(report_path)).hexdigest()
     marker = {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest}
     if requirement is not None:
         marker["validator_integrity"] = requirement
@@ -679,8 +751,8 @@ def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> 
     """Record a failed audit without running any task-controlled helper code."""
     report_path = workspace / REPORT_FILENAME
     try:
-        raw = _load_report_yaml(report_path.read_bytes()) if report_path.is_file() and not report_path.is_symlink() else None
-    except (OSError, yaml.YAMLError):
+        raw = _load_report_yaml(_read_regular_report(report_path))
+    except (OSError, ValueError, yaml.YAMLError):
         raw = None
     if isinstance(raw, dict) and isinstance(raw.get("checks"), dict):
         raw["checks"]["harness_integrity"] = {
@@ -693,7 +765,7 @@ def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> 
     _atomic_yaml_dump(report_path, report)
     _atomic_yaml_dump(workspace / COMPLETION_MARKER_FILENAME, {
         "validation_schema_version": REPORT_SCHEMA_VERSION,
-        "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+        "report_sha256": hashlib.sha256(_read_regular_report(report_path)).hexdigest(),
         "validator_integrity": requirement or {"required": True, "status": "PENDING"},
     })
 
@@ -706,15 +778,16 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
     if not report_path.is_file() or not marker_path.is_file():
         return False
     try:
-        marker = _load_report_yaml(marker_path.read_bytes())
-        report = _load_report_yaml(report_path.read_bytes())
+        marker = _load_report_yaml(_read_regular_report(marker_path))
+        report_bytes = _read_regular_report(report_path)
+        report = _load_report_yaml(report_bytes)
     except Exception:
         return False
     if not isinstance(marker, dict) or not isinstance(report, dict):
         return False
     if marker.get("validation_schema_version") != REPORT_SCHEMA_VERSION:
         return False
-    if marker.get("report_sha256") != hashlib.sha256(report_path.read_bytes()).hexdigest():
+    if marker.get("report_sha256") != hashlib.sha256(report_bytes).hexdigest():
         return False
     if report.get("validation_schema_version") != REPORT_SCHEMA_VERSION:
         return False

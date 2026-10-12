@@ -1,6 +1,7 @@
 """Report-production checks execute only the data-only canonical CLI."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -10,6 +11,7 @@ import pytest
 import yaml
 
 from agents.task_validator.report_schema import (
+    MAX_REPORT_BYTES,
     check_draft_report,
     finalize_report,
     validation_report_is_complete,
@@ -25,7 +27,7 @@ CHECKER = ROOT / "agents/task_validator/report_schema.py"
 def cli(path, task="hip2hip/example"):
     result = subprocess.run(
         [sys.executable, str(CHECKER), "--check-draft", str(path), "--task-name", task],
-        text=True, capture_output=True, check=False,
+        text=True, capture_output=True, check=False, timeout=5,
     )
     return result.returncode, json.loads(result.stdout)
 
@@ -122,3 +124,93 @@ def test_checker_missing_report_does_not_create_evidence(tmp_path):
     result = check_draft_report(tmp_path / "missing.yaml", expected_task_name="hip2hip/example")
     assert result["schema_status"] == "FAIL" and result["report_sha256"] is None
     assert list(tmp_path.iterdir()) == []
+
+
+def test_report_symlink_never_embeds_external_sentinel(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external = tmp_path / "external.yaml"
+    sentinel = b"PRIVATE_EXTERNAL_SENTINEL_927\n"
+    external.write_bytes(sentinel)
+    path = workspace / "validation_report.yaml"
+    path.symlink_to(external)
+    code, result = cli(path)
+    assert code == 1 and result["report_sha256"] is None
+    report = finalize_report(workspace, expected_task_name="hip2hip/example")
+    assert report["overall_status"] == "FAIL" and "submitted_report" not in report
+    assert sentinel not in path.read_bytes()
+    assert external.read_bytes() == sentinel
+
+
+@pytest.mark.parametrize("kind", ["fifo", "oversized"])
+def test_nonregular_or_oversized_report_rejected_without_preserving_bytes(tmp_path, kind):
+    path = tmp_path / "validation_report.yaml"
+    if kind == "fifo":
+        os.mkfifo(path)
+    else:
+        with path.open("wb") as stream:
+            stream.truncate(MAX_REPORT_BYTES + 1)
+    code, result = cli(path)
+    assert code == 1 and result["report_sha256"] is None
+    report = finalize_report(tmp_path, expected_task_name="hip2hip/example")
+    assert report["overall_status"] == "FAIL" and "submitted_report" not in report
+
+
+@pytest.mark.parametrize("parent_kind", ["symlink", "traversal"])
+def test_unsafe_parent_is_refused_without_touching_external_report(tmp_path, parent_kind):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    report = outside / "validation_report.yaml"
+    sentinel = b"PRIVATE_PARENT_TARGET_491\n"
+    report.write_bytes(sentinel)
+    (outside / ".validation_complete").write_text("original marker")
+    workspace = tmp_path / "workspace"
+    if parent_kind == "symlink":
+        workspace.symlink_to(outside, target_is_directory=True)
+    else:
+        workspace.mkdir()
+        workspace = workspace / ".." / "outside"
+    code, result = cli(workspace / "validation_report.yaml")
+    assert code == 1 and result["report_sha256"] is None
+    with pytest.raises((OSError, ValueError)):
+        finalize_report(workspace, expected_task_name="hip2hip/example")
+    assert report.read_bytes() == sentinel
+    assert (outside / ".validation_complete").read_text() == "original marker"
+
+
+@pytest.mark.parametrize("replacement", ["file", "parent"])
+def test_replacement_during_read_cannot_supply_embedded_target_bytes(tmp_path, monkeypatch, replacement):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    path = workspace / "validation_report.yaml"
+    path.write_text(yaml.safe_dump(_valid_raw_report()))
+    original_inode = path.stat().st_ino
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = b"PRIVATE_REPLACEMENT_TARGET_611\n"
+    (outside / "validation_report.yaml").write_bytes(sentinel)
+    original_read = os.read
+    replaced = False
+
+    def replace_after_read(descriptor, count):
+        nonlocal replaced
+        data = original_read(descriptor, count)
+        if not replaced and os.fstat(descriptor).st_ino == original_inode:
+            replaced = True
+            if replacement == "file":
+                path.unlink()
+                path.symlink_to(outside / "validation_report.yaml")
+            else:
+                workspace.rename(tmp_path / "original-workspace")
+                workspace.symlink_to(outside, target_is_directory=True)
+        return data
+
+    monkeypatch.setattr(os, "read", replace_after_read)
+    if replacement == "parent":
+        with pytest.raises(OSError):
+            finalize_report(workspace, expected_task_name="hip2hip/example")
+    else:
+        report = finalize_report(workspace, expected_task_name="hip2hip/example")
+        assert report["overall_status"] == "FAIL" and "submitted_report" not in report
+        assert sentinel not in path.read_bytes()
+    assert replaced and (outside / "validation_report.yaml").read_bytes() == sentinel

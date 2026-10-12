@@ -150,6 +150,11 @@ the exact submitted draft under `submitted_report` in the finalized report,
 including its SHA-256. UTF-8 drafts are retained as text and other bytes as
 base64. This keeps format failures diagnosable in the existing report archive;
 it does not repair or promote an earlier failed run.
+Draft checking and finalization share an 8 MiB bounded regular-file reader.
+Symlinks (including parent components), nonregular files, parent traversal, and
+files or parent directories replaced during reading are refused. Unsafe targets
+are not embedded as submitted evidence; an unsafe parent also prevents report
+and marker publication through that path.
 
 For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
 methods. CPU/host timing, missing or mixed methods, candidate-triggered fallback,
