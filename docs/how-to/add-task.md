@@ -680,9 +680,11 @@ task config schema.
 If the production baseline has a documented numerical mismatch, explicitly add
 `correctness_policy: diagnostic` and `diagnostic_reason` under `baseline` after
 reviewing that evidence. This example does not silently enable that exception.
-The deepseek-v4-flash tasks declare it as a family policy: their reference is an
+The floating-point deepseek-v4-flash tasks declare it as a family policy: their reference is an
 FP32 PyTorch computation that the production baseline is not required to meet,
 and each reason adds the measured evidence where a mismatch was observed.
+The paged top-k task requires baseline correctness: integer selections, padding,
+and the ordered short-row path have no floating-point numerical exception.
 An optional common export declaration can be added to either family:
 
 ```yaml

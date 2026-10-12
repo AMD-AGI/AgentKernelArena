@@ -755,15 +755,14 @@ def test_runner_controls_are_mandatory_and_preserve_real_manifest(tmp_path, monk
             assert len(CaseManifest.from_result(result).cases) == 13
 
 
-# The deepseek-v4-flash tasks compare against an FP32 PyTorch reference that the
+# The floating-point deepseek-v4-flash tasks compare against an FP32 reference that the
 # production baseline is not required to meet; each declares that family policy,
 # with task-specific evidence where a mismatch was measured.
 DSV4_FAMILY_POLICY = 'deepseek-v4-flash family policy'
 DSV4_TASKS = {*(f'gemm_a16w16_nt_n{n}_k4096' for n in (64, 256, 512, 1024, 2048)),
               'flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128',
               'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256',
-              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512',
-              'topk_transform_paged_paged_k512_page_size64'}
+              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512'}
 
 
 def test_diagnostic_policy_only_names_tasks_with_specific_evidence():

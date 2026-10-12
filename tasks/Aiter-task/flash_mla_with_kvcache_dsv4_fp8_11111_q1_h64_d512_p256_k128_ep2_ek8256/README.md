@@ -143,6 +143,7 @@ that comparison: `config.yaml` declares `correctness_policy: diagnostic` for the
 deepseek-v4-flash tasks. Baseline correctness still reports every case's actual
 PASS/FAIL, and baseline timing keeps the full comparison of its timed outputs.
 Only a completed finite numerical mismatch is accepted; crashes, missing cases,
+unexpected or missing LSE infinities,
 invalid outputs and input mutation remain failures. Candidates have no
 exception: candidate correctness and every checked timed invocation must pass
 the comparator.

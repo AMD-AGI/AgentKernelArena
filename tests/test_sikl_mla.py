@@ -241,9 +241,10 @@ def test_case_input_validation_rejects_inconsistent_tables(fault, monkeypatch):
             inputs_module.check_case_inputs(inputs, case, state)
 
 
-def test_output_classification(monkeypatch):
+@pytest.mark.parametrize('task', TASKS, ids=lambda path: path.name)
+def test_output_classification(task, monkeypatch):
     torch = pytest.importorskip('torch')
-    with modules(MAIN_ONLY, monkeypatch):
+    with modules(task, monkeypatch):
         measure = importlib.import_module('task_measure')
         output = torch.ones((2, 1, 2, 4), dtype=torch.bfloat16)
         output[1] = 0
@@ -257,7 +258,10 @@ def test_output_classification(monkeypatch):
         finite = lse.clone()
         finite[1] = 0
         result = measure.compare_output((output.clone(), finite), expected)
-        assert result['failure_kind'] == 'numerical_mismatch'
+        assert result['failure_kind'] == 'output_contract'
+        infinite = lse.clone()
+        infinite[0] = math.inf
+        assert measure.compare_output((output.clone(), infinite), expected)['failure_kind'] == 'output_contract'
         for got in [(output.float(), lse), (output, lse * float('nan')), (output, -lse), output,
                     (output * float('nan'), lse), (output, lse.double())]:
             assert measure.compare_output(got, expected)['failure_kind'] == 'output_contract'
@@ -359,6 +363,44 @@ def test_protocol_rejects_known_timed_path_exploits_and_accepts_honest_timing(
         assert result.get('failure_kind') == failure_kind
         assert result['metadata']['timed_output_correctness']['metadata']['checked_invocations'] == (
             measure.CHECKED_SAMPLES + measure.UNSEEN_DRAWS)
+
+
+@pytest.mark.parametrize('role', ['baseline', 'candidate'])
+@pytest.mark.parametrize('fault', ['unexpected_infinity', 'missing_infinity', 'finite_mismatch'])
+def test_timed_lse_contract_is_not_a_numerical_diagnostic(role, fault, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(MAIN_ONLY, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        _cpu(measure, monkeypatch, torch)
+        names = list(measure.task_inputs.INPUTS)
+
+        class InvalidLse(_Honest):
+            def compute(self, args):
+                output, lse = super().compute(args)
+                if fault == 'unexpected_infinity':
+                    lse = torch.full_like(lse, math.inf)
+                elif fault == 'missing_infinity':
+                    lse = torch.where(torch.isposinf(lse), torch.zeros_like(lse), lse)
+                else:
+                    lse = lse + 10
+                return output, lse
+
+        kernel = InvalidLse(measure.task_reference, names)
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', _simulated_graph_helper(kernel))
+        monkeypatch.setattr(measure.task_baseline, 'run', lambda **kw: kernel(*(kw[n] for n in names)))
+        case_id = 'batch_2_s0' if fault == 'missing_infinity' else 'batch_2_s65'
+        result = measure.time_case(_cases(measure.task_inputs)[case_id], role=role,
+                                   launch=kernel if role == 'candidate' else None,
+                                   baseline_diagnostic=True)
+        if fault == 'finite_mismatch' and role == 'baseline':
+            assert result['status'] == 'PASS'
+            assert result['metadata']['baseline_numerical_diagnostic']
+        else:
+            assert result['status'] == 'FAIL'
+            assert result['failure_kind'] == ('numerical_mismatch' if fault == 'finite_mismatch'
+                                               else 'output_contract')
+        outputs = result['metadata']['timed_output_correctness']
+        assert outputs['metadata']['failed_invocations'] == outputs['metadata']['checked_invocations'] == 12
 
 
 @pytest.mark.parametrize('mutated', ['q', 'kv_cache', 'sparse_indices', 'sparse_lens', 'sinks'])

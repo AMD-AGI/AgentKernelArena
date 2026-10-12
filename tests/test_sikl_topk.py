@@ -203,16 +203,17 @@ def test_output_classification_and_destination_passing_calls(monkeypatch):
     with modules(TASK, monkeypatch):
         measure = importlib.import_module('task_measure')
         expected = torch.tensor([[4, 9, -1, -1], [7, 3, 5, 1]], dtype=torch.int32)
-        assert measure.compare_output(expected.clone(), expected)['status'] == 'PASS'
+        lengths = torch.tensor([2, 5], dtype=torch.int32)
+        assert measure.compare_output(expected.clone(), expected, seq_lens=lengths)['status'] == 'PASS'
         reordered = expected.clone()
         reordered[1] = reordered[1].flip(0)
-        assert measure.compare_output(reordered, expected)['status'] == 'PASS'
+        assert measure.compare_output(reordered, expected, seq_lens=lengths)['status'] == 'PASS'
         poisoned = expected.clone()
         poisoned[0, 2:] = measure.task_inputs.OUTPUT_POISON
-        result = measure.compare_output(poisoned, expected)
-        assert result['failure_kind'] == 'numerical_mismatch' and result['metrics']['poisoned_elements'] == 2
+        result = measure.compare_output(poisoned, expected, seq_lens=lengths)
+        assert result['failure_kind'] == 'output_contract'
         for got in (expected.long(), expected[:, :3], None):
-            assert measure.compare_output(got, expected)['failure_kind'] == 'output_contract'
+            assert measure.compare_output(got, expected, seq_lens=lengths)['failure_kind'] == 'output_contract'
         inputs = {'scores': torch.zeros((2, 8)), 'seq_lens': torch.zeros(2, dtype=torch.int32),
                   'metadata': torch.zeros((3, 2), dtype=torch.int32), 'page_size': 64,
                   'page_tables': torch.zeros((2, 1), dtype=torch.int32)}
@@ -226,6 +227,73 @@ def test_output_classification_and_destination_passing_calls(monkeypatch):
             measure.case_call(inputs, out, role='candidate')
         with pytest.raises(ValueError, match='cannot invoke a candidate'):
             measure.case_call(inputs, out, role='baseline', launch=lambda *a: None)
+
+
+@pytest.mark.parametrize('length, status', [(511, 'FAIL'), (512, 'FAIL'), (513, 'PASS')])
+def test_correctness_and_timing_enforce_order_at_exactly_k(length, status, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(TASK, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        _cpu(measure, monkeypatch, torch)
+
+        class Reordered(_Honest):
+            def compute(self, args):
+                super().compute(args)
+                active = min(length, 512)
+                args[-1][:, :active] = args[-1][:, :active].flip(-1)
+
+        kernel = Reordered(measure.task_reference)
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', _simulated_graph_helper(kernel))
+        case = _cases(measure)[f'batch_1_len_{length}']
+        correct = measure.check_case(case, role='candidate', launch=kernel)
+        timed = measure.time_case(case, role='candidate', launch=kernel)
+        assert correct['status'] == timed['status'] == status
+        if status == 'FAIL':
+            assert correct['metadata']['failed_invocations'] == correct['metadata']['checked_invocations']
+            assert 'short-row order differs' in timed['reason']
+
+
+@pytest.mark.parametrize('fault', ['unwritten', 'wrong_selection'])
+def test_baseline_cannot_exempt_invalid_topk_outputs(fault, monkeypatch):
+    torch = pytest.importorskip('torch')
+    from src.task_protocol import baseline_correctness_accepted
+    from src.task_spec import load_task_spec
+
+    with modules(TASK, monkeypatch) as contract:
+        measure = importlib.import_module('task_measure')
+        _cpu(measure, monkeypatch, torch)
+
+        class Invalid(_Honest):
+            def compute(self, args):
+                self.cost = 1.0
+                if fault == 'wrong_selection':
+                    args[-1].fill_(0)
+
+        kernel = Invalid(measure.task_reference)
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', _simulated_graph_helper(kernel))
+        monkeypatch.setattr(measure.task_baseline, 'run',
+                            lambda **kw: kernel(*(kw[name] for name in INPUT_NAMES), kw['out_page_indices']))
+        case = _cases(measure)['batch_2_len_63']
+        correct = measure.check_case(case, role='baseline')
+        timed = measure.time_case(case, role='baseline')
+        assert correct['status'] == timed['status'] == 'FAIL'
+        assert timed['metadata']['timed_output_correctness']['metadata']['failed_invocations'] == 12
+        kind = 'output_contract' if fault == 'unwritten' else 'numerical_mismatch'
+        assert correct['failure_kind'] == timed['failure_kind'] == kind
+
+        rows = [row for row in contract.case_manifest(contract.load_workload())
+                if row['test_case_id'] == case['case_id']]
+        manifest = CaseManifest.from_result(parse_report({
+            'protocol': 'arena-eval-v1', 'role': 'task', 'action': 'validate-task',
+            'status': 'PASS', 'cases': rows}))
+        result = parse_report({
+            'protocol': 'arena-eval-v1', 'role': 'baseline', 'action': 'correctness',
+            'status': 'FAIL', 'failure_kind': kind, 'reason': correct['reason'],
+            'cases': [{**{k: v for k, v in rows[0].items() if k != 'checks'}, **correct}]})
+        spec = load_task_spec(TASK / 'config.yaml', task_id=f'Aiter-task/{TASK.name}')
+        assert spec.baseline.correctness_policy == 'required'
+        assert not baseline_correctness_accepted(
+            result, baseline=spec.baseline, phase='task_validation', manifest=manifest)
 
 
 def test_builder_receives_shape_axes(monkeypatch):
@@ -324,8 +392,8 @@ def _cpu(measure, monkeypatch, torch):
     (_Honest, 'batch_1_len_8192', 'PASS', None),
     (_Honest, 'batch_2_len_63', 'PASS', None),
     (_ValueMemo, 'batch_1_len_8192', 'FAIL', 'timing_input_memoized'),
-    (_SkipsPadding, 'batch_2_len_63', 'FAIL', 'numerical_mismatch'),
-    (_SkipsEveryThirdCall, 'batch_1_len_8192', 'FAIL', 'numerical_mismatch'),
+    (_SkipsPadding, 'batch_2_len_63', 'FAIL', 'output_contract'),
+    (_SkipsEveryThirdCall, 'batch_1_len_8192', 'FAIL', 'output_contract'),
 ])
 def test_protocol_rejects_known_timed_path_exploits_and_accepts_honest_timing(
         kernel_type, case_id, status, failure_kind, monkeypatch):
@@ -445,7 +513,7 @@ def test_independent_controls_execute_real_callbacks_on_cpu(monkeypatch):
         assert all(r['status'] == 'PASS' and r['device'] == 'cpu' for r in records)
         assert set(records[2]['evidence']['rejected_controls']) == {
             'wrong_long_selection', 'short_row_reordered', 'padding_moved', 'missing_padding',
-            'duplicated_slot', 'wrong_dtype', 'wrong_shape'}
+            'duplicated_slot', 'exactly_k_reordered', 'unwritten_output', 'wrong_dtype', 'wrong_shape'}
         json.dumps(records, allow_nan=False)
 
 

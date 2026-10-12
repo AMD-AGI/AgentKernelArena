@@ -43,7 +43,7 @@ def output_contract(got, expected):
     """Order both results as (output, lse) and check their tensor contracts.
 
     A missing output, a wrong shape/dtype/device, a nonfinite output, or a NaN
-    or -inf LSE is an AssertionError (candidate contract). An invalid reference
+    or misplaced infinite LSE is an AssertionError (candidate contract). An invalid reference
     propagates as ValueError and stops the run.
     """
     wanted = task_inputs.named_outputs(expected)
@@ -54,11 +54,18 @@ def output_contract(got, expected):
     except AssertionError as error:
         raise AssertionError(f"output: {error}") from error
     lse, reference = actual[1], wanted[1]
+    if (not isinstance(reference, torch.Tensor) or reference.layout != torch.strided
+            or reference.dtype != torch.float32 or reference.shape != wanted[0].shape[:-1]
+            or reference.device != wanted[0].device
+            or not bool((torch.isfinite(reference) | torch.isposinf(reference)).all())):
+        raise ValueError("Invalid reference LSE: expected FP32 finite values or +inf")
     if (not isinstance(lse, torch.Tensor) or lse.layout != torch.strided or lse.shape != reference.shape
             or lse.dtype != reference.dtype or lse.device != reference.device):
         raise AssertionError("lse must match the reference shape, dtype and device")
     if bool(torch.isnan(lse).any()) or bool(torch.isneginf(lse).any()):
         raise AssertionError("lse contains NaN or -inf")
+    if not torch.equal(torch.isposinf(lse), torch.isposinf(reference)):
+        raise AssertionError("lse must match empty-row +inf positions")
     return actual, wanted
 
 

@@ -202,8 +202,7 @@ def run(role, action):
                 elif action == "correctness":
                     result = measure.check_case(case, role=role, launch=launch, reuse=reuse)
                 else:
-                    result = measure.time_case(case, role=role, launch=launch,
-                                              baseline_diagnostic=config["baseline"].get("correctness_policy") == "diagnostic")
+                    result = measure.time_case(case, role=role, launch=launch)
                 row.update(result)
                 if role == "baseline":
                     row.setdefault("metadata", {}).update(dispatch_evidence(workload, case))

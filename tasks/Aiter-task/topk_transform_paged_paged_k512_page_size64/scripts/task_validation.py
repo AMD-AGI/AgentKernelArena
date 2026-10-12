@@ -80,7 +80,7 @@ def production_known_answer(reference, inputs_module, device):
             "observed_first_slots": [row[:8] for row in got.cpu().tolist()]}
 
 
-def comparator_controls(compare, device):
+def comparator_controls(measure, device):
     # The small fixture's answer: empty row, short row with padding, exactly-k
     # row, and a long row whose selection order is unspecified.
     k, page_size, width, pages = 4, 4, 16, 4
@@ -88,17 +88,27 @@ def comparator_controls(compare, device):
     scores, tables = _fixture(4, width, pages, page_size, lengths, score_stride=7, table_stride=3)
     rows = _oracle(scores, lengths, tables, page_size, k)
     expected = torch.tensor(rows, dtype=torch.int32, device=device)
+    seq_lens = torch.tensor(lengths, dtype=torch.int32, device=device)
+
+    def check(value):
+        measure.task_compare.run(value, expected)
+        result = measure.compare_output(value, expected, seq_lens=seq_lens)
+        if result["status"] != "PASS":
+            raise AssertionError(result["reason"])
+
     accepted = {"exact": expected.clone(), "long_row_reordered": expected.clone()}
     accepted["long_row_reordered"][3] = expected[3].flip(0)
     for name, value in accepted.items():
-        compare.run(value, expected)
+        check(value)
     unselected = next(table * page_size + offset for table in range(pages) for offset in range(page_size)
                       if table * page_size + offset not in rows[3])
     rejected = {name: expected.clone() for name in (
         "wrong_long_selection", "short_row_reordered", "padding_moved", "missing_padding",
-        "duplicated_slot")}
+        "duplicated_slot", "exactly_k_reordered", "unwritten_output")}
     rejected["wrong_long_selection"][3, 0] = unselected
     rejected["short_row_reordered"][1, :2] = expected[1, :2].flip(0)
+    rejected["exactly_k_reordered"][2] = expected[2].flip(0)
+    rejected["unwritten_output"].fill_(measure.task_inputs.OUTPUT_POISON)
     rejected["padding_moved"][1] = torch.tensor([-1, *rows[1][1:3], rows[1][0]], dtype=torch.int32)
     rejected["missing_padding"][0, 0] = rows[2][0]
     rejected["duplicated_slot"][3, 1] = expected[3, 0]
@@ -106,8 +116,15 @@ def comparator_controls(compare, device):
     rejected["wrong_shape"] = expected[:, :k - 1]
     observations = {}
     for name, wrong in rejected.items():
+        if name != "exactly_k_reordered":
+            try:
+                measure.task_compare.run(wrong, expected)
+            except AssertionError:
+                pass
+            else:
+                raise RuntimeError(f"Bundle comparator accepted negative control: {name}")
         try:
-            compare.run(wrong, expected)
+            check(wrong)
         except AssertionError as error:
             observations[name] = str(error)
         else:
@@ -121,7 +138,7 @@ def run_controls(measure, *, device="cuda", records=None):
     checks = [("topk_small_known_answer", lambda: small_known_answer(measure.task_reference, device)),
               ("topk_production_known_answer",
                lambda: production_known_answer(measure.task_reference, measure.task_inputs, device)),
-              ("comparator_positive_and_negative", lambda: comparator_controls(measure.task_compare, device))]
+              ("comparator_positive_and_negative", lambda: comparator_controls(measure, device))]
     for name, check in checks:
         record = {"name": name, "device": str(device), "status": "FAIL"}
         records.append(record)

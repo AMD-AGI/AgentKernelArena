@@ -60,7 +60,9 @@ and the plan above. `task_reference.py` selects by a stable descending sort and
 maps through the page table. `task_compare.py` requires, per row, **exactly**
 the reference's set of slots, `-1` in exactly the reference's padding
 positions, and the reference's order for rows with padding; it also requires
-matching shape, dtype and device.
+matching shape, dtype and device. The task harness additionally uses the actual
+`seq_lens` to require exact order for every `L <= 512` row, including the
+unpadded `L == 512` boundary. The bundle callback remains unchanged.
 
 ## Cases
 
@@ -102,15 +104,12 @@ Tiling, split reductions and per-length dispatch are implementation choices.
 
 ## Baseline numerical policy
 
-The reference is the bundle's FP32 PyTorch computation and its comparator. The
-production baseline is the performance reference and is not required to meet
-that comparison: `config.yaml` declares `correctness_policy: diagnostic` for the
-deepseek-v4-flash tasks. Baseline correctness still reports every case's actual
-PASS/FAIL, and baseline timing keeps the full comparison of its timed outputs.
-Only a completed finite numerical mismatch is accepted; crashes, missing cases,
-invalid outputs and input mutation remain failures. Candidates have no
-exception: candidate correctness and every checked timed invocation must pass
-the comparator.
+The baseline and candidate must both satisfy the exact integer selection,
+padding and short-row ordering rules. `config.yaml` declares
+`correctness_policy: required`; the floating-point family's numerical
+diagnostic exception does not apply to this task. Incorrect selections,
+unwritten destinations and invalid slots fail correctness and timed-output
+checks for both roles.
 
 ## Baseline, reference and dependencies
 
@@ -226,7 +225,8 @@ selection and page mapping written from the rule above, not from the reference.
 - A fixture at the task's `k = 512` and page size 64, with lengths 512 and
   700, checks the bound reference at the output-size boundary.
 - The comparator must accept the exact answer and a reordered long row, and
-  reject a wrong long-row selection, a reordered short row, moved or missing
+  reject a wrong long-row selection, a reordered short or exactly-k row, unwritten
+  output, moved or missing
   padding, a duplicated slot, a wrong dtype and a wrong shape.
 
 These controls exercise specific oracle/comparator properties; they are not

@@ -50,18 +50,30 @@ def case_call(inputs, out, *, role, launch=None):
     return candidate
 
 
-def compare_output(got, expected):
+def compare_output(got, expected, *, seq_lens):
     """Only completed comparisons can produce numerical_mismatch.
 
-    Invalid references and runtime errors propagate. The original callback is
-    the only authority on acceptance, after shape/dtype/device checks.
+    Invalid references and runtime errors propagate. The original callback and
+    the ordered short-row contract both have to accept the output.
     """
     try:
         task_compare.validate_comparison(got, expected)
     except AssertionError as error:
         return {"status": "FAIL", "failure_kind": "output_contract", "reason": str(error)}
+    if (not isinstance(seq_lens, torch.Tensor) or seq_lens.dtype != torch.int32
+            or seq_lens.shape != (expected.shape[0],) or seq_lens.device != expected.device
+            or bool((seq_lens < 0).any())):
+        raise ValueError("Comparison requires valid int32 sequence lengths")
+    if bool((got < -1).any()):
+        return {"status": "FAIL", "failure_kind": "output_contract",
+                "reason": "Output contains unwritten or invalid slots below -1"}
     passed, detail = task_inputs.verdict(got, expected)
-    # Supplemental evidence never sets or replaces the callback rule.
+    # Keep the bundle callback unchanged, and enforce the task's ordered path
+    # using lengths: length == k has no padding but still requires exact order.
+    short_rows = seq_lens <= expected.shape[1]
+    if passed and not torch.equal(got[short_rows], expected[short_rows]):
+        passed, detail = False, "short-row order differs"
+    # Supplemental metrics do not determine acceptance.
     rows = (got.sort(dim=-1).values != expected.sort(dim=-1).values).any(dim=-1)
     metrics = {"compared_elements": expected.numel(), "rows": expected.shape[0],
                "rows_with_different_sets": int(rows.sum().item()),
@@ -94,7 +106,7 @@ def invoke_checked(inputs, out, call):
     call()
     torch.cuda.synchronize()
     assert_inputs_unchanged(inputs, before)
-    return compare_output(out, expected)
+    return compare_output(out, expected, seq_lens=inputs["seq_lens"])
 
 
 # Correctness checks every case on the bundle seed and on CORRECTNESS_DRAWS
@@ -313,7 +325,7 @@ def verify_timed_outputs(inputs, kept):
         expected = expected_by_draw[id(draw)]
         if isinstance(got, torch.Tensor):
             got = got.to(expected.device)
-        results.append(compare_output(got, expected))
+        results.append(compare_output(got, expected, seq_lens=inputs["seq_lens"]))
     failed = [result for result in results if result["status"] != "PASS"]
     metadata = {"checked_invocations": len(results), "failed_invocations": len(failed)}
     if not failed:
@@ -349,7 +361,7 @@ def verify_timed_cost(unseen_ms, execution_time_ms):
     return {"status": "PASS", "metadata": metadata}
 
 
-def time_case(case, *, role, launch=None, baseline_diagnostic=False):
+def time_case(case, *, role, launch=None):
     from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 
     inputs = task_inputs.build_case_inputs(case)
@@ -395,11 +407,9 @@ def time_case(case, *, role, launch=None, baseline_diagnostic=False):
     protocol.update(unseen_draw_cost=cost["metadata"], timed_output_correctness=outputs)
     if cost["status"] != "PASS":
         return {**cost, "metadata": protocol}
-    allowed_diagnostic = (role == "baseline" and baseline_diagnostic
-                          and outputs.get("failure_kind") == "numerical_mismatch")
-    if outputs["status"] != "PASS" and not allowed_diagnostic:
+    if outputs["status"] != "PASS":
         return {"status": "FAIL", "failure_kind": outputs["failure_kind"],
                 "reason": outputs["reason"], "metadata": protocol}
     return {"status": "PASS", "execution_time_ms": execution_time_ms,
             "benchmark_method": timing["benchmark_method"],
-            "metadata": {**protocol, "baseline_numerical_diagnostic": bool(allowed_diagnostic)}}
+            "metadata": protocol}
