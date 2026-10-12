@@ -78,3 +78,22 @@ streams, `GOMAXPROCS=1`, fresh private destinations, all three full SHA passes,
 path/link parity and executable-mode checks. Containers, cases, seeds, input
 checks, warmups and samples remain unchanged. Use a reviewed helper version;
 do not change active packages or infer GPU speedup from preparation savings.
+
+Batches above64 also require readable current PID/thread accounting and an
+explicit `AKA_AITER_JIT_COPY_THREAD_ALLOWANCE` assigned by the trusted caller
+**exclusively to that copy for its lifetime**. It is a reserved task-slot count,
+not a count of momentarily free shared slots. The allocator must cover shared
+or namespace-hidden ancestor/UID limits; do not broadcast the same allowance
+to concurrent copies without reserving their combined demand. The copier
+reads applicable visible cgroup-v2 `pids.max`/`pids.current` ancestors and
+`RLIMIT_NPROC` with visible real-UID thread usage. Unknown accounting or no
+allowance caps at64; known lower headroom reduces it further. Two blocking-I/O
+threads per offered file plus64reserved runtime slots bound admission.512files
+therefore require at least1088exclusively allocated additional task slots and
+sufficient observed headroom, as well as the descriptor budget. No process
+limit is raised. This is conditional admission, not a universal safety claim.
+
+Use `python3 src/tools/seed_aiter_jit_cache.py --show-copy-budget --batch-size 512`
+to inspect the actual caller context without copying or GPU work. The seed
+container rechecks its own ceilings. Every integrity pass and copy flag remains
+unchanged, including disabled multi-thread streams.

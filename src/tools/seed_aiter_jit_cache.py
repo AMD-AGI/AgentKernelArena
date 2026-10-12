@@ -24,6 +24,79 @@ MAX_COPY_BATCH_SIZE = 512
 # descriptors. Do not raise the caller's descriptor or other resource limits.
 COPY_FDS_PER_FILE = 4
 COPY_FD_RESERVE = 64
+COPY_THREAD_ENV = "AKA_AITER_JIT_COPY_THREAD_ALLOWANCE"
+COPY_THREADS_PER_FILE = 2
+COPY_THREAD_RESERVE = 64
+
+
+def copy_thread_headroom():
+    """Observe local ceilings, not an exclusive allocation of shared capacity.
+
+    Unreadable accounting is unknown. A trusted caller must separately reserve
+    an allowance for this one copy (including any hidden/shared ancestors).
+    """
+    try:
+        soft, _ = resource.getrlimit(resource.RLIMIT_NPROC)
+        ceilings = []
+        uid_threads = None
+        if os.getuid() != 0 and soft != resource.RLIM_INFINITY:
+            uid_threads = 0
+            for path in Path("/proc").glob("[0-9]*/status"):
+                try:
+                    values = dict(line.split(":", 1) for line in path.read_text().splitlines() if ":" in line)
+                except FileNotFoundError:
+                    continue
+                if int(values["Uid"].split()[0]) == os.getuid():
+                    uid_threads += int(values["Threads"])
+            ceilings.append(soft - uid_threads)
+        groups = [line.split("::", 1)[1] for line in Path("/proc/self/cgroup").read_text().splitlines()
+                  if line.startswith("0::")]
+        if len(groups) != 1:
+            return None
+        base = Path("/sys/fs/cgroup")
+        current = base / groups[0].lstrip("/")
+        if not current.is_dir():
+            return None
+        observed = []
+        for group in [current, *current.parents]:
+            if group != base and not group.is_relative_to(base):
+                break
+            limit_path, usage_path = group / "pids.max", group / "pids.current"
+            if limit_path.exists():
+                limit, usage = limit_path.read_text().strip(), int(usage_path.read_text())
+                observed.append({"path": str(group), "limit": limit, "current": usage})
+                if limit != "max":
+                    ceilings.append(int(limit) - usage)
+        if not observed:
+            return None
+        return {"headroom": min(ceilings) if ceilings else None, "nproc_soft": soft,
+                "visible_uid_threads": uid_threads, "cgroups": observed}
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def copy_thread_cap():
+    observed = copy_thread_headroom()
+    # Existing default remains the ceiling when an allocator has not assigned
+    # an exclusive per-copy budget. Shared free counters alone are insufficient.
+    allowance = os.environ.get(COPY_THREAD_ENV)
+    if observed is None:
+        return DEFAULT_COPY_BATCH_SIZE
+    available = observed["headroom"]
+    local_cap = MAX_COPY_BATCH_SIZE if available is None else (available - COPY_THREAD_RESERVE) // COPY_THREADS_PER_FILE
+    if local_cap < 1:
+        raise ValueError("PID/thread headroom leaves no safe capacity for a cache copy")
+    if allowance is None:
+        return min(DEFAULT_COPY_BATCH_SIZE, local_cap)
+    if not allowance.isdecimal() or int(allowance) <= 0:
+        raise ValueError("copy thread allowance must be a positive reserved-slot count")
+    slots = int(allowance)
+    if available is not None:
+        slots = min(slots, available)
+    cap = (slots - COPY_THREAD_RESERVE) // COPY_THREADS_PER_FILE
+    if cap < 1:
+        raise ValueError("Reserved PID/thread allowance leaves no safe copy capacity")
+    return cap
 
 
 def requested_copy_batch_size(value=None):
@@ -42,7 +115,7 @@ def copy_batch_size(value=None):
     cap = MAX_COPY_BATCH_SIZE if soft == resource.RLIM_INFINITY else (soft - COPY_FD_RESERVE) // COPY_FDS_PER_FILE
     if cap < 1:
         raise ValueError("RLIMIT_NOFILE leaves no safe descriptors for a cache copy batch")
-    return min(requested, cap), soft
+    return min(requested, cap, copy_thread_cap()), soft
 
 
 def tree_manifest(root):
@@ -192,6 +265,10 @@ def seed_image_cache(image, destination, log_path, *, timeout=1800, batch_size=N
         # Pass the request, not a host-capped value: the initializer must apply
         # its own inherited RLIMIT_NOFILE inside the fresh seed container.
         command.extend(["--batch-size", str(requested_batch_size)])
+    if COPY_THREAD_ENV in os.environ:
+        # This is a trusted allocator's exclusive allowance, not a free-space
+        # estimate. The child observes its own local NPROC/cgroup ceilings too.
+        command[command.index(image):command.index(image)] = ["--env", COPY_THREAD_ENV + "=" + os.environ[COPY_THREAD_ENV]]
     primary = None
     try:
         with Path(log_path).open("xb") as log:
@@ -220,13 +297,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--initialize-inside", action="store_true")
     parser.add_argument("--image")
-    parser.add_argument("--destination", required=True)
+    parser.add_argument("--destination")
     parser.add_argument("--log")
     parser.add_argument("--uid", type=int)
     parser.add_argument("--gid", type=int)
     parser.add_argument("--rclone", default="rclone")
     parser.add_argument("--batch-size", type=int, help="opt-in local copy batch (1-512), capped by RLIMIT_NOFILE")
+    parser.add_argument("--show-copy-budget", action="store_true", help="CPU-only current descriptor/PID budget observation")
     args = parser.parse_args()
+    if args.show_copy_budget:
+        effective, nofile = copy_batch_size(args.batch_size)
+        print(json.dumps({"rlimit_nofile": nofile, "pid_thread_observation": copy_thread_headroom(),
+                          "caller_reserved_thread_allowance": os.environ.get(COPY_THREAD_ENV),
+                          "effective_batch_size": effective, "shared_capacity_reservation_proven_by_tool": False}))
+        return
+    if not args.destination:
+        parser.error("--destination is required for cache copying")
     if args.initialize_inside:
         if os.geteuid() != 0 or args.uid is None or args.gid is None:
             parser.error("image initializer requires root and an explicit receiving UID/GID")

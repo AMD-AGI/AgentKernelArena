@@ -17,6 +17,8 @@ from test_seed_aiter_jit_cache import image_package
                                                      (512,1024,240), (512,256,48), (512,-1,512)])
 def test_runtime_descriptor_budget(monkeypatch, requested, soft, expected):
     monkeypatch.delenv(seed.COPY_BATCH_ENV, raising=False)
+    monkeypatch.setenv(seed.COPY_THREAD_ENV, "2048")
+    monkeypatch.setattr(seed, "copy_thread_headroom", lambda: {"headroom": 4096})
     monkeypatch.setattr(seed.resource, "getrlimit", lambda which: (soft, soft))
     assert seed.copy_batch_size(requested) == (expected, soft)
 
@@ -44,6 +46,8 @@ def test_larger_batches_keep_flags_three_hash_passes_links_and_modes(image_packa
     (source / "check.py").chmod(0o755)
     output = tmp_path / "larger-copy"
     monkeypatch.setenv(seed.COPY_BATCH_ENV, "512")
+    monkeypatch.setenv(seed.COPY_THREAD_ENV, "2048")
+    monkeypatch.setattr(seed, "copy_thread_headroom", lambda: {"headroom": 4096})
     monkeypatch.setattr(seed.resource, "getrlimit", lambda which: (1048576,1048576))
     original_run, original_manifest = subprocess.run, seed.tree_manifest
     batches, hashes = [], []
@@ -84,6 +88,8 @@ copy_cache(sys.argv[1], sys.argv[2], batch_size=512)
 
 def test_seed_forwards_request_for_container_local_recapping(image_package, tmp_path, monkeypatch):
     monkeypatch.setenv(seed.COPY_BATCH_ENV, "512")
+    monkeypatch.setenv(seed.COPY_THREAD_ENV, "2048")
+    monkeypatch.setattr(seed, "copy_thread_headroom", lambda: {"headroom": 4096})
     monkeypatch.setattr(seed.importlib.util, "find_spec", lambda name: SimpleNamespace(submodule_search_locations=[str(image_package)]))
     destination = tmp_path / "seed"
     original = subprocess.run
@@ -101,3 +107,33 @@ def test_seed_forwards_request_for_container_local_recapping(image_package, tmp_
     monkeypatch.setattr(subprocess,"run",run)
     proof = seed.seed_image_cache("registry/image@sha256:"+"a"*64,destination,tmp_path/"seed.log")
     assert seen == [512] and proof["complete_parity"] is True
+
+
+@pytest.mark.parametrize("headroom,allowance,expected", [(None,"2048",64),({"headroom":4096},None,64),({"headroom":128},"2048",32),({"headroom":4096},"1088",512)])
+def test_large_batches_require_observed_headroom_and_reserved_allowance(monkeypatch, headroom, allowance, expected):
+    monkeypatch.setattr(seed.resource,"getrlimit",lambda which:(1048576,1048576))
+    monkeypatch.setattr(seed,"copy_thread_headroom",lambda:headroom)
+    if allowance is None:monkeypatch.delenv(seed.COPY_THREAD_ENV,raising=False)
+    else:monkeypatch.setenv(seed.COPY_THREAD_ENV,allowance)
+    assert seed.copy_batch_size(512)[0] == expected
+    assert seed.copy_batch_size(64)[0] <= 64
+
+
+def test_actual_accounting_parser_takes_tightest_uid_or_cgroup_limit(tmp_path, monkeypatch):
+    proc = tmp_path / 'proc'; group = tmp_path / 'cgroup'
+    (proc/'self').mkdir(parents=True); (proc/'self/cgroup').write_text('0::/scope/worker\n')
+    (proc/'123').mkdir(); (proc/'123/status').write_text('Uid:\t500 500 500 500\nThreads:\t20\n')
+    (group/'scope/worker').mkdir(parents=True)
+    for path, limit, current in [(group/'scope',512,50),(group/'scope/worker',128,20)]:
+        (path/'pids.max').write_text(str(limit)); (path/'pids.current').write_text(str(current))
+    original_path = Path
+    def mapped(path):
+        return proc if path == '/proc' else proc/'self/cgroup' if path == '/proc/self/cgroup' else group if path == '/sys/fs/cgroup' else original_path(path)
+    monkeypatch.setattr(seed,'Path',mapped)
+    monkeypatch.setattr(seed.os,'getuid',lambda:500)
+    monkeypatch.setattr(seed.resource,'getrlimit',lambda which:(1000,1000))
+    result = seed.copy_thread_headroom()
+    assert result['visible_uid_threads'] == 20 and result['headroom'] == 108
+    assert len(result['cgroups']) == 2
+    (proc/'self/cgroup').unlink()
+    assert seed.copy_thread_headroom() is None
