@@ -5,6 +5,12 @@ Qwen geometries. The editable interface is a literal routing policy. Native
 Python launchers, GPU implementations, references and timing callbacks are frozen;
 this package does not expose an editable GPU kernel body.
 
+The `native_routing` task type describes this policy interface. Compilation
+validates its syntax and complete literal mapping; correctness and performance
+execute the selected image-native implementations. All twelve framework
+validator checks remain required, and this configuration needs fresh GPU
+qualification before it can be accepted.
+
 Edit only the body of `select_routes` in `source/routing.py`. Return every existing
 case signature exactly once, mapping it to `recorded`, `torch`, or `triton`.
 The evaluator parses this function as data and never imports or executes it.

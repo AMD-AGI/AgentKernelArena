@@ -391,7 +391,7 @@ FAIL. Architecture skips are `SKIP/not_applicable`, not dependency failures.
 ## 1. config_schema
 
 Supported task types are `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`,
-`torch2hip`, `torch2flydsl`, `instruction2triton`, `flydsl2flydsl`, `repository`,
+`torch2hip`, `torch2flydsl`, `instruction2triton`, `flydsl2flydsl`, `native_routing`, `repository`,
 and `image_kernel`. All current task families require non-empty string lists for
 `compile_command`, `correctness_command`, and `performance_command`.
 
@@ -400,6 +400,15 @@ Normal kernel tasks require string-list `source_file_path` and
 list are WARN here, then must be judged by Check 12. New tasks must declare their
 editable source. Split legacy comma-combined target strings for symbol review, but
 WARN that new configs should use separate list entries.
+
+`native_routing` is an isolated task whose declared Python function contains a
+literal policy selecting frozen image-native GPU implementations. Require the
+protected runner to syntax-check and parse that policy without executing editable
+Python, reject unsupported or incomplete route mappings, and enforce the declared
+source/harness boundary. Compilation validates the policy; correctness and
+performance execute the selected native GPU implementations. Apply all twelve
+checks, including independent output validation, negative controls, complete case
+coverage, device timing, and harness integrity.
 
 `repository` requires `repo_url` and `repository_language`; source/target hints are
 optional. `image_kernel` requires `image_repo_path`, `repository_language`, source,

@@ -183,8 +183,8 @@ Each task is defined by a `config.yaml` in its directory. Command fields are
 *lists*.
 
 For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
-`triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, and
-`flydsl2flydsl`):
+`triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`,
+`flydsl2flydsl`, and `native_routing`):
 
 | Field | Required | Description |
 | --- | --- | --- |
@@ -192,7 +192,7 @@ For isolated-kernel tasks (`hip2hip`, `cuda2hip`, `triton2triton`,
 | `target_kernel_functions` | Yes | Kernel function names that must be defined in the source |
 | `compile_command` | Yes | Command(s) to compile or build-check |
 | `correctness_command` | Yes | Command(s) to validate correctness |
-| `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, or `flydsl2flydsl` |
+| `task_type` | Yes | One of `hip2hip`, `cuda2hip`, `triton2triton`, `triton2flydsl`, `instruction2triton`, `torch2hip`, `torch2flydsl`, `flydsl2flydsl`, or `native_routing` (literal Python policy selecting frozen image-native implementations) |
 | `performance_command` | No | Command(s) to measure performance |
 | `compile_timeout` | No | Per-command compilation timeout in seconds (default `3600`) |
 | `correctness_timeout` | No | Per-command correctness timeout in seconds (default `3600`) |

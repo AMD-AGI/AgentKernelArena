@@ -27,7 +27,7 @@ _QWEN_GRAPH_PROFILES = {
         'validator': 'scripts/_routing_contract.py',
     },
     'qwen_dense_bf16_graph_v1': {
-        'task_type': 'triton2triton', 'sources': ['source/routing.py'], 'targets': ['select_routes'],
+        'task_type': 'native_routing', 'sources': ['source/routing.py'], 'targets': ['select_routes'],
         'op_kind': 'gemm', 'cases': 5, 'native_routing': True, 'routing_kind': 'dense',
         'validator': 'scripts/task_runner.py', 'routing_contract': 'scripts/_routing_contract.py',
         'raw_directory': 'build/native-routing-runs',

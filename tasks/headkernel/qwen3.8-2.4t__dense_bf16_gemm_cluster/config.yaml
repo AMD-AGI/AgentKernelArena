@@ -8,7 +8,7 @@ correctness_command:
 - python3 scripts/task_runner.py correctness
 performance_command:
 - python3 scripts/task_runner.py performance
-task_type: triton2triton
+task_type: native_routing
 task_result_template: null
 prompt:
   source_code: null

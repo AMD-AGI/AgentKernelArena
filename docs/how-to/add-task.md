@@ -26,6 +26,7 @@ The `task_type` field declares what kind of optimization the task represents.
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL kernel |
 | `triton2flydsl` | Translate a Triton kernel to FlyDSL |
 | `flydsl2flydsl` | Optimize a FlyDSL kernel (requires FlyDSL) |
+| `native_routing` | Tune a literal Python policy selecting frozen image-native GPU implementations |
 | `repository` | Repository-level task |
 
 The repository ships task suites including `hip2hip` (gpumode and others),
@@ -72,7 +73,7 @@ correctness_command:
 
 # One of: hip2hip, cuda2hip, triton2triton, triton2flydsl,
 #         instruction2triton, torch2hip, torch2flydsl,
-#         flydsl2flydsl, repository
+#         flydsl2flydsl, native_routing, repository
 task_type: hip2hip
 ```
 
@@ -81,6 +82,14 @@ they clone and optimize an upstream project rather than a small source bundle.
 They require `repo_url`, `repository_language`, `compile_command`, and
 `correctness_command`; `source_file_path` and `target_kernel_functions` are
 optional hints when the target files and symbols are known.
+
+`native_routing` uses the isolated-task fields. Its declared Python function
+returns literal policy data that a protected runner parses without executing
+editable Python. The task must define its allowed routes, reject incomplete case
+maps, and preserve the frozen native implementations and evaluation inputs.
+The compile command checks policy syntax and the routing contract; correctness
+and performance run the selected implementations on the GPU. All twelve
+validator checks and the normal source/harness protections still apply.
 
 Files shipped by the task outside its declared source/target files are treated
 as immutable evaluation inputs during optimization, including JSON case tables

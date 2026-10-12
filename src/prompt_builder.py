@@ -283,6 +283,8 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         task_type_prompt = task_type.torch2hip_task_type()
     elif task_type_name == 'triton2triton':
         task_type_prompt = task_type.triton2triton_task_type()
+    elif task_type_name == 'native_routing':
+        task_type_prompt = task_type.native_routing_task_type()
     elif task_type_name == 'cuda2hip':
         task_type_prompt = task_type.cuda2hip_task_type()
     elif task_type_name == 'instruction2triton':
