@@ -8,12 +8,41 @@ import importlib.util
 import json
 import os
 import re
+import resource
 import shutil
 import stat
 import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+
+COPY_BATCH_ENV = "AKA_AITER_JIT_COPY_BATCH_SIZE"
+DEFAULT_COPY_BATCH_SIZE = 64
+MAX_COPY_BATCH_SIZE = 512
+# Local transfers need a source and destination descriptor. Budget twice that
+# amount per offered file plus space for stdio, file lists and checker/runtime
+# descriptors. Do not raise the caller's descriptor or other resource limits.
+COPY_FDS_PER_FILE = 4
+COPY_FD_RESERVE = 64
+
+
+def requested_copy_batch_size(value=None):
+    if value is None:
+        value = os.environ.get(COPY_BATCH_ENV, str(DEFAULT_COPY_BATCH_SIZE))
+    if type(value) is str and value.isdecimal():
+        value = int(value)
+    if type(value) is not int or not 1 <= value <= MAX_COPY_BATCH_SIZE:
+        raise ValueError(f"copy batch size must be an integer between 1 and {MAX_COPY_BATCH_SIZE}")
+    return value
+
+
+def copy_batch_size(value=None):
+    requested = requested_copy_batch_size(value)
+    soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+    cap = MAX_COPY_BATCH_SIZE if soft == resource.RLIM_INFINITY else (soft - COPY_FD_RESERVE) // COPY_FDS_PER_FILE
+    if cap < 1:
+        raise ValueError("RLIMIT_NOFILE leaves no safe descriptors for a cache copy batch")
+    return min(requested, cap), soft
 
 
 def tree_manifest(root):
@@ -39,7 +68,11 @@ def tree_manifest(root):
     return entries
 
 
-def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
+def copy_cache(source, destination, *, rclone="rclone", timeout=1800, batch_size=None):
+    effective_batch_size, nofile = copy_batch_size(batch_size)
+    if batch_size is not None or COPY_BATCH_ENV in os.environ:
+        print(f"aiter_copy_batch requested={requested_copy_batch_size(batch_size)} "
+              f"effective={effective_batch_size} rlimit_nofile={nofile}", flush=True)
     destination = Path(destination)
     destination.mkdir()
     before = tree_manifest(source)
@@ -61,9 +94,9 @@ def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
     # Keep the mandated transfer setting while bounding the available jobs.
     # GOMAXPROCS alone does not prevent blocking file I/O from growing Go's
     # OS-thread pool when thousands of payload files are offered at once.
-    for start in range(0, len(files), 64):
+    for start in range(0, len(files), effective_batch_size):
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix="aka-jit-batch-") as batch:
-            batch.write("\n".join(files[start:start + 64]) + "\n")
+            batch.write("\n".join(files[start:start + effective_batch_size]) + "\n")
             batch.flush()
             subprocess.run([
                 rclone, "copy", str(Path(source).resolve()), str(destination.resolve()),
@@ -93,7 +126,7 @@ def copy_cache(source, destination, *, rclone="rclone", timeout=1800):
     return before
 
 
-def initialize_inside(destination, uid, gid, rclone):
+def initialize_inside(destination, uid, gid, rclone, *, batch_size=None):
     """Called as root only in a fresh, isolated copy of the pinned image."""
     spec = importlib.util.find_spec("aiter")
     if spec is None or not spec.submodule_search_locations:
@@ -102,7 +135,7 @@ def initialize_inside(destination, uid, gid, rclone):
     destination = Path(destination)
     cache = destination / "jit"
     try:
-        entries = copy_cache(source, cache, rclone=rclone)
+        entries = copy_cache(source, cache, rclone=rclone, batch_size=batch_size)
         files = [entry for entry in entries.values() if entry["type"] == "file"]
         if not files or not any(name.endswith(".so") for name in entries):
             raise ValueError("complete image JIT cache must include its precompiled native modules")
@@ -127,10 +160,11 @@ def initialize_inside(destination, uid, gid, rclone):
     return manifest
 
 
-def seed_image_cache(image, destination, log_path, *, timeout=1800):
+def seed_image_cache(image, destination, log_path, *, timeout=1800, batch_size=None):
     """Return a complete, hash-verified image cache owned by the host UID."""
     if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image):
         raise ValueError("image-cache seeding requires a digest-pinned image")
+    requested_batch_size = requested_copy_batch_size(batch_size)
     destination = Path(destination).resolve()
     destination.mkdir(mode=0o700)
     rclone = shutil.which("rclone")
@@ -154,6 +188,10 @@ def seed_image_cache(image, destination, log_path, *, timeout=1800):
         "--initialize-inside", "--destination", "/seed", "--uid", str(os.getuid()),
         "--gid", str(os.getgid()), "--rclone", "/seed_rclone",
     ]
+    if batch_size is not None or COPY_BATCH_ENV in os.environ:
+        # Pass the request, not a host-capped value: the initializer must apply
+        # its own inherited RLIMIT_NOFILE inside the fresh seed container.
+        command.extend(["--batch-size", str(requested_batch_size)])
     primary = None
     try:
         with Path(log_path).open("xb") as log:
@@ -187,15 +225,16 @@ def main():
     parser.add_argument("--uid", type=int)
     parser.add_argument("--gid", type=int)
     parser.add_argument("--rclone", default="rclone")
+    parser.add_argument("--batch-size", type=int, help="opt-in local copy batch (1-512), capped by RLIMIT_NOFILE")
     args = parser.parse_args()
     if args.initialize_inside:
         if os.geteuid() != 0 or args.uid is None or args.gid is None:
             parser.error("image initializer requires root and an explicit receiving UID/GID")
-        initialize_inside(args.destination, args.uid, args.gid, args.rclone)
+        initialize_inside(args.destination, args.uid, args.gid, args.rclone, batch_size=args.batch_size)
     else:
         if not args.image or not args.log:
             parser.error("host seeding requires --image and --log")
-        seed_image_cache(args.image, args.destination, args.log)
+        seed_image_cache(args.image, args.destination, args.log, batch_size=args.batch_size)
 
 
 if __name__ == "__main__":

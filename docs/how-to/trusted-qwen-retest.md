@@ -63,3 +63,18 @@ checks remain task-owned and unchanged. Timing-quality rejection preserves all
 raw samples. Stock sources and equivalent native routes remain controls with no
 accepted gain. A completed trusted retest does not substitute for the separate
 framework-finalized `task_validator` PASS.
+
+The native image cache copier defaults to batches of 64 files. Trusted hosts may
+opt into larger local batches with `AKA_AITER_JIT_COPY_BATCH_SIZE=512` (range
+1–512), or `--batch-size` on `seed_aiter_jit_cache.py`. Each copier caps its
+request using its own soft `RLIMIT_NOFILE`: 64 descriptors reserved and 4 budgeted
+per offered file. A limit of 1024 therefore caps a 512 request to 240. The seed
+container applies its own limit, and the effective size and observed limit are
+logged when enabled. No process resource limits are raised.
+
+Only the number of files offered to each rclone process changes. Every copy
+retains `--transfers 64000`, `--progress`, zero buffers, disabled multi-thread
+streams, `GOMAXPROCS=1`, fresh private destinations, all three full SHA passes,
+path/link parity and executable-mode checks. Containers, cases, seeds, input
+checks, warmups and samples remain unchanged. Use a reviewed helper version;
+do not change active packages or infer GPU speedup from preparation savings.
