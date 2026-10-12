@@ -8,7 +8,13 @@ the aggregate status.  This module provides that trust boundary.
 
 from __future__ import annotations
 
+import base64
+from contextlib import contextmanager
 import hashlib
+import io
+import os
+import stat
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -82,6 +88,117 @@ HARD_BENCHMARK_REVIEW_FIELDS = (
     "timing_boundaries_valid",
 )
 ADVISORY_BENCHMARK_REVIEW_FIELDS = ("replay_validation_valid",)
+MAX_REPORT_BYTES = 8 * 1024 * 1024
+MAX_FINAL_REPORT_BYTES = 32 * 1024 * 1024
+
+
+@contextmanager
+def _report_parent(path: Path):
+    """Anchor report operations to directory descriptors without following links."""
+    path = Path(path).absolute()
+    if ".." in path.parts:
+        raise ValueError("Report path must not traverse parent directories")
+    descriptors = []
+    chain = []
+    try:
+        parent = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(parent)
+        for component in path.parts[1:-1]:
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            descriptors.append(child)
+            chain.append((parent, component, os.fstat(child)))
+            parent = child
+        yield parent
+        for directory, component, before in chain:
+            after = os.stat(component, dir_fd=directory, follow_symlinks=False)
+            if not stat.S_ISDIR(after.st_mode) or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino):
+                raise ValueError("Report parent directory changed during access")
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _read_regular_report(path: Path, *, limit: int = MAX_REPORT_BYTES) -> bytes:
+    """Bound and stabilize one regular report read, including its parent path."""
+    path = Path(path)
+    with _report_parent(path) as parent:
+        descriptor = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+                raise ValueError(f"Report must be a regular file of at most {limit} bytes")
+            chunks = []
+            remaining = limit + 1
+            while remaining:
+                chunk = os.read(descriptor, min(remaining, 65536))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            content = b"".join(chunks)
+            after = os.fstat(descriptor)
+            current = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+            identity = lambda value: (value.st_dev, value.st_ino, value.st_mode,
+                                      value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+            if (len(content) != before.st_size or len(content) > limit
+                    or identity(before) != identity(after) or identity(before) != identity(current)):
+                raise ValueError("Report changed or was replaced during read")
+        finally:
+            os.close(descriptor)
+    return content
+
+
+class _ReportLoader(yaml.SafeLoader):
+    """Reject ambiguous report mappings instead of silently taking the last key."""
+
+    def construct_mapping(self, node, deep=False):
+        self.flatten_mapping(node)
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=deep)
+            try:
+                duplicate = key in seen
+                seen.add(key)
+            except TypeError as exc:
+                raise yaml.constructor.ConstructorError(
+                    None, None, "report mapping key must be hashable", key_node.start_mark
+                ) from exc
+            if duplicate:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"duplicate report mapping key: {key!r}", key_node.start_mark
+                )
+        return super().construct_mapping(node, deep=deep)
+
+
+def _load_report_yaml(content):
+    return yaml.load(content, Loader=_ReportLoader)
+
+
+def check_draft_report(path: str | Path, *, expected_task_name: str) -> dict[str, Any]:
+    """Check report data with the canonical normalizer; never run task helpers."""
+    content = None
+    try:
+        path = Path(path)
+        content = _read_regular_report(path)
+        normalized = normalize_report(
+            _load_report_yaml(content), expected_task_name=expected_task_name
+        )
+        errors = normalized["validation_errors"]
+        task_status = normalized["overall_status"]
+        _preserve_submission(normalized, content)
+        # Include the complete raw draft in the producer's size projection.
+        # Finalization repeats this bound after adding framework-owned facts.
+        _serialize_yaml(normalized)
+    except (OSError, ValueError, TypeError, yaml.YAMLError) as exc:
+        errors = [str(exc)]
+        task_status = None
+    return {
+        "schema_status": "FAIL" if errors else "PASS",
+        "projected_task_status": task_status,
+        "report_sha256": hashlib.sha256(content).hexdigest() if content is not None else None,
+        "errors": errors,
+        "scope": "Report format only; no task commands, finalization or completion marker.",
+    }
 
 
 def _utc_timestamp() -> str:
@@ -497,11 +614,49 @@ def normalize_report(
     return report
 
 
+def _preserve_submission(report: dict[str, Any], content: bytes) -> None:
+    submitted = {"sha256": hashlib.sha256(content).hexdigest()}
+    try:
+        submitted["raw_yaml"] = content.decode("utf-8")
+    except UnicodeDecodeError:
+        submitted["raw_base64"] = base64.b64encode(content).decode("ascii")
+    report["submitted_report"] = submitted
+
+
+def _serialize_yaml(data: Mapping[str, Any]) -> bytes:
+    class BoundedOutput(io.BytesIO):
+        def write(self, text):
+            encoded = text.encode("utf-8")
+            if self.tell() + len(encoded) > MAX_FINAL_REPORT_BYTES:
+                raise ValueError(
+                    f"Serialized validator report exceeds {MAX_FINAL_REPORT_BYTES} bytes "
+                    "including the complete submitted draft. Reduce verbose report prose "
+                    "without removing required checks, findings or evidence, then rerun "
+                    "--check-draft. The submitted file has not been replaced."
+                )
+            return super().write(encoded)
+
+    output = BoundedOutput()
+    yaml.safe_dump(dict(data), output, default_flow_style=False, sort_keys=False)
+    return output.getvalue()
+
+
 def _atomic_yaml_dump(path: Path, data: Mapping[str, Any]) -> None:
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("w") as handle:
-        yaml.safe_dump(dict(data), handle, default_flow_style=False, sort_keys=False)
-    temporary.replace(path)
+    # Bound serialization itself before opening or replacing any artifact.
+    serialized = _serialize_yaml(data)
+    temporary = f".{path.name}.{uuid.uuid4().hex}.tmp"
+    with _report_parent(path) as parent:
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                             0o600, dir_fd=parent)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(serialized)
+            os.replace(temporary, path.name, src_dir_fd=parent, dst_dir_fd=parent)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=parent)
+            except FileNotFoundError:
+                pass
 
 
 def _bind_integrity_requirement(workspace: Path, report: dict, previous: Any) -> dict | None:
@@ -531,13 +686,18 @@ def finalize_report(
     workspace_path = Path(workspace)
     report_path = workspace_path / REPORT_FILENAME
     marker_path = workspace_path / COMPLETION_MARKER_FILENAME
-    marker_path.unlink(missing_ok=True)
+    with _report_parent(marker_path) as parent:
+        try:
+            os.unlink(marker_path.name, dir_fd=parent)
+        except FileNotFoundError:
+            pass
 
     raw_report: Any = None
+    submitted_bytes: bytes | None = None
     if report_path.exists():
         try:
-            with report_path.open() as handle:
-                raw_report = yaml.safe_load(handle)
+            submitted_bytes = _read_regular_report(report_path)
+            raw_report = _load_report_yaml(submitted_bytes)
         except Exception as exc:  # Malformed agent output is data, not a launcher crash.
             framework_error = framework_error or f"Unable to parse agent report: {exc}"
 
@@ -603,9 +763,13 @@ def finalize_report(
         expected_task_name=expected_task_name,
         framework_error=framework_error,
     )
+    if submitted_bytes is not None:
+        # Keep the exact pre-normalization draft inside the existing mirrored
+        # report. A failed attempt must remain diagnosable after the agent exits.
+        _preserve_submission(report, submitted_bytes)
     requirement = _bind_integrity_requirement(workspace_path, report, raw_report)
     _atomic_yaml_dump(report_path, report)
-    digest = hashlib.sha256(report_path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(_read_regular_report(report_path, limit=MAX_FINAL_REPORT_BYTES)).hexdigest()
     marker = {"validation_schema_version": REPORT_SCHEMA_VERSION, "report_sha256": digest}
     if requirement is not None:
         marker["validator_integrity"] = requirement
@@ -616,20 +780,28 @@ def finalize_report(
 def invalidate_integrity_report(workspace: Path, task_name: str, error: str) -> None:
     """Record a failed audit without running any task-controlled helper code."""
     report_path = workspace / REPORT_FILENAME
+    submitted_bytes = None
     try:
-        raw = yaml.safe_load(report_path.read_text()) if report_path.is_file() and not report_path.is_symlink() else None
-    except (OSError, yaml.YAMLError):
+        submitted_bytes = _read_regular_report(report_path, limit=MAX_FINAL_REPORT_BYTES)
+        raw = _load_report_yaml(submitted_bytes)
+    except (OSError, ValueError, yaml.YAMLError):
         raw = None
     if isinstance(raw, dict) and isinstance(raw.get("checks"), dict):
         raw["checks"]["harness_integrity"] = {
             "status": "FAIL", "details": error, "post_validator_integrity_verified": False,
         }
     report = normalize_report(raw, expected_task_name=task_name, framework_error=error)
+    if isinstance(raw, dict) and "submitted_report" in raw:
+        report["submitted_report"] = raw["submitted_report"]
+    elif submitted_bytes is not None:
+        # If finalization refused an oversized serialization, later failure
+        # handling must not replace the draft with a version that loses it.
+        _preserve_submission(report, submitted_bytes)
     requirement = _bind_integrity_requirement(workspace, report, raw)
     _atomic_yaml_dump(report_path, report)
     _atomic_yaml_dump(workspace / COMPLETION_MARKER_FILENAME, {
         "validation_schema_version": REPORT_SCHEMA_VERSION,
-        "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+        "report_sha256": hashlib.sha256(_read_regular_report(report_path, limit=MAX_FINAL_REPORT_BYTES)).hexdigest(),
         "validator_integrity": requirement or {"required": True, "status": "PENDING"},
     })
 
@@ -642,17 +814,16 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
     if not report_path.is_file() or not marker_path.is_file():
         return False
     try:
-        with marker_path.open() as handle:
-            marker = yaml.safe_load(handle)
-        with report_path.open() as handle:
-            report = yaml.safe_load(handle)
+        marker = _load_report_yaml(_read_regular_report(marker_path))
+        report_bytes = _read_regular_report(report_path, limit=MAX_FINAL_REPORT_BYTES)
+        report = _load_report_yaml(report_bytes)
     except Exception:
         return False
     if not isinstance(marker, dict) or not isinstance(report, dict):
         return False
     if marker.get("validation_schema_version") != REPORT_SCHEMA_VERSION:
         return False
-    if marker.get("report_sha256") != hashlib.sha256(report_path.read_bytes()).hexdigest():
+    if marker.get("report_sha256") != hashlib.sha256(report_bytes).hexdigest():
         return False
     if report.get("validation_schema_version") != REPORT_SCHEMA_VERSION:
         return False
@@ -669,3 +840,16 @@ def validation_report_is_complete(workspace: str | Path) -> bool:
         return False
     from src.validator_integrity import completion_integrity_matches
     return completion_integrity_matches(workspace_path, marker, report)
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+
+    parser = argparse.ArgumentParser(description="Read-only canonical validator draft report check")
+    parser.add_argument("--check-draft", type=Path, required=True)
+    parser.add_argument("--task-name", required=True)
+    arguments = parser.parse_args()
+    result = check_draft_report(arguments.check_draft, expected_task_name=arguments.task_name)
+    print(json.dumps(result, indent=2))
+    raise SystemExit(0 if result["schema_status"] == "PASS" else 1)
