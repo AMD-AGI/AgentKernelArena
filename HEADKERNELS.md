@@ -45,7 +45,7 @@ After preparing each selected task's inputs, use the normal Docker workflow with
 
 ## Capture provenance and scope
 
-The recorded non-Qwen workload recipe is 64 requests, ISL8192, OSL1024, concurrency 64, TP8, context 9218 and seed42, with OSL16 warmup followed by a prefix-cache flush. Task manifests remain authoritative about rank-local layouts, controls, occurrence counts and references. Sampled profiler counts must not be extrapolated into full-workload frequencies.
+The recorded non-Qwen workload recipe is 64 requests, ISL8192, OSL1024, concurrency 64, TP8, context 9218 and client seed42, with OSL16 warmup followed by a prefix-cache flush. The [recorded serving configurations](docs/reference/headkernel-serving-configs.md) give model-specific settings, separate client/server seeds, overlay requirements and portable evidence sources, including Qwen's distinct recorded and proposed recipes. Task manifests remain authoritative about rank-local layouts, controls, occurrence counts and references. Sampled profiler counts must not be extrapolated into full-workload frequencies.
 
 Qwen's sources target SG0.5.20, while its retained shapes and fixtures originate from the documented **SG0.5.18 TP8/EP8** capture, with page 1 attention and FP32 model-default Mamba. Later measured metadata record 103483 describes **TP8/EP1, context 11264, page 16 attention and BF16 Mamba**; the full image/raw-log record is absent. Those settings do not establish equivalent task dispatch. A complete SG0.5.20 Qwen workload capture and matching task provenance remain pending.
 
