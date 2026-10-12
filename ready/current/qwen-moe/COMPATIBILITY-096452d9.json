@@ -1,0 +1,41 @@
+{
+  "compatible_checkout_commit": "096452d937d7e5469ff695c4094ca6837a9872ee",
+  "status": "EXACT_TASK_AND_RUNTIME_COMPATIBILITY_VERIFIED",
+  "framework_commit": "096452d937d7e5469ff695c4094ca6837a9872ee",
+  "trusted_execution_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "task_tree": "21fdf3f28ca1efbe8053c90f708ed15f74678bbc",
+  "unchanged_paths": [
+    "tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+    "src/tools/perf/aka_benchmark.py",
+    "src/quality_measurements.py",
+    "src/benchmark_quality.py",
+    "src/harness_guard.py",
+    "src/tools/trusted_task_eval.py",
+    "src/tools/trusted_qwen_eval.py",
+    "src/tools/trusted_qwen_phase.py",
+    "src/tools/trusted_native_eval.py",
+    "src/tools/seed_aiter_jit_cache.py"
+  ],
+  "whole_repository_changed_paths": [
+    "HEADKERNELS.md",
+    "agents/task_validator/validation_prompt.py",
+    "docs/how-to/timed-graph-replay-evidence.md",
+    "docs/reference/headkernel-ready-subsets.md",
+    "docs/reference/headkernel-serving-configs.md",
+    "ready/current/qwen-recurrent/COMPATIBILITY-eed4df57.json",
+    "ready/current/qwen-recurrent/README.md",
+    "ready/current/qwen-recurrent/READY.json",
+    "src/tools/audit_timed_graph_replay.py",
+    "tests/test_headkernel_portable_setup.py",
+    "tests/test_timed_graph_replay_audit.py",
+    "tests/test_trusted_flydsl_cache.py",
+    "tools/headkernel-runtime-targets.json"
+  ],
+  "delta_relevant_to_this_retry": "validator review guidance and read-only exact-byte replay auditor; no task, timing, math, quality or trusted execution changes",
+  "retained_framework_warn_sha256": "6ccd92751669fe33ec369b573527abce94b9799ef28080dd190a3baffdcf527a",
+  "retained_warn_promoted": false,
+  "new_trusted_execution_at_framework_commit": false,
+  "accepted_gain": false,
+  "published_review_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__fused_moe_2stage_mxfp4/096452d9-framework-209857__eed4df57-trusted-209670/COMPATIBILITY.json",
+  "published_review_sha256": "b2458eb12f6ac92f7a59fca93b8e0f31299cc29db9b5edb5a598a09f2eef4c3a"
+}

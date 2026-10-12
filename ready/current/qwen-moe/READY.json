@@ -1,0 +1,149 @@
+{
+  "schema": "current-scoped-ready-entry-v1",
+  "status": "SCOPED_TASK_READINESS_VERIFIED_BY_EXACT_COMPATIBILITY",
+  "task": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4",
+  "ready_tasks": [
+    "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4"
+  ],
+  "qualified_commit": "096452d937d7e5469ff695c4094ca6837a9872ee",
+  "compatible_checkout_commit": "096452d937d7e5469ff695c4094ca6837a9872ee",
+  "qualified_framework_commit": "096452d937d7e5469ff695c4094ca6837a9872ee",
+  "qualified_trusted_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "task_tree": "21fdf3f28ca1efbe8053c90f708ed15f74678bbc",
+  "case_ids": [
+    "decode_m64_live|decode",
+    "prefill_m8192_live|prefill"
+  ],
+  "scope": {
+    "cases": 2,
+    "hidden_shapes": [
+      [
+        64,
+        8192
+      ],
+      [
+        8192,
+        8192
+      ]
+    ],
+    "topk": 10,
+    "local_experts": 64,
+    "expert_mask_size": 512,
+    "other_tasks_or_serving_capture_covered": false
+  },
+  "measurement": {
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "framework_samples": 200,
+    "trusted_samples": 400,
+    "checked_invocations_per_case": 114,
+    "fresh_input_sets_per_case": 116,
+    "method": "GPU graph replay",
+    "event_fallback_allowed": false
+  },
+  "runtime": {
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "architecture": "gfx950",
+    "capture_provenance": "original SG518 TP8/EP8; no new SG520 serving capture"
+  },
+  "framework": {
+    "commit": "096452d937d7e5469ff695c4094ca6837a9872ee",
+    "job": "209857",
+    "node": "crsuse2-m2m-213",
+    "gpu": 0,
+    "final_sha256": "a2a4da5facdeaaad3eabca6893f7746398682592df6073153cba6b45abf3c17d",
+    "completed_utc": "2026-10-12T19:08:01.213734+00:00",
+    "checks": 12,
+    "mirrored_integrity_observations": 8,
+    "owned_retirement_verified": true,
+    "report_sha256": "5633fbf0191ebc2d9a131aea042c22551c30e377eba5422a3c61ca4bdf1bf98f",
+    "replay_audit_sha256": "2192f03e6943861ae886b08a8d566e844d7781cd8e576fbdc0ace53cf27b12c4"
+  },
+  "trusted": {
+    "commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+    "job": "209670",
+    "node": "crsuse2-m2m-213",
+    "gpu": 2,
+    "final_sha256": "aaf8db0d45a489ce0c43839100b055f2e5ed990e9f3eae724c88b9cc7e70cfc2",
+    "completed_utc": "2026-10-12T16:50:01.573890+00:00",
+    "fresh_phases": 6,
+    "ordered_samples": 400,
+    "owned_retirement_verified": true,
+    "measurement_sha256": "4970ee2d5288198bb71b1eeeef306e799f0f598d2b2b242402f963bfddb03784",
+    "phase_proofs": [
+      {
+        "leg": "reference",
+        "phase": "compile",
+        "receipt_sha256": "8d97003c55e8b9c1783e77785844ca117a682d731e2b5dfb7960867b26bc2905",
+        "report_sha256": "b4cb6aaaf8bce53b6cd10172180e7cd9f04ed78fbf2e7886452db0c653e61284",
+        "request_id": "f6e834f016bce4f229c817aa70f401811d32c4bc685e91ca",
+        "container_id": "ec4c8796641c52ff2211df12fe1f20e8a6d1ebfdbba59e0a124805286c6c1a0d"
+      },
+      {
+        "leg": "reference",
+        "phase": "correctness",
+        "receipt_sha256": "69fab7d700f31d08fb9c8de3c462066cf194444e9594f8aa676c91239fb5fa97",
+        "report_sha256": "e241467c80b27b7865c5c032e7db6fe3558bd1ea54c179b9538fd1ad8b97c5b1",
+        "request_id": "ed71ad62d63f5dd5ac74921cbeea322877d7e1f43e9fa86b",
+        "container_id": "27b268381e90bd3fad81035aaa6d05fdde1176b9a978f01dd1e818ed3f0a541a"
+      },
+      {
+        "leg": "reference",
+        "phase": "performance",
+        "receipt_sha256": "8fb50819e7647f3e431f84c72694ab844793a43e7dc8a43522afb1489314d1a8",
+        "report_sha256": "bb21315018d38cecacb388f0356b880b829ea27a8f2105a7f54479a77eae50ed",
+        "request_id": "4704b40d566170475fe4246da2ed96735d96a7da91b90701",
+        "container_id": "aa21bd55230ab50dbdb7ea519c6feecb4b2bfa693367e5b4ea3df07bfdabff86"
+      },
+      {
+        "leg": "candidate",
+        "phase": "compile",
+        "receipt_sha256": "6fffa59e989ba761b4f1b3c1f65678a1149c8716d0d5f54b1e92e13b8d886db9",
+        "report_sha256": "a62be79d1ef123ffe3dca673ea742990a4a963a6e42d2b3c3039415c6bc208b1",
+        "request_id": "5f4d01ccc60f076aa86a4af909e571b94c56cc2a7f8b464e",
+        "container_id": "87ec18a8705d8858ff10e69b12cb936ad1838a37565fae5010b3fb7858280a7c"
+      },
+      {
+        "leg": "candidate",
+        "phase": "correctness",
+        "receipt_sha256": "82314072d90bc56f04c93945a4dd81329cd2331623104ff716e44c16874e726a",
+        "report_sha256": "3225943f783572e06f2e8f537e9ea4d51746a71d6f2f162cf48b3115ff84c2eb",
+        "request_id": "309bea7e819b129b8034b5d0a30cc5f31449e63f2a0e2050",
+        "container_id": "e2117aad660e874a7b877c9b6d6d71a7a6be8aeaf41916bfb1a524956a615ce1"
+      },
+      {
+        "leg": "candidate",
+        "phase": "performance",
+        "receipt_sha256": "3dcf2618eee11f8389d17be1be45280ff3b1ae7b1a0beb6f9acb9f3db6de7726",
+        "report_sha256": "da0d7aca1ab8b45e5d548ee0e741a09c25a568f99f7de7af73a4b737940396f1",
+        "request_id": "d89698b12a4e960f7815821cfa0a06c17fe61838d70850b8",
+        "container_id": "8cd74898c90c50d7efc0322000f888186c21d251a0e4c6e9c857a815a4d317c8"
+      }
+    ]
+  },
+  "fixture": {
+    "path": "qwen3.8-2.4t__fused_moe_2stage_mxfp4/ut/reference_io.pt",
+    "bytes": 2083145699,
+    "sha256": "09a71daa55bdd3683be45016f0e5139e2fd63b7c614ae5ba565f74cbd2c7e434",
+    "capture_scope": "SG518 TP8/EP8",
+    "oci_object": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors/qwen3.8-2.4t__fused_moe_2stage_mxfp4/ut/reference_io.pt"
+  },
+  "source_unchanged": true,
+  "accepted_gain": false,
+  "model_serving_qualification_claimed": false,
+  "old_framework_WARN_preserved": true,
+  "publication": {
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__fused_moe_2stage_mxfp4/096452d9-framework-209857__eed4df57-trusted-209670",
+    "readback_receipt": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__fused_moe_2stage_mxfp4/096452d9-framework-209857__eed4df57-trusted-209670/OCI-VERIFIED.json",
+    "readback_receipt_sha256": "089aa0d34666c1b5ec1fe5aefae05798ea25403afc1f3a7929cb3b20d53287e1",
+    "objects_verified": 8,
+    "archive_members_verified": 313,
+    "archive_sha256": "6d8efc796bb5486d632ea0c4bc35505c7b77c16b5087ce8f66cb5d8edb701257",
+    "manifest_sha256": "d728754e9665c5214395f0a806ae1c37be1790f878504f85d27b1758ba30064d",
+    "qualification_sha256": "cc5a5ec5a7f72305f04ecd4a971acf41244cfce216dd22b371c5ed469e9f1fe3"
+  },
+  "editable_file": "tasks/headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4/source/routing.py",
+  "editable_policy": "select_routes",
+  "source_sha256": "7dfd25fb59e419583f0dec0421bf93ace3c9339a27f2fa2660ffaa2e7d41b72f",
+  "canonical_graph_helper_sha256": "40d97860647ee0a939b80c76f1de4a79758cff67fa6aa008670c42a202a82ed3"
+}

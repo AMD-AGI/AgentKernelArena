@@ -120,6 +120,7 @@ class PortableSetupTests(unittest.TestCase):
             'headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm',
             'headkernel/qwen3.8-2.4t__paged_attention_decode',
             'headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode',
+            'headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4',
         })
         for row in rows:
             approved = 'scoped_qualification' in row
