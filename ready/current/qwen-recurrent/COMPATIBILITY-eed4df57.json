@@ -1,0 +1,106 @@
+{
+  "schema": "qwen-recurrent-final-compatibility-portable-v1",
+  "status": "PASS_COMPATIBLE_COMBINED_QUALIFICATION",
+  "current_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "task": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+  "scope": "B64 and B1 original live-capture decode cases; complete trusted and complete framework gates retained at actual execution commits.",
+  "complete_qualification": true,
+  "accepted_gain": false,
+  "gain_eligible": false,
+  "reviewed_utc": "2026-10-12T17:00:34.434112+00:00",
+  "original_review": {
+    "sha256": "9a02d998d374b99d0835aba48e012521808c34d104a789e0f7f20a1030fae951",
+    "archive_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/eed4df57-trusted-209670-fw18bb4d67-209533/qwen-recurrent-eed4df57-trusted-209670-fw18bb4d67-209533.tar.gz",
+    "archive_member": "compatibility/FINAL-COMPATIBILITY-REVIEW.json",
+    "checks_count": 1334,
+    "all_checks_passed": true
+  },
+  "trusted": {
+    "job": 209670,
+    "execution_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+    "six_fresh_phases": true,
+    "ordered_samples": 400,
+    "final_sha256": "b382c0cd853bdec54eed3179a4850c76a53d67e06d0c2fb972c0cbd1cfcd50e9",
+    "finished_unix": 1791823773.2145402,
+    "measurement_sha256": "1c5ebcc2c703ac0c518c55a5c763c27fd4e6320237f4a4d3ab4856218fd96b3d",
+    "gpu": {
+      "render_device": "/dev/dri/renderD152",
+      "drm_minor": 152,
+      "kfd_node": "5",
+      "rocr_uuid": "GPU-c2535d25b12b770c",
+      "pci_bus_id": "0002:00:04.0"
+    }
+  },
+  "framework": {
+    "job": 209533,
+    "execution_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+    "checks": 12,
+    "ordered_samples": 200,
+    "final_sha256": "45f269f3ab7e5d08ce76670e8547996e3c5d2f976a00b762f9b9625bb5adab19",
+    "report_sha256": "e12a26db0c85b8c08c3c90508605422d284a630daaa14adb421c10e211c34f8c",
+    "gpu": {
+      "render_device": "/dev/dri/renderD160",
+      "drm_minor": 160,
+      "kfd_node": "6",
+      "rocr_uuid": "GPU-5bb68caa0d42ab76",
+      "pci_bus_id": "0003:00:01.0"
+    },
+    "new_eed4_execution_claimed": false
+  },
+  "compatibility": {
+    "task_trees": {
+      "18bb4d67": "7bc803bae3dbd29f8955406442c92e456085796e",
+      "eed4df57": "7bc803bae3dbd29f8955406442c92e456085796e"
+    },
+    "identical_input_manifest_entries": 31,
+    "enforcement_core_blobs": {
+      "agents/task_validator/report_schema.py": {
+        "18bb4d67": "5bbb56660adfb5392e10355795660200ef97dfe5",
+        "eed4df57": "5bbb56660adfb5392e10355795660200ef97dfe5"
+      },
+      "src/tools/trusted_task_eval.py": {
+        "18bb4d67": "69ff7b222c7e5b0695b1ea7228e392aaf291eb08",
+        "eed4df57": "69ff7b222c7e5b0695b1ea7228e392aaf291eb08"
+      },
+      "src/tools/trusted_native_eval.py": {
+        "18bb4d67": "ced418e206b205cdffba499f95e30df1b3c9ebd8",
+        "eed4df57": "ced418e206b205cdffba499f95e30df1b3c9ebd8"
+      },
+      "src/benchmark_quality.py": {
+        "18bb4d67": "02a111ea24b12c5f20de8a301cac679f47ae003c",
+        "eed4df57": "02a111ea24b12c5f20de8a301cac679f47ae003c"
+      },
+      "src/tools/benchmark_quality_gate.py": {
+        "18bb4d67": "62729dbaecc05e74c41380f15fbb5d5be1623801",
+        "eed4df57": "62729dbaecc05e74c41380f15fbb5d5be1623801"
+      },
+      "src/validator_integrity.py": {
+        "18bb4d67": "9b03299ea9dfacc0ba69f2d763d7bd21ac7d3ecd",
+        "eed4df57": "9b03299ea9dfacc0ba69f2d763d7bd21ac7d3ecd"
+      }
+    },
+    "quality_change_scope": "Only MoE and dense profiles change task_type to native_routing. Recurrent profile and quality logic are identical.",
+    "other_change_scope": "Host AITER copy scheduling/resource probing; new native_routing prompts; other task configs; runtime docs/readiness records. Recurrent task code, data pins, timing contract, report schema, and trusted evaluators are unchanged."
+  },
+  "fixture": {
+    "path": "ut/reference_io.pt",
+    "kind": "file",
+    "external_fixture": true,
+    "archive_mode": 292,
+    "sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1",
+    "bytes": 1044479494,
+    "oci_object": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/ut/reference_io.pt",
+    "provenance": "Original SG518 TP8/EP8 captures; recurrent FP32 state; attention page1 ragged. Runtime qualification uses pinned SG520."
+  },
+  "small_phase_input_files_rehashed": 348,
+  "checked_mirror_records": 470,
+  "exclusions": [
+    "Earlier incomplete recurrent trusted attempts on jobs 209533 and 209572 contribute no phases or samples.",
+    "Framework remains an actual 18bb4d67/job209533 execution, not an eed4 framework execution.",
+    "Reference and candidate source are identical; raw ratios are unchanged-source controls and establish no accepted gain.",
+    "No GPU, node, SSH, Docker, scheduler, or cloud calls performed during this review.",
+    "Global GPU idle and campaign-wide publication are not asserted by this task review.",
+    "The large original fixture is bound by identical manifests and before/after observed hashes; this bounded review does not re-download the fixture."
+  ],
+  "publication_followup": "READY.json pins the new combined publication and full streamed readback completed after the original review."
+}

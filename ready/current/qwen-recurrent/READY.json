@@ -1,0 +1,151 @@
+{
+  "schema": "current-scoped-ready-entry-v1",
+  "status": "SCOPED_TASK_READINESS_APPROVED_BY_EXPLICIT_COMPATIBILITY",
+  "task": "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode",
+  "ready_tasks": [
+    "headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode"
+  ],
+  "qualified_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "compatible_checkout_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "qualified_framework_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "qualified_trusted_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "task_tree": "7bc803bae3dbd29f8955406442c92e456085796e",
+  "editable_file": "tasks/headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/source/fused_recurrent.py",
+  "editable_kernel": "fused_recurrent_gated_delta_rule_packed_decode_kernel",
+  "source_sha256": "35a928d24bf6cc3ca56d73e4b729ec004ec8a34760e2425e2f04d6ef783db9f8",
+  "case_ids": [
+    "decode_b64_live|decode",
+    "decode_b1_live|decode"
+  ],
+  "scope": {
+    "cases": 2,
+    "case_ids": [
+      "decode_b64_live|decode",
+      "decode_b1_live|decode"
+    ],
+    "batch_sizes": [
+      64,
+      1
+    ],
+    "recurrent_state_dtype": "float32_original_capture",
+    "other_tasks_or_serving_capture_covered": false
+  },
+  "measurement": {
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "trusted_samples": 400,
+    "framework_samples": 200,
+    "checked_invocations_per_case_and_leg": 118,
+    "method": "GPU graph replay",
+    "output_and_recurrent_state_checked": true,
+    "original_fixture_and_metadata_preserved": true,
+    "event_fallback_allowed": false
+  },
+  "runtime": {
+    "catalog": "tools/headkernel-runtime-targets.json",
+    "image_key": "sglang_v0520",
+    "architecture": "gfx950",
+    "gpu_model": "MI355X",
+    "host_platform": "linux/amd64"
+  },
+  "preparation_tool": "tools/prepare_headkernel_run.py",
+  "setup_guide": "docs/how-to/headkernel-upstream-runtime.md",
+  "trusted_measurement": {
+    "job": "209670",
+    "commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+    "phases": 6,
+    "cases": 2,
+    "raw_samples": 400,
+    "measurement_sha256": "1c5ebcc2c703ac0c518c55a5c763c27fd4e6320237f4a4d3ab4856218fd96b3d",
+    "FINAL_sha256": "b382c0cd853bdec54eed3179a4850c76a53d67e06d0c2fb972c0cbd1cfcd50e9",
+    "retirement_sha256": "63daabb8fedc5b35a9e90235da8d0a7988ba7683d1720d0c7f49c3c251396bed",
+    "finished_utc": "2026-10-12T16:49:33.214540+00:00",
+    "retirement_utc": "2026-10-12T16:49:32.043741+00:00",
+    "phase_input_observations": 12,
+    "input_entries_per_observation": 31,
+    "small_input_files_rehashed": 348,
+    "new_trusted_comparison_executed": true,
+    "old_partial_samples_used": false,
+    "source_control_unchanged": true
+  },
+  "framework": {
+    "job": "209533",
+    "commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+    "checks_passed": 12,
+    "cases": 2,
+    "raw_samples": 200,
+    "report_sha256": "e12a26db0c85b8c08c3c90508605422d284a630daaa14adb421c10e211c34f8c",
+    "marker_sha256": "b2ee5a30b7c67e9d152726a204b333806cd374716eae404a5b88f5f592c58733",
+    "integrity_sha256": "ea8f57047cee668652a04bc48ec48820ce37f1a152bb3a8544ceb37232790d8a",
+    "FINAL_sha256": "45f269f3ab7e5d08ce76670e8547996e3c5d2f976a00b762f9b9625bb5adab19",
+    "retirement_sha256": "9e3af9c10eb60f4e99e823003824710fa9b162edd2141107a267dee8619c8470",
+    "finished_utc": "2026-10-12T15:10:25.038145+00:00",
+    "current_completion_checker_accepts": true,
+    "final_workspace_entries_verified": 31,
+    "new_framework_execution_at_compatible_checkout": false
+  },
+  "fixtures": {
+    "registry": "tools/headkernel-artifacts.json",
+    "registry_sha256": "2cfaa201c704dbffa97903f4ed3279be9675c68e90ca30af57618e4a11a726b1",
+    "files": 1,
+    "bytes": 1044479494,
+    "oci_object": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/ut/reference_io.pt",
+    "sha256": "38a624a5f502279a13a09c012fababbe232cadedacd560056d8411640a04aaf1",
+    "body_in_evidence_archive": false,
+    "provenance": "Original SG0.5.18 TP8/EP8 capture with FP32 recurrent state; no new SG0.5.20 serving capture."
+  },
+  "compatibility": {
+    "file": "COMPATIBILITY-eed4df57.json",
+    "original_review_sha256": "9a02d998d374b99d0835aba48e012521808c34d104a789e0f7f20a1030fae951",
+    "checks_passed": 1334,
+    "status": "PASS_COMPATIBLE_COMBINED_QUALIFICATION",
+    "applies_to_exact_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+    "old_measurements_relabelled": false,
+    "changed_candidate_requires_new_complete_current_evaluation": true
+  },
+  "archive": {
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode/eed4df57-trusted-209670-fw18bb4d67-209533/",
+    "archive_file": "qwen-recurrent-eed4df57-trusted-209670-fw18bb4d67-209533.tar.gz",
+    "archive_bytes": 4054052,
+    "archive_sha256": "5db3b76a060d1ceb574a72c52b9af335d671b3a239e12d9905c42d32fb1addad",
+    "manifest_sha256": "f0e89e31f31c5a2ab348b3dabf847ac4a7d30c002c5179ed91502e6efbb3f801",
+    "complete_receipt": "COMPLETE.json",
+    "complete_sha256": "1717a4a5333c512fae3abd65f68ff424f7e00d529778aa8d3184a55937f23887",
+    "objects": {
+      "MANIFEST.json": {
+        "bytes": 184988,
+        "sha256": "f0e89e31f31c5a2ab348b3dabf847ac4a7d30c002c5179ed91502e6efbb3f801"
+      },
+      "PACKAGE.json": {
+        "bytes": 3954,
+        "sha256": "f84e20d1ff394b638a9a24cca427135e335dd30206b8d364da046ef3667757b1"
+      },
+      "README-PUBLICATION.md": {
+        "bytes": 1742,
+        "sha256": "d7684ed716565ca920e8c36df6fda3a3fb13129e93ab41d5c7ae04fd281f594b"
+      },
+      "SHA256SUMS": {
+        "bytes": 377,
+        "sha256": "1a307f2978c3e7fbab5cef17df49b96c683bb2a2b39d8f066be0773c7d4bdc1d"
+      },
+      "qwen-recurrent-eed4df57-trusted-209670-fw18bb4d67-209533.tar.gz": {
+        "bytes": 4054052,
+        "sha256": "5db3b76a060d1ceb574a72c52b9af335d671b3a239e12d9905c42d32fb1addad"
+      },
+      "PUBLICATION-READBACK.json": {
+        "bytes": 1346,
+        "sha256": "771dc40409a86addb039e868f5dab1c1ea90d855f318d73dc944539e0a572349"
+      }
+    },
+    "payload_files": 680,
+    "payload_symlinks": 15,
+    "all_remote_objects_readback_verified": 7,
+    "all_payload_hashes_verified_from_remote_stream": true
+  },
+  "accepted_gain": false,
+  "gain_eligible": false,
+  "new_sglang_serving_capture_claimed": false,
+  "global_gpu_idle_claimed": false,
+  "strict_snapshot_verifier_acceptance_changed": false,
+  "later_branch_tips_automatically_covered": false
+}

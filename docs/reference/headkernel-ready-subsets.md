@@ -29,6 +29,12 @@ The [explicit numerical compatibility approval](../../ready/current/qwen-rmsnorm
 
 The [644-check compatibility review](../../ready/current/qwen-attention/COMPATIBILITY-18bb4d67.json) accepts the complete framework execution at `8956e210`, job 208015: 12 checks, 100 samples and its full integrity chain. It claims no new framework execution at `18bb4d67`, excludes incomplete earlier trusted attempts and accepts no optimization gain. All seven new publication objects and every member of the 786-file/15-symlink payload passed full readback. Original SG0.5.18 TP8/EP8 page-1 fixtures remain pinned; no new SG0.5.20 serving capture is claimed.
 
+## Completed October 12 recurrent-GDN qualification
+
+[Current Qwen recurrent gated-delta decode](../../ready/current/qwen-recurrent/README.md) is the fifth completed scoped task, approved for its batch-64 and batch-1 cases at `eed4df57`. Job 209670 completed all six fresh trusted phases and 400 ordered samples, with complete input bindings and owned retirement before `FINAL` at **2026-10-12 16:49:33 UTC**.
+
+The [1,334-check compatibility review](../../ready/current/qwen-recurrent/COMPATIBILITY-eed4df57.json) accepts the retained `18bb4d67`/209533 framework execution: all 12 checks, 200 samples and its full integrity chain. No framework execution at `eed4df57` is claimed. Earlier incomplete trusted runs contribute no phases or samples, and no gain is accepted. All seven publication objects and every member of the 680-file/15-symlink payload passed full streamed readback. Original SG0.5.18 TP8/EP8 fixture and FP32-state provenance remain unchanged; no new SG0.5.20 serving capture is claimed.
+
 ## Additional completed framework evidence
 
 Qwen paged attention completed a fresh **framework-only** run at `8956e210472abff5fc9d133fbe4ccd2c65064f79` on job 208015. It passed all 12 checks, its one case and 100 ordered samples, including 118 checked invocations. The independent audit verified all 37 final workspace input observations, the report/marker/integrity chain and external attempt records, durable mirrors, and owned-container retirement before `FINAL` at **2026-10-11 17:29:54 UTC**.
@@ -51,7 +57,7 @@ At the consolidation base, all five task trees matched their historical qualifie
 | `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [MiniMax FP4 GEMM](../../ready/minimax-fp4/README.md) | [`ef7474dd`](https://github.com/AMD-AGI/AgentKernelArena/blob/ef7474dd9e29e74428ca09b4c488832db1fd220e/ready/minimax-fp4/README.md) | All 14 captured cases, with disclosed and independently accepted historical framework receipt limits. |
 | `headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm` | [Qwen fused add + RMSNorm](../../ready/qwen-rmsnorm/README.md) | [`f501ef65`](https://github.com/AMD-AGI/AgentKernelArena/blob/f501ef65403bdf76a122918c405f6494bc6eab38/ready/qwen-rmsnorm/README.md) | BF16 8192×8192 and 64×8192. Historical manual trusted-route numerical evidence and protected framework PASS are connected by an explicit compatibility review. This does not qualify current ordinary scoring. |
 
-These are unchanged-source controls, not accepted optimization gains. All five Qwen timing-quality adapters are integrated. RMSNorm and paged attention now have completed scoped handoffs above; complete source-bound qualification remains outstanding for the other three Qwen tasks. The framework-only results retain their separate scope. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
+These are unchanged-source controls, not accepted optimization gains. All five Qwen timing-quality adapters are integrated. RMSNorm, paged attention and recurrent GDN now have completed scoped handoffs above; complete source-bound qualification remains outstanding for Qwen dense GEMM and MoE. The framework-only results retain their separate scope. A changed candidate requires its own complete correctness, source-control, timing-quality and review evidence.
 
 ## Current runtime and input preparation
 
@@ -113,7 +119,7 @@ The completed MLA, FP4 and RMSNorm handoffs above do not discharge the remaining
 
 ## Eighteen tasks without historical ready-subset receipts
 
-These 18 tasks do not have one of the five historical ready-subset receipts. Paged attention now has the completed scoped handoff above; complete qualification remains pending for the other 17. Names in the second column follow `headkernel/<model>__<task>`; the model column supplies the exact prefix. CPU preparation, targeted diagnostics, framework-only passes and partial GPU phases keep their stated scopes. Current framework completion also requires the [post-validator integrity chain](../how-to/task-validator.md); a prior PASS does not silently establish compatibility with that changed lifecycle.
+These 18 tasks do not have one of the five historical ready-subset receipts. Paged attention and recurrent GDN now have completed scoped handoffs above; complete qualification remains pending for the other 16. Names in the second column follow `headkernel/<model>__<task>`; the model column supplies the exact prefix. CPU preparation, targeted diagnostics, framework-only passes and partial GPU phases keep their stated scopes. Current framework completion also requires the [post-validator integrity chain](../how-to/task-validator.md); a prior PASS does not silently establish compatibility with that changed lifecycle.
 
 | Model prefix | Task | Current scoped status or remaining gate |
 | --- | --- | --- |
@@ -133,7 +139,7 @@ These 18 tasks do not have one of the five historical ready-subset receipts. Pag
 | `minimax-m3` | `gqa_share_sparse_fwd_kernel` | Complete current framework and trusted qualification of the 40-case paired contract through the integrated complete-case route. The earlier timeout replacement was prepared but not launched before external preemption. |
 | `qwen3.8-2.4t` | `dense_bf16_gemm_cluster` | A five-case framework pass at `8cdd7b0d` and its 500 samples are archived. The later trusted run passed reference compile/correctness but was interrupted during performance. Complete trusted and applicable current framework-integrity gates remain pending. |
 | `qwen3.8-2.4t` | `fused_moe_2stage_mxfp4` | Native enum identity across relocated verified caches was repaired. Full trusted comparison and framework finalization remain pending; raw GPU phases alone do not qualify it. |
-| `qwen3.8-2.4t` | `fused_recurrent_gated_delta_rule_decode` | Authoritative source-bound admission is integrated. The `8956e210` trusted attempt stopped before compilation on a UT helper's executable-permission check, with unchanged Git bytes. Complete trusted and framework qualification remain pending. |
+| `qwen3.8-2.4t` | `fused_recurrent_gated_delta_rule_decode` | [Scoped qualification complete](../../ready/current/qwen-recurrent/README.md): six trusted phases at `eed4df57`/209670 and explicitly compatible 12-check framework evidence at `18bb4d67`/209533. Earlier partial runs are excluded; no accepted gain or new serving capture. |
 | `qwen3.8-2.4t` | `paged_attention_decode` | [Scoped qualification complete](../../ready/current/qwen-attention/README.md): six trusted phases at `18bb4d67`/209572 and explicitly compatible 12-check framework evidence at `8956e210`/208015. Earlier incomplete attempts are excluded; no accepted gain or new serving capture. |
 
 Two configured historical packages are outside the 23 active mappings: DeepSeek `dsa_sparse_mla_attn` is superseded in this recipe by unified paged prefill/decode, and GLM `elementwise_copy_cluster` recorded aliases rather than materialized GPU copies. Full original served MoE payload capture and broader coverage beyond the published scopes also remain separate outstanding work.
