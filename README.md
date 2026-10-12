@@ -6,7 +6,7 @@ checkout. Start at [HEADKERNELS.md](HEADKERNELS.md) for source provenance,
 per-task preparation and the unified validator selection.
 
 The [task and evidence index](docs/reference/headkernel-ready-subsets.md) records
-**seven completed scoped qualifications and 16 unfinished tasks**, alongside
+**eight completed scoped qualifications and 15 unfinished tasks**, alongside
 the five historical ready subsets. Completed results keep
 their actual execution commits and explicitly reviewed compatibility limits.
 The full 23-task branch remains unqualified; later source, scoring, guard and
