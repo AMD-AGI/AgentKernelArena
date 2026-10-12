@@ -11,9 +11,11 @@ import pytest
 import yaml
 
 from agents.task_validator.report_schema import (
+    MAX_FINAL_REPORT_BYTES,
     MAX_REPORT_BYTES,
     check_draft_report,
     finalize_report,
+    invalidate_integrity_report,
     validation_report_is_complete,
 )
 from agents.task_validator.validation_prompt import build_validation_prompt
@@ -214,3 +216,46 @@ def test_replacement_during_read_cannot_supply_embedded_target_bytes(tmp_path, m
         assert report["overall_status"] == "FAIL" and "submitted_report" not in report
         assert sentinel not in path.read_bytes()
     assert replaced and (outside / "validation_report.yaml").read_bytes() == sentinel
+
+
+def test_large_valid_draft_can_finalize_above_draft_read_limit(tmp_path):
+    raw = _valid_raw_report()
+    raw["summary"] = "x" * 4_200_000
+    path = tmp_path / "validation_report.yaml"
+    content = yaml.safe_dump(raw).encode("utf-8")
+    assert len(content) < MAX_REPORT_BYTES
+    path.write_bytes(content)
+    checked = check_draft_report(path, expected_task_name="hip2hip/example")
+    assert checked["schema_status"] == "PASS", checked
+    report = finalize_report(tmp_path, expected_task_name="hip2hip/example")
+    assert MAX_REPORT_BYTES < path.stat().st_size <= MAX_FINAL_REPORT_BYTES
+    assert report["submitted_report"]["raw_yaml"].encode("utf-8") == content
+    assert report["submitted_report"]["sha256"] == hashlib.sha256(content).hexdigest()
+    assert report["overall_status"] == "PASS" and validation_report_is_complete(tmp_path)
+
+
+def test_over_serialized_limit_refuses_before_replacing_draft(tmp_path, monkeypatch):
+    import agents.task_validator.report_schema as schema
+
+    raw = _valid_raw_report()
+    raw["summary"] = "Complete recorded findings. " * 100
+    content = yaml.safe_dump(raw).encode("utf-8")
+    # Exercise the same output boundary cheaply: the draft itself fits, but
+    # normalized output plus its complete preserved draft exceeds this cap.
+    monkeypatch.setattr(schema, "MAX_FINAL_REPORT_BYTES", len(content) + 512)
+    path = tmp_path / "validation_report.yaml"
+    path.write_bytes(content)
+    checked = check_draft_report(path, expected_task_name="hip2hip/example")
+    assert checked["schema_status"] == "FAIL"
+    assert "Serialized validator report exceeds" in checked["errors"][0]
+    assert "--check-draft" in checked["errors"][0]
+    with pytest.raises(ValueError, match="Serialized validator report exceeds"):
+        finalize_report(tmp_path, expected_task_name="hip2hip/example")
+    assert path.read_bytes() == content
+    assert not (tmp_path / ".validation_complete").exists()
+    assert not list(tmp_path.glob(".*.tmp"))
+    # The outer failure path must not discard the raw draft to squeeze a FAIL
+    # report under the same cap after finalization has refused publication.
+    with pytest.raises(ValueError, match="Serialized validator report exceeds"):
+        invalidate_integrity_report(tmp_path, "hip2hip/example", "serialization refused")
+    assert path.read_bytes() == content and not (tmp_path / ".validation_complete").exists()
