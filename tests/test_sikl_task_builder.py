@@ -183,6 +183,44 @@ else: raise AssertionError('candidate silently fell back to baseline')
     assert result.returncode == 0, result.stderr
 
 
+def test_emitted_runner_times_one_invocation_per_replay(emitted):
+    """A batched capture reports the average of N calls, not one call.
+
+    tasks/Aiter-task/*/scripts/task_measure.py already refuses that (see
+    test_sikl_v2); generated tasks must refuse it on the same terms.
+    """
+    _, _, draft = emitted
+    script = '''import importlib.util, sys, types
+from pathlib import Path
+root = Path.cwd()
+spec = importlib.util.spec_from_file_location('runner', root / 'scripts/task_runner.py')
+runner = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runner)
+seen = {}
+def benchmark(fn, **kw):
+    seen.update(kw)
+    return 0.01, {'benchmark_method': 'cuda_graph', 'benchmark_effective_repeats': 8}
+sys.modules['_aka_benchmark'] = types.SimpleNamespace(
+    TimedRun=lambda: types.SimpleNamespace(outputs=None, rerun=lambda: None),
+    benchmark_cuda_graph_or_events=benchmark)
+runner.clone_inputs = lambda values: dict(values)
+for name in ('poison_outputs', 'assert_outputs', 'assert_unmodified',
+             'validate_inputs', 'refill_inputs'):
+    setattr(runner, name, lambda *a, **kw: None)
+try:
+    runner.measure_case(lambda **kw: None, lambda **kw: None, {},
+                        {}, {}, {'warmup': 1, 'repetition': 1, 'target_ms': 1.0})
+except ValueError as error:
+    assert 'one logical invocation per replay' in str(error), error
+else:
+    raise AssertionError('batched capture accepted as a per-call timing')
+assert seen.get('max_graph_repeats') == 1, seen
+'''
+    result = subprocess.run([sys.executable, "-c", script], cwd=draft,
+                            env={**os.environ, "PYTHONPATH": ""}, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_workload_scope_preserves_declared_scalar_combinations(bundle, tmp_path):
     definition_path = bundle / "definitions/gemm.json"
     definition = json.loads(definition_path.read_text())
@@ -672,8 +710,16 @@ for stale in [False, True]:
             output.copy_(cached if stale else fn())
             return output
         timed_run._bind(replay, output)
-        return 0.01, {'benchmark_method': 'cuda_graph'}  # CPU replay fixture, not device evidence.
-    sys.modules['_aka_benchmark'] = types.SimpleNamespace(benchmark_cuda_graph_or_events=benchmark)
+        # CPU replay fixture, not device evidence; one invocation per replay.
+        return 0.01, {'benchmark_method': 'cuda_graph', 'benchmark_effective_repeats': 1}
+    class _Timed:
+        def _bind(self, rerun, outputs=None, rerun_timed=None):
+            self._rerun, self.outputs = rerun, outputs
+        def rerun(self):
+            self.outputs = self._rerun()
+            return self.outputs
+    sys.modules['_aka_benchmark'] = types.SimpleNamespace(
+        TimedRun=_Timed, benchmark_cuda_graph_or_events=benchmark)
     x = runner.make_inputs(d, row, policy, device='cpu')
     try: runner.measure_case(reference, reference, x, d, row, policy, device='cpu')
     except AssertionError:

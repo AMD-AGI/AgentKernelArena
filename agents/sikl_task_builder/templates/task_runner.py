@@ -19,12 +19,6 @@ from scripts.task_api import (assert_outputs, assert_unmodified, clone_inputs,
 from scripts.task_inputs import make_inputs, refill_inputs
 
 
-class TimedRun:
-    def _bind(self, rerun, outputs=None):
-        self.rerun = rerun
-        self.outputs = outputs
-
-
 def candidate():
     path = ROOT / "source" / "kernel.py"
     spec = importlib.util.spec_from_file_location("aka_candidate", path)
@@ -78,14 +72,21 @@ def validate_case(definition, row, policy, reference, values, device="cuda"):
 
 
 def measure_case(launch, reference, values, definition, row, policy, device="cuda"):
-    from _aka_benchmark import benchmark_cuda_graph_or_events
+    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
     pristine = clone_inputs(values)
     expected = reference(**clone_inputs(values))
     replay = TimedRun()
     elapsed, timing = benchmark_cuda_graph_or_events(
         lambda: launch(**values), warmup=policy["warmup"],
-        repetition=policy["repetition"], target_ms=policy["target_ms"], timed_run=replay,
+        repetition=policy["repetition"], target_ms=policy["target_ms"],
+        max_graph_repeats=1, timed_run=replay,
     )
+    repeats = timing.get("benchmark_effective_repeats")
+    if repeats != 1:
+        raise ValueError(
+            f"Capture batched {repeats} invocations into one replay, so each sample "
+            "reports their average; this task requires one logical invocation per replay"
+        )
     assert_unmodified(pristine, values)
     poison_outputs(replay.outputs, expected, values, definition, row, device)
     assert_outputs(replay.rerun(), expected, definition, row, policy, device)
