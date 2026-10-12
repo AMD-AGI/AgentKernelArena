@@ -771,11 +771,11 @@
       "capture_image": "harbor.crusoe.primus-safe.amd.com/hyperloom-image/sglang:v0.5.18-rocm720-mi35x-profilerfix",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "source_refreshed_pending_full_qualification",
+      "task_compatibility": "scoped_qualification_approved_at_named_commit",
       "runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
-      "ready": false,
-      "framework_qualified": false,
-      "trusted_retest_qualified": false,
+      "ready": true,
+      "framework_qualified": true,
+      "trusted_retest_qualified": true,
       "scope": "source_refreshed_sg520",
       "capture_image_role": "historical_SG0518_shape_and_fixture_provenance_not_current_runtime",
       "source_refresh_manifest": "tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/ut/runtime_refresh.json",
@@ -793,7 +793,22 @@
       "legacy_artifact_manifest_sha256": "2cfaa201c704dbffa97903f4ed3279be9675c68e90ca30af57618e4a11a726b1",
       "fixture_oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_ut_0914_full/20260922/tensors",
       "fixture_asset_count": 0,
-      "fixture_declared_bytes": 0
+      "fixture_declared_bytes": 0,
+      "scoped_qualification": {
+        "status": "APPROVED_SCOPED_TASK_READINESS",
+        "compatible_checkout_commit": "230de1f5897296ddd364d8811bd9fd6a83dbe602",
+        "framework_execution_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+        "trusted_execution_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+        "guide": "ready/current/qwen-dense/README.md",
+        "receipt": "ready/current/qwen-dense/READY.json",
+        "compatibility_review": "ready/current/qwen-dense/COMPATIBILITY-230de1f5.json",
+        "case_count": 5,
+        "new_framework_run_at_compatible_checkout": false,
+        "new_trusted_retest_at_compatible_checkout": false,
+        "accepted_gain": false,
+        "model_serving_qualification_claimed": false,
+        "strict_snapshot_verifier_acceptance_changed": false
+      }
     },
     {
       "task": "headkernel/qwen3.8-2.4t__fused_moe_2stage_mxfp4",
@@ -1185,7 +1200,7 @@
   "source_refreshed_qwen_task_count": 5,
   "fixture_preparation_task_count": 23,
   "historical_ready_subset_count": 5,
-  "unfinished_task_count": 16,
+  "unfinished_task_count": 15,
   "tasks_without_historical_ready_receipt_count": 18,
   "consolidation": {
     "branch": "head-kernels-top5",
@@ -1234,7 +1249,7 @@
     "historical_ready_routes_remain_scoped_to_original_pins": true,
     "qwen_historical_RMSNorm_evidence": "explicit_manual_trusted_route_and_protected_framework_only",
     "qwen_rmsnorm_authoritative_timing_quality_admission": "PASS_in_framework_18bb4d67_job209533",
-    "qwen_other_four_tasks": "paged_attention_decode_recurrent_GDN_and_MoE_scoped_ready; dense_GEMM_complete_qualification_pending",
+    "qwen_other_four_tasks": "paged_attention_decode_recurrent_GDN_MoE_and_dense_GEMM_scoped_ready",
     "scope": "complete_23_task_branch; per-task approvals are in scoped_qualification"
   },
   "qualification_status_semantics": {

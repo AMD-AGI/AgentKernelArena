@@ -1,0 +1,116 @@
+{
+  "schema": "current-scoped-ready-entry-v1",
+  "status": "SCOPED_TASK_READINESS_VERIFIED_BY_INDEPENDENT_FULL_JOIN",
+  "task": "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster",
+  "ready_tasks": [
+    "headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster"
+  ],
+  "qualified_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "compatible_checkout_commit": "230de1f5897296ddd364d8811bd9fd6a83dbe602",
+  "qualified_framework_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "qualified_trusted_commit": "eed4df573cb0214750c43779f209c663223c2e2f",
+  "task_tree": "35a79fa817f1d2d72c86e8f2f410f7faf69f419a",
+  "editable_file": "tasks/headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster/source/routing.py",
+  "editable_policy": "select_routes",
+  "source_sha256": "7391a53a4df9dff989d76a26af27b68a2bc756ae357fd460814d1b4a12d71f7a",
+  "native_source_sha256": "1fafc9782b43f8c6e198e1d39ce83e01ea3b5892f8b5e1a26c4a5eeb74252b51",
+  "case_ids": [
+    "prefill_m16384_n4608_k8192|prefill",
+    "decode_m64_n32_k8192|decode",
+    "decode_m64_n512_k8192|decode",
+    "decode_m64_n4608_k8192|decode",
+    "decode_m64_n8192_k256|decode"
+  ],
+  "scope": {
+    "cases": 5,
+    "gemm_shapes_m_n_k": [
+      [
+        16384,
+        4608,
+        8192
+      ],
+      [
+        64,
+        32,
+        8192
+      ],
+      [
+        64,
+        512,
+        8192
+      ],
+      [
+        64,
+        4608,
+        8192
+      ],
+      [
+        64,
+        8192,
+        256
+      ]
+    ],
+    "dtype": "bfloat16",
+    "native_routing_only": true,
+    "other_tasks_or_serving_capture_covered": false
+  },
+  "measurement": {
+    "warmup_iterations": 10,
+    "benchmark_iterations": 100,
+    "framework_samples": 500,
+    "trusted_samples": 1000,
+    "checked_invocations_per_case": 114,
+    "fresh_input_sets_per_case": 116,
+    "method": "GPU graph replay",
+    "event_fallback_allowed": false
+  },
+  "runtime": {
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "architecture": "gfx950",
+    "input_policy": "fixture-free, original shapes and protected seeded input generators",
+    "original_capture_provenance": "SG518; no new SG520 serving capture"
+  },
+  "framework": {
+    "job": "209670",
+    "gpu": 3,
+    "final_utc": "2026-10-12T16:50:39.670738+00:00",
+    "final_sha256": "002b4203afde9149462c5e00d7a4c7aaa44e8846ae77c7aa709cc1579b67a06e",
+    "checks": 12,
+    "input_entries": 26,
+    "owned_retirement_verified": true
+  },
+  "trusted": {
+    "job": "210191",
+    "gpu": 2,
+    "node": "crsuse2-m2m-085",
+    "final_utc": "2026-10-12T23:34:02.815865+00:00",
+    "final_sha256": "c902cd7ad06d742b08ef131f4d1062142fae5e59929af6856aad088bd41004b3",
+    "fresh_phases": 6,
+    "input_entries_per_phase": 26,
+    "input_observations": "before and after each of six phases",
+    "unique_phase_request_ids": 6,
+    "owned_retirement_verified": true,
+    "measurement_sha256": "0a457a49b27a8332f6e4d8f9c49894e0999720f4bc8095e9400a908b29d02438"
+  },
+  "source_unchanged": true,
+  "comparison_status": "unchanged_source_control",
+  "accepted_gain": false,
+  "model_serving_qualification_claimed": false,
+  "old_partial_phases_used": false,
+  "publication": {
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__dense_bf16_gemm_cluster/eed4df57-framework-209670__trusted-210191",
+    "readback_receipt": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__dense_bf16_gemm_cluster/eed4df57-framework-209670__trusted-210191/OCI-VERIFIED.json",
+    "readback_receipt_sha256": "b798a2686024ff8e4372e44c2f943f773f013e890b9cb8e5e7b97a2ade4b1a0d",
+    "independent_review": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261012/qualification-evidence/qwen3.8-2.4t__dense_bf16_gemm_cluster/eed4df57-framework-209670__trusted-210191/INDEPENDENT-REVIEW.json",
+    "independent_review_sha256": "231522065d25d5d77afcb8ec2320c6f10726e1ec07380c88682e0e1b18b2e4d9",
+    "objects_verified_including_receipt": 8,
+    "archive_members_verified": 849,
+    "regular_files": 655,
+    "symlinks": 17,
+    "directories": 177,
+    "archive": "dense-qualified-eed4-fw209670-tr210191.tar.gz",
+    "archive_sha256": "c1fd66c80ed3dd1a64f3414a69af78cec22b02b462e4fe510ae7e9939a8d8328",
+    "member_manifest_sha256": "dc78d514d03110a6595b0bfd6b6a19f565c1acd968098618303d5947cb1ff17c",
+    "qualification_sha256": "c07e7a399b2906d55939b64ec77282d2912a835bdc3b02eba6a124859583f46c"
+  }
+}
