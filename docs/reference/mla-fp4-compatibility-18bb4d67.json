@@ -1,0 +1,74 @@
+{
+  "schema": "mla-fp4-retained-evidence-compatibility-summary-v1",
+  "source_review_sha256": "c32753621b1e9a869d963207a312b3a4c5f4fbee9c029201339bfe5d5135f018",
+  "verdict": "APPROVED_SCOPED_COMPLETED_EVIDENCE_REUSE",
+  "observed_utc": "2026-10-12T13:10:00.310376+00:00",
+  "qualified_commit": "7bc14698e1044931a3c893b3dbabc9676b0e57e6",
+  "compatible_checkout_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "tasks": [
+    {
+      "task": "tasks/headkernel/deepseek-v4-pro__unified_paged_attention_prefill",
+      "task_tree": "b659474a77efd6d2e4b795011b669d06e634d595",
+      "prior_explicit_compatibility_commit": "0df9540d",
+      "case_count": 2,
+      "scope": "Both published M8192/H16 cases; legacy M1/M64 excluded.",
+      "ready_entry": "ready/current/mla-prefill/READY.json",
+      "archive_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261011/qualification-evidence/deepseek-v4-pro__unified_paged_attention_prefill/7bc14698-207740/",
+      "framework_report_sha256": "2fae9e4f43a05d9c07801c70ef3e24e151c6ddd02e552487fb5e76a1279e24b9",
+      "framework_marker_sha256": "b3c402699194c4115b5913844894344a5012ead05857055a0adf7fdbcf3783fd",
+      "current_read_only_archived_completion_gate_passed": true,
+      "task_and_runner_bytes_unchanged": true,
+      "matching_protocol_entry_unchanged": true,
+      "case_parallelism_opt_in": false,
+      "legacy_archive_completion_path": true,
+      "new_current_validator_lifecycle_observed": false,
+      "new_GPU_run_or_report_relabelling": false,
+      "accepted_gain": false,
+      "report_hash_matches_preexisting_qualified_receipt": true
+    },
+    {
+      "task": "tasks/headkernel/minimax-m3__gemm_afp4wfp4_kernel",
+      "task_tree": "795611e8f0c602084338e47bd5f3a601da8b8744",
+      "prior_explicit_compatibility_commit": "5854b2ac",
+      "case_count": 14,
+      "scope": "All 14 published captured cases.",
+      "ready_entry": "ready/current/minimax-fp4/READY.json",
+      "archive_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261011/qualification-evidence/minimax-m3__gemm_afp4wfp4_kernel/7bc14698-207740/",
+      "framework_report_sha256": "38925ee58de879325aeb37bc795806c0d15a6d692d3eaa8b4b3f335dec76271b",
+      "framework_marker_sha256": "ac5ec0c91d3cbd00296d35e18d7b2617f056ec70d00c16505cd79dea3111fc39",
+      "current_read_only_archived_completion_gate_passed": true,
+      "task_and_runner_bytes_unchanged": true,
+      "matching_protocol_entry_unchanged": true,
+      "case_parallelism_opt_in": false,
+      "legacy_archive_completion_path": true,
+      "new_current_validator_lifecycle_observed": false,
+      "new_GPU_run_or_report_relabelling": false,
+      "accepted_gain": false,
+      "report_hash_matches_preexisting_qualified_receipt": true
+    }
+  ],
+  "same_quality_function_ASTs": [
+    "portable_test_cases",
+    "quality_required",
+    "workspace_quality",
+    "require_fixed_work",
+    "validated_work_ids"
+  ],
+  "basis": [
+    "Task trees and numerical/measurement code are byte-identical. Core case and timing-quality validators, scoring/performance consumers and canonical graph helper are unchanged.",
+    "Added GPU-group validation is inactive for these two non-opt-in single-GPU task contracts; their matching custom protocol entries are unchanged.",
+    "Permission preservation changes restore executable bits and do not alter source bytes or device work. Approved draft-report changes affect future report production and safe handling.",
+    "The current completion checker explicitly retains the legacy archive path. Both immutable recovered/preserved reports and markers pass that current read-only gate.",
+    "New live validator runs still require current post-run integrity; this review neither fabricates that metadata for old reports nor weakens future enforcement."
+  ],
+  "limitations": [
+    "Approval reuses completed evidence only for the published unchanged scopes at the exact compatible checkout commit.",
+    "GPU reports retain the qualified 7bc14698 commit; no newly observed 18bb4d67 GPU execution or post-validator lifecycle is claimed.",
+    "No support for new shapes, changed candidates, group execution, accepted optimization gains or model/serving qualification.",
+    "Existing strict snapshot verifiers, accepted input pin sets and archived reports are unchanged; this is a separate compatibility approval.",
+    "This documentation commit and arbitrary later branch tips are not automatically covered by the exact-commit review."
+  ],
+  "new_tests_or_test_suites_run": false,
+  "new_GPU_node_SSH_scheduler_calls": 0,
+  "old_reports_or_pins_modified": false
+}

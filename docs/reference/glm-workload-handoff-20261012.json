@@ -1,0 +1,81 @@
+{
+  "schema": "glm-workload-handoff-pointer-v1",
+  "source_publication_receipt_sha256": "501b1b2205dc06daec5f48cc0735d7c53ed766bb37e8aca4745d5c30edec8faa",
+  "status": "PUBLISHED_FULL_READBACK_VERIFIED",
+  "completed_utc": "2026-10-12T13:59:19.081967+00:00",
+  "historical_run": "glm-final-capture-v4-194841",
+  "model": "glm-5.3-flash",
+  "oci_prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_workload_handoffs/20261012/glm-5.3-flash/glm-final-capture-v4-194841/",
+  "objects": {
+    "GUIDE.md": {
+      "bytes": 3998,
+      "sha256": "a786aaf9554d39f4845106b2082a609e7cf18a3513a1997bff64939ab1b5b944"
+    },
+    "MANIFEST.json": {
+      "bytes": 193065,
+      "sha256": "a4646963af956db7a6428d2daa4b4aa923da880ce193bbe53dfed33d57faa48d"
+    },
+    "PUBLICATION-READBACK.json": {
+      "bytes": 78770,
+      "sha256": "f9027800b34cb02e5c7bea7c9ecea572a1430a577f36067fd1eb990aec37bfac"
+    },
+    "COMPLETE.json": {
+      "bytes": 1369,
+      "sha256": "b2127a8a820e4e0e3977167a170121acfd8a715119794a360da95f56f8bc3c35"
+    }
+  },
+  "payload_files": 272,
+  "payload_bytes": 99133731,
+  "total_published_objects": 275,
+  "trace_files": 16,
+  "trace_bytes": 82733193,
+  "trace_scope": "TP0–7 EXTEND/DECODE; eight sampled profiler steps requested per stage",
+  "workload": {
+    "prompts": 64,
+    "ISL": 8192,
+    "OSL": 1024,
+    "concurrency": 64,
+    "TP": 8,
+    "context_length": 9218,
+    "seed": 42
+  },
+  "runtime": {
+    "sglang_version": "0.5.20",
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "existing_backport_overlay_count": 18,
+    "stock_image_equivalence": false
+  },
+  "existing_index": {
+    "GLM_present": false,
+    "index_sha256": "01e4b4efdcc4ee0ab6fafa8eb56ece727e915ca79ef112c1bb1e787998330dd6",
+    "index_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_workload_handoffs/20261009/index-v2/INDEX.json",
+    "index_v2_modified": false,
+    "models": [
+      "deepseek-v4-pro",
+      "kimi-k3",
+      "minimax-m3"
+    ]
+  },
+  "access": {
+    "requirements": [
+      "rclone",
+      "configured OCI credentials",
+      "local storage"
+    ],
+    "original_Crusoe_Spur_or_node_session_required": false,
+    "historical_launch_paths_need_remapping_for_reproduction": true,
+    "new_portable_execution_tested": false
+  },
+  "scope_gaps": [
+    "Eight case-capture rank directories from failed glm-served-capture-v3-194603 remain inaccessible; readable failure/source records are preserved.",
+    "Model weights, dataset body and operator tensor bodies remain external with retained identities and references.",
+    "Sampled traces do not establish all graph replays or every live shape and scalar argument."
+  ],
+  "latest_selected_launch_config_source_trace_access_gaps": 0,
+  "earlier_failure_records_preserved": true,
+  "immutable_index_v2_modified": false,
+  "new_model_run": false,
+  "new_GPU_node_SSH_scheduler_calls": 0,
+  "GLM_task_qualification_claimed": false,
+  "new_serving_or_performance_gain_claimed": false
+}

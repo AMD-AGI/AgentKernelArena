@@ -13,6 +13,8 @@ These receipts retain the actual GPU execution revision, `7bc14698e1044931a3c893
 | `headkernel/deepseek-v4-pro__unified_paged_attention_prefill` | [Current MLA prefill handoff](../../ready/current/mla-prefill/README.md): six trusted phases, all 12 framework checks, 400 trusted and 200 framework samples; OCI archive fully read back. | Both published M8192/H16 cases. The guide links explicit `0df9540d` compatibility; its 505-input verifier remains bound to the qualified snapshot. |
 | `headkernel/minimax-m3__gemm_afp4wfp4_kernel` | [Current MiniMax FP4 handoff](../../ready/current/minimax-fp4/README.md): six trusted phases, all 12 framework checks, 4,200 samples and 168 controls; OCI archive fully read back. | All 14 cases. Final report and marker were recovered byte-for-byte against hashes saved before preemption. The verifier accepts the qualified inputs and separately reviewed `5854b2ac` inputs. |
 
+The [explicit `18bb4d67` compatibility review](mla-fp4-compatibility-18bb4d67.json) approves reuse of both completed qualifications for their unchanged published scopes at `18bb4d67bea577f6951f51a95cf524c9c425f952`. It records unchanged task and measurement code and confirms that the preserved report/marker pairs pass the current read-only legacy archive completion gate. The GPU reports remain labeled `7bc14698`; this approval claims **no new GPU execution or observed post-validator lifecycle at `18bb4d67`**. It is separate from the strict snapshot verifiers: their accepted pins and all old reports remain unchanged. New live runs still require current post-run integrity, and changed candidates, new shapes, group execution, model/serving qualification and later branch tips require their own evidence or review.
+
 Both are unchanged-source controls with **no accepted optimization gain**. The archive guides disclose the original evidence and any recovery or transport limits. Other completed individual phases, framework-only passes and interrupted runs remain partial qualification evidence.
 
 ## Additional completed framework evidence
@@ -71,6 +73,22 @@ rclone copy "$WORKLOAD_INDEX" /path/to/local-nvme/workload-index \
 | `PACKAGE-DESCRIPTOR.json` | `8bccc0de617d9a9494caa220aa7bbf0cd13f3c98d59b5a98addfe557d28f57f6` |
 
 The recovered supplements preserve 690 files from the 24 formerly unexamined historical rank directories. Producer failures and partial outcomes remain unchanged. Primary MiniMax 194969 collected no Torch profile; the 16 sampled traces from 194299 and 15 traces from 194550 remain separate, with 194550 TP0 DECODE still missing. The historical analyzer sources `intake.py` and `quant_inventory.py` remain unavailable and disclosed. Full model weights are external at verified immutable public revisions; package-specific guides describe retrieval without requiring the original cluster or NFS paths.
+
+A separate [GLM workload handoff guide](oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_workload_handoffs/20261012/glm-5.3-flash/glm-final-capture-v4-194841/GUIDE.md) now preserves the existing `glm-final-capture-v4-194841` capture. The [branch-local publication pointer](glm-workload-handoff-20261012.json) pins the guide, per-file manifest, full destination readback and completion receipt by SHA-256. Publication verified **272 payload files / 99,133,731 bytes**, including 16 gzip traces for TP0–7 EXTEND/DECODE. This is a supplement to the immutable `index-v2`; that index still selects the same six packages from three models and its objects and hashes are unchanged.
+
+The recorded GLM workload used 64 prompts, ISL 8192 / OSL 1024, concurrency 64, TP8, context 9218 and seed 42. Its SGLang 0.5.20 runtime included **18 backport/overlay files; stock-image equivalence is false**. Eight profiler steps were requested per stage; these sampled traces do not establish all graph replays or every live shape/scalar argument. Eight rank directories from the earlier failed `glm-served-capture-v3-194603` attempt remain inaccessible, with the readable failure/source records preserved. The selected latest launch/config/source/trace records have no access gaps. Model weights, the dataset body and operator tensor bodies remain external with pinned identities or references. **The publication adds no model/GPU run, GLM task qualification or performance/E2E gain.**
+
+With rclone and configured OCI credentials, fetch the small metadata first, then follow the guide for the bundle; no original Crusoe, Spur or node session is required. Reuse the transfer environment above:
+
+```bash
+GLM_WORKLOAD=oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_workload_handoffs/20261012/glm-5.3-flash/glm-final-capture-v4-194841
+rclone copy "$GLM_WORKLOAD" glm-workload \
+  --include /GUIDE.md --include /MANIFEST.json \
+  --include /PUBLICATION-READBACK.json --include /COMPLETE.json \
+  --transfers 64000 --progress --buffer-size 0
+```
+
+The guide records the original server arguments and source-path mapping. Retained launch scripts contain historical paths that need remapping for reproduction; publication did not test a new portable execution.
 
 ## Remaining gates for the other historical subsets
 
