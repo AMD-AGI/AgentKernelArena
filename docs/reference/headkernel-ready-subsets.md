@@ -1,6 +1,6 @@
 # Consolidated head-kernel tasks and qualification evidence
 
-Status for **2026-10-12**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. **Eight tasks have completed scoped qualifications; 15 remain unfinished.** The completed qualifications below retain their actual trusted and framework execution identities, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
+Status for **2026-10-13**: `head-kernels-top5` contains all **23 SG0.5.20 source task mappings** across DeepSeek V4 Pro, GLM 5.3 Flash, Kimi K3, MiniMax M3 and Qwen3.8 2.4T. Five subsets retain historical qualification at their original commits. **Eight tasks have completed scoped qualifications; 15 remain unfinished.** The completed qualifications below retain their actual trusted and framework execution identities, with explicit revision limits. **The complete 23-task branch is not yet qualified.** Complete model-workload qualification and serving/E2E gains remain unestablished.
 
 Use [HEADKERNELS.md](../../HEADKERNELS.md) for the consolidation sources and [the unified validator config](../../example_configs/headkernel_sg520_current_mi355x.yaml) for task selection. All task paths and five preserved guides are in this branch. The [runtime catalog](../../tools/headkernel-runtime-targets.json) distinguishes current source/runtime selection, historical capture provenance and pending qualification. Its task readiness flags apply only to the linked exact-commit scoped approvals; global readiness remains false for the complete 23-task branch.
 
@@ -52,6 +52,12 @@ The [explicit compatibility and CPU-recovery approval](../../ready/current/kimi-
 [Current Qwen Dense GEMM](../../ready/current/qwen-dense/README.md) joins the retained `eed4df57` framework execution on job 209670 with the complete fresh trusted execution on job 210191. All 12 framework checks, six trusted phases and five original cases passed, retaining 500 framework and 1,000 trusted samples. Both owned-container retirements preceded their FINAL records; trusted FINAL completed at **2026-10-12 23:34:02 UTC**.
 
 The [scoped compatibility review](../../ready/current/qwen-dense/COMPATIBILITY-230de1f5.json) verifies unchanged task and relevant runtime/quality code at `230de1f5`, without relabeling the eed4 executions. Independent review replayed the full join, all six raw phase validators, 26 before/after input entries per phase and 217 source-verifier entries. All eight OCI objects and all 849 archive members passed full remote readback. Earlier interrupted comparisons contribute no phases or samples; no gain or new serving capture is claimed.
+
+## Completed October 13 Kimi MoE stage 1 gates awaiting scoped approval
+
+[Kimi MoE stage 1](../../ready/current/kimi-moe1/README.md) completed both gates on job 210191 at task base `18bb4d67`, with the explicitly pinned `cf563f61` finite-session prompt overlay for the framework. Trusted GPU 0 completed all six phases, three cases, 1,200 paired inner samples and 27 retained routing-population correctness checks per outer leg. Framework GPU 1 passed all 12 checks with three cases and 600 paired inner samples. Both retain 307 input identities and owned-container retirement before their original FINAL receipts.
+
+The independent audit passed 22,209 checks using the pinned raw-report, paired-input, timing-quality and framework-integrity validators. All eight OCI publication objects and all 5,728 archive members passed full readback. The scoring baseline is the synchronization-repaired `protected_reference`; no stock-native equivalence, accepted optimization gain or serving/E2E qualification is claimed. Earlier partial attempts contribute no phases or samples. **Root scoped-readiness approval remains pending, so the completed-task count is unchanged.**
 
 ## Additional completed framework evidence
 
@@ -161,7 +167,7 @@ These 18 tasks do not have one of the five historical ready-subset receipts. Pag
 | `glm-5.3-flash` | `fused_moe_kernel` | Original native graph-versus-eager failure remains unresolved. A later diagnostic did not reproduce it and did not qualify the task. |
 | `kimi-k3` | `dense_bf16_gemm_cijk` | Full 40-case native, trusted, and framework qualification. A targeted stream diagnostic covers only its recorded case. |
 | `kimi-k3` | `attn_residual_aggregate_hip` | Complete 69-case qualification using the integrated complete-case route. Job 207739 preserved reference compile/correctness for all 69 cases; its last performance snapshot recorded 18/69 trusted and 11/69 framework cases before cancellation. |
-| `kimi-k3` | `moe_gemm1_stage1` | Fresh qualification of the current routing and paired-work contract; older routing snapshots are not current qualification. |
+| `kimi-k3` | `moe_gemm1_stage1` | [Both complete gates independently verified](../../ready/current/kimi-moe1/README.md) on 210191 at `18bb4d67` plus the framework prompt overlay: six trusted phases, 12 framework checks and 1,800 paired inner samples in total. Root scoped-readiness approval remains pending; no partial-attempt reuse or accepted gain. |
 | `kimi-k3` | `moe_gemm2_stage2` | Fresh qualification of the current routing and paired-work contract; older routing snapshots are not current qualification. |
 | `minimax-m3` | `decode_score_kernel` | Complete current framework and trusted qualification of the 16-case paired contract through the integrated complete-case route; interrupted samples are not a completed union. |
 | `minimax-m3` | `gqa_share_sparse_decode_kernel` | Complete current framework and trusted qualification of the 24-case paired contract through the integrated complete-case route. |

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_date": "2026-10-12",
+  "updated_date": "2026-10-13",
   "description": "Consolidated head-kernels-top5 mapping for all 23 SG0.5.20 source tasks. Five historical subsets are preserved; completed scoped qualifications link their exact execution and compatibility revisions. Full-branch qualification remains pending. Unified preparation uses explicit trusted_task_v1 or headkernel_artifacts_v1 protocols and does not change historical capture provenance.",
   "primary_sglang": "sglang_v0520",
   "alternate_sglang": "sglang_v0519",
@@ -488,7 +488,7 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "source_refreshed_pending_full_qualification",
+      "task_compatibility": "completed_exact_gates_pending_root_scoped_readiness_approval",
       "ready": false,
       "framework_qualified": false,
       "trusted_retest_qualified": false,
@@ -516,7 +516,24 @@
         "workload_scope": "503 padded-row histogram entries across 3 structural cases, plus generated populations",
         "existing_private_paired_evidence_retracted": false
       },
-      "preparation_protocol": "trusted_task_v1"
+      "preparation_protocol": "trusted_task_v1",
+      "scoped_qualification": {
+        "status": "COMPLETE_GATES_PUBLISHED_PENDING_ROOT_SCOPED_READINESS_APPROVAL",
+        "task_execution_base": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+        "framework_execution_base": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+        "framework_prompt_overlay_sha256": "cf563f6152e1a667754d7808c478a7a7c012e101f706636473d68579b12b5df6",
+        "trusted_execution_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+        "guide": "ready/current/kimi-moe1/README.md",
+        "receipt": "ready/current/kimi-moe1/READY.json",
+        "input_pins": "ready/current/kimi-moe1/INPUT-PINS.json",
+        "case_count": 3,
+        "framework_gate_complete": true,
+        "trusted_gate_complete": true,
+        "root_scoped_readiness_approval": "PENDING",
+        "accepted_gain": false,
+        "model_serving_qualification_claimed": false,
+        "new_GPU_execution_at_documentation_base": false
+      }
     },
     {
       "task": "headkernel/kimi-k3__moe_gemm2_stage2",

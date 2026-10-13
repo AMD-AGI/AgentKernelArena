@@ -1,0 +1,124 @@
+{
+  "schema": "current-scoped-ready-entry-v1",
+  "status": "COMPLETE_GATES_PUBLISHED_PENDING_ROOT_SCOPED_READINESS_APPROVAL",
+  "task": "headkernel/kimi-k3__moe_gemm1_stage1",
+  "ready": false,
+  "ready_tasks": [],
+  "root_scoped_readiness_approval": "PENDING",
+  "completed_gates": true,
+  "qualified_task_base": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "task_tree": "d9af79a96a8c3b8abe8fe00246502255981c20f0",
+  "framework_execution_base": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "framework_overlays": {
+    "agents/task_validator/validation_prompt.py": {
+      "base_sha256": "ea0346ec2ec5d3ecc95486054150d3205cc3c1a7cbb88d46d19273e5af9f672b",
+      "file": "framework-overlays/validation_prompt.py",
+      "sha256": "cf563f6152e1a667754d7808c478a7a7c012e101f706636473d68579b12b5df6"
+    }
+  },
+  "trusted_execution_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "documentation_base_commit": "da7d6afa472b4eaac95ac0613c2570fd00ab218e",
+  "scope": {
+    "case_count": 3,
+    "case_ids": [
+      "flydsl_moe_stage1-struct-9b9cbbf22624300869bf9a90",
+      "flydsl_moe_stage1-struct-e74ab9ff67a2bfe85a909093",
+      "flydsl_moe_stage1-struct-fc125b5aac5697acb85975ce"
+    ],
+    "activation_shapes": [
+      [
+        64,
+        3584
+      ],
+      [
+        8192,
+        3584
+      ],
+      [
+        16384,
+        3584
+      ]
+    ],
+    "scoring_baseline": "protected_reference",
+    "sync_repaired_baseline": true,
+    "native_stock_source_equivalence": false,
+    "correctness_seeds": [
+      0,
+      1,
+      2
+    ],
+    "retained_routing_population_checks_per_outer_leg": 27,
+    "warmups": 10,
+    "samples_per_inner_leg_per_case": 100,
+    "trusted_paired_inner_samples": 1200,
+    "framework_paired_inner_samples": 600,
+    "exhaustive_work_histogram_timing": false,
+    "full_routing_history_recovered": false,
+    "model_or_serving_qualification": false
+  },
+  "source_sha256": {
+    "source/flydsl/kernels/mixed_moe_gemm_2stage.py": "ca2ff7ed9031fb04e47dc07ec496cb283fca4c05ec9d7730a1c9150b264c6040",
+    "source/flydsl/kernels/mixed_moe_gemm_2stage_common.py": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755",
+    "source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py": "711ce2cf1aefa9fd48914494410f6a12f2e47783ece2f65f75200f7b871bd842",
+    "source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py": "4b7b80d2363a7a43802a7ec44ed3111e312420b8eea33985cfe2b0d84d0c986f",
+    "source/flydsl/moe_kernels.py": "0476a7416971958fcbe83d3e9e2b208c1d1ea24e59e7664944f209db95c83169"
+  },
+  "input_pins": "INPUT-PINS.json",
+  "input_pins_sha256": "9a4847f889a129bbdf06d309d01abda21c603a422a6a3b4271c2c7e5d3783dca",
+  "input_manifest_sha256": "109ab6800ba4082b8a4df30fc71dea35240d3b13860c06d01a3e5f0011b32d25",
+  "framework": {
+    "job": "210191",
+    "gpu": 1,
+    "node": "crsuse2-m2m-085",
+    "checks": 12,
+    "paired_inner_samples": 600,
+    "input_entries": 307,
+    "integrity_observations": 12,
+    "final_utc": "2026-10-13T00:50:32.672191+00:00",
+    "final_sha256": "45e10a9d2451fa3eecc2f9b1c5487c2558016272efa807b5505b0496c6cd4e4e",
+    "owned_retirement_verified": true
+  },
+  "trusted": {
+    "job": "210191",
+    "gpu": 0,
+    "node": "crsuse2-m2m-085",
+    "fresh_phases": 6,
+    "paired_inner_samples": 1200,
+    "retained_routing_checks_per_outer_leg": 27,
+    "input_entries_per_phase": 307,
+    "unique_requests": 6,
+    "final_utc": "2026-10-13T01:22:18.826588+00:00",
+    "final_sha256": "6a275c23fde43811dfe0dd587918d937578108fda272bf22a3b0ebc63c137d10",
+    "measurement_sha256": "5f6597033861236b00442b09bb0226b75320c53784527078e2c6d3594cc4ff18",
+    "owned_retirement_verified": true
+  },
+  "runtime": {
+    "image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "architecture": "gfx950",
+    "stock_native_source_equivalence": false,
+    "baseline": "protected_reference_with_declared_async_LDS_sync_repair"
+  },
+  "source_unchanged": true,
+  "comparison_status": "unchanged_source_control",
+  "accepted_gain": false,
+  "model_serving_qualification_claimed": false,
+  "old_partial_phases_used": false,
+  "publication": {
+    "prefix": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261013/qualification-evidence/kimi-k3__moe_gemm1_stage1/18bb4d67-prompt-cf563f61-job210191",
+    "readback_receipt": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261013/qualification-evidence/kimi-k3__moe_gemm1_stage1/18bb4d67-prompt-cf563f61-job210191/OCI-VERIFIED.json",
+    "readback_receipt_sha256": "040fd87304d82dff50af20cb35d560d84a5e48c8a72417134f006430492e9cdc",
+    "independent_review": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261013/qualification-evidence/kimi-k3__moe_gemm1_stage1/18bb4d67-prompt-cf563f61-job210191/INDEPENDENT-REVIEW.json",
+    "independent_review_sha256": "95c3228bae7653b27ab3ce5545105adb3f53e59b5c5752e1c206e57ed7567393",
+    "independent_checks": 22209,
+    "objects_verified_including_receipt": 8,
+    "archive_members_verified": 5728,
+    "regular_files": 5218,
+    "directories": 510,
+    "symlinks": 0,
+    "archive": "kimi-moe1-18bb4d67-prompt-cf563f61-job210191.tar.gz",
+    "archive_sha256": "553d57f6c15fa013dacdd5273ac9173c10e4f4cfea7aa28068140e5876ed0428",
+    "member_manifest_sha256": "272c5c5ff208ea56ac861683d0768d349dc380d312f3e3bf6715d24be5a42b3d",
+    "qualification_sha256": "6a6b5c5d182a7391ead1f4e1207f7b004f737ca23d89fb1208d6276fe469bf9b",
+    "source_pins_sha256": "ab4a35db30a41298eecac1ea02cc6f0e241ffd203a59834c206c116e52272090"
+  }
+}

@@ -1,0 +1,2278 @@
+{
+  "schema": "kimi-moe1-execution-input-pins-v1",
+  "task": "headkernel/kimi-k3__moe_gemm1_stage1",
+  "source_commit": "18bb4d67bea577f6951f51a95cf524c9c425f952",
+  "task_tree": "d9af79a96a8c3b8abe8fe00246502255981c20f0",
+  "input_manifest_sha256": "109ab6800ba4082b8a4df30fc71dea35240d3b13860c06d01a3e5f0011b32d25",
+  "entry_count": 307,
+  "entries": [
+    {
+      "archive_mode": 436,
+      "bytes": 1061,
+      "kind": "file",
+      "path": "PREPARATION.json",
+      "sha256": "189feb2775eb035fdc1ba5fa7a74592cb43e384397582ce05691f62ed2e7babf"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10965,
+      "kind": "file",
+      "path": "README.md",
+      "sha256": "a85ec07cda9a87d4478c26ffe50517505d6db5b607650ce03bfcb8003879fb05"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 45253,
+      "kind": "file",
+      "path": "SOURCE-PROVENANCE.json",
+      "sha256": "141e78915e3de1e724b836daba72873b22205345a9af705b4cd9c9ae66eff8c2"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 47876,
+      "kind": "file",
+      "path": "cases.json",
+      "sha256": "1a075d3ad2b67217a26b214de067405607869056086d1b1e0b31e9c55e3b2769"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4337,
+      "kind": "file",
+      "path": "config.yaml",
+      "sha256": "93fba7dd4d0e24e35254cdfc3231c84e26f681bb59a15bd4a0bfb035bb22dc44"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 12754,
+      "kind": "file",
+      "path": "fixtures/EXTERNAL-MANIFEST.json",
+      "sha256": "8a97c214c08327913b48b72f04c440e68d05252b549993603461a6e9eecb1358"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2734,
+      "kind": "file",
+      "path": "provenance/PAIRED-REFERENCE.json",
+      "sha256": "5f7b5dc9afc7e9d5cbdd8cafffd04935216432707e070d5ce400d8bce386a6ab"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 30035,
+      "kind": "file",
+      "path": "provenance/PAIRED-WORK-REGISTRY.json",
+      "sha256": "f72e132a56727f4bf0da5219e729f95d4bfa1a1d258f47e632571cf81edbc9d3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1651,
+      "kind": "file",
+      "path": "provenance/STAGE1-CAPTURE.json",
+      "sha256": "4d2533372a1e7243fd415d25c5fe45db1f0c46f7a901dc0f809b8b653e36b33e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 11455,
+      "kind": "file",
+      "path": "provenance/STAGE1-NATIVE-INSTABILITY.json",
+      "sha256": "06fb12919320fa4531afab0116633b0d7972525378d3f02b04ba0376cb6d248b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2108,
+      "kind": "file",
+      "path": "provenance/STAGE1-SYNC-REPAIR.json",
+      "sha256": "5325dbaccd7b4d5dce3e4df1958ba97ac90086c3f51d88a9eac4c855487cc138"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1337,
+      "kind": "file",
+      "path": "provenance/STAGE1-WORKLOAD-V4.json",
+      "sha256": "41e1834f2cabdcd857e8777eba5a2e52c03e821a401ca4a306a8467098e32730"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4894,
+      "kind": "file",
+      "path": "scripts/analyze_scale_diagnostic.py",
+      "sha256": "bbdf829861fbf1268b997d6d6b51575585b9062477ee86fd794fdd17abcc15da"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5199,
+      "kind": "file",
+      "path": "scripts/check_source_binding.py",
+      "sha256": "873169e3121fcb175b83f09f0b90298cdf285dcfb9c33ca2ddef734a17d9bdd1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 12981,
+      "kind": "file",
+      "path": "scripts/diagnose_scale_mismatch.py",
+      "sha256": "5726cfda93c42d2a87c29a5bfce89ea0f1d04aafe301ec64711564ed3b62d676"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 12544,
+      "kind": "file",
+      "path": "scripts/import_fixtures.py",
+      "sha256": "cd829ab7dd2e7b83f6c750589e73d6375a48e3be2315f42241d8379d6507c498"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2339,
+      "kind": "file",
+      "path": "scripts/make_submitted_controls.py",
+      "sha256": "afae29480b1fcd9ff83006383e8565f9f2df669b5f7c96a4d51a3b3b440db358"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4835,
+      "kind": "file",
+      "path": "scripts/prepare_sync_repair.py",
+      "sha256": "4c84387902a55e96c40560ec94b855e1c970e77a56f4d7bc36da76426c903e25"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 7116,
+      "kind": "file",
+      "path": "scripts/task_runner.py",
+      "sha256": "c348895e91b60a6c61b449748ca75e0af450b8736e7d9266a48739c222974fef"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4817,
+      "kind": "file",
+      "path": "scripts/update_work_histograms.py",
+      "sha256": "c91fb806791371f89f3542f9d5ffe1353ef82bf17b29ff030ea56157ebc009f8"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2712,
+      "kind": "file",
+      "path": "source/flydsl/__init__.py",
+      "sha256": "f0ca8a1f6a112d5f1d6af38e8ca7734d45d40de9182c6e0911d4d36a5d30c742"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17911,
+      "kind": "file",
+      "path": "source/flydsl/batched_gemm_mxfp4.py",
+      "sha256": "7702e0db79d9a309b462831ce6bbecedabe2926de3f804ebc6c61dfff255b126"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 7685,
+      "kind": "file",
+      "path": "source/flydsl/bpreshuffle_gemm_gfx1250.py",
+      "sha256": "5d477ccc235f775874c955ab60e70ee29289a457e55f9047014c2c1ea2f3547e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 19745,
+      "kind": "file",
+      "path": "source/flydsl/causal_conv1d_flydsl.py",
+      "sha256": "4bc864408b7a182ab1f68dbee015091e52d20605adfe8d2ead9250941ca3a8a7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2831,
+      "kind": "file",
+      "path": "source/flydsl/chunk_gdn_h_tuned.csv",
+      "sha256": "8294c160573fb3650b7577b9af82a881cac54dfcc40c4cf97f210ccd633fafaf"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10971,
+      "kind": "file",
+      "path": "source/flydsl/fhmoe.py",
+      "sha256": "363ddbcb87dcf995342cf71e46c78ee4b291ea7fa665f915dd07f4c21a1ed22d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9827,
+      "kind": "file",
+      "path": "source/flydsl/fmha_kernels.py",
+      "sha256": "35a7d04041fd7525d5009e8d9befa91a08ffefb2d63aa72ff2e7efa72091cd96"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 429149,
+      "kind": "file",
+      "path": "source/flydsl/gdr_decode_tuned.csv",
+      "sha256": "73c9ba1ba2b92f90039d1e7e5556eff9b87c54cb87aca4e83bc796500c7c7ca9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9477,
+      "kind": "file",
+      "path": "source/flydsl/gemm_a8w8_bpreshuffle_8wave.py",
+      "sha256": "7510e063f8bbec6374fa9f7beb13b5c718cb66e81d5cdb39fdb15cb7ab5d4da6"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 36954,
+      "kind": "file",
+      "path": "source/flydsl/gemm_kernels.py",
+      "sha256": "eb1107db64da235a7e8fc5ec419375ea2ee2f1ddfeb0082ee06b7f41aba30929"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 18844,
+      "kind": "file",
+      "path": "source/flydsl/gemm_tune/flydsl_gemm_a8w8_bpreshuffle_common.py",
+      "sha256": "65f066a5781ecdf4432a98f183169088db6ce3f33829169bd1fe9beece0a28a0"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5036,
+      "kind": "file",
+      "path": "source/flydsl/gemm_tune/flydsl_gemm_a8w8_bpreshuffle_wmma_common.py",
+      "sha256": "4138e3a2670a9719aacc2a2e435b931be08a9ee185d8e1678be2f01f15301ad7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 8764,
+      "kind": "file",
+      "path": "source/flydsl/gemm_tune/flydsl_gemm_mxfp8_128_bpreshuffle_wmma_common.py",
+      "sha256": "8ba81aab0a0eff572ebe038de2513e01ab7292a49a181d0650853f9afec37a53"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5332,
+      "kind": "file",
+      "path": "source/flydsl/grouped_gemm_mxfp4.py",
+      "sha256": "96c531ecb3f922e3556ae51e8d4251c830fd94b727516dbb010d24d50ca0682f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 60355,
+      "kind": "file",
+      "path": "source/flydsl/grouped_moe_gfx1250.py",
+      "sha256": "e344bafd699960b2bd5e8e6287ad024f1460dc690878ac0604c2856daac5678f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 62,
+      "kind": "file",
+      "path": "source/flydsl/kernels/__init__.py",
+      "sha256": "03e3672f0f6627efeb6c75ec11d16c56a75f1b8bfec3717c16945ff259798c52"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3958,
+      "kind": "file",
+      "path": "source/flydsl/kernels/act.py",
+      "sha256": "027c7c531561e6d1a4689b89ab3b60e7445b444dc23f16220ca15c4a4237007d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25650,
+      "kind": "file",
+      "path": "source/flydsl/kernels/buffer_ops.py",
+      "sha256": "8a2eb2035f33332abcbbb8f55cf3bdbf7b05530e40cb54014add11854dfdf038"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 46512,
+      "kind": "file",
+      "path": "source/flydsl/kernels/chunk_gated_delta_h.py",
+      "sha256": "ce5f06d92b8d6f7bc3687d39070272b0653a96c119fff9a6b11ed948ca8daa96"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 41146,
+      "kind": "file",
+      "path": "source/flydsl/kernels/chunk_gated_delta_h_opt.py",
+      "sha256": "a39e407e25e22a49d4c01d9f5a530d0373d7f82d597c3307f9e799b29c7171f2"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9906,
+      "kind": "file",
+      "path": "source/flydsl/kernels/communication_ops_utils.py",
+      "sha256": "18a0818db2748c3852caab0a16f20625a2b69e6b9390de58a2326d4ebc59fd60"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1728,
+      "kind": "file",
+      "path": "source/flydsl/kernels/dpp_utils.py",
+      "sha256": "dec913a9321597bcbb6dbd5dda73ee4f53ba2ed02777235f7520c73369d02d44"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3948,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fhmoe.py",
+      "sha256": "70978ca8e963c284370d99266ddbacb25834525ccb7d45984e190c3bc06099a0"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 31394,
+      "kind": "file",
+      "path": "source/flydsl/kernels/flash_attn_func_gfx1201.py",
+      "sha256": "95dca6928cd9017f6a8caf1f48ed9d08958bfd68576fedd0cb0ae95e93a361bb"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 63402,
+      "kind": "file",
+      "path": "source/flydsl/kernels/flydsl_dispatch_combine_intranode_kernel.py",
+      "sha256": "3a83ff2a09f1de1ba4222f69b9fa808fdf977e36f53fa33a8b4ae3840b8add6a"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 58526,
+      "kind": "file",
+      "path": "source/flydsl/kernels/flydsl_dispatch_combine_intranode_op.py",
+      "sha256": "a54f352753cf0e539466a47355fc0d410724447943d0f8ff058c6613daeb7d03"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 0,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fmha_gfx1250/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 92449,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py",
+      "sha256": "1e9e853fdc133d2d08443ceedd79ee0ac176c7481430e5fe304df36725f9b761"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 139955,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fmha_gfx1250/fmha_kernel.py",
+      "sha256": "522c9a4890e84cb775b94be760e05a720707cb7f6d14b37d4223b16687930958"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26023,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fmha_gfx1250/fmha_prologue.py",
+      "sha256": "933954f6fe37642a79559c713642c92c057fd00ea483a00563fbcc4f51bf8093"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 35733,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fmha_gfx1250/fmha_schedule.py",
+      "sha256": "08a4098be945044ed62dff1deecfb2938563e559d39e3f062e2eff087da08d36"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 142227,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fused_compress_attn.py",
+      "sha256": "85882ccf64c7c707d3caf6a1bc19f335b2a01d5c26b36d9bf7dcc237a2897ec1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10541,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fused_compress_attn_common.py",
+      "sha256": "483724f2fd648de33dda129b2bc32888576a63027a0caf31f5e12419023eaec3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 116162,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fused_compress_attn_gfx1250.py",
+      "sha256": "7dfce115f10dc7de21405ee783d712119f5965911c109deab04261000c45b72e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 62936,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fused_compress_attn_hca.py",
+      "sha256": "5874f23f11f01f5aa53302f647e5d8cdd01ff9664f793fb3cf8b0c86e4662c09"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 57701,
+      "kind": "file",
+      "path": "source/flydsl/kernels/fused_compress_attn_hca_gfx1250.py",
+      "sha256": "11eeb5704cde1b3b116ea2f4f397c586e921b753c0a43f0be74d5f3bb6962df7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 29806,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gdn_prepare.py",
+      "sha256": "2d65f46c7d17dfbc15d1123125714d13c311a884d5154272065dc0d702be5ad9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17384,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gdr_decode.py",
+      "sha256": "6905ceae8fbd0e9aef664ac31cd8a07b03c4dc6c79c37234ccead26c0313d0c3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 34498,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gemm_a8w8_256x256_gfx1250.py",
+      "sha256": "7651fb652587bd30bbee65b92104e1f1fc409afabe8fbd5ffac04e8c9f82c397"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 21033,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gemm_a8w8_8wave.py",
+      "sha256": "42dea686eba866b73b854ecdd3878ee3a724583f2aad1b1181d211cc6a22e814"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26178,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gemm_a8w8_gfx1250.py",
+      "sha256": "6d95d8b5a07112f247ff66bb9582413c1e5bf3114617532605f3f7d144841a76"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4283,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gemm_a8w8_splitk_reduce_gfx1250.py",
+      "sha256": "4cba3b49bdcfc7f94b7ff01757044485ef42468af4a954354921a30f588005cb"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 12526,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gemm_common_gfx1250.py",
+      "sha256": "56bc1718cfd06346de834be1e78fe0d2567129b6ad0568a13a9f3ba19f0fe1d5"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2647,
+      "kind": "file",
+      "path": "source/flydsl/kernels/gfx1250_cluster.py",
+      "sha256": "9fcab55f57242e76f320520c98f51feceb6ba58e68bd5a047d2748ef5912fe89"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2218,
+      "kind": "file",
+      "path": "source/flydsl/kernels/hgemm_dispatch.py",
+      "sha256": "cdef8feeff05e1134039521e678341c127d1d3b55c8de8437f3668509bf455e3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4083,
+      "kind": "file",
+      "path": "source/flydsl/kernels/kernels_common.py",
+      "sha256": "5ecec6a9955ba6b6f22d1c5e11d27495d56a4a05346e7cf7194183dd632aa856"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5331,
+      "kind": "file",
+      "path": "source/flydsl/kernels/layout_utils.py",
+      "sha256": "c31a14195e7abdcac527c37effff8fd2240d7d609402f50395871a60423a0db1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 744,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/__init__.py",
+      "sha256": "cf9683f57fb3435e809e2115ccf81fb1e0e0b88baf89feec59819a22b3036a99"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 45981,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/dispatch.py",
+      "sha256": "baff5a0a29fe10f93070b8e629b23c6512a01aca3e779ab0598455377e6f62cf"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17388,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/gemm1.py",
+      "sha256": "758ccb05b90f017df69a9bdd36e1dbbd5a4e50e04e43043e6316f630b351f984"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25841,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/gemm2.py",
+      "sha256": "78e8bb02fe34e0674742be6a1bb2dc5efb998ddd6555e317b5f3f3beeee32c46"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 27959,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/gemm_util.py",
+      "sha256": "ed1e25ed6d9c7bbb4dfd2fa696902e5b78175105996ce1938e70843cb9e07530"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 11058,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/mega_moe_config.py",
+      "sha256": "5f271de118efaeb6eb4b332961a7a380b406fc09f29a10d91a244830c81326c8"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26546,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/mega_moe_stage1.py",
+      "sha256": "ca977cc4a45236e8c2a657a63305065027a42170a54d23884f9c15ec61c03144"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25374,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/mega_moe_stage2.py",
+      "sha256": "06c7ce1c7cd0815cb44f87cb92c4956b51f4a6ed3bf72eb8e2bc8e75171d2a25"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 20815,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/mega_moe_v2.py",
+      "sha256": "577370d3c647a1199d0f1b9e5c2410bac66ee18aa2e3f8043f8b428a29e7d1ff"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10709,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe/quant.py",
+      "sha256": "fc839764b8f6d377748e6d102a5ada5648c42c1d273bbe3d291449da449623e4"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 491,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_gfx1250/__init__.py",
+      "sha256": "882cf28dd4d67990e619f3c8d7f8f2af533abb9af8ebfb454452aa51d83b341e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10579,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_gfx1250/combine.py",
+      "sha256": "a7e2757f07e12b945340477d5c436a633392a005edd57d198e9a2d90bed29e4e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1130,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_gfx1250/config.py",
+      "sha256": "53c7d3beb670cab3254ba9ed5af1e6771d4e6c0d3c2ea9ead6b1597334f06957"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13971,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_gfx1250/dispatch.py",
+      "sha256": "591896677b9c8d38111970083fccfb98579baea6be38d6a7f62d7386a922b426"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 28547,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_gfx1250/mega_moe.py",
+      "sha256": "baac6ccb51f089ab1c2e837675409e1cfd485789c1fd974a065aaed1ea8c22d3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13452,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_gfx1250/tdm_gather_shim.py",
+      "sha256": "3b6fab071e3514cc7d6f0d791605dcd450522843078cb9fa3fd4793be171b94f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2721,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_gfx1250/types.py",
+      "sha256": "9f59ce8b50f703ec78cb561f1b17e7dc335dc80592dcea197bf35b3b471b81fe"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 16124,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mega_moe_tuning_config/flydsl_gfx950_mi355x_IntraNode_ep8.json",
+      "sha256": "cef0ee88bbed8ad662493506504436fb6964f16cb7f4d9627dc1c41b4ffd1c07"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17631,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mfma_epilogues.py",
+      "sha256": "411dfec00e8bf1ed0642c93d2cf908c744dd8ff188ba3daf63c9a42cf28303c6"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 38443,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mfma_preshuffle_pipeline.py",
+      "sha256": "80c14a2dcc40a15b712f4c00987e9d460b0309dc34faa988f423ce3686f3f0ee"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3922,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mixed_moe_gemm_2stage.py",
+      "sha256": "ca2ff7ed9031fb04e47dc07ec496cb283fca4c05ec9d7730a1c9150b264c6040"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 254294,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "sha256": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 55105,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mla_reduce.py",
+      "sha256": "9defc5adab11a2c004599730e52c6891a298d5308d18c0ab777b06f1c67dadf0"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9201,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_2stage_a16wmix/__init__.py",
+      "sha256": "c3ef17c10d2ffca58af9fcb9daebc7bb87127be8441c19da890defb3c91578da"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 24785,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_2stage_a16wmix/gemm1.py",
+      "sha256": "711ce2cf1aefa9fd48914494410f6a12f2e47783ece2f65f75200f7b871bd842"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 16348,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_2stage_a16wmix/gemm2.py",
+      "sha256": "4b7b80d2363a7a43802a7ec44ed3111e312420b8eea33985cfe2b0d84d0c986f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 33781,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_2stage_a16wmix/utils.py",
+      "sha256": "a2d385d451bf4bf60407e4ec6ae0d73631a317f5f64675d468b7d874d3d74696"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 28673,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_contiguous_psum.py",
+      "sha256": "be9f1079e001ed90eef2199a125415dc37269b2cdd7a3280c7df3122e60ec78b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 87143,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_fused_route_quant_scatter.py",
+      "sha256": "0f9e55ae0c2128dca5b3b86a65c002a4fa71a897e92b8f5d352cb11c4b105722"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5548,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_g2l_lut.py",
+      "sha256": "2e21cdf7dac616e95f37744b93a30b03f7889bc8efbf412ab7a7b8b8e274ef7d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 15449,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_gather_reduce.py",
+      "sha256": "9ad0dc520148080f5182fc6c0d632411c897c5d7c5506427b3e5835e8a6743ca"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 6135,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_m_tile_map.py",
+      "sha256": "41e345f98430a4c7defcce56f6a9320e2e48c6882b1e523ef3bd2f3c042d568f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10604,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_reduce.py",
+      "sha256": "dc2605e06ecae1a94e98522ea2d3f0dda9c3eb6fdf08095a811ea28ac9729d73"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 29447,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_route_maps.py",
+      "sha256": "9943954ec89618fddebe5f22286df794ea5db5796b22cc93c14483b444dd4532"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10847,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_scatter_copy_preshuffle_scale.py",
+      "sha256": "7b6ef5ba5cb4d8ef01bcdf3849acbd2befd75a4147a9b12890c67148ec43fd2d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 7200,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_scatter_copy_token.py",
+      "sha256": "7a5887945701161b63224d0d03edd253e9384c263206386d79cef9199c2d70c9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 85429,
+      "kind": "file",
+      "path": "source/flydsl/kernels/moe_sorting_kernel.py",
+      "sha256": "551623e99ecd7c4a3f54f6a2c4d3500f8a149fab3d96f4b0385a1734659d581c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 108,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mqa_logits/__init__.py",
+      "sha256": "868601d279866866ee89b0145653b2be5a68d445af229409f709781ba69f753c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 22578,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mqa_logits/fp8_mqa_logits.py",
+      "sha256": "4ac91b8c8edc673644d9d4ee28d5cec9cf96da8da66dad913461544e858aaf79"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26870,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4.py",
+      "sha256": "a21c7cdaee0247d536d4ad389181f53da340b2fa5e11b1a20ebeeb6fa18cf4d9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1402,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4_common.py",
+      "sha256": "d0af6f9b0a2d3dd57ab04c5f71fea435c5cb11e62871e4920627e60e1e5ff438"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 32111,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4_prefill.py",
+      "sha256": "0801476fa5d90ff1027045bd83638f43b49398112c38405b42380542fe4cfcfa"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 34625,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mxfp4_gemm1.py",
+      "sha256": "eec4211ea683b6a6e900ceb0fad1de4e9a3b829fa8c138b02321dc686140df75"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 29761,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mxfp4_gemm2.py",
+      "sha256": "66ce517eee8b1c9adecc0fcacd86f158f6bdef17c1d6b58beb0ec3371c791eef"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 7078,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mxfp4_gemm_common.py",
+      "sha256": "c83504ad8427379b74f3ad85a6654b23ee1e1f67ab58d1be82cbf301698ce70e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 20037,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mxfp4_preshuffle_batched_gemm_gfx1250_tdm.py",
+      "sha256": "c9387b94455c34485b75ccc31c8de73fd36976da1e889d42250e10d9ec56258b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 64770,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mxfp4_preshuffle_gfx1250_tdm.py",
+      "sha256": "7308d5c6ac432de06548815def7e759231020030d38354b2d89dfb7a367b3a47"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26801,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mxmoe_dispatcher.py",
+      "sha256": "25ff79966f770b013c6d5471460244f4c979fb9a185262778ae5fb3435078f8a"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 47681,
+      "kind": "file",
+      "path": "source/flydsl/kernels/mxmoe_gemm_v2.py",
+      "sha256": "25a045055b9d3a8f083c9e48e7a0d594109abf466da1b159d16c8e99ae257c77"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 37212,
+      "kind": "file",
+      "path": "source/flydsl/kernels/preshuffle_gemm.py",
+      "sha256": "0e7a218bf9a99e582bfaaac4a540c671070d86dcbeb1b555145c52765eb13d1f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 94524,
+      "kind": "file",
+      "path": "source/flydsl/kernels/qk_norm_rope_quant.py",
+      "sha256": "d9229d6ebd6bb85d1d60c451c57364c0cbb4cf1185691f2322ed5359760f9e2c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13484,
+      "kind": "file",
+      "path": "source/flydsl/kernels/quant_utils.py",
+      "sha256": "d2b8577717ff2c2a5896921129591c81d25dd3c8e64f70f6288b585f25bca672"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25929,
+      "kind": "file",
+      "path": "source/flydsl/kernels/silu_and_mul_fq.py",
+      "sha256": "9ff1604fd00090541f57779c64c3baf98bf23bd45d6f46c17d6931d5492700a7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 59618,
+      "kind": "file",
+      "path": "source/flydsl/kernels/small_m_hgemm.py",
+      "sha256": "255469078a8b6643649e78c0bf0a8ba60b15fc95ded6fb6e2850decfa65a749c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 6128,
+      "kind": "file",
+      "path": "source/flydsl/kernels/splitk_epilogue.py",
+      "sha256": "ca51d92f26af30633fd04aab004c9cdc0c8fd19e5e1b5df3836ee8fa552ccd03"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 48173,
+      "kind": "file",
+      "path": "source/flydsl/kernels/splitk_hgemm.py",
+      "sha256": "6d39058558cee0251d525222b902c198c9b0132c5d2e8a41eef172e56decd77d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4883,
+      "kind": "file",
+      "path": "source/flydsl/kernels/swiglu_and_mul.py",
+      "sha256": "8878303f58b1bbb63a348dab5de74527e767401bdc67bbc621c0752c9a4a0a6a"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4391,
+      "kind": "file",
+      "path": "source/flydsl/kernels/tdm_ops_gfx1250.py",
+      "sha256": "3fdc69c1afee97131ed502d3a92fdb4271355af3cb1d17d08399c4d5bc239621"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13223,
+      "kind": "file",
+      "path": "source/flydsl/kernels/tensor_shim.py",
+      "sha256": "dba454d6b4df718b0e0b47214a1c3bd6a0a91f4cdbc3769131c467c15a5b6cf7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5101,
+      "kind": "file",
+      "path": "source/flydsl/kernels/vector.py",
+      "sha256": "f63210b5089c797a484c5d8c4f310c17fd4fc965e44cbcbd464bd7fd37b67ba1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5352,
+      "kind": "file",
+      "path": "source/flydsl/linear_attention_kernels.py",
+      "sha256": "cc69290bb8319e693950a809ba951259f94bf16912f1cd45eed8d6e50c3f596b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 57138,
+      "kind": "file",
+      "path": "source/flydsl/linear_attention_prefill_kernels.py",
+      "sha256": "14d179f520d42eed3732cad6f054bd6544ddacd9262882def554b2f0817fa0b8"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 16760,
+      "kind": "file",
+      "path": "source/flydsl/mla_reduce_kernels.py",
+      "sha256": "cc75b9128de87388d460a336eca48560f42e2a8d308eaa4ba1da45fa6e836219"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2703,
+      "kind": "file",
+      "path": "source/flydsl/moe_common.py",
+      "sha256": "49e6d7c4c1c65e4a918425ec1985ec4dc077039b0e47aca4749d5f1ba611f719"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 108262,
+      "kind": "file",
+      "path": "source/flydsl/moe_kernels.py",
+      "sha256": "0476a7416971958fcbe83d3e9e2b208c1d1ea24e59e7664944f209db95c83169"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1761,
+      "kind": "file",
+      "path": "source/flydsl/moe_sorting.py",
+      "sha256": "ea97426a898312b2e6911c9ce7c612a3e5f2bdf0d416781499a3073786aa44e2"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3095,
+      "kind": "file",
+      "path": "source/flydsl/mxfp4_gemm1_kernels.py",
+      "sha256": "3a75aff14ce2adc1c0af21418f5911b111c3af070fbb80745f391ed4985593fb"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3942,
+      "kind": "file",
+      "path": "source/flydsl/mxfp4_gemm2_kernels.py",
+      "sha256": "3ff9aa13df93167fe491320e0e8a26ea2e948de9b64bc5b9a6c181673208489d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5115,
+      "kind": "file",
+      "path": "source/flydsl/mxfp4_kname.py",
+      "sha256": "de98ccb74e83cdcb9dc95da4907f594af15a2cc99be197552d0b89cf7484330b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 23121,
+      "kind": "file",
+      "path": "source/flydsl/mxfp4_v2_tune_utils.py",
+      "sha256": "239db8ac4e4a9d6f2abf7172130def2960ac8d378e095198ebcf7f5f0df10dd1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 11309,
+      "kind": "file",
+      "path": "source/flydsl/mxfp8_128_bpreshuffle_gemm_gfx1250.py",
+      "sha256": "f341129f036f5049c83384c9343e98f0171f381a4add050a82af6a5090487b0b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 15179,
+      "kind": "file",
+      "path": "source/flydsl/test_flydsl_linear_attention.py",
+      "sha256": "c8c421d1494966f2b0bb9910a110bd3d9682c02f053ad3897e42a3095c0c365b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 21538,
+      "kind": "file",
+      "path": "source/flydsl/test_flydsl_moe_a4w4.py",
+      "sha256": "6a65f736c3fba79afcec47eeda658c2e044dbf46aa9f148139677f3922e6b225"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 6911,
+      "kind": "file",
+      "path": "source/flydsl/test_flydsl_splitk_hgemm.py",
+      "sha256": "bf3fc04d3fda9f30f8bcb7b47b2f1e80a228eb36f92fa62b6f39473b29b838be"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2667,
+      "kind": "file",
+      "path": "source/flydsl/utils.py",
+      "sha256": "165276d3756ecf7a6c0965420d8c4c64be865dc8df94ce9fbdfa71c07e380804"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1235,
+      "kind": "file",
+      "path": "ut/README.md",
+      "sha256": "ad2d6f0d5aaa258d24baa104c90a7c87c529229e38a942c23ab0a6059b8c723e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4931,
+      "kind": "file",
+      "path": "ut/STAGE1-CONTRACT.md",
+      "sha256": "2cfac25651c1a2fca7a1649103d9dc27043f37577118b4db8c7651083c769a8d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2712,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/__init__.py",
+      "sha256": "f0ca8a1f6a112d5f1d6af38e8ca7734d45d40de9182c6e0911d4d36a5d30c742"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17911,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/batched_gemm_mxfp4.py",
+      "sha256": "7702e0db79d9a309b462831ce6bbecedabe2926de3f804ebc6c61dfff255b126"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 7685,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/bpreshuffle_gemm_gfx1250.py",
+      "sha256": "5d477ccc235f775874c955ab60e70ee29289a457e55f9047014c2c1ea2f3547e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 19745,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/causal_conv1d_flydsl.py",
+      "sha256": "4bc864408b7a182ab1f68dbee015091e52d20605adfe8d2ead9250941ca3a8a7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2831,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/chunk_gdn_h_tuned.csv",
+      "sha256": "8294c160573fb3650b7577b9af82a881cac54dfcc40c4cf97f210ccd633fafaf"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10971,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/fhmoe.py",
+      "sha256": "363ddbcb87dcf995342cf71e46c78ee4b291ea7fa665f915dd07f4c21a1ed22d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9827,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/fmha_kernels.py",
+      "sha256": "35a7d04041fd7525d5009e8d9befa91a08ffefb2d63aa72ff2e7efa72091cd96"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 429149,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/gdr_decode_tuned.csv",
+      "sha256": "73c9ba1ba2b92f90039d1e7e5556eff9b87c54cb87aca4e83bc796500c7c7ca9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9477,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/gemm_a8w8_bpreshuffle_8wave.py",
+      "sha256": "7510e063f8bbec6374fa9f7beb13b5c718cb66e81d5cdb39fdb15cb7ab5d4da6"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 36954,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/gemm_kernels.py",
+      "sha256": "eb1107db64da235a7e8fc5ec419375ea2ee2f1ddfeb0082ee06b7f41aba30929"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 18844,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/gemm_tune/flydsl_gemm_a8w8_bpreshuffle_common.py",
+      "sha256": "65f066a5781ecdf4432a98f183169088db6ce3f33829169bd1fe9beece0a28a0"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5036,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/gemm_tune/flydsl_gemm_a8w8_bpreshuffle_wmma_common.py",
+      "sha256": "4138e3a2670a9719aacc2a2e435b931be08a9ee185d8e1678be2f01f15301ad7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 8764,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/gemm_tune/flydsl_gemm_mxfp8_128_bpreshuffle_wmma_common.py",
+      "sha256": "8ba81aab0a0eff572ebe038de2513e01ab7292a49a181d0650853f9afec37a53"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5332,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/grouped_gemm_mxfp4.py",
+      "sha256": "96c531ecb3f922e3556ae51e8d4251c830fd94b727516dbb010d24d50ca0682f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 60355,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/grouped_moe_gfx1250.py",
+      "sha256": "e344bafd699960b2bd5e8e6287ad024f1460dc690878ac0604c2856daac5678f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 62,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/__init__.py",
+      "sha256": "03e3672f0f6627efeb6c75ec11d16c56a75f1b8bfec3717c16945ff259798c52"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3958,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/act.py",
+      "sha256": "027c7c531561e6d1a4689b89ab3b60e7445b444dc23f16220ca15c4a4237007d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25650,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/buffer_ops.py",
+      "sha256": "8a2eb2035f33332abcbbb8f55cf3bdbf7b05530e40cb54014add11854dfdf038"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 46512,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/chunk_gated_delta_h.py",
+      "sha256": "ce5f06d92b8d6f7bc3687d39070272b0653a96c119fff9a6b11ed948ca8daa96"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 41146,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/chunk_gated_delta_h_opt.py",
+      "sha256": "a39e407e25e22a49d4c01d9f5a530d0373d7f82d597c3307f9e799b29c7171f2"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9906,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/communication_ops_utils.py",
+      "sha256": "18a0818db2748c3852caab0a16f20625a2b69e6b9390de58a2326d4ebc59fd60"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1728,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/dpp_utils.py",
+      "sha256": "dec913a9321597bcbb6dbd5dda73ee4f53ba2ed02777235f7520c73369d02d44"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3948,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fhmoe.py",
+      "sha256": "70978ca8e963c284370d99266ddbacb25834525ccb7d45984e190c3bc06099a0"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 31394,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/flash_attn_func_gfx1201.py",
+      "sha256": "95dca6928cd9017f6a8caf1f48ed9d08958bfd68576fedd0cb0ae95e93a361bb"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 63402,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/flydsl_dispatch_combine_intranode_kernel.py",
+      "sha256": "3a83ff2a09f1de1ba4222f69b9fa808fdf977e36f53fa33a8b4ae3840b8add6a"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 58526,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/flydsl_dispatch_combine_intranode_op.py",
+      "sha256": "a54f352753cf0e539466a47355fc0d410724447943d0f8ff058c6613daeb7d03"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 0,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fmha_gfx1250/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 92449,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fmha_gfx1250/fmha_core_loop.py",
+      "sha256": "1e9e853fdc133d2d08443ceedd79ee0ac176c7481430e5fe304df36725f9b761"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 139955,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fmha_gfx1250/fmha_kernel.py",
+      "sha256": "522c9a4890e84cb775b94be760e05a720707cb7f6d14b37d4223b16687930958"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26023,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fmha_gfx1250/fmha_prologue.py",
+      "sha256": "933954f6fe37642a79559c713642c92c057fd00ea483a00563fbcc4f51bf8093"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 35733,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fmha_gfx1250/fmha_schedule.py",
+      "sha256": "08a4098be945044ed62dff1deecfb2938563e559d39e3f062e2eff087da08d36"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 142227,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fused_compress_attn.py",
+      "sha256": "85882ccf64c7c707d3caf6a1bc19f335b2a01d5c26b36d9bf7dcc237a2897ec1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10541,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fused_compress_attn_common.py",
+      "sha256": "483724f2fd648de33dda129b2bc32888576a63027a0caf31f5e12419023eaec3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 116162,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fused_compress_attn_gfx1250.py",
+      "sha256": "7dfce115f10dc7de21405ee783d712119f5965911c109deab04261000c45b72e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 62936,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fused_compress_attn_hca.py",
+      "sha256": "5874f23f11f01f5aa53302f647e5d8cdd01ff9664f793fb3cf8b0c86e4662c09"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 57701,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/fused_compress_attn_hca_gfx1250.py",
+      "sha256": "11eeb5704cde1b3b116ea2f4f397c586e921b753c0a43f0be74d5f3bb6962df7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 29806,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gdn_prepare.py",
+      "sha256": "2d65f46c7d17dfbc15d1123125714d13c311a884d5154272065dc0d702be5ad9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17384,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gdr_decode.py",
+      "sha256": "6905ceae8fbd0e9aef664ac31cd8a07b03c4dc6c79c37234ccead26c0313d0c3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 34498,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gemm_a8w8_256x256_gfx1250.py",
+      "sha256": "7651fb652587bd30bbee65b92104e1f1fc409afabe8fbd5ffac04e8c9f82c397"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 21033,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gemm_a8w8_8wave.py",
+      "sha256": "42dea686eba866b73b854ecdd3878ee3a724583f2aad1b1181d211cc6a22e814"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26178,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gemm_a8w8_gfx1250.py",
+      "sha256": "6d95d8b5a07112f247ff66bb9582413c1e5bf3114617532605f3f7d144841a76"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4283,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gemm_a8w8_splitk_reduce_gfx1250.py",
+      "sha256": "4cba3b49bdcfc7f94b7ff01757044485ef42468af4a954354921a30f588005cb"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 12526,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gemm_common_gfx1250.py",
+      "sha256": "56bc1718cfd06346de834be1e78fe0d2567129b6ad0568a13a9f3ba19f0fe1d5"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2647,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/gfx1250_cluster.py",
+      "sha256": "9fcab55f57242e76f320520c98f51feceb6ba58e68bd5a047d2748ef5912fe89"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2218,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/hgemm_dispatch.py",
+      "sha256": "cdef8feeff05e1134039521e678341c127d1d3b55c8de8437f3668509bf455e3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4083,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/kernels_common.py",
+      "sha256": "5ecec6a9955ba6b6f22d1c5e11d27495d56a4a05346e7cf7194183dd632aa856"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5331,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/layout_utils.py",
+      "sha256": "c31a14195e7abdcac527c37effff8fd2240d7d609402f50395871a60423a0db1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 744,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/__init__.py",
+      "sha256": "cf9683f57fb3435e809e2115ccf81fb1e0e0b88baf89feec59819a22b3036a99"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 45981,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/dispatch.py",
+      "sha256": "baff5a0a29fe10f93070b8e629b23c6512a01aca3e779ab0598455377e6f62cf"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17388,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/gemm1.py",
+      "sha256": "758ccb05b90f017df69a9bdd36e1dbbd5a4e50e04e43043e6316f630b351f984"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25841,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/gemm2.py",
+      "sha256": "78e8bb02fe34e0674742be6a1bb2dc5efb998ddd6555e317b5f3f3beeee32c46"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 27959,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/gemm_util.py",
+      "sha256": "ed1e25ed6d9c7bbb4dfd2fa696902e5b78175105996ce1938e70843cb9e07530"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 11058,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/mega_moe_config.py",
+      "sha256": "5f271de118efaeb6eb4b332961a7a380b406fc09f29a10d91a244830c81326c8"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26546,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/mega_moe_stage1.py",
+      "sha256": "ca977cc4a45236e8c2a657a63305065027a42170a54d23884f9c15ec61c03144"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25374,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/mega_moe_stage2.py",
+      "sha256": "06c7ce1c7cd0815cb44f87cb92c4956b51f4a6ed3bf72eb8e2bc8e75171d2a25"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 20815,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/mega_moe_v2.py",
+      "sha256": "577370d3c647a1199d0f1b9e5c2410bac66ee18aa2e3f8043f8b428a29e7d1ff"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10709,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe/quant.py",
+      "sha256": "fc839764b8f6d377748e6d102a5ada5648c42c1d273bbe3d291449da449623e4"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 491,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_gfx1250/__init__.py",
+      "sha256": "882cf28dd4d67990e619f3c8d7f8f2af533abb9af8ebfb454452aa51d83b341e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10579,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_gfx1250/combine.py",
+      "sha256": "a7e2757f07e12b945340477d5c436a633392a005edd57d198e9a2d90bed29e4e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1130,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_gfx1250/config.py",
+      "sha256": "53c7d3beb670cab3254ba9ed5af1e6771d4e6c0d3c2ea9ead6b1597334f06957"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13971,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_gfx1250/dispatch.py",
+      "sha256": "591896677b9c8d38111970083fccfb98579baea6be38d6a7f62d7386a922b426"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 28547,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_gfx1250/mega_moe.py",
+      "sha256": "baac6ccb51f089ab1c2e837675409e1cfd485789c1fd974a065aaed1ea8c22d3"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13452,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_gfx1250/tdm_gather_shim.py",
+      "sha256": "3b6fab071e3514cc7d6f0d791605dcd450522843078cb9fa3fd4793be171b94f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2721,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_gfx1250/types.py",
+      "sha256": "9f59ce8b50f703ec78cb561f1b17e7dc335dc80592dcea197bf35b3b471b81fe"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 16124,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mega_moe_tuning_config/flydsl_gfx950_mi355x_IntraNode_ep8.json",
+      "sha256": "cef0ee88bbed8ad662493506504436fb6964f16cb7f4d9627dc1c41b4ffd1c07"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 17631,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mfma_epilogues.py",
+      "sha256": "411dfec00e8bf1ed0642c93d2cf908c744dd8ff188ba3daf63c9a42cf28303c6"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 38443,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mfma_preshuffle_pipeline.py",
+      "sha256": "80c14a2dcc40a15b712f4c00987e9d460b0309dc34faa988f423ce3686f3f0ee"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3922,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage.py",
+      "sha256": "ca2ff7ed9031fb04e47dc07ec496cb283fca4c05ec9d7730a1c9150b264c6040"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 254294,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mixed_moe_gemm_2stage_common.py",
+      "sha256": "6755f05f732d603541b2d916a8cd3b2df9ac1c570abdc10eb578e0f939417755"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 55105,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mla_reduce.py",
+      "sha256": "9defc5adab11a2c004599730e52c6891a298d5308d18c0ab777b06f1c67dadf0"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9201,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/__init__.py",
+      "sha256": "c3ef17c10d2ffca58af9fcb9daebc7bb87127be8441c19da890defb3c91578da"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 24785,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm1.py",
+      "sha256": "711ce2cf1aefa9fd48914494410f6a12f2e47783ece2f65f75200f7b871bd842"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 16348,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/gemm2.py",
+      "sha256": "4b7b80d2363a7a43802a7ec44ed3111e312420b8eea33985cfe2b0d84d0c986f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 33781,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_2stage_a16wmix/utils.py",
+      "sha256": "a2d385d451bf4bf60407e4ec6ae0d73631a317f5f64675d468b7d874d3d74696"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 28673,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_contiguous_psum.py",
+      "sha256": "be9f1079e001ed90eef2199a125415dc37269b2cdd7a3280c7df3122e60ec78b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 87143,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_fused_route_quant_scatter.py",
+      "sha256": "0f9e55ae0c2128dca5b3b86a65c002a4fa71a897e92b8f5d352cb11c4b105722"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5548,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_g2l_lut.py",
+      "sha256": "2e21cdf7dac616e95f37744b93a30b03f7889bc8efbf412ab7a7b8b8e274ef7d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 15449,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_gather_reduce.py",
+      "sha256": "9ad0dc520148080f5182fc6c0d632411c897c5d7c5506427b3e5835e8a6743ca"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 6135,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_m_tile_map.py",
+      "sha256": "41e345f98430a4c7defcce56f6a9320e2e48c6882b1e523ef3bd2f3c042d568f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10604,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_reduce.py",
+      "sha256": "dc2605e06ecae1a94e98522ea2d3f0dda9c3eb6fdf08095a811ea28ac9729d73"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 29447,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_route_maps.py",
+      "sha256": "9943954ec89618fddebe5f22286df794ea5db5796b22cc93c14483b444dd4532"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10847,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_scatter_copy_preshuffle_scale.py",
+      "sha256": "7b6ef5ba5cb4d8ef01bcdf3849acbd2befd75a4147a9b12890c67148ec43fd2d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 7200,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_scatter_copy_token.py",
+      "sha256": "7a5887945701161b63224d0d03edd253e9384c263206386d79cef9199c2d70c9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 85429,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/moe_sorting_kernel.py",
+      "sha256": "551623e99ecd7c4a3f54f6a2c4d3500f8a149fab3d96f4b0385a1734659d581c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 108,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mqa_logits/__init__.py",
+      "sha256": "868601d279866866ee89b0145653b2be5a68d445af229409f709781ba69f753c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 22578,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mqa_logits/fp8_mqa_logits.py",
+      "sha256": "4ac91b8c8edc673644d9d4ee28d5cec9cf96da8da66dad913461544e858aaf79"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26870,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4.py",
+      "sha256": "a21c7cdaee0247d536d4ad389181f53da340b2fa5e11b1a20ebeeb6fa18cf4d9"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1402,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4_common.py",
+      "sha256": "d0af6f9b0a2d3dd57ab04c5f71fea435c5cb11e62871e4920627e60e1e5ff438"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 32111,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mqa_logits/pa_mqa_logits_fp4_prefill.py",
+      "sha256": "0801476fa5d90ff1027045bd83638f43b49398112c38405b42380542fe4cfcfa"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 34625,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mxfp4_gemm1.py",
+      "sha256": "eec4211ea683b6a6e900ceb0fad1de4e9a3b829fa8c138b02321dc686140df75"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 29761,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mxfp4_gemm2.py",
+      "sha256": "66ce517eee8b1c9adecc0fcacd86f158f6bdef17c1d6b58beb0ec3371c791eef"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 7078,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mxfp4_gemm_common.py",
+      "sha256": "c83504ad8427379b74f3ad85a6654b23ee1e1f67ab58d1be82cbf301698ce70e"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 20037,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mxfp4_preshuffle_batched_gemm_gfx1250_tdm.py",
+      "sha256": "c9387b94455c34485b75ccc31c8de73fd36976da1e889d42250e10d9ec56258b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 64770,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mxfp4_preshuffle_gfx1250_tdm.py",
+      "sha256": "7308d5c6ac432de06548815def7e759231020030d38354b2d89dfb7a367b3a47"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 26801,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mxmoe_dispatcher.py",
+      "sha256": "25ff79966f770b013c6d5471460244f4c979fb9a185262778ae5fb3435078f8a"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 47681,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/mxmoe_gemm_v2.py",
+      "sha256": "25a045055b9d3a8f083c9e48e7a0d594109abf466da1b159d16c8e99ae257c77"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 37212,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/preshuffle_gemm.py",
+      "sha256": "0e7a218bf9a99e582bfaaac4a540c671070d86dcbeb1b555145c52765eb13d1f"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 94524,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/qk_norm_rope_quant.py",
+      "sha256": "d9229d6ebd6bb85d1d60c451c57364c0cbb4cf1185691f2322ed5359760f9e2c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13484,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/quant_utils.py",
+      "sha256": "d2b8577717ff2c2a5896921129591c81d25dd3c8e64f70f6288b585f25bca672"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 25929,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/silu_and_mul_fq.py",
+      "sha256": "9ff1604fd00090541f57779c64c3baf98bf23bd45d6f46c17d6931d5492700a7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 59618,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/small_m_hgemm.py",
+      "sha256": "255469078a8b6643649e78c0bf0a8ba60b15fc95ded6fb6e2850decfa65a749c"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 6128,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/splitk_epilogue.py",
+      "sha256": "ca51d92f26af30633fd04aab004c9cdc0c8fd19e5e1b5df3836ee8fa552ccd03"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 48173,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/splitk_hgemm.py",
+      "sha256": "6d39058558cee0251d525222b902c198c9b0132c5d2e8a41eef172e56decd77d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4883,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/swiglu_and_mul.py",
+      "sha256": "8878303f58b1bbb63a348dab5de74527e767401bdc67bbc621c0752c9a4a0a6a"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 4391,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/tdm_ops_gfx1250.py",
+      "sha256": "3fdc69c1afee97131ed502d3a92fdb4271355af3cb1d17d08399c4d5bc239621"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 13223,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/tensor_shim.py",
+      "sha256": "dba454d6b4df718b0e0b47214a1c3bd6a0a91f4cdbc3769131c467c15a5b6cf7"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5101,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/kernels/vector.py",
+      "sha256": "f63210b5089c797a484c5d8c4f310c17fd4fc965e44cbcbd464bd7fd37b67ba1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5352,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/linear_attention_kernels.py",
+      "sha256": "cc69290bb8319e693950a809ba951259f94bf16912f1cd45eed8d6e50c3f596b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 57138,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/linear_attention_prefill_kernels.py",
+      "sha256": "14d179f520d42eed3732cad6f054bd6544ddacd9262882def554b2f0817fa0b8"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 16760,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/mla_reduce_kernels.py",
+      "sha256": "cc75b9128de87388d460a336eca48560f42e2a8d308eaa4ba1da45fa6e836219"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2703,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/moe_common.py",
+      "sha256": "49e6d7c4c1c65e4a918425ec1985ec4dc077039b0e47aca4749d5f1ba611f719"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 108262,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/moe_kernels.py",
+      "sha256": "0476a7416971958fcbe83d3e9e2b208c1d1ea24e59e7664944f209db95c83169"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1761,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/moe_sorting.py",
+      "sha256": "ea97426a898312b2e6911c9ce7c612a3e5f2bdf0d416781499a3073786aa44e2"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3095,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/mxfp4_gemm1_kernels.py",
+      "sha256": "3a75aff14ce2adc1c0af21418f5911b111c3af070fbb80745f391ed4985593fb"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 3942,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/mxfp4_gemm2_kernels.py",
+      "sha256": "3ff9aa13df93167fe491320e0e8a26ea2e948de9b64bc5b9a6c181673208489d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 5115,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/mxfp4_kname.py",
+      "sha256": "de98ccb74e83cdcb9dc95da4907f594af15a2cc99be197552d0b89cf7484330b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 23121,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/mxfp4_v2_tune_utils.py",
+      "sha256": "239db8ac4e4a9d6f2abf7172130def2960ac8d378e095198ebcf7f5f0df10dd1"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 11309,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/mxfp8_128_bpreshuffle_gemm_gfx1250.py",
+      "sha256": "f341129f036f5049c83384c9343e98f0171f381a4add050a82af6a5090487b0b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 15179,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/test_flydsl_linear_attention.py",
+      "sha256": "c8c421d1494966f2b0bb9910a110bd3d9682c02f053ad3897e42a3095c0c365b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 21538,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/test_flydsl_moe_a4w4.py",
+      "sha256": "6a65f736c3fba79afcec47eeda658c2e044dbf46aa9f148139677f3922e6b225"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 6911,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/test_flydsl_splitk_hgemm.py",
+      "sha256": "bf3fc04d3fda9f30f8bcb7b47b2f1e80a228eb36f92fa62b6f39473b29b838be"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 2667,
+      "kind": "file",
+      "path": "ut/baseline_src/flydsl/utils.py",
+      "sha256": "165276d3756ecf7a6c0965420d8c4c64be865dc8df94ce9fbdfa71c07e380804"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 11809,
+      "kind": "file",
+      "path": "ut/evaluation_contract.py",
+      "sha256": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 8724,
+      "kind": "file",
+      "path": "ut/fresh_runner.py",
+      "sha256": "09d3b41b20e8521f65473c1fc819073f958a605c2dfa11069b296c352d79f848"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9121,
+      "kind": "file",
+      "path": "ut/paired_input_validation.py",
+      "sha256": "986dd393b21ec9861ee740f8455b466899f327d40ac2ac5b030755afb542b07b"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 14047,
+      "kind": "file",
+      "path": "ut/paired_reference.py",
+      "sha256": "53552e03c29eef6f05026b748122e36a5e2f0a0820291a9717b03a09ee250e81"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 156170,
+      "kind": "file",
+      "path": "ut/retained_route_populations.json",
+      "sha256": "5d46bff9c729ed7acb61d97c404053387ce198bb3303d829ccb217a66be2d3cb"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9531,
+      "kind": "file",
+      "path": "ut/routing.py",
+      "sha256": "1cba38a338922fc2c09c7ee7d3f72e245f10b38f5f2570a017324af22017939d"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 27984,
+      "kind": "file",
+      "path": "ut/runtime_adapter.py",
+      "sha256": "495b93fda690f471cb0599ff7fea4584591906958691d93baa003df2ce9fdbf0"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 9753,
+      "kind": "file",
+      "path": "ut/source_guard.py",
+      "sha256": "c61e7f42ec0880e30b1bfcdbeb0f01bc4a93d2bbf4b523771792b8c218f33812"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 1137,
+      "kind": "file",
+      "path": "ut/source_guard_policy.json",
+      "sha256": "13dca82a3a59a141cb45b7e66afa7e34a82167a666ce6cd2774c194249030b94"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 18103,
+      "kind": "file",
+      "path": "ut/test_paired_reference.py",
+      "sha256": "017d15c40d0c4ced624196507fe3a5dab109742280907a5d60ab70db06f38fdd"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 10424,
+      "kind": "file",
+      "path": "ut/test_routing.py",
+      "sha256": "e55caa3a5c28e395775e98b241617ba4470c906cf85324bb190c409b0b481334"
+    },
+    {
+      "archive_mode": 436,
+      "bytes": 15778,
+      "kind": "file",
+      "path": "ut/test_runtime_adapter.py",
+      "sha256": "b3db1c7592b533aae88a5987ac437e712fa573bcc1490532e66c389860294b63"
+    },
+    {
+      "bytes": 475136,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/10680a418d8174205b93c3ebdfbcbc5c71f19e0ba92bc699edcfb7eb60fa1e2c.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/10680a418d8174205b93c3ebdfbcbc5c71f19e0ba92bc699edcfb7eb60fa1e2c.bin",
+      "sha256": "10680a418d8174205b93c3ebdfbcbc5c71f19e0ba92bc699edcfb7eb60fa1e2c",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 4096,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/189476bbfd5a702a9daeb2df06d66eef65b435cb450c4dd1f38d62f5f1ab6359.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/189476bbfd5a702a9daeb2df06d66eef65b435cb450c4dd1f38d62f5f1ab6359.bin",
+      "sha256": "189476bbfd5a702a9daeb2df06d66eef65b435cb450c4dd1f38d62f5f1ab6359",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 11776,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/1ce5ed6de557f62c2d34a4dd083191973f03beccd3d8461f016ead8ce1dfb251.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/1ce5ed6de557f62c2d34a4dd083191973f03beccd3d8461f016ead8ce1dfb251.bin",
+      "sha256": "1ce5ed6de557f62c2d34a4dd083191973f03beccd3d8461f016ead8ce1dfb251",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 3325952,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/1d99efe5df27a6b880cebad402ecafecc303ae9c3faf092ba34de0f80308196b.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/1d99efe5df27a6b880cebad402ecafecc303ae9c3faf092ba34de0f80308196b.bin",
+      "sha256": "1d99efe5df27a6b880cebad402ecafecc303ae9c3faf092ba34de0f80308196b",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 753600,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/293aad50929eae2d873c802367e559cd70d4f8f4c5e6c0de76edc9be9660469d.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/293aad50929eae2d873c802367e559cd70d4f8f4c5e6c0de76edc9be9660469d.bin",
+      "sha256": "293aad50929eae2d873c802367e559cd70d4f8f4c5e6c0de76edc9be9660469d",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 8,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/35bb2c51b7e1ae3fdd09e2b55382bcfcf048eb0e0fd0d9b417dddd8953170a10.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/35bb2c51b7e1ae3fdd09e2b55382bcfcf048eb0e0fd0d9b417dddd8953170a10.bin",
+      "sha256": "35bb2c51b7e1ae3fdd09e2b55382bcfcf048eb0e0fd0d9b417dddd8953170a10",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 8,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/39e8dcf250c0b65a744ad29b03a8b2d9c98aa8162621be4ec4ec0ffccc9e2a44.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/39e8dcf250c0b65a744ad29b03a8b2d9c98aa8162621be4ec4ec0ffccc9e2a44.bin",
+      "sha256": "39e8dcf250c0b65a744ad29b03a8b2d9c98aa8162621be4ec4ec0ffccc9e2a44",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 8,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/3b2192a3f10b3d85639d16c399575df35329325424bb383c1a6590fa0db3482c.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/3b2192a3f10b3d85639d16c399575df35329325424bb383c1a6590fa0db3482c.bin",
+      "sha256": "3b2192a3f10b3d85639d16c399575df35329325424bb383c1a6590fa0db3482c",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 77070336,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/4a522fc64a4c66cca7dc45302c7f780f6b0f7e6fdae7545357975cd0c6020a09.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/4a522fc64a4c66cca7dc45302c7f780f6b0f7e6fdae7545357975cd0c6020a09.bin",
+      "sha256": "4a522fc64a4c66cca7dc45302c7f780f6b0f7e6fdae7545357975cd0c6020a09",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 19968,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/5e236abdfdf876f93470f2eeedca7434479414de75ce9fc69d3f330d6ee2248b.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/5e236abdfdf876f93470f2eeedca7434479414de75ce9fc69d3f330d6ee2248b.bin",
+      "sha256": "5e236abdfdf876f93470f2eeedca7434479414de75ce9fc69d3f330d6ee2248b",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 72351744,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/639ac3b3dd151a3c990e019c5063e7078135799723ad2eca188532b033d58538.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/639ac3b3dd151a3c990e019c5063e7078135799723ad2eca188532b033d58538.bin",
+      "sha256": "639ac3b3dd151a3c990e019c5063e7078135799723ad2eca188532b033d58538",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 3712,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/6fa418730efcda5411430ca899d2114ff89d9cb90cda4ecffcc4f0668f9710d4.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/6fa418730efcda5411430ca899d2114ff89d9cb90cda4ecffcc4f0668f9710d4.bin",
+      "sha256": "6fa418730efcda5411430ca899d2114ff89d9cb90cda4ecffcc4f0668f9710d4",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 393216,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/900fe85dc33cf952e13e606d106d4fe32991226824a3fb48c2c76df096adb8bc.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/900fe85dc33cf952e13e606d106d4fe32991226824a3fb48c2c76df096adb8bc.bin",
+      "sha256": "900fe85dc33cf952e13e606d106d4fe32991226824a3fb48c2c76df096adb8bc",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 5111808,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/9b15f47c3fcd012dd6b5e22037ba6982a0a4914161799e0aed9cb2e414cfd6d3.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/9b15f47c3fcd012dd6b5e22037ba6982a0a4914161799e0aed9cb2e414cfd6d3.bin",
+      "sha256": "9b15f47c3fcd012dd6b5e22037ba6982a0a4914161799e0aed9cb2e414cfd6d3",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 1048576,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/aa5eaf9e7b7f1c4ec6e090b1821c200cae34e858cc32792cd93455a75aa77d8a.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/aa5eaf9e7b7f1c4ec6e090b1821c200cae34e858cc32792cd93455a75aa77d8a.bin",
+      "sha256": "aa5eaf9e7b7f1c4ec6e090b1821c200cae34e858cc32792cd93455a75aa77d8a",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 122683392,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/abac85ac422fa686cc36a336b6df857ef5e454f347277631ec2f1e04936c3fa4.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/abac85ac422fa686cc36a336b6df857ef5e454f347277631ec2f1e04936c3fa4.bin",
+      "sha256": "abac85ac422fa686cc36a336b6df857ef5e454f347277631ec2f1e04936c3fa4",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 229376,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/b380fa0b67e8a03f7d4564749fc3f1c766371e003fe093516e69e5ff619dc68f.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/b380fa0b67e8a03f7d4564749fc3f1c766371e003fe093516e69e5ff619dc68f.bin",
+      "sha256": "b380fa0b67e8a03f7d4564749fc3f1c766371e003fe093516e69e5ff619dc68f",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 29360128,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/bbfd51344baf9e9818d12fd0c565f813d0cb630fdfc248bce9d86d99856836fe.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/bbfd51344baf9e9818d12fd0c565f813d0cb630fdfc248bce9d86d99856836fe.bin",
+      "sha256": "bbfd51344baf9e9818d12fd0c565f813d0cb630fdfc248bce9d86d99856836fe",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 118720,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/c905c566ef1ee3469e0c73bcdc70761d44a3b3bd61c2de7de160aff3813b45ed.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/c905c566ef1ee3469e0c73bcdc70761d44a3b3bd61c2de7de160aff3813b45ed.bin",
+      "sha256": "c905c566ef1ee3469e0c73bcdc70761d44a3b3bd61c2de7de160aff3813b45ed",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 1277888,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/cd55bfffd659a59b12cf9e858322a4d0b694ca587740586204672563eb30864f.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/cd55bfffd659a59b12cf9e858322a4d0b694ca587740586204672563eb30864f.bin",
+      "sha256": "cd55bfffd659a59b12cf9e858322a4d0b694ca587740586204672563eb30864f",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 35782656,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/d06b88cf14a538940f51549cc221a0f0aa9756d945d90b842b1d7c84dba0dedd.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/d06b88cf14a538940f51549cc221a0f0aa9756d945d90b842b1d7c84dba0dedd.bin",
+      "sha256": "d06b88cf14a538940f51549cc221a0f0aa9756d945d90b842b1d7c84dba0dedd",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 1233125376,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/d8ac24d4827282894a5670db02ae1293f6ab5b12ea9a365c815aa1a7751e7e52.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/d8ac24d4827282894a5670db02ae1293f6ab5b12ea9a365c815aa1a7751e7e52.bin",
+      "sha256": "d8ac24d4827282894a5670db02ae1293f6ab5b12ea9a365c815aa1a7751e7e52",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 58720256,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/ecabe3ed899c0e9a019927d79415287b794f2f5755a9503e1967ab03c55fa80f.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/ecabe3ed899c0e9a019927d79415287b794f2f5755a9503e1967ab03c55fa80f.bin",
+      "sha256": "ecabe3ed899c0e9a019927d79415287b794f2f5755a9503e1967ab03c55fa80f",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 3014656,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/fbd3a871272bde91d782867893ed332bfd4caf8404206c686b31efb7abe61678.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/fbd3a871272bde91d782867893ed332bfd4caf8404206c686b31efb7abe61678.bin",
+      "sha256": "fbd3a871272bde91d782867893ed332bfd4caf8404206c686b31efb7abe61678",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 21102592,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/fbee1fca7eb118175f2ee7bb911d45d9f3612efc88e2ed85f12ad987c396c44f.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/fbee1fca7eb118175f2ee7bb911d45d9f3612efc88e2ed85f12ad987c396c44f.bin",
+      "sha256": "fbee1fca7eb118175f2ee7bb911d45d9f3612efc88e2ed85f12ad987c396c44f",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 524288,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/blobs/fd31fd5ac20e29349902400709674002cf36e285aa48dfa778026eb1d28fc34e.bin",
+      "kind": "file",
+      "mirror_contents": false,
+      "path": "fixtures/blobs/fd31fd5ac20e29349902400709674002cf36e285aa48dfa778026eb1d28fc34e.bin",
+      "sha256": "fd31fd5ac20e29349902400709674002cf36e285aa48dfa778026eb1d28fc34e",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 8421,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/flydsl_moe_stage1-1c1b9d1fb04353e59aa7ebe6.json",
+      "kind": "file",
+      "mirror_contents": true,
+      "path": "fixtures/flydsl_moe_stage1-1c1b9d1fb04353e59aa7ebe6.json",
+      "sha256": "91c59f0fa9a34697e3555ed0129500be7fe04819b471aff0e25fcf696bd8e5b4",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 8434,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/flydsl_moe_stage1-30bb2530cb18b86041ed103f.json",
+      "kind": "file",
+      "mirror_contents": true,
+      "path": "fixtures/flydsl_moe_stage1-30bb2530cb18b86041ed103f.json",
+      "sha256": "16ad9f1acaf11c95da4f6eec4416dee466eb07011565f62aeccc75662f8b7b62",
+      "untracked_fixture": true
+    },
+    {
+      "bytes": 8418,
+      "external_fixture": true,
+      "fixture_uri": "oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261005/kimi-served-194550/tp-0/profile-fixtures/flydsl_moe_stage1-3f7074979c7b196f3eff785b.json",
+      "kind": "file",
+      "mirror_contents": true,
+      "path": "fixtures/flydsl_moe_stage1-3f7074979c7b196f3eff785b.json",
+      "sha256": "36c036ee8c1476a8cbebcd5cdf49a0a6378b5645319a8a57492bc6de2253a5f3",
+      "untracked_fixture": true
+    }
+  ],
+  "framework_overlays": {
+    "agents/task_validator/validation_prompt.py": {
+      "base_sha256": "ea0346ec2ec5d3ecc95486054150d3205cc3c1a7cbb88d46d19273e5af9f672b",
+      "file": "framework-overlays/validation_prompt.py",
+      "sha256": "cf563f6152e1a667754d7808c478a7a7c012e101f706636473d68579b12b5df6"
+    }
+  },
+  "maintained_helper_sha256": {
+    "agents/codex/auth_preflight.py": "4de8ee0ddf771d52dc34b8012badb11b99d728bc50bf65c7b85b6d7b63592c80",
+    "agents/task_validator/launch_agent.py": "c9a9688283a069a61f672c67b560fe09bf300b4102494a982818746595b5d0d9",
+    "agents/task_validator/report_schema.py": "a13c4464955934e00daba630776a1c3f83d377e1d25470bde423e63cc35cbd10",
+    "agents/task_validator/validation_prompt.py": "ea0346ec2ec5d3ecc95486054150d3205cc3c1a7cbb88d46d19273e5af9f672b",
+    "main.py": "1855d5b1a38717b7859d0463f012abfd637eec6cf3f98272aee2a9a2e79bb7c3",
+    "src/benchmark_quality.py": "d751ec2472c81bb561b91ee8536c7dff06cfa52e5461e082a361e960dd37339c",
+    "src/case_parallelism.py": "88c2a28734d031e12aac89696d3350308687541c142163aa9ffa1dee80cbf376",
+    "src/harness_guard.py": "eaac44af1f5fe3ac36ccb35746bc1a6cc1ee44878cd17c16264e6ee7e54687e4",
+    "src/native_baseline.py": "2bdbf5bfc3e9907805d99fbc295ca105888e226cc7d4893588b26d19e10dec4a",
+    "src/perf_helper_materialization.py": "47d357fc080cc879d68429b53342fd8edfc5532d09033d8df710a495ecc1fbfa",
+    "src/quality_measurements.py": "db82d9778944db70ce8dc28720cfaec50c6f531365e47d5eeb6f22128ee17c8d",
+    "src/scripts/docker_benchmark.sh": "26ce1f268d4b538e76ed3746629bbbd57ff58719d8ae279437c0e374dc9bcbf6",
+    "src/scripts/seed_aiter_cache.py": "e73cfd2259a4b87ab502e5f634a13dad8fede56a2efee26869745f782a5137f6",
+    "src/task_contract.py": "2dffc785afb98cbe46303227281f4efcf0f82380a9de6d9f53fcb8774a43cb75",
+    "src/tools/gpu_binding.py": "4b2ada8584cce3e92301e4a3bdb8e8abfcfb8ec62b0be250d727fc24372b899b",
+    "src/tools/seed_aiter_jit_cache.py": "406fdb5fb2c8e40d6a998470c2b84e62b140ad1dfefb93ad582e8d1d14f90a1d",
+    "src/tools/trusted_native_eval.py": "49c10b2ba444abc9f76ad0f28f4295ce6c96b3f48c5ec5da90ba08850b958642",
+    "src/tools/trusted_task_eval.py": "d3c15105cdde874d3e36e053234fdd3885b4e014e11387283d194d61d4b214cc",
+    "src/validator_integrity.py": "39c8947e7f9c03c6eeabd6bb5738cf03e619ce00305cfcdd8e84e15391e2a4a6",
+    "tools/headkernel-runtime-targets.json": "aa7f43ad19a8d11f364c1010ac2ee89faf5a0999399f37c1942e5699d13a68f7",
+    "tools/prepare_headkernel_run.py": "0334b747889312085bc78891307566d38e6180d7cd2ed75216ed792cc0d6b0f1"
+  },
+  "fixture_bodies_stored_in_evidence_archive": false,
+  "scope": "Actual job 210191 task inputs and explicit framework overlay; no blanket later-checkout qualification."
+}
