@@ -1,0 +1,25 @@
+{
+  "name": "topk_transform_paged_paged_k512_page_size64__flydsl",
+  "definition": "topk_transform_paged_paged_k512_page_size64",
+  "author": "",
+  "spec": {
+    "language": "",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "",
+    "dependencies": [],
+    "destination_passing_style": true,
+    "binding": null
+  },
+  "sources": [
+    {
+      "path": "",
+      "content": ""
+    }
+  ],
+  "description": "FlyDSL solution slot for topk_transform_paged_paged_k512_page_size64 -- language, entry_point and sources to be filled in."
+}

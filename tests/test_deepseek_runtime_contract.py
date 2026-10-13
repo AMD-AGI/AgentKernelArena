@@ -1,4 +1,4 @@
-"""Bind the documented initial-runtime dependencies to the executable wrappers."""
+"""Bind the documented runtime dependencies to the executable baseline wrappers."""
 
 import ast
 import json
@@ -18,6 +18,11 @@ TASKS = [
     ROOT / "tasks" / name for name in RUN_CONFIG["tasks"]
     if Path(name).name.startswith(("gemm_", "mhc_"))
 ]
+
+
+def test_run_config_lists_every_functional_package():
+    packages = {p.parents[1] for p in (ROOT / "tasks/Aiter-task").glob("*/scripts/workload.json")}
+    assert set(TASKS) == packages and len(TASKS) == 16
 
 
 def production_entrypoint(path):
@@ -56,26 +61,21 @@ def production_entrypoint(path):
 
 
 @pytest.mark.parametrize("task", TASKS, ids=lambda path: path.name)
-def test_initial_runtime_matches_wrappers_and_declared_target(task):
+def test_declared_runtime_matches_baseline_wrapper_and_target(task):
     spec = load_task_spec(task / "config.yaml", task_id=f"Aiter-task/{task.name}")
-    assert spec.candidate.initial_state == "implemented"
-    assert spec.candidate.initial_language == "python"
-    assert spec.candidate.language == "triton"
+    assert spec.candidate.initial_state == "unimplemented"
+    assert spec.candidate.language == "flydsl"
     assert spec.baseline.kind == "provided"
-    initial = production_entrypoint(task / "source/implementation/main.py")
     baseline = production_entrypoint(task / "scripts/baseline/main.py")
-    assert initial == baseline
 
     readme = (task / "BUNDLE_README.md").read_text()
     config = yaml.safe_load((task / "config.yaml").read_text())
     for declaration in (readme, config["description"]):
-        assert initial in declaration
+        flat = " ".join(declaration.split())
+        assert baseline in declaration
         assert RUN_CONFIG["docker_image"] in declaration
-        assert "task_validation" in declaration
-        assert "unchanged initial wrapper" in declaration
-        assert "final submitted candidate must implement its own gpu" in " ".join(
-            declaration.split()
-        ).lower()
-        assert "ROCm PyTorch and Triton" in declaration
+        assert f"build_{task.name}_module" in flat
+        assert "FlyDSL" in declaration and "unimplemented" in declaration
+        assert "Triton" not in declaration and "run(**kwargs)" not in declaration
     workload = json.loads((task / "scripts/workload.json").read_text())
     assert workload["bundle_readme"] == readme
