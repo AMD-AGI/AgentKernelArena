@@ -19,42 +19,6 @@ def load(path, name):
     return module
 
 
-@pytest.mark.parametrize("shape", [(4, 4), (8, 4), (4, 8, 4), (8, 16, 4),
-                                    (16, 32, 4), (32, 64, 4)])
-@pytest.mark.parametrize("ignored", ["gamma", "beta"])
-def test_layer_normalization_live_parameters_reject_fixed_state(shape, ignored):
-    task = TASKS / "hip2hip/gpumode/layer_normalization"
-    adapter = load(task / "eval_tools/evaluate.py", "hip_layer_adapter")
-    controls = load(task / "eval_tools/case_controls.py", "hip_layer_controls")
-    source = load(task / "pytorch_code_module/py_11754_layer_normalization.py", "hip_layer_module")
-    functional_source = load(task / "pytorch_code_functional/py_11754_layer_normalization_func.py",
-                             "hip_layer_functional")
-    torch.manual_seed(1337)
-    x = torch.randn(shape)
-    module = source.layer_normalization(4).eval()
-    functional = functional_source.layer_normalization(4).eval()
-    controls.configure_models((module, functional), [x])
-    expected = module(x)
-    compare = lambda left, right, **bounds: torch.allclose(left, right, **bounds)
-    before_module = {name: value.clone() for name, value in module.state_dict().items()}
-    before_functional = {name: value.clone() for name, value in functional.state_dict().items()}
-    adapter.check_affine_parameter_variants(module, functional, None, [x], expected,
-                                            compare, 1e-4, 1e-5)
-    frozen_gamma = functional.gamma.detach().clone()
-    frozen_beta = functional.beta.detach().clone()
-
-    def fixed_parameter(value, gamma, beta, epsilon):
-        return functional_source.layer_norm_fn(
-            value, frozen_gamma if ignored == "gamma" else gamma,
-            frozen_beta if ignored == "beta" else beta, epsilon)
-
-    with pytest.raises(ValueError, match=f"changed layer normalization {ignored}"):
-        adapter.check_affine_parameter_variants(module, functional, fixed_parameter,
-                                                [x], expected, compare, 1e-4, 1e-5)
-    assert all(torch.equal(value, before_module[name])
-               for name, value in module.state_dict().items())
-    assert all(torch.equal(value, before_functional[name])
-               for name, value in functional.state_dict().items())
 
 
 class FakeTimedRun:
@@ -68,52 +32,9 @@ class FakeTimedRun:
         return self.outputs
 
 
-@pytest.mark.parametrize("ignored", ["gamma", "beta"])
-def test_layer_normalization_measured_replay_rejects_fixed_parameter(monkeypatch, ignored):
-    task = TASKS / "hip2hip/gpumode/layer_normalization"
-    validator = load(task / "eval_tools/replay_validation.py", "hip_layer_replay")
-    controls = load(task / "eval_tools/case_controls.py", "hip_layer_replay_controls")
-    functional_source = load(task / "pytorch_code_functional/py_11754_layer_normalization_func.py",
-                             "hip_layer_replay_functional")
-    monkeypatch.setitem(sys.modules, "_aka_benchmark", types.SimpleNamespace(TimedRun=FakeTimedRun))
-    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
-    x = torch.randn(4, 4)
-    model = functional_source.layer_normalization(4).eval()
-    controls.configure_models((model,), [x])
-    original_state = {name: value.clone() for name, value in model.state_dict().items()}
-
-    def benchmark(invoke, *, timed_run, repetition, max_graph_repeats, **kwargs):
-        assert max_graph_repeats == 1
-        timed_run.invoke = invoke
-        for _ in range(repetition):
-            timed_run.outputs = invoke()
-            timed_run.after_sample(timed_run.outputs)
-        return 0.1, {"benchmark_method": "cuda_graph", "benchmark_timed_run_kind": "captured_graph",
-                     "benchmark_samples": repetition}
-
-    perf = types.SimpleNamespace(
-        cal_kernel_perf=lambda rtol=1e-4, atol=1e-5: None,
-        benchmark_cuda_graph_or_events=benchmark,
-        _compare_results=lambda left, right, **bounds: torch.allclose(left, right, **bounds),
-    )
-    validator.install(perf, lambda expected, actual: torch.testing.assert_close(actual.shape, expected.shape))
-    _, metadata = perf.cal_hip_latency(model, [x], n_iter=3)
-    assert metadata["changed_parameter_replay_count"] == 2
-    frozen_gamma = model.gamma.detach().clone()
-    frozen_beta = model.beta.detach().clone()
-
-    def fixed_parameter(value, gamma, beta, epsilon):
-        return functional_source.layer_norm_fn(
-            value, frozen_gamma if ignored == "gamma" else gamma,
-            frozen_beta if ignored == "beta" else beta, epsilon)
-
-    with pytest.raises(ValueError, match="Timed operator output disagrees"):
-        perf.cal_hip_latency(model, [x], hip_fn=fixed_parameter, n_iter=3)
-    assert all(torch.equal(value, original_state[name])
-               for name, value in model.state_dict().items())
 
 
-def test_wide_l2_control_rejects_missing_upper_features():
+def test_wide_l2_control_rejects_missing_upper_features(monkeypatch):
     task = TASKS / "triton2triton/vllm/triton_fla_l2norm"
     checks = load(task / "_arena_checks.py", "wide_l2_checks")
     calls = []
@@ -133,7 +54,43 @@ def test_wide_l2_control_rejects_missing_upper_features():
         calls.append(x.shape[-1])
         return reference(x, eps)
 
-    valid_module = types.SimpleNamespace(l2norm_fwd=valid_candidate)
+    # Model the named launch boundary while keeping this numerical tail test
+    # CPU-only. The real dispatch observer and suppression control stay active.
+    runtime = types.SimpleNamespace(launch_enter_hook=None, launch_exit_hook=None)
+
+    class CompiledKernel:
+        def __init__(self, fn):
+            self.src = types.SimpleNamespace(fn=fn)
+
+    class Kernel:
+        def __init__(self, fn):
+            self.fn = fn
+
+        def run(self, x, y, eps, *, warmup=False):
+            kernel = CompiledKernel(self)
+            if not warmup:
+                if runtime.launch_enter_hook is not None:
+                    runtime.launch_enter_hook(None)
+                y.copy_(self.fn(x, eps))
+                if runtime.launch_exit_hook is not None:
+                    runtime.launch_exit_hook(None)
+            return kernel
+
+    compiler = types.SimpleNamespace(CompiledKernel=CompiledKernel)
+    monkeypatch.setattr(checks, '_triton_runtime',
+                        lambda: (runtime, compiler, Kernel, ()))
+
+    def launched_module(fn):
+        kernel = Kernel(fn)
+
+        def wrapper(x, eps=1e-6):
+            output = torch.full_like(x, float('nan'))
+            kernel.run(x, output, eps)
+            return output
+
+        return types.SimpleNamespace(l2norm_fwd=wrapper, l2norm_fwd_kernel=kernel)
+
+    valid_module = launched_module(valid_candidate)
     valid_harness = types.SimpleNamespace(load_module=lambda: valid_module, reference=reference)
     with checks.checked_modules(valid_harness):
         checked = valid_harness.load_module()
@@ -141,14 +98,15 @@ def test_wide_l2_control_rejects_missing_upper_features():
         checked.l2norm_fwd(torch.randn(512, 128))
     assert calls.count(32768) == 1 and calls.count(32769) == 1
     calls.clear()
-    module = types.SimpleNamespace(l2norm_fwd=candidate)
+    module = launched_module(candidate)
+    original_wrapper = module.l2norm_fwd
     harness = types.SimpleNamespace(load_module=lambda: module, reference=reference)
     with checks.checked_modules(harness):
         checked = harness.load_module()
         with pytest.raises(AssertionError):
             checked.l2norm_fwd(torch.randn(512, 128))
     assert 32768 in calls
-    assert module.l2norm_fwd is candidate
+    assert module.l2norm_fwd is original_wrapper
 
 
 def test_l2_wrapper_dispatches_wide_rows_without_changing_scored_path(monkeypatch):

@@ -22,7 +22,7 @@ def load(path, name):
 
 @pytest.mark.parametrize("name", ["roiaware_pool3d", "points_in_boxes", "roipoint_pool3d"])
 def test_native_graph_tasks_reject_candidate_controlled_event_downgrade(monkeypatch, name):
-    task = TASKS / "hip2hip/others" / name
+    task = TASKS / "hip2hip" / name
     adapter = load(task / "scripts/evaluate.py", name + "_timing_adapter")
     workload = json.loads((task / "workload.json").read_text())
     case = workload["cases"][0]

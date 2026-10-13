@@ -23,7 +23,7 @@ def load(path, name):
 
 @pytest.mark.parametrize("ignored", ["scale", "bias"])
 def test_innerprod_rejects_shape_keyed_affine_constants(ignored):
-    task = TASKS / "hip2hip/gpumode/InnerProd"
+    task = TASKS / "hip2hip/InnerProd"
     source = load(task / "pytorch_code_module/py_11709_InnerProd.py", "innerprod_module")
     func = load(task / "pytorch_code_functional/py_11709_InnerProd_func.py", "innerprod_func")
     adapter = load(task / "eval_tools/evaluate.py", "innerprod_adapter")
@@ -58,7 +58,7 @@ def test_innerprod_rejects_shape_keyed_affine_constants(ignored):
 
 @pytest.mark.parametrize("ignored", ["a", "max"])
 def test_tanh_rejects_fixed_scalar_parameters(ignored):
-    task = TASKS / "hip2hip/gpumode/TanH"
+    task = TASKS / "hip2hip/TanH"
     source = load(task / "pytorch_code_module/py_11178_TanH.py", "tanh_module")
     func = load(task / "pytorch_code_functional/py_11178_TanH_func.py", "tanh_func")
     adapter = load(task / "eval_tools/evaluate.py", "tanh_adapter")
@@ -81,7 +81,7 @@ def test_tanh_rejects_fixed_scalar_parameters(ignored):
 
 @pytest.mark.parametrize("task", ["InnerProd", "TanH"])
 def test_hip2hip_rejects_event_downgrade_in_both_slots(task):
-    adapter = load(TASKS / f"hip2hip/gpumode/{task}/eval_tools/evaluate.py", task + "_method")
+    adapter = load(TASKS / f"hip2hip/{task}/eval_tools/evaluate.py", task + "_method")
     adapter.require_graph_method({"benchmark_method": "cuda_graph",
                                   "reference_benchmark_method": "cuda_graph"}, "cuda_graph")
     for case, method in (({"benchmark_method": "cuda_event_fallback"}, "cuda_event_fallback"),
@@ -94,7 +94,7 @@ def test_hip2hip_rejects_event_downgrade_in_both_slots(task):
 @pytest.mark.parametrize("task", ["InnerProd", "TanH"])
 @pytest.mark.parametrize("fault", ["candidate_event", "internal_reference_event"])
 def test_hip2hip_performance_action_rejects_event_downgrade(task, fault, tmp_path, monkeypatch):
-    adapter = load(TASKS / f"hip2hip/gpumode/{task}/eval_tools/evaluate.py",
+    adapter = load(TASKS / f"hip2hip/{task}/eval_tools/evaluate.py",
                    task + "_action_method")
     monkeypatch.setattr(adapter, "ROOT", tmp_path)
     (tmp_path / "build").mkdir()

@@ -178,8 +178,10 @@ def correctness(args, role, rows):
         check_case_identity(rows[index], inputs)
         inputs = list(inputs) if isinstance(inputs, (tuple, list)) else [inputs]
         reference_inputs = [value.to("cuda") if isinstance(value, torch.Tensor) else value for value in inputs]
-        from case_controls import configure_models
+        from case_controls import configure_models, check_live_affine_variants
         configure_models((module, functional), reference_inputs)
+        initial_states = [{name: value.detach().clone() for name, value in model.state_dict().items()}
+                          for model in (module, functional)]
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         expected = module(*copy.deepcopy(reference_inputs))
@@ -192,6 +194,15 @@ def correctness(args, role, rows):
         torch.cuda.synchronize()
         output_contract(expected, actual)
         passed = checks._compare_results(expected, actual, rtol=rtol, atol=atol)
+        for model, saved in zip((module, functional), initial_states):
+            for name, value in saved.items():
+                torch.testing.assert_close(model.state_dict()[name], value, rtol=0, atol=0)
+        if passed:
+            check_live_affine_variants(
+                module, functional, reference_inputs, expected,
+                lambda changed: (functional(*changed) if hip_fn is None else
+                                 functional(*changed, fn=hip_fn)),
+                checks._compare_results, output_contract, rtol, atol)
         row = {**rows[index], "status": "PASS" if passed else "FAIL", "metrics": {"rtol": rtol, "atol": atol}}
         if not passed:
             row["failure_kind"] = "numerical_mismatch"

@@ -172,7 +172,8 @@ def check_sigmoid_controls(module, functional, hip_fn, rtol, atol, device="cuda"
     original = (module.a, module.max, functional.a, functional.max)
     checked = []
     variants = (("default", 1, 10), ("half", .5, 10), ("inverse", -1, 7),
-                ("steep", 2, 3), ("shallow", .25, 13))
+                ("steep", 2, 3), ("shallow", .25, 13),
+                ("negative_max", 1, -3), ("zero_a", 0, 10), ("zero_max", 1, 0))
     try:
         for label, a, maximum in variants:
             module.a = functional.a = a
@@ -183,9 +184,27 @@ def check_sigmoid_controls(module, functional, hip_fn, rtol, atol, device="cuda"
                 negative_exp = torch.exp(scaled)
                 negative = negative_exp / (1.0 + negative_exp)
                 expected = (torch.where(scaled >= 0, positive, negative) * maximum).to(value.dtype)
-                actuals = (module(value.clone()),
-                           functional(value.clone()) if hip_fn is None else
-                           functional(value.clone(), fn=hip_fn))
+                def checked_call(invoke):
+                    caller_input = value.clone()
+                    saved = caller_input.clone()
+                    metadata = (caller_input.shape, caller_input.dtype, caller_input.device,
+                                caller_input.stride(), caller_input.storage_offset())
+                    actual = invoke(caller_input)
+                    output_contract(expected, actual)
+                    if (caller_input.shape, caller_input.dtype, caller_input.device,
+                            caller_input.stride(), caller_input.storage_offset()) != metadata or not torch.equal(
+                                caller_input.contiguous().reshape(-1).view(torch.uint8),
+                                saved.contiguous().reshape(-1).view(torch.uint8)):
+                        raise ValueError(f"{label}/{name} sigmoid control changed a caller-owned input")
+                    # Storage identity also detects aliases of empty tensors,
+                    # whose null data pointers cannot establish independence.
+                    if torch._C._is_alias_of(actual, caller_input):
+                        raise ValueError(f"{label}/{name} sigmoid control output aliases its input")
+                    return actual
+
+                actuals = (checked_call(module),
+                           checked_call(functional) if hip_fn is None else
+                           checked_call(lambda x: functional(x, fn=hip_fn)))
                 for actual in actuals:
                     output_contract(expected, actual)
                     if not checks._compare_results(expected, actual, rtol=rtol, atol=atol):

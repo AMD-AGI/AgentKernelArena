@@ -40,6 +40,52 @@ def apply_control(model, control):
         beta.copy_((sign * control['beta_amplitude'] * (1 + index / gamma.numel())).reshape_as(beta))
 
 
+def perturb_affine(model, parameter):
+    """Change one live tensor in place without changing its shape or storage."""
+    if parameter not in ('gamma', 'beta'):
+        raise ValueError('Unknown normalization parameter')
+    gamma, beta = affine(model)
+    target = gamma if parameter == 'gamma' else beta
+    index = torch.arange(1, target.numel() + 1, dtype=target.dtype, device=target.device)
+    sign = torch.where(index.remainder(2) == 0, 1., -1.)
+    delta = sign * (0.25 + index / (4 * target.numel()))
+    with torch.no_grad():
+        target.add_(delta.reshape_as(target))
+
+
+def check_live_affine_variants(reference, candidate, inputs, original_expected,
+                               invoke_candidate, compare, output_contract, rtol, atol):
+    """Unscored controls for independently changed live gamma and beta."""
+    models = (reference, candidate)
+    pristine = [{name: value.detach().clone() for name, value in model.state_dict().items()}
+                for model in models]
+    try:
+        for parameter in ('gamma', 'beta'):
+            with torch.no_grad():
+                for model, saved in zip(models, pristine):
+                    for name, value in saved.items():
+                        model.state_dict()[name].copy_(value)
+                    perturb_affine(model, parameter)
+            expected_states = [{name: value.detach().clone() for name, value in model.state_dict().items()}
+                               for model in models]
+            with torch.no_grad():
+                changed_expected = reference(*copy.deepcopy(inputs))
+                changed_actual = invoke_candidate(copy.deepcopy(inputs))
+            if compare(original_expected, changed_expected, rtol=rtol, atol=atol):
+                raise ValueError(f'Live {parameter} did not change the reference output')
+            output_contract(changed_expected, changed_actual)
+            if not compare(changed_expected, changed_actual, rtol=rtol, atol=atol):
+                raise ValueError(f'Candidate ignored live {parameter}')
+            for model, saved in zip(models, expected_states):
+                for name, value in saved.items():
+                    torch.testing.assert_close(model.state_dict()[name], value, rtol=0, atol=0)
+    finally:
+        with torch.no_grad():
+            for model, saved in zip(models, pristine):
+                for name, value in saved.items():
+                    model.state_dict()[name].copy_(value)
+
+
 def configure_models(models, inputs):
     rows = json.loads((ROOT / 'workload.json').read_text())['cases']
     validate_controls(rows)

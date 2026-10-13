@@ -78,3 +78,11 @@ warmups and sample counts are preserved. These states reject implementations
 that omit scale or shift; an independent four-number CPU control checks both
 reference forms. They are explicit coverage changes from the former identity
 state, so old-workload speedups are not directly comparable.
+
+For every declared geometry, unscored correctness controls change live
+`gamma` and `beta` independently while holding the input fixed, comparing both
+roles against the protected reference and restoring both parameter tensors.
+The already captured timed callable is also replayed once per changed parameter
+after timing, with full reference-output and state checks. These controls catch
+shape-selected affine constants without adding scored cases or changing the
+six original timed shapes, tolerance, warmups, samples, or reported timing unit.

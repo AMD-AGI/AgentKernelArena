@@ -10,7 +10,7 @@ TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(TASK_DIR)
 if TASK_DIR not in sys.path:
     sys.path.insert(0, TASK_DIR)
-from scripts.contract_checks import InputSnapshot, NumericalMismatch, check_outputs, observe_measured_samples, validate_timed
+from scripts.contract_checks import InputSnapshot, NumericalMismatch, check_outputs, observe_measured_samples, tensors, validate_timed
 from scripts import semantic_controls
 
 TASK_NAME = "triton2triton/triton_kda_gla_fwd_o"
@@ -194,14 +194,28 @@ def run_performance():
             require_scored_signal(expected())
             observe_measured_samples(
                 timed, readonly, expected, atol=5e-2, rtol=5e-2)
+            captured_outputs = [None]
             def _bench_fn():
-                return mod.kda_gla_fwd_o(*args, **kwargs)
+                outputs = mod.kda_gla_fwd_o(*args, **kwargs)
+                captured_outputs[0] = outputs
+                return outputs
+            def _prepare_sample():
+                # Capture storage need not contain valid values before replay.
+                # Poison before each Event interval; the observer checks the
+                # complete measured output after the synchronized end event.
+                if captured_outputs[0] is not None:
+                    for output in tensors(captured_outputs[0]):
+                        output.fill_(float('nan'))
             elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
                 _bench_fn,
                 warmup=WARMUP_ITERATIONS,
                 repetition=BENCHMARK_ITERATIONS,
+                max_graph_repeats=1,
+                prepare_fn=_prepare_sample,
                 timed_run=timed,
             )
+            if benchmark_metadata.get('benchmark_effective_repeats') != 1:
+                raise RuntimeError('Measured replay did not contain exactly one wrapper call')
             benchmark_metadata.update(validate_timed(
                 timed, readonly, lambda: reference(*args, **kwargs).to(device),
                 lambda: (args[0].mul_(8.0), args[1].mul_(8.0)), atol=5e-2, rtol=5e-2, expected_samples=BENCHMARK_ITERATIONS))

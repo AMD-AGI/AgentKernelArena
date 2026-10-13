@@ -9,12 +9,28 @@ import torch
 
 
 ROOT = Path(__file__).resolve().parents[1]
+HISTORICAL_PROTOCOL_TASKS = frozenset({
+    "gemm_a16w16_nt_n128_k6144",
+    "gemm_a16w16_nt_n2048_k2048",
+    "gemm_a16w16_nt_n256_k6144",
+    "gemm_a16w16_nt_n2624_k6144",
+    "gemm_a16w16_nt_n28672_k512",
+    "gemm_a16w16_nt_n3072_k6144",
+    "gemm_a16w16_nt_n32_k6144",
+    "gemm_a16w16_nt_n3584_k512",
+    "gemm_a16w16_nt_n6144_k1536",
+    "gemm_a16w16_nt_n6144_k16384",
+    "gemm_a16w16_nt_n6144_k2048",
+    "gemm_a16w16_nt_n6144_k4096",
+    "gemm_a16w16_nt_n6144_k6144",
+    "gemm_a16w16_nt_n7168_k512",
+})
 TASKS = tuple(sorted(
     path.parent.parent.name
     for path in (ROOT / "tasks/Aiter-task").glob("gemm_*/scripts/task_measure.py")
-    if "def host_copy" in path.read_text()
+    if "class MeasuredOutput" in path.read_text()
 ))
-assert len(TASKS) == 14  # The other three GEMMs retain their legacy timing protocol.
+assert HISTORICAL_PROTOCOL_TASKS.issubset(TASKS)
 MODULES = ("task_measure", "task_baseline", "task_compare", "task_inputs", "task_reference")
 
 

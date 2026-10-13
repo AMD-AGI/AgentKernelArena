@@ -83,7 +83,12 @@ def test_expand_public_control_rejects_dtype_shortcuts(broken):
     else:
         run()
         assert len(seen) == 20
-        assert len(calls) == 37  # ragged, 22 dtype, 8 nonfinite, 5 stride, original
+        assert len(calls) == 45  # ragged, 22 dtype, 16 nonfinite, 5 stride, original
+        assert {(dtype, count_dtype) for dtype, count_dtype, old, _ in calls
+                if isinstance(old, float) and old != old} == {
+                    (dtype, count_dtype)
+                    for dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+                    for count_dtype in (torch.int32, torch.int64)}
     assert module.expand_batch_to_tokens is expand
 
 
@@ -107,7 +112,12 @@ def test_moe_mmk_declared_control_dtypes_match_real_inputs():
     h = load('triton_moe_mmk', 'scripts/task_runner.py')
     manifest = json.loads((TASKS / 'triton_moe_mmk/workloads.json').read_text())
     controls = [row for row in manifest['cases'] if 'control' in row['params']]
-    assert len(controls) == 5
+    assert [row['params']['control'] for row in controls[:5]] == [
+        'rectangular_tail', 'm_tail', 'n_tail', 'k_below64', 'k_above64']
+    assert len(controls) == 6
+    assert controls[-1]['test_case_id'] == 'control-m_second_tail'
+    assert controls[-1]['params']['configuration'] == [65, 64, 64]
+    assert controls[-1]['checks'] == ['correctness']
     for row in controls:
         values = h.control_inputs(row['params']['control'], 'cpu')
         actual = {str(value.dtype).removeprefix('torch.') for value in values.values()

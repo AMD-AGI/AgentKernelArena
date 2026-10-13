@@ -58,8 +58,9 @@ int16, int32, int64, uint8 and bool with both int32 and int64 cumulative counts.
 The bool controls check mixed-value expansion and value replacement separately.
 All outputs require exact equality, including fractional values and int64 values
 beyond the int32 range.
-Additional controls copy NaNs, infinities and signed zero and replace negative
-infinity at both cumulative-count widths. The independent CPU oracle copies
+Additional controls copy NaNs, infinities and signed zero, replace negative
+infinity, and pass NaN itself as a replacement key at both cumulative-count
+widths. A NaN source must remain unchanged for that key. The independent CPU oracle copies
 tensor values without a Python-float conversion. Output and input-immutability
 checks compare bytes, retaining exact finite comparisons while accepting
 unchanged NaN representations. These controls add no scored rows or timed work.

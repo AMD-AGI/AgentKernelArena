@@ -201,6 +201,22 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-m_second_tail",
+      "dtype": "float16",
+      "params": {
+        "control": "m_second_tail",
+        "configuration": [
+          65,
+          64,
+          64
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

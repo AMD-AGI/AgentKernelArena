@@ -838,9 +838,12 @@ def test_committed_hip2hip_sources_are_graph_capture_compatible(monkeypatch):
     helper = _load_helper(monkeypatch)
     repo = Path(__file__).parents[1]
 
+    hip_root = repo / "tasks/hip2hip"
     gpumode_sources = sorted(
         # Include reference sources relocated beneath protected scripts/tests.
-        (repo / "tasks/hip2hip/gpumode").rglob("*.hip")
+        source for task in hip_root.iterdir()
+        if (task / "eval_tools/evaluate.py").is_file()
+        for source in task.rglob("*.hip")
     )
     assert len(gpumode_sources) == 44
     failures = {
@@ -859,15 +862,15 @@ def test_committed_hip2hip_sources_are_graph_capture_compatible(monkeypatch):
         "roipoint_pool3d": ("roipoint_pool3d.cpp", "roipoint_pool3d_kernel.hip"),
         "three_nn": ("three_nn.cpp", "three_nn_cuda.hip"),
     }
-    others_root = repo / "tasks/hip2hip/others"
+    others_root = repo / "tasks/hip2hip"
     for task_name, names in other_pairs.items():
         paths = tuple(others_root / task_name / "src" / name for name in names)
         policy = helper.hip_source_graph_capture_policy(*paths)
         if policy != (True, None):
-            failures[f"tasks/hip2hip/others/{task_name}"] = policy
+            failures[f"tasks/hip2hip/{task_name}"] = policy
 
     assert failures == {
-        "tasks/hip2hip/gpumode/CrossEntropyLossLabelSmoothing/hip/"
+        "tasks/hip2hip/CrossEntropyLossLabelSmoothing/hip/"
         "hip_12501_CrossEntropyLossLabelSmoothing_ref.hip": (
             False,
             "hip_source_declares_event_only",

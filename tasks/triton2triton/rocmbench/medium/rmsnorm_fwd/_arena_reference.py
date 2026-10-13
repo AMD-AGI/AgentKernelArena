@@ -65,9 +65,22 @@ def prepare(c, module):
     # Match the original correctness policy, which is selected by output dtype.
     atol,rtol=(1e-3,1e-2) if output_dtype in (torch.float16,torch.bfloat16) else (1e-5,1e-5)
     def check(result):
+        compare(result,y,atol=atol,rtol=rtol)
         compare(c['y_buffer'],y,atol=atol,rtol=rtol)
         compare(c['rsigma_buffer'],rsigma,atol=atol,rtol=rtol)
     return check
+
+
+def snapshot_inputs(c):
+    """Keep read-only operand bytes independent of later kernel execution."""
+    return {name: c[name].detach().clone() for name in ('x', 'g')}
+
+
+def assert_inputs_unchanged(c, saved):
+    for name, original in saved.items():
+        current=c[name].detach().contiguous().view(torch.uint8)
+        if not torch.equal(current,original.contiguous().view(torch.uint8)):
+            raise AssertionError(f'RMS norm modified its read-only {name} input')
 
 
 def check_row_stride_control(c, module):

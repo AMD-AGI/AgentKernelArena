@@ -45,6 +45,16 @@ def reference(harness, values, blocks, dtype):
     return expected.reshape(*a.shape[:-1], b.shape[0]).to(a.device)
 
 
+def padded_scale_view(scales):
+    """Keep logical scale values but make both scale strides noncontiguous."""
+    import torch
+    backing = torch.full((*scales.shape, 2), 3.5,
+                         dtype=scales.dtype, device=scales.device)
+    view = backing[..., 0]
+    view.copy_(scales)
+    return view
+
+
 def check_output(value, expected):
     import torch
     if not isinstance(value, torch.Tensor) or (value.shape != expected.shape or
@@ -104,6 +114,14 @@ def checked_modules(harness):
                 verify(a, b, sa, sb, [64, 64], torch.float32)
                 verify(a, b, sa, sb, [64, 64], torch.bfloat16)
                 verify(torch.zeros_like(a), b, sa, sb, [64, 64], dtype)
+                # The public wrapper forwards both scale strides to the
+                # kernel. Check each noncontiguous scale independently and
+                # together without changing the five scored inputs.
+                sa_strided = padded_scale_view(sa)
+                sb_strided = padded_scale_view(sb)
+                verify(a, b, sa_strided, sb, [64, 64], dtype)
+                verify(a, b, sa, sb_strided, [64, 64], dtype)
+                verify(a, b, sa_strided, sb_strided, [64, 64], dtype)
                 diagnosed = True
             return result
 

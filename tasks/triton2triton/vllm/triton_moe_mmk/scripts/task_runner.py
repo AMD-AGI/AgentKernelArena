@@ -62,9 +62,11 @@ def run_compile():
 
 
 
-CONTROL_CASES = ('rectangular_tail', 'm_tail', 'n_tail', 'k_below64', 'k_above64')
+CONTROL_CASES = ('rectangular_tail', 'm_tail', 'n_tail', 'k_below64', 'k_above64',
+                 'm_second_tail')
 CONTROL_SHAPES = {'m_tail': (33,64,64), 'n_tail': (64,64,47),
-                  'k_below64': (64,63,32), 'k_above64': (32,65,64)}
+                  'k_below64': (64,63,32), 'k_above64': (32,65,64),
+                  'm_second_tail': (65,64,64)}
 
 
 def reference(inputs):
@@ -75,6 +77,12 @@ def control_inputs(name, device):
     import torch
     if name in CONTROL_SHAPES:
         M, K, N = CONTROL_SHAPES[name]
+        if name == 'm_second_tail':
+            # Row 64 is the sole active row in the second BLOCK_M=64 tile.
+            # Nonzero signed products give a strong independent answer there.
+            A = ((torch.arange(M*K, device=device).reshape(M,K) % 11)-5).to(torch.float16)/8
+            B = ((torch.arange(K*N, device=device).reshape(K,N) % 13)-6).to(torch.float16)/8
+            return {'A': A, 'B': B}
         torch.manual_seed(47 + list(CONTROL_SHAPES).index(name))
         A = torch.randn(M,K,device=device,dtype=torch.float16)*0.1
         B = torch.randn(K,N,device=device,dtype=torch.float16)*0.1

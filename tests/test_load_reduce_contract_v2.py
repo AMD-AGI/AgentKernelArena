@@ -12,7 +12,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = ['triton2triton/rocmbench/easy/test_load_reduce', 'instruction2triton/rocmbench/test_load_reduce']
+TASKS = ['triton2triton/rocmbench/easy/test_load_reduce']
 SHAPES = [(128,64),(128,128),(128,256),(128,512),(128,1024),
           (256,64),(256,128),(256,256),(256,512),(512,64),(512,128),(512,256),
           (1024,64),(1024,128)]
@@ -35,7 +35,7 @@ def cpu_budget():
     torch.random.set_rng_state(rng)
 
 
-@pytest.fixture(params=TASKS, ids=['triton','instruction'])
+@pytest.fixture(params=TASKS, ids=['triton'])
 def task(request, monkeypatch):
     path = ROOT/'tasks'/request.param
     ref = load(path/'_arena_reference.py')
@@ -219,28 +219,7 @@ def test_output_contract_nonfinite_shape_and_alias(task):
 
 
 # Fixed original digests, independent of transient branch history/shallow clones.
-ORIGINAL = {'instruction2triton/rocmbench/test_load_reduce': {'calculate_load_reduce_gbps': 'e32f29203ca54047e975524d020df5ac76d98c6c6418352f842da28c907f4b3c',
-                                                   'calculate_load_reduce_gbps_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                   'calculate_load_reduce_tflops': '80d90eff19322092fb706767299d9ba04d6e4c33b42eabbbd941dcbc42c17f9c',
-                                                   'calculate_load_reduce_tflops_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                   'config.yaml': '15fb6b4428ad91c448ea37d55a9d9157986df54f88e4453b1124d29d4bcd0174',
-                                                   'load_reduce_kernel': 'b00a412ad8eba94ffd379773aea4bfdc58dd0d42636671502293f120e7867e8e',
-                                                   'load_reduce_kernel_decorators': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
-                                                   'load_reduce_triton_wrapper': '6f1b329472d2ecb75a24a47182049a7fc616ae192a9c561604917a9fe673608c',
-                                                   'load_reduce_triton_wrapper_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                   'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
-                                                   'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                   'set_seed_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                   'test_load_reduce': '920d2447113354badd65589a1675e5bda58a3bfb6b3d91fe62c6c1028416a2bc',
-                                                   'test_load_reduce_decorators': '83f4e91200252fdbe53b438f1160105741a1bce10c3d91bf5100b4613c7ab601',
-                                                   'test_performance': 'd1eae0fca09932e0c07fc509f506734210adc5576c193a4f070fde279667ae39',
-                                                   'test_performance_decorators': '274599a0a653d7020c6ebe33f9844ffc965e18f696421b7a225bc379e19d93f2',
-                                                   'test_save_performance_results': 'e75049a8bfa70933554c63918336d2909e576a9a7940225ed7fa3c50aad1b8d9',
-                                                   'test_save_performance_results_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                   'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8',
-                                                   'test_save_results_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                   'workloads.json': '84c85de315d05598e05e2d1d57a0ea79c92dab070408d95b7afb2b51dd53b384'},
- 'triton2triton/rocmbench/easy/test_load_reduce': {'calculate_load_reduce_gbps': 'e32f29203ca54047e975524d020df5ac76d98c6c6418352f842da28c907f4b3c',
+ORIGINAL = {'triton2triton/rocmbench/easy/test_load_reduce': {'calculate_load_reduce_gbps': 'e32f29203ca54047e975524d020df5ac76d98c6c6418352f842da28c907f4b3c',
                                                    'calculate_load_reduce_gbps_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
                                                    'calculate_load_reduce_tflops': '80d90eff19322092fb706767299d9ba04d6e4c33b42eabbbd941dcbc42c17f9c',
                                                    'calculate_load_reduce_tflops_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',

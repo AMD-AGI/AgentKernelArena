@@ -70,6 +70,12 @@ def fused_gdn_gating(
         g: [1, batch, num_heads] float32
         beta_output: [1, batch, num_heads] same dtype as b
     """
+    # The kernel uses flat offsets. Normalize caller views before launching so
+    # the public wrapper keeps its shape-based contract for strided tensors.
+    A_log = A_log.contiguous()
+    a = a.contiguous()
+    b = b.contiguous()
+    dt_bias = dt_bias.contiguous()
     batch, num_heads = a.shape
     seq_len = 1
     grid = (batch, seq_len, triton.cdiv(num_heads, 8))

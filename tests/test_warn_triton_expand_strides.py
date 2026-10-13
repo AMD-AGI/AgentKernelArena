@@ -62,9 +62,12 @@ def test_public_wrapper_materializes_only_noncontiguous_inputs(strided_operand):
 def test_protected_controls_reject_each_unit_stride_assumption(broken):
     checks = checks_module()
     seen = []
+    nan_keys = set()
 
     def expand(x, cu, num_tokens, old=0, new=0):
         seen.append((x.dtype, cu.dtype, x.stride(0), cu.stride(0)))
+        if isinstance(old, float) and old != old:
+            nan_keys.add((x.dtype, cu.dtype))
         if broken == 'ignore_source_stride' and x.stride(0) != 1:
             x = x.as_strided(x.shape, (1,))
         if broken == 'ignore_count_stride' and cu.stride(0) != 1:
@@ -83,7 +86,10 @@ def test_protected_controls_reject_each_unit_stride_assumption(broken):
 
     if broken is None:
         run()
-        assert len(seen) == 37
+        assert len(seen) == 45
+        assert nan_keys == {(dtype, counts) for dtype in (
+            torch.float16, torch.bfloat16, torch.float32, torch.float64)
+            for counts in (torch.int32, torch.int64)}
         assert any(source_stride == 2 and count_stride == 1
                    for _, _, source_stride, count_stride in seen)
         assert {count_dtype for _, count_dtype, source_stride, count_stride in seen

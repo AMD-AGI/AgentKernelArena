@@ -16,6 +16,17 @@ def controls(harness, function, device):
     for args in control_inputs(harness):
         function(*to_device(args, device))
 
+    # Build the view after allocating on the target device: transferring a CPU
+    # slice can make it contiguous and silently erase the row-stride control.
+    storage = torch.arange(4 * 264, dtype=torch.float32, device=device).reshape(4, 264) + 1
+    logits = storage[:, :256]
+    mapping = i([2, 0, 3, 1]).to(device)
+    temperature = f([0, 1, 0.5, 2]).to(device)
+    assert logits.stride() == (264, 1) and logits.stride(0) > logits.shape[1]
+    padding = storage[:, 256:].clone()
+    function(logits, mapping, temperature)
+    torch.testing.assert_close(storage[:, 256:], padding, atol=0, rtol=0)
+
 FUNCTION = 'apply_temperature'
 MUTABLE = (0,)
 ATOL = 0.01
@@ -33,10 +44,20 @@ def reference(harness, args):
 
 def fresh(args):
     args[2].add_(0.25)
+    args[1].copy_(args[1].roll(1))
 
 def control_inputs(harness):
     yield (f([[1,-2,3,4], [2,1,-1,3], [4,6,-2,0], [2,3,4,5]]),
            i([2,0,3,1]), f([0,1,0.5,2]))
+    rows, vocab = 64, 32768
+    yield (torch.linspace(-4, 4, rows * vocab, dtype=torch.float32).reshape(rows, vocab),
+           i([(row + 17) % rows for row in range(rows)]),
+           f([0, 1, 0.5, 2, 1.5, 0.75, 0.25, 3] * (rows // 8)))
+    # The large scored width is an exact multiple of the kernel's 8192-element
+    # block. This correctness-only width requires a masked second block.
+    rows, vocab = 4, 8192 + 257
+    yield (torch.arange(1, rows * vocab + 1, dtype=torch.float32).reshape(rows, vocab),
+           i([2, 0, 3, 1]), f([0, 1, 0.5, 2]))
 
 def observe(result, args):
     return args[MUTABLE[0]]

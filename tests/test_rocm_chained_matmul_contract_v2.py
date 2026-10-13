@@ -11,7 +11,7 @@ import pytest
 import torch
 
 ROOT=Path(__file__).resolve().parents[1]
-TASKS=['instruction2triton/rocmbench/test_chained_matmul','triton2triton/rocmbench/medium/test_chained_matmul']
+TASKS=['triton2triton/rocmbench/medium/test_chained_matmul']
 
 def load(path):
     spec = importlib.util.spec_from_file_location('_mxfp_' + path.stem, path)
@@ -189,19 +189,7 @@ class CPUTorch:
 
 
 # Stable expected hashes; no runtime Git history dependency.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/test_chained_matmul': {'files': {'config.yaml': 'c17101058eb2756c6b9cf9bb49bfd653c0ba1ff8a9f3978ec36de6780d06504f',
-                                                                      'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
-                                                            'functions': {'calculate_chained_matmul_gbps': 'ebb646f1543b3a056231cc2633ed020e56cd1162c6ad66a21790e1f28afd61db',
-                                                                          'calculate_chained_matmul_tflops': '7195211f778aaca797117a706e5f695cfc4a49c9ba66a8018679760470e80205',
-                                                                          'chained_matmul_kernel': '9610429036ea6574ceef3a8de69c47f17949fe7c8031264ebe78d65542a330a8',
-                                                                          'chained_matmul_reference': '7189496a5d90520841b3e74edac8c51535b125b6dab0ac718e3eba1446d219ea',
-                                                                          'chained_matmul_triton_wrapper': '69082f027e636bac7d710babb83a4e4fa14443f77b06c9ad44a4a1243a4c482e',
-                                                                          'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                                          'test_performance': '3b40bb6ea2582e7e1f3958dc965375e23cb5b0664f5da8ec38b9d9726ed6f381',
-                                                                          'test_save_performance_results': 'e75049a8bfa70933554c63918336d2909e576a9a7940225ed7fa3c50aad1b8d9',
-                                                                          'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8'},
-                                                            'rows': '990f2ec29f6020f504f13a97295593bf923d680c797fffc5c02d7cc05cb2dfa1'},
- 'tasks/triton2triton/rocmbench/medium/test_chained_matmul': {'files': {'config.yaml': 'c17101058eb2756c6b9cf9bb49bfd653c0ba1ff8a9f3978ec36de6780d06504f',
+ORIGINAL = {'tasks/triton2triton/rocmbench/medium/test_chained_matmul': {'files': {'config.yaml': 'c17101058eb2756c6b9cf9bb49bfd653c0ba1ff8a9f3978ec36de6780d06504f',
                                                                         'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
                                                               'functions': {'calculate_chained_matmul_gbps': 'ebb646f1543b3a056231cc2633ed020e56cd1162c6ad66a21790e1f28afd61db',
                                                                             'calculate_chained_matmul_tflops': '7195211f778aaca797117a706e5f695cfc4a49c9ba66a8018679760470e80205',

@@ -159,6 +159,78 @@ def check_parameter_variants(module, functional, hip_fn, inputs, compare, rtol, 
         functional.load_state_dict(original_functional)
 
 
+def check_input_geometry_controls(module, functional, hip_fn, compare, rtol, atol):
+    """Check valid unequal row counts and views outside the five scored cases."""
+    import torch
+
+    device = next(module.parameters()).device
+    module_state = {key: value.detach().clone() for key, value in module.state_dict().items()}
+    functional_state = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+
+    def inputs(kind):
+        if kind == "x3_y1":
+            return (torch.tensor([[1., 2., 3., 4.], [-2., 1., 0., 3.],
+                                  [5., -4., 3., -2.]], device=device, dtype=torch.float32),
+                    torch.tensor([[-3., -2., 1., 4.]], device=device, dtype=torch.float32))
+        if kind == "x1_y5":
+            return (torch.tensor([[.5, -1., 2., -3.]], device=device, dtype=torch.float32),
+                    torch.tensor([[1., 0., 2., -1.], [-2., 1., 3., 4.],
+                                  [5., -3., .2, .4], [-4., 2., 1., 2.],
+                                  [2., -1., -2., 5.]], device=device, dtype=torch.float32))
+        x_base = torch.arange(24, dtype=torch.float32, device=device).mul_(.2).add_(-1)
+        y_base = torch.arange(60, dtype=torch.float32, device=device).mul_(-.15).add_(2)
+        return x_base.view(3, 8)[:, ::2], y_base.view(5, 12)[:, ::3]
+
+    def snapshot(value):
+        return ((value.shape, value.stride(), value.dtype, value.device, value.data_ptr()),
+                value.detach().contiguous().view(torch.uint8).clone())
+
+    def unchanged(value, frozen, name):
+        metadata, contents = frozen
+        if ((value.shape, value.stride(), value.dtype, value.device, value.data_ptr()) != metadata
+                or not torch.equal(value.detach().contiguous().view(torch.uint8), contents)):
+            raise ValueError(f"Feedforward geometry control modified read-only {name}")
+
+    try:
+        for kind in ("x3_y1", "x1_y5", "strided_x3_y5"):
+            reference_inputs = inputs(kind)
+            candidate_inputs = inputs(kind)
+            if not (reference_inputs[0].shape[0] != reference_inputs[1].shape[0]
+                    and reference_inputs[0].shape[1:] == reference_inputs[1].shape[1:] == (4,)):
+                raise ValueError("Feedforward geometry control lost unequal batches")
+            for reference_value, candidate_value in zip(reference_inputs, candidate_inputs):
+                if ((reference_value.shape, reference_value.stride(), reference_value.dtype)
+                        != (candidate_value.shape, candidate_value.stride(), candidate_value.dtype)
+                        or not torch.equal(reference_value, candidate_value)):
+                    raise ValueError("Feedforward geometry control roles received different inputs")
+            if kind == "strided_x3_y5" and any(value.is_contiguous() for value in candidate_inputs):
+                raise ValueError("Feedforward geometry control lost strided views")
+            frozen_reference = tuple(snapshot(value) for value in reference_inputs)
+            frozen_candidate = tuple(snapshot(value) for value in candidate_inputs)
+            expected = module(*reference_inputs)
+            actual = (functional(*candidate_inputs) if hip_fn is None else
+                      functional(*candidate_inputs, fn=hip_fn))
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            for name, values, frozen in (("reference", reference_inputs, frozen_reference),
+                                         ("candidate", candidate_inputs, frozen_candidate)):
+                for index, (value, original) in enumerate(zip(values, frozen)):
+                    unchanged(value, original, f"{name} input {index}")
+            for model, original, name in ((module, module_state, "module"),
+                                          (functional, functional_state, "functional")):
+                for key, value in model.state_dict().items():
+                    if not torch.equal(value.detach().contiguous().view(torch.uint8),
+                                       original[key].contiguous().view(torch.uint8)):
+                        raise ValueError(f"Feedforward geometry control modified {name} state: {key}")
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward mishandled unequal/strided geometry: {kind}")
+        return ("x3_y1", "x1_y5", "strided_x3_y5")
+    finally:
+        module.load_state_dict(module_state)
+        functional.load_state_dict(functional_state)
+
+
 def require_graph_method(case, method):
     if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
                                      for key in ("benchmark_method", "reference_benchmark_method")
@@ -232,6 +304,10 @@ def correctness(args, role, rows):
                                      checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    if all(row["status"] == "PASS" for row in result):
+        result[0]["metrics"]["unscored_input_geometry_controls"] = (
+            check_input_geometry_controls(module, functional, hip_fn,
+                                          checks._compare_results, rtol, atol))
     return result
 
 

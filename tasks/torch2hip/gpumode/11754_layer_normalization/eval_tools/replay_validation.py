@@ -139,11 +139,42 @@ def install(perf, output_contract):
                             current.copy_(original)
             if not changed_count:
                 raise ValueError('No changed-input replay was validated')
+            # The captured callable receives parameter storage addresses. Vary
+            # each parameter independently after timing, then replay that same
+            # graph/callable to reject kernels that substituted shape constants.
+            from case_controls import perturb_affine
+            affine_count = 0
+            for parameter in ('gamma', 'beta'):
+                try:
+                    perturb_affine(module, parameter)
+                    varied_state = {name: value.detach().clone()
+                                    for name, value in module.state_dict().items()}
+                    with torch.no_grad():
+                        varied_expected = module(*copy.deepcopy(inputs))
+                    unchanged_model_state(varied_state, module)
+                    if perf._compare_results(expected, varied_expected, rtol=rtol, atol=atol):
+                        raise ValueError(f'Live {parameter} did not change the reference output')
+                    with torch.no_grad():
+                        observed.outputs.fill_(float('nan'))
+                    varied_actual = observed.rerun()
+                    try:
+                        check_result(varied_actual, varied_expected, inputs, output_contract,
+                                     perf._compare_results, rtol, atol)
+                    except (AssertionError, ValueError) as exc:
+                        raise ValueError(f'Timed operator ignored live {parameter}') from exc
+                    unchanged_inputs(pristine, inputs)
+                    unchanged_model_state(varied_state, module)
+                    affine_count += 1
+                finally:
+                    with torch.no_grad():
+                        for name, original in state.items():
+                            module.state_dict()[name].copy_(original)
             return elapsed, {**metadata, 'replay_validation_valid': True,
                              'validated_sample_count': checked_samples,
                              'timed_output_checked': True,
                              'changed_input_replay_valid': True,
                              'changed_input_replay_count': changed_count,
+                             'changed_affine_replay_count': affine_count,
                              'input_state_restored': True,
                              'model_state_validation_valid': True,
                              'model_state_tensor_count': len(state),

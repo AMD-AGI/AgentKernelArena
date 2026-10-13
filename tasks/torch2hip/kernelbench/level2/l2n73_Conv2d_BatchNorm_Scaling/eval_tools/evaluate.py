@@ -123,6 +123,29 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def _snapshot_control_tensors(tensors):
+    """Keep tensor metadata and exact value bytes outside the untimed forward."""
+    import torch
+    return {
+        name: (tuple(value.shape), value.dtype, value.device, tuple(value.stride()),
+               value.detach().reshape(-1).contiguous().view(torch.uint8).cpu().clone())
+        for name, value in tensors.items()
+    }
+
+
+def _require_unchanged_control_tensors(tensors, saved, label):
+    import torch
+    if tensors.keys() != saved.keys():
+        raise ValueError(f"{label} tensor names changed during nonidentity BatchNorm control")
+    for name, value in tensors.items():
+        shape, dtype, device, stride, original_bytes = saved[name]
+        if (tuple(value.shape) != shape or value.dtype != dtype or value.device != device or
+                tuple(value.stride()) != stride or
+                not torch.equal(value.detach().reshape(-1).contiguous().view(torch.uint8).cpu(),
+                                original_bytes)):
+            raise ValueError(f"{label} {name} changed during nonidentity BatchNorm control")
+
+
 def check_nonidentity_batchnorm(module, functional, hip_fn, inputs, original_expected,
                                 compare, rtol, atol):
     """Check BN dependence at this scored case's geometry, outside timing."""
@@ -140,11 +163,24 @@ def check_nonidentity_batchnorm(module, functional, hip_fn, inputs, original_exp
                                                      dtype=bn.running_mean.dtype))
                 bn.running_var.copy_(torch.linspace(0.5, 1.5, channels, device=bn.running_var.device,
                                                     dtype=bn.running_var.dtype))
-        expected = module(*copy.deepcopy(inputs))
+        reference_state = _snapshot_control_tensors(module.state_dict())
+        selected_state = _snapshot_control_tensors(functional.state_dict())
+        reference_inputs = copy.deepcopy(inputs)
+        selected_inputs = copy.deepcopy(inputs)
+        reference_input_state = _snapshot_control_tensors(dict(enumerate(reference_inputs)))
+        selected_input_state = _snapshot_control_tensors(dict(enumerate(selected_inputs)))
+        expected = module(*reference_inputs)
+        _require_unchanged_control_tensors(module.state_dict(), reference_state, "reference state")
+        _require_unchanged_control_tensors(dict(enumerate(reference_inputs)), reference_input_state,
+                                           "reference input")
         if compare(original_expected, expected, rtol=rtol, atol=atol):
             raise ValueError("Nonidentity BatchNorm control did not change the reference")
-        actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
-                  functional(*copy.deepcopy(inputs), fn=hip_fn))
+        actual = (functional(*selected_inputs) if hip_fn is None else
+                  functional(*selected_inputs, fn=hip_fn))
+        _require_unchanged_control_tensors(functional.state_dict(), selected_state,
+                                           "selected state")
+        _require_unchanged_control_tensors(dict(enumerate(selected_inputs)), selected_input_state,
+                                           "selected input")
         output_contract(expected, actual)
         if not compare(expected, actual, rtol=rtol, atol=atol):
             raise ValueError("Selected forward ignored or mishandled nonidentity BatchNorm")

@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import shutil
 import sys
 import types
 from pathlib import Path
@@ -17,19 +18,19 @@ MODEL_TASKS = (
     "torch2hip/gpumode/10024_Feedforward",
     "torch2hip/gpumode/11184_Sigmoid",
     "torch2hip/gpumode/11754_layer_normalization",
-    "hip2hip/gpumode/CrossEntropyLossLabelSmoothing",
-    "hip2hip/gpumode/TanH",
-    "hip2hip/gpumode/layer_normalization",
-    "hip2hip/gpumode/MultiHeadAttention",
-    "hip2hip/gpumode/NormalAttention_dot",
-    "hip2hip/gpumode/Sigmoid",
-    "hip2hip/gpumode/GateGRUSelectionLayer",
-    "hip2hip/gpumode/InnerProd",
+    "hip2hip/CrossEntropyLossLabelSmoothing",
+    "hip2hip/TanH",
+    "hip2hip/layer_normalization",
+    "hip2hip/MultiHeadAttention",
+    "hip2hip/NormalAttention_dot",
+    "hip2hip/Sigmoid",
+    "hip2hip/GateGRUSelectionLayer",
+    "hip2hip/InnerProd",
 )
 NATIVE_TASKS = (
-    "hip2hip/others/roipoint_pool3d",
-    "hip2hip/others/points_in_boxes",
-    "hip2hip/others/roiaware_pool3d",
+    "hip2hip/roipoint_pool3d",
+    "hip2hip/points_in_boxes",
+    "hip2hip/roiaware_pool3d",
 )
 
 
@@ -104,7 +105,7 @@ class Model(torch.nn.Module):
         return x.tanh().clone()
 
 
-@pytest.mark.parametrize("task", ("hip2hip/gpumode/Sigmoid", "torch2hip/gpumode/11184_Sigmoid"))
+@pytest.mark.parametrize("task", ("hip2hip/Sigmoid", "torch2hip/gpumode/11184_Sigmoid"))
 def test_sigmoid_unscored_math_controls_reject_shared_wrong_result(task, monkeypatch):
     root = ROOT / task
     runner = load_file(root / "eval_tools/evaluate.py")
@@ -126,7 +127,7 @@ def test_sigmoid_unscored_math_controls_reject_shared_wrong_result(task, monkeyp
 
 @pytest.mark.parametrize("task", MODEL_TASKS)
 @pytest.mark.parametrize("method", ("event", "graph"))
-def test_model_validates_every_reported_sample(task, method):
+def test_model_validates_every_reported_sample(task, method, monkeypatch):
     validator = load_validator(task, "eval_tools")
     perf = types.SimpleNamespace(
         cal_kernel_perf=lambda rtol=0.0, atol=0.0: None,
@@ -134,7 +135,7 @@ def test_model_validates_every_reported_sample(task, method):
         _compare_results=lambda a, b, **kw: torch.allclose(a, b, **kw),
     )
     validator.install(perf, lambda expected, actual: torch.testing.assert_close(actual.shape, expected.shape))
-    if task == "hip2hip/gpumode/GateGRUSelectionLayer":
+    if task == "hip2hip/GateGRUSelectionLayer":
         gate = load_file(ROOT / task / "pytorch_code_functional/py_5334_GateGRUSelectionLayer_func.py")
         def fixture():
             model = gate.GateGRUSelectionLayer(2, 4, 0.0).eval()
@@ -143,18 +144,89 @@ def test_model_validates_every_reported_sample(task, method):
                     parameter.fill_(0.1)
             return model, [torch.tensor([[[[0.5, -0.3]]]]),
                            torch.tensor([[[[0.2, 0.7]]]])]
+    elif task == "torch2hip/gpumode/11754_layer_normalization":
+        root = ROOT / task
+        controls = load_file(root / "eval_tools/case_controls.py")
+        module = load_file(root / "pytorch_code_module/py_11754_layer_normalization.py")
+        monkeypatch.setitem(sys.modules, "case_controls", controls)
+
+        def fixture():
+            model = module.layer_normalization(4).eval()
+            inputs = [torch.arange(1, 17, dtype=torch.float32).reshape(4, 4)]
+            controls.configure_models([model], inputs)
+            assert not torch.equal(model.gamma, torch.ones_like(model.gamma))
+            assert not torch.equal(model.beta, torch.zeros_like(model.beta))
+            return model, inputs
     else:
         fixture = lambda: (Model(), [torch.tensor([0.5])])
     model, inputs = fixture()
+    pristine_inputs = [value.clone() for value in inputs]
+    pristine_state = {name: value.clone() for name, value in model.state_dict().items()}
     elapsed, metadata = perf.cal_hip_latency(model, inputs, n_iter=3)
     assert elapsed == 0.1
     assert metadata["validated_sample_count"] == 3
     assert metadata["replay_validation_valid"] is True
+    if task == "torch2hip/gpumode/11754_layer_normalization":
+        assert metadata["changed_affine_replay_count"] == 2
+        assert metadata["model_state_tensor_count"] == 2
+        for original, current in zip(pristine_inputs, inputs):
+            torch.testing.assert_close(current, original, rtol=0, atol=0)
+        for name, original in pristine_state.items():
+            torch.testing.assert_close(model.state_dict()[name], original, rtol=0, atol=0)
 
     perf.benchmark_cuda_graph_or_events = lambda invoke, **kw: bench(invoke, method=method, bad_first=True, **kw)
     with pytest.raises((ValueError, AssertionError), match="Timed operator output disagrees"):
         model, inputs = fixture()
         perf.cal_hip_latency(model, inputs, n_iter=3)
+
+
+@pytest.mark.parametrize("method", ("event", "graph"))
+@pytest.mark.parametrize("parameter", ("gamma", "beta"))
+def test_layernorm_replay_rejects_frozen_live_affine(method, parameter, monkeypatch):
+    task = "torch2hip/gpumode/11754_layer_normalization"
+    root = ROOT / task
+    validator = load_validator(task, "eval_tools")
+    controls = load_file(root / "eval_tools/case_controls.py")
+    module = load_file(root / "pytorch_code_module/py_11754_layer_normalization.py")
+    monkeypatch.setitem(sys.modules, "case_controls", controls)
+    model = module.layer_normalization(4).eval()
+    inputs = [torch.arange(1, 17, dtype=torch.float32).reshape(4, 4)]
+    controls.configure_models([model], inputs)
+    pristine_input = inputs[0].clone()
+    pristine_state = {name: value.detach().clone() for name, value in model.state_dict().items()}
+
+    def frozen_affine_benchmark(_invoke, *, timed_run, repetition, **kwargs):
+        assert kwargs["max_graph_repeats"] == 1
+        fixed = getattr(model, parameter).detach().clone()
+
+        def stale_parameter_call():
+            x = inputs[0]
+            gamma = fixed if parameter == "gamma" else model.gamma
+            beta = fixed if parameter == "beta" else model.beta
+            return gamma * (x - x.mean(-1, keepdim=True)) / (
+                x.std(-1, keepdim=True) + model.epsilon) + beta
+
+        timed_run._invoke = stale_parameter_call
+        for _ in range(repetition):
+            timed_run.outputs = timed_run._invoke()
+            timed_run.after_sample(timed_run.outputs)
+        return 0.1, {
+            "benchmark_method": "cuda_graph" if method == "graph" else "cuda_event_fallback",
+            "benchmark_timed_run_kind": "captured_graph" if method == "graph" else "eager_callable",
+            "benchmark_samples": repetition,
+        }
+
+    perf = types.SimpleNamespace(
+        cal_kernel_perf=lambda rtol=0.0, atol=0.0: None,
+        benchmark_cuda_graph_or_events=frozen_affine_benchmark,
+        _compare_results=lambda a, b, **kw: torch.allclose(a, b, **kw),
+    )
+    validator.install(perf, lambda expected, actual: torch.testing.assert_close(actual.shape, expected.shape))
+    with pytest.raises(ValueError, match=f"Timed operator ignored live {parameter}"):
+        perf.cal_hip_latency(model, inputs, n_iter=3)
+    torch.testing.assert_close(inputs[0], pristine_input, rtol=0, atol=0)
+    for name, original in pristine_state.items():
+        torch.testing.assert_close(model.state_dict()[name], original, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("task", NATIVE_TASKS)
@@ -183,10 +255,10 @@ def test_native_validates_every_reported_sample(task, method):
 
 @pytest.mark.parametrize("task", (
     "torch2hip/gpumode/10024_Feedforward",
-    "hip2hip/gpumode/CrossEntropyLossLabelSmoothing",
-    "hip2hip/gpumode/MultiHeadAttention",
-    "hip2hip/gpumode/GateGRUSelectionLayer",
-    "hip2hip/gpumode/InnerProd",
+    "hip2hip/CrossEntropyLossLabelSmoothing",
+    "hip2hip/MultiHeadAttention",
+    "hip2hip/GateGRUSelectionLayer",
+    "hip2hip/InnerProd",
 ))
 def test_model_replay_rejects_frozen_second_operand(task, monkeypatch):
     validator = load_validator(task, "eval_tools")
@@ -226,8 +298,8 @@ def test_model_replay_rejects_frozen_second_operand(task, monkeypatch):
 
 
 def test_loss_changed_logits_distinguish_all_declared_mean_cases():
-    root = ROOT / "hip2hip/gpumode/CrossEntropyLossLabelSmoothing"
-    validator = load_validator("hip2hip/gpumode/CrossEntropyLossLabelSmoothing", "eval_tools")
+    root = ROOT / "hip2hip/CrossEntropyLossLabelSmoothing"
+    validator = load_validator("hip2hip/CrossEntropyLossLabelSmoothing", "eval_tools")
     module = load_file(root / "pytorch_code_module/py_12501_CrossEntropyLossLabelSmoothing.py")
     controls = load_file(root / "eval_tools/case_controls.py")
     torch.manual_seed(0)
@@ -257,8 +329,8 @@ def test_loss_changed_logits_distinguish_all_declared_mean_cases():
 
 @pytest.mark.parametrize("frozen_index", (0, 1))
 def test_loss_large_mean_replay_rejects_frozen_operand(monkeypatch, frozen_index):
-    root = ROOT / "hip2hip/gpumode/CrossEntropyLossLabelSmoothing"
-    validator = load_validator("hip2hip/gpumode/CrossEntropyLossLabelSmoothing", "eval_tools")
+    root = ROOT / "hip2hip/CrossEntropyLossLabelSmoothing"
+    validator = load_validator("hip2hip/CrossEntropyLossLabelSmoothing", "eval_tools")
     module = load_file(root / "pytorch_code_module/py_12501_CrossEntropyLossLabelSmoothing.py")
     controls = load_file(root / "eval_tools/case_controls.py")
     monkeypatch.setitem(sys.modules, "case_controls", controls)
@@ -326,17 +398,31 @@ def test_matmul_pool_sum_changed_input_survives_large_reduction():
 
 
 @pytest.mark.parametrize("fault", ("x_face", "y_face", "z_endpoint", "rotation"))
-def test_roipoint_exact_face_reference_rejects_wrong_membership(monkeypatch, fault):
-    root = ROOT / "hip2hip/others/roipoint_pool3d"
-    monkeypatch.setitem(sys.modules, "_aka_benchmark", types.SimpleNamespace(
-        TimedRun=FakeTimedRun,
-        benchmark_cuda_graph_or_events=lambda *args, **kwargs: None,
-        hip_source_graph_capture_policy=lambda *args: (True, None)))
+def test_roipoint_exact_face_reference_rejects_wrong_membership(monkeypatch, tmp_path, fault):
+    from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
+
+    original = ROOT / "hip2hip/roipoint_pool3d"
+    root = tmp_path / "roipoint_pool3d"
+    shutil.copytree(original, root, ignore=shutil.ignore_patterns("__pycache__", "build", "*.pyc"))
+    assert materialize_perf_helpers_in_workspace(root, root=ROOT.parent)
+    helper = root / "scripts/_aka_benchmark.py"
+    assert helper.read_bytes() == (ROOT.parent / "src/tools/perf/aka_benchmark.py").read_bytes()
     previous_directory = os.getcwd()
+    previous_path = sys.path[:]
+    missing = object()
+    protected_names = ("_aka_benchmark", "reference_checks", "replay_validation", "task_runner")
+    previous_modules = {name: sys.modules.get(name, missing) for name in protected_names}
     try:
         runner = load_file(root / "scripts/task_runner.py")
     finally:
         os.chdir(previous_directory)
+        sys.path[:] = previous_path
+        for name, module in previous_modules.items():
+            if module is missing:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+    assert Path(runner._PROTECTED_BENCHMARK.__file__).resolve() == helper.resolve()
     controls = load_file(root / "scripts/reference_checks.py")
     controls.check_face_reference(runner)
     original = runner.check_point_in_box

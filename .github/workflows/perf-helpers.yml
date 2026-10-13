@@ -33,7 +33,7 @@ jobs:
       - name: Install CPU test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest pyyaml numpy matplotlib
+          python -m pip install pytest pyyaml numpy matplotlib einops
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Run benchmark helper audit
         run: make check-perf-helpers

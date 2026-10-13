@@ -21,6 +21,17 @@ from src.task_spec import load_task_spec, resolve_task_path
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = ROOT / 'tasks/Aiter-task'
 TASKS = sorted(p.parents[1] for p in SUITE.glob('*/scripts/workload.json'))
+ORIGINAL_PACKAGES = '9ab5ddb238c4704985604285d9491e0d1820c9a5'
+_A8W8 = 'gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_'
+# Packages added after the original publication, built from the same bundle.
+ADDED_PACKAGES = {_A8W8 + 'asraw_n1024_k4096', _A8W8 + 'aslogical_n1024_k4096'}
+# AITER's tuned asm split-K row for M=128 in this model config file.
+DIAGNOSTIC_EVIDENCE = {name: '65246705468a77baacc29af9831825efdbba78b8aab5e324d484463f4ddfea97'
+                       for name in ADDED_PACKAGES}
+SHARED_HARNESS = ('scripts/task_api.py', 'scripts/task_inputs.py', 'scripts/task_policy.py',
+                  'scripts/task_runner.py', 'scripts/task_timing.py', 'scripts/export_solution.py',
+                  'test_kernel_harness.py', 'kernel.py')
+DSV4_FAMILY_POLICY = 'deepseek-v4-flash family policy'
 
 
 def test_each_task_has_exactly_one_supported_workload_layout():
@@ -35,11 +46,25 @@ def test_each_task_has_exactly_one_supported_workload_layout():
 def test_config_paths_and_complete_manifest(task):
     spec = load_task_spec(task / 'config.yaml', task_id=f'Aiter-task/{task.name}')
     config = spec.to_mapping()
-    assert spec.candidate.initial_state == 'implemented'
-    assert spec.candidate.initial_language == 'python'
-    assert spec.candidate.language == 'triton'
+    assert spec.candidate.initial_state == 'unimplemented'
+    assert spec.candidate.language == 'flydsl'
+    # Forge files KB records under the operator and its production source owner.
+    assert config['kernel_identity'] == {'logical_operator': task.name, 'source_owner': 'aiter'}
+    assert config['candidate']['editable'] == ['kernel.py']
+    assert [(e.file, e.kind, e.symbol) for e in spec.candidate.entrypoints] == [
+        ('kernel.py', 'builder', f'build_{task.name}_module')]
     assert spec.baseline.kind == 'provided'
-    assert spec.baseline.correctness_policy == 'required'
+    assert spec.baseline.correctness_policy == 'diagnostic'
+    assert spec.baseline.diagnostic_reason.startswith(DSV4_FAMILY_POLICY)
+    readme = (task / 'BUNDLE_README.md').read_text()
+    assert '## Baseline numerical policy' in readme
+    if task.name in DIAGNOSTIC_EVIDENCE:
+        assert DIAGNOSTIC_EVIDENCE[task.name] in spec.baseline.diagnostic_reason
+        assert '## Production baseline numerical evidence' in readme
+    else:
+        assert '## Production baseline numerical evidence' not in readme
+    assert [(e['format'], e['output'], e['command']) for e in config['exports']] == [
+        ('sikl-solution', 'artifacts/solution.json', ['python3', 'scripts/export_solution.py'])]
     assert config['platform_support']['required_arch'] == 'gfx950'
     assert {(a.role, a.action) for a in spec.actions} == {
         ('task', 'validate-task'),
@@ -53,16 +78,21 @@ def test_config_paths_and_complete_manifest(task):
     data = json.loads((task / config['evaluation']['workloads']).read_text())
     assert data['definition']['name'] == task.name
     assert len(data['rows']) == len(data['cases']) >= 13
-    # Runtime-length cases may extend a workload, but must retain every
-    # originally published shape and case identity.
-    original = json.loads(subprocess.check_output([
-        'git', 'show',
-        f'9ab5ddb238c4704985604285d9491e0d1820c9a5:{task.relative_to(ROOT)}/scripts/workload.json',
-    ], cwd=ROOT, text=True))
     rows_by_id = {row['workload']['uuid']: row for row in data['rows']}
     cases_by_id = {case['test_case_id']: case for case in data['cases']}
     assert len(rows_by_id) == len(data['rows'])
     assert len(cases_by_id) == len(data['cases'])
+    # Runtime-length cases may extend a workload, but must retain every
+    # originally published shape and case identity.
+    shown = subprocess.run([
+        'git', 'show',
+        f'{ORIGINAL_PACKAGES}:{task.relative_to(ROOT)}/scripts/workload.json',
+    ], cwd=ROOT, capture_output=True, text=True)
+    if task.name in ADDED_PACKAGES:
+        assert shown.returncode != 0
+        original = {'rows': [], 'cases': []}
+    else:
+        original = json.loads(shown.stdout)
     for row in original['rows']:
         current = rows_by_id[row['workload']['uuid']]
         for key in ('definition', 'solution', 'evaluation'):
@@ -87,6 +117,28 @@ def test_config_paths_and_complete_manifest(task):
     assert len(manifest.cases) == len(data['cases'])
     assert all(set(case['checks']) == {'correctness', 'performance'}
                for case in manifest.cases)
+
+
+@pytest.mark.parametrize('relative', SHARED_HARNESS)
+def test_harness_copies_are_identical(relative):
+    assert len({(task / relative).read_bytes() for task in TASKS}) == 1
+
+
+@pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
+def test_initial_candidate_is_the_unimplemented_target(task):
+    tree = ast.parse((task / 'kernel.py').read_text())
+    assert not any(isinstance(node, (ast.FunctionDef, ast.ClassDef)) for node in tree.body)
+    assert not (task / 'source').exists()
+    template = json.loads((task / 'solution.json').read_text())
+    assert template['definition'] == task.name
+    assert template['spec']['entry_point'] == ''
+    assert template['sources'] == [{'path': '', 'content': ''}]
+    assert template['spec']['target'] == [{'arch': 'gfx950', 'hardware_id': 'MI355X'}]
+    data = json.loads((task / 'scripts/workload.json').read_text())
+    assert data['bundle_readme'] == (task / 'BUNDLE_README.md').read_text()
+    held = data['policy']['persistent_inputs']
+    tensors = {name for name, spec in data['definition']['inputs'].items() if spec.get('shape') is not None}
+    assert held and set(held) < tensors
 
 
 @pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)

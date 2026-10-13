@@ -3,7 +3,7 @@ agent:
   template: claude_code
 
 tasks:
-  - hip2hip/gpumode/GELU
+  - hip2hip/GELU
 
 target_gpu_model: RDNA4
 log_directory: logs

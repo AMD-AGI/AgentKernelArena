@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_hip2hip_gpumode_restores_state_and_uses_reference_method_policy():
     harnesses = sorted(
-        (ROOT / "tasks/hip2hip/gpumode").rglob("cal_kernel_perf.py")
+        (ROOT / "tasks/hip2hip").rglob("cal_kernel_perf.py")
     )
     assert len(harnesses) == 22
     for harness in harnesses:
@@ -41,10 +41,10 @@ def test_geak_method_mismatch_is_never_aggregated_as_one_x():
 def test_native_drivers_use_nonzero_inputs_and_validate_an_actual_replay():
     matrix = (
         ROOT
-        / "tasks/hip2hip/others/matrix_multiplication/scripts/native/benchmark_driver.hip"
+        / "tasks/hip2hip/matrix_multiplication/scripts/native/benchmark_driver.hip"
     ).read_text()
     mla = (
-        ROOT / "tasks/hip2hip/others/mla_decode/scripts/native/benchmark_driver.hip"
+        ROOT / "tasks/hip2hip/mla_decode/scripts/native/benchmark_driver.hip"
     ).read_text()
     helper = (ROOT / "src/tools/perf/native_hip_graph_benchmark.hpp").read_text()
 
@@ -67,10 +67,10 @@ def test_state_reset_and_scratch_are_outside_timed_workload():
     assert "prepare_fn=output_tensor.zero_" in lora
 
     roiaware_cpp = (
-        ROOT / "tasks/hip2hip/others/roiaware_pool3d/src/roiaware_pool3d.cpp"
+        ROOT / "tasks/hip2hip/roiaware_pool3d/src/roiaware_pool3d.cpp"
     ).read_text()
     roipoint_cpp = (
-        ROOT / "tasks/hip2hip/others/roipoint_pool3d/src/roipoint_pool3d.cpp"
+        ROOT / "tasks/hip2hip/roipoint_pool3d/src/roipoint_pool3d.cpp"
     ).read_text()
     assert "at::empty" not in roiaware_cpp
     assert "at::empty" not in roipoint_cpp
@@ -194,7 +194,7 @@ def test_sglang_mxfp8_runners_handle_anonymous_docker_uids():
 def test_normal_attention_dot_predetermines_event_timing_for_rocm_teardown():
     runner = (
         ROOT
-        / "tasks/hip2hip/gpumode/NormalAttention_dot/eval_tools/cal_kernel_perf.py"
+        / "tasks/hip2hip/NormalAttention_dot/eval_tools/cal_kernel_perf.py"
     ).read_text()
     assert 'graph_fallback_reason = "capture_unsafe_rocm_graph_teardown"' in runner
     marker = runner.index('graph_fallback_reason = "capture_unsafe_rocm_graph_teardown"')

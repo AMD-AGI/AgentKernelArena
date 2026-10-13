@@ -68,3 +68,9 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+The correctness-only scalar, empty and extreme-value controls require byte-exact
+input preservation and independent output storage, including for empty tensors.
+They also cover negative output scale and zero scalar settings against the
+independent mathematical reference. These checks run outside the original scored
+workloads and do not change timing, sample counts or numerical tolerances.

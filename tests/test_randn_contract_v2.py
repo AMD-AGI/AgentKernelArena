@@ -13,7 +13,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = ['triton2triton/rocmbench/easy/test_randn', 'instruction2triton/rocmbench/test_randn']
+TASKS = ['triton2triton/rocmbench/easy/test_randn']
 
 
 def load(path):
@@ -31,7 +31,7 @@ def cpu_thread_budget():
     torch.set_num_threads(previous)
 
 
-@pytest.fixture(params=TASKS, ids=['triton', 'instruction'])
+@pytest.fixture(params=TASKS, ids=['triton'])
 def task(request, monkeypatch):
     path = ROOT / 'tasks' / request.param
     ref = load(path / '_arena_reference.py')
@@ -255,20 +255,7 @@ def test_successful_report_carries_executed_statistical_evidence(task):
 
 
 # Original immutable digests are checked in below; pytest never invokes git.
-ORIGINAL = {'instruction2triton/rocmbench/test_randn': {'config.yaml': 'e852b6187590249439310ce333ae2fa9511eac1421037a8c9a24e60bb8f88108',
-                                             'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
-                                             'randn_kernel_const_seed': '5a8e8a1c142c14ea16672bab148824961da0ff8ba7a455f3829d3d50e13bca4b',
-                                             'randn_kernel_const_seed_decorators': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
-                                             'randn_kernel_runtime_seed': '730fb8425143b89a961ed66da3273ed2796ef8216471aebe3bb393ee3791f1eb',
-                                             'randn_kernel_runtime_seed_decorators': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
-                                             'randn_triton_wrapper': '5c7c5b29429f86349517f557e879e055c265674779a5f855b5bcdf79ca42e44c',
-                                             'randn_triton_wrapper_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                             'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                             'set_seed_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                             'test_performance': '5162e2d503f4265a66e2989f143bdebfd6aa797e30b35a7d34e846000545c9be',
-                                             'test_performance_decorators': '044b23f2e1b831142f93045934a58b25cbcbd941a22a8c18e55189ada00aaff6',
-                                             'workloads.json': '5b3a1fd031b5d290f445ab7f64ccc4b7d3b5a751a3f3d1ad76d75b2bafff7fb5'},
- 'triton2triton/rocmbench/easy/test_randn': {'config.yaml': 'e852b6187590249439310ce333ae2fa9511eac1421037a8c9a24e60bb8f88108',
+ORIGINAL = {'triton2triton/rocmbench/easy/test_randn': {'config.yaml': 'e852b6187590249439310ce333ae2fa9511eac1421037a8c9a24e60bb8f88108',
                                              'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
                                              'randn_kernel_const_seed': '5a8e8a1c142c14ea16672bab148824961da0ff8ba7a455f3829d3d50e13bca4b',
                                              'randn_kernel_const_seed_decorators': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',

@@ -31,8 +31,11 @@ configurations and historical workspaces:
 | --- | --- | --- |
 | `triton2triton` | `vllm` | `TEST_SHAPES` in `scripts/task_runner.py` |
 | `triton2triton` | `rocmbench` | `@pytest.mark.parametrize` declarations |
-| `hip2hip` | `gpumode` | `get_inputs()` in the module and functional references |
+| `hip2hip` | Direct task directories with module and functional `get_inputs()` references | `get_inputs()` in those references |
 | `torch2hip` | `gpumode` | `get_inputs()` in the module and functional references |
+
+The `hip2hip` legacy helper applies to tasks with those references. Native and
+inference tasks need task-specific held-out injection support.
 
 ## Enter the runtime
 
@@ -58,7 +61,7 @@ python3 -m src.held_out.generate_heldout \
 ```
 
 Use `--dry-run` to list supported tasks without launching an agent. Use
-`--tasks hip2hip/gpumode/SiLU` to select a specific task. Supported backends are
+`--tasks hip2hip/SiLU` to select a specific task. Supported backends are
 `claude_code`, `codex`, and `cursor`.
 
 ## Evaluate a completed run

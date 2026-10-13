@@ -13,18 +13,26 @@ Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|
 with one role and one action. Submitted checks use `ARENA_EVAL_PHASE=candidate_evaluation`.
 The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 `workloads.json` retains 182 original collected cases, including 126 performance cases.
-Collection is checked against this independent manifest. Original correctness
-functions run unchanged. Performance inputs additionally run the task-local
-oracle in `_arena_reference.py`, before timing and against observed timed output.
+Collection is checked against this independent manifest. The direct correctness
+path freezes `x` and gamma before the editable kernel runs, computes its
+reference from those snapshots, and checks their bytes after the call.
+Performance inputs additionally run the task-local oracle in
+`_arena_reference.py`, before timing and against observed timed output.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
-prepare/reset callbacks, warmups and sample counts are unchanged.
+warmups and sample counts are unchanged.
 
 Unscored correctness checks cover row-strided input and output buffers on both
 kernel branches. For `USE_BLOCKED=True`, they retain each selected scored
 case's full legal width and output dtype, use independently padded row strides,
 and check the complete normalized output plus FP32 reciprocal standard
-deviations. The 126 scored performance cases and their graph timing are
-unchanged.
+deviations. The 126 scored performance cases are unchanged. Each reported
+sample poisons both output buffers before its Event boundary and measures one
+callable invocation, so every checked result is the invocation whose latency
+is reported. Graph capture now uses one call per replay; explicit Event timing
+also uses one call per sample. Previously, short kernels used graphs containing
+multiple calls and checked only the final output. Those earlier graph timings
+are not directly comparable. The kernel body, shapes, numerical bounds,
+10 warmups and 100 reported samples are unchanged.
 
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch

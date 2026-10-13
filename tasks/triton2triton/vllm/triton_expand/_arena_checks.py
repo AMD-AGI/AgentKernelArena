@@ -78,6 +78,11 @@ def nonfinite_controls(device):
                                 dtype=dtype, device=device),
                    torch.tensor([1, 2, 3, 4, 6], dtype=count_dtype, device=device),
                    6, -float('inf'), 6.125)
+            # NaN is never equal to a replacement key, including NaN itself.
+            # A candidate that treats isnan(source) as the match must fail.
+            yield (torch.tensor([float('nan'), 1.25, -0.0], dtype=dtype, device=device),
+                   torch.tensor([1, 3, 4], dtype=count_dtype, device=device),
+                   4, float('nan'), 6.125)
 
 
 def stride_controls(device):

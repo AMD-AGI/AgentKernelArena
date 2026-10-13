@@ -45,13 +45,25 @@ output against the unchanged task comparator. Correctness additionally exercises
 unscored public-interface controls from `scripts/semantic_controls.py`. These controls
 do not replace or add scored cases. Full output shape, dtype, device, finiteness and
 read-only inputs are checked.
+An additional unscored gated control uses V=160, which requires multiple
+value tiles for either declared BV choice (64 or 128). Its independent,
+column-dependent known answer checks the complete second tile; the five
+scored V=32 cases and their timing are unchanged.
+Two more correctness-only controls use K=80 with nonzero channels in both
+key tiles, with and without gating. Independent scalar answers exercise the
+wrapper's supported larger-K domain without adding scored cases.
 
 The public invocation still allocates the output and dispatches the kernel; the
 device timer measures the GPU commands, not Python allocation time. Python
-allocation/dispatch runs during graph capture; each of 100 reported samples
-replays only the captured device commands after 10 warmups. `TimedRun` checks every reported sample output after its end event and
+allocation/dispatch runs during graph capture. On the graph path, each of 100
+reported samples replays exactly one captured public wrapper call after 10 warmups.
+The captured output is poisoned before each replay, outside the timed interval. `TimedRun`
+checks every reported sample output after its end event and
 retains outputs of the actual captured graph. After measurement,
 the harness checks those outputs, changes an operand, poisons outputs, and replays that
 same graph against the original numerical reference. All comparisons, snapshots,
 perturbations and restoration are outside the timed window. An unobservable graph
 fallback fails instead of validating a different untimed invocation.
+The one-call graph boundary replaces historical multi-call graph batching;
+latencies across those methods are not directly comparable. Preparation and
+post-sample checks can also affect cache and clock state outside device timing.

@@ -36,6 +36,22 @@ output against the unchanged task comparator. Correctness additionally exercises
 unscored public-interface controls from `scripts/semantic_controls.py`. These controls
 do not replace or add scored cases. Full output shape, dtype, device, finiteness and
 read-only inputs are checked.
+Additional unscored structured controls cover H=1,D=33 and H=3,D=65,
+including non-power-of-two dimension tails, varying scale/bias and both
+softplus branches. They supplement the scored H=4,D=32 cases and the earlier
+H=2,D=5 controls without changing any scored input or timing sample.
+An additional unscored H=4,D=32 control supplies nonzero, head- and
+dimension-varying bias at the scored head geometry. It checks the optional-bias
+branch without changing the five scored cases or their timing.
+Three further unscored controls supply H=4,D=32 stepped views for `g`, `A`, and
+`g_bias` independently. The protected wrapper makes contiguous copies only
+when needed after the original flattening step and before the kernel's
+unit-stride pointer loads. Inputs that the original `view` could not flatten
+remain outside this wrapper's accepted domain. The stepped-view controls check
+both logical inputs and their complete backing storage byte-for-byte, including
+signed-zero changes. The five scored
+inputs are already contiguous, so these controls do not add scored work or
+change the measured kernel calls.
 
 The timed invocation keeps the original allocation/dispatch boundary, 10 warmups and
 100 samples. The graph captures exactly one complete operator call per replay. The

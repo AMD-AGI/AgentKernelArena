@@ -49,6 +49,7 @@ def inspect_candidate(data, *, require_implemented=False):
 
 def benchmark_type(base, plugin, module):
     from _arena_reference import (prepare, poison_outputs, perturbed_inputs,
+                                  snapshot_inputs, assert_inputs_unchanged,
                                   check_row_stride_control, check_blocked_stride_control)
     class CheckedBenchmark(base):
         def __init__(self,*args,**kwargs):
@@ -59,11 +60,13 @@ def benchmark_type(base, plugin, module):
 
         def run_benchmark(self,*args,**kwargs):
             row=plugin.current_row
+            original_inputs=snapshot_inputs(self.context)
             check=prepare(self.context,module)
             if self.prepare_fn is not None:self.prepare_fn()
             original=self.op_callable
             output=original()
             check(output)
+            assert_inputs_unchanged(self.context,original_inputs)
             if plugin.action=='correctness':
                 check_row_stride_control(self.context,module)
                 check_blocked_stride_control(self.context,module)
@@ -80,6 +83,12 @@ def benchmark_type(base, plugin, module):
                 check(measured_output)
                 checked_samples[0]+=1
             timed.after_sample=check_sample
+            def prepare_sample():
+                # The canonical timer calls this outside every Event interval
+                # and outside graph capture. A stale or skipped call then
+                # leaves both captured output buffers poisoned.
+                if self.prepare_fn is not None:self.prepare_fn()
+                poison_outputs(self.context,None)
             globals_=base.run_benchmark.__globals__
             measure=globals_['_measure_times']
             def measured_times(callable_fn, config, target_ms=1.0, n_retries=5,
@@ -90,8 +99,8 @@ def benchmark_type(base, plugin, module):
                     callable_fn, warmup=config.warm_up,
                     repetition=config.repetition, target_ms=target_ms,
                     n_retries=n_retries, estimate_reps=estimate_reps,
-                    max_graph_repeats=max_graph_repeats,
-                    prepare_fn=prepare_fn, use_cuda_graph=use_cuda_graph,
+                    max_graph_repeats=1,
+                    prepare_fn=prepare_sample, use_cuda_graph=use_cuda_graph,
                     fallback_reason=fallback_reason, timed_run=timed)
             globals_['_measure_times']=measured_times
             try:
@@ -103,17 +112,23 @@ def benchmark_type(base, plugin, module):
                 globals_['_measure_times']=measure
             if not timed.bound or checked_samples[0]!=self.config.repetition:
                 raise RuntimeError('Measured sample outputs were not all checked')
+            if record.get('benchmark_effective_repeats')!=1 or record.get('benchmark_samples')!=self.config.repetition:
+                raise RuntimeError('Reported samples did not each time one checked invocation')
             # Under graph timing this is the exact captured output buffer; for
             # explicit Event timing it is the last measured eager return.
             check(timed.outputs)
+            assert_inputs_unchanged(self.context,original_inputs)
             # Change the live caller-owned operands after measurement, then
             # replay the exact bound graph/eager callable against a fresh oracle.
             # The task reference restores every changed input even on failure.
             with perturbed_inputs(self.context):
+                changed_inputs=snapshot_inputs(self.context)
                 changed_check=prepare(self.context,module)
                 poison_outputs(self.context,timed.outputs)
                 replayed=timed.rerun()
                 changed_check(replayed)
+                assert_inputs_unchanged(self.context,changed_inputs)
+            assert_inputs_unchanged(self.context,original_inputs)
             ms=record['timing_ms']['mean'];method=record.get('benchmark_method')
             if not isinstance(ms,(float,int)) or not math.isfinite(ms) or ms<=0:
                 raise RuntimeError('Nonpositive/nonfinite device timing')

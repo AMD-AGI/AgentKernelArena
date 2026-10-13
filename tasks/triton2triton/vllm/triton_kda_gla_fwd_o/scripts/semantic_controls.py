@@ -92,6 +92,38 @@ def control_cases(device):
                    kwargs=dict(q=q,v=v,g=g,A=A,h=h,scale=.25,chunk_size=BT),
                    expected=expected,atol=5e-2,rtol=5e-2)
 
+    # Probe the independent K and V tile loops separately. K=80 requires
+    # a later BK tile; V=160 requires a later BV tile for every autotune choice.
+    for K,V,name in ((80,32,'wide_key_later_tile'),
+                     (32,160,'wide_value_later_tile')):
+        B,T,H,BT=1,20,2,16
+        q=torch.zeros(B,T,H,K,device=device);g=torch.zeros_like(q)
+        v=torch.empty(B,T,H,V,device=device)
+        h=torch.zeros(B,math.ceil(T/BT),H,K,V,device=device)
+        A=torch.empty(B,T,H,BT,device=device);expected=torch.empty_like(v)
+        second_key=64 if K>64 else 1
+        for i in range(T):
+            chunk=i//BT
+            local=i%BT
+            for head in range(H):
+                q[0,i,head,0]=1.;q[0,i,head,second_key]=2.
+                g[0,i,head,0]=math.log(2.)
+                g[0,i,head,second_key]=math.log(.5)
+                for j in range(BT):
+                    A[0,i,head,j]=1+j/16 if j<=local else 99.
+                for d in range(V):
+                    factor=(chunk+1)*(head+1)*(d+1)/V
+                    h[0,chunk,head,0,d]=factor
+                    h[0,chunk,head,second_key,d]=3*factor
+                    v[0,i,head,d]=(i+1)*(head+1)*(d+1)/V
+                    inter=5*.25*factor
+                    intra=sum((1+(j%BT)/16)*(j+1)*(head+1)*(d+1)/V
+                              for j in range(chunk*BT,i+1))
+                    expected[0,i,head,d]=inter+intra
+        yield dict(name=name,entrypoint='kda_gla_fwd_o',
+                   kwargs=dict(q=q,v=v,g=g,A=A,h=h,scale=.25,chunk_size=BT),
+                   expected=expected,atol=5e-2,rtol=5e-2)
+
 
 def reference_controls(h):
     rows=[]

@@ -11,7 +11,6 @@ import torch
 
 ROOT = Path(__file__).resolve().parents[1] / "tasks"
 TASKS = (
-    "instruction2triton/rocmbench/test_reverse_range",
     "triton2triton/rocmbench/easy/test_reverse_range",
 )
 

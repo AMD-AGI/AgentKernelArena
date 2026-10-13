@@ -12,7 +12,7 @@ import pytest
 import torch
 
 ROOT=Path(__file__).resolve().parents[1]
-TASKS=['instruction2triton/rocmbench/test_chained_dot_fp8','triton2triton/rocmbench/hard/test_chained_dot_fp8']
+TASKS=['triton2triton/rocmbench/hard/test_chained_dot_fp8']
 
 
 def load(path):
@@ -201,19 +201,7 @@ def test_allocating_wrapper_real_timer_replay_and_restore(task,monkeypatch,dtype
     assert all(ref.equal_bytes(x,y) for x,y in timed_original)
 
 # Original expectations; no runtime branch/history dependency.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/test_chained_dot_fp8': {'classes': {'chained_dot_fn': 'ddcf0dfdac9a7f17cb76517cc9dccf8b1f26a63d5660041da94f27bf61722062'},
-                                                             'files': {'config.yaml': 'f49b517b0e13bf0e8a82036562a271f01c541d6b70caef60fc4613c05d515b40',
-                                                                       'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
-                                                             'functions': {'calculate_chained_dot_gbps': 'ae486787e5ee14cf0c0628c4f2d1d51776a26a51e253dadd63d2b42295af9508',
-                                                                           'calculate_chained_dot_tflops': 'c4c5a2d8c7f4a10735707de7517ea0f3c629695853bf22947750382b7fbf1c2b',
-                                                                           'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                                           'test_performance': '075366593111da2882a98349989fbb85106be914347ebee561bb1279fdcf4870',
-                                                                           'test_save_performance_results': '450ff29b0859d464447fbe214ebf21542bb77256c164329607aee2e48a703ec1',
-                                                                           'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8',
-                                                                           'to_float8': 'a34b908ef8251af63976f13730cd53555bd8b6a1a7b993ea62d719db263a56a1'},
-                                                             'kernel_ast': '617e279d290073c1216a5a1fe96a252ca144c63ac1134c4175eb22d8c496f791',
-                                                             'rows': '55983a50e5b62794c270f6b35ac45082d76d77b2684bb8adf7567e1ec9b28f8d'},
- 'tasks/triton2triton/rocmbench/hard/test_chained_dot_fp8': {'classes': {'chained_dot_fn': 'ddcf0dfdac9a7f17cb76517cc9dccf8b1f26a63d5660041da94f27bf61722062'},
+ORIGINAL = {'tasks/triton2triton/rocmbench/hard/test_chained_dot_fp8': {'classes': {'chained_dot_fn': 'ddcf0dfdac9a7f17cb76517cc9dccf8b1f26a63d5660041da94f27bf61722062'},
                                                              'files': {'config.yaml': 'f49b517b0e13bf0e8a82036562a271f01c541d6b70caef60fc4613c05d515b40',
                                                                        'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
                                                              'functions': {'calculate_chained_dot_gbps': 'ae486787e5ee14cf0c0628c4f2d1d51776a26a51e253dadd63d2b42295af9508',

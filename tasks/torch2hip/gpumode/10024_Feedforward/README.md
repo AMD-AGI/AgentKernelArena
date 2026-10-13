@@ -27,6 +27,13 @@ At each declared input geometry, an unscored correctness control changes each
 of the four model parameter tensors in turn and checks the selected forward
 against the same changed PyTorch module.
 It restores the original aligned state before the action ends.
+The declared two-dimensional `vstack` operator also accepts different row
+counts for `x` and `y`. Unscored correctness controls now check `(3, 1)` and
+`(1, 5)` row splits, plus a `(3, 5)` pair of noncontiguous four-feature views.
+The protected module and selected forward receive separate equal-valued inputs;
+the control checks the full output, caller input bytes/layout, and model state,
+then restores state even if a check fails. These controls do not add score rows
+or change the original five shapes, tolerance, seeds, or timed call.
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing

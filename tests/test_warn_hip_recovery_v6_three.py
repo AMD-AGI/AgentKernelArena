@@ -9,7 +9,7 @@ import pytest
 import torch
 
 
-TASKS = Path(__file__).resolve().parents[1] / "tasks/hip2hip/gpumode"
+TASKS = Path(__file__).resolve().parents[1] / "tasks/hip2hip"
 
 
 def load(path, name):
@@ -165,7 +165,7 @@ def test_sigmoid_unscored_timed_graph_checks_strided_input_and_changed_replay(mo
     monkeypatch.setattr(adapter, "compile_hip", lambda path, slot: functional.module_fn)
     args = SimpleNamespace(baseline_hip="hip/ref.hip", candidate="hip/selected.hip")
     assert adapter.check_unscored_layout_timing(args, "candidate", perf, device="cpu") == [
-        "strided_float32", "strided_float64"]
+        "strided_float32", "strided_float64", "scaled_parameters"]
 
     remembered = {}
 

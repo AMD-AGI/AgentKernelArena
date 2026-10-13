@@ -1,0 +1,398 @@
+#!/usr/bin/env python3
+# Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+"""Task runner for hip2hip/roiaware_pool3d"""
+import sys
+import os
+import json
+import argparse
+import importlib.util
+from pathlib import Path
+
+TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+_TASK_ROOT = Path(TASK_DIR).resolve()
+# Import the installed dependency before task-local paths can shadow it. This
+# also covers direct execution, where scripts/ starts as sys.path[0].
+_prior_path = sys.path[:]
+sys.path[:] = [entry for entry in _prior_path
+               if Path(entry or os.getcwd()).resolve() not in (_TASK_ROOT, _SCRIPTS_DIR)]
+try:
+    import torch
+finally:
+    sys.path[:] = _prior_path
+if not getattr(torch, "__file__", None) or Path(torch.__file__).resolve().is_relative_to(_TASK_ROOT):
+    raise RuntimeError("Task-local torch module cannot replace the installed dependency")
+sys.path.insert(0, TASK_DIR)
+os.chdir(TASK_DIR)
+
+
+def _protected_script(name):
+    # Bind policy modules to the protected scripts files, regardless of
+    # task-root additions. Root-first lookup remains in place for the
+    # protected native loader and wrappers.
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Protected script is unavailable: {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+_PROTECTED_BENCHMARK = _protected_script("_aka_benchmark")
+_PROTECTED_REFERENCE_CHECKS = _protected_script("reference_checks")
+_PROTECTED_REPLAY_VALIDATION = _protected_script("replay_validation")
+benchmark_cuda_graph_or_events = _PROTECTED_BENCHMARK.benchmark_cuda_graph_or_events
+hip_source_graph_capture_policy = _PROTECTED_BENCHMARK.hip_source_graph_capture_policy
+
+TASK_NAME = "hip2hip/roiaware_pool3d"
+HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
+    os.path.join(TASK_DIR, "src", "roiaware_pool3d.cpp"),
+    os.path.join(TASK_DIR, "src", "roiaware_pool3d_kernel.hip"),
+)
+
+# 5 test shapes: (num_rois, num_pts, C, out_size)
+TEST_SHAPES = [
+    (2, 200, 3, 4),
+    (4, 1000, 3, 4),
+    (8, 5000, 3, 4),
+    (4, 2000, 6, 4),
+    (16, 3000, 3, 2),
+]
+
+
+def cpu_roiaware_pool3d(rois, pts, pts_feature, out_size, mode='max'):
+    """CPU reference for RoI-aware 3D pooling.
+    Args:
+        rois: (N, 7) - (cx, cy, cz, dx, dy, dz, heading), bottom-center
+        pts: (npoints, 3)
+        pts_feature: (npoints, C)
+        out_size: int
+        mode: 'max' or 'avg'
+    Returns:
+        pooled_features: (N, out_size, out_size, out_size, C)
+    """
+    N = rois.shape[0]
+    npoints = pts.shape[0]
+    C = pts_feature.shape[1]
+    out_x = out_y = out_z = out_size
+    pooled = torch.zeros(N, out_x, out_y, out_z, C, dtype=pts_feature.dtype)
+    counts = torch.zeros(N, out_x, out_y, out_z, dtype=torch.int32)
+
+    for n in range(N):
+        cx, cy, cz, dx, dy, dz, heading = rois[n]
+        cos_h = torch.cos(-heading)
+        sin_h = torch.sin(-heading)
+
+        for p in range(npoints):
+            # Transform point to ROI local frame
+            px = pts[p, 0] - cx
+            py = pts[p, 1] - cy
+            pz = pts[p, 2] - cz
+
+            local_x = px * cos_h - py * sin_h
+            local_y = px * sin_h + py * cos_h
+            local_z = pz
+
+            # Check if point is inside the box
+            if (abs(local_x) >= dx / 2 or abs(local_y) >= dy / 2
+                    or local_z < 0 or local_z > dz):
+                continue
+
+            # Map to voxel indices
+            vx = int((local_x + dx / 2) / dx * out_x)
+            vy = int((local_y + dy / 2) / dy * out_y)
+            vz = int(local_z / dz * out_z)
+
+            # Clamp
+            vx = min(max(vx, 0), out_x - 1)
+            vy = min(max(vy, 0), out_y - 1)
+            vz = min(max(vz, 0), out_z - 1)
+
+            if mode == 'max':
+                if counts[n, vx, vy, vz] == 0:
+                    pooled[n, vx, vy, vz] = pts_feature[p]
+                else:
+                    pooled[n, vx, vy, vz] = torch.max(pooled[n, vx, vy, vz], pts_feature[p])
+                counts[n, vx, vy, vz] += 1
+            else:  # avg - accumulate, we'll divide later
+                pooled[n, vx, vy, vz] += pts_feature[p]
+                counts[n, vx, vy, vz] += 1
+
+    if mode == 'avg':
+        nonempty = counts > 0
+        pooled[nonempty] /= counts[nonempty].to(pooled.dtype).unsqueeze(-1)
+    return pooled
+
+
+def generate_test_data(num_rois, num_pts, C, device="cpu"):
+    """Generate rois, points, and features with points near rois."""
+    torch.manual_seed(42)
+    rois = torch.zeros(num_rois, 7, device=device)
+    rois[:, :3] = torch.randn(num_rois, 3, device=device) * 3
+    rois[:, 3:6] = torch.rand(num_rois, 3, device=device) * 4 + 2  # sizes 2-6
+    rois[:, 6] = torch.rand(num_rois, device=device) * 0.3
+
+    # Generate points near rois so some end up inside
+    pts = torch.randn(num_pts, 3, device=device) * 5
+    # Place some points inside first roi
+    n_inside = min(num_pts // 4, 50)
+    cx, cy, cz, dx, dy, dz, _ = rois[0]
+    pts[:n_inside, 0] = cx + (torch.rand(n_inside, device=device) - 0.5) * dx * 0.8
+    pts[:n_inside, 1] = cy + (torch.rand(n_inside, device=device) - 0.5) * dy * 0.8
+    pts[:n_inside, 2] = cz + torch.rand(n_inside, device=device) * dz * 0.8
+
+    pts_feature = torch.randn(num_pts, C, device=device).abs()  # positive for max pooling
+
+    return rois, pts, pts_feature
+
+
+def run_compile():
+    try:
+        from kernel_loader import roiaware_pool3d_ext  # noqa: F401
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def run_correctness():
+    from roiaware_pool3d_wrapper import RoIAwarePool3d
+
+    for i, (num_rois, num_pts, C, out_size) in enumerate(TEST_SHAPES):
+        torch.manual_seed(42 + i)
+        rois, pts, pts_feature = generate_test_data(num_rois, num_pts, C)
+        rois_gpu = rois.cuda().float()
+        pts_gpu = pts.cuda().float()
+        feat_gpu = pts_feature.cuda().float()
+
+        # Test max pooling
+        pool_max = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='max')
+        gpu_out_max = pool_max(rois_gpu, pts_gpu, feat_gpu)
+
+        cpu_out_max = cpu_roiaware_pool3d(
+            rois.float(), pts.float(), pts_feature.float(), out_size, mode='max')
+
+        # Compare using sum-based approach (boundary voxel assignment may differ)
+        gpu_sum = gpu_out_max.cpu().sum()
+        cpu_sum = cpu_out_max.sum()
+        if gpu_sum.abs() > 1e-6 or cpu_sum.abs() > 1e-6:
+            if not torch.allclose(gpu_sum, cpu_sum, atol=1e-1, rtol=0.2):
+                return False, (f"Max pool shape {i+1} (N={num_rois},pts={num_pts},C={C},"
+                               f"out={out_size}): sum mismatch gpu={gpu_sum.item():.4f} "
+                               f"cpu={cpu_sum.item():.4f}")
+
+        full_output = _PROTECTED_REFERENCE_CHECKS.full_output
+        strict_max_output = _PROTECTED_REFERENCE_CHECKS.strict_max_output
+        try:
+            full_output(gpu_out_max, cpu_out_max, gpu=True)
+            strict_max_output(gpu_out_max, cpu_out_max, gpu=True)
+        except (ValueError, AssertionError) as exc:
+            return False, f"Max pool shape {i+1}: full output mismatch: {exc}"
+
+        # Verify shapes match
+        expected_shape = (num_rois, out_size, out_size, out_size, C)
+        if gpu_out_max.shape != expected_shape:
+            return False, (f"Shape {i+1}: output shape {gpu_out_max.shape} "
+                           f"!= expected {expected_shape}")
+
+        # Test avg pooling against the independent CPU voxel/count reference.
+        pool_avg = RoIAwarePool3d(out_size=out_size, max_pts_per_voxel=128, mode='avg')
+        gpu_out_avg = pool_avg(rois_gpu, pts_gpu, feat_gpu)
+        if gpu_out_avg.shape != expected_shape:
+            return False, f"Shape {i+1}: avg pool output shape mismatch"
+        if not torch.isfinite(gpu_out_avg).all():
+            return False, f"Shape {i+1}: avg pool output contains NaN or Inf"
+        cpu_out_avg = cpu_roiaware_pool3d(
+            rois.float(), pts.float(), pts_feature.float(), out_size, mode='avg')
+        try:
+            torch.testing.assert_close(
+                gpu_out_avg.cpu(), cpu_out_avg, atol=1e-4, rtol=1e-3)
+        except AssertionError as exc:
+            return False, f"Shape {i+1}: avg pool mismatch: {exc}"
+
+    return True, None
+
+
+def _time_kernel(fn, n_warmup=10, n_iter=100):
+    return benchmark_cuda_graph_or_events(
+        fn, warmup=n_warmup, repetition=n_iter,
+        use_cuda_graph=HIP_GRAPH_ENABLED,
+        fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+    )
+
+
+def run_performance():
+    from kernel_loader import roiaware_pool3d_ext
+    measure = _PROTECTED_REPLAY_VALIDATION.measure
+    check_timed_output = _PROTECTED_REFERENCE_CHECKS.check_timed_output
+
+    test_cases = []
+    
+    for shape_idx, (num_rois, num_pts, C, out_size) in enumerate(TEST_SHAPES):
+        torch.manual_seed(42 + shape_idx)
+        rois, pts, pts_feature = generate_test_data(num_rois, num_pts, C, device="cuda")
+        rois = rois.float()
+        pts = pts.float()
+        pts_feature = pts_feature.float()
+
+        pooled_features = torch.empty(
+            (num_rois, out_size, out_size, out_size, C),
+            device="cuda", dtype=pts_feature.dtype,
+        )
+        argmax = torch.empty_like(pooled_features, dtype=torch.int)
+        pts_idx_of_voxels = torch.empty(
+            (num_rois, out_size, out_size, out_size, 128),
+            device="cuda", dtype=torch.int,
+        )
+        pts_mask = torch.empty(
+            (num_rois, num_pts), device="cuda", dtype=torch.int,
+        )
+
+        def prepare_outputs():
+            pooled_features.zero_()
+            argmax.zero_()
+            pts_idx_of_voxels.zero_()
+
+        def run_pool(pool_method):
+            roiaware_pool3d_ext.forward(
+                rois, pts, pts_feature, argmax, pts_idx_of_voxels,
+                pooled_features, pts_mask, pool_method,
+            )
+            # The native entrypoint returns void; expose its actual written buffer.
+            return pooled_features
+
+        # Perf1: max pooling
+        expected_max = cpu_roiaware_pool3d(rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, 'max')
+
+        def changed_reference(mode, expected):
+            changed = cpu_roiaware_pool3d(
+                rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, mode)
+            if torch.equal(changed, expected):
+                raise ValueError('Changed input did not alter the pooling reference')
+            return lambda actual: check_timed_output(actual, changed, mode)
+
+        def change_rois_max():
+            with torch.no_grad():
+                rois[..., 0].add_(1000)
+            return changed_reference('max', expected_max)
+
+        def change_pts_max():
+            with torch.no_grad():
+                pts[..., 0].add_(1000)
+            return changed_reference('max', expected_max)
+
+        def change_max_input():
+            with torch.no_grad():
+                pts_feature.add_(3)
+            return changed_reference('max', expected_max)
+
+        ms_max, meta_max = measure(
+            benchmark_cuda_graph_or_events, lambda: run_pool(0), (rois, pts, pts_feature),
+            lambda actual: check_timed_output(actual, expected_max, 'max'),
+            (change_rois_max, change_pts_max, change_max_input),
+            warmup=10, repetition=100,
+            use_cuda_graph=HIP_GRAPH_ENABLED,
+            fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+            prepare_fn=prepare_outputs,
+        )
+        # Perf2: avg pooling
+        expected_avg = cpu_roiaware_pool3d(rois.cpu(), pts.cpu(), pts_feature.cpu(), out_size, 'avg')
+
+        def change_rois_avg():
+            with torch.no_grad():
+                rois[..., 0].add_(1000)
+            return changed_reference('avg', expected_avg)
+
+        def change_pts_avg():
+            with torch.no_grad():
+                pts[..., 0].add_(1000)
+            return changed_reference('avg', expected_avg)
+
+        def change_avg_input():
+            with torch.no_grad():
+                pts_feature.add_(3)
+            return changed_reference('avg', expected_avg)
+
+        ms_avg, meta_avg = measure(
+            benchmark_cuda_graph_or_events, lambda: run_pool(1), (rois, pts, pts_feature),
+            lambda actual: check_timed_output(actual, expected_avg, 'avg'),
+            (change_rois_avg, change_pts_avg, change_avg_input),
+            warmup=10, repetition=100,
+            use_cuda_graph=HIP_GRAPH_ENABLED,
+            fallback_reason=HIP_GRAPH_FALLBACK_REASON,
+            prepare_fn=prepare_outputs,
+        )
+
+        test_cases.append({
+            "test_case_id": f"shape_{shape_idx}_maxpool",
+            "execution_time_ms": ms_max,
+            **meta_max,
+            "params": {
+                "num_rois": num_rois,
+                "num_pts": num_pts,
+                "C": C,
+                "out_size": out_size,
+                "pool_mode": "max"
+            }
+        })
+        test_cases.append({
+            "test_case_id": f"shape_{shape_idx}_avgpool",
+            "execution_time_ms": ms_avg,
+            **meta_avg,
+            "params": {
+                "num_rois": num_rois,
+                "num_pts": num_pts,
+                "C": C,
+                "out_size": out_size,
+                "pool_mode": "avg"
+            }
+        })
+    
+    return test_cases
+
+
+def main():
+    parser = argparse.ArgumentParser(description=f"Task runner for {TASK_NAME}")
+    parser.add_argument("mode", choices=["compile", "correctness", "performance"])
+    args = parser.parse_args()
+
+    build_dir = os.path.join(TASK_DIR, "build")
+    os.makedirs(build_dir, exist_ok=True)
+
+    if args.mode == "compile":
+        ok, err = run_compile()
+        report = {"status": "ok" if ok else "fail", "error": err}
+        with open(os.path.join(build_dir, "compile_report.json"), "w") as f:
+            json.dump(report, f, indent=2)
+        print(f"Compilation: {'PASS' if ok else 'FAIL'}")
+        if err:
+            print(f"Error: {err}")
+        sys.exit(0 if ok else 1)
+
+    elif args.mode == "correctness":
+        ok, err = run_correctness()
+        report = {"status": "ok" if ok else "fail", "error": err, "num_shapes": len(TEST_SHAPES)}
+        with open(os.path.join(build_dir, "correctness_report.json"), "w") as f:
+            json.dump(report, f, indent=2)
+        print(f"Correctness: {'PASS' if ok else 'FAIL'}")
+        if err:
+            print(f"Error: {err}")
+        sys.exit(0 if ok else 1)
+
+    elif args.mode == "performance":
+        test_cases = run_performance()
+        report = {"test_cases": test_cases}
+        with open(os.path.join(build_dir, "performance_report.json"), "w") as f:
+            json.dump(report, f, indent=2)
+        for case in test_cases:
+            print(f"Perf: {case['execution_time_ms']:.4f} ms ({case['test_case_id']})")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

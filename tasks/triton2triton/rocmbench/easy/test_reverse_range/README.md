@@ -20,6 +20,10 @@ The full input tensor is checked bitwise for immutability after the initial
 invocation, every measured sample, and the changed-input bound replay. An
 untimed same-buffer control changes interior input values while the first output
 remains correct, then requires a fresh full reversal.
+Unscored correctness also calls the same public Triton kernel with int32,
+int64, float64, and bool inputs. Each control checks all 512 exact output
+values and preserves the entire input. These checks add no scored cases
+and do not change the original fp16/bf16/fp32 workload or timing.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 10 warmups and 100 samples are unchanged. The adapter now poisons the output
 before each timed replay, outside the device interval, and captures one kernel

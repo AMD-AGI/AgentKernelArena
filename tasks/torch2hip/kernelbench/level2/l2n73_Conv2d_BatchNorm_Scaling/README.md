@@ -35,7 +35,11 @@ BatchNorm affine parameters and running statistics. Correctness also varies
 the live convolution weight and bias independently at every declared geometry;
 these controls run outside performance measurement. The same reference and
 selected forward must agree at the original tolerance, and the original model
-state is restored afterward. The five scored inputs and default model state remain.
+state is restored afterward. The nonidentity BatchNorm control also compares
+the metadata and exact bytes of every live model parameter/buffer and each
+caller-owned input immediately after both reference and selected forwards. A
+mutating forward fails even if it returns the right output. The five scored
+inputs and default model state remain.
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing

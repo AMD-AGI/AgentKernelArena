@@ -313,27 +313,18 @@ def checked_benchmark(harness, benchmark, fn, **options):
 
     setattr(module, SYMBOL, collect)
     try:
-        timed = harness._TimedRun()
-        checked_samples = [0]
-        sample_expected = plan.expected
-        def check_sample(output):
-            check_sample_outputs(output, sample_expected)
-            checked_samples[0] += 1
-        timed.after_sample = check_sample
-        ms, metadata = benchmark(measured, timed_run=timed, **options)
-        if not timed.bound or checked_samples[0] != options['repetition']:
-            raise AssertionError('Reported sample outputs were not all checked')
-        plan.unchanged()
-        plan.check(timed.outputs)
-        replay_expected = plan.perturb()
-        plan.poison(timed.outputs)
-        replayed = timed.rerun()
-        plan.unchanged()
-        plan.check(replayed, replay_expected)
-        return ms, {**metadata, 'timed_output_checked': True,
-                    'perturbed_input_replay_checked': True, 'source_buffers_unchanged': True,
-                    'triton_wrapper_dispatch_checked': True,
-                    'measured_samples_checked': checked_samples[0], }
+        from _arena_samples import measure
+        inputs = {key: value for key, value in plan.values.items()
+                  if key in plan.saved and key not in OUTPUT_KEYS}
+        ms, metadata = measure(
+            benchmark, harness._TimedRun(), measured, inputs, PERTURB_KEYS,
+            lambda: expected_outputs(harness, plan.values), plan.check,
+            warmup=options['warmup'], repetition=options['repetition'],
+            atol=0.01, rtol=0.01)
+        return ms, {**metadata, 'perturbed_input_replay_checked': True,
+                    'source_buffers_unchanged': True,
+                    'triton_wrapper_dispatch_checked': True}
+
     finally:
         setattr(module, SYMBOL, original)
         plan.restore(originals)

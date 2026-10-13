@@ -143,6 +143,7 @@ class ReportPlugin:
         self.rows={key:deepcopy(row) for key,row in self.expected.items()
                    if action=='validate-task' or action in row['checks']}
         self.collection_error=None;self.node_rows={};self.current_row=None;self.exercised=set()
+        self.operator_module=None
 
     def pytest_collection_modifyitems(self,session,config,items):
         found={};kept=[]
@@ -155,6 +156,7 @@ class ReportPlugin:
             found[key]={'function':name,'arguments':params}
             if key not in self.rows:continue
             self.node_rows[item.nodeid]=key;kept.append(item)
+            if name=='test_reverse_range':self.operator_module=item.module
             if name=='test_performance' and self.action!='validate-task':
                 module=item.module
                 if not getattr(module,'_arena_bench_installed',False):
@@ -209,6 +211,12 @@ def evaluate(role,action):
         if code or plugin.collection_error:
             raise RuntimeError(plugin.collection_error or f'pytest exited {code}: '+output.getvalue()[-3000:])
         failures=[r for r in result['cases'] if r['status']!='PASS']
+        if action=='correctness' and not failures:
+            if plugin.operator_module is None:
+                raise RuntimeError('Correctness did not load the reverse-range kernel')
+            from _arena_reference import check_dtype_controls
+            result['cases'][0].setdefault('metrics',{})['unscored_dtype_controls'] = (
+                check_dtype_controls(plugin.operator_module))
         if failures:result.update(status='FAIL',reason=f'{len(failures)} cases failed or skipped',failure_kind='case_failure')
     except BaseException as exc:
         result.update(status='FAIL',reason=f'{type(exc).__name__}: {exc}',failure_kind='execution_failure')

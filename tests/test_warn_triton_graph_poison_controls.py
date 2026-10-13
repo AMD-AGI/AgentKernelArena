@@ -19,35 +19,6 @@ def load(path, name):
     return module
 
 
-def test_layernorm_poison_covers_y_as_well_as_statistics():
-    task = TASKS / "instruction2triton/rocmbench/layernorm"
-    reference = load(task / "_arena_reference.py", "_layernorm_poison_reference")
-    x = torch.randn(2, 7)
-    w, b = torch.ones(7), torch.zeros(7)
-    y, mean, rstd = torch.empty_like(x), torch.empty(2), torch.empty(2)
-    write_y = [True]
-
-    def launch(grid, x, y, w, b, mean, rstd, *args):
-        xf = x.float()
-        center = xf.mean(-1)
-        mean.copy_(center)
-        rstd.copy_(torch.rsqrt(((xf-center[:, None])**2).mean(-1)+1e-5))
-        if write_y[0]:
-            y.copy_(torch.nn.functional.layer_norm(x, (7,), w, b, 1e-5))
-
-    module = SimpleNamespace(layernorm_wrapper_fn=launch)
-    context = dict(x=x, w=w, b=b, eps=1e-5, normalized_shape_arg=(7,))
-    check = reference.prepare(context, module)
-    with reference.capture_side_outputs(module) as statistics_for:
-        module.layernorm_wrapper_fn((2,), x, y, w, b, mean, rstd)
-        check(y, statistics_for(y))
-        statistics_for.poison_all()
-        assert torch.isnan(y).all() and torch.isnan(mean).all() and torch.isnan(rstd).all()
-        write_y[0] = False
-        module.layernorm_wrapper_fn((2,), x, y, w, b, mean, rstd)
-        with pytest.raises(ValueError, match="nonfinite"):
-            check(y, statistics_for(y))
-    assert module.layernorm_wrapper_fn is launch
 
 
 @pytest.mark.parametrize("fault_row", (None, 3, 5, 8))

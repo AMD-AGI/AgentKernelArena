@@ -70,75 +70,8 @@ def test_fla_chunk_scored_length_gate_control_uses_independent_oracle():
                               atol=case['atol'], rtol=case['rtol'])
 
 
-@pytest.mark.parametrize('wrong_scale', [False, True])
-def test_flash_control_checks_strides_and_nondefault_scale(wrong_scale):
-    path = ROOT / 'tasks/instruction2triton/rocmbench/test_flashattention_fwd/_arena_reference.py'
-    spec = importlib.util.spec_from_file_location('flash_control_reference', path)
-    reference = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(reference)
-    seen = []
-    class FakeKernel:
-        def __getitem__(self, grid):
-            def launch(q, k, v, scale, L, m, output):
-                effective_scale = 0.2 if wrong_scale else scale
-                scores = (q @ k.transpose(-1, -2)) * effective_scale
-                causal = torch.ones(scores.shape[-2:], dtype=torch.bool).triu_(1)
-                scores.masked_fill_(causal, float('-inf'))
-                output.copy_(torch.softmax(scores.float(), dim=-1).to(q.dtype) @ v)
-                stats = (q.float() @ k.float().transpose(-1, -2)) * effective_scale
-                stats.masked_fill_(causal, float('-inf'))
-                row_max = stats.max(-1).values
-                m.copy_(row_max.flatten(0, 1))
-                L.copy_(torch.exp(stats - row_max[..., None]).sum(-1).flatten(0, 1))
-            return launch
-
-    def attention(q, k, v, scale):
-        seen.append((q.stride(-1), k.stride(-1), v.stride(-1), scale))
-        output = torch.empty_like(q)
-        L = torch.empty(q.shape[:3]).reshape(-1, q.shape[-2])
-        m = torch.empty_like(L)
-        module.flash_fwd_kernel[(1,)](q, k, v, scale, L, m, output)
-        return output
-    module = SimpleNamespace(attention=attention, flash_fwd_kernel=FakeKernel())
-    if wrong_scale:
-        with pytest.raises(reference.NumericalMismatch):
-            reference.check_scale_stride_control(module, 'cpu')
-    else:
-        reference.check_scale_stride_control(module, 'cpu')
-        assert seen == [(2, 2, 2, 0.35)]
 
 
-@pytest.mark.parametrize('dtype', [torch.float16, torch.bfloat16, torch.float32])
-@pytest.mark.parametrize('bad_stat', [False, True])
-def test_layernorm_control_checks_mean_rstd_and_row_strides(dtype, bad_stat):
-    path = ROOT / 'tasks/instruction2triton/rocmbench/layernorm/_arena_reference.py'
-    spec = importlib.util.spec_from_file_location('layernorm_control_reference', path)
-    reference = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(reference)
-    torch.manual_seed(3)
-    context = {'x': torch.randn(8, 257, dtype=dtype),
-               'w': torch.rand(257, dtype=dtype),
-               'b': torch.rand(257, dtype=dtype)}
-    seen = []
-    def launch(grid, x, y, w, b, mean, rstd, x_stride, y_stride,
-               rows0, cols0, rows1, cols1, eps, block):
-        seen.append((x.stride(0), y.stride(0), x_stride, y_stride, eps))
-        assert grid == (7,) and (rows0, cols0, rows1, cols1) == (7, 129, 7, 129)
-        xf = x.float()
-        mu = xf.mean(-1)
-        sigma = torch.rsqrt(((xf - mu[:, None]) ** 2).mean(-1) + eps)
-        mean.copy_(mu)
-        rstd.copy_(sigma)
-        y.copy_(torch.nn.functional.layer_norm(x, (129,), w, b, eps))
-        if bad_stat:
-            mean.zero_()
-    module = SimpleNamespace(layernorm_wrapper_fn=launch)
-    if bad_stat:
-        with pytest.raises(reference.NumericalMismatch):
-            reference.check_stats_stride_control(context, module)
-    else:
-        reference.check_stats_stride_control(context, module)
-        assert seen == [(132, 134, 132, 134, 1e-3)]
 
 
 @pytest.mark.parametrize('bad_output', [False, True])

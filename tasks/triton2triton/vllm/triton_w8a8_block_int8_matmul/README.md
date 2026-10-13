@@ -34,6 +34,9 @@ against the original CPU block-dequantization/matmul oracle, using pristine
 operands and scales. All four input tensors must remain unchanged. The original
 `atol=rtol=1e-1` rule is retained. Unscored controls add a contiguous higher-rank
 A, partial K/N blocks, a 64-by-64 scale block, zero A and FP32/BF16 output.
+The same controls also check noncontiguous As alone, Bs alone, and both scales
+together, using padded storage with the original logical scale values. These
+checks run only during correctness, outside the five scored measurements.
 The INT8 wrapper retains its contiguous A/B requirement.
 
 The five scored shapes, seeds and input magnitudes remain unchanged, including

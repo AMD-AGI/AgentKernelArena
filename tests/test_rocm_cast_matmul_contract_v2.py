@@ -13,8 +13,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = ['instruction2triton/rocmbench/test_cast_matmul',
-         'triton2triton/rocmbench/medium/test_cast_matmul']
+TASKS = ['triton2triton/rocmbench/medium/test_cast_matmul']
 
 
 def load(path):
@@ -279,107 +278,7 @@ def test_public_strided_control_rejects_invalid_implementations(task, mode):
 
 
 # Checked-in original expectations; no Git history is required in CI.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/test_cast_matmul': {'cast_matmul_triton_wrapper': '619c07778bebba091098b8f70ea8028264c1a3730a742cb4a323cef152a66bfc',
-                                                         'config.yaml': 'c4ce380bb4451376b0fcce71a5641a31edb0335313b4748052faa0cee5fe2cec',
-                                                         'decorators': {'matmul_kernel': "Module(body=[Attribute(value=Name(id='triton', "
-                                                                                         'ctx=Load()), '
-                                                                                         "attr='jit', "
-                                                                                         'ctx=Load())], '
-                                                                                         'type_ignores=[])',
-                                                                        'test_cast_matmul': "Module(body=[Call(func=Attribute(value=Attribute(value=Name(id='pytest', "
-                                                                                            'ctx=Load()), '
-                                                                                            "attr='mark', "
-                                                                                            'ctx=Load()), '
-                                                                                            "attr='parametrize', "
-                                                                                            'ctx=Load()), '
-                                                                                            "args=[Constant(value='M, "
-                                                                                            'K, N, w_dtype, '
-                                                                                            'x_dtype, '
-                                                                                            "out_dtype'), "
-                                                                                            "ListComp(elt=Tuple(elts=[Name(id='M', "
-                                                                                            'ctx=Load()), '
-                                                                                            "Name(id='K', "
-                                                                                            'ctx=Load()), '
-                                                                                            "Name(id='N', "
-                                                                                            'ctx=Load()), '
-                                                                                            "Name(id='w', "
-                                                                                            'ctx=Load()), '
-                                                                                            "Name(id='x', "
-                                                                                            'ctx=Load()), '
-                                                                                            "Name(id='o', "
-                                                                                            'ctx=Load())], '
-                                                                                            'ctx=Load()), '
-                                                                                            "generators=[comprehension(target=Tuple(elts=[Name(id='M', "
-                                                                                            'ctx=Store()), '
-                                                                                            "Name(id='K', "
-                                                                                            'ctx=Store()), '
-                                                                                            "Name(id='N', "
-                                                                                            'ctx=Store())], '
-                                                                                            'ctx=Store()), '
-                                                                                            'iter=List(elts=[Tuple(elts=[Constant(value=128), '
-                                                                                            'Constant(value=128), '
-                                                                                            'Constant(value=128)], '
-                                                                                            'ctx=Load()), '
-                                                                                            'Tuple(elts=[Constant(value=1280), '
-                                                                                            'Constant(value=768), '
-                                                                                            'Constant(value=1024)], '
-                                                                                            'ctx=Load())], '
-                                                                                            'ctx=Load()), '
-                                                                                            'ifs=[], '
-                                                                                            'is_async=0), '
-                                                                                            "comprehension(target=Name(id='w', "
-                                                                                            'ctx=Store()), '
-                                                                                            "iter=Name(id='input_dtypes', "
-                                                                                            'ctx=Load()), '
-                                                                                            'ifs=[], '
-                                                                                            'is_async=0), '
-                                                                                            "comprehension(target=Name(id='x', "
-                                                                                            'ctx=Store()), '
-                                                                                            "iter=Name(id='input_dtypes', "
-                                                                                            'ctx=Load()), '
-                                                                                            'ifs=[], '
-                                                                                            'is_async=0), '
-                                                                                            "comprehension(target=Name(id='o', "
-                                                                                            'ctx=Store()), '
-                                                                                            "iter=Name(id='out_dtypes', "
-                                                                                            'ctx=Load()), '
-                                                                                            'ifs=[], '
-                                                                                            'is_async=0)])], '
-                                                                                            'keywords=[])], '
-                                                                                            'type_ignores=[])',
-                                                                        'test_performance': "Module(body=[Call(func=Attribute(value=Attribute(value=Name(id='pytest', "
-                                                                                            'ctx=Load()), '
-                                                                                            "attr='mark', "
-                                                                                            'ctx=Load()), '
-                                                                                            "attr='parametrize', "
-                                                                                            'ctx=Load()), '
-                                                                                            "args=[Constant(value='M, "
-                                                                                            "K, N'), "
-                                                                                            "Name(id='CAST_MATMUL_SHAPES_FOR_PERF', "
-                                                                                            'ctx=Load())], '
-                                                                                            'keywords=[]), '
-                                                                                            "Call(func=Attribute(value=Attribute(value=Name(id='pytest', "
-                                                                                            'ctx=Load()), '
-                                                                                            "attr='mark', "
-                                                                                            'ctx=Load()), '
-                                                                                            "attr='parametrize', "
-                                                                                            'ctx=Load()), '
-                                                                                            "args=[Constant(value='a_dtype_str, "
-                                                                                            'b_dtype_str, '
-                                                                                            'c_dtype_str, '
-                                                                                            "dot_acc_tl_dtype_str'), "
-                                                                                            "Name(id='CAST_MATMUL_DTYPES_FOR_PERF', "
-                                                                                            'ctx=Load())], '
-                                                                                            'keywords=[])], '
-                                                                                            'type_ignores=[])'},
-                                                         'matmul_kernel': '9dcd0994c067cddf385b00e6f2b6bdc7561ec11d47f1526b35b517b47c0208f7',
-                                                         'normalized_original_source_sha256': '5f22cb82b08b948fbfaf7d4ac43771b150f53e5e69d9360b05823c70bf1e9cc7',
-                                                         'original_rows_sha256': '61f975a587a8fb64f5e36b223e07065ab8a77ff654f6d4cb15b93447546e3d0c',
-                                                         'original_source_sha256': '279136ba9297f38f3dd9b47f532a08775c32255053bf22bd3128cbe67497b852',
-                                                         'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
-                                                         'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                         'workloads.json': '669cbdd597515c92db9012624e6e8ee4d1ede59018187a2a255a6c0d9b640e88'},
- 'tasks/triton2triton/rocmbench/medium/test_cast_matmul': {'cast_matmul_triton_wrapper': '619c07778bebba091098b8f70ea8028264c1a3730a742cb4a323cef152a66bfc',
+ORIGINAL = {'tasks/triton2triton/rocmbench/medium/test_cast_matmul': {'cast_matmul_triton_wrapper': '619c07778bebba091098b8f70ea8028264c1a3730a742cb4a323cef152a66bfc',
                                                            'config.yaml': 'c4ce380bb4451376b0fcce71a5641a31edb0335313b4748052faa0cee5fe2cec',
                                                            'decorators': {'matmul_kernel': "Module(body=[Attribute(value=Name(id='triton', "
                                                                                            'ctx=Load()), '
@@ -393,7 +292,8 @@ ORIGINAL = {'tasks/instruction2triton/rocmbench/test_cast_matmul': {'cast_matmul
                                                                                               "attr='parametrize', "
                                                                                               'ctx=Load()), '
                                                                                               "args=[Constant(value='M, "
-                                                                                              'K, N, '
+                                                                                              'K, '
+                                                                                              'N, '
                                                                                               'w_dtype, '
                                                                                               'x_dtype, '
                                                                                               "out_dtype'), "
@@ -455,7 +355,8 @@ ORIGINAL = {'tasks/instruction2triton/rocmbench/test_cast_matmul': {'cast_matmul
                                                                                               "attr='parametrize', "
                                                                                               'ctx=Load()), '
                                                                                               "args=[Constant(value='M, "
-                                                                                              "K, N'), "
+                                                                                              'K, '
+                                                                                              "N'), "
                                                                                               "Name(id='CAST_MATMUL_SHAPES_FOR_PERF', "
                                                                                               'ctx=Load())], '
                                                                                               'keywords=[]), '

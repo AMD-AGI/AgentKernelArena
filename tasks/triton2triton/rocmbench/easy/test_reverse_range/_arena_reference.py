@@ -77,6 +77,37 @@ def prepare(c, module):
     return check
 
 
+def check_dtype_controls(module, device='cuda'):
+    """Exercise the public pointer-only reversal on unscored dtypes."""
+    index = torch.arange(516, dtype=torch.int64, device=device)
+    controls = (
+        ('int32', (index * 7 - 123).to(torch.int32)),
+        ('int64', (1 << 40) + index * 17),
+        ('float64', (index.double() - 257) * 0.125 +
+         ((index % 7).double() + 1) * 1e-10),
+        ('bool', index % 3 == 0),
+    )
+    checked = []
+    for name, source in controls:
+        original = source.contiguous().view(torch.uint8).clone()
+        expected = torch.flip(source[1:513], [0])
+        output = torch.empty((512,), dtype=source.dtype, device=source.device)
+        if source.dtype == torch.bool:
+            output.copy_(~expected)
+        elif source.is_floating_point():
+            output.fill_(float('nan'))
+        else:
+            output.fill_(torch.iinfo(source.dtype).min)
+        module.reverse_range[(1,)](source, output)
+        if source.is_cuda:
+            torch.cuda.synchronize()
+        compare(output, expected, exact=True)
+        if not torch.equal(source.contiguous().view(torch.uint8), original):
+            raise AssertionError(f'{name} reverse-range control modified its input')
+        checked.append(name)
+    return checked
+
+
 def check_interior_transitions(c, invoke):
     """A correct output sentinel must not hide changes elsewhere in the input."""
     source, output = c['data_perf'], c['res_perf_buffer']

@@ -11,7 +11,6 @@ import torch
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks"
 REVERSE_TASKS = (
-    "instruction2triton/rocmbench/test_reverse_range",
     "triton2triton/rocmbench/easy/test_reverse_range",
 )
 
@@ -93,7 +92,7 @@ def test_block_pointer_controls_check_each_partial_dimension(wrong_branch):
         assert seen[-1] == wrong_branch
 
 
-@pytest.mark.parametrize("task", (*REVERSE_TASKS, "instruction2triton/rocmbench/gemm"))
+@pytest.mark.parametrize("task", REVERSE_TASKS)
 @pytest.mark.parametrize("skip_middle", (False, True))
 @pytest.mark.parametrize("reported_repeats", (1, 2))
 def test_graph_samples_poison_output_and_require_one_call(

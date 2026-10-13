@@ -128,23 +128,18 @@ def run_performance():
             a = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
             b = torch.randn(seqlen, ngroups, k, device=device, dtype=torch.float16)
             cu = torch.arange(0, nchunks + 1, device=device, dtype=torch.int32) * chunk_size
-            readonly = InputSnapshot(dict(a=a, b=b, cu=cu))
             from _aka_benchmark import TimedRun
-            timed = TimedRun()
-            expected = lambda: reference_bmm(a, b, chunk_size, cu, causal).to(device)
-            observe_measured_samples(
-                timed, readonly, expected, atol=1e-1, rtol=1e-1)
-            def _bench_fn():
-                return mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal)
-            elapsed_ms, benchmark_metadata = _benchmark_cuda_graph_or_events(
-                _bench_fn,
-                warmup=WARMUP_ITERATIONS,
-                repetition=BENCHMARK_ITERATIONS,
-                timed_run=timed,
-            )
-            benchmark_metadata.update(validate_timed(
-                timed, readonly, lambda: reference_bmm(a, b, chunk_size, cu, causal).to(device),
-                lambda: a.neg_(), atol=1e-1, rtol=1e-1, expected_samples=BENCHMARK_ITERATIONS))
+            from _arena_samples import measure
+            inputs = dict(a=a, b=b, cu=cu)
+            elapsed_ms, benchmark_metadata = measure(
+                _benchmark_cuda_graph_or_events, TimedRun(),
+                lambda: mod.bmm_chunk_fwd(a, b, chunk_size, cu, causal=causal),
+                inputs, ('a', 'b'),
+                lambda: reference_bmm(a, b, chunk_size, cu, causal).to(device),
+                lambda out, ref: check_outputs(out, ref, atol=1e-1, rtol=1e-1,
+                                               inputs=tuple(inputs.values())),
+                warmup=WARMUP_ITERATIONS, repetition=BENCHMARK_ITERATIONS,
+                atol=1e-1, rtol=1e-1)
 
             test_cases.append({
                 "test_case_id": f"perf{test_idx + 1}",

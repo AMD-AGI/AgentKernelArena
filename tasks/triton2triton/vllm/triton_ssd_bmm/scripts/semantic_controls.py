@@ -8,8 +8,8 @@ import torch
 from scripts.contract_checks import InputSnapshot, check_outputs, comparator_control, ContractFailure
 
 
-def _check(got, expected, atol, rtol):
-    check_outputs(got, expected, atol=atol, rtol=rtol)
+def _check(got, expected, atol, rtol, *, inputs=()):
+    check_outputs(got, expected, atol=atol, rtol=rtol, inputs=inputs)
     comparator_control(expected, atol=atol, rtol=rtol)
 
 
@@ -68,6 +68,32 @@ def control_cases(device):
                                causal=causal,output_dtype=output_dtype),
                    expected=expected,atol=1e-1,rtol=1e-1)
 
+    # K is not restricted to a tile multiple. Place a substantial contribution
+    # in the final lane so dropping the last 32- or 64-wide tile cannot pass.
+    # These exact integer answers are independent of the matmul reference.
+    for k, causal in ((35, False), (65, True)):
+        a = torch.zeros(5, 2, k, device=device, dtype=torch.float16)
+        b = torch.zeros_like(a)
+        for t in range(5):
+            for g in range(2):
+                a[t, g, 0] = 5 * (t + 1) * (g + 1)
+                a[t, g, -1] = 3 * (t + 1) * (g + 1)
+                b[t, g, 0] = 1
+                b[t, g, -1] = 2 * (t + 1)
+        expected = torch.zeros(2, 2, 32, 32, device=device, dtype=torch.float16)
+        for c, (s, e) in enumerate(((0, 3), (3, 5))):
+            for g in range(2):
+                for i in range(s, e):
+                    for j in range(s, e):
+                        expected[c, g, i - s, j - s] = (g + 1) * (i + 1) * (5 + 6 * (j + 1))
+        yield dict(name=f'nonaligned_k_{k}_tail_causal_{causal}',
+                   entrypoint='bmm_chunk_fwd',
+                   kwargs=dict(a=a, b=b, chunk_size=32,
+                               cu_chunk_seqlens=torch.tensor([0, 3, 5], device=device,
+                                                             dtype=torch.int32),
+                               causal=causal, output_dtype=None),
+                   expected=expected, atol=1e-1, rtol=1e-1)
+
     # At chunk_size=32 each chunk occupies one tile. This case crosses an
     # upper tile in the causal launch, where the public contract still asks
     # for the complete matrix rather than an elementwise causal mask.
@@ -94,8 +120,13 @@ def reference_controls(h):
     rows=[]
     for c in control_cases('cpu'):
         args=dict(c['kwargs']);dtype=args.pop('output_dtype')
+        readonly = InputSnapshot({k: v for k, v in args.items()
+                                  if isinstance(v, torch.Tensor)})
         # The historical reference returns the input dtype. Optional output
         # dtype is a public storage contract, independent of this exact answer.
-        _check(h.reference_bmm(**args),c['expected'].to(args['a'].dtype),c['atol'],c['rtol'])
+        actual = h.reference_bmm(**args)
+        readonly.check()
+        _check(actual,c['expected'].to(args['a'].dtype),c['atol'],c['rtol'],
+               inputs=[e[1] for e in readonly.entries])
         rows.append(dict(control=c['name'],status='PASS',negative_control='rejected'))
     return rows

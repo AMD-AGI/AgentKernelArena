@@ -13,8 +13,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = ['instruction2triton/rocmbench/test_iv_dependent_matmul',
-         'triton2triton/rocmbench/medium/test_iv_dependent_matmul']
+TASKS = ['triton2triton/rocmbench/medium/test_iv_dependent_matmul']
 
 
 def load(path):
@@ -193,27 +192,7 @@ def test_original_kernel_launch_gate_and_all_scored_parameters_preserved(task):
 
 
 # Stable original expectations; no branch history dependency in CI.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/test_iv_dependent_matmul': {'decorators': {'calculate_gemm_gbps': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                                'calculate_gemm_tflops': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                                'iv_dependent_matmul': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
-                                                                                'iv_dependent_matmul_triton_wrapper': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                                'set_seed': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                                'test_iv_dependent_matmul': 'b8ad88b1900033db2cd8e76a282653e12fecc0c4241f67764e835dd7de61e85c',
-                                                                                'test_performance': '8a29b3de93290988d0838ad10e0acc0d4f7e55418cbda697c194a2fd4e75a880',
-                                                                                'test_save_performance_results': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                                'test_save_results': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6'},
-                                                                 'files': {'config.yaml': 'b1432729bbe70949c9e13c04ab3505285852d92a7a0a80e881481f7601551f74',
-                                                                           'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
-                                                                 'functions': {'calculate_gemm_gbps': 'd164c02a9a91bcec2efd530f626e0d3d0aef191d0cd41efd8367d354a8c0777f',
-                                                                               'calculate_gemm_tflops': '95c332258cd36e5e0e4f3487f8d759bcba4b36f1ba5851c7feedf7c22968128f',
-                                                                               'iv_dependent_matmul': 'd94791643aec48dfc3199c29723f9f935d2e70f93ab2c134cb02e0e3315744a0',
-                                                                               'iv_dependent_matmul_triton_wrapper': '355f4d4e5d40c4ffdabaf8cdf1a23db60c80effcb05805f75aa6111f5874af19',
-                                                                               'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                                               'test_save_performance_results': 'e75049a8bfa70933554c63918336d2909e576a9a7940225ed7fa3c50aad1b8d9',
-                                                                               'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8'},
-                                                                 'performance_except_heuristics': '5678d5858fd55a5f3f5ed37d7ed8ea1b29e9be284fb399b8ce808c84449b10d0',
-                                                                 'rows': 'e41316baae3dd7312e0453743e525f021f66c80693d9c237f89069ce4902bdd8'},
- 'tasks/triton2triton/rocmbench/medium/test_iv_dependent_matmul': {'decorators': {'calculate_gemm_gbps': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
+ORIGINAL = {'tasks/triton2triton/rocmbench/medium/test_iv_dependent_matmul': {'decorators': {'calculate_gemm_gbps': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
                                                                                   'calculate_gemm_tflops': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
                                                                                   'iv_dependent_matmul': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
                                                                                   'iv_dependent_matmul_triton_wrapper': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',

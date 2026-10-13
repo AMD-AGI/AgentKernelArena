@@ -13,7 +13,7 @@ import pytest
 import torch
 
 ROOT=Path(__file__).resolve().parents[1]
-TASKS=[f'{s}/{n}' for s in ['instruction2triton/rocmbench','triton2triton/rocmbench/medium']
+TASKS=[f'{s}/{n}' for s in ['triton2triton/rocmbench/medium']
        for n in ['softmax','naive_softmax']]
 
 
@@ -206,33 +206,7 @@ def test_output_contract(task,bad):
 
 
 # Original immutable hashes; tests require no transient git history.
-ORIGINAL = {'instruction2triton/rocmbench/naive_softmax': {'config.yaml': '029522ae12fc59a4153f52f731091ac3cc3ed51657e7ec8e8936b48e05253413',
-                                                'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
-                                                'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                'set_seed_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                'softmax': '385a722dee67c1b5c26600de6d27d68a52e5651d6c5a74c9c17e66356aeb1081',
-                                                'softmax_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                'softmax_kernel_naive': '0eef73deaa488269b7622da7b881c0b0e327513eac4b8b3a97ef631b39ae5ec3',
-                                                'softmax_kernel_naive_decorators': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
-                                                'test_performance': '9c25ada07ba95a021787641d8ea0c135aaad14c3293fdb0b2b32f450bdbae8c1',
-                                                'test_performance_decorators': '7745185e667ca62d684f5fbdaffca20e02354c43f5d73684d4e603c178965a9d',
-                                                'test_softmax_decorators': '74d22fcbd91c2c85aa15e4a700453c5d2fb812662fc643563c73e78240c405a5',
-                                                'workloads.json': '573ff277e86b6af6aacd73ac4a0fd4460df979f410d0d08a9aa0e102c143759f'},
- 'instruction2triton/rocmbench/softmax': {'config.yaml': 'f26b3115bd19e55bbfbea4e94da645efb040bb617b23be9ad5d0d938e55b8e29',
-                                          'get_autotune_config': '6244982d0e7695fb733182da152884bb0b46fcdfcfdac2eae73743112cbbb1bd',
-                                          'get_autotune_config_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                          'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
-                                          'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                          'set_seed_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                          'softmax': 'fc439017574b4a60dce5a57dd642ea52754d2c0441f92abb4bedbb3eee6b9fa0',
-                                          'softmax_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                          'softmax_kernel_online': '7682d5f9402972e803255f366f40fce0c88a7cd956bd16cdac5ddfd152745776',
-                                          'softmax_kernel_online_decorators': '66970bc765542eb3bf9c2eb2774adead9b9757bd364b54a3efcafe160a1cc17c',
-                                          'test_performance': '9c25ada07ba95a021787641d8ea0c135aaad14c3293fdb0b2b32f450bdbae8c1',
-                                          'test_performance_decorators': '7745185e667ca62d684f5fbdaffca20e02354c43f5d73684d4e603c178965a9d',
-                                          'test_softmax_decorators': '74d22fcbd91c2c85aa15e4a700453c5d2fb812662fc643563c73e78240c405a5',
-                                          'workloads.json': '876bff095c2126dc6ddd90beccd64a66e997f6559ff038b558ba854c39755684'},
- 'triton2triton/rocmbench/medium/naive_softmax': {'config.yaml': '029522ae12fc59a4153f52f731091ac3cc3ed51657e7ec8e8936b48e05253413',
+ORIGINAL = {'triton2triton/rocmbench/medium/naive_softmax': {'config.yaml': '029522ae12fc59a4153f52f731091ac3cc3ed51657e7ec8e8936b48e05253413',
                                                   'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
                                                   'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
                                                   'set_seed_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
