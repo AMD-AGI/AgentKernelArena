@@ -817,28 +817,60 @@ def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
         assert baseline_correctness_accepted(result, baseline=spec.baseline, phase='task_validation', manifest=manifest(contract))
 
 
-@pytest.mark.parametrize('name', [
+UPGRADED_GEMMS = [
     'gemm_a16w16_nt_n4096_k2048',
     'gemm_a16w16_nt_n6144_k3072', 'gemm_a16w16_nt_n16384_k2048',
+]
+
+
+@pytest.mark.parametrize('name', UPGRADED_GEMMS)
+def test_upgraded_gemm_timed_outputs_reject_wrong_stale_and_missing_results(name, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        inputs = {'a': torch.zeros((1, 2), dtype=torch.bfloat16)}
+        monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
+        monkeypatch.setattr(measure.task_reference, 'run', lambda a: a * 2)
+        first = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
+        second = {'a': torch.tensor([[3., 5.]], dtype=torch.bfloat16)}
+        correct = measure.verify_timed_outputs(
+            inputs, [(first, first['a'] * 2), (second, second['a'] * 2)])
+        assert correct['status'] == 'PASS'
+        assert correct['metadata']['checked_invocations'] == 2
+        for wrong in (second['a'], first['a'] * 2):
+            result = measure.verify_timed_outputs(inputs, [(second, wrong)])
+            assert result['failure_kind'] == 'numerical_mismatch'
+            assert result['metadata']['failed_invocations'] == 1
+        for missing in (None, torch.full_like(second['a'], float('nan'))):
+            assert measure.verify_timed_outputs(
+                inputs, [(second, missing)])['failure_kind'] == 'output_contract'
+
+
+@pytest.mark.parametrize('name', UPGRADED_GEMMS)
+@pytest.mark.parametrize('kernel_type, status, failure_kind', [
+    (_Honest, 'PASS', None),
+    (_ValueMemo, 'FAIL', 'timing_input_memoized'),
+    (_StaleUntilDisturbed, 'FAIL', 'numerical_mismatch'),
+    (_SkipsEveryThirdCall, 'FAIL', 'numerical_mismatch'),
 ])
-def test_deferred_task_replay_still_rejects_wrong_and_missing_outputs(name, monkeypatch):
+def test_upgraded_gemm_checks_actual_timed_path(name, kernel_type, status, failure_kind, monkeypatch):
+    """Small CPU buffers exercise the real draw, reference and comparison path."""
     torch = pytest.importorskip('torch')
     with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
-        inputs = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
-        output = torch.zeros((1, 2), dtype=torch.bfloat16)
-        monkeypatch.setattr(measure.task_inputs, 'refill_case_inputs', lambda i: i['a'].fill_(2))
-        monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
-        monkeypatch.setattr(measure.task_reference, 'run', lambda **kw: torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        timed = types.SimpleNamespace(bound=True, outputs=output,
-                                     rerun=lambda: output.copy_(inputs['a']))
-        result = measure.verify_timed_invocation(inputs, timed)
-        assert output.tolist() == [[2., 2.]]  # Finite and different, still wrong.
-        assert result['failure_kind'] == 'numerical_mismatch'
-        assert result['metadata']['replay_checked']
-        timed.rerun = lambda: output.copy_(torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        output.zero_()
-        assert measure.verify_timed_invocation(inputs, timed)['status'] == 'PASS'
-        timed.rerun = lambda: output  # Poison survives an empty replay.
-        assert measure.verify_timed_invocation(inputs, timed)['failure_kind'] == 'output_contract'
+
+        def small_inputs(case):
+            return measure.task_inputs.task_initialize.run(
+                {'a': torch.empty((1, 4), dtype=torch.bfloat16),
+                 'b': torch.empty((3, 4), dtype=torch.bfloat16)}, seed=measure.task_inputs.SEED)
+
+        monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', small_inputs)
+        monkeypatch.setattr(measure, 'choose_checked_samples',
+                            lambda repetition, count: list(range(count)))
+        kernel = kernel_type(measure.task_reference)
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', _simulated_graph_helper(kernel))
+        result = measure.time_case(measure.task_inputs.CASES[0], role='candidate', launch=kernel)
+        assert result['status'] == status, result
+        assert result.get('failure_kind') == failure_kind
+        assert result['metadata']['timed_output_correctness']['metadata']['checked_invocations'] == 12
