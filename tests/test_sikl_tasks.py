@@ -18,15 +18,6 @@ SIKL_ROOT = ROOT / 'tasks' / 'Aiter-task'
 # Functional task packages have separate coverage in test_functional_task_packages.py.
 TASKS = sorted(p.parent for p in SIKL_ROOT.glob('*/config.yaml')
                if (p.parent / 'workload.json').is_file())
-# These existing tasks retain their main-branch protocol while their baseline
-# numerical findings and timed-output validation policy remain unresolved.
-DEFERRED_TIMING_TASKS = {
-    'gemm_a16w16_nt_n4096_k2048',
-    'gemm_a16w16_nt_n6144_k3072',
-    'gemm_a16w16_nt_n16384_k2048',
-}
-ROTATING_TASKS = [t for t in TASKS if t.name not in DEFERRED_TIMING_TASKS]
-SPLIT_TEMPLATE_FILES = {'README.md', 'scripts/task_inputs.py', 'scripts/task_measure.py'}
 VAR_AXIS = {'gemm': 'm', 'moe': 'num_tokens', 'topk': 'batch', 'mla': 'batch'}
 # Families whose workload cases are exactly the bundle's 13 rows. Top-k and
 # MLA also vary the valid lengths per row; their own test modules cover them.
@@ -152,11 +143,8 @@ def test_family_copies_are_identical(op_type, relative):
         # Executable callbacks and the common instructions remain identical.
         contents = [value.split(b'\n## Production baseline numerical evidence\n')[0].rstrip()
                     for value in contents]
-    groups = {}
-    for task, content in zip(tasks, contents):
-        cohort = task.name in DEFERRED_TIMING_TASKS if relative in SPLIT_TEMPLATE_FILES else False
-        groups.setdefault(cohort, set()).add(content)
-    assert all(len(values) == 1 for values in groups.values())
+    assert len(set(contents)) == 1
+
 
 
 @pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
@@ -289,10 +277,6 @@ def test_original_callbacks_and_case_sampling_are_unchanged(task):
         # without its optional extra pool (tests/test_sikl_mla.py).
         assert 'task_initialize.run(self.inputs, seed=SEED)' in inputs
         assert '**scratch}, seed=seed)' in inputs
-    elif task.name in DEFERRED_TIMING_TASKS:
-        assert 'task_initialize.run(inputs, seed=SEED)' in inputs
-        assert 'task_initialize.run(inputs, seed=REFILL_SEED)' in inputs
-        assert 'def refill_case_inputs(inputs: dict[str, Any])' in inputs
     else:
         assert 'task_initialize.run(inputs, seed=SEED)' in inputs
         assert 'task_initialize.run(inputs, seed=seed)' in inputs
@@ -342,7 +326,7 @@ def test_bundle_revisions_of_gemm_callbacks_give_identical_results(monkeypatch):
     assert verdicts[0][:2] == ['pass', 'pass'] and 'pass' not in verdicts[0][2:6]
 
 
-@pytest.mark.parametrize('task', ROTATING_TASKS, ids=lambda t: t.name)
+@pytest.mark.parametrize('task', TASKS, ids=lambda t: t.name)
 def test_timing_protocol_checks_the_timed_invocations_themselves(task):
     # A captured kernel can decide on device, per invocation, whether to compute:
     # keyed on its inputs' values (return a stored result for a draw it has
