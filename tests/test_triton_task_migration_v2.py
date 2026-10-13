@@ -189,11 +189,34 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
                     f'{operand.upper()}_LARGE={operand}.numel() > 2**31'.encode(),
                     f'{operand.upper()}_LARGE=_requires_int64_index({operand})'.encode())
         if task.name == 'triton_pack_bitmatrix':
-            old = b'div[:, :, None] == offs[None, None, :], (one << rem)[:, :, None], 0'
-            new = (b'mask[:, :, None] & (indices[:, :, None] >= 0) & (div[:, :, None] == offs[None, None, :]),\n'
-                   b'            (one << rem)[:, :, None], 0')
-            assert original.count(old) == 1
-            original = original.replace(old, new)
+            # Explicit semantic repairs: ignore tile padding and OR every
+            # 32-assignment tile, including top-k 33/65 tails. The dedicated
+            # boundary tests reject truncation. The wrapper adds the tile count
+            # and normalizes strided inputs; retain every other source byte.
+            current = source.read_text()
+            before_tree, after_tree = ast.parse(original), ast.parse(current)
+            before_kernel = next(n for n in before_tree.body
+                                 if isinstance(n, ast.FunctionDef) and n.name == 'pack_bitmatrix')
+            after_kernel = next(n for n in after_tree.body
+                                if isinstance(n, ast.FunctionDef) and n.name == 'pack_bitmatrix')
+            assert hashlib.sha256(ast.dump(after_kernel, include_attributes=False).encode()).hexdigest() == (
+                'bcb27618446d9a98ce504268fbd520b56802d7baa44ac7a4f9cdaebc12d18cad'
+            )
+            original = original.replace(ast.get_source_segment(original.decode(), before_kernel).encode(),
+                                        ast.get_source_segment(current, after_kernel).encode(), 1)
+            old_launch = b'        BLOCK_SIZE_K=BLOCK_SIZE_K,\n    )'
+            new_launch = (b'        BLOCK_SIZE_K=BLOCK_SIZE_K,\n'
+                          b'        N_CHUNKS=triton.cdiv(num_topk, BLOCK_SIZE_K),\n    )')
+            assert original.count(old_launch) == 1
+            original = original.replace(old_launch, new_launch)
+            old_layout = b'    topk_ids = topk_ids.to(torch.int16)'
+            new_layout = (
+                b'    # The kernel uses row-major linear offsets, so normalize strided views.\n'
+                b'    # This is a no-op for the contiguous inputs in the scored workloads.\n'
+                b'    topk_ids = topk_ids.to(torch.int16).contiguous()'
+            )
+            assert original.count(old_layout) == 1
+            original = original.replace(old_layout, new_layout)
         if task.name == 'triton_batched_moe':
             # Only add the missing N-tail load mask; preserve all other source
             # bytes. Dedicated MoE controls cover inactive experts and tails.
@@ -862,12 +885,11 @@ def test_shared_expert_append_known_answers_and_both_timed_outputs(monkeypatch, 
     assert seen == [{'warmup': 50, 'repetition': 200}]
 
 
-ROCM = sorted([*(ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'),
-               *(ROOT/'tasks/instruction2triton').rglob('config.yaml')])
+ROCM = sorted((ROOT/'tasks/triton2triton/rocmbench').rglob('config.yaml'))
+ROCM_TASKS = {path.parent.name: path.parent for path in ROCM}
 
 
-@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/triton_multreduce_matmul_kernel',
-                                    'tasks/triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel'])
+@pytest.mark.parametrize('relative', ['tasks/triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel'])
 def test_multreduce_declares_actual_fixed_launch_entrypoint(relative, monkeypatch, tmp_path):
     task = ROOT/relative
     spec = load_task_spec(task/'config.yaml', task_id=relative.removeprefix('tasks/'))
@@ -898,8 +920,7 @@ def test_multreduce_declares_actual_fixed_launch_entrypoint(relative, monkeypatc
         adapter.inspect_candidate(data, require_implemented=True)
 
 
-@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
-                                    'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
+@pytest.mark.parametrize('relative', ['tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
 def test_mxfp_unscaled_reference_preserves_fp32_operands(relative, monkeypatch):
     reference = module_at(ROOT/relative/'_arena_reference.py', monkeypatch)
     # Exactly representable FP32 operands cancel after an erroneous FP16 cast.
@@ -933,8 +954,7 @@ def test_mxfp_unscaled_reference_preserves_fp32_operands(relative, monkeypatch):
         reference.prepare({**context, 'is_scaled_mode': True}, None)
 
 
-@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
-                                    'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
+@pytest.mark.parametrize('relative', ['tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
 def test_mxfp_scaled_matrix_reference_respects_32_element_groups(relative):
     source = ROOT/relative/'test_matmul_MXFP.py'
     ref = pure_functions(source, ['mxfp_to_bf16_torch', 'dot_scale_ref'])
@@ -948,8 +968,7 @@ def test_mxfp_scaled_matrix_reference_respects_32_element_groups(relative):
         torch.testing.assert_close(torch.zeros_like(output), expected, atol=1e-2, rtol=1e-2)
 
 
-@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/test_matmul_MXFP',
-                                    'tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
+@pytest.mark.parametrize('relative', ['tasks/triton2triton/rocmbench/hard/test_matmul_MXFP'])
 @pytest.mark.parametrize('mode', ['correct', 'zero', 'compiler_error'])
 def test_mxfp_scaled_pipeline_runs_on_hip_and_rejects_zero_kernel(relative, mode, monkeypatch):
     source = ROOT/relative/'test_matmul_MXFP.py'
@@ -988,8 +1007,7 @@ def test_mxfp_scaled_pipeline_runs_on_hip_and_rejects_zero_kernel(relative, mode
     assert all(row[3] == dict(NUM_STAGES=4, a_type='e2m1', b_type='e5m2') for row in launches)
 
 
-@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/gemm',
-                                    'tasks/triton2triton/rocmbench/hard/gemm'])
+@pytest.mark.parametrize('relative', ['tasks/triton2triton/rocmbench/hard/gemm'])
 def test_rocm_gemm_scope_retains_original_scored_cases_and_numerical_gate(relative,monkeypatch):
     task=ROOT/relative
     source=task/'gemm.py'
@@ -1037,10 +1055,6 @@ def test_rocm_gemm_scope_retains_original_scored_cases_and_numerical_gate(relati
 
 # Exact reviewed host-boundary changes; device kernels are compared independently.
 PR105_HOST_FUNCTIONS = {
-    'instruction2triton/rocmbench/moe_gemm': {
-        'prepare_moe_gemm': '28a5619bf567fe59f966fe3e2c5282bd52df0ea02c29a36633509d1ee6b67cab',
-        'moe_gemm': '4be5e2c1fb56d38184b237de92da11b67f4ccadec5ebe5cbf0df868a8ba0522d',
-        'test_performance': '4bede1239f10acd62e2ae712137d5647d9d16f2c5d6ecf078e9dd43f093a3180'},
     'triton2triton/rocmbench/hard/moe_gemm': {
         'MetaData': '85ab59b205da9d08d19d18fa32954151c74867dbb836716a11959757a9aa1c28',
         'moe_gemm': '290976bf3bccdbaf51014b17ab68850b6e2902694dd7a5ef2914e3cd9e4aa867',
@@ -1068,7 +1082,7 @@ def before_pr105_additions(source, task):
     old, new = ast.parse(before), ast.parse(raw)
     olddefs = {n.name:n for n in old.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
     newdefs = {n.name:n for n in new.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
-    added = additions.get(relative, set()) | ({'prepare_moe_gemm'} if relative.startswith('instruction2triton') else set())
+    added = additions.get(relative, set())
     assert newdefs.keys() - olddefs.keys() == added
     for name, digest in PR105_HOST_FUNCTIONS.get(relative, {}).items():
         assert hashlib.sha256(ast.get_source_segment(raw.decode(), newdefs[name]).encode()).hexdigest() == digest
@@ -1105,7 +1119,10 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
     data=json.loads((task/'workloads.json').read_text())
     source=task/data['source']
     comparison_source = before_pr105_additions(source, task)
-    original=subprocess.check_output(['git','show',f'{BASE}:{source.relative_to(ROOT).as_posix()}'],cwd=ROOT)
+    historical_source = source.relative_to(ROOT).as_posix()
+    if task == ROOT/'tasks/triton2triton/rocmbench/test_triton_flip':
+        historical_source = 'tasks/instruction2triton/rocmbench/test_triton_flip/' + source.name
+    original=subprocess.check_output(['git','show',f'{BASE}:{historical_source}'],cwd=ROOT)
     expected_source = original
     if task.name == 'test_kernel_sub':
         historical_skip = b'    pytest.skip("Skipping ASTSource compile-in-subprocess check on Triton 3.3 due to known API/compiler instability; numerical correctness tests cover kernel behavior.")\n'
@@ -1126,15 +1143,6 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
             b'    if scale and not is_cuda():\n        pytest.skip("NYI: scale_dot just implemented in CUDA")\n', b'').replace(
             b'    x_upcast = mxfp_to_bf16_torch(x, scale, type_x)',
             b'    x_grouped = x.reshape(*scale.shape, -1)\n    x_upcast = mxfp_to_bf16_torch(x_grouped, scale, type_x).reshape(x.shape[0], -1)')
-        # Only the separately exercised known-answer diagnostic is additional;
-        # all old source bytes, including gates/parameters, remain protected.
-        if 'instruction2triton' in task.parts:
-            after = comparison_source.decode()
-            start = after.index('\n    # Unscored known-answer control at an ordinary E8M0 scale.')
-            end = after.index('\n\n# Define these globally', start)
-            extra = after[start:end].rstrip('\n') + '\n'
-            anchor = b'    torch.testing.assert_close(ref_out, output, atol=atol, rtol=rtol, equal_nan=scale)\n'
-            expected_source = expected_source.replace(anchor, anchor + extra.encode())
     if task.name in {'test_block_copy', 'test_load_reduce', 'softmax', 'naive_softmax'}:
         # Reviewed correctness bodies add real compiler rejection (block copy)
         # or independent pre-call snapshots (load reduction and softmax). Preserve
@@ -1187,8 +1195,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
         'test_matmul_MXFP': ({'test_mxfp_to_bf16_numerical_correctness', 'test_pipeline_matmul'},
                              {'test_converter_encoding_control'}),
     }
-    if task.name in reviewed_matmul_bodies and not (
-            task.name == 'test_matmul_MXFP' and 'instruction2triton' in task.parts):
+    if task.name in reviewed_matmul_bodies:
         # Dedicated matmul tests pin original kernels, wrappers, gates,
         # manifest rows and timing options, then execute the added negative
         # controls. Here also preserve original signatures and parametrization
@@ -1240,6 +1247,40 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
                             for t in n.targets))]
             return ast.dump(tree, include_attributes=False)
         assert matmul_original_contract(comparison_source) == matmul_original_contract(expected_source)
+    elif task.name == 'test_triton_flip':
+        # Reviewed repair: masked non-power-of-two tiles, load-before-store
+        # synchronization, and additional unscored shape/value/in-place exact
+        # checks, including separate-input preservation.
+        # Pin both repaired definitions; every other AST node, including the
+        # performance body, public wrapper and timing options, stays original.
+        current_tree = ast.parse(comparison_source)
+        repaired = {
+            'flip_kernel': 'd44ab3db8142a77edf8e3e5e35c06ecbbb3ccf0b2b0e25fe93ea20fc11fd5f77',
+            'test_flip': 'cbb88f8c019bf7144f4c55aa4383d94d6f7bed8959f1e0baccf388b7056efb0e',
+        }
+        nodes = {node.name: node for node in current_tree.body
+                 if isinstance(node, ast.FunctionDef)}
+        for name, digest in repaired.items():
+            assert hashlib.sha256(ast.dump(nodes[name], include_attributes=False).encode()).hexdigest() == digest
+        def flip_original_contract(raw):
+            tree = ast.parse(raw)
+            for node in tree.body:
+                if isinstance(node, ast.FunctionDef) and node.name in repaired:
+                    node.body = [ast.Pass()]
+                    if node.name == 'test_flip':
+                        node.decorator_list = []  # Additional shapes are pinned above.
+            return ast.dump(tree, include_attributes=False)
+        assert flip_original_contract(comparison_source) == flip_original_contract(expected_source)
+        historical_manifest = json.loads(subprocess.check_output([
+            'git', 'show',
+            'c0384c814ec508239dbac3543e3cc623cd7b9e25:tasks/instruction2triton/rocmbench/test_triton_flip/workloads.json',
+        ], cwd=ROOT))
+        old_rows = {row['test_case_id']: row for row in historical_manifest['cases']}
+        new_rows = {row['test_case_id']: row for row in data['cases']}
+        assert len(old_rows) == 40 and len(new_rows) == 64
+        assert all(new_rows[key] == row for key, row in old_rows.items())
+        assert all(row['checks'] == ['correctness']
+                   for key, row in new_rows.items() if key not in old_rows)
     elif task.name == 'rmsnorm_bwd':
         # The Triton task accidentally timed forward. Its corrected performance
         # body and counters are the original instruction task's backward path;
@@ -1301,8 +1342,7 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
 
 
 @pytest.mark.parametrize('exitcode,timed_out', [(0,False),(1,False),(None,True)])
-@pytest.mark.parametrize('task', ['tasks/triton2triton/rocmbench/easy/test_kernel_sub',
-                                'tasks/instruction2triton/rocmbench/test_kernel_sub'])
+@pytest.mark.parametrize('task', ['tasks/triton2triton/rocmbench/easy/test_kernel_sub'])
 def test_kernel_sub_declared_compilation_case_executes_and_rejects_child_failure(task,exitcode,timed_out):
     # Run the protected test body against a controlled process, verifying that
     # a skipped/nonzero/timed-out compilation cannot become successful evidence.
@@ -1336,7 +1376,7 @@ def test_kernel_sub_declared_compilation_case_executes_and_rejects_child_failure
     assert calls[:2]==['start',('join',60)]
 
 
-@pytest.mark.parametrize('task',['tasks/instruction2triton/rocmbench/rmsnorm_fwd','tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])
+@pytest.mark.parametrize('task',['tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])
 @pytest.mark.parametrize('epsilon', [1e-6, 1e-5])
 @pytest.mark.parametrize('zero_centered', [True, False])
 def test_rms_direct_reference_uses_declared_epsilon_on_near_zero_rows(task, epsilon, zero_centered):
@@ -1366,7 +1406,7 @@ def test_rms_direct_reference_uses_declared_epsilon_on_near_zero_rows(task, epsi
     assert not torch.isfinite(old_y[0]).all()
 
 
-@pytest.mark.parametrize('task',['tasks/instruction2triton/rocmbench/rmsnorm_fwd','tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])
+@pytest.mark.parametrize('task',['tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])
 @pytest.mark.parametrize('in_name',['fp16','bf16','fp32'])
 @pytest.mark.parametrize('out_name',['fp16','bf16','fp32'])
 @pytest.mark.parametrize('zero_centered',[False,True])
@@ -1417,7 +1457,7 @@ def test_rms_forward_declared_dtype_pairs_execute_original_performance_body(monk
     assert calls==['kernel']
 
 def oracle(name,monkeypatch):
-    return module_at(ROOT/'tasks/instruction2triton/rocmbench'/name/'_arena_reference.py',monkeypatch)
+    return module_at(ROCM_TASKS[name]/'_arena_reference.py',monkeypatch)
 
 
 def test_philox_known_counter_and_uniform_negative_control(monkeypatch):
@@ -1432,7 +1472,7 @@ def test_philox_known_counter_and_uniform_negative_control(monkeypatch):
 def test_swizzle_matches_original_explicit_known_order(monkeypatch):
     reference=oracle('test_triton_swizzle2d',monkeypatch)
     expected=reference.swizzle_reference(5,7,3,dtype=torch.int32,device='cpu')
-    task=ROOT/'tasks/instruction2triton/rocmbench/test_triton_swizzle2d/test_triton_swizzle2d.py'
+    task=ROCM_TASKS['test_triton_swizzle2d']/'test_triton_swizzle2d.py'
     tree=ast.parse(task.read_text());test=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='test_swizzle2d')
     assignment=next(n for n in ast.walk(test) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='expected_order' for t in n.targets))
     original_order=ast.literal_eval(assignment.value.func.value.args[0])
@@ -1466,7 +1506,7 @@ def test_oracle_distinguishes_output_contract_failure_from_numerical_error(monke
         reference.compare(torch.tensor([float('nan')]),torch.zeros(1),atol=1e-3,rtol=1e-2)
 
 
-@pytest.mark.parametrize('relative',['tasks/instruction2triton/rocmbench/test_add_kernel','tasks/triton2triton/rocmbench/easy/test_add_kernel'])
+@pytest.mark.parametrize('relative',['tasks/triton2triton/rocmbench/easy/test_add_kernel'])
 @pytest.mark.parametrize('mode',['correct','incorrect_timed','stale','no_write','changing_wrong','event_fallback','replay_raises',
                                 'zero_inputs_and_output_timed','zero_inputs_and_output_replay'])
 def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monkeypatch,relative,mode):
@@ -1551,7 +1591,9 @@ def test_add_canonical_samples_observe_exact_replay_and_reject_wrong_output(monk
 
 # These adapters use actual TimedRun outputs; their dedicated contract modules
 # exercise event metadata, changed inputs and rejected fallback paths.
-@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul', 'multreduce_matmul_dot_kernel', 'test_batched_vecmat', 'rmsnorm_bwd', 'test_chained_dot_fp8'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
+# Flip requires per-sample captured replay; its dedicated controls reject fallback
+# and preserve timing metadata rather than using this legacy generic adapter.
+@pytest.mark.parametrize('path', [p for p in ROCM if p.parent.name not in {'test_triton_flip', 'test_add_kernel', 'test_block_copy', 'test_randn', 'test_load_reduce', 'softmax', 'naive_softmax', 'test_cast_matmul', 'test_gemm_no_scf', 'test_iv_dependent_matmul', 'test_chained_matmul', 'multreduce_matmul_dot_kernel', 'test_batched_vecmat', 'rmsnorm_bwd', 'test_chained_dot_fp8'} and not (p.parent.name == 'test_matmul_MXFP' and 'triton2triton' in p.parts)], ids=lambda p:p.parent.relative_to(ROOT/'tasks').as_posix())
 def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, path):
     adapter = module_at(path.parent/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
@@ -1578,8 +1620,7 @@ def test_rocm_timing_evidence_retains_canonical_fallback_reason(monkeypatch, pat
     assert plugin.current_row['execution_time_ms'] == 0.25
 
 
-@pytest.mark.parametrize('relative', ['tasks/instruction2triton/rocmbench/moe_gemm',
-                                     'tasks/triton2triton/rocmbench/hard/moe_gemm'])
+@pytest.mark.parametrize('relative', ['tasks/triton2triton/rocmbench/hard/moe_gemm'])
 def test_moe_launcher_selects_events_before_attempting_unsupported_capture(monkeypatch, relative):
     adapter = module_at(ROOT/relative/'_arena_eval.py', monkeypatch)
     expected = torch.tensor([2.])
@@ -2159,7 +2200,7 @@ def test_all_rocm_manifests_match_original_cpu_collected_pytest_parameters():
     fixture=ROOT/'tests/fixtures/triton_migration/collect_rocm_cpu.py'
     run=subprocess.run([sys.executable,str(fixture)],cwd=ROOT,text=True,capture_output=True,check=True)
     collected=json.loads(run.stdout)
-    assert len(collected)==61
+    assert len(collected)==31
     for task,functions in collected.items():
         expected={}
         for fn in functions:
@@ -3986,7 +4027,9 @@ def test_pack_bitmatrix_original_performance_and_captured_replay(monkeypatch, mo
             if mode == 'mutate_replay': ids.zero_()
             return output
         timed_run.outputs, timed_run.rerun = output, replay
-        return .125, {'benchmark_method': 'cuda_graph'}
+        return .125, {'benchmark_method': 'cuda_graph',
+                      'benchmark_timed_run_kind': 'captured_graph',
+                      'benchmark_effective_repeats': 1}
     h._benchmark_cuda_graph_or_events = benchmark
     checks.install(h)
     rows = h.run_performance()

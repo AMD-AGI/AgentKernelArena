@@ -135,7 +135,7 @@
       ],
       "params": {
         "case_index": 5,
-        "coverage": "Controls cover remapped requests, a prefill early return and heterogeneous numbers of logits. Both mutated input IDs and returned int64 logit indices are checked."
+        "coverage": "Correctness-only controls cover a prefill early return, remapped decode requests with zero, one or two drafts, and a padded draft row stride. Mutated input IDs, returned int64 logit indices, draft input and padding are checked."
       }
     }
   ],

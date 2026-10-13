@@ -4,7 +4,7 @@ Code-generation helpers for held-out shape replacement.
 
 Handles three patterns:
 1. triton2triton/vllm: replace TEST_SHAPES = [...] block in task_runner.py
-2. hip2hip/torch2hip gpumode: replace def get_inputs(): ... function in
+2. hip2hip direct tasks and torch2hip/gpumode: replace def get_inputs(): ... function in
    both pytorch_code_module/*.py and pytorch_code_functional/*_func.py
 3. raw_replace: exact string find-and-replace, used for triton2triton/rocmbench
    @pytest.mark.parametrize decorators and any other ad-hoc patterns

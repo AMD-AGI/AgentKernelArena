@@ -3,7 +3,7 @@ agent:
   template: claude_code
 
 tasks:
-  - hip2hip/gpumode/GELU
+  - hip2hip/GELU
 
 target_gpu_model: MI355X
 log_directory: logs

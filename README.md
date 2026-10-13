@@ -83,7 +83,6 @@ AgentKernelArena/
 ├── tasks/
 │   ├── hip2hip/
 │   ├── triton2triton/
-│   ├── instruction2triton/
 │   ├── torch2hip/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
@@ -142,7 +141,6 @@ for tested CLI/model versions, run-level overrides, and the scope of live checks
 | --- | --- |
 | `hip2hip` | Optimize an existing HIP implementation |
 | `triton2triton` | Optimize an existing Triton implementation |
-| `instruction2triton` | Implement a Triton kernel from a specification |
 | `torch2hip` | Replace a PyTorch reference with a HIP implementation |
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL implementation |
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
@@ -218,7 +216,7 @@ The following configurations provide starting points for supported runtimes:
 | `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | One DeepSeek Harness GELU task on MI300/MI300X; requires the pinned CLI and API key. |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | One DeepSeek Harness GELU task on MI355X; see [setup](agents/deepseek_harness/README.md). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 54-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
 quickstart. On another GPU, pass the matching configuration explicitly; for
@@ -333,12 +331,18 @@ The `Aiter-task` suite was previously named `SIKL-task`. Update custom selectors
 to `Aiter-task/...`. This rename changes task IDs and report grouping; start a
 new run with the new selectors, since existing runs retain their original IDs.
 
+HIP tasks now live directly under `hip2hip/`; their former `gpumode/`, `others/`,
+and `vllm/` grouping directories are gone. The redundant
+`instruction2triton/rocmbench/` selections were removed in favor of the
+registered `triton2triton/rocmbench/` tasks. The distinct flip task is now
+`triton2triton/rocmbench/test_triton_flip`. These moves change task IDs, so use
+new selectors for new runs; existing reports keep their historical IDs.
+
 ```yaml
 tasks:
-  - hip2hip/gpumode
+  - hip2hip
   - triton2triton/vllm
   - triton2triton/rocmbench
-  - instruction2triton/rocmbench
   - torch2hip
   - torch2flydsl
   - triton2flydsl
@@ -372,7 +376,7 @@ files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
 for the canonical schema, examples, command/result contracts, baseline and
 candidate lifecycle, optional sanitizers, and migration instructions.
 
-All 466 retained tasks declare schema v2 and task-owned evaluation actions.
+All retained tasks declare schema v2 and task-owned evaluation actions.
 GPU qualification and agent campaign results are tracked separately from that
 migration. Task-family directory names remain useful selectors; no family has
 a separate configuration schema.

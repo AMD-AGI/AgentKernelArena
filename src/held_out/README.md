@@ -31,7 +31,7 @@ The following legacy helpers remain for older configurations:
 |-----------|-------------|------------------|
 | triton2triton | vllm | `TEST_SHAPES` in `scripts/task_runner.py` |
 | triton2triton | rocmbench | `@pytest.mark.parametrize` decorators in `test_*.py` (raw_replace) |
-| hip2hip | gpumode | `get_inputs()` in both `pytorch_code_module/*.py` and `pytorch_code_functional/*_func.py` |
+| hip2hip | direct task directories | `get_inputs()` in both `pytorch_code_module/*.py` and `pytorch_code_functional/*_func.py` |
 | torch2hip | gpumode | Same as hip2hip |
 
 ## Quick start
@@ -55,7 +55,7 @@ python3 -m src.held_out.generate_heldout \
 ```
 
 Use `--dry-run` to list tasks without launching agents.
-Use `--tasks hip2hip/gpumode/SiLU` to generate for a single task.
+Use `--tasks hip2hip/SiLU` to generate for a single task.
 Supported backends: `claude_code`, `codex`, and `cursor` (the three first-class
 host-CLI integrations).
 

@@ -108,7 +108,7 @@ def _select_heldout_comparison_cases(
 
 def resolve_task_id(workspace_dir: Path) -> Optional[str]:
     """
-    Derive the canonical task id (e.g. 'hip2hip/gpumode/SiLU') from the
+    Derive the canonical task id (e.g. 'hip2hip/SiLU') from the
     task_result.yaml written by the framework, falling back to config.yaml
     or directory-name heuristics.
     """
@@ -132,17 +132,25 @@ def resolve_task_id(workspace_dir: Path) -> Optional[str]:
         except Exception:
             pass
 
-    # Heuristic: dir name is like hip2hip_gpumode_SiLU_20260417_142639
+    # Heuristic: dir name is like hip2hip_SiLU_20260417_142639
     # or triton2triton_rocmbench_easy_test_add_kernel_20260417_142639
     # Strip trailing _YYYYMMDD_HHMMSS
     dir_name = workspace_dir.name
     parts = dir_name.rsplit("_", 2)
     if len(parts) >= 3:
         task_slug = "_".join(parts[:-2])
-        # triton2triton/rocmbench has an extra level (easy/medium/hard)
-        # so 3 slashes instead of 2
+        if task_slug.startswith("hip2hip_"):
+            name = task_slug[len("hip2hip_"):]
+            for old_group in ("gpumode_", "others_", "vllm_"):
+                if name.startswith(old_group):
+                    name = name[len(old_group):]
+                    break
+            return "hip2hip/" + name
+        # Registered ROCmBench tasks usually have an extra difficulty level.
+        # The migrated flip task lives directly under rocmbench.
         if task_slug.startswith("triton2triton_rocmbench_"):
-            return task_slug.replace("_", "/", 3)
+            depth = 3 if task_slug.split("_", 3)[2] in {"easy", "medium", "hard"} else 2
+            return task_slug.replace("_", "/", depth)
         return task_slug.replace("_", "/", 2)
 
     return None

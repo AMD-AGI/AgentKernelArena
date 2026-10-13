@@ -41,7 +41,7 @@ agent:
   template: cursor
 
 tasks:
-  - hip2hip/gpumode/GELU
+  - hip2hip/GELU
   - triton2triton/vllm/triton_rms_norm
 
 target_gpu_model: MI300

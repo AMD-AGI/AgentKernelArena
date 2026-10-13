@@ -18,8 +18,8 @@ from src.tools.perf.aka_benchmark import hip_source_graph_capture_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS = {
-    "wvsplitk": ROOT / "tasks/hip2hip/vllm/wvsplitk",
-    "paged_attention_large": ROOT / "tasks/hip2hip/vllm/paged_attention_large",
+    "wvsplitk": ROOT / "tasks/hip2hip/wvsplitk",
+    "paged_attention_large": ROOT / "tasks/hip2hip/paged_attention_large",
     "topk_forward": ROOT / "tasks/triton2triton/triton_kernels/topk_forward",
 }
 

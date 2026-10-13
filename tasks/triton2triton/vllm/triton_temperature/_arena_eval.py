@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import copy
 import importlib.util
+import inspect
 import json
 import math
 import os
@@ -11,6 +12,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST = ROOT / 'workloads.json'
+PUBLIC_WRAPPER = 'apply_temperature(logits, idx_mapping, temperature)'
 
 
 def load_manifest():
@@ -28,6 +30,16 @@ def inspect_candidate(data, *, require_implemented=False):
         if not path.resolve().is_relative_to(ROOT):
             raise ValueError('Candidate path escapes task workspace')
         tree = ast.parse(path.read_text(), filename=source)
+        if source == 'source/triton_temperature.py':
+            wrappers = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and node.name == 'apply_temperature']
+            if len(wrappers) != 1 or not isinstance(wrappers[0], ast.FunctionDef):
+                raise ValueError(f'Expected exactly one public {PUBLIC_WRAPPER} function')
+            args = wrappers[0].args
+            if (tuple(arg.arg for arg in args.args) != ('logits', 'idx_mapping', 'temperature')
+                    or args.posonlyargs or args.kwonlyargs or args.vararg or args.kwarg
+                    or args.defaults or args.kw_defaults):
+                raise ValueError(f'Public wrapper must have exact signature {PUBLIC_WRAPPER}')
         nodes = {n.name:n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
         for target in targets:
             node = nodes.get(target['name'])
@@ -54,6 +66,30 @@ def load_harness():
     spec = importlib.util.spec_from_file_location('_task_harness', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    original_load_module = module.load_module
+
+    def load_module_with_public_signature_check():
+        candidate = original_load_module()
+        exported = getattr(candidate, 'apply_temperature', None)
+        try:
+            signature = inspect.signature(exported, follow_wrapped=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'Public wrapper must have exact signature {PUBLIC_WRAPPER}') from exc
+        params = tuple(signature.parameters.values())
+        code = exported.__code__ if inspect.isfunction(exported) else None
+        if (not inspect.isfunction(exported) or len(params) != 3
+                or tuple(param.name for param in params) != ('logits', 'idx_mapping', 'temperature')
+                or any(param.kind is not inspect.Parameter.POSITIONAL_OR_KEYWORD
+                       or param.default is not inspect.Parameter.empty for param in params)
+                or code.co_posonlyargcount != 0 or code.co_argcount != 3
+                or code.co_kwonlyargcount != 0
+                or code.co_flags & (inspect.CO_VARARGS | inspect.CO_VARKEYWORDS)
+                or code.co_varnames[:3] != ('logits', 'idx_mapping', 'temperature')
+                or exported.__defaults__ or exported.__kwdefaults__):
+            raise ValueError(f'Public wrapper must have exact signature {PUBLIC_WRAPPER}')
+        return candidate
+
+    module.load_module = load_module_with_public_signature_check
     import _arena_contract
     import _arena_replay
     _arena_replay.install(module, _arena_contract)
@@ -76,6 +112,7 @@ def evaluate(role, action):
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
                     raise RuntimeError(f'Required runtime dependency unavailable: {dependency}')
+            harness.load_module()
             result['metadata']={'candidate_state':state,'input_table_verified':True}
         elif action == 'compile':
             ok, error = harness.run_compile()

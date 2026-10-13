@@ -93,7 +93,7 @@ def test_unknown_gpu_does_not_infer_rdna_support():
 
 
 @pytest.mark.parametrize("task_path,language", [
-    ("hip2hip/gpumode/GELU", "hip"),
+    ("hip2hip/GELU", "hip"),
     ("triton2triton/vllm/triton_rms_norm", "triton"),
 ])
 def test_complete_task_prompt_includes_rdna_context_and_harness_rules(

@@ -11,8 +11,7 @@ import pytest
 import torch
 
 ROOT=Path(__file__).resolve().parents[1]
-TASKS=[ROOT/'tasks/triton2triton/rocmbench/easy/test_block_copy',
-       ROOT/'tasks/instruction2triton/rocmbench/test_block_copy']
+TASKS=[ROOT / 'tasks/triton2triton/rocmbench/easy/test_block_copy']
 
 
 def load(path):
@@ -29,7 +28,7 @@ def error(message):
     return exc
 
 
-@pytest.fixture(params=TASKS,ids=['triton','instruction'])
+@pytest.fixture(params=TASKS,ids=['triton'])
 def task(request,monkeypatch):
     ref=load(request.param/'_arena_reference.py')
     monkeypatch.setitem(sys.modules,'_arena_reference',ref)
@@ -38,16 +37,7 @@ def task(request,monkeypatch):
 
 
 # Checked-in immutable regression digests; no branch history needed at runtime.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/test_block_copy': {'block_copy_kernel': 'da69d81c6f0af511078235aaafda91eb73c7f3240fd97bb3191b0bb1b102215d',
-                                                        'block_copy_kernel_decorators': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
-                                                        'config': '9bd9f8fb9b1a474224fd057feab504586695c819f762b616d6e54b5da9a626a8',
-                                                        'generated_stub': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
-                                                        'rows': 'f68924ae7b7b4038600ce5e2cf90c545d4e3ecea9206a3c91e3f3ad8343f4ba7',
-                                                        'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                        'set_seed_decorators': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                        'test_performance': '44b96cc31b7939015bb67395647fce914c605029c8914f1afc61db1764b8b992',
-                                                        'test_performance_decorators': 'cbb7c4dc16d294bfff2a3c0763da2721a50ebadd9cff052eb1f94d960a9c7566'},
- 'tasks/triton2triton/rocmbench/easy/test_block_copy': {'block_copy_kernel': 'da69d81c6f0af511078235aaafda91eb73c7f3240fd97bb3191b0bb1b102215d',
+ORIGINAL = {'tasks/triton2triton/rocmbench/easy/test_block_copy': {'block_copy_kernel': 'da69d81c6f0af511078235aaafda91eb73c7f3240fd97bb3191b0bb1b102215d',
                                                         'block_copy_kernel_decorators': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
                                                         'config': '9bd9f8fb9b1a474224fd057feab504586695c819f762b616d6e54b5da9a626a8',
                                                         'generated_stub': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',

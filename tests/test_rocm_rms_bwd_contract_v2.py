@@ -12,7 +12,7 @@ import pytest
 import torch
 
 ROOT=Path(__file__).resolve().parents[1]
-TASKS=['instruction2triton/rocmbench/rmsnorm_bwd','triton2triton/rocmbench/hard/rmsnorm_bwd']
+TASKS=['triton2triton/rocmbench/hard/rmsnorm_bwd']
 
 
 def load(path):
@@ -144,32 +144,7 @@ def test_original_kernels_autograd_classes_case_manifest_and_gates(task,monkeypa
     result=adapter.evaluate('task','validate-task');assert parse_command_result('ARENA_EVAL_RESULT='+json.dumps(result),role='task',action='validate-task',returncode=0).status=='PASS'
 
 # Original task-byte expectations; no runtime Git dependency.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/rmsnorm_bwd': {'classes': {'RMSNorm': '598d8df1821cb5e9e7df07c185eed764ec41cfe32288a8189eb6ebdb41f0d6c4'},
-                                                    'files': {'config.yaml': 'adbc3e5beca4c42d059c29eed4a2e380ef3893305cb8013df0df7025ebac04ac',
-                                                              'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
-                                                              'workloads.json': 'a78e744d6d49f216e2800d25dae41805849bd83892ad52d21d65269b4fd5b2cb'},
-                                                    'functions': {'_rmsnorm_bwd_dg_reduce': '87aed0f11db92ada44fd4a161eb05336ff3b5952f157849e8299b38f450ce108',
-                                                                  'calculate_rmsnorm_bwd_gbps': 'a72db096973f29220e3793002d11daa7bdbf855be605224f56a44894934eac77',
-                                                                  'calculate_rmsnorm_bwd_tflops': 'ebdb5620cc5f91ef56734f9af13da223aa96e0faac5ebb0c90cc00e009012010',
-                                                                  'get_autotune_config': '6244982d0e7695fb733182da152884bb0b46fcdfcfdac2eae73743112cbbb1bd',
-                                                                  'get_available_models': 'c9886e07603ca34a4ec2457d7b8499d18c91a5310645ee41156d8823fd6e5199',
-                                                                  'get_cuda_autotune_config': '2c7b0e90a4f86912e3b7f206a7b5af2ff37a37b55952ddf870f3d257556e4356',
-                                                                  'get_hip_autotune_config': '3a9b1d278dc1789294d406510bb0a4cc33a61868b495fbaf68c666bfff50c5e1',
-                                                                  'get_model_configs': '24a2fe80e5ea5bf96a3b082158d51c4cd74b63a040faf4aae50e5fc9b442f9a3',
-                                                                  'get_num_sms': '99d56b1c10718a3e08fe382fb864d22bf4720707c376739a8ed99bf623f8301d',
-                                                                  'is_cuda': '344ddb015296f2ac8a4ec12629daceefbddc48714bc9071e21aa54eec0864218',
-                                                                  'is_hip': '18a1484321fc6773db7fa5328ed8ad9af0261147caf1ed9d9ef3be4d42408c57',
-                                                                  'main': '9abbc8849ff72de3a55131cb28c11d78ea5890fc31e4e7679409460786cd7a9d',
-                                                                  'model_benchmark_configs': '14c5d82570da8c6f0a033896c5ee8e4db6052d1405a93281839a7854da0ae697',
-                                                                  'parse_args': 'd02bcd72ba9eb30217c93f1221c51d47f6a0273b16955ae6ae30fac3761e573a',
-                                                                  'rms_bwd_kernel': '11be699f801b66376fd93f0239ff070c909ecccb13396dc8ff5355cdf85f4b4f',
-                                                                  'rms_kernel': '9cf645dc326bfde55777c7fd888ee33b33a5bb25ff1d018dc5037cf69cb19d94',
-                                                                  'run_benchmark': '4d76de183623c5c05c9432f9237b4ac541531cb52b8041da32cf28e9a5debe8b',
-                                                                  'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                                  'test_save_performance_results': 'e75049a8bfa70933554c63918336d2909e576a9a7940225ed7fa3c50aad1b8d9',
-                                                                  'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8',
-                                                                  'torch_rmsnorm_fwd': '63a44b586eba61b05faea142d56c6383ba3b5ecfb0eeba84ff071f636d71e65c'}},
- 'tasks/triton2triton/rocmbench/hard/rmsnorm_bwd': {'classes': {'RMSNorm': '598d8df1821cb5e9e7df07c185eed764ec41cfe32288a8189eb6ebdb41f0d6c4'},
+ORIGINAL = {'tasks/triton2triton/rocmbench/hard/rmsnorm_bwd': {'classes': {'RMSNorm': '598d8df1821cb5e9e7df07c185eed764ec41cfe32288a8189eb6ebdb41f0d6c4'},
                                                     'files': {'config.yaml': 'adbc3e5beca4c42d059c29eed4a2e380ef3893305cb8013df0df7025ebac04ac',
                                                               'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9',
                                                               'workloads.json': '8ff98739d9c4eeaaf64309e1bd3d2c1444e390c47a3db8f87320eb00dcb3ab88'},
