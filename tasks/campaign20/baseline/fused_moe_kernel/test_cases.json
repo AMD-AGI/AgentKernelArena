@@ -1,0 +1,65 @@
+[
+  {
+    "test_case_id": "c2",
+    "count": 1,
+    "params_repr": {
+      "B": 2,
+      "M": 2048,
+      "seqlen": 1024,
+      "K": 7168,
+      "N": 512,
+      "num_experts": 256,
+      "topk": 8,
+      "group_n": 128,
+      "group_k": 128,
+      "dtype": "fp8_w8a8_blockscale",
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 128,
+      "role": "up-projection MoE GEMM (prefill, token-parallel)"
+    },
+    "note": "Shapes driven by scripts/harness_run.py build_inputs(B); this entry is descriptive."
+  },
+  {
+    "test_case_id": "c32",
+    "count": 1,
+    "params_repr": {
+      "B": 32,
+      "M": 32768,
+      "seqlen": 1024,
+      "K": 7168,
+      "N": 512,
+      "num_experts": 256,
+      "topk": 8,
+      "group_n": 128,
+      "group_k": 128,
+      "dtype": "fp8_w8a8_blockscale",
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 128,
+      "role": "up-projection MoE GEMM (prefill, token-parallel)"
+    },
+    "note": "Shapes driven by scripts/harness_run.py build_inputs(B); this entry is descriptive."
+  },
+  {
+    "test_case_id": "c64",
+    "count": 1,
+    "params_repr": {
+      "B": 64,
+      "M": 65536,
+      "seqlen": 1024,
+      "K": 7168,
+      "N": 512,
+      "num_experts": 256,
+      "topk": 8,
+      "group_n": 128,
+      "group_k": 128,
+      "dtype": "fp8_w8a8_blockscale",
+      "BLOCK_SIZE_M": 16,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 128,
+      "role": "up-projection MoE GEMM (prefill, token-parallel)"
+    },
+    "note": "Shapes driven by scripts/harness_run.py build_inputs(B); this entry is descriptive."
+  }
+]

@@ -1,0 +1,132 @@
+{
+  "rank": 26,
+  "backend": "hip",
+  "kernel_name": "wvSplitK",
+  "op_category": "gemm",
+  "max_time_pct": 2.83,
+  "n_source_models": 6,
+  "n_instances": 13,
+  "canonical": {
+    "combo": "openai_gpt-oss-120b__vllm_default",
+    "task_dir": "vllm_wvsplitk"
+  },
+  "instances": [
+    {
+      "model": "openai_gpt-oss-120b",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "openai_gpt-oss-120b__vllm_default",
+      "time_pct": 2.83,
+      "source_dir": "results/openai_gpt-oss-120b__vllm_default/vllm_wvsplitk",
+      "is_canonical": true
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_default",
+      "time_pct": 1.49,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_default/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default",
+      "time_pct": 1.31,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_default/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "triton_mla",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_triton_mla",
+      "time_pct": 1.18,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_triton_mla/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "openai_gpt-oss-120b",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "openai_gpt-oss-120b__vllm_hip",
+      "time_pct": 1.09,
+      "source_dir": "results/openai_gpt-oss-120b__vllm_hip/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-235B-A22B-FP8",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "Qwen_Qwen3-235B-A22B-FP8__vllm_default",
+      "time_pct": 1.08,
+      "source_dir": "results/Qwen_Qwen3-235B-A22B-FP8__vllm_default/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3.5-35B-A3B",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3.5-35B-A3B__vllm_hip",
+      "time_pct": 0.54,
+      "source_dir": "results/Qwen_Qwen3.5-35B-A3B__vllm_hip/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_default",
+      "time_pct": 0.39,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_default/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "triton_mla",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_triton_mla",
+      "time_pct": 0.23,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_triton_mla/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_hip",
+      "time_pct": 0.22,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_hip/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-V3.2",
+      "engine": "vllm",
+      "mode": "default",
+      "combo": "deepseek-ai_DeepSeek-V3.2__vllm_default",
+      "time_pct": 0.19,
+      "source_dir": "results/deepseek-ai_DeepSeek-V3.2__vllm_default/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip",
+      "time_pct": 0.18,
+      "source_dir": "results/Qwen_Qwen3-Next-80B-A3B-Instruct-FP8__vllm_hip/vllm_wvsplitk",
+      "is_canonical": false
+    },
+    {
+      "model": "deepseek-ai_DeepSeek-R1",
+      "engine": "vllm",
+      "mode": "hip",
+      "combo": "deepseek-ai_DeepSeek-R1__vllm_hip",
+      "time_pct": 0.04,
+      "source_dir": "results/deepseek-ai_DeepSeek-R1__vllm_hip/vllm_wvsplitk",
+      "is_canonical": false
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "test_case_id": "c2",
+    "params_repr": {
+      "B": 2,
+      "n_rows": 2048,
+      "n_expts_tot": 128,
+      "topk": 4,
+      "BLOCK_M": 32,
+      "BLOCK_N": 32,
+      "N_EXPTS_PAD": 128,
+      "N_EXPTS_ACT": 4,
+      "APPLY_SOFTMAX": true,
+      "USE_PROVIDED_INDX": false,
+      "grid": "(cdiv(n_rows,BLOCK_M),) = (64,)"
+    }
+  },
+  {
+    "test_case_id": "c32",
+    "params_repr": {
+      "B": 32,
+      "n_rows": 32768,
+      "n_expts_tot": 128,
+      "topk": 4,
+      "BLOCK_M": 32,
+      "BLOCK_N": 32,
+      "N_EXPTS_PAD": 128,
+      "N_EXPTS_ACT": 4,
+      "APPLY_SOFTMAX": true,
+      "USE_PROVIDED_INDX": false,
+      "grid": "(cdiv(n_rows,BLOCK_M),) = (1024,)"
+    }
+  },
+  {
+    "test_case_id": "c64",
+    "params_repr": {
+      "B": 64,
+      "n_rows": 65536,
+      "n_expts_tot": 128,
+      "topk": 4,
+      "BLOCK_M": 32,
+      "BLOCK_N": 32,
+      "N_EXPTS_PAD": 128,
+      "N_EXPTS_ACT": 4,
+      "APPLY_SOFTMAX": true,
+      "USE_PROVIDED_INDX": false,
+      "grid": "(cdiv(n_rows,BLOCK_M),) = (2048,)"
+    }
+  }
+]

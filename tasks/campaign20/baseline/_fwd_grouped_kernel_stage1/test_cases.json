@@ -1,0 +1,65 @@
+[
+  {
+    "test_case_id": "c2",
+    "regime": {
+      "concurrency_B": 2,
+      "seqlen": 1024,
+      "q_len": 1,
+      "kv_len": 1024,
+      "style": "decode"
+    },
+    "params_repr": {
+      "batch": 2,
+      "seqlen": 1024,
+      "q_head_num": 8,
+      "kv_group_num": 8,
+      "Lk": 576,
+      "Lv": 512,
+      "PAGE_SIZE": 16,
+      "NUM_KV_SPLITS": 4
+    },
+    "note": "shapes built by scripts/harness_run.py build_inputs(); this file documents the regime."
+  },
+  {
+    "test_case_id": "c32",
+    "regime": {
+      "concurrency_B": 32,
+      "seqlen": 1024,
+      "q_len": 1,
+      "kv_len": 1024,
+      "style": "decode"
+    },
+    "params_repr": {
+      "batch": 32,
+      "seqlen": 1024,
+      "q_head_num": 8,
+      "kv_group_num": 8,
+      "Lk": 576,
+      "Lv": 512,
+      "PAGE_SIZE": 16,
+      "NUM_KV_SPLITS": 4
+    },
+    "note": "shapes built by scripts/harness_run.py build_inputs(); this file documents the regime."
+  },
+  {
+    "test_case_id": "c64",
+    "regime": {
+      "concurrency_B": 64,
+      "seqlen": 1024,
+      "q_len": 1,
+      "kv_len": 1024,
+      "style": "decode"
+    },
+    "params_repr": {
+      "batch": 64,
+      "seqlen": 1024,
+      "q_head_num": 8,
+      "kv_group_num": 8,
+      "Lk": 576,
+      "Lv": 512,
+      "PAGE_SIZE": 16,
+      "NUM_KV_SPLITS": 4
+    },
+    "note": "shapes built by scripts/harness_run.py build_inputs(); this file documents the regime."
+  }
+]

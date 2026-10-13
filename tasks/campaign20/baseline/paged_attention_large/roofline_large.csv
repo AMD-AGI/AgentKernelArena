@@ -1,0 +1,3 @@
+kernel,bottleneck,achieved GFLOP/s,AI (F/byte),achieved BW (GB/s),BW util (%),headroom (x)
+paged_attention_ll4mi_QKV_mfma16,memory-bound,51366,14.63,3603,86.6,1.18
+paged_attention_ll4mi_reduce,memory-bound,3955,1.50,2454,59.0,1.58
