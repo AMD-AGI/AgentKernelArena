@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from agents.task_validator.report_v2 import _replay_validation_applicability
+from src.task_spec import load_task_spec
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,8 +64,7 @@ def test_fused_moe_event_metadata_is_source_bound_and_applicable(monkeypatch):
         assert meta['device_timing']['benchmark_fallback_reason'] == 'fused_moe_host_routing_and_dynamic_allocations'
         assert meta['device_timing']['benchmark_measured_samples_checked'] == 100
         assert meta['harness_measurement']['benchmark_original_output_checked'] is True
-    spec = SimpleNamespace(candidate=SimpleNamespace(initial_state='implemented'),
-                           baseline=SimpleNamespace(kind='initial_candidate'))
+    spec = load_task_spec(MOE / 'config.yaml', task_id=MOE.relative_to(ROOT / 'tasks').as_posix())
     applicability = _replay_validation_applicability({
         'evidence_valid': True, 'accepted': True, 'spec': spec,
         'results': {('baseline', 'performance'): SimpleNamespace(passed=True, cases=result['cases'])},
