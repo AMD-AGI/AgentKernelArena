@@ -406,6 +406,7 @@ def cal_kernel_perf(
             case_entry["opt_time"] = round(opt_time, 5)
             case_entry["execution_time_ms"] = round(opt_time, 5)
             case_entry.update(opt_meta)
+            case_entry["reference_benchmark"] = ref_meta
             ref_method = ref_meta.get("benchmark_method")
             opt_method = opt_meta.get("benchmark_method")
             case_entry["reference_benchmark_method"] = ref_method

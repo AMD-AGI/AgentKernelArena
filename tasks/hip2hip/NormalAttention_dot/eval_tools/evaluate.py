@@ -123,6 +123,126 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+PARAMETER_NAMES = (
+    "query_conv.weight", "query_conv.bias", "key_conv.weight", "key_conv.bias",
+    "value_conv.weight", "value_conv.bias", "gamma.weight", "gamma.bias",
+)
+GEOMETRY_CONTROL_SHAPES = ((1, 4, 2, 3), (3, 4, 2, 5), (5, 4, 4, 2))
+
+
+def check_parameter_variants(module, functional, inputs, original_expected, hip_fn,
+                             compare, rtol, atol):
+    """Exercise every live parameter outside the five original scored cases."""
+    import torch
+
+    module_params = dict(module.named_parameters())
+    functional_params = dict(functional.named_parameters())
+    if set(module_params) != set(PARAMETER_NAMES) or set(functional_params) != set(PARAMETER_NAMES):
+        raise ValueError("NormalAttention parameter contract differs from the declared eight tensors")
+    module_before = {name: value.detach().clone() for name, value in module.state_dict().items()}
+    functional_before = {name: value.detach().clone() for name, value in functional.state_dict().items()}
+    if module_before.keys() != functional_before.keys() or any(
+        not torch.equal(value, functional_before[name]) for name, value in module_before.items()
+    ):
+        raise ValueError("Functional parameter state differs from independent reference")
+
+    def unchanged_state(model, expected):
+        actual = model.state_dict()
+        if actual.keys() != expected.keys() or any(
+            not torch.equal(actual[name], value) for name, value in expected.items()
+        ):
+            raise ValueError("Candidate or reference changed NormalAttention parameter state")
+
+    try:
+        for name in PARAMETER_NAMES:
+            with torch.no_grad():
+                module_params[name].copy_(module_before[name] + 1.0)
+                functional_params[name].copy_(functional_before[name] + 1.0)
+            variant_module = {key: value.detach().clone() for key, value in module.state_dict().items()}
+            variant_functional = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+            try:
+                expected = module(*copy.deepcopy(inputs))
+                output_contract(original_expected, expected)
+                if compare(original_expected, expected, rtol=rtol, atol=atol):
+                    raise ValueError(f"Parameter variant {name} has no distinguishable reference output")
+                candidate_inputs = copy.deepcopy(inputs)
+                pristine_inputs = copy.deepcopy(candidate_inputs)
+                actual = (functional(*candidate_inputs) if hip_fn is None else
+                          functional(*candidate_inputs, fn=hip_fn))
+                if any(isinstance(value, torch.Tensor) and value.is_cuda for value in candidate_inputs):
+                    torch.cuda.synchronize()
+                output_contract(expected, actual)
+                if not compare(expected, actual, rtol=rtol, atol=atol):
+                    raise ValueError(f"Candidate ignored or mishandled NormalAttention parameter {name}")
+                for original, current in zip(pristine_inputs, candidate_inputs):
+                    if isinstance(original, torch.Tensor) and not torch.equal(original, current):
+                        raise ValueError("Candidate mutated an input during parameter control")
+                unchanged_state(module, variant_module)
+                unchanged_state(functional, variant_functional)
+            finally:
+                with torch.no_grad():
+                    module_params[name].copy_(module_before[name])
+                    functional_params[name].copy_(functional_before[name])
+        return len(PARAMETER_NAMES)
+    finally:
+        with torch.no_grad():
+            for name, value in module_before.items():
+                module.state_dict()[name].copy_(value)
+            for name, value in functional_before.items():
+                functional.state_dict()[name].copy_(value)
+
+
+def check_geometry_variants(module, functional, hip_fn, compare, rtol, atol):
+    """Check unscored batch and rectangular geometry against the PyTorch module."""
+    import torch
+
+    models = (module, functional)
+    states = tuple({name: value.detach().clone() for name, value in model.state_dict().items()}
+                   for model in models)
+    if states[0].keys() != states[1].keys() or any(
+        not torch.equal(value, states[1][name]) for name, value in states[0].items()
+    ):
+        raise ValueError("Functional state differs from the independent PyTorch reference")
+    device = next(module.parameters()).device
+    try:
+        with torch.no_grad():
+            for index, shape in enumerate(GEOMETRY_CONTROL_SHAPES):
+                source = torch.randn(shape, generator=torch.Generator().manual_seed(9000 + index)).to(device)
+                original_output = None
+                for offset in (0.0, 0.5):
+                    value = source + offset
+                    pristine = value.clone()
+                    reference_input = value.clone()
+                    candidate_input = value.clone()
+                    expected = module(reference_input)
+                    actual = (functional(candidate_input) if hip_fn is None else
+                              functional(candidate_input, fn=hip_fn))
+                    if device.type == "cuda":
+                        torch.cuda.synchronize()
+                    output_contract(expected, actual)
+                    if not compare(expected, actual, rtol=rtol, atol=atol):
+                        raise ValueError(f"NormalAttention geometry {shape} differs from PyTorch reference")
+                    if not all(torch.equal(pristine, item)
+                               for item in (value, reference_input, candidate_input)):
+                        raise ValueError(f"NormalAttention geometry {shape} mutated an input")
+                    for model, before in zip(models, states):
+                        current = model.state_dict()
+                        if current.keys() != before.keys() or any(
+                            not torch.equal(current[name], prior) for name, prior in before.items()
+                        ):
+                            raise ValueError(f"NormalAttention geometry {shape} changed model state")
+                    if original_output is None:
+                        original_output = expected
+                    elif compare(original_output, expected, rtol=rtol, atol=atol):
+                        raise ValueError(f"NormalAttention geometry {shape} input change has no oracle effect")
+        return len(GEOMETRY_CONTROL_SHAPES)
+    finally:
+        with torch.no_grad():
+            for model, before in zip(models, states):
+                for name, value in before.items():
+                    model.state_dict()[name].copy_(value)
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -183,9 +303,16 @@ def correctness(args, role, rows):
         row = {**rows[index], "status": "PASS" if passed else "FAIL", "metrics": {"rtol": rtol, "atol": atol}}
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
+        elif index == 0:
+            row["metrics"]["parameter_variants_checked"] = check_parameter_variants(
+                module, functional, reference_inputs, expected, hip_fn,
+                checks._compare_results, rtol, atol)
         result.append(row)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    if all(row["status"] == "PASS" for row in result):
+        result[0]["metrics"]["geometry_controls_checked"] = check_geometry_variants(
+            module, functional, hip_fn, checks._compare_results, rtol, atol)
     return result
 
 
@@ -257,13 +384,31 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
+        fallback = selected_benchmark.get("benchmark_fallback_reason")
+        if method == "cuda_event_fallback" and (not isinstance(fallback, str) or not fallback.strip()):
+            raise RuntimeError("Event benchmark omitted its declared fallback reason")
+        if selected_benchmark.get("timed_output_checked") is not True:
+            raise RuntimeError("Benchmark did not validate its measured output")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {
+                           "timed_output_checked": True,
+                           "device_timing": {"benchmark_method": method,
+                                             "benchmark_fallback_reason": fallback,
+                                             "benchmark_method_consistent": case.get("benchmark_method_consistent")},
+                           "original_benchmark": case,
+                           "timed_benchmark": selected_benchmark}})
     return result
 
 

@@ -189,6 +189,7 @@ def test_rope_reference_pair_rotation_and_both_candidate_outputs(monkeypatch):
                 rope.run(harness, case)
 
 
+
 def test_native_mla_candidate_macros_cannot_change_host_harness(tmp_path):
     import shutil
     import subprocess
@@ -214,6 +215,23 @@ def test_native_mla_candidate_macros_cannot_change_host_harness(tmp_path):
 
 ALL_PORTS = sorted(path.parent.name.removeprefix('triton_') for path in
                    (ROOT / 'tasks/triton2triton/vllm').glob('*/_upstream_controls.py'))
+
+
+def original_paged_alibi_reference(source):
+    """Reverse only the reviewed, byte-exact reference mask replacement."""
+    hoist = (b'    causal_new_keys = torch.triu(\n'
+             b'        torch.ones(query_len, query_len, device=q_packed.device, dtype=torch.bool),\n'
+             b'        diagonal=1,\n'
+             b'    )\n\n')
+    vectorized = (b'            scores[:, ctx_len:ctx_len + q_len].masked_fill_(causal_new_keys, float("-inf"))\n'
+                  b'            alibi_bias[:, ctx_len:ctx_len + q_len].masked_fill_(causal_new_keys, float("-inf"))\n\n')
+    scalar = (b'            for qi in range(q_len):\n'
+              b'                for ki in range(q_len):\n'
+              b'                    if ki > qi:\n'
+              b'                        scores[qi, ctx_len + ki] = float("-inf")\n'
+              b'                        alibi_bias[qi, ctx_len + ki] = float("-inf")\n\n')
+    assert source.count(hoist) == source.count(vectorized) == 1
+    return source.replace(hoist, b'\n', 1).replace(vectorized, scalar, 1)
 
 
 @pytest.mark.parametrize('name', ALL_PORTS)
@@ -260,6 +278,8 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
                   b'        return run_control(case_index - 10000, load_module)\n')
     after = (root / 'scripts/task_runner.py').read_bytes()
     assert after.count(dispatcher) == 1
+    if name == 'paged_prefix_prefill_alibi':
+        after = original_paged_alibi_reference(after)
     if name == 'prepare_eagle_docode':
         # Only the reviewed launcher-policy boundary is additional to the public
         # control dispatch. Preserve the complete byte comparison for everything
@@ -293,12 +313,18 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
     adapter = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(adapter)
     assert adapter.load_manifest() == manifest
-    visited = []
+    added_contracts = {row['params']['contract_case'] for row in added
+                       if 'contract_case' in row['params']}
+    visited = {'indexed': [], 'contract': []}
     def check(*, case_index):
-        visited.append(case_index)
+        visited['indexed'].append(case_index)
         return (case_index < 10000, 'deliberately invalid added candidate')
+    def check_contract(case):
+        visited['contract'].append(case)
+        return (case not in added_contracts,
+                'deliberately invalid added candidate' if case in added_contracts else None)
     harness = SimpleNamespace(**{manifest['case_table']: manifest['input_table']},
-        run_correctness=check, run_contract_correctness=lambda case: (True, None),
+        run_correctness=check, run_contract_correctness=check_contract,
         run_semantic_controls=lambda: [],
         CONTRACT_CASES={r['test_case_id']: r['params'] for r in manifest['cases']
                         if 'contract_case' in r['params']})
@@ -308,7 +334,16 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
     assert result['status'] == 'FAIL', result
     failed = [row for row in result['cases'] if row['status'] == 'FAIL']
     assert [row['test_case_id'] for row in failed] == [row['test_case_id'] for row in added], result
-    assert [i for i in visited if i >= 10000] == list(range(10000, 10000 + len(added)))
+    indexed = [row['params'].get('case_index', index)
+               for index, row in enumerate(manifest['cases'])
+               if 'contract_case' not in row['params']]
+    contract = [row['params']['contract_case'] for row in manifest['cases']
+                if 'contract_case' in row['params']]
+    assert visited == {'indexed': indexed, 'contract': contract}
+    assert [i for i in visited['indexed'] if i >= 10000] == [
+        row['params']['case_index'] for row in added if 'contract_case' not in row['params']]
+    if contract:
+        assert visited['indexed'] and visited['contract']
     parsed = parse_command_result('ARENA_EVAL_RESULT=' + json.dumps(result),
                                   role='candidate', action='correctness', returncode=1)
     assert parsed.status == 'FAIL'
@@ -412,7 +447,7 @@ def test_refk_protected_inputs_preserve_generator_bytes_and_strides(shape):
 
 
 @pytest.mark.parametrize('family', ['triton2triton/rocmbench/hard'])
-def test_retained_moe_preparation_hoists_device_scalar_without_changing_launch(family):
+def test_moe_preparation_hoists_device_scalar_without_changing_launch(family):
     import functools
     import subprocess
     path = f'tasks/{family}/moe_gemm/moe_gemm.py'

@@ -29,13 +29,129 @@ import torch
 import flydsl.compiler as flyc
 import flydsl.expr as fx
 from flydsl._mlir import ir
+from flydsl._mlir.dialects import arith as mlir_arith
+from flydsl._mlir.dialects import llvm, rocdl as mlir_rocdl
+from flydsl._mlir.dialects import vector
 from flydsl._mlir.dialects.arith import CmpIPredicate
 from flydsl.compiler.kernel_function import CompilationContext
 from flydsl.expr import arith as _arith
-from flydsl.expr import buffer_ops, const_expr, gpu, math, range_constexpr, rocdl
+from flydsl.expr import const_expr, gpu, math, range_constexpr, rocdl
 from flydsl.expr.typing import T
-from flydsl.runtime.device import get_rocm_arch as get_hip_arch
+from flydsl.runtime.device import get_rocm_arch as get_hip_arch, is_rdna_arch
 from flydsl.utils.smem_allocator import SmemAllocator, SmemPtr
+
+
+# The installed FlyDSL 0.3.2 package excludes its repository-level
+# kernels.common.buffer_ops. Keep only the raw buffer operations this kernel
+# uses here. Descriptor fields and byte offsets follow the Apache-2.0 FlyDSL
+# kernels/common/buffer_ops.py definitions (ROCm/FlyDSL v0.3.2).
+# Copyright (c) 2025 FlyDSL Project Contributors (Apache-2.0).
+class _RawBufferOps:
+    @staticmethod
+    def _value(value):
+        return value.ir_value() if hasattr(value, "ir_value") else value
+
+    @staticmethod
+    def _constant(bits, value):
+        ty = ir.IntegerType.get_signless(bits)
+        attr = ir.IntegerAttr.get(ty, int(value))
+        return mlir_arith.ConstantOp(ty, attr).result
+
+    @classmethod
+    def _i32(cls, value):
+        value = cls._value(value)
+        if isinstance(value, int):
+            return cls._constant(32, value)
+        if isinstance(value.type, ir.IntegerType):
+            if value.type.width == 32:
+                return value
+            if value.type.width > 32:
+                return mlir_arith.TruncIOp(ir.IntegerType.get_signless(32), value).result
+            return mlir_arith.ExtSIOp(ir.IntegerType.get_signless(32), value).result
+        return mlir_arith.IndexCastOp(ir.IntegerType.get_signless(32), value).result
+
+    @classmethod
+    def create_buffer_resource_from_addr(cls, address, *, num_records_bytes=None):
+        address = cls._value(address)
+        base = llvm.IntToPtrOp(ir.Type.parse("!llvm.ptr"), address).result
+        flags = (7 << 12) | (4 << 15)
+        if is_rdna_arch(get_hip_arch()):
+            flags |= (1 << 24) | (2 << 28)
+        records = 0xFFFFFFFF if num_records_bytes is None else num_records_bytes
+        records = cls._value(records)
+        if isinstance(records, int):
+            records = cls._constant(64, records)
+        elif not isinstance(records.type, ir.IntegerType) or records.type.width != 64:
+            records = mlir_arith.IndexCastOp(ir.IntegerType.get_signless(64), records).result
+        return mlir_rocdl.MakeBufferRsrcOp(
+            ir.Type.parse("!llvm.ptr<8>"),
+            base,
+            cls._constant(16, 0),
+            records,
+            cls._constant(32, flags),
+        ).result
+
+    @classmethod
+    def create_llvm_ptr(cls, address, *, address_space=0):
+        address = cls._value(address)
+        if isinstance(address.type, ir.IndexType):
+            address = mlir_arith.IndexCastOp(ir.IntegerType.get_signless(64), address).result
+        return llvm.IntToPtrOp(ir.Type.parse(f"!llvm.ptr<{address_space}>"), address).result
+
+    @classmethod
+    def get_element_ptr(cls, base, byte_offset=None, *, static_byte_offset=0):
+        base = cls._value(base)
+        if byte_offset is None or isinstance(byte_offset, int):
+            delta = static_byte_offset + (byte_offset or 0)
+            dynamic = []
+            raw_offsets = [int(delta)]
+        else:
+            offset = cls._value(byte_offset)
+            if isinstance(offset.type, ir.IndexType):
+                offset = mlir_arith.IndexCastOp(ir.IntegerType.get_signless(64), offset).result
+            if static_byte_offset:
+                offset = mlir_arith.AddIOp(
+                    offset, cls._constant(offset.type.width, static_byte_offset)
+                ).result
+            dynamic = [offset]
+            raw_offsets = [-(2**31)]
+        return llvm.GEPOp(
+            base.type, base, dynamic, raw_offsets, ir.IntegerType.get_signless(8), None
+        ).result
+
+    @classmethod
+    def buffer_load(cls, resource, offset, *, vec_width=4, dtype=None, cache_modifier=0):
+        dtype = ir.F32Type.get() if dtype is None else getattr(dtype, "ir_type", dtype)
+        dtype = dtype() if callable(dtype) else dtype
+        byte_offset = mlir_arith.MulIOp(
+            cls._i32(offset), cls._constant(32, dtype.width // 8)
+        ).result
+        result_type = dtype if vec_width == 1 else ir.VectorType.get([vec_width], dtype)
+        aux = (
+            ir.IntegerAttr.get(ir.IntegerType.get_signless(32), cache_modifier)
+            if cache_modifier
+            else None
+        )
+        return mlir_rocdl.RawPtrBufferLoadOp(
+            result_type, cls._value(resource), byte_offset, cls._constant(32, 0), aux=aux
+        ).result
+
+    @classmethod
+    def buffer_store(cls, data, resource, offset, *, offset_is_bytes=False):
+        data = cls._value(data)
+        byte_offset = cls._i32(offset)
+        if not offset_is_bytes:
+            data_type = data.type
+            elem_type = data_type.element_type if hasattr(data_type, "element_type") else data_type
+            byte_offset = mlir_arith.MulIOp(
+                byte_offset, cls._constant(32, elem_type.width // 8)
+            ).result
+        mlir_rocdl.RawPtrBufferStoreOp(
+            data, cls._value(resource), byte_offset, cls._constant(32, 0), aux=None
+        )
+
+
+buffer_ops = _RawBufferOps
 
 
 # ===========================================================================
@@ -712,14 +828,14 @@ def lds_load_pack_k32(
     if ck_lds128:
         coord_a16 = (curr_row_a_lds, col_base_swz)
         idx_a16 = crd2idx(coord_a16, layout_lds) + lds_base
-        loaded_a16 = vector.load_op(vec16_ty, lds_memref, [idx_a16])
+        loaded_a16 = vector.load(vec16_ty, lds_memref, [idx_a16])
         a_vec128 = vector.bitcast(vec2_i64_ty, loaded_a16)
         return vector.extract(a_vec128, static_position=[half], dynamic_position=[])
     else:
         col_swizzled = col_base_swz + (half * 8)
         coord_a = (curr_row_a_lds, col_swizzled)
         idx_a = crd2idx(coord_a, layout_lds) + lds_base
-        loaded_a8 = vector.load_op(vec8_ty, lds_memref, [idx_a])
+        loaded_a8 = vector.load(vec8_ty, lds_memref, [idx_a])
         a_vec64 = vector.bitcast(vec1_i64_ty, loaded_a8)
         return vector.extract(a_vec64, static_position=[0], dynamic_position=[])
 
@@ -1023,10 +1139,10 @@ def c_shuffle_epilog(
 
                     _if_ld = scf.IfOp(_is_group_b, [vec_frag], has_else=True)
                     with ir.InsertionPoint(_if_ld.then_block):
-                        fb = vector.load_op(vec_frag, lds_out_split, [lds_idx])
+                        fb = vector.load(vec_frag, lds_out_split, [lds_idx])
                         scf.YieldOp([fb])
                     with ir.InsertionPoint(_if_ld.else_block):
-                        fa = vector.load_op(vec_frag, lds_out, [lds_idx])
+                        fa = vector.load(vec_frag, lds_out, [lds_idx])
                         scf.YieldOp([fa])
                     frag = _if_ld.results[0]
 
@@ -1152,7 +1268,7 @@ def c_shuffle_epilog(
                 col_pair0 = col_base_nr + (n_lane * c_evec)  # even col within tile
 
                 lds_idx_pair = row_base_lds + col_pair0
-                frag = vector.load_op(vec_frag, lds_out, [lds_idx_pair])
+                frag = vector.load(vec_frag, lds_out, [lds_idx_pair])
 
                 store_pair(
                     row_local=row_local,
@@ -1760,7 +1876,7 @@ def compile_preshuffle_gemm_a8(
             return load_b_pack_k32(
                 buffer_ops,
                 fx.arith,
-                fx.vector,
+                vector,
                 arg_b=arg_b,
                 b_rsrc=b_rsrc,
                 layout_b=layout_b,
@@ -1838,7 +1954,7 @@ def compile_preshuffle_gemm_a8(
             vec_elems = 16 if elem_bytes == 1 else 8
             b16 = _buffer_load_vec(
                 buffer_ops,
-                fx.vector,
+                vector,
                 b_rsrc,
                 idx_pack,
                 elem_type=_elem_type(),
@@ -1919,7 +2035,7 @@ def compile_preshuffle_gemm_a8(
         def load_a_16(idx_elem):
             return buffer_copy_gmem16_dwordx4(
                 buffer_ops,
-                fx.vector,
+                vector,
                 elem_type=_elem_type(),
                 idx_i32=idx_elem,
                 rsrc=a_rsrc,
@@ -2460,7 +2576,7 @@ def compile_preshuffle_gemm_a8(
                 mfma_epilog(
                     use_cshuffle=True,
                     arith=fx.arith,
-                    vector=fx.vector,
+                    vector=vector,
                     gpu=gpu,
                     range_constexpr=range_constexpr,
                     tile_m=tile_m,

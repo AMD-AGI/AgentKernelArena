@@ -90,26 +90,13 @@ torch::Tensor forward(
     auto x1_2d = x1.view({N, D});
     auto x2_2d = x2.view({N, D});
 
-    // Helper to compute gate: y = bias + x1*W_l^T + x2*W_r^T, then activation
+    // Use the same single concatenated linear reduction as the independent
+    // PyTorch operator. Splitting into two GEMMs changes float32 summation
+    // order enough to violate the numerical contract for live gate weights.
     auto compute_gate = [&](const torch::Tensor& W, const torch::Tensor& b, bool use_reset_x1, const torch::Tensor& reset_tensor, bool tanh_act) {
-        // Split weights along input dimension: [D, 2D] -> ([D, D], [D, D]) columns
-        auto W_l = W.narrow(/*dim=*/1, /*start=*/0, /*length=*/D);      // [D, D]
-        auto W_r = W.narrow(/*dim=*/1, /*start=*/D, /*length=*/D);      // [D, D]
-
-        // Prepare left input: either x1 or reset * x1
-        torch::Tensor left_in;
-        if (use_reset_x1) {
-            left_in = reset_tensor.mul(x1_2d); // [N, D]
-        } else {
-            left_in = x1_2d;
-        }
-
-        // y = b + left_in * W_l^T
-        auto y = at::addmm(b, left_in, W_l.t()); // [N, D]
-        // y += x2 * W_r^T
-        y.addmm_(x2_2d, W_r.t());
-
-        // activation
+        auto left_in = use_reset_x1 ? reset_tensor.mul(x1_2d) : x1_2d;
+        auto joined = at::cat({left_in, x2_2d}, -1);
+        auto y = at::linear(joined, W, b);
         if (tanh_act) return at::tanh(y);
         return at::sigmoid(y);
     };

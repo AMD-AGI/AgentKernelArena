@@ -138,6 +138,10 @@ def reference_attention_alibi(
     kv_group_num = num_heads // num_kv_heads
     out = torch.zeros_like(q_packed)
     sm_scale = 1.0 / (head_dim ** 0.5)
+    causal_new_keys = torch.triu(
+        torch.ones(query_len, query_len, device=q_packed.device, dtype=torch.bool),
+        diagonal=1,
+    )
 
     for b in range(batch_size):
         start = b_start_loc[b].item()
@@ -171,11 +175,8 @@ def reference_attention_alibi(
             alibi_bias = torch.where(alibi_bias <= 0, alibi_bias, torch.tensor(float("-inf")))
 
             # Causal mask for query-vs-query part
-            for qi in range(q_len):
-                for ki in range(q_len):
-                    if ki > qi:
-                        scores[qi, ctx_len + ki] = float("-inf")
-                        alibi_bias[qi, ctx_len + ki] = float("-inf")
+            scores[:, ctx_len:ctx_len + q_len].masked_fill_(causal_new_keys, float("-inf"))
+            alibi_bias[:, ctx_len:ctx_len + q_len].masked_fill_(causal_new_keys, float("-inf"))
 
             scores = scores + alibi_bias
             attn = torch.softmax(scores.float(), dim=-1).to(q_b.dtype)

@@ -34,14 +34,21 @@ against the original CPU block-dequantization/matmul oracle, using pristine
 operands and scales. All four input tensors must remain unchanged. The original
 `atol=rtol=1e-1` rule is retained. Unscored controls add a contiguous higher-rank
 A, partial K/N blocks, a 64-by-64 scale block, zero A and FP32/BF16 output.
+The same controls also check noncontiguous As alone, Bs alone, and both scales
+together, using padded storage with the original logical scale values. These
+checks run only during correctness, outside the five scored measurements.
 The INT8 wrapper retains its contiguous A/B requirement.
 
 The five scored shapes, seeds and input magnitudes remain unchanged, including
-the larger performance scales/operands. Ten warmups and 100 device-timed samples
-still measure the original public operator, including its output allocation.
-The protected wrapper collects that output from the exact measured graph,
-checks it against the reference, then changes A/B/As/Bs, poisons the captured
-output and checks the same graph's replay. These checks are outside timing.
+the larger performance scales/operands. Ten warmups and 100 samples use explicit
+device-Event timing for both roles, invoking the original allocating public
+operator for every measured sample. Graph `after_sample` can inspect a captured
+output after each replay, but replay would not rerun this wrapper and a batched
+graph could leave earlier returns unchecked. The protected wrapper checks every
+measured output against the reference, then changes A/B/As/Bs, poisons the final
+output and checks an eager rerun of the same callable. These checks are outside
+timing. Event times are not directly comparable with historical graph-replay
+times.
 Input buffers are verified read-only and restored even on replay failure.
 NaN and numerical mismatches remain failures. The original `torch.allclose`
 semantics permit signed FP16 infinity only at exactly the same locations and

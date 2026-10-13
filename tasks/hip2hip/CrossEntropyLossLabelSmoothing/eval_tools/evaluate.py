@@ -171,11 +171,14 @@ def correctness(args, role, rows):
         check_case_identity(rows[index], inputs)
         inputs = list(inputs) if isinstance(inputs, (tuple, list)) else [inputs]
         reference_inputs = [value.to("cuda") if isinstance(value, torch.Tensor) else value for value in inputs]
-        from case_controls import configure_models, reference
+        from case_controls import configure_models, assert_declared_control, reference
         configure_models((module, functional), reference_inputs)
+        assert_declared_control(module, reference_inputs)
+        assert_declared_control(functional, reference_inputs)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         expected = module(*copy.deepcopy(reference_inputs))
+        assert_declared_control(module, reference_inputs)
         torch.manual_seed(1337 + index)
         torch.cuda.manual_seed_all(1337 + index)
         # A provided PyTorch baseline is checked against the independently written
@@ -183,6 +186,7 @@ def correctness(args, role, rows):
         actual = (functional(*copy.deepcopy(reference_inputs)) if hip_fn is None else
                   functional(*copy.deepcopy(reference_inputs), fn=hip_fn))
         torch.cuda.synchronize()
+        assert_declared_control(functional, reference_inputs)
         output_contract(expected, actual)
         oracle = reference(*reference_inputs, module.smooth_eps, module.smooth_dist)
         output_contract(oracle, expected)
@@ -265,13 +269,26 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ) or selected_benchmark.get("timed_output_checked") is not True:
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
+        if case.get("benchmark_method_consistent") is not True:
+            raise RuntimeError("Benchmark used inconsistent reference and selected timing methods")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark,
+                                                                 "device_timing": selected_benchmark,
+                                                                 "timed_output_checked": True,
+                                                                 "benchmark_method_consistent": True}})
     return result
 
 

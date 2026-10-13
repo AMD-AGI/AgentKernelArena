@@ -1,6 +1,8 @@
 schema_version: 2
-description: Optimize the fixed-launch triton_matmul_kernel multreduce workload; retain the autotuned
-  wrapper correctness cases and all protected benchmark semantics.
+description: Optimize the fixed-launch triton_matmul_kernel matrix multiplication workload;
+  mathematically equivalent Triton implementations including tl.dot are allowed within
+  declared editable scopes. Retain both entrypoint interfaces, the autotuned wrapper
+  correctness cases, and all protected numerical, launch, and timing semantics.
 candidate:
   language: triton
   initial_state: implemented

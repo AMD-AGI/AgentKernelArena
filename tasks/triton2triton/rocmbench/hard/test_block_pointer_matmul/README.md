@@ -16,6 +16,10 @@ The adapter emits `arena-eval-v1`; Arena owns final score/validation reports.
 Collection is checked against this independent manifest. Original correctness
 functions run unchanged. Performance inputs additionally run the task-local
 oracle in `_arena_reference.py`, before timing and against observed timed output.
+Correctness-only controls independently check smaller output-row and output-column
+tiles and a partial-K dot product, including exact preservation of C outside
+the single written tile. These retain the declared single-tile interface while
+the original 16 cases and 10 scored cases remain unchanged.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
 

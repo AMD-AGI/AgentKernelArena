@@ -1,6 +1,7 @@
 // Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 #include <torch/extension.h>
 #include <ATen/ATen.h>
+#include <ATen/Dispatch.h>
 #include <c10/hip/HIPStream.h>
 #include <hip/hip_runtime.h>
 #include <cstdint>
@@ -147,6 +148,21 @@ void sigmoid_mul_scalar_kernel(
     }
 }
 
+// Half and bfloat16 follow the PyTorch expression's dtype rounding after
+// multiplication and sigmoid, rather than rounding only the final result.
+template <typename T>
+__global__ void sigmoid_mul_low_precision_kernel(
+    const T* __restrict__ in, T* __restrict__ out, int64_t n, float a, float maxv)
+{
+    const int64_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    const int64_t stride = (int64_t)blockDim.x * gridDim.x;
+    for (int64_t i = tid; i < n; i += stride) {
+        T scaled = static_cast<T>(a * static_cast<float>(in[i]));
+        T activated = static_cast<T>(sigmoid_f32(static_cast<float>(scaled)));
+        out[i] = static_cast<T>(static_cast<float>(activated) * maxv);
+    }
+}
+
 // Env helpers
 static inline int env_get_int(const char* name, int defv) {
     const char* s = std::getenv(name);
@@ -222,19 +238,21 @@ static inline void launch_with_tb(int threads, F&& fn) {
 // Forward API: forward(v, a, max)
 torch::Tensor forward(torch::Tensor v, float a = 1.0f, float max = 10.0f) {
     TORCH_CHECK(v.is_cuda() || v.is_hip(), "Tensor must be on HIP (ROCm) device");
-    TORCH_CHECK(v.is_contiguous(), "Input must be contiguous");
-    TORCH_CHECK(v.scalar_type() == at::kFloat || v.scalar_type() == at::kDouble,
-                "Only float32 and float64 tensors are supported");
+    TORCH_CHECK(v.is_floating_point(), "Input must be a floating point tensor");
+    // The protected module accepts strided views. Materialize their logical
+    // values before the contiguous HIP kernels read them; scored inputs already
+    // are contiguous and keep their original path.
+    auto source = v.is_contiguous() ? v : v.contiguous();
 
-    auto out = torch::empty_like(v);
-    const int64_t n = v.numel();
+    auto out = torch::empty_like(source);
+    const int64_t n = source.numel();
     if (n == 0) return out;
 
     hipStream_t stream = c10::hip::getCurrentHIPStream();
     const int threads = choose_threads_from_env();
 
-    if (v.scalar_type() == at::kFloat) {
-        const float* in_ptr = v.data_ptr<float>();
+    if (source.scalar_type() == at::kFloat) {
+        const float* in_ptr = source.data_ptr<float>();
         float* out_ptr = out.data_ptr<float>();
 
         constexpr int Pack = 4; // float4
@@ -265,8 +283,8 @@ torch::Tensor forward(torch::Tensor v, float a = 1.0f, float max = 10.0f) {
                     in_ptr, out_ptr, n, a, max);
             });
         }
-    } else {
-        const double* in_ptr = v.data_ptr<double>();
+    } else if (source.scalar_type() == at::kDouble) {
+        const double* in_ptr = source.data_ptr<double>();
         double* out_ptr = out.data_ptr<double>();
 
         constexpr int Pack = 2; // double2
@@ -297,6 +315,14 @@ torch::Tensor forward(torch::Tensor v, float a = 1.0f, float max = 10.0f) {
                     in_ptr, out_ptr, n, a, max);
             });
         }
+    } else {
+        const int blocks = compute_blocks_scalar(n, threads);
+        AT_DISPATCH_FLOATING_TYPES_AND2(at::kHalf, at::kBFloat16,
+                                        source.scalar_type(), "sigmoid_mul_low_precision", [&] {
+            hipLaunchKernelGGL((sigmoid_mul_low_precision_kernel<scalar_t>),
+                dim3(blocks), dim3(threads), 0, stream,
+                source.data_ptr<scalar_t>(), out.data_ptr<scalar_t>(), n, a, max);
+        });
     }
 
     C10_CUDA_KERNEL_LAUNCH_CHECK();
@@ -307,4 +333,3 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward, "Sigmoid * max forward (HIP)",
           pybind11::arg("v"), pybind11::arg("a") = 1.0f, pybind11::arg("max") = 10.0f);
 }
-

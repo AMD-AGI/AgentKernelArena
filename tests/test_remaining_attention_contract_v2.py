@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -24,10 +25,74 @@ def load(path):
     return module
 
 
-@pytest.fixture(params=FIRST + REMAINING)
-def contract(request, monkeypatch):
+class SampledTimedRun(SimpleNamespace):
+    @property
+    def bound(self):
+        return callable(getattr(self, 'rerun', None))
+
+
+def streaming_graph_samples(fn, timed_run, options, *, fault=None):
+    """CPU double for the one-call graph path, including every preparation."""
+    assert set(options) == {'warmup', 'repetition', 'max_graph_repeats', 'prepare_fn'}
+    assert (options['warmup'], options['repetition'], options['max_graph_repeats']) == (10, 100, 1)
+    prepare = options['prepare_fn']
+    stream = timed_run.after_sample.__self__
+    prepared = 0
+
+    def before():
+        nonlocal prepared
+        prepare()
+        prepared += 1
+
+    def replay_into(captured):
+        # A real graph reruns the captured operator into the same output
+        # buffers without calling the Python binder a second time. Invoke the
+        # candidate through fn, then retain the captured tuple and reset count.
+        resets = stream.resets
+        fresh = fn()
+        assert len(fresh) == len(captured)
+        for target, value in zip(captured, fresh):
+            target.copy_(value)
+        stream.output, stream.resets = captured, resets
+        return captured
+
+    for _ in range(10):
+        before()
+        fn()
+    before()
+    estimate = fn()
+    for _ in range(2):
+        before()
+        replay_into(estimate)
+    before()
+    outputs = fn()
+    old = tuple(value.clone() for value in outputs)
+    before()
+    replay_into(outputs)  # Prime the final graph outside the scored samples.
+    for index in range(100):
+        before()
+        replay_into(outputs)
+        if fault == 'missing_sample' and index == 49:
+            continue
+        if fault == 'wrong_middle_sample' and index == 49:
+            wrong = list(outputs)
+            wrong[0] = torch.full_like(outputs[0], float('nan'))
+            timed_run.after_sample(tuple(wrong))
+        else:
+            timed_run.after_sample(outputs)
+    assert prepared == 115
+    timed_run.outputs = outputs
+    metadata = {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
+                'benchmark_warmup': 10, 'benchmark_samples': 100,
+                'benchmark_effective_repeats': 1}
+    return outputs, old, replay_into, metadata
+
+
+def make_contract(name, monkeypatch):
     monkeypatch.chdir(ROOT)
-    name = request.param
+    if name == REMAINING[3]:
+        # Match the task's own import path; no stub of the measured stream.
+        monkeypatch.setitem(sys.modules, '_arena_samples', load(TASKS/name/'_arena_samples.py'))
     checks = load(TASKS / name / '_arena_checks.py')
     harness = load(TASKS / name / 'scripts/task_runner.py')
     if name == FIRST[0]:
@@ -58,7 +123,6 @@ def contract(request, monkeypatch):
         args = harness.make_test_data(1, 2, 4, 2, 1, 8, 2, 'cpu', torch.float32)
         kwargs = {'sliding_window': 2, 'softcap': 2.0}
     else:
-        import sys
         # The independent original reference uses only Triton's integer helper.
         monkeypatch.setitem(sys.modules, 'triton', SimpleNamespace(next_power_of_2=lambda n: 1 << (n-1).bit_length()))
         args = harness.make_test_data(1, 1, 32, 2, 1, 8, 2, 'cpu', torch.float32)
@@ -66,15 +130,27 @@ def contract(request, monkeypatch):
     return checks, harness, args, kwargs
 
 
+@pytest.fixture(params=FIRST + REMAINING)
+def contract(request, monkeypatch):
+    return make_contract(request.param, monkeypatch)
+
+
 def cpu_graph_double(h):
-    h._TimedRun=SimpleNamespace
+    h._TimedRun=SampledTimedRun
     def benchmark(fn, *, timed_run, **options):
+        if 'prepare_fn' in options:
+            outputs, _, replay_into, metadata = streaming_graph_samples(fn, timed_run, options)
+            timed_run.rerun = lambda: replay_into(outputs)
+            return .125, metadata
         assert options=={'warmup':10,'repetition':100}
         outputs=fn()
         def replay():
             new=fn()
             for output,wanted in zip(outputs,new):output.copy_(wanted)
             return outputs
+        if callable(getattr(timed_run, 'after_sample', None)):
+            for _ in range(options['repetition']):
+                timed_run.after_sample(outputs)
         timed_run.outputs,timed_run.rerun=outputs,replay
         return .125,{'benchmark_method':'cuda_graph','benchmark_warmup':10,'benchmark_samples':100}
     h._benchmark_cuda_graph_or_events=benchmark
@@ -128,6 +204,16 @@ def test_actual_correctness_wrapper_pristine_full_output_guards(contract, monkey
 
 @pytest.mark.parametrize('fault', ['none', 'stale', 'unwritten_tail', 'auxiliary', 'mutated_input'])
 def test_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault):
+    assert_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault)
+
+
+@pytest.mark.parametrize('fault', ['wrong_middle_sample', 'missing_sample'])
+def test_paged_alibi_rejects_unchecked_measured_sample(monkeypatch, fault):
+    contract = make_contract('triton_paged_prefix_prefill_alibi', monkeypatch)
+    assert_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault)
+
+
+def assert_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypatch, fault):
     checks, harness, args, kwargs = contract
     install_numerical_double(monkeypatch, checks)
     good = numerical_candidate(checks, harness)
@@ -136,10 +222,45 @@ def test_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypat
     def fn():
         getattr(mod, checks.SYMBOL)(*args, **kwargs)
     replay_count = []
+    streaming = False
     def benchmark(measured, *, timed_run, **options):
+        nonlocal streaming
+        if 'prepare_fn' in options:
+            streaming = True
+            outputs, old, replay_into, metadata = streaming_graph_samples(
+                measured, timed_run, options, fault=fault)
+
+            def replay():
+                replay_count.append(1)
+                before_tail = outputs[0].reshape(-1)[-1].clone()
+                if fault == 'stale':
+                    for out, wanted in zip(outputs, old):
+                        out.copy_(wanted)
+                else:
+                    replay_into(outputs)
+                if fault == 'unwritten_tail':
+                    outputs[0].reshape(-1)[-1].copy_(before_tail)
+                if fault == 'auxiliary':
+                    outputs[-1].reshape(-1)[-1] += 10
+                if fault == 'mutated_input':
+                    args[checks.PERTURB_KEYS[0]].zero_()
+                return outputs
+
+            timed_run.rerun = replay
+            return .125, metadata
         assert options == {'warmup': 10, 'repetition': 100}
         outputs = measured()
         old = tuple(o.clone() for o in outputs)
+        if callable(getattr(timed_run, 'after_sample', None)):
+            for index in range(options['repetition']):
+                if fault == 'missing_sample' and index == 49:
+                    continue
+                if fault == 'wrong_middle_sample' and index == 49:
+                    wrong = list(outputs)
+                    wrong[0] = torch.full_like(outputs[0], float('nan'))
+                    timed_run.after_sample(tuple(wrong))
+                else:
+                    timed_run.after_sample(outputs)
         def replay():
             replay_count.append(1)
             new = old if fault == 'stale' else checks.expected_outputs(harness, dict(enumerate(args)) | kwargs)
@@ -153,14 +274,16 @@ def test_exact_measured_outputs_perturbed_replay_and_restore(contract, monkeypat
             return outputs
         timed_run.outputs, timed_run.rerun = outputs, replay
         return .125, {'benchmark_method': 'cuda_graph'}
-    harness._TimedRun = SimpleNamespace
+    harness._TimedRun = SampledTimedRun
     if fault == 'none':
         ms, metadata = checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
         assert ms == .125 and metadata['perturbed_input_replay_checked']
     else:
         with pytest.raises(AssertionError):
             checks.checked_benchmark(harness, benchmark, fn, warmup=10, repetition=100)
-    assert replay_count == [1]
+    expected_replays = ([] if fault in {'wrong_middle_sample', 'missing_sample'}
+                        else [1, 1] if streaming and fault == 'none' else [1])
+    assert replay_count == expected_replays
     for key, original in pristine.items():
         assert torch.equal(checks._tensor_bytes(args[key]), checks._tensor_bytes(original))
     assert getattr(mod, checks.SYMBOL) is good
@@ -228,6 +351,23 @@ def test_fake_jit_and_initializer_are_rejected(contract, monkeypatch):
 
 
 # Filled with reviewed base bytes; no git-history dependency in source archives.
+def original_paged_alibi_reference(source):
+    """Reverse only the reviewed exact reference-mask replacement."""
+    hoist = ('    causal_new_keys = torch.triu(\n'
+             '        torch.ones(query_len, query_len, device=q_packed.device, dtype=torch.bool),\n'
+             '        diagonal=1,\n'
+             '    )\n\n')
+    vectorized = ('            scores[:, ctx_len:ctx_len + q_len].masked_fill_(causal_new_keys, float("-inf"))\n'
+                  '            alibi_bias[:, ctx_len:ctx_len + q_len].masked_fill_(causal_new_keys, float("-inf"))\n\n')
+    scalar = ('            for qi in range(q_len):\n'
+              '                for ki in range(q_len):\n'
+              '                    if ki > qi:\n'
+              '                        scores[qi, ctx_len + ki] = float("-inf")\n'
+              '                        alibi_bias[qi, ctx_len + ki] = float("-inf")\n\n')
+    assert source.count(hoist) == source.count(vectorized) == 1
+    return source.replace(hoist, '\n', 1).replace(vectorized, scalar, 1)
+
+
 ORIGINALS = {'triton_correct_attn_cp_out/source/triton_correct_attn_cp_out.py': '2fd2502550ac36e634a6cd01fe247b66704d4d48a9b369d96084d9c2d6f7d220',
  'triton_correct_attn_cp_out/config.yaml': 'd734d0a7b8f9ddf17111dec1ee435e81fc68865079a8d524099b7486e9b1914f',
  'triton_correct_attn_cp_out/workloads.json': 'c3dbea0d0cf60a99c050e4795a8ab4d10411ec2f8ea01e5e59e3ea50155502a1',
@@ -247,6 +387,8 @@ def test_original_kernels_cases_gates_and_timers_preserved():
     for relative, digest in ORIGINALS.items():
         source = (TASKS / relative).read_text()
         if relative.endswith('scripts/task_runner.py'):
+            if relative == 'triton_paged_prefix_prefill_alibi/scripts/task_runner.py':
+                source = original_paged_alibi_reference(source)
             source = original_runner(source)
         assert hashlib.sha256(source.encode()).hexdigest() == digest
 
@@ -449,6 +591,8 @@ def test_mixed_decode_filter_retains_caller_state_and_reserved_scale_behavior(mo
 @pytest.mark.parametrize('name', REMAINING)
 def test_optional_controls_use_installed_correctness_guard(name, monkeypatch):
     monkeypatch.chdir(ROOT)
+    if name == REMAINING[3]:
+        monkeypatch.setitem(sys.modules, '_arena_samples', load(TASKS/name/'_arena_samples.py'))
     checks,h=load(TASKS/name/'_arena_checks.py'),load(TASKS/name/'scripts/task_runner.py')
     install_numerical_double(monkeypatch,checks)
     inputs=checks.control_inputs
@@ -508,6 +652,8 @@ def test_control_manifest_shapes_match_actual_tensors_and_full_outputs(name, mon
             value=values[slot]
             assert list(value.shape)==c['input_shapes'][key]
             expected_dtype=torch.float32 if key in ('mid_o','alibi_slopes') else torch.float16 if value.is_floating_point() else torch.int32
+            if name==REMAINING[3] and case=='float32_branch' and value.is_floating_point():
+                expected_dtype=torch.float32
             assert value.dtype==expected_dtype
         outputs=checks.expected_outputs(h,values)
         assert [list(v.shape) for v in outputs]==list(c['output_shapes'].values())

@@ -58,6 +58,8 @@ Event output against the protected reference, poisons its storage and checks a
 new invocation of the same callable. That invocation may allocate a new output;
 it is not called a captured-graph replay. Graph-enabled paths instead check the
 actual captured graph. Metadata identifies the observed invocation kind.
+Each reported case also exposes the selected role's device-timing metadata and
+measured-output validation directly for the framework's Event applicability check.
 Reference comparison, output-contract and unchanged-input checks are outside
 timed samples; 10 warmups and 100 samples are retained. Automatic graph-to-Event
 fallback with an observer still fails closed in the canonical helper.

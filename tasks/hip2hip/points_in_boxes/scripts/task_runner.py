@@ -5,16 +5,50 @@ import sys
 import os
 import json
 import argparse
+import importlib.util
+from pathlib import Path
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+_TASK_ROOT = Path(TASK_DIR).resolve()
+# Import the installed dependency before task-local paths can shadow it. This
+# also covers direct execution, where scripts/ starts as sys.path[0].
+_prior_path = sys.path[:]
+sys.path[:] = [entry for entry in _prior_path
+               if Path(entry or os.getcwd()).resolve() not in (_TASK_ROOT, _SCRIPTS_DIR)]
+try:
+    import torch
+finally:
+    sys.path[:] = _prior_path
+if not getattr(torch, "__file__", None) or Path(torch.__file__).resolve().is_relative_to(_TASK_ROOT):
+    raise RuntimeError("Task-local torch module cannot replace the installed dependency")
 sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
-import torch
-from _aka_benchmark import (
-    benchmark_cuda_graph_or_events,
-    hip_source_graph_capture_policy,
-)
+
+def _protected_script(name):
+    # Bind policy modules to the protected scripts files, regardless of
+    # task-root additions. Root-first lookup remains in place for the
+    # protected native loader and wrappers.
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Protected script is unavailable: {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+_PROTECTED_BENCHMARK = _protected_script("_aka_benchmark")
+_PROTECTED_REFERENCE_CHECKS = _protected_script("reference_checks")
+_PROTECTED_REPLAY_VALIDATION = _protected_script("replay_validation")
+benchmark_cuda_graph_or_events = _PROTECTED_BENCHMARK.benchmark_cuda_graph_or_events
+hip_source_graph_capture_policy = _PROTECTED_BENCHMARK.hip_source_graph_capture_policy
 
 TASK_NAME = "hip2hip/points_in_boxes"
 HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
@@ -70,7 +104,7 @@ def cpu_points_in_boxes_part(points, boxes):
                 sin_r = torch.sin(-rz)
                 local_x = px * cos_r - py * sin_r
                 local_y = px * sin_r + py * cos_r
-                if (abs(local_x) <= dx / 2 and abs(local_y) <= dy / 2
+                if (abs(local_x) < dx / 2 and abs(local_y) < dy / 2
                         and 0 <= pz <= dz):
                     result[b, m] = t
                     break
@@ -93,7 +127,7 @@ def cpu_points_in_boxes_all(points, boxes):
                 sin_r = torch.sin(-rz)
                 local_x = px * cos_r - py * sin_r
                 local_y = px * sin_r + py * cos_r
-                if (abs(local_x) <= dx / 2 and abs(local_y) <= dy / 2
+                if (abs(local_x) < dx / 2 and abs(local_y) < dy / 2
                         and 0 <= pz <= dz):
                     result[b, m, t] = 1
     return result
@@ -134,11 +168,33 @@ def run_correctness():
 
 
 def _time_kernel(fn, inputs, expected, n_warmup=10, n_iter=100):
-    from replay_validation import measure
-    from reference_checks import close
+    measure = _PROTECTED_REPLAY_VALIDATION.measure
+    close = _PROTECTED_REFERENCE_CHECKS.close
+
+    def changed_reference():
+        points, boxes = inputs
+        changed = (cpu_points_in_boxes_part(points.cpu(), boxes.cpu())
+                   if expected.ndim == 2 else cpu_points_in_boxes_all(points.cpu(), boxes.cpu()))
+        if torch.equal(changed, expected):
+            raise ValueError('Changed geometry did not alter the reference output')
+        return lambda actual: close(actual, changed, gpu=True)
+
+    def change_points():
+        points, boxes = inputs
+        with torch.no_grad():
+            points[..., 0].add_(1000)
+        return changed_reference()
+
+    def change_boxes():
+        _, boxes = inputs
+        with torch.no_grad():
+            boxes[..., 0].add_(1000)
+        return changed_reference()
+
     return measure(
         benchmark_cuda_graph_or_events, fn, inputs,
         lambda actual: close(actual, expected, gpu=True),
+        (change_points, change_boxes),
         warmup=n_warmup, repetition=n_iter,
         use_cuda_graph=HIP_GRAPH_ENABLED,
         fallback_reason=HIP_GRAPH_FALLBACK_REASON,

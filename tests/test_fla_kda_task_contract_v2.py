@@ -1,6 +1,8 @@
 """CPU contract regressions; real Triton/GPU qualification is separate evidence."""
 import ast
+from copy import deepcopy
 import importlib.util
+import inspect
 import json
 from pathlib import Path
 import hashlib
@@ -12,8 +14,44 @@ import torch
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _original_fla_gen_inputs(seed, device):
+    import torch
+    torch.manual_seed(seed)
+    B, T, H, K, V, BT = 1, 64, 2, 32, 32, 64
+    from math import ceil
+    NT = ceil(T / BT)
+    q = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+    k = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+    v = torch.randn(B, T, H, V, device=device, dtype=torch.float32) * 0.1
+    h = torch.randn(B, NT, H, V, K, device=device, dtype=torch.float32) * 0.1
+    g = torch.randn(B, T, H, device=device, dtype=torch.float32) * 0.01
+    return (q, k, v, h, g), {"chunk_size": BT}
+
+
+def _original_kda_gen_inputs(seed, device):
+    import torch
+    torch.manual_seed(seed)
+    B, T, H, K, V, BT = 1, 64, 2, 32, 32, 64
+    from math import ceil
+    NT = ceil(T / BT)
+    q = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+    v = torch.randn(B, T, H, V, device=device, dtype=torch.float32) * 0.1
+    g = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.01
+    A = torch.randn(B, T, H, BT, device=device, dtype=torch.float32) * 0.01
+    h = torch.randn(B, NT, H, K, V, device=device, dtype=torch.float32) * 0.1
+    return (q, v, g, A, h, 0.125), {"chunk_size": BT}
+
+
+QUALIFIED_INPUT_GENERATORS = {
+    'triton_fla_chunk_fwd_o': (_original_fla_gen_inputs,
+                               '7e8febbbe1713ce96d7f6a099ce6cd09413e15729916526370d62f96910affe7'),
+    'triton_kda_gla_fwd_o': (_original_kda_gen_inputs,
+                            'f4b9e8d804b91f3e8596eaa2517a15aa83d12b30a5e18f92428c30e5093d0e7c'),
+}
 BASELINE = {'triton_fla_chunk_fwd_o': {'files': {'source/triton_fla_chunk_fwd_o.py': '3b47b94d96369bd0494c3a7996c47f62325a9371840382590c898ee65d417123',
-                                      'workloads.json': 'db237f9668446ac0851f5bfee765b2e7ac223f5a218764749c842e42dcd2962c'},
+                                      'workloads.json': 'd9c03fb5d09a0e6a9ab6114c95a92ed8f457d4b66fa46770f1b81d5d412880f2'},
                             'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                             'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                             'reference_and_constants_ast': 'b7466441ef03672e93f32a1288f52017c769bf8a269eb9bea29dcd84c461159b'},
@@ -32,17 +70,17 @@ BASELINE = {'triton_fla_chunk_fwd_o': {'files': {'source/triton_fla_chunk_fwd_o.
                               'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                               'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                               'reference_and_constants_ast': 'e2ce91d5af6a3cbdf2452c5f30ee115b8f85876aa9c2b9ad5c4e2bac980b1860'},
- 'triton_kda_gate': {'files': {'source/triton_kda_gate.py': '59be7ebf3b2762cb028a97821abf0aefc15d23a97c96c66ee72996e0340aab78',
+ 'triton_kda_gate': {'files': {'source/triton_kda_gate.py': '227cb972264fa01bb0029edd4eaf096e18aab9ff84a29f25cc0e4b66ec1e8ec1',
                                'workloads.json': 'eb5799050238e47fd15cacdc92c24be626eab987bf9bc0e05cc37bffc0cd9e15'},
                      'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                      'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                      'reference_and_constants_ast': 'a22716f61770f9e5e43dc623934d52928e6548e8fb3308383b133f54962aa932'},
  'triton_kda_gla_fwd_o': {'files': {'source/triton_kda_gla_fwd_o.py': 'c6643a478127fccbebd11f30e51915111043a72d5331123c858b283231afa9a8',
-                                    'workloads.json': 'd2a697ffc63411c5df5d61ad03d539faf1220fd468e25e74a7c19c8be2cc95cb'},
+                                    'workloads.json': '6e54370906b636ce6a86b04aebffdb53cd27e67a1f6712a6f5bf4249608fe593'},
                           'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                           'generation_ast': '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
                           'reference_and_constants_ast': 'e590adef6e8d05c5b02038a0de23e69486605f1de5bd959d7a810f0f9be9a71a'},
- 'triton_ssd_bmm': {'files': {'source/triton_ssd_bmm.py': '3c34add862bf6abb13c4ed3f53fef6ddf618d9b520d648213eb21d1432509554',
+ 'triton_ssd_bmm': {'files': {'source/triton_ssd_bmm.py': '421143d84f536ca07fff4e70837e9ff7518751e2b9509294d4f6d865bb7a67c3',
                               'workloads.json': '5a81adb73e7f1562ebdf96652ea026d0f46417d0e0d952cfcee92644041e9e09'},
                     'generated_region': 'fa991aa44ae5fbfae028aaf2a13afd3381faa4f12005e54c8818cb6b1bedf89a',
                     'generation_ast': '960935b3bbc3fe4cd6bd3eca31036f5f73518b3d0c48daa84704caac8d13688b',
@@ -68,6 +106,32 @@ def test_independent_reference_and_comparator_controls(task):
     _, h, _, _ = task
     rows = h.run_reference_controls()
     assert rows and all(row['status'] == 'PASS' and row['negative_control'] == 'rejected' for row in rows)
+
+
+@pytest.mark.parametrize('task', ['triton_ssd_bmm'], indirect=True)
+def test_ssd_nonaligned_k_controls_extend_original_cases(task):
+    root, _, controls, _ = task
+    assert _digest((root/'scripts/semantic_controls.py').read_text()) == (
+        '2334bf9518b8372cc28c5ac6c81dc13d5378d33fbe55ec96d979275ebd8f8413')
+    cases = list(controls.control_cases('cpu'))
+    names = [case['name'] for case in cases]
+    assert len(names) == 10
+    assert names[:7] == [
+        'ragged_chunks_groups_padding_causal_False_None_torch.float16_stride_None',
+        'ragged_chunks_groups_padding_causal_False_torch.float32_torch.float16_stride_None',
+        'ragged_chunks_groups_padding_causal_True_None_torch.float16_stride_None',
+        'ragged_chunks_groups_padding_causal_False_None_torch.bfloat16_stride_None',
+        'ragged_chunks_groups_padding_causal_False_None_torch.float32_stride_None',
+        'ragged_chunks_groups_padding_causal_False_None_torch.float16_stride_a',
+        'ragged_chunks_groups_padding_causal_False_None_torch.float16_stride_b',
+    ]
+    assert names[7:9] == ['nonaligned_k_35_tail_causal_False',
+                          'nonaligned_k_65_tail_causal_True']
+    assert names[9] == 'causal_128_complete_upper_tiles'
+    assert [case['kwargs']['a'].shape[-1] for case in cases[7:9]] == [35, 65]
+    assert all(torch.count_nonzero(case['kwargs']['a'][..., -1]) == 10 and
+               torch.count_nonzero(case['kwargs']['b'][..., -1]) == 10
+               for case in cases[7:9])
 
 
 def test_control_rejects_wrong_full_outputs_and_input_mutation(task, monkeypatch):
@@ -124,7 +188,15 @@ def test_actual_timed_output_replay_and_readonly_guards(task,fault):
     if fault!='no_binding':timed._bind(replay,output)
     if fault=='wrong_measured':output.add_(10)
     if fault=='input_mutation':x.add_(1)
-    def run():return checks.validate_timed(timed,readonly,lambda:x*3,lambda:x.neg_(),atol=.01,rtol=.01)
+    def run():
+        if hasattr(checks, 'observe_measured_samples'):
+            checks.observe_measured_samples(timed,readonly,lambda:x*3,atol=.01,rtol=.01)
+            for _ in range(100):
+                timed.after_sample(output)
+            return checks.validate_timed(timed,readonly,lambda:x*3,lambda:x.neg_(),
+                                         atol=.01,rtol=.01,expected_samples=100)
+        return checks.validate_timed(timed,readonly,lambda:x*3,lambda:x.neg_(),
+                                     atol=.01,rtol=.01)
     if fault=='none':
         assert run()['replay_correctness']=='PASS'
         assert torch.equal(x,original)
@@ -167,10 +239,18 @@ def test_original_contract_preserved(task):
         assert _digest((root/relative).read_text())==digest
     text=(root/'scripts/task_runner.py').read_text();tree=ast.parse(text)
     def protected(tree):
-        return [ast.dump(n,include_attributes=False) for n in tree.body if
-            isinstance(n,ast.FunctionDef) and (n.name.startswith('reference') or n.name=='gen_inputs') or
-            isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id in
-            ('TEST_SHAPES','SEEDS','WARMUP_ITERATIONS','BENCHMARK_ITERATIONS','PERF_SEED_IDX') for t in n.targets)]
+        nodes=[]
+        for n in tree.body:
+            if isinstance(n,ast.FunctionDef) and n.name=='gen_inputs' and root.name in QUALIFIED_INPUT_GENERATORS:
+                fixture, qualified_hash=QUALIFIED_INPUT_GENERATORS[root.name]
+                assert _digest(ast.dump(n,include_attributes=False))==qualified_hash
+                n=deepcopy(ast.parse(inspect.getsource(fixture)).body[0])
+                n.name='gen_inputs'
+            if (isinstance(n,ast.FunctionDef) and (n.name.startswith('reference') or n.name=='gen_inputs') or
+                isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id in
+                ('TEST_SHAPES','SEEDS','WARMUP_ITERATIONS','BENCHMARK_ITERATIONS','PERF_SEED_IDX') for t in n.targets)):
+                nodes.append(ast.dump(n,include_attributes=False))
+        return nodes
     assert _digest(json.dumps(protected(tree)))==saved['reference_and_constants_ast']
     def generation(tree):
         return sorted((f.name,ast.dump(n,include_attributes=False)) for f in tree.body
@@ -179,9 +259,81 @@ def test_original_contract_preserved(task):
             and n.func.attr in ('manual_seed','randn','rand','arange','cumsum'))
     assert _digest(json.dumps(generation(tree)))==saved['generation_ast']
     assert _digest(text.split('# >>> AKA-GENERATED:')[1].split('# <<< AKA-GENERATED <<<')[0])==saved['generated_region']
-    call=next(n for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_benchmark_cuda_graph_or_events')
-    assert {k.arg:ast.unparse(k.value) for k in call.keywords}=={
-        'warmup':'WARMUP_ITERATIONS','repetition':'BENCHMARK_ITERATIONS','timed_run':'timed'}
+    if root.name == 'triton_ssd_bmm':
+        # The full public call now routes through the bounded one-call sample
+        # helper. Pin both files and keep the declared timer counts explicit.
+        assert _digest(text) == '84f93d28e025887867b85909d236a8b3cac0b0c7c638bbb165e04e880c07a13a'
+        assert _digest((root/'_arena_samples.py').read_text()) == (
+            'bde389ade9c2d2a77e0063012408944add7e03502c1d09323b9da92435e383cf')
+        calls=[n for n in ast.walk(tree) if isinstance(n,ast.Call)
+               and isinstance(n.func,ast.Name) and n.func.id=='measure']
+        assert len(calls)==1
+        call=calls[0]
+        assert [ast.unparse(arg) for arg in call.args[:2]]==[
+            '_benchmark_cuda_graph_or_events','TimedRun()']
+        assert {k.arg:ast.unparse(k.value) for k in call.keywords}=={
+            'warmup':'WARMUP_ITERATIONS','repetition':'BENCHMARK_ITERATIONS',
+            'atol':'0.1','rtol':'0.1'}
+        helper_tree=ast.parse((root/'_arena_samples.py').read_text())
+        benchmark_calls=[n for n in ast.walk(helper_tree) if isinstance(n,ast.Call)
+                         and isinstance(n.func,ast.Name) and n.func.id=='benchmark']
+        assert len(benchmark_calls)==1
+        assert {k.arg:ast.unparse(k.value) for k in benchmark_calls[0].keywords}=={
+            'warmup':'warmup','repetition':'repetition','max_graph_repeats':'1',
+            'prepare_fn':'stream.prepare','timed_run':'timed'}
+    else:
+        call=next(n for n in ast.walk(tree) if isinstance(n,ast.Call)
+                  and isinstance(n.func,ast.Name)
+                  and n.func.id=='_benchmark_cuda_graph_or_events')
+        assert {k.arg:ast.unparse(k.value) for k in call.keywords}=={
+            'warmup':'WARMUP_ITERATIONS','repetition':'BENCHMARK_ITERATIONS','timed_run':'timed',
+            **({'max_graph_repeats':'1','prepare_fn':'stream.prepare'}
+               if root.name=='triton_kda_gate' else
+               {'max_graph_repeats':'1','prepare_fn':'_prepare_sample'}
+               if root.name in {'triton_fla_chunk_fwd_o','triton_kda_gla_fwd_o'}
+               else {})}
+
+
+@pytest.mark.parametrize('name', QUALIFIED_INPUT_GENERATORS)
+def test_qualified_scored_signal_preserves_original_draws_and_rejects_zero(name, monkeypatch):
+    root = ROOT / 'tasks/triton2triton/vllm' / name
+    for module in list(sys.modules):
+        if module == 'scripts' or module.startswith('scripts.'):
+            monkeypatch.delitem(sys.modules, module)
+    monkeypatch.syspath_prepend(str(root))
+    monkeypatch.chdir(root)
+    spec = importlib.util.spec_from_file_location('_qualified_input_harness', root/'scripts/task_runner.py')
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    original, _ = QUALIFIED_INPUT_GENERATORS[name]
+    factors = (3,3,3,3,1) if name=='triton_fla_chunk_fwd_o' else (5,5,1,5,5,1)
+    assert harness.SEEDS == [42,43,44,45,46]
+    for seed in harness.SEEDS:
+        old_args, old_kwargs = original(seed, 'cpu')
+        old_rng = torch.get_rng_state().clone()
+        historical_args, historical_kwargs = harness.gen_inputs(seed, 'cpu', historical=True)
+        assert torch.equal(torch.get_rng_state(), old_rng)
+        assert old_kwargs == historical_kwargs
+        for old, historical in zip(old_args, historical_args):
+            if isinstance(old, torch.Tensor):
+                assert torch.equal(old, historical)
+            else:
+                assert old == historical
+
+        scored_args, scored_kwargs = harness.gen_inputs(seed, 'cpu')
+        assert torch.equal(torch.get_rng_state(), old_rng)
+        assert scored_kwargs == old_kwargs
+        for old, scored, factor in zip(old_args, scored_args, factors):
+            if isinstance(old, torch.Tensor):
+                if factor==1:
+                    assert torch.equal(scored, old)
+                else:
+                    torch.testing.assert_close(scored, old*factor, atol=1e-7, rtol=2e-6)
+            else:
+                assert factor==1 and scored==old
+        expected = harness.reference(*scored_args, **scored_kwargs)
+        assert not torch.allclose(torch.zeros_like(expected), expected, atol=5e-2, rtol=5e-2)
+        harness.require_scored_signal(expected)
 
 
 @pytest.mark.parametrize('fault', ['none', 'wrong_measured', 'cached_replay', 'timed_input_write'])
@@ -214,34 +366,94 @@ def test_real_performance_runner_wires_collector_and_rejects_bad_paths(task, mon
     monkeypatch.setattr(h,'load_module',lambda:types.SimpleNamespace(**{name:op}))
     monkeypatch.setitem(sys.modules,'_aka_benchmark',types.SimpleNamespace(TimedRun=TimedRun))
     calls=[]
-    def fake_benchmark(fn,*,warmup,repetition,timed_run):
+    def fake_benchmark(fn,*,warmup,repetition,timed_run,max_graph_repeats=1000,prepare_fn=None):
         assert (warmup,repetition)==(10,100)
-        output=fn();assert output is not None
+        if prepare_fn is not None:
+            assert root.name in {'triton_kda_gate', 'triton_ssd_bmm',
+                                 'triton_fla_chunk_fwd_o',
+                                 'triton_kda_gla_fwd_o'} and max_graph_repeats==1
+            # Match warmup, estimate capture plus both estimate replays,
+            # final capture, and prime. None is a reported sample.
+            for _ in range(warmup):
+                prepare_fn();fn()
+            prepare_fn();estimate_output=fn()
+            closure=dict(zip(fn.__code__.co_freevars,(cell.cell_contents for cell in fn.__closure__)))
+            if root.name in {'triton_kda_gate', 'triton_fla_chunk_fwd_o',
+                             'triton_kda_gla_fwd_o'}:
+                live_args,live_kwargs=closure['args'],closure['kwargs']
+                invoke=lambda: op(*live_args,**live_kwargs)
+            else:
+                # The sample helper captures the public call and input stream.
+                # Graph replay invokes that call without rebinding its output.
+                invoke=closure['call']
+                live_args=tuple(closure['stream'].inputs.values())
+            for _ in range(2):
+                prepare_fn()
+                estimate_output.copy_(invoke())
+            prepare_fn();output=fn()
+            assert estimate_output is not output
+            def graph_step():
+                # A graph replay writes its captured output buffer without
+                # calling the Python wrapper that returned it at capture.
+                output.copy_(invoke())
+            prepare_fn();graph_step()  # prime the final captured graph
+        else:
+            output=fn()
+        assert output is not None
         values=output if isinstance(output,tuple) else (output,)
         saved=tuple(v.clone() for v in values)
         def replay():
+            if prepare_fn is not None:
+                prepare_fn()
+                if fault=='cached_replay':
+                    for out,old in zip(values,saved):out.copy_(old)
+                else:
+                    graph_step()
+                return output
             if fault=='cached_replay':
                 for out,old in zip(values,saved):out.copy_(old)
                 return output
             return fn()
-        timed_run._bind(replay,output)
-        if fault=='wrong_measured':
-            for out in values:out.add_(100)
-        if fault=='timed_input_write':
-            items=[c.cell_contents for c in fn.__closure__]
-            items=[v for item in items for v in (item if isinstance(item,tuple) else (item,))]
-            target=next(v for v in items if isinstance(v,torch.Tensor) and v.is_floating_point() and all(v is not o for o in values))
-            target.add_(1)
         calls.append(True)
-        return 1.0,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph','cpu_fixture':True}
+        for index in range(repetition):
+            if prepare_fn is not None:
+                prepare_fn();graph_step()
+            if fault=='wrong_measured' and index==repetition//2:
+                for out in values:out.add_(100)
+            if fault=='timed_input_write' and index==repetition//2:
+                if prepare_fn is not None:
+                    target=live_args[0]
+                else:
+                    items=[c.cell_contents for c in fn.__closure__]
+                    items=[v for item in items for v in (item if isinstance(item,tuple) else (item,))]
+                    target=next(v for v in items if isinstance(v,torch.Tensor) and v.is_floating_point() and all(v is not o for o in values))
+                target.add_(1)
+            if timed_run.after_sample is not None:
+                timed_run.after_sample(output)
+        if prepare_fn is not None:
+            saved=tuple(v.clone() for v in values)
+        timed_run._bind(replay,output)
+        return 1.0,{'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph',
+                    'benchmark_effective_repeats':1,'cpu_fixture':True}
     monkeypatch.setattr(h,'_benchmark_cuda_graph_or_events',fake_benchmark)
     records=h.run_performance()
     assert len(records)==1 and calls
     if fault=='none':
         assert records[0]['execution_time_ms']==1.
         assert records[0]['timed_output_correctness']=='PASS' and records[0]['replay_correctness']=='PASS'
+        if root.name=='triton_kda_gate':
+            assert records[0]['benchmark_effective_repeats']==1
+            assert records[0]['measured_samples_checked']==100
+            assert records[0]['measured_input_variants']==100
+            assert records[0]['input_preparations']==115  # 10 warmup + 5 capture/prime + 100 samples
+            assert records[0]['captured_output_preparations']==101
     else:
         assert records[0]['execution_time_ms']<0 and records[0].get('error')
+        if root.name=='triton_kda_gate':
+            expected={'wrong_measured':'Output numerical mismatch',
+                      'cached_replay':'Output numerical mismatch',
+                      'timed_input_write':'Measured input changed before next preparation'}[fault]
+            assert expected in records[0]['error']
 
 
 def test_actual_framework_guard_allows_kernel_edits_but_rejects_wrapper_bypass(task,tmp_path):

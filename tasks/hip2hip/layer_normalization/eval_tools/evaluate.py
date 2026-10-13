@@ -123,6 +123,36 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_affine_parameter_variants(module, functional, hip_fn, inputs, original_expected,
+                                    compare, rtol, atol):
+    """Check both live affine operands at this geometry, outside scored timing."""
+    import torch
+    original_module = {key: value.detach().clone() for key, value in module.state_dict().items()}
+    original_functional = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+    try:
+        for name, delta in (("gamma", 0.5), ("beta", 0.75)):
+            with torch.no_grad():
+                getattr(module, name).add_(delta)
+                getattr(functional, name).add_(delta)
+            expected = module(*copy.deepcopy(inputs))
+            if compare(original_expected, expected, rtol=rtol, atol=atol):
+                raise ValueError(f"Changed layer normalization {name} did not change the reference")
+            selected_state = {key: value.detach().clone() for key, value in functional.state_dict().items()}
+            actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                      functional(*copy.deepcopy(inputs), fn=hip_fn))
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward ignored or mishandled changed layer normalization {name}")
+            if any(not torch.equal(value, selected_state[key])
+                   for key, value in functional.state_dict().items()):
+                raise ValueError("Selected forward changed layer normalization affine state")
+            module.load_state_dict(original_module)
+            functional.load_state_dict(original_functional)
+    finally:
+        module.load_state_dict(original_module)
+        functional.load_state_dict(original_functional)
+
+
 def validate_task(args, rows):
     from case_controls import validate_controls, self_test
     validate_controls(rows)
@@ -185,6 +215,9 @@ def correctness(args, role, rows):
         torch.cuda.synchronize()
         output_contract(expected, actual)
         passed = checks._compare_results(expected, actual, rtol=rtol, atol=atol)
+        if passed:
+            check_affine_parameter_variants(module, functional, hip_fn, reference_inputs,
+                                            expected, checks._compare_results, rtol, atol)
         row = {**rows[index], "status": "PASS" if passed else "FAIL", "metrics": {"rtol": rtol, "atol": atol}}
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
@@ -262,13 +295,21 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

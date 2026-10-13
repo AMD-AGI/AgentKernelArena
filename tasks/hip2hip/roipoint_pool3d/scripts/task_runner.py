@@ -5,16 +5,50 @@ import sys
 import os
 import json
 import argparse
+import importlib.util
+from pathlib import Path
 
 TASK_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+_TASK_ROOT = Path(TASK_DIR).resolve()
+# Import the installed dependency before task-local paths can shadow it. This
+# also covers direct execution, where scripts/ starts as sys.path[0].
+_prior_path = sys.path[:]
+sys.path[:] = [entry for entry in _prior_path
+               if Path(entry or os.getcwd()).resolve() not in (_TASK_ROOT, _SCRIPTS_DIR)]
+try:
+    import torch
+finally:
+    sys.path[:] = _prior_path
+if not getattr(torch, "__file__", None) or Path(torch.__file__).resolve().is_relative_to(_TASK_ROOT):
+    raise RuntimeError("Task-local torch module cannot replace the installed dependency")
 sys.path.insert(0, TASK_DIR)
 os.chdir(TASK_DIR)
 
-import torch
-from _aka_benchmark import (
-    benchmark_cuda_graph_or_events,
-    hip_source_graph_capture_policy,
-)
+
+def _protected_script(name):
+    # Bind policy modules to the protected scripts files, regardless of
+    # task-root additions. Root-first lookup remains in place for the
+    # protected native loader and wrappers.
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Protected script is unavailable: {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return module
+
+
+_PROTECTED_BENCHMARK = _protected_script("_aka_benchmark")
+_PROTECTED_REFERENCE_CHECKS = _protected_script("reference_checks")
+_PROTECTED_REPLAY_VALIDATION = _protected_script("replay_validation")
+benchmark_cuda_graph_or_events = _PROTECTED_BENCHMARK.benchmark_cuda_graph_or_events
+hip_source_graph_capture_policy = _PROTECTED_BENCHMARK.hip_source_graph_capture_policy
 
 TASK_NAME = "hip2hip/roipoint_pool3d"
 HIP_GRAPH_ENABLED, HIP_GRAPH_FALLBACK_REASON = hip_source_graph_capture_policy(
@@ -43,7 +77,7 @@ def check_point_in_box(point, box):
     sin_h = torch.sin(-heading)
     local_x = px * cos_h - py * sin_h
     local_y = px * sin_h + py * cos_h
-    return (abs(local_x) <= dx / 2 and abs(local_y) <= dy / 2 and 0 <= pz <= dz)
+    return (abs(local_x) < dx / 2 and abs(local_y) < dy / 2 and 0 <= pz <= dz)
 
 
 def cpu_roipoint_pool3d(points, point_features, boxes3d, nsample):
@@ -135,7 +169,7 @@ def run_correctness():
             mismatch = (gpu_flag.cpu() != cpu_flag).sum().item()
             return False, f"Shape {i+1} (B={B},N={N},C={C},M={M}): empty_flag {mismatch} mismatches"
 
-        from reference_checks import full_output
+        full_output = _PROTECTED_REFERENCE_CHECKS.full_output
         try:
             full_output(gpu_feat, cpu_feat, gpu=True)
         except (ValueError, AssertionError) as exc:
@@ -160,8 +194,8 @@ def run_correctness():
 
 def run_performance():
     from kernel_loader import roipoint_pool3d_ext
-    from replay_validation import measure
-    from reference_checks import check_timed_output
+    measure = _PROTECTED_REPLAY_VALIDATION.measure
+    check_timed_output = _PROTECTED_REFERENCE_CHECKS.check_timed_output
 
     test_cases = []
     
@@ -192,10 +226,35 @@ def run_performance():
             return pooled_features, pooled_empty_flag
 
         expected = cpu_roipoint_pool3d(points.cpu(), point_features.cpu(), boxes3d.cpu(), nsample)
+
+        def changed_reference():
+            changed_expected = cpu_roipoint_pool3d(
+                points.cpu(), point_features.cpu(), boxes3d.cpu(), nsample)
+            if (torch.equal(changed_expected[0], expected[0])
+                    and torch.equal(changed_expected[1], expected[1])):
+                raise ValueError('Changed input did not alter the reference output')
+            return lambda actual: check_timed_output(actual, changed_expected)
+
+        def change_points():
+            with torch.no_grad():
+                points[..., 0].add_(1000)
+            return changed_reference()
+
+        def change_features():
+            with torch.no_grad():
+                point_features.add_(3)
+            return changed_reference()
+
+        def change_boxes():
+            with torch.no_grad():
+                boxes3d[..., 0].add_(1000)
+            return changed_reference()
+
         elapsed_ms, benchmark_meta = measure(
             benchmark_cuda_graph_or_events, run_pool,
             (points, point_features, boxes3d),
             lambda actual: check_timed_output(actual, expected),
+            (change_points, change_features, change_boxes),
             warmup=10,
             repetition=100,
             use_cuda_graph=HIP_GRAPH_ENABLED,

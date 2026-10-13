@@ -318,10 +318,11 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     # checks observe the exact invocation measured by the timer. The four MoE
     # runners now delegate through task-local _contract_checks.py, which imports
     # the canonical TimedRun API before the generated vLLM stub is inspected.
+    # Five retained ROCmBench runners also call that API directly to validate each sample.
     assert counts == {
-        "canonical_python": 268 + functional_count,
+        "canonical_python": 273 + functional_count,
         "native_graph_driver": 2,
-        "rocmbench_adapter": 15,
+        "rocmbench_adapter": 10,
         "vllm_adapter": 135,
     }
 

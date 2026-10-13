@@ -21,12 +21,18 @@ module; the PyTorch baseline is cross-checked against the independent functional
 
 All **11 cases** in `workload.json` are mandatory. The manifest was enumerated
 from the unchanged module `get_inputs()`; it is not inferred from candidate output.
+The original scored module keeps `a=1` and `max=10` on all 11 shapes. Additional
+correctness-only controls exercise nondefault scales and multipliers, and the
+runner checks that a candidate preserves the original scored scalar state.
+The extension must use the two scalar arguments supplied by the functional adapter.
 The original correctness tolerance and RNG schedule remain in
 `eval_tools/correctness_check.py` (model seed 0; comparison seed 1337 + case index).
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
 iteration, model state alignment, warmup 10, repetitions 100, input restoration
 where supplied, and canonical graph/event benchmark helpers. The selected timing
 policy is shared by both roles; candidate changes cannot select a weaker policy.
+Returned Event timing is rejected for these graph-timed cases, including after
+loading a candidate extension.
 
 Use the argv prefix in `config.yaml` followed by one of:
 
@@ -49,6 +55,11 @@ measured graph. It also checks the public non-aliasing and unchanged-input
 contract. Validation runs outside measured samples with the existing tolerance,
 cases, warmups and repetition counts. The framework identifies captured-graph and explicit Event observations;
 automatic unsupported fallback cannot be reported as replay-validated.
+Each graph sample captures one operator call, so its time cannot be divided by
+additional unchecked calls.
+The earlier graph capture cap allowed more calls per sample when no input-reset
+callback was needed; historical latency may differ and needs a same-source
+rerun before comparison. Event timing is unaffected.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated
@@ -57,3 +68,9 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+The correctness-only scalar, empty and extreme-value controls require byte-exact
+input preservation and independent output storage, including for empty tensors.
+They also cover negative output scale and zero scalar settings against the
+independent mathematical reference. These checks run outside the original scored
+workloads and do not change timing, sample counts or numerical tolerances.

@@ -202,21 +202,37 @@ def correctness(args, role, rows):
         module,functional=prepare_models(args)
         inputs=attention_controls.generate(row,device="cuda")
         check_case_identity(row,inputs)
-        pristine=copy.deepcopy(inputs)
         state={k:v.detach().clone() for k,v in functional.state_dict().items()}
-        with torch.no_grad():
-            expected=attention_controls.reference(module,inputs)
-            expected_module=module(*copy.deepcopy(inputs))
-            actual=functional(*inputs) if hip_fn is None else functional(*inputs,fn=hip_fn)
-        torch.cuda.synchronize()
-        output_contract(expected,expected_module)
-        output_contract(expected,actual)
-        unchanged_inputs(pristine,inputs)
-        unchanged_model_state(state,functional)
-        separate_output(actual,inputs)
-        passed=(checks._compare_results(expected,expected_module,rtol=rtol,atol=atol)
-                and checks._compare_results(expected,actual,rtol=rtol,atol=atol))
-        result.append({**row,"status":"PASS" if passed else "FAIL", "metrics":{"rtol":rtol,"atol":atol},
+        passed=True
+        first_expected=None
+        for trial in range(3):
+            trial_inputs=copy.deepcopy(inputs)
+            if trial == 2:
+                # A different query catches a cached result after two calls at
+                # the same boundary shape without adding a scored workload.
+                # The last causal row can attend to all keys; the first row
+                # only sees one key and is insensitive to its query.
+                trial_inputs[0][0,-1,0].add_(1)
+            pristine=copy.deepcopy(trial_inputs)
+            with torch.no_grad():
+                expected=attention_controls.reference(module,trial_inputs)
+                if trial == 0:
+                    first_expected=expected
+                elif trial == 2 and checks._compare_results(first_expected,expected,rtol=rtol,atol=atol):
+                    raise ValueError('Changed query did not alter the attention reference')
+                expected_module=module(*copy.deepcopy(trial_inputs))
+                actual=(functional(*trial_inputs) if hip_fn is None else
+                        functional(*trial_inputs,fn=hip_fn))
+            torch.cuda.synchronize()
+            output_contract(expected,expected_module)
+            output_contract(expected,actual)
+            unchanged_inputs(pristine,trial_inputs)
+            unchanged_model_state(state,functional)
+            separate_output(actual,trial_inputs)
+            passed &= (checks._compare_results(expected,expected_module,rtol=rtol,atol=atol)
+                       and checks._compare_results(expected,actual,rtol=rtol,atol=atol))
+        result.append({**row,"status":"PASS" if passed else "FAIL",
+                       "metrics":{"rtol":rtol,"atol":atol,"repeated_calls":3,"changed_query":True},
                        **({} if passed else {"failure_kind":"numerical_mismatch"})})
     return result
 
@@ -289,13 +305,21 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

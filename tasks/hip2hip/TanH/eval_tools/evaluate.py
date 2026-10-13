@@ -123,6 +123,175 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_scalar_variants(module, functional, hip_fn, inputs, original_expected,
+                          compare, rtol, atol):
+    """Check both configurable scalar operands at each scored geometry, outside timing."""
+    original = (module.a, module.max, functional.a, functional.max)
+    try:
+        for name, value in (("a", 0.5), ("max", 4.0)):
+            setattr(module, name, value)
+            setattr(functional, name, value)
+            expected = module(*copy.deepcopy(inputs))
+            if compare(original_expected, expected, rtol=rtol, atol=atol):
+                raise ValueError(f"Changed TanH {name} did not change the reference")
+            actual = (functional(*copy.deepcopy(inputs)) if hip_fn is None else
+                      functional(*copy.deepcopy(inputs), fn=hip_fn))
+            output_contract(expected, actual)
+            if not compare(expected, actual, rtol=rtol, atol=atol):
+                raise ValueError(f"Selected forward ignored or mishandled changed TanH {name}")
+            if (module.a, module.max, functional.a, functional.max) != (
+                value if name == "a" else original[0],
+                value if name == "max" else original[1],
+                value if name == "a" else original[2],
+                value if name == "max" else original[3],
+            ):
+                raise ValueError("Selected forward changed TanH scalar state")
+            module.a, module.max, functional.a, functional.max = original
+    finally:
+        module.a, module.max, functional.a, functional.max = original
+
+
+def check_signed_scalar_controls(module, functional, hip_fn, compare, rtol, atol,
+                                 device="cuda"):
+    """Check both signs of each public scalar against small mathematical answers."""
+    import torch
+    values = (-2.0, -0.5, 0.0, 0.5, 2.0)
+    value = torch.tensor(values, dtype=torch.float32, device=device)
+    original = (module.a, module.max, functional.a, functional.max)
+    checked = []
+    try:
+        for name, scale, maximum in (
+            ("zero_a", 0.0, 10.0),
+            ("zero_max", 1.0, 0.0),
+            ("negative_a_only", -1.5, 10.0),
+            ("negative_max_only", 1.0, -3.0),
+            ("both_negative", -1.5, -3.0),
+        ):
+            module.a = functional.a = scale
+            module.max = functional.max = maximum
+            expected = torch.tensor(
+                [math.tanh(scale * item) * maximum for item in values],
+                dtype=value.dtype, device=device,
+            )
+            reference_input, candidate_input = value.clone(), value.clone()
+            reference = module(reference_input)
+            actual = (functional(candidate_input) if hip_fn is None else
+                      functional(candidate_input, fn=hip_fn))
+            for output in (reference, actual):
+                output_contract(expected, output)
+                if not compare(expected, output, rtol=rtol, atol=atol):
+                    raise ValueError(f"{name} TanH disagrees with the mathematical reference")
+            def same_input_bytes(current):
+                return (current.shape == value.shape and current.dtype == value.dtype
+                        and current.device == value.device and current.stride() == value.stride()
+                        and torch.equal(current.contiguous().view(torch.uint8),
+                                        value.contiguous().view(torch.uint8)))
+
+            if not same_input_bytes(reference_input) or not same_input_bytes(candidate_input):
+                raise ValueError(f"{name} TanH changed a caller-owned input")
+            if (module.a, module.max, functional.a, functional.max) != (
+                    scale, maximum, scale, maximum):
+                raise ValueError(f"{name} TanH changed scalar state")
+            checked.append(name)
+    finally:
+        module.a, module.max, functional.a, functional.max = original
+    return checked
+
+
+def check_layout_dtype_controls(module, functional, hip_fn, compare, rtol, atol,
+                                device="cuda"):
+    """Check the existing HIP dtype and strided-view paths outside scoring."""
+    import torch
+    values = torch.tensor([[0.0, -1.0, 1.0, 20.0],
+                           [-20.0, 0.5, -0.5, 2.0]], device=device)
+    controls = (
+        ("strided_float32", values.t()),
+        ("strided_float64", values.double().t()),
+        ("float64", values.double()),
+        ("float16", values.half()),
+        ("bfloat16", values.bfloat16()),
+    )
+    checked = []
+    for name, value in controls:
+        if name.startswith("strided") and value.is_contiguous():
+            raise ValueError("Layout control did not create a strided view")
+        before = value.clone(memory_format=torch.preserve_format)
+        expected = module(value)
+        actual = (functional(value) if hip_fn is None else functional(value, fn=hip_fn))
+        output_contract(expected, actual)
+        if not compare(expected, actual, rtol=rtol, atol=atol):
+            raise ValueError(f"Selected forward mishandled TanH {name}")
+        torch.testing.assert_close(value, before, rtol=0, atol=0, equal_nan=True)
+        checked.append(name)
+    return checked
+
+
+def check_tail_geometry_controls(module, functional, hip_fn, compare, rtol, atol,
+                                 device="cuda"):
+    """Cover the small contiguous size residues omitted by the scored geometries."""
+    import torch
+    # The scored float32 lengths are all divisible by four. The existing five-
+    # element signed control covers a vec4 body plus scalar tail; these short
+    # shapes also exercise vec2-only, vec4+vec2, and vec4+vec2+tail lengths.
+    # Float64 odd lengths exercise its separate double2-plus-tail path.
+    controls = (
+        ("float32_scalar", torch.float32, (1,)),
+        ("float32_vec2", torch.float32, (2,)),
+        ("float32_vec2_tail", torch.float32, (3,)),
+        ("float32_vec4_vec2", torch.float32, (2, 3)),
+        ("float32_vec4_vec2_tail", torch.float32, (1, 7)),
+        ("float64_scalar", torch.float64, (1,)),
+        ("float64_vec2_tail", torch.float64, (3,)),
+        ("float64_two_vec2_tail", torch.float64, (5,)),
+    )
+    original = (module.a, module.max, functional.a, functional.max)
+    checked = []
+    try:
+        module.a = functional.a = 1.25
+        module.max = functional.max = 3.0
+        for index, (name, dtype, shape) in enumerate(controls):
+            count = math.prod(shape)
+            generator = torch.Generator(device="cpu").manual_seed(11178 + index)
+            cpu_value = torch.randn(count, dtype=dtype, generator=generator)
+            # Distinct deterministic data for each residue; ensure the actual
+            # tail is neither zero nor small enough to mask an omitted store.
+            cpu_value[-1] = (1.25 + index / 16) * (1 if index % 2 else -1)
+            if count > 1:
+                cpu_value[-2] = -0.75 - index / 16
+            value = cpu_value.to(device).reshape(shape)
+            expected = torch.tensor(
+                [math.tanh(1.25 * item) * 3.0 for item in cpu_value.tolist()],
+                dtype=dtype, device=device,
+            ).reshape(shape)
+            reference_input, candidate_input = value.clone(), value.clone()
+            reference = module(reference_input)
+            actual = (functional(candidate_input) if hip_fn is None else
+                      functional(candidate_input, fn=hip_fn))
+            for output in (reference, actual):
+                output_contract(expected, output)
+                if not compare(expected, output, rtol=rtol, atol=atol):
+                    raise ValueError(f"{name} TanH disagrees with the independent tail reference")
+            for current in (reference_input, candidate_input):
+                if (current.shape != value.shape or current.dtype != value.dtype or
+                        current.device != value.device or current.stride() != value.stride() or
+                        not torch.equal(current.contiguous().view(torch.uint8),
+                                        value.contiguous().view(torch.uint8))):
+                    raise ValueError(f"{name} TanH changed a caller-owned input")
+            if (module.a, module.max, functional.a, functional.max) != (1.25, 3.0, 1.25, 3.0):
+                raise ValueError(f"{name} TanH changed scalar state")
+            checked.append(name)
+    finally:
+        module.a, module.max, functional.a, functional.max = original
+    return checked
+
+
+def require_graph_method(case, method):
+    if method != "cuda_graph" or any(case.get(key) != "cuda_graph"
+                                     for key in ("benchmark_method", "reference_benchmark_method")
+                                     if key in case):
+        raise RuntimeError("Benchmark changed the declared graph timing method")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
@@ -184,8 +353,18 @@ def correctness(args, role, rows):
         if not passed:
             row["failure_kind"] = "numerical_mismatch"
         result.append(row)
+        if passed:
+            check_scalar_variants(module, functional, hip_fn, reference_inputs,
+                                  expected, checks._compare_results, rtol, atol)
     if len(result) != len(rows):
         raise ValueError("Correctness omitted declared cases")
+    if all(row["status"] == "PASS" for row in result):
+        result[0]["metrics"]["unscored_signed_scalar_controls"] = check_signed_scalar_controls(
+            module, functional, hip_fn, checks._compare_results, rtol, atol)
+        result[0]["metrics"]["unscored_layout_dtype_controls"] = check_layout_dtype_controls(
+            module, functional, hip_fn, checks._compare_results, rtol, atol)
+        result[0]["metrics"]["unscored_tail_geometry_controls"] = check_tail_geometry_controls(
+            module, functional, hip_fn, checks._compare_results, rtol, atol)
     return result
 
 
@@ -257,13 +436,22 @@ def performance(args, role, rows):
             raise RuntimeError("Benchmark case identity/correctness is invalid")
         time_key = ("ref_time" if args.baseline_hip else "ori_time") if role == "baseline" else "opt_time"
         elapsed = case.get(time_key)
-        method = case.get("reference_benchmark_method") if role == "baseline" and args.baseline_hip else case.get("benchmark_method")
+        selected_benchmark = case.get("reference_benchmark") if role == "baseline" and args.baseline_hip else case
+        if not isinstance(selected_benchmark, dict):
+            raise RuntimeError("Benchmark omitted timing metadata for the measured role")
+        method = selected_benchmark.get("benchmark_method")
+        require_graph_method(case, method)
+        if selected_benchmark.get("replay_validation_valid") is not True or (
+            selected_benchmark.get("validated_sample_count") != selected_benchmark.get("benchmark_samples")
+        ):
+            raise RuntimeError("Benchmark did not validate all reported samples for the measured role")
         if not isinstance(elapsed, (float, int)) or not math.isfinite(elapsed) or elapsed <= 0:
             raise RuntimeError("Benchmark returned invalid device timing")
         if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Benchmark did not establish device timing method")
         result.append({**rows[index], "status": "PASS", "execution_time_ms": elapsed,
-                       "benchmark_method": method, "metadata": {"original_benchmark": case}})
+                       "benchmark_method": method, "metadata": {"original_benchmark": case,
+                                                                 "timed_benchmark": selected_benchmark}})
     return result
 
 

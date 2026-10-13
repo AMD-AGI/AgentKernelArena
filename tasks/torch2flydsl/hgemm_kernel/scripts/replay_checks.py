@@ -56,9 +56,10 @@ def require_unchanged(inputs, originals):
 
 
 def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare):
-    """Check last measured output, then perturb and replay the measured unit.
+    """Check final measured output after sample-stream validation, then replay.
 
-    A fresh ordinary correctness invocation cannot substitute for either check.
+    The caller first checks every measured output through TimedRun.after_sample.
+    A fresh ordinary correctness invocation cannot substitute for these checks.
     Event support must expose the last actual measured output through TimedRun;
     an unsupported collector is an error, never a skipped validation.
     """
@@ -82,5 +83,6 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
         # Subsequent diagnostic timings see the original declared input, too.
         for value, original in zip(inputs, originals):
             value.copy_(original)
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    return {"timed_output_correctness": "PASS", "timed_output_checked": True,
+            "replay_correctness": "PASS",
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}

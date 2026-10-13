@@ -211,6 +211,20 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control_int8_dense_explicit",
+      "dtype": "float16,float32,int32,uint8",
+      "params": {"control": "int8_dense_explicit"},
+      "checks": ["correctness"],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_int8_dense_default",
+      "dtype": "float16,int32,uint8",
+      "params": {"control": "int8_dense_default"},
+      "checks": ["correctness"],
+      "status": "PASS"
     }
   ],
   "migration": {

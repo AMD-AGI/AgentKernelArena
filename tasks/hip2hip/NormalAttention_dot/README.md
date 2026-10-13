@@ -52,6 +52,8 @@ case IDs, input generation, seeds, tolerances, 10 warmups and 100 samples remain
 unchanged. Automatic capture failure is not accepted as validated Event output.
 
 This HIP task retains its explicit Event policy for ROCm graph teardown safety.
+Each result exposes its checked output and Event fallback reason in the case
+metadata used by the task validator.
 
 The scored Python call path is read-only: the benchmark checks caller inputs
 and all model parameters/buffers after the actual timed call and its validated
@@ -60,3 +62,18 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+The correctness action also checks each of the eight live projection weight and
+bias tensors independently on the original first-case shape. For each tensor it
+derives an output from the protected PyTorch module with that tensor changed,
+requires the changed output to be distinguishable at the declared tolerance,
+and compares the same state through the functional baseline or submitted HIP
+extension. All parameter and caller-input values are restored on failure. These
+controls are unscored and do not change the five cases or Event timing work.
+
+Correctness also checks three unscored inputs with independent batch size and
+rectangular height/width: `(1, 4, 2, 3)`, `(3, 4, 2, 5)`, and `(5, 4, 4, 2)`.
+For each, the protected PyTorch module supplies the numerical oracle for both
+the original and a changed input. The functional or HIP result must match it
+without changing caller inputs or model state. The original five scored cases,
+their tolerances, and the timing policy remain unchanged.

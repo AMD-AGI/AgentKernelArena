@@ -1,7 +1,8 @@
 """Task-owned checks on measured outputs and the exact timed invocation.
 
-Numerical policies are supplied by the operator harness. All checking, oracle
-work, input perturbation and restoration occur after timing, on both roles.
+Numerical policies are supplied by the operator harness. This module's checks,
+oracle work, input perturbation and restoration occur after timing, on both
+roles. The distinct scored-input preparation is implemented separately.
 The canonical benchmark owns graph/Event collection and sample boundaries.
 """
 
@@ -82,5 +83,6 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
         # Subsequent diagnostic timings see the original declared input, too.
         for value, original in zip(inputs, originals):
             value.copy_(original)
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    return {"timed_output_correctness": "PASS", "timed_output_checked": True,
+            "replay_correctness": "PASS",
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}

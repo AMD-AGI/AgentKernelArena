@@ -4,12 +4,28 @@
 import argparse
 import copy
 import json
+import importlib.util
 import math
 import os
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _protected_runner():
+    path = Path(__file__).resolve().parent / "task_runner.py"
+    spec = importlib.util.spec_from_file_location("task_runner", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Protected task runner is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["task_runner"] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop("task_runner", None)
+        raise
+    return module
 
 
 def manifest():
@@ -20,7 +36,7 @@ def manifest():
     return data
 
 
-def checked_performance(expected, measured):
+def checked_performance(expected, measured, graph_policy):
     if isinstance(measured, tuple):
         measured, error = measured
         if error:
@@ -38,10 +54,14 @@ def checked_performance(expected, measured):
         latency = actual.get("execution_time_ms")
         if type(latency) not in (int, float) or not math.isfinite(latency) or latency <= 0:
             raise RuntimeError("Native benchmark did not produce finite positive device time")
-        if actual.get("benchmark_method") not in ("cuda_graph", "cuda_event_fallback"):
+        method = actual.get("benchmark_method")
+        if method not in ("cuda_graph", "cuda_event_fallback"):
             raise RuntimeError("Native benchmark did not establish a supported device timing method")
+        required_method = "cuda_graph" if graph_policy["enabled"] else "cuda_event_fallback"
+        if method != required_method:
+            raise RuntimeError("Native benchmark changed the declared device timing method")
         result.append({**row, "status": "PASS", "execution_time_ms": latency,
-                       "benchmark_method": actual["benchmark_method"], "metadata": {"native_benchmark": actual}})
+                       "benchmark_method": method, "metadata": {"native_benchmark": actual}})
     return result
 
 
@@ -73,13 +93,13 @@ def run(argv=None):
         os.environ["TORCH_EXTENSIONS_DIR"] = str(ROOT / "build" / "torch_extensions")
         data = manifest()
         cases = data["cases"]
-        import task_runner as harness
+        harness = _protected_runner()
         if [list(shape) for shape in harness.TEST_SHAPES] != data["test_shapes"]:
             raise ValueError("Protected harness cases no longer match workload manifest")
         # Source-dependent policy was evaluated on the original implementation.
         # A candidate cannot downgrade the frozen baseline's timing method.
         configure_timing_policy(harness, data)
-        import reference_checks
+        reference_checks = harness._PROTECTED_REFERENCE_CHECKS
         if action == "validate-task":
             reference_checks.self_test(harness)
             for relative in data["candidate_files"]:
@@ -101,7 +121,7 @@ def run(argv=None):
             reference_checks.check_additional_paths(harness)
             result["cases"] = [{**row, "status": "PASS"} for row in cases]
         else:
-            result["cases"] = checked_performance(cases, harness.run_performance())
+            result["cases"] = checked_performance(cases, harness.run_performance(), data["graph_policy"])
         result["status"] = "PASS"
     except Exception as exc:
         result.update(reason=f"{type(exc).__name__}: {exc}", failure_kind="execution_error")

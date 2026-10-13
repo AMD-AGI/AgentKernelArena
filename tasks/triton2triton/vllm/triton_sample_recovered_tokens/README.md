@@ -28,11 +28,16 @@ and jagged per-request lengths for every original case. Scored performance retai
 the original draft-probability path and full per-request lengths; the no-draft
 path is a correctness requirement, not an additional scored measurement.
 All routing, token, probability and exponential-race inputs are read-only.
-The actual timed return value is checked, then a consistent vocabulary permutation
-changes the data, the captured token output is filled with -1, and the same timed
-invocation is replayed and checked. Inputs are restored on success or failure.
-The five scored cases, seeds, full-wrapper timing, 10 warmups and 100 samples are
-unchanged; neither branch substitutes a different output contract.
+Both roles use explicit device-Event timing to invoke the allocating public
+wrapper for each measured sample. Graph `after_sample` can inspect a captured
+output after replay, but graph replay does not rerun the public wrapper and a
+batched graph exposes only its final returned output. Every measured return
+value is checked; then a consistent vocabulary permutation changes the data,
+the final output is filled with -1, and the same eager callable is rerun and
+checked. Inputs are restored on success or failure. The five scored cases,
+seeds, 10 warmups and 100 samples are unchanged; neither branch substitutes a
+different output contract. Event times are not directly comparable with the
+historical graph-replay times.
 
 Additional unscored public-branch controls from PR105: Singleton, empty/ragged requests and deterministic recovered-distribution branch.
 Their `control-upstream-*` manifest rows preserve all existing scored cases,

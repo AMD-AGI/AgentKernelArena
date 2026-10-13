@@ -131,7 +131,8 @@ def reference_fused_moe_int4(input_t, qweight, scales, zeros, topk_ids,
 
 
 
-CONTROL_CASES = ('int4_explicit', 'int4_default', 'int8_explicit', 'int8_default', 'int4_unrouted')
+CONTROL_CASES = ('int4_explicit', 'int4_default', 'int8_explicit', 'int8_default',
+                 'int4_unrouted', 'int8_dense_explicit', 'int8_dense_default')
 
 
 def reference(inputs, options):
@@ -168,6 +169,29 @@ def control_inputs(name, device):
     if name == 'int4_unrouted':
         inputs, options = control_inputs('int4_explicit', device)
         return inputs, {**options, 'mul_routed_weight': False}
+    if name in ('int8_dense_explicit', 'int8_dense_default'):
+        # A second valid INT8 geometry with every K lane active. Values stay
+        # dyadic and small enough for exact FP16 results after accumulation.
+        M, K, E, N, group_size, topk = 4, 64, 4, 96, 32, 3
+        row = torch.arange(M, device=device)[:, None]
+        col = torch.arange(K, device=device)[None, :]
+        A = torch.where((row * 11 + col * 7) % 3 == 0, -1, 1).to(torch.float16)
+        A[0, :] = 1
+        zero_points = (126 + torch.arange(E * (K // group_size) * N, device=device)
+                       .reshape(E, K // group_size, N) % 5).to(torch.uint8)
+        delta = (torch.arange(E * K * N, device=device).reshape(E, K, N) * 7 + 3) % 5 - 2
+        base = zero_points.repeat_interleave(group_size, dim=1) if name.endswith('explicit') else 128
+        qweight = (base + delta).to(torch.uint8)
+        scales = torch.full((E, K // group_size, N), 0.125, device=device, dtype=torch.float16)
+        scales[:, 1, :] *= 2
+        ids = torch.tensor([[0, 1, 1], [2, 3, -1], [3, 0, 2], [1, -1, 4]],
+                           device=device, dtype=torch.int32)
+        inputs = {'A': A, 'qweight': qweight, 'scales': scales, 'ids': ids}
+        if name.endswith('explicit'):
+            inputs['zeros'] = zero_points
+            inputs['weights'] = torch.tensor([-2., 3., 0.5] * M, device=device, dtype=torch.float32)
+        return inputs, {'group_size': group_size, 'use_int4': False,
+                        'mul_routed_weight': True}
     # Basis activations and binary-exact scales give hand-checkable large outputs.
     # K=48 also exercises the public partial-K load branch; N=70 crosses a tile.
     M, K, E, N, group_size = 5, 48, 3, 70, 16
@@ -197,8 +221,8 @@ def check_output(actual, expected):
 
 
 def check_control_output(actual, expected):
-    # Each control row has one nonzero integer activation. Integer quantized
-    # weights/zero points, power-of-two scales and dyadic routing weights make
+    # Structured integer activations, quantized weights/zero points,
+    # power-of-two scales and dyadic routing weights make
     # every intermediate and output exactly representable in FP16. There is
     # no reduction error to budget here. Keep the original random-case gate
     # above, but reject systematic scaling and packing errors on these controls.

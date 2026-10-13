@@ -560,7 +560,17 @@ def test_inventory_and_declared_roles():
     # Preserve all 98 migrated correctness cases and 68 measured cases; add two
     # unscored ragged-CSR checks after the GPU quality review found uniform-only
     # coverage of the sparse attention operator.
-    assert (total_c, total_p) == (100, 68)
+    # Two ragged paged-attention cases include one additional scored case;
+    # decode adds one separate correctness-only partial-page case.
+    assert (total_c, total_p) == (103, 69)
+    decode = json.loads((TASKS / 'mi300x_sglang_hip_pa_decode' / 'workloads.json').read_text())
+    extra = [row for row in decode['cases'] if row['test_case_id'] == 'partial-correctness-0']
+    assert len(extra) == 1 and extra[0]['checks'] == ['correctness']
+    assert extra[0]['params'] == {
+        'ctx_lens': 1025, 'num_seqs': 4, 'num_heads': [8, 1], 'head_size': 128,
+        'block_size': 16, 'dtype_str': 'bfloat16',
+        'context_lengths': [1025, 1024, 1009, 1008], 'seed': 0}
+    assert extra[0]['shape'] == [4, 8, 128, 1025] and extra[0]['dtype'] == 'bfloat16'
 
 
 @pytest.mark.parametrize("directory", DIRECTORIES, ids=lambda d: d.name)
@@ -634,6 +644,39 @@ def test_original_cases_numerical_policy_and_benchmark_unchanged(directory):
     functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
     for name, expected in evidence["phases"].items():
         function = deepcopy(functions[name])
+        if directory.name == "mi300x_sglang_hip_pa_decode" and name == "run_performance":
+            # The qualified decode runner observes all 100 single-call graph
+            # outputs and restores read-only inputs. Pin its complete new body;
+            # the original cases, correctness phase, input constants and shared
+            # benchmark helper remain independently checked below.
+            assert digest(ast.dump(function, include_attributes=False)) == (
+                "a4a57bb33e00d10c043250080a379e64804628a72da28c4ff19a7b60e3565005"
+            )
+            continue
+        if directory.name == "mi300x_sglang_hip_pa_decode" and name == "run_correctness":
+            # Admit only the extra correctness-only partial-page iterator.
+            assert digest(ast.dump(function, include_attributes=False)) == (
+                "0921bb593cfec0e771e3850baa61dcb9308b31152cd8df55bb36608937abe931")
+            loop = next(n for n in function.body if isinstance(n, ast.For))
+            assert ast.dump(loop.iter) == ast.dump(ast.parse(
+                "enumerate([*CASES, *scored_cfgs, *EXTRA_CASES])", mode="eval").body)
+            loop.iter = ast.parse("enumerate([*CASES, *scored_cfgs])", mode="eval").body
+        if directory.name == "mi300x_sglang_hip_pa_ragged":
+            # Strip only the additional workload lists for comparison with the
+            # original bodies. The old cases and all numerical/timing code stay.
+            if name == "run_correctness":
+                assignment = next(n for n in function.body if isinstance(n, ast.Assign)
+                                  and isinstance(n.value, ast.ListComp))
+                iterator = assignment.value.generators[0]
+                assert ast.dump(iterator.iter) == ast.dump(ast.parse("[*PERF_CASES, *EXTRA_PERF_CASES]", mode="eval").body)
+                iterator.iter = ast.Name(id="PERF_CASES", ctx=ast.Load())
+                loop = next(n for n in function.body if isinstance(n, ast.For))
+                assert ast.dump(loop.iter) == ast.dump(ast.parse("enumerate([*CASES, *scored_cfgs, *EXTRA_CASES])", mode="eval").body)
+                loop.iter = ast.parse("enumerate([*CASES, *scored_cfgs])", mode="eval").body
+            elif name == "run_performance":
+                loop = next(n for n in function.body if isinstance(n, ast.For))
+                assert ast.dump(loop.iter) == ast.dump(ast.parse("[*PERF_CASES, *EXTRA_PERF_CASES]", mode="eval").body)
+                loop.iter = ast.Name(id="PERF_CASES", ctx=ast.Load())
         if name == "run_performance":
             assert isinstance(function.body[-1], ast.Return)
             function.body.pop()  # Return the fresh rows to v2.

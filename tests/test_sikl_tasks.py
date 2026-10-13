@@ -49,6 +49,30 @@ SHARED_TEMPLATE_FILES = (
     'scripts/evaluate.py', 'scripts/export_solution.py', 'scripts/task_validation.py', 'README.md',
 )
 DSV4_GEMM_TASKS = {f'gemm_a16w16_nt_n{n}_k4096' for n in (64, 256, 512, 1024, 2048)}
+# These existing GEMMs now use main's timed-output protocol.
+MAIN_GEMM_TASKS = {
+    'gemm_a16w16_nt_n4096_k2048',
+    'gemm_a16w16_nt_n6144_k3072',
+    'gemm_a16w16_nt_n16384_k2048',
+}
+# These GEMMs share the guarded current-weight and timed-output protocol.
+# Keep the full original cohort explicit so a missing or divergent copy fails.
+GUARDED_GEMM_TASKS = {
+    'gemm_a16w16_nt_n128_k6144',
+    'gemm_a16w16_nt_n2048_k2048',
+    'gemm_a16w16_nt_n256_k6144',
+    'gemm_a16w16_nt_n2624_k6144',
+    'gemm_a16w16_nt_n28672_k512',
+    'gemm_a16w16_nt_n3072_k6144',
+    'gemm_a16w16_nt_n32_k6144',
+    'gemm_a16w16_nt_n3584_k512',
+    'gemm_a16w16_nt_n6144_k1536',
+    'gemm_a16w16_nt_n6144_k16384',
+    'gemm_a16w16_nt_n6144_k2048',
+    'gemm_a16w16_nt_n6144_k4096',
+    'gemm_a16w16_nt_n6144_k6144',
+    'gemm_a16w16_nt_n7168_k512',
+}
 # SHA256 from the original PR's bundled callbacks before schema migration.
 # A migration must not quietly change input distributions or acceptance gates.
 CALLBACK_SHA256 = {
@@ -123,8 +147,13 @@ def _workload(task):
 
 def test_suite_keeps_all_30_tasks_and_1426_cases():
     assert len(TASKS) == 30
-    assert sum(_workload(t)['op_type'] == 'gemm' for t in TASKS) == 22
-    assert DSV4_GEMM_TASKS <= {t.name for t in TASKS}
+    gemm_tasks = {t.name for t in TASKS if _workload(t)['op_type'] == 'gemm'}
+    assert len(gemm_tasks) == 22
+    assert len(GUARDED_GEMM_TASKS) == 14
+    assert gemm_tasks == GUARDED_GEMM_TASKS | DSV4_GEMM_TASKS | MAIN_GEMM_TASKS
+    assert not (GUARDED_GEMM_TASKS & DSV4_GEMM_TASKS
+                or GUARDED_GEMM_TASKS & MAIN_GEMM_TASKS
+                or DSV4_GEMM_TASKS & MAIN_GEMM_TASKS)
     assert sum(_workload(t)['op_type'] == 'moe' for t in TASKS) == 4
     assert sum(_workload(t)['op_type'] == 'topk' for t in TASKS) == 1
     assert sum(_workload(t)['op_type'] == 'mla' for t in TASKS) == 3
@@ -143,7 +172,13 @@ def test_family_copies_are_identical(op_type, relative):
         # Executable callbacks and the common instructions remain identical.
         contents = [value.split(b'\n## Production baseline numerical evidence\n')[0].rstrip()
                     for value in contents]
-    assert len(set(contents)) == 1
+    groups = {}
+    for task, content in zip(tasks, contents):
+        cohort = (op_type == 'gemm'
+                  and relative in {'README.md', 'scripts/task_measure.py'}
+                  and task.name in GUARDED_GEMM_TASKS)
+        groups.setdefault(cohort, set()).add(content)
+    assert all(len(values) == 1 for values in groups.values())
 
 
 
