@@ -1,5 +1,6 @@
 """Task-owned RMSNorm numerical oracle, independent of candidate kernels."""
 import ast
+from contextlib import contextmanager, nullcontext
 import importlib.util
 import sys
 from pathlib import Path
@@ -11,6 +12,13 @@ def source_policy(*, target_only=False):
     This is a narrow source contract, not a Python security sandbox. Runtime
     settings and rank evidence are checked separately by the protected adapter.
     """
+    lock_path = ROOT / 'runtime.lock.json'
+    if lock_path.exists():
+        import json
+        lock = json.loads(lock_path.read_text())
+        if 'candidate_bundle' in lock:
+            from _aka_serving_bundle import Bundle
+            return Bundle(ROOT, lock).check_sources()
     tree = ast.parse((ROOT / 'source/rmsnorm.py').read_text())
     allowed = {'torch', 'triton', 'aiter', 'math', 'typing', 'functools'}
     if target_only:
@@ -54,14 +62,45 @@ def source_policy(*, target_only=False):
                 raise ValueError('Torch is limited to allocation and metadata; implement computation in Triton')
 
 
-def operator_checks(lock):
-    source_policy()
+@contextmanager
+def candidate_operations():
+    """Observe actual Tensor operations, including methods and aliased functions.
+
+    Triton launches do not dispatch ATen math. Restrict host Tensor dispatch to
+    allocation and storage views; the numerical oracle runs outside this scope.
+    This complements source checks, not a sandbox against hostile Python.
+    """
+    from torch.utils._python_dispatch import TorchDispatchMode
+
+    class AllocationOnly(TorchDispatchMode):
+        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
+            allowed = {'aten::empty', 'aten::empty_like', 'aten::empty_strided',
+                       'aten::zeros', 'aten::zeros_like', 'aten::view',
+                       'aten::as_strided', 'aten::alias'}
+            if func._schema.name not in allowed:
+                raise ValueError('Candidate delegates computation to Torch: ' + str(func))
+            return func(*args, **(kwargs or {}))
+
+    with AllocationOnly():
+        yield
+
+
+def operator_checks(lock, *, target_only=False):
+    source_policy(target_only=target_only)
     import torch
     torch.manual_seed(lock['correctness']['seed'])
-    spec = importlib.util.spec_from_file_location('candidate', ROOT / 'source/rmsnorm.py')
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    if 'candidate_bundle' in lock:
+        from types import SimpleNamespace
+        from _aka_serving_bundle import effective_function
+        module = SimpleNamespace(**{name: effective_function(ROOT, lock,
+            'sglang.srt.layers.layernorm', name) for name in ('rms_norm', 'fused_add_rms_norm')})
+        target_only = False  # Backend-neutral compute bundle; numerical checks remain identical.
+    else:
+        spec = importlib.util.spec_from_file_location('candidate', ROOT / 'source/rmsnorm.py')
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        with candidate_operations() if target_only else nullcontext():
+            spec.loader.exec_module(module)
     evidence = []
     for rows in (1, 7, 8, 64, 128, 1024, 2048, 16384):
         for width in (128, 1024):
@@ -74,7 +113,8 @@ def operator_checks(lock):
                     return (value * torch.rsqrt(value.square().mean(-1, keepdim=True) + eps) * weight.float()).to(x.dtype)
                 original, wcopy = x.clone(), weight.clone()
                 expected = reference(x)
-                actual = module.rms_norm(x, weight, eps)
+                with candidate_operations() if target_only else nullcontext():
+                    actual = module.rms_norm(x, weight, eps)
                 torch.testing.assert_close(weight, wcopy, rtol=0, atol=0)
                 torch.testing.assert_close(actual, expected, rtol=lock['correctness']['rtol'], atol=lock['correctness']['atol'])
                 torch.testing.assert_close(x, original, rtol=0, atol=0)
@@ -83,7 +123,8 @@ def operator_checks(lock):
                 # Construct the oracle before calling editable code.
                 expected_added = (x.float() + residual.float()).to(x.dtype)
                 expected_norm = reference(expected_added)
-                module.fused_add_rms_norm(output, x, residual, added, weight, eps)
+                with candidate_operations() if target_only else nullcontext():
+                    module.fused_add_rms_norm(output, x, residual, added, weight, eps)
                 torch.testing.assert_close(weight, wcopy, rtol=0, atol=0)
                 torch.testing.assert_close(added, expected_added, rtol=0, atol=0)
                 torch.testing.assert_close(output, expected_norm, rtol=lock['correctness']['rtol'], atol=lock['correctness']['atol'])
@@ -121,7 +162,7 @@ def target_kernels():
 def compile_candidate(lock):
     import torch
     names = target_kernels()
-    cases = operator_checks(lock)
+    cases = operator_checks(lock, target_only=True)
     module = sys.modules['candidate']
     x = torch.randn((8, 1024), device='cuda', dtype=torch.float16)
     weight = torch.ones(1024, device='cuda', dtype=x.dtype)
@@ -132,7 +173,8 @@ def compile_candidate(lock):
     for function, args in inputs.items():
         with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,
                                                torch.profiler.ProfilerActivity.CUDA]) as profile:
-            getattr(module, function)(*args)
+            with candidate_operations():
+                getattr(module, function)(*args)
             torch.cuda.synchronize()
         events = sorted({event.name for event in profile.events()
                          if event.device_type == torch.autograd.DeviceType.CUDA})

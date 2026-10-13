@@ -1,0 +1,22 @@
+schema_version: 2
+description: Optimize paged_attention_decode while preserving the full workload and independent correctness checks.
+instructions: [README.md]
+kernel_identity:
+  logical_operator: paged_attention_decode
+  source_owner: vllm
+candidate:
+  language: hip
+  initial_state: implemented
+  initial_language: hip
+  editable:
+  - src/rocm/attention.cu
+baseline:
+  kind: initial_candidate
+  language: hip
+  correctness_policy: required
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: workloads.json
+  timeout_s: 1800
+platform_support:
+  required_arch: gfx950

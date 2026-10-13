@@ -34,6 +34,12 @@ def measurement_kind(config: dict) -> str:
     return config.get("evaluation", {}).get("measurement", {}).get("kind", "kernel")
 
 
+def validate_pair_count(value: int) -> int:
+    if type(value) is not int or not 1 <= value <= 100:
+        raise ValueError("final_evaluation_pairs must be an integer from 1 to 100")
+    return value
+
+
 def validate_serving_case(row: dict) -> None:
     metrics, params = row.get("metrics", {}), row.get("params", {})
     for key in ("duration_s", "output_tokens_per_s"):
@@ -47,14 +53,31 @@ def validate_serving_case(row: dict) -> None:
     for key in ("completed_requests", "output_tokens"):
         if type(metrics.get(key)) is not int or metrics[key] <= 0:
             raise ValueError(f"Serving measurement requires positive integer {key}")
-    requests, tokens = params.get("num_requests"), params.get("output_tokens_per_request")
-    if type(requests) is not int or requests <= 0 or type(tokens) is not int or tokens <= 0:
+    requests = params.get("num_requests")
+    if type(requests) is not int or requests <= 0:
         raise ValueError("Serving manifest must fix request and output token counts")
-    if metrics["completed_requests"] != requests or metrics["output_tokens"] != requests * tokens:
+
+    def expected_tokens(scalar, sequence):
+        if sequence in params:
+            values = params[sequence]
+            if scalar in params or not isinstance(values, list) or len(values) != requests or any(
+                type(v) is not int or v <= 0 for v in values
+            ):
+                raise ValueError("Serving manifest requires unambiguous positive per-request token counts")
+            if metrics.get(sequence) != values:
+                raise ValueError("Serving measurement changed per-request token counts")
+            return sum(values)
+        value = params.get(scalar)
+        if type(value) is not int or value <= 0:
+            raise ValueError("Serving manifest must fix request and output token counts")
+        return requests * value
+
+    output_tokens = expected_tokens("output_tokens_per_request", "output_lens")
+    if metrics["completed_requests"] != requests or metrics["output_tokens"] != output_tokens:
         raise ValueError("Serving measurement changed work or omitted requests")
-    if "input_tokens" in params:
-        expected = params["input_tokens"]
-        if type(expected) is not int or expected <= 0 or metrics.get("input_tokens") != requests * expected:
+    if "input_tokens" in params or "input_lens" in params:
+        expected = expected_tokens("input_tokens", "input_lens")
+        if metrics.get("input_tokens") != expected:
             raise ValueError("Serving measurement changed input token counts")
     if not math.isclose(row["execution_time_ms"], metrics["duration_s"] * 1000, rel_tol=1e-8):
         raise ValueError("Serving duration contradicts execution_time_ms")
@@ -62,10 +85,14 @@ def validate_serving_case(row: dict) -> None:
         raise ValueError("Serving throughput contradicts token count and elapsed time")
 
 
-def paired_throughput(pairs: list[tuple[list, list]]) -> dict:
+def paired_throughput(pairs: list[tuple[list, list]], *, minimum_speedup_ratio: float = 1.0) -> dict:
     """Median of paired ratios per case, geometric mean across fixed cases."""
+    if (type(minimum_speedup_ratio) not in (int, float)
+            or not math.isfinite(minimum_speedup_ratio) or minimum_speedup_ratio < 1):
+        raise ValueError("minimum_speedup_ratio must be finite and at least 1")
     samples: dict[str, list[float]] = {}
     identities = {}
+    kernel_identities = {}
     for baseline, candidate in pairs:
         b = {case.test_case_id: case for case in baseline}
         c = {case.test_case_id: case for case in candidate}
@@ -84,6 +111,13 @@ def paired_throughput(pairs: list[tuple[list, list]]) -> dict:
             if key in identities and identities[key] != identity:
                 raise ValueError("Serving workload or runtime changed between pairs")
             identities[key] = identity
+            kernels = (bm.get("kernel_sha256"), cm.get("kernel_sha256"))
+            if any(not isinstance(value, str) or len(value) != 64 or
+                   any(char not in "0123456789abcdef" for char in value) for value in kernels):
+                raise ValueError("Serving pair requires baseline and candidate kernel hashes")
+            if key in kernel_identities and kernel_identities[key] != kernels:
+                raise ValueError("Serving kernel identity changed between pairs")
+            kernel_identities[key] = kernels
             ratio = cm["metrics"]["output_tokens_per_s"] / bm["metrics"]["output_tokens_per_s"]
             if not math.isfinite(ratio) or ratio <= 0:
                 raise ValueError("Invalid throughput ratio")
@@ -91,7 +125,16 @@ def paired_throughput(pairs: list[tuple[list, list]]) -> dict:
     if not samples or any(len(v) != len(pairs) for v in samples.values()):
         raise ValueError("Serving cases differ across pairs")
     medians = {k: statistics.median(v) for k, v in samples.items()}
-    return {"speedup_ratio": math.exp(sum(math.log(v) for v in medians.values()) / len(medians)),
+    changed = {k: baseline != candidate for k, (baseline, candidate) in kernel_identities.items()}
+    # An unchanged implementation cannot earn kernel-optimization credit from
+    # runtime noise. Preserve every raw measurement, including regressions.
+    gain = {k: changed[k] and value > 1 and value >= minimum_speedup_ratio for k, value in medians.items()}
+    scored = {k: value if gain[k] else min(value, 1.0) for k, value in medians.items()}
+    return {"speedup_ratio": math.exp(sum(math.log(v) for v in scored.values()) / len(scored)),
+            "raw_speedup_ratio": math.exp(sum(math.log(v) for v in medians.values()) / len(medians)),
+            "scored_case_ratios": scored, "kernel_changed": changed,
+            "minimum_speedup_ratio": minimum_speedup_ratio, "gain_threshold_met": gain,
+            "significance": "not_assessed",
             "case_ratios": medians, "paired_ratios": samples, "pairs": len(pairs),
             "metric": "output_tokens_per_s", "unit": "tokens/s", "direction": "higher",
             "gain_observed_in_all_pairs": all(v > 1 for values in samples.values() for v in values),
@@ -114,6 +157,14 @@ def _uncertainty(pairs: list[tuple[list, list]], samples: dict[str, list[float]]
             for role, rows in (("baseline", baseline), ("candidate", candidate)):
                 case = next(c for c in rows if c.test_case_id == key)
                 throughput[role].append(case.metadata["metrics"]["output_tokens_per_s"])
+        if len(ratios) == 1:
+            result[key] = {
+                "ratio_min": ratios[0], "ratio_max": ratios[0],
+                "baseline_throughput_cv": None, "candidate_throughput_cv": None,
+                "median_within_noise": None,
+                "status": "not_estimable_from_one_pair",
+            }
+            continue
         baseline_cv = _coefficient_of_variation(throughput["baseline"])
         candidate_cv = _coefficient_of_variation(throughput["candidate"])
         result[key] = {

@@ -88,7 +88,10 @@ def _run_engine(bridge: Bridge, python: str) -> int:
                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                           stderr=subprocess.DEVNULL, start_new_session=True) as process:
         try:
-            return process.wait(timeout=bridge.remaining())
+            try:
+                return process.wait(timeout=bridge.remaining())
+            except subprocess.TimeoutExpired:
+                return 124
         finally:
             # Public runners can start new sessions; kill descendants as well as
             # the SDK process group when the hard deadline terminates the worker.
@@ -170,7 +173,12 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
     logging.getLogger(__name__).info("GEAK artifacts: %s", run_dir)
     status = {"status": "FAILED", "delivery": "NOT_ATTEMPTED", "arena_acceptance": "PENDING"}
     try:
-        bridge = prepare_job(context, run_dir, options, deadline=deadline, deadline_epoch=deadline_epoch)
+        serving = context.raw['task_config'].get('evaluation', {}).get('measurement', {}).get('kind') == 'serving'
+        # Reserve a bounded artifact-only handoff within the same invocation
+        # budget. Independent GPU acceptance belongs to the framework's reserve.
+        handoff = min(45, options['timeout_seconds'] / 10) if serving else 0
+        bridge = prepare_job(context, run_dir, options, deadline=deadline-handoff,
+                             deadline_epoch=deadline_epoch-handoff)
         bridge.job["engine"] = prepare_engine(checkout, bridge, python=python, options=options)
         write_json(bridge.job_path, bridge.job)
         code = _run_engine(bridge, python)
@@ -189,7 +197,19 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
         # A full canonical candidate includes the author seed, unlike a patch
         # relative to its first commit. Preserve correct no-gain implementations.
         status["delivery"] = "CHECKING"
-        delivery = bridge.deliver(bridge.eval_dir / "workspace")
+        candidate = bridge.eval_dir / "workspace"
+        if serving:
+            bridge.deadline = deadline
+            if engine.get('workflow_completed') is not True:
+                checkpoint = _read_json(run_dir / 'last_checked_candidate.json')
+                if checkpoint is not None:
+                    candidate = bridge.candidate_root(Path(checkpoint['path']))
+                    if digests(candidate_files(bridge.spec, candidate)) != checkpoint['sources']:
+                        raise ValueError('Recovery checkpoint sources changed')
+                    status['recovery'] = 'last_correctness_checked_candidate'
+                else:
+                    status['recovery'] = 'unverified_workspace_after_engine_failure'
+        delivery = bridge.deliver(candidate, validate=not serving)
         status.update(delivery="DELIVERED", candidate=delivery)
         if code != 0 or engine.get("status") != "accepted" or engine.get("workflow_completed") is not True:
             raise RuntimeError("GEAK engine failed; any checked candidate delivery is recorded separately")

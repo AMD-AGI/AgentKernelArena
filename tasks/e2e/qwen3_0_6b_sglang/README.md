@@ -1,58 +1,79 @@
-# Qwen3 0.6B serving kernel optimization
+# Fixed-workload end-to-end kernel optimization
 
-Optimize only `source/rmsnorm.py`. The starting implementation delegates to
-production AITER RMSNorm kernels. Both final entrypoints must execute candidate
-Triton kernels, without importing AITER; the compile action checks GPU profiler
-evidence for each entrypoint. The evaluator replaces the same SGLang
-normalization entrypoints on every rank for baseline and candidate.
-Use Torch only for allocation and tensor metadata, with computation in the
-submitted Triton kernels. Calling an existing framework operator is not a kernel rewrite.
+Optimize any GPU computation involved in this model, including fusion across
+operators and kernels. The supplied RMSNorm implementation is a starting point,
+not the optimization boundary. Choose the hotspots and GPU implementation backend
+supported by the pinned image yourself.
 
-Preserve FP16 input/output semantics, residual outputs, and both API signatures.
-The model exercises hidden width 1024 and attention head width 128. Implement
-all covered row counts, including decode and prefill. Kernel tiling, vectorization
-and fusion within these operators are allowed. Do not change model weights,
-precision, dispatch, serving settings, workload, dependencies or the harness.
-Do not branch on whether correctness or performance is running.
+## Submission
 
-`benchmark.yaml` is a small-model variant of the Magpie recipes preserved in the
-parent directory. Its model, precision, TP, concurrency and lengths are explicit
-variant choices made before baseline measurement, not optimization gains.
-The variant fixes FP16 and the Triton attention backend; neither is editable.
+Edit the `source/` tree, including `source/patches.json`. Submit Python kernels,
+helpers and HIP/C++ source files there. Do not submit binaries, symlinks or build
+outputs. A bundle is limited to 256 files and the source byte limit in the lock.
+Each manifest entry names a runtime `module`, dotted `symbol`, candidate Python
+`file` relative to `source/`, and replacement `callable`:
 
-The runtime lock declares the model and benchmark dependencies. The Docker host
-prepares them in a versioned cache and mounts model resources read-only inside
-the clean evaluation container. No task downloads dependencies while scoring.
-The framework materializes the shared runner into `scripts/` before commands
-are executed; a raw task directory is not directly runnable.
+```json
+{"version": 1, "patches": [{
+  "module": "sglang.srt.models.qwen3",
+  "symbol": "Qwen3DecoderLayer.forward",
+  "file": "fused_layer.py",
+  "callable": "forward"
+}]}
+```
 
-Correctness compares the kernel outputs with an independent FP32 calculation
-and prefill/decode log probabilities with a Transformers FP32 reference.
-Performance runs the pinned Magpie workload with profiling off and checks full
-request/output-token counts. Each measurement completes 2,000 requests, about
-60 seconds of steady-state decode at the baseline rate; the lock rejects any
-window shorter than 30 seconds. Final scoring uses three fresh interleaved A/B
-pairs. Throughput improvements are reported independently of agent completion.
+Use the model class names present in this task's pinned image. Compute functions
+and methods in SGLang layers/models, AITER and sgl_kernel may be replaced. This
+includes replacing a model/layer compute boundary to fuse operations spanning
+several existing kernels. Preserve method arguments, results, state updates and
+all model semantics. Scheduler, sampling, tokenizer, weight loading, configuration
+and evaluator changes are prohibited. Keep precision, weights, TP, concurrency,
+request/token counts and serving flags unchanged. Speedups must come from kernel
+implementation or fusion, not less work or different runtime settings.
 
-## What this task can and cannot show
+Use relative Python imports for bundle helpers. If needed,
+`from _aka_serving_bundle import original, load_extension` provides the unchanged
+declared compute target and a pinned-toolchain HIP/C++ builder. For example,
+`original(module, symbol)(*args)` delegates an unchanged part of a replacement;
+`load_extension("my_kernel", ["binding.cpp", "kernel.cu"])` builds submitted files
+using the image toolchain and local temporary storage. Do not modify runtime
+modules through reflection or environment/file access.
 
-RMSNorm is a small share of Qwen3-0.6B decode time at concurrency 8. Even a
-kernel that is several times faster changes end-to-end throughput by well under
-one percent, which is the same order as the repeat-to-repeat variation reported
-under `serving_measurement.uncertainty`. This task exists to exercise the
-serving contract end to end; a result near 1.00x is the expected outcome, not
-a failed optimization. Do not read a median ratio inside the recorded noise
-range as a gain.
+## Suggested analysis, not a prerequisite
 
-Every performance action starts from a fresh container with an empty Triton
-cache, so kernel compilation that happens during serving counts against the
-candidate. A kernel specialized on the row count with a `tl.constexpr`
-parameter recompiles for every new batch or prefill size inside the timed
-window. Prefer runtime row arguments and a bounded set of tile
-specializations. The pinned client issues warmup requests before timing, but it
-cannot warm every shape the scheduler will form.
+Profiling is recommended but optional. Use tools available to your agent to
+understand kernel time, actual shapes, layouts, precision, call frequency, launch
+overhead and opportunities to reuse intermediates or fuse operations. Study the
+real prefill/decode workload before spending time on a kernel microbenchmark.
+Choose your own tools and analysis method; no profiling report or framework
+profiling interface is required. Keep analysis scripts and traces outside the
+protected task files. Diagnostic timings never replace the fixed scoring runner.
 
-For clean checks during optimization, use `python3 scripts/evaluate.py candidate
-compile`, `candidate correctness`, or `candidate performance`. These commands
-submit the current kernel source to the host evaluator; they need no model
-weight or runtime installation in the agent workspace.
+## Evaluation and limits
+
+Read `benchmark.yaml` and `runtime.lock.json` for exact workload and runtime
+identity. Run the declared public compile/correctness/performance commands in
+`config.yaml`. They execute a clean copy with pinned read-only model assets.
+All replacements must actually execute, and every TP rank must report effective
+runtime settings. Hashes cover the complete bundle, including the manifest.
+An unchanged bundle is a retained control, not an optimization success.
+
+Existing operator oracles remain useful targeted checks, but do not cover every
+possible edited or fused region. Whole-model checks retain short cases and also
+run one concurrent batch with the scored workload's input and output lengths
+against an independent reference. Requests run both with and without logprobs,
+including the no-logprob path used for scoring. In that path every generated
+token must agree with the independent FP32 greedy choice within the existing
+logprob tolerance; near ties are allowed without skipping later decode steps. These are finite tests, not proof for all inputs. Keep additional
+candidate-specific tests when useful; do not weaken the protected checks.
+
+Final acceptance includes a fresh compile/check and the configured number of
+complete baseline/candidate pairs. Search checks and recovered artifacts are not
+final acceptance. A single pair does not establish variance or significance.
+The paired median must improve by at least 5% to earn gain credit; smaller gains
+remain in the raw results. Choose `budget.final_evaluation_pairs` before the run
+to request 1 through 100 complete pairs, using dozens when the budget permits.
+A fresh read-only verification agent also checks the frozen submission and
+measurement evidence. Failed or inconclusive review blocks acceptance. A wrapper
+that retains the original computation cannot earn gain credit, even if its
+measured throughput is higher.

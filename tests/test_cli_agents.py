@@ -7,7 +7,10 @@ from pathlib import Path
 import signal
 import sys
 import time
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # pytest depends on tomli for Python < 3.11.
+    import tomli as tomllib
 
 import pytest
 
@@ -119,6 +122,14 @@ Path('invocation.json').write_text(json.dumps({
     'stdin': sys.stdin.read(),
 }))
 mode = os.environ.get('ARENA_TEST_CLI_MODE')
+if mode in ('trace_timeout', 'trace_nonzero'):
+    print(json.dumps({'type':'item.completed','item':{
+        'type':'command_execution','command':'test-kernel','status':'completed',
+        'aggregated_output':'x' * 2000 + 'FULL_TOOL_OUTPUT_TAIL'}}), flush=True)
+    print('FULL_ERROR_DETAIL ' + os.environ.get('ARENA_TEST_API_KEY', ''), file=sys.stderr, flush=True)
+    if mode == 'trace_timeout':
+        time.sleep(60)
+    raise SystemExit(7)
 if mode == 'timeout':
     child = subprocess.Popen([sys.executable, '-c',
         "import os,signal,time; from pathlib import Path; "
@@ -222,6 +233,26 @@ def test_cli_failure_is_not_returned_as_success(launcher, fake_cli, monkeypatch,
     monkeypatch.setenv("ARENA_TEST_CLI_MODE", mode)
     with pytest.raises(RuntimeError, match="exited with code 7|failed"):
         launcher.launch_agent({}, "unused", str(workspace))
+
+
+@pytest.mark.parametrize("launcher", ["codex"], indirect=True)
+@pytest.mark.parametrize("mode", ["trace_timeout", "trace_nonzero"])
+def test_codex_preserves_full_private_events_after_failure(launcher, fake_cli, monkeypatch, mode):
+    workspace, prompt = fake_cli
+    secret = "synthetic-private-credential"
+    monkeypatch.setenv("ARENA_TEST_CLI_MODE", mode)
+    monkeypatch.setenv("ARENA_TEST_API_KEY", secret)
+    with pytest.raises((TimeoutError, RuntimeError)):
+        launcher.launch_agent({"agent": {"timeout_seconds": 1}}, "unused", str(workspace))
+    directory, = workspace.parent.glob(f".{workspace.name}-codex-stream-*")
+    output = (directory / "stdout.jsonl").read_text()
+    errors = (directory / "stderr.jsonl").read_text()
+    assert "FULL_TOOL_OUTPUT_TAIL" in output
+    assert "FULL_ERROR_DETAIL" in errors
+    assert secret not in output + errors and "[REDACTED]" in errors
+    assert prompt not in output + errors
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert all(p.stat().st_mode & 0o777 == 0o600 for p in directory.iterdir())
 
 
 def test_timeout_stops_tool_child_and_reports_failure(launcher, fake_cli, monkeypatch):

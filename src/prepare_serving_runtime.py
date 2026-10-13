@@ -26,14 +26,63 @@ def acquire(url, target):
         shutil.copyfileobj(source, out)
 
 
+def runtime_files(directory):
+    # Host-prepared assets may be read-only shared directories. Walk each root
+    # explicitly so a top-level model symlink cannot disappear from validation.
+    paths = []
+    for child in directory.iterdir():
+        paths.extend(child.rglob('*') if child.is_dir() else [child])
+    return [p for p in paths if p.is_file() and p != directory/'artifact_manifest.json'
+            and not (p.relative_to(directory).parts[0] == 'model'
+                     and any(part.startswith('.') for part in p.relative_to(directory).parts[1:]))]
+
+
 def verify(directory, identity):
     manifest = json.loads((directory / 'artifact_manifest.json').read_text())
     if manifest['identity'] != identity:
         raise ValueError('Cached runtime identity changed')
-    files = {str(p.relative_to(directory)): file_digest(p) for p in directory.rglob('*')
-             if p.is_file() and p.name != 'artifact_manifest.json'}
+    files = {str(p.relative_to(directory)): file_digest(p) for p in runtime_files(directory)}
     if files != manifest['files']:
         raise ValueError('Cached runtime content changed')
+
+
+class VerifiedRuntime:
+    """Bind every action to the original immutable asset inventory and contents.
+
+    Metadata is useful for rejecting changes early, but is not a content cache:
+    rapid writes can share a ctime tick on container and network filesystems.
+    Hash on every action, outside benchmark timing and inside its setup budget.
+    This assumes a trusted host/filesystem, not protection against host root.
+    """
+    def __init__(self):
+        self.verified = {}
+
+    @staticmethod
+    def fingerprint(directory):
+        rows = []
+        for path in [directory/'artifact_manifest.json', *runtime_files(directory)]:
+            value = path.stat()
+            rows.append((str(path.relative_to(directory)), value.st_dev, value.st_ino,
+                         value.st_size, value.st_mtime_ns, value.st_ctime_ns))
+        return tuple(sorted(rows))
+
+    def verify(self, directory, identity):
+        before = self.fingerprint(directory)
+        key = str(directory.resolve())
+        record = (json.dumps(identity, sort_keys=True), before,
+                  file_digest(directory/'artifact_manifest.json'))
+        if key in self.verified:
+            if self.verified[key] != record:
+                raise ValueError('Verified runtime assets changed during the experiment')
+        try:
+            verify(directory, identity)
+        except ValueError as exc:
+            if key in self.verified:
+                raise ValueError('Verified runtime assets changed during the experiment') from exc
+            raise
+        if self.fingerprint(directory) != before:
+            raise ValueError('Runtime assets changed during content verification')
+        self.verified[key] = record
 
 
 def prepare(lock, cache):

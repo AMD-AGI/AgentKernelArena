@@ -141,7 +141,9 @@ def run_action(spec: TaskSpec, workspace: Path, *, role: str, action: str,
         if manifest is not None and action != "validate-task":
             manifest.validate(result)
     except TaskProtocolError as exc:
-        raise TaskExecutionError(f"Invalid {role}.{action} evidence: {exc}", commands=tuple(evidence)) from exc
+        failures = "; ".join(item.reason or "Command failed" for item in results if not item.passed)
+        detail = f"; action reported: {failures}" if failures else ""
+        raise TaskExecutionError(f"Invalid {role}.{action} evidence: {exc}{detail}", commands=tuple(evidence)) from exc
     if time.monotonic() > deadline:
         raise TaskExecutionError(f"{role}.{action} exceeded its {selected.timeout_s}s action deadline",
                                  commands=tuple(evidence))

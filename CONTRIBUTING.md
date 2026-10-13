@@ -35,10 +35,6 @@ make docker-setup-flydsl
 
 # Optional: install local commit hooks
 pre-commit install
-
-# Optional: start a local OpenAI-compatible vLLM endpoint. Connecting an agent
-# to it is integration-specific; the endpoint does not reconfigure agents.
-make vllm
 ```
 
 DeepSeek Harness is opt-in: follow its [setup guide](agents/deepseek_harness/README.md)

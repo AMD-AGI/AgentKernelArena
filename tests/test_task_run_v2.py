@@ -59,6 +59,43 @@ def read_report(workspace):
     return yaml.safe_load((workspace / "task_result.yaml").read_text())
 
 
+@pytest.mark.parametrize("status,required,blocked", [
+    ("leftovers", False, True), ("unavailable", True, True), ("error", True, True),
+    ("clean", True, False), ("unavailable", False, False),
+])
+def test_sweep_taint_never_reaches_performance_or_aggregation(tmp_path, monkeypatch, status, required, blocked):
+    path = package(tmp_path)
+    # A scoreable synthetic 2x speedup would leak if the sweep were only applied
+    # to candidate_accepted after evaluation. No GPU measurements are made here.
+    (path.parent / "evaluate.py").write_text(RUNNER.replace(
+        "execution_time_ms=0.1", "execution_time_ms=(0.1 if role == 'baseline' else 0.05)"))
+    monkeypatch.setattr("src.task_run._sweep_before_final_evaluation", lambda *_: {
+        "status": status, "required": required})
+    from src.task_session import TaskSession
+    candidate_action = TaskSession.candidate_action
+    actions = []
+    def observe(self, action, *args, **kwargs):
+        actions.append(action)
+        return candidate_action(self, action, *args, **kwargs)
+    monkeypatch.setattr(TaskSession, "candidate_action", observe)
+    _, workspace = run(tmp_path, path, lambda **_: None)
+    report = read_report(workspace)
+    assert report["pass_compilation"] and report["pass_correctness"]
+    assert report["candidate_accepted"] is not blocked
+    assert ("performance" in actions) is not blocked
+    assert report["speedup_ratio"] == (0 if blocked else 2)
+    assert report["score"] == (120 if blocked else 320)
+    assert report["benchmark_method_consistent"] is not blocked
+    if blocked:
+        assert "Process sweep" in report["speedup_calculation_error_message"]
+        assert not (workspace / "optimized_perf.yaml").exists()
+    general_post_processing([str(workspace)], logger=None)
+    summary = json.loads((workspace.parent / "reports/task_type_breakdown.json").read_text())["overall"]
+    assert summary["valid_speedup_count"] == (0 if blocked else 1)
+    assert summary["speedup_gt_1_count"] == (0 if blocked else 1)
+    assert read_report(workspace)["score"] == (120 if blocked else 320)
+
+
 def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_path):
     path = package(tmp_path)
 
@@ -75,6 +112,7 @@ def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_pa
     assert report["score"] == 220
     assert report["agent_execution"]["status"] == "FAILED"
     assert report["agent_execution"]["candidate_changed"] is True
+    assert report["optimization_outcome"] == "accepted_change"
     assert report["baseline_correctness"]["status"] == "PASS"
     assert report["delivery_status"] == "COMPLETE"
     assert task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
@@ -104,6 +142,7 @@ def test_unchanged_candidate_is_reported_without_discarding_independent_evaluati
     assert complete and report["candidate_accepted"] and report["score"] == 220
     assert report["agent_execution"]["status"] == ("FAILED" if fail else "COMPLETED")
     assert report["agent_execution"]["candidate_changed"] is False
+    assert report["optimization_outcome"] == "unchanged"
 
 
 def test_empty_candidate_is_valid_initially_but_not_a_successful_submission(tmp_path):
@@ -355,3 +394,21 @@ def test_real_validator_launcher_uses_initial_evidence_and_semantic_gate(tmp_pat
     assert report["checks"]["correctness"]["status"] == "PASS"
     assert report["candidate_initial_checks"]["correctness"]["status"] == "SKIP"
     assert not (workspace / "task_result.yaml").exists()
+
+
+@pytest.mark.parametrize("request_id", [None, "controller-owned-validation-id"])
+def test_validation_session_preserves_controller_request_id(tmp_path, request_id):
+    from src.task_run import validate_task_session
+    session = create(tmp_path)
+    observed = []
+    def launcher(*, eval_config, **kwargs):
+        observed.append(eval_config["_task_validation_request_id"])
+    report = validate_task_session(session, eval_config={},
+                                   task_config_dir=str(session.workspace / "config.yaml"),
+                                   agent_launcher=launcher, validation_request_id=request_id)
+    assert observed[0]
+    assert report["validation_request_id"] == observed[0]
+    if request_id is not None:
+        assert observed == [request_id]
+    # The absence of semantic review still cannot authorize a PASS.
+    assert report["overall_status"] == "FAIL"

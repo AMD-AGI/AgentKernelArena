@@ -93,3 +93,19 @@ def test_argv_is_not_interpreted_as_shell(tmp_path):
                           "candidate": {"compile": {"commands": [[sys.executable, "-c", code, literal]]}}})
     assert run_action(spec, tmp_path, role="candidate", action="compile", phase="candidate_evaluation").result.passed
     assert not (tmp_path / "accidental-shell-execution").exists()
+
+
+def test_failed_action_keeps_root_reason_when_cases_are_missing(tmp_path):
+    spec = task(tmp_path)
+    checked = run_action(spec, tmp_path, role="task", action="validate-task", phase="task_validation")
+    manifest = CaseManifest.from_result(checked.result)
+    failure = dict(protocol="arena-eval-v1", role="baseline", action="correctness",
+                   status="FAIL", cases=[], reason="Model logprob error exceeds threshold: 0.5")
+    (tmp_path/"evaluate.py").write_text(
+        "import sys\nprint(" + repr("ARENA_EVAL_RESULT=" + json.dumps(failure)) + ")\nsys.exit(1)\n")
+    with pytest.raises(TaskExecutionError) as error:
+        run_action(spec, tmp_path, role="baseline", action="correctness",
+                   phase="task_validation", manifest=manifest)
+    assert "Case manifest mismatch" in str(error.value)
+    assert failure['reason'] in str(error.value)
+    assert error.value.commands[0].returncode == 1

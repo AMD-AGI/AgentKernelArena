@@ -51,6 +51,21 @@ assert_before() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ -n "${FAKE_METADATA_ARGS:-}" && " $* " == *" -m src.serving_runtime "* ]]; then
+        printf '%s\n' "$@" > "$FAKE_METADATA_ARGS"
+        [[ "${FAKE_METADATA_FAILURE:-0}" == 0 ]] || return 42
+        local config="" mode="" pool="0" index
+        local -a metadata_args=("$@")
+        for ((index = 0; index < ${#metadata_args[@]}; index++)); do
+            case "${metadata_args[$index]}" in
+                *:/run/aka-run-config.yaml:ro) config="${metadata_args[$index]%:/run/aka-run-config.yaml:ro}" ;;
+                src.serving_runtime) mode="${metadata_args[$((index + 1))]}" ;;
+                --devices) pool="${metadata_args[$((index + 1))]}" ;;
+            esac
+        done
+        "$REAL_PYTHON3" -m src.serving_runtime "$mode" --config "$config" --devices "$pool"
+        return
+    fi
     if [[ -n "${FAKE_RUNTIME_DIR:-}" ]]; then
         printf '%s\n' "$1" >> "$FAKE_RUNTIME_DIR/events"
         case "$1" in
@@ -154,7 +169,7 @@ QUALITY_TEST_RUN_ID="runner-test-$$-${RANDOM:-0}"
 QUALITY_ARTIFACT_REL="quality_loop_runs/$QUALITY_TEST_RUN_ID"
 QUALITY_WORKTREE_REL=".quality_loop_worktrees/$QUALITY_TEST_RUN_ID"
 QUALITY_EVAL_ARTIFACT_DIR="$ROOT/.eval-tool-artifacts/quality-loop-$QUALITY_TEST_RUN_ID"
-trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR"' EXIT
+trap 'rm -rf -- "$TEST_HOME" "$PATH_TEST_PARENT" "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL" "$QUALITY_EVAL_ARTIFACT_DIR" "$ROOT/tasks/.sikl-runner-test-$$"' EXIT
 UNRELATED_GEAK_WORKFLOW_DIR="$TEST_HOME/unrelated-geak-workflow"
 GEAK_SDK_PYTHONPATH="AKA_GEAK_SDK_PATH=/workspace/.aka-pyuserbase/geak-sdk"
 mkdir -p "$UNRELATED_GEAK_WORKFLOW_DIR"
@@ -279,11 +294,63 @@ assert_cache_args_present "" "${args[@]}"
 # The qualification image has the same non-root cache requirement. Test both
 # public references and per-worker isolation without promoting it to default.
 for image in \
+    lmsysorg/sglang@sha256:7a3087bc8b17b246a807215c37e2260e2b83c052423a92cb73966eea5d8b2d7f \
     lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913 \
-    lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93; do
+    lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93 \
+    lmsysorg/sglang:v0.5.20-rocm10-mi35x \
+    lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69; do
     mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_IMAGE="$image" AKA_CACHE_SUFFIX=worker-3)
     assert_has "$image" "${args[@]}"
     assert_cache_args_present "-worker-3" "${args[@]}"
+done
+
+# The DeepSeek run config selects ROCm 10 without an environment image override.
+# Check the emitted Docker argv for all config-driven execution modes.
+DEEPSEEK_CONFIG="$ROOT/example_configs/task_validator_deepseek_drafts_mi355x.yaml"
+DEEPSEEK_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
+IMAGE_TEST_HOME="$TEST_HOME/image-home"
+IMAGE_TEST_PREFIX="$TEST_HOME/image-node"
+mkdir -p "$IMAGE_TEST_HOME/.claude" "$IMAGE_TEST_PREFIX/bin"
+touch "$IMAGE_TEST_HOME/.claude.json" "$IMAGE_TEST_PREFIX/bin/node" "$IMAGE_TEST_PREFIX/bin/claude"
+for mode in check-agents preflight run parallel-run; do
+    env HOME="$IMAGE_TEST_HOME" AKA_GPU_ARCH=gfx950 AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" GPU_IDS=0,1 \
+        bash "$RUNNER" "$mode" --config_name "$DEEPSEEK_CONFIG" \
+        > "$TEST_HOME/deepseek-$mode.args" 2> "$TEST_HOME/deepseek-$mode.err" || {
+        cat "$TEST_HOME/deepseek-$mode.err" >&2
+        fail "DeepSeek config failed for $mode"
+    }
+    mapfile -t args < "$TEST_HOME/deepseek-$mode.args"
+    assert_has "$DEEPSEEK_IMAGE" "${args[@]}"
+    assert_not_has "$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+    if [[ "$mode" != parallel-run ]]; then
+        assert_cache_args_present "" "${args[@]}"
+    else
+        [[ "$(awk -v image="$DEEPSEEK_IMAGE" '$0 == image {n++} END {print n+0}' \
+            "$TEST_HOME/deepseek-$mode.args")" == 5 ]] \
+            || fail "parallel DeepSeek run did not use ROCm 10 for all five containers"
+    fi
+done
+
+# Global and architecture overrides retain their established priority.
+mapfile -t args < <(run_check_args "$IMAGE_TEST_HOME" "$DEEPSEEK_CONFIG" \
+    AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" AKA_DOCKER_IMAGE_GFX950=example.invalid/arch:override)
+assert_has example.invalid/arch:override "${args[@]}"
+assert_not_has "$DEEPSEEK_IMAGE" "${args[@]}"
+mapfile -t args < <(run_check_args "$IMAGE_TEST_HOME" "$DEEPSEEK_CONFIG" \
+    AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" AKA_DOCKER_IMAGE_GFX950=example.invalid/arch:override \
+    AKA_DOCKER_IMAGE=example.invalid/global:override)
+assert_has example.invalid/global:override "${args[@]}"
+assert_not_has example.invalid/arch:override "${args[@]}"
+assert_not_has "$DEEPSEEK_IMAGE" "${args[@]}"
+
+# Invalid explicit values must fail instead of silently falling back to ROCm 7.2.
+for value in null true 123 '[]' '{}' '""' '"--privileged"' '"image name"'; do
+    printf 'target_gpu_model: MI355X\ndocker_image: %s\n' "$value" > "$TEST_HOME/bad-image.yaml"
+    if run_check_args "$IMAGE_TEST_HOME" "$TEST_HOME/bad-image.yaml" \
+        AKA_AGENTS=claude_code AKA_NODE_PREFIX="$IMAGE_TEST_PREFIX" > "$TEST_HOME/bad-image.args"; then
+        fail "invalid config docker_image was accepted: $value"
+    fi
+    [[ ! -s "$TEST_HOME/bad-image.args" ]] || fail "invalid config launched Docker"
 done
 
 # Old and custom gfx950 images retain their existing Docker arguments.
@@ -415,6 +482,49 @@ HOME="$NATIVE_CODEX_WORKER_HOME" \
 [[ -d "$NATIVE_CODEX_WORKER_HOME/.codex/sessions" ]] || fail "native Codex session state was not copied"
 [[ ! -e "$NATIVE_CODEX_WORKER_HOME/.codex/packages" ]] || fail "native Codex packages were copied into worker HOME"
 
+# A small auth/config seed avoids copying host sessions and worktrees. Native
+# packages must still come from the real host installation, not the seed.
+CODEX_PRIVATE_AUTH_DIR="$TEST_HOME/private codex auth"
+mkdir -p "$CODEX_PRIVATE_AUTH_DIR"
+touch "$CODEX_PRIVATE_AUTH_DIR/auth.json" "$CODEX_PRIVATE_AUTH_DIR/config.toml"
+for isolation in 0 1; do
+    mapfile -t args < <(run_check_args \
+        "$NATIVE_CODEX_HOME" "$NATIVE_CODEX_CONFIG" \
+        PATH="$NATIVE_CODEX_HOME/.local/bin:$PATH" \
+        AGENT_HOME_ISOLATION="$isolation" AKA_CODEX_AUTH_DIR="$CODEX_PRIVATE_AUTH_DIR")
+    assert_has "$NATIVE_CODEX_HOME/.local/bin:$NATIVE_CODEX_HOME/.local/bin:ro" "${args[@]}"
+    assert_has "$NATIVE_CODEX_HOME/.codex/packages/standalone:$NATIVE_CODEX_HOME/.codex/packages/standalone:ro" "${args[@]}"
+    assert_not_has "$NATIVE_CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+    assert_not_has "$NATIVE_CODEX_HOME/.codex:$NATIVE_CODEX_HOME/.codex" "${args[@]}"
+    assert_has "_container_check_agents" "${args[@]}"
+    assert_has "codex" "${args[@]}"
+    if [[ "$isolation" == "1" ]]; then
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+        assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+    else
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:$NATIVE_CODEX_HOME/.codex" "${args[@]}"
+    fi
+done
+
+CODEX_PRIVATE_STATE="$TEST_HOME/private-codex-state"
+CODEX_PRIVATE_WORKER_HOME="$TEST_HOME/private-codex-worker-home"
+mkdir -p "$CODEX_PRIVATE_STATE"
+ln -s "$CODEX_PRIVATE_AUTH_DIR" "$CODEX_PRIVATE_STATE/.codex"
+HOME="$CODEX_PRIVATE_WORKER_HOME" \
+    AKA_AGENT_STATE_MOUNT_ROOT="$CODEX_PRIVATE_STATE" \
+    bash "$RUNNER" _container_prepare_worker_home
+for name in auth.json config.toml; do
+    [[ -f "$CODEX_PRIVATE_WORKER_HOME/.codex/$name" ]] \
+        || fail "private Codex $name was not copied into worker HOME"
+done
+[[ ! -e "$CODEX_PRIVATE_WORKER_HOME/.codex/sessions" ]] \
+    || fail "private Codex worker unexpectedly copied host sessions"
+[[ ! -e "$CODEX_PRIVATE_WORKER_HOME/.codex/packages" ]] \
+    || fail "private Codex worker unexpectedly copied native packages"
+printf 'worker-only\n' > "$CODEX_PRIVATE_WORKER_HOME/.codex/config.toml"
+[[ ! -s "$CODEX_PRIVATE_AUTH_DIR/config.toml" ]] \
+    || fail "isolated Codex configuration wrote back into the auth seed"
+
 # quality_loop provisions only isolated Codex state, never GitHub CLI state, and
 # mounts the main checkout read-only while over-mounting only this run's state rw.
 QUALITY_HOME="$TEST_HOME/quality-home"
@@ -530,6 +640,29 @@ assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
 assert_not_has "$UNRELATED_GEAK_WORKFLOW_DIR:$UNRELATED_GEAK_WORKFLOW_DIR:ro" "${args[@]}"
 assert_not_has "GEAK_V4_WORKFLOW_DIR=$UNRELATED_GEAK_WORKFLOW_DIR" "${args[@]}"
+
+# npm installations use the same override without changing the CLI mount.
+for isolation in 0 1; do
+    mapfile -t args < <(run_check_args \
+        "$CODEX_HOME" "$CODEX_CONFIG" AKA_NODE_PREFIX="$CODEX_PREFIX" \
+        AGENT_HOME_ISOLATION="$isolation" AKA_CODEX_AUTH_DIR="$CODEX_PRIVATE_AUTH_DIR")
+    assert_has "$CODEX_PREFIX:/opt/node:ro" "${args[@]}"
+    assert_not_has "$CODEX_HOME/.codex:$CODEX_HOME/.codex" "${args[@]}"
+    assert_not_has "$CODEX_HOME/.codex:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+    if [[ "$isolation" == "1" ]]; then
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:/opt/aka-agent-state/.codex:ro" "${args[@]}"
+    else
+        assert_has "$CODEX_PRIVATE_AUTH_DIR:$CODEX_HOME/.codex" "${args[@]}"
+    fi
+done
+for invalid_auth in "$TEST_HOME/missing-codex-auth" "$CODEX_PRIVATE_AUTH_DIR/auth.json"; do
+    if run_check_args "$CODEX_HOME" "$CODEX_CONFIG" AKA_NODE_PREFIX="$CODEX_PREFIX" \
+        AKA_CODEX_AUTH_DIR="$invalid_auth" >"$TEST_HOME/invalid-codex-auth-output"; then
+        fail "invalid Codex auth directory was accepted"
+    fi
+    [[ ! -s "$TEST_HOME/invalid-codex-auth-output" ]] \
+        || fail "invalid Codex auth directory reached Docker execution"
+done
 
 # DeepSeek is opt-in and mounts only its npm installation. The key is forwarded
 # by name, and host profiles/auth/history cannot leak into a fresh Arena session.
@@ -675,9 +808,66 @@ run_runtime_command() {
         AKA_GPU_ARCH=gfx1201 GPU_IDS=0,1 AKA_EVAL_TOOLS= \
         FAKE_RUNTIME_DIR="$RUNTIME_DIR" "$@" \
         bash "$RUNNER" "$mode" \
-        --config_name example_configs/quickstart_claude_rdna4.yaml \
+        --config_name "${RUNTIME_TEST_CONFIG:-example_configs/quickstart_claude_rdna4.yaml}" \
         > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"
 }
+
+# Simulate a Docker-only host with no usable PyYAML interpreter. Docker itself
+# remains mocked; only the metadata parser is run by the test interpreter.
+NO_YAML_BIN="$TEST_HOME/no-host-yaml-bin"
+mkdir -p "$NO_YAML_BIN"
+cat > "$NO_YAML_BIN/python3" <<'PYTHON'
+#!/usr/bin/env bash
+exec "$REAL_PYTHON3" -S "$@"
+PYTHON
+chmod +x "$NO_YAML_BIN/python3"
+if "$NO_YAML_BIN/python3" -c 'import yaml' >/dev/null 2>&1; then
+    fail "no-host-yaml fixture unexpectedly imports PyYAML"
+fi
+for runtime_mode in check-agents preflight run parallel-run; do
+    RUNTIME_DIR="$TEST_HOME/no-host-yaml-$runtime_mode"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command "$runtime_mode" PATH="$NO_YAML_BIN:$PATH" AKA_SERVING_PYTHON=python3 \
+        FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "$runtime_mode requires undeclared host PyYAML"
+    }
+    # Agent-only checks also parse the optional image through the restricted
+    # Docker fallback, without introducing a host PyYAML dependency.
+    mapfile -t args < "$RUNTIME_DIR/metadata-args"
+    assert_has --network=none "${args[@]}"
+    assert_has --read-only "${args[@]}"
+    assert_has PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin "${args[@]}"
+    assert_has "$ROOT:/workspace:ro" "${args[@]}"
+    assert_has python3 "${args[@]}"
+    assert_not_has --privileged "${args[@]}"
+    assert_not_has --device "${args[@]}"
+    assert_not_has "$CLAUDE_HOME/.claude:$CLAUDE_HOME/.claude" "${args[@]}"
+done
+# A config image must survive the bootstrap parser on a Docker-only host.
+RUNTIME_DIR="$TEST_HOME/no-host-yaml-config-image"
+mkdir -p "$RUNTIME_DIR"
+RUNTIME_TEST_CONFIG="$DEEPSEEK_CONFIG" run_runtime_command check-agents \
+    PATH="$NO_YAML_BIN:$PATH" AKA_SERVING_PYTHON=python3 AKA_AGENTS=claude_code \
+    FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "config image parsing requires host PyYAML"
+    }
+mapfile -t args < "$RUNTIME_DIR/stdout"
+assert_has "$DEEPSEEK_IMAGE" "${args[@]}"
+
+if run_runtime_command run AKA_SERVING_PYTHON=/does-not-exist \
+    FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" FAKE_METADATA_FAILURE=1; then
+    fail "metadata parser failure launched an experiment"
+fi
+if env HOME="$CLAUDE_HOME" AKA_GPU_ARCH=gfx950 AKA_SERVING_PYTHON=/does-not-exist \
+    FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" bash "$RUNNER" run \
+    --config_name example_configs/e2e_qwen3_codex_mi355x.yaml \
+    > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"; then
+    fail "serving executor ran without its declared host dependency"
+fi
+[[ "$(cat "$RUNTIME_DIR/stderr")" == *"AKA_SERVING_PYTHON"* ]] \
+    || fail "serving host dependency error does not explain remediation"
 
 for runtime_mode in shell smoke check-agents preflight run parallel-run; do
     RUNTIME_DIR="$TEST_HOME/runtime-$runtime_mode"
@@ -708,6 +898,20 @@ for runtime_mode in shell smoke check-agents preflight run parallel-run; do
     assert_not_has build "${events[@]}"
     assert_not_has info "${events[@]}"
 done
+
+# A config image override also disables automatic RDNA4 builds, including an
+# explicit selection of the usual default name. Do not build over pinned input.
+RUNTIME_TEST_CONFIG="$TEST_HOME/rdna4-config-image.yaml"
+cp example_configs/quickstart_claude_rdna4.yaml "$RUNTIME_TEST_CONFIG"
+printf '\ndocker_image: agent-kernel-arena:rdna4-rocm10-v1\n' >> "$RUNTIME_TEST_CONFIG"
+RUNTIME_DIR="$TEST_HOME/runtime-config-image"
+mkdir -p "$RUNTIME_DIR"
+run_runtime_command run || fail "RDNA4 config image override failed"
+mapfile -t events < "$RUNTIME_DIR/events"
+assert_has run "${events[@]}"
+assert_not_has build "${events[@]}"
+assert_not_has info "${events[@]}"
+unset RUNTIME_TEST_CONFIG
 
 # Build/daemon failures must propagate instead of launching a container.
 for failure in FAKE_DOCKER_BUILD_STATUS=42 FAKE_DOCKER_INFO_STATUS=1; do
@@ -772,6 +976,27 @@ assert_has "codex" "${args[@]}"
 assert_has "claude_code" "${args[@]}"
 assert_has "cursor" "${args[@]}"
 assert_not_has "all" "${args[@]}"
+
+# Forge must provision and check its native backend before expensive task setup.
+FORGE_CONFIG="$TEST_HOME/forge-config.yaml"
+printf 'agent:\n  template: forge\n' > "$FORGE_CONFIG"
+mapfile -t args < <(run_check_args "$ALL_HOME" "$FORGE_CONFIG" AKA_NODE_PREFIX="$ALL_NODE_PREFIX")
+assert_has "$ALL_NODE_PREFIX:/opt/claude-node:ro" "${args[@]}"
+assert_has "$ALL_HOME/.claude:$ALL_HOME/.claude" "${args[@]}"
+assert_has "claude_code" "${args[@]}"
+assert_not_has "$ALL_NODE_PREFIX:/opt/node:ro" "${args[@]}"
+assert_not_has "forge" "${args[@]}"
+printf 'agent:\n  template: forge\n  agent_backend: "codex"\ntasks:\n  - agent_backend: ignored\n' > "$FORGE_CONFIG"
+mapfile -t args < <(run_check_args "$ALL_HOME" "$FORGE_CONFIG" AKA_NODE_PREFIX="$ALL_NODE_PREFIX")
+assert_has "$ALL_NODE_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "codex" "${args[@]}"
+assert_not_has "$ALL_NODE_PREFIX:/opt/claude-node:ro" "${args[@]}"
+printf 'agent:\n  template: forge\n  agent_backend: codex\n  supervisor_backend: claude\n' > "$FORGE_CONFIG"
+mapfile -t args < <(run_check_args "$ALL_HOME" "$FORGE_CONFIG" AKA_NODE_PREFIX="$ALL_NODE_PREFIX")
+assert_has "$ALL_NODE_PREFIX:/opt/node:ro" "${args[@]}"
+assert_has "$ALL_NODE_PREFIX:/opt/claude-node:ro" "${args[@]}"
+assert_has "codex" "${args[@]}"
+assert_has "claude_code" "${args[@]}"
 
 # A geak_v4 config provisions the Claude Code CLI/auth and, when
 # GEAK_V4_WORKFLOW_DIR is exported, mounts that checkout and forwards the var.
@@ -1036,5 +1261,33 @@ assert_has \
     "${args[@]}"
 assert_has "$EVAL_SCORING_ARTIFACT_NAMESPACE:/workspace/.eval-tool-artifacts:ro" "${args[@]}"
 assert_has "$EVAL_QUALITY_ARTIFACT_DIR:/workspace/.eval-tool-artifacts/quality-test" "${args[@]}"
+
+# SIKL authoring is a pre-task workflow with explicit input/output mounts.
+# Argument values named "run" must survive host mount preflight unchanged.
+SIKL_TEST_CONFIG="$TEST_HOME/sikl config.yaml"
+SIKL_TEST_INPUT="$TEST_HOME/sikl input"
+mkdir -p "$SIKL_TEST_INPUT"
+"$REAL_PYTHON3" - "$SIKL_TEST_CONFIG" "$SIKL_TEST_INPUT" "${PATH_TEST_PARENT#"$ROOT/"}/sikl" "tasks/.sikl-runner-test-$$" <<'PYTHON'
+import sys, yaml
+from pathlib import Path
+Path(sys.argv[1]).write_text(yaml.safe_dump(dict(input_dir=sys.argv[2], artifact_root=sys.argv[3], output_dir=sys.argv[4], target_gpu_model='MI355X')))
+PYTHON
+sikl_output="$(env HOME="$QUALITY_HOME" AKA_NODE_PREFIX="$QUALITY_PREFIX" \
+    bash "$RUNNER" sikl-task-builder resume --run-id run --config="$SIKL_TEST_CONFIG" 2>/dev/null)"
+mapfile -t args <<< "$sikl_output"
+sikl_physical_input="$("$REAL_PYTHON3" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$SIKL_TEST_INPUT")"
+sikl_physical_config="$("$REAL_PYTHON3" -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$SIKL_TEST_CONFIG")"
+assert_has "$ROOT:/workspace:ro" "${args[@]}"
+assert_has "$sikl_physical_input:/sikl-input:ro" "${args[@]}"
+assert_has "$sikl_physical_config:/sikl-config.yaml:ro" "${args[@]}"
+assert_has "$ROOT/tasks/.sikl-runner-test-$$:/workspace/tasks/.sikl-runner-test-$$" "${args[@]}"
+assert_has "$PATH_TEST_PARENT/sikl:/workspace/${PATH_TEST_PARENT#"$ROOT/"}/sikl" "${args[@]}"
+assert_has "agents.sikl_task_builder" "${args[@]}"
+assert_has "resume" "${args[@]}"
+assert_has "--run-id" "${args[@]}"
+assert_has "run" "${args[@]}"
+assert_has "/sikl-config.yaml" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_IMAGE=$PINNED_GFX950_IMMUTABLE_IMAGE" "${args[@]}"
+assert_not_has "$QUALITY_HOME/.config/gh:$QUALITY_HOME/.config/gh:ro" "${args[@]}"
 
 echo "PASS: docker_benchmark runtime, agent-selection, and eval-tool isolation tests"

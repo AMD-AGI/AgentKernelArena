@@ -105,4 +105,3 @@ is no shared top-level provider field.
 | Anthropic | Use a selected integration or CLI configured for Anthropic. |
 | DeepSeek | `deepseek_harness` selects the upstream DeepSeek provider; model, protocol, and optional endpoint override are integration-local settings. |
 | OpenRouter or another OpenAI-compatible service | Supported when the selected integration accepts a custom provider/base URL. |
-| Local vLLM | `make vllm` uses a separate serving image to launch an OpenAI-compatible endpoint on port `30001`; configure the selected integration to use it. This serving path is unverified on RDNA4; the [RDNA4 kernel-runtime checks](../../docker/rdna4/README.md#validation-and-limits) do not establish full vLLM serving support. |

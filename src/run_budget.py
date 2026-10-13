@@ -10,9 +10,13 @@ def budget_policy(config: dict) -> dict | None:
     value = config.get("budget")
     if value is None:
         return None
-    if not isinstance(value, dict) or set(value) != {"task_wall_time_s", "final_evaluation_reserve_s"}:
-        raise ValueError("budget requires task_wall_time_s and final_evaluation_reserve_s")
-    if any(type(v) is not int or v <= 0 for v in value.values()):
+    durations = {"task_wall_time_s", "final_evaluation_reserve_s"}
+    if not isinstance(value, dict) or not durations <= set(value) or set(value) - durations - {"final_evaluation_pairs"}:
+        raise ValueError("budget requires task_wall_time_s and final_evaluation_reserve_s; optional final_evaluation_pairs")
+    if "final_evaluation_pairs" in value:
+        from .measurement import validate_pair_count
+        validate_pair_count(value["final_evaluation_pairs"])
+    if any(type(value[k]) is not int or value[k] <= 0 for k in durations):
         raise ValueError("Budget durations must be positive integer seconds")
     if value["final_evaluation_reserve_s"] >= value["task_wall_time_s"]:
         raise ValueError("Final evaluation reserve must fit inside the task budget")
@@ -48,7 +52,7 @@ def agent_budget(config: dict, record: dict | None) -> dict:
     return result
 
 
-def reserve_from_validation(record: dict | None, session) -> dict | None:
+def reserve_from_validation(record: dict | None, session, *, verification_seconds: int = 0) -> dict | None:
     """Persist a measured reserve; a resumed run can only keep or increase it."""
     if record is None:
         raise ValueError("Serving tasks require an explicit wall time budget")
@@ -58,8 +62,9 @@ def reserve_from_validation(record: dict | None, session) -> dict | None:
     for (phase, role, action), result in session.results.items():
         if phase == "task_validation" and role == "baseline":
             elapsed[action] = sum(command.elapsed_s for command in result.commands)
-    pairs = config["evaluation"]["measurement"]["pairs"]
+    pairs = record["policy"].get("final_evaluation_pairs", config["evaluation"]["measurement"]["pairs"])
     estimate = int(1.5 * (elapsed.get("compile", 0) + elapsed.get("correctness", 0) + 2*pairs*elapsed.get("performance", 0)))
+    estimate += verification_seconds
     result = dict(record)
     result["effective_reserve_s"] = max(record.get("effective_reserve_s", 0),
         record["policy"]["final_evaluation_reserve_s"], lock["minimum_final_evaluation_s"], estimate)

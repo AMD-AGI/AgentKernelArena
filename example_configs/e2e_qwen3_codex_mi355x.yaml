@@ -8,6 +8,10 @@ resources:
 budget:
   task_wall_time_s: 86400
   final_evaluation_reserve_s: 7200
+  final_evaluation_pairs: 30
 target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace
+candidate_verification:
+  backend: claude_code
+  timeout_seconds: 600

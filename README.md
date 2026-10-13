@@ -1,4 +1,4 @@
-# AgentKernelArena: An A/B Testing and RL-Ready Environment for GPU Kernel Agents
+# AgentKernelArena (AKA): An A/B Testing and RL-Ready Environment for GPU Kernel Agents
 
 AgentKernelArena is a controlled experimentation platform for developing AI agents on real GPU kernel optimization tasks. It enables reproducible A/B testing across models, prompts, tools, and agent policies, while providing objective compilation, correctness, and performance signals that can serve as rewards for agent reinforcement learning.
 
@@ -20,6 +20,7 @@ The platform provides:
 - **Resumable experiments**: Resume a run without repeating tasks whose framework completion and source evidence remain valid.
 - **Held-out evaluation**: Test optimized kernels on unseen shapes and measure the generalization gap.
 - **Task validation and visualization**: Validate task quality with a dedicated agent and compare local run reports in a dashboard.
+- **SIKL task authoring**: Generate, repair, and validate standard Arena tasks from a dataset folder with [`sikl_task_builder`](docs/how-to/sikl-task-builder.md).
 
 AgentKernelArena supplies an environment and objective reward signals; it does not currently include an RL trainer, replay buffer, or policy-update loop. Its per-task workspaces provide reproducibility and concurrent-run separation, not a security sandbox: agent processes run permissively inside a privileged container and can access mounted repository and authentication state.
 
@@ -429,3 +430,25 @@ report interpretation.
 - Expand standardized private held-out coverage.
 - Support heterogeneous agent configurations within one multi-GPU experiment.
 - Continue expanding task coverage across the supported kernel environments.
+
+## Citation
+
+If you use AgentKernelArena in your research, please cite our paper:
+
+```bibtex
+@misc{younesian2026agentkernelarena,
+  title = {{AgentKernelArena}: Generalization-Aware Benchmarking of {GPU} Kernel Optimization Agents},
+  author = {Sharareh Younesian and Wenwen Ouyang and Sina Rafati
+            and Mehdi Rezagholizadeh and Sharon Zhou and Ji Liu
+            and Yue Liu and Yuchen Yang and Hao Li and Ziqiong Liu
+            and Dong Li and Vikram Appia and Zhenyu Gu and Emad Barsoum},
+  year = {2026},
+  eprint = {2605.16819},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.CL},
+  url = {https://arxiv.org/abs/2605.16819}
+}
+```
+
+For reproducibility, please also report the commit hash or release,
+task selection, hardware, and evaluation configuration used in your experiments.

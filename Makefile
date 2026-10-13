@@ -6,12 +6,12 @@
 
 SHELL := /bin/bash
 
-.PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-run docker-parallel-run docker-quality-loop docker-setup-flydsl docker-setup-geak \
+.PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak \
         slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
         check-docker-runner check-slurm-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
-        materialize-perf-task cleanup-works install-cursor-agent vllm
+        materialize-perf-task cleanup-works install-cursor-agent
 
 help:
 	@echo "AgentKernelArena Experimentation Platform - Makefile Commands"
@@ -30,6 +30,8 @@ help:
 	@echo "                         Images: gfx942->mi30x, gfx950->mi35x, gfx1201->local RDNA4 build"
 	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
 	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
+	@echo "make docker-sikl-task-builder INPUT=/path/to/bundle - Generate, repair and validate SIKL tasks"
+	@echo "                         Use SIKL_BUILDER_ARGS='resume --run-id ...' to resume"
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
@@ -61,6 +63,8 @@ SLURM_RUNNER := src/scripts/slurm_benchmark.sh
 CONFIG ?= example_configs/quickstart_claude_mi300.yaml
 RUN_ARGS ?=
 QUALITY_LOOP_ARGS ?=
+SIKL_BUILDER_ARGS ?= run
+INPUT ?=
 AGENTS ?=
 WORKSPACES ?= $(WORKSPACE)
 TASKS ?= $(TASK)
@@ -127,6 +131,10 @@ docker-parallel-run:
 docker-quality-loop: CONFIG = agents/quality_loop/agent_config.yaml
 docker-quality-loop:
 	@$(DOCKER_RUNNER) quality-loop --config $(CONFIG) $(QUALITY_LOOP_ARGS)
+
+docker-sikl-task-builder: CONFIG = agents/sikl_task_builder/agent_config.yaml
+docker-sikl-task-builder:
+	@SIKL_INPUT="$(INPUT)" $(DOCKER_RUNNER) sikl-task-builder --config "$(CONFIG)" $(SIKL_BUILDER_ARGS)
 
 slurm-shell:
 	@$(SLURM_ENV) $(SLURM_RUNNER) shell
@@ -215,33 +223,3 @@ cleanup-works:
 install-cursor-agent:
 	@echo "Installing Cursor agent..."
 	@curl https://cursor.com/install -fsSL | bash
-
-# Run the pinned local vLLM endpoint. Agent/provider wiring is integration-specific.
-vllm:
-	@if ss -ltn | grep ':30001 ' > /dev/null; then \
-		echo "vLLM server is already running on port 30001."; \
-	else \
-		docker run -d \
-			--ipc=host \
-			--network=host \
-			--privileged \
-			--cap-add=SYS_ADMIN \
-			--cap-add=SYS_PTRACE \
-			--device=/dev/kfd \
-			--device=/dev/dri \
-			--device=/dev/mem \
-			--group-add=render \
-			--security-opt=seccomp=unconfined \
-			rocm/vllm:rocm6.4.1_vllm_0.10.1_20250909 \
-			vllm serve Qwen/Qwen3-Coder-30B-A3B-Instruct \
-			--served-model-name llamas_team_local_llm \
-			--api-key dummy \
-			--host 0.0.0.0 \
-			--port 30001 \
-			--enable-auto-tool-choice \
-			--tool-call-parser hermes \
-			--trust-remote-code; \
-		echo "Configure a compatible agent integration to use the OpenAI-compatible endpoint at port 30001."; \
-		echo "vLLM server will be running on port 30001, please wait 3 minutes for it to start..."; \
-		echo "You can use docker logs -f container_id to check the server status"; \
-	fi

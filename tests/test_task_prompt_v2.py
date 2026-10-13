@@ -51,3 +51,17 @@ def test_missing_declared_instructions_cannot_silently_disappear(tmp_path):
     spec = TaskSpec.from_mapping(config(), task_id="suite/test")
     with pytest.raises(ValueError):
         build_task_prompt(spec, tmp_path, target_gpu="MI355X")
+
+
+def test_serving_bundle_prompt_is_model_wide_with_optional_profiling():
+    from pathlib import Path
+    from src.task_spec import load_task_spec
+    from src.task_prompt import build_task_prompt
+    task=Path(__file__).resolve().parents[1]/'tasks/e2e/qwen3_next_80b_sglang'
+    spec=load_task_spec(task/'config.yaml',task_id='e2e/qwen3_next_80b_sglang')
+    prompt=build_task_prompt(spec,task,target_gpu='MI355X')
+    assert 'choose any GPU backend' in prompt
+    assert 'fusion across' in prompt
+    assert 'Profiling is recommended but optional' in prompt
+    assert 'source: implementation subtree' in prompt
+    assert 'only symbols' not in prompt

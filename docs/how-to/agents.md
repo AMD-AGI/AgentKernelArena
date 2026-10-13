@@ -14,6 +14,10 @@ describes how to use the arena for A/B testing.
 
 ## Supported agents
 
+To generate tasks from external SIKL data, use the separate
+[`sikl_task_builder` authoring workflow](sikl-task-builder.md). It runs before
+task discovery and produces tasks for the optimization agents listed below.
+
 The following agents are available.
 
 | `agent.template` | Description |
@@ -93,10 +97,6 @@ DeepSeek's run-level overrides and per-invocation budget follow
 [its integration guide](../../agents/deepseek_harness/README.md#install-and-configure).
 It uses `reasoning_effort` rather than the other CLIs' `effort` field. Schema-v2
 agent completion and independent candidate acceptance are reported separately.
-
-`make vllm` starts an OpenAI-compatible local endpoint on port `30001`, but it
-does not automatically reconfigure an agent. Point the selected integration at
-that endpoint using the integration's own provider/base-URL mechanism.
 
 ## A/B testing and ablation studies
 

@@ -135,6 +135,7 @@ def difficulty_is_easy(
         and result.get("pass_compilation") is True
         and result.get("pass_correctness") is True
         and result.get("pass_tool_gate", not config.evaluation_tools) is True
+        and result.get("pass_verification", True) is True
         and result.get("tool_policy_satisfied", not config.evaluation_tools) is True
         and result.get("benchmark_method_consistent") is True
         and int(result.get("valid_baseline_cases", 0)) > 0
@@ -406,6 +407,7 @@ class QualityLoop:
                     and eval_result.get("pass_correctness") is True
                     and eval_result.get("benchmark_method_consistent") is True
                     and eval_result.get("pass_tool_gate", not self.config.evaluation_tools) is True
+                    and eval_result.get("pass_verification", True) is True
                     and eval_result.get("tool_policy_satisfied", not self.config.evaluation_tools) is True
                     and int(eval_result.get("valid_baseline_cases", 0)) > 0
                     and eval_result.get("valid_baseline_cases")
@@ -680,6 +682,7 @@ class QualityLoop:
             and result.get("pass_correctness") is True
             and result.get("benchmark_method_consistent") is True
             and result.get("pass_tool_gate", not self.config.evaluation_tools) is True
+            and result.get("pass_verification", True) is True
             and result.get("tool_policy_satisfied", not self.config.evaluation_tools) is True
         ):
             review["accepted"] = False

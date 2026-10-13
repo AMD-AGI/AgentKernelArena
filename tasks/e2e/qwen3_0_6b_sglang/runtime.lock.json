@@ -66,5 +66,21 @@
     "rms_norm",
     "fused_add_rms_norm"
   ],
-  "initial_candidate_sha256": "25c6c590c7457bd33062a505baac8e246c7da8f7996ca9127dd61c82ae8d6484"
+  "initial_candidate_sha256": "25c6c590c7457bd33062a505baac8e246c7da8f7996ca9127dd61c82ae8d6484",
+  "server_seed": 1729,
+  "candidate_bundle": {
+    "root": "source",
+    "manifest": "patches.json",
+    "module_prefixes": [
+      "sglang.srt.layers",
+      "sglang.srt.models",
+      "aiter",
+      "sgl_kernel"
+    ],
+    "observer": {
+      "module": "sglang.srt.models.qwen3",
+      "symbol": "Qwen3ForCausalLM.forward"
+    }
+  },
+  "initial_bundle_sha256": "3dad460bbf3f0ea17553b521fc849a76adf32fd89d83d5b5c94ed86668d30d39"
 }

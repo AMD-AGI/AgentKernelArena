@@ -159,6 +159,10 @@ Version 4 distinguishes a failed task from invalid evaluation evidence:
 Reports are bound to a framework request ID, captured evidence digest, and
 completion digest. A complete FAIL report remains useful diagnostic output;
 only `overall_status: PASS` satisfies the clean task-validation gate.
+An authoring controller can supply a fresh request ID through
+`validate_task_session`; the launcher consumes it once and preserves it through
+finalization. Standalone invocations generate a fresh ID on each call, preventing
+reuse of a previous draft merely because the same launch configuration is reused.
 
 For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
 methods. Each case must use the same method for baseline and candidate; different

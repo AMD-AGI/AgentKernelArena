@@ -98,8 +98,8 @@ configure_allocated_runtime() {
 
     export AKA_GPU_ARCH="${AKA_SLURM_GPU_ARCH:-$DEFAULT_GPU_ARCH}"
     export AKA_SKIP_DEV_MEM=1
-    export AGENT_HOME_ISOLATION=1
-    export AKA_CONTAINER_HOME="/tmp/aka-home-slurm-${job_id}-${mode}"
+    export AGENT_HOME_ISOLATION="${AGENT_HOME_ISOLATION:-1}"
+    export AKA_CONTAINER_HOME="${AKA_CONTAINER_HOME:-/tmp/aka-home-slurm-${job_id}-${mode}}"
     export AKA_CACHE_SUFFIX="slurm-${job_id}-${mode}"
 }
 

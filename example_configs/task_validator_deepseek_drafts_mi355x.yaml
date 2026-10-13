@@ -1,0 +1,26 @@
+agent:
+  template: task_validator
+tasks:
+  - Aiter-task/flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128
+  - Aiter-task/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256
+  - Aiter-task/flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n4096_k256
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n4096_k512
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_aslogical_n512_k4096
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n1536_k4096
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k1024
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k2048
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k256
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k4096
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k512
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n4096_k8192
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n512_k4096
+  - Aiter-task/gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n8192_k1024
+  - Aiter-task/mhc_fused_post_pre_flat_rmsnorm_c4_d4096
+  - Aiter-task/topk_transform_paged_paged_k512_page_size64
+target_gpu_model: MI355X
+# lmsysorg/sglang:v0.5.20-rocm10-mi35x; pin the tested image bytes.
+docker_image: lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
+log_directory: logs
+workspace_directory_prefix: workspace

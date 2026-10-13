@@ -11,7 +11,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import socket
 import socketserver
@@ -35,6 +35,8 @@ def validate_runtime_lock(lock: dict) -> None:
     for key in ("gpu_count", "minimum_final_evaluation_s"):
         if type(lock.get(key)) is not int or lock[key] <= 0:
             raise ValueError(f"Runtime lock requires a positive integer {key}")
+    if "server_seed" in lock and (type(lock["server_seed"]) is not int or not 0 <= lock["server_seed"] < 2**31):
+        raise ValueError("Runtime server_seed must be a nonnegative 31-bit integer")
     dependencies = lock.get("dependencies")
     if not isinstance(dependencies, dict):
         raise ValueError("Runtime lock dependencies must be a mapping")
@@ -106,11 +108,35 @@ def action_client(*, task_id: str, workspace: Path, role: str, action: str,
     return response
 
 
+def runtime_mounts(runtime: Path, lock: dict) -> list[str]:
+    """Mount verified host assets directly, including shared-directory symlinks.
+
+    A symlink inside a bind mount retains its host absolute target, which need
+    not exist inside the container. Mount only the declared, verified asset
+    roots at their task paths; never expose their host parent directories.
+    """
+    mounts = ["-v", f"{(runtime/'model').resolve(strict=True)}:/task/model:ro"]
+    for name in lock['dependencies']:
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise ValueError('Invalid runtime dependency mount name')
+        source = (runtime/name).resolve(strict=True)
+        if not source.is_dir():
+            raise ValueError('Runtime dependency must be a directory')
+        mounts.extend(["-v", f"{source}:/task/runtime/{name}:ro"])
+    return mounts
+
+
 class CleanExecutor:
-    def __init__(self, tasks: dict, root: Path, artifacts: Path, devices: str, model_cache: Path):
+    def __init__(self, tasks: dict, root: Path, artifacts: Path, devices: str, model_cache: Path,
+                 *, container_root: str = "/workspace"):
         self.root, self.artifacts, self.devices, self.model_cache = root.resolve(), artifacts, devices, model_cache
+        self.container_root = PurePosixPath(container_root)
+        if not self.container_root.is_absolute() or ".." in self.container_root.parts:
+            raise ValueError("Container checkout root must be an absolute path without traversal")
         self.tasks = {}
         self.active_container = None
+        from .prepare_serving_runtime import VerifiedRuntime
+        self.runtime_verifier = VerifiedRuntime()
         if artifacts.resolve().is_relative_to(self.root):
             raise ValueError("Trusted serving artifacts must be outside the agent-mounted checkout")
         artifacts.mkdir(parents=True, exist_ok=True)
@@ -138,11 +164,14 @@ class CleanExecutor:
         timeout = min(requested_timeout, declared.timeout_s)
         if timeout <= 0:
             raise TimeoutError("Serving action deadline exhausted")
-        supplied = Path(request["workspace"])
-        # Ordinary Docker workers mount this checkout at /workspace.
-        relative = supplied.relative_to("/workspace")
+        started = time.monotonic()
+        supplied = PurePosixPath(request["workspace"])
+        # Only the trusted host launcher selects the worker's checkout mount.
+        if ".." in supplied.parts:
+            raise ValueError("Action workspace must not contain path traversal")
+        relative = supplied.relative_to(self.container_root)
         source = (self.root / relative).resolve(strict=True)
-        if not source.is_relative_to(self.root) or source.is_relative_to(self.root / "tasks"):
+        if source == self.root or not source.is_relative_to(self.root) or source.is_relative_to(self.root / "tasks"):
             raise ValueError("Action workspace must be an experiment directory inside the checkout")
         # A resumed session must still refer to the same trusted task bytes.
         # Baseline requests carry the original frozen workspace, not candidate code.
@@ -160,27 +189,38 @@ class CleanExecutor:
             snapshot = snapshot_workspace_harness(directory, task_spec=spec)
             for edit in spec.candidate.editable:
                 if edit.scope == "tree":
-                    raise ValueError("Serving source submission requires explicit file/symbol boundaries")
+                    if edit.path != lock.get("candidate_bundle", {}).get("root"):
+                        raise ValueError("Serving trees must be declared as the kernel bundle root")
+                    from .tools.perf.serving_bundle import source_files
+                    src = resolve_task_path(source, edit.path, must_exist=True)
+                    if (source / edit.path).is_symlink():
+                        raise ValueError("Kernel bundle root must not be a symlink")
+                    files = source_files(src, max_bytes=lock_limits(lock)["max_candidate_source_bytes"])
+                    dst = resolve_task_path(directory, edit.path)
+                    shutil.rmtree(dst)
+                    dst.mkdir()
+                    for name, path in files.items():
+                        target = dst / name
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(path.read_bytes())
+                    continue
                 src = resolve_task_path(source, edit.path, must_exist=True)
                 dst = resolve_task_path(directory, edit.path)
                 if not src.is_file() or src.stat().st_size > lock_limits(lock)["max_candidate_source_bytes"]:
                     raise ValueError("Invalid candidate source file")
                 dst.write_bytes(src.read_bytes())
             verify_workspace_harness(snapshot, discard_added=False)
-        from .prepare_serving_runtime import verify
         identity = {key: lock[key] for key in ("model", "dependencies")}
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         runtime = self.model_cache / key
-        verify(runtime, identity)
-        model = runtime / "model"
+        self.runtime_verifier.verify(runtime, identity)
         container_name = "aka-eval-" + action_id
         command = ["docker", "run", "--rm", "--init", "--name", container_name,
                    "--network=host", "--device=/dev/kfd", "--device=/dev/dri",
                    "--group-add=video", "--security-opt=seccomp=unconfined", "--shm-size=16g",
                    "--tmpfs", f"/tmp/aiter_configs:rw,uid={os.getuid()},gid={os.getgid()},mode=1777",
                    "--user", f"{os.getuid()}:{os.getgid()}",
-                   "-v", f"{directory}:/task", "-v", f"{model}:/task/model:ro",
-                   "-v", f"{runtime}:/task/runtime:ro",
+                   "-v", f"{directory}:/task", *runtime_mounts(runtime, lock),
                    "-w", "/task", "-e", "HOME=/tmp", "-e", "HF_HUB_OFFLINE=1",
                    "-e", "USER=aka-worker", "-e", "LOGNAME=aka-worker",
                    "-e", "TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor",
@@ -193,13 +233,15 @@ class CleanExecutor:
         device_groups = {path.stat().st_gid for path in [Path("/dev/kfd"), *Path("/dev/dri").glob("render*")] if path.exists()}
         for group in sorted(device_groups):
             command[2:2] = ["--group-add", str(group)]
+        remaining = timeout - (time.monotonic() - started)
+        if remaining <= 0:
+            raise TimeoutError("Serving action deadline exhausted while verifying runtime assets")
         self.active_container = container_name
-        started = time.monotonic()
         try:
             stdout_path, stderr_path = directory / "stdout.log", directory / "stderr.log"
             with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
                 try:
-                    result = subprocess.run(command, stdout=stdout, stderr=stderr, timeout=timeout)
+                    result = subprocess.run(command, stdout=stdout, stderr=stderr, timeout=remaining)
                     returncode = result.returncode
                 except subprocess.TimeoutExpired:
                     returncode = -signal.SIGKILL
@@ -216,25 +258,43 @@ class CleanExecutor:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["image", "groups", "serve"])
+    parser.add_argument("mode", choices=["config-image", "image", "groups", "verifier", "serve"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path.cwd())
+    parser.add_argument("--container-root", default="/workspace")
     parser.add_argument("--socket", type=Path)
     parser.add_argument("--devices", default="0")
     parser.add_argument("--artifacts", type=Path)
     args = parser.parse_args()
-    config = yaml.safe_load(args.config.read_text())
+    config = yaml.safe_load(args.config.read_text()) or {}
+    if not isinstance(config, dict):
+        raise ValueError("Run config must be a mapping")
+    if args.mode == "config-image":
+        if "docker_image" in config:
+            image = config["docker_image"]
+            if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/@:-]*", image):
+                raise ValueError("docker_image must be a nonempty Docker image reference")
+            print(image)
+        return
     if args.mode == "groups":
         for group in gpu_groups(config, args.devices.split(",")):
             print(",".join(group))
         return
     tasks = selected_serving_tasks(args.config, args.root)
+    if args.mode == 'verifier':
+        from .candidate_verification import policy
+        if config.get('agent', {}).get('template') != 'task_validator':
+            review = policy(config, serving=bool(tasks))
+            if review:
+                print(review['backend'])
+        return
     if args.mode == "image":
         if tasks:
             print(next(iter(tasks.values()))[2]["image"])
         return
     cache = Path(os.environ.get("AKA_SERVING_CACHE", str(Path.home() / ".cache/aka-serving")))
-    executor = CleanExecutor(tasks, args.root, args.artifacts, args.devices, cache)
+    executor = CleanExecutor(tasks, args.root, args.artifacts, args.devices, cache,
+                             container_root=args.container_root)
 
     def terminate(signum, frame):
         if executor.active_container:

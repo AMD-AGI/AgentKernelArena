@@ -493,6 +493,8 @@ def materialize_perf_helpers_in_workspace(
                           (root / "src/tools/perf/serving.py").read_text(), materialized)
         _materialize_file(serving.parent / "_aka_measurement.py",
                           (root / "src/measurement.py").read_text(), materialized)
+        _materialize_file(serving.parent / "_aka_serving_bundle.py",
+                          (root / "src/tools/perf/serving_bundle.py").read_text(), materialized)
 
     _materialize_native_helper(workspace, root, materialized)
 

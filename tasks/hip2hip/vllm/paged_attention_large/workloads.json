@@ -1,0 +1,368 @@
+{
+  "cases": [
+    {
+      "test_case_id": "sig_7b6340559547",
+      "shape": [
+        1024,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 1,
+        "query_rows": 1024,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1024,
+        "cache_blocks": 57718,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_b167bd1c728f",
+      "shape": [
+        1,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 1,
+        "query_rows": 1,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1025,
+        "cache_blocks": 57718,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_e211e5aa7aeb",
+      "shape": [
+        1520,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 32,
+        "query_rows": 1520,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1024,
+        "cache_blocks": 46209,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_1227d7656405",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 32,
+        "query_rows": 32,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1025,
+        "cache_blocks": 46209,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_35e859d9b24a",
+      "shape": [
+        1024,
+        32,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 1,
+        "query_rows": 1024,
+        "heads": 32,
+        "kv_heads": 4,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1024,
+        "cache_blocks": 47679,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_c18c27c7fbd9",
+      "shape": [
+        1,
+        32,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 1,
+        "query_rows": 1,
+        "heads": 32,
+        "kv_heads": 4,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1025,
+        "cache_blocks": 47679,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_7ffb6dca9258",
+      "shape": [
+        1024,
+        32,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 1,
+        "query_rows": 1024,
+        "heads": 32,
+        "kv_heads": 4,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1024,
+        "cache_blocks": 45466,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "sig_d3abec4575ad",
+      "shape": [
+        1,
+        32,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 1,
+        "query_rows": 1,
+        "heads": 32,
+        "kv_heads": 4,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1025,
+        "cache_blocks": 45466,
+        "table_cols": 128,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "c2",
+      "shape": [
+        2,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 2,
+        "query_rows": 2,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1024,
+        "cache_blocks": 128,
+        "table_cols": 64,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "c32",
+      "shape": [
+        32,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 32,
+        "query_rows": 32,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1024,
+        "cache_blocks": 2048,
+        "table_cols": 64,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "c64",
+      "shape": [
+        64,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 64,
+        "query_rows": 64,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 1024,
+        "cache_blocks": 4096,
+        "table_cols": 64,
+        "ragged": false,
+        "layout": "contiguous"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "ragged_page_tail",
+      "shape": [
+        3,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 3,
+        "query_rows": 3,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 17,
+        "cache_blocks": 6,
+        "table_cols": 2,
+        "ragged": true,
+        "layout": "permuted"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "ragged_partition_tail",
+      "shape": [
+        5,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 5,
+        "query_rows": 5,
+        "heads": 16,
+        "kv_heads": 4,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 257,
+        "cache_blocks": 85,
+        "table_cols": 17,
+        "ragged": true,
+        "layout": "permuted"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "long_context",
+      "shape": [
+        2,
+        16,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "sequences": 2,
+        "query_rows": 2,
+        "heads": 16,
+        "kv_heads": 1,
+        "head_size": 128,
+        "block_size": 16,
+        "context": 4096,
+        "cache_blocks": 512,
+        "table_cols": 256,
+        "ragged": false,
+        "layout": "permuted"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

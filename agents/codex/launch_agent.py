@@ -14,6 +14,7 @@ import yaml
 from agents import register_agent
 from agents.prompt_input import prompt_input
 from agents.run_budget import append_run_budget
+from agents.stream_log import StreamLog
 from src.module_registration import AgentType, load_prompt_builder
 from src.process_control import stop_process_group as _stop_process
 from src.runtime_env import build_subprocess_env
@@ -245,6 +246,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     logger.info("=" * 80)
 
     timeout_seconds = int(agent_config.get("timeout_seconds", 600))
+    event_log = StreamLog(workspace, "codex", logger, env=process_env)
 
     with prompt_input(prompt) as stream:
         process = subprocess.Popen(
@@ -258,17 +260,16 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     def read_stream(stream, output_list, prefix, log_func):
         try:
-            for line in iter(stream.readline, ""):
-                if not line:
-                    break
-                raw_line = line.rstrip()
-                if not raw_line.strip():
-                    continue
-                formatted = _format_codex_event(raw_line)
-                if formatted.startswith("turn.failed:"):
-                    failed_turn.set()
-                output_list.append(formatted)
-                log_func(f"{prefix} {formatted[:240]}")
+            with event_log.open("stdout" if output_list is stdout_lines else "stderr") as record:
+                for line in iter(stream.readline, ""):
+                    raw_line = record(line).rstrip()
+                    if not raw_line.strip():
+                        continue
+                    formatted = _format_codex_event(raw_line)
+                    if formatted.startswith("turn.failed:"):
+                        failed_turn.set()
+                    output_list.append(formatted)
+                    log_func(f"{prefix} {formatted[:240]}")
         finally:
             stream.close()
 
@@ -313,6 +314,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
     if timed_out:
         raise TimeoutError(f"Codex timed out after {timeout_seconds}s; see agent logs")
+    if event_log.error:
+        raise RuntimeError(event_log.error)
     if process.returncode != 0:
         raise RuntimeError(f"Codex exited with code {process.returncode}; see agent logs")
     if failed_turn.is_set():

@@ -1,0 +1,6856 @@
+{
+  "definition": {
+    "schema_version": 2,
+    "name": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+    "description": "Optional callbacks (exported as run): initialize(inputs, seed=0) fills preallocated input buffers in place and returns the same dict; compare(actual, expected) returns None on success or raises AssertionError.\nDSv4 packed sparse shared-KV MLA with optional extra KV pool, sinks, and LSE.",
+    "op_type": "flash_mla_with_kvcache",
+    "tags": [
+      "api:sikl.ops.mla.mla.flash_mla_with_kvcache",
+      "mla",
+      "sikl",
+      "kv_cache_format:dsv4_fp8"
+    ],
+    "axes": {
+      "batch": {
+        "type": "var"
+      },
+      "query_length": {
+        "type": "const",
+        "value": 1
+      },
+      "heads": {
+        "type": "const",
+        "value": 64
+      },
+      "head_dim": {
+        "type": "const",
+        "value": 512
+      },
+      "pages": {
+        "type": "var"
+      },
+      "page_size": {
+        "type": "const",
+        "value": 256
+      },
+      "one": {
+        "type": "const",
+        "value": 1
+      },
+      "packed_width": {
+        "type": "const",
+        "value": 584
+      },
+      "topk": {
+        "type": "const",
+        "value": 128
+      },
+      "extra_pages": {
+        "type": "var"
+      },
+      "extra_page_size": {
+        "type": "const",
+        "value": 64
+      },
+      "extra_topk": {
+        "type": "const",
+        "value": 512
+      }
+    },
+    "inputs": {
+      "q": {
+        "shape": [
+          "batch",
+          "query_length",
+          "heads",
+          "head_dim"
+        ],
+        "dtype": "bfloat16"
+      },
+      "kv_cache": {
+        "shape": [
+          "pages",
+          "page_size",
+          "one",
+          "packed_width"
+        ],
+        "dtype": "float8_e4m3fn"
+      },
+      "sparse_indices": {
+        "shape": [
+          "batch",
+          "query_length",
+          "topk"
+        ],
+        "dtype": "int32"
+      },
+      "sparse_lens": {
+        "shape": [
+          "batch"
+        ],
+        "dtype": "int32"
+      },
+      "extra_kv_cache": {
+        "shape": [
+          "extra_pages",
+          "extra_page_size",
+          "one",
+          "packed_width"
+        ],
+        "dtype": "float8_e4m3fn"
+      },
+      "extra_sparse_indices": {
+        "shape": [
+          "batch",
+          "query_length",
+          "extra_topk"
+        ],
+        "dtype": "int32"
+      },
+      "extra_sparse_lens": {
+        "shape": [
+          "batch"
+        ],
+        "dtype": "int32"
+      },
+      "sm_scale": {
+        "shape": null,
+        "dtype": "float32"
+      },
+      "sinks": {
+        "shape": [
+          "heads"
+        ],
+        "dtype": "float32"
+      }
+    },
+    "outputs": {
+      "output": {
+        "shape": [
+          "batch",
+          "query_length",
+          "heads",
+          "head_dim"
+        ],
+        "dtype": "bfloat16"
+      },
+      "lse": {
+        "shape": [
+          "batch",
+          "query_length",
+          "heads"
+        ],
+        "dtype": "float32"
+      }
+    },
+    "reference": "from __future__ import annotations\nfrom functools import partial as partial\nimport math as math\nimport torch as torch\n\ndef _decode_slots(cache, slots):\n    \"\"\"Decode physical slots via literal BF16 bit assembly, not standard FP8 scaling.\"\"\"\n    page_size = cache.shape[1]\n    raw = torch.empty(0, dtype=torch.uint8, device=cache.device).set_(\n        cache.untyped_storage(), 0, (cache.untyped_storage().nbytes(),), (1,)\n    )\n    page = slots // page_size\n    within = slots % page_size\n    base = cache.storage_offset() * cache.element_size() + page * cache.stride(0)\n    # Pages store payloads before scale slots, not interleaved 584-byte records.\n    payload = base[:, None] + within[:, None] * 576\n    codes = raw[payload + torch.arange(448, device=cache.device)].to(torch.int32)\n    scales = raw[\n        base[:, None]\n        + page_size * 576\n        + within[:, None] * 8\n        + torch.arange(7, device=cache.device)\n    ].to(torch.int32)\n    exponent = ((codes >> 3) & 15) + scales.repeat_interleave(64, dim=-1) - 7\n    bits = ((codes & 128) << 8) | (exponent << 7) | ((codes & 7) << 4)\n    nope = (bits & 65535).to(torch.int16).view(torch.bfloat16).float()\n    tail = raw[payload + 448 + torch.arange(128, device=cache.device)].contiguous()\n    rope = tail.view(torch.bfloat16).float()\n    return torch.cat((nope, rope), dim=-1)\n\n\ndef _selected_slots(indices, lengths, row, capacity):\n    \"\"\"Offline content validation only; never called by the host schema.\"\"\"\n    length = indices.shape[-1] if lengths is None else lengths[row].item()\n    if not 0 <= length <= indices.shape[-1]:\n        raise ValueError(\"sparse length must lie within the index table width\")\n    slots = indices[row, 0, :length].to(torch.int64)\n    slots = slots[slots >= 0]\n    if torch.any(slots >= capacity).item():\n        raise ValueError(\"nonnegative sparse index is outside its KV pool\")\n    return slots\n\n\ndef _flash_mla_reference(\n    q,\n    kv_cache,\n    sparse_indices,\n    sparse_lens=None,\n    extra_kv_cache=None,\n    extra_sparse_indices=None,\n    extra_sparse_lens=None,\n    sm_scale=None,\n    sinks=None,\n    *,\n    return_lse=False,\n):\n    \"\"\"FP32 attention over decoded shared KV; sink is excluded from returned LSE.\"\"\"\n    scale = 1.0 / math.sqrt(512) if sm_scale is None else sm_scale\n    output = torch.zeros_like(q)\n    lse = torch.full(q.shape[:-1], torch.inf, dtype=torch.float32, device=q.device)\n    for row in range(q.shape[0]):\n        slots = _selected_slots(\n            sparse_indices, sparse_lens, row, kv_cache.shape[0] * kv_cache.shape[1]\n        )\n        values = [_decode_slots(kv_cache, slots)]\n        if extra_kv_cache is not None:\n            extra_slots = _selected_slots(\n                extra_sparse_indices,\n                extra_sparse_lens,\n                row,\n                extra_kv_cache.shape[0] * extra_kv_cache.shape[1],\n            )\n            values.append(_decode_slots(extra_kv_cache, extra_slots))\n        kv = torch.cat(values, dim=0)\n        if kv.shape[0] == 0:\n            continue\n        logits = (q[row, 0].float() @ kv.T) * scale\n        # Normalize logits directly; rounded LSE loses small log(sumexp) terms.\n        all_logits = (\n            logits\n            if sinks is None\n            else torch.cat((logits, sinks.float()[:, None]), dim=-1)\n        )\n        weights = all_logits.softmax(dim=-1)[:, : kv.shape[0]]\n        output[row, 0] = (weights @ kv).to(q.dtype)\n        lse[row, 0] = torch.logsumexp(logits, dim=-1)\n    return (output, lse) if return_lse else output\n\n\ndef _reference(*args, names, return_lse, **kwargs):\n    \"\"\"Keep schema input order when optional operands are absent.\"\"\"\n    if len(args) > len(names):\n        raise TypeError(\"too many MLA reference inputs\")\n    call = dict(zip(names, args))\n    call.update(kwargs)\n    return _flash_mla_reference(**call, return_lse=return_lse)\n\n\n_callable = partial(_reference, **{'names': ('q', 'kv_cache', 'sparse_indices', 'sparse_lens', 'extra_kv_cache', 'extra_sparse_indices', 'extra_sparse_lens', 'sm_scale', 'sinks',), 'return_lse': True})\n\n\ndef run(*args, **kwargs):\n    return _callable(*args, **kwargs)\n",
+    "initialize": "from __future__ import annotations\nfrom typing import Any as Any\nfrom typing import TypeGuard as TypeGuard\nimport math as math\nimport struct as struct\nimport torch as torch\n\ndef _initialize_mla_cache(cache, generator):\n    \"\"\"Write packed payloads and scale slots, using bounded scratch space.\"\"\"\n    page_size = cache.shape[1]\n    raw = cache.view(torch.uint8).view(cache.shape[0], page_size * 584)\n    raw.zero_()\n    # Batch pages into bounded scratch rather than launching per physical page.\n    pages_per_chunk = max(1, 8192 // page_size)\n    for start in range(0, cache.shape[0], pages_per_chunk):\n        stop = min(start + pages_per_chunk, cache.shape[0])\n        count = stop - start\n        values = torch.randn(\n            (count, page_size, 512), dtype=torch.float32,\n            device=cache.device, generator=generator,\n        )\n        payload = raw[start:stop, : page_size * 576].view(count, page_size, 576)\n        payload[:, :, :448].copy_(\n            values[:, :, :448].clamp(-448, 448).to(torch.float8_e4m3fn).view(torch.uint8)\n        )\n        payload[:, :, 448:].copy_(values[:, :, 448:].to(torch.bfloat16).view(torch.uint8))\n        scales = raw[start:stop, page_size * 576 :].view(count, page_size, 8)\n        scales[:, :, :7].random_(124, 128, generator=generator)\n\n\n\ndef _valid_tensor(\n    value: Any, like: torch.Tensor | None = None\n) -> TypeGuard[torch.Tensor]:\n    return (\n        isinstance(value, torch.Tensor)\n        and value.layout == torch.strided\n        and not value.is_conj()\n        and not value.is_neg()\n        and (like is None or value.device == like.device)\n    )\n\n\ndef _valid_cache(cache: Any, q: torch.Tensor) -> TypeGuard[torch.Tensor]:\n    if (\n        not _valid_tensor(cache, q)\n        or cache.dtype not in (torch.uint8, torch.float8_e4m3fn)\n        or cache.ndim != 4\n        or cache.shape[0] <= 0\n        or cache.shape[1] not in (2, 64, 128, 256)\n        or cache.shape[2:] != (1, 584)\n        or cache.stride()[1:] != (584, 584, 1)\n    ):\n        return False\n    # Allow page padding; the backend views each full page stride as uint32.\n    stride = cache.stride(0)\n    offset = cache.storage_offset()\n    return (\n        stride >= cache.shape[1] * 584\n        and stride % 4 == 0\n        and offset == 0\n        and offset + cache.shape[0] * stride <= cache.untyped_storage().nbytes()\n    )\n\n\ndef _valid_indices(indices: Any, lengths: Any, q: torch.Tensor) -> bool:\n    if (\n        not _valid_tensor(indices, q)\n        or indices.dtype != torch.int32\n        or not indices.is_contiguous()\n        or indices.ndim != 3\n        or indices.shape[:2] != q.shape[:2]\n        or indices.shape[-1] <= 0\n        or indices.shape[-1] % 64 != 0\n    ):\n        return False\n    return lengths is None or (\n        _valid_tensor(lengths, q)\n        and lengths.dtype == torch.int32\n        and lengths.is_contiguous()\n        and lengths.shape == (q.shape[0],)\n    )\n\n\ndef _valid_scale(value: Any) -> bool:\n    if type(value) not in (float, int):\n        return False\n    try:\n        fp32 = struct.unpack(\"f\", struct.pack(\"f\", value))[0]\n    except (OverflowError, struct.error):\n        return False\n    return math.isfinite(fp32) and fp32 > 0\n\n\ndef check_init_buffers(inputs, tensor_names, seed=0) -> torch.Generator:\n    \"\"\"Validate metadata before writes; independent buffers must not overlap.\"\"\"\n    if type(inputs) is not dict:\n        raise ValueError(\"inputs must be a dictionary of canonical input names\")\n    if type(seed) is not int or not 0 <= seed < 2**63:\n        raise ValueError(\"seed must be an integer in [0, 2**63)\")\n    device = None\n    ranges = []\n    for name in tensor_names:\n        tensor = inputs.get(name)\n        if not isinstance(tensor, torch.Tensor) or tensor.layout != torch.strided:\n            raise ValueError(f\"{name}: expected a dense strided Tensor\")\n        if not tensor.is_contiguous() or tensor.device.type not in (\"cpu\", \"cuda\"):\n            raise ValueError(f\"{name}: expected a contiguous CPU/CUDA tensor\")\n        if device is not None and device != tensor.device:\n            raise ValueError(\"all input buffers must use the same device\")\n        device = tensor.device\n        if tensor.numel():\n            start = tensor.data_ptr()\n            end = start + tensor.numel() * tensor.element_size()\n            for other, low, high in ranges:\n                if start < high and low < end:\n                    raise ValueError(f\"input buffers overlap: {other} and {name}\")\n            ranges.append((name, start, end))\n    if device is None:\n        raise ValueError(\"at least one input tensor is required\")\n    return torch.Generator(device=device).manual_seed(seed)\n\n\n@torch.no_grad()\ndef initialize_mla_inputs(inputs, *, seed=0, cache_templates=None):\n    \"\"\"Fill compact replay buffers in place without changing scalars or global RNG.\"\"\"\n    required = {\"q\", \"kv_cache\", \"sparse_indices\", \"sm_scale\"}\n    optional = {\n        \"sparse_lens\",\n        \"extra_kv_cache\",\n        \"extra_sparse_indices\",\n        \"extra_sparse_lens\",\n        \"sinks\",\n    }\n    if type(inputs) is not dict or not required <= inputs.keys() <= required | optional:\n        raise ValueError(\"expected canonical MLA inputs\")\n    rng = check_init_buffers(inputs, tuple(k for k in inputs if k != \"sm_scale\"), seed)\n    q = inputs[\"q\"]\n    if (\n        not _valid_tensor(q)\n        or q.dtype != torch.bfloat16\n        or q.ndim != 4\n        or q.shape[0] <= 0\n        or q.shape[1] != 1\n        or q.shape[2] not in (64, 128)\n        or q.shape[3] != 512\n        or not _valid_scale(inputs[\"sm_scale\"])\n    ):\n        raise ValueError(\"expected BF16 MLA queries and a positive finite FP32 scale\")\n    extra = \"extra_kv_cache\" in inputs\n    if extra != (\"extra_sparse_indices\" in inputs) or (\n        \"extra_sparse_lens\" in inputs and not extra\n    ):\n        raise ValueError(\"extra KV cache and indices must be supplied together\")\n    prefixes = (\"\", \"extra_\") if extra else (\"\",)\n    for prefix in prefixes:\n        cache, indices = inputs[prefix + \"kv_cache\"], inputs[prefix + \"sparse_indices\"]\n        if not _valid_cache(cache, q) or not _valid_indices(\n            indices, inputs.get(prefix + \"sparse_lens\"), q\n        ):\n            raise ValueError(f\"invalid {prefix}cache, indices or lengths buffers\")\n        if cache.shape[0] * cache.shape[1] > 2**31 or indices.shape[-1] >= 2**31:\n            raise ValueError(\n                \"cache capacity and sparse width must fit int32 indices/lengths\"\n            )\n    sink = inputs.get(\"sinks\")\n    if sink is not None and (\n        not _valid_tensor(sink, q)\n        or sink.dtype != torch.float32\n        or sink.shape != (q.shape[2],)\n    ):\n        raise ValueError(\"sinks must be an FP32 vector with one value per head\")\n\n    # Keep scaled logits moderate without overwriting the caller's scale.\n    q.normal_(std=min(1.0, 1.0 / (math.sqrt(512) * inputs[\"sm_scale\"])), generator=rng)\n    for branch, prefix in enumerate(prefixes):\n        cache, indices = inputs[prefix + \"kv_cache\"], inputs[prefix + \"sparse_indices\"]\n        # Cache draws use an independent stream so cached and uncached creation\n        # produces identical Q, index, length and sink tensors.\n        key = (seed, prefix, tuple(cache.shape), cache.dtype, str(cache.device))\n        if cache_templates is not None and key in cache_templates:\n            cache.copy_(cache_templates[key])\n        else:\n            cache_rng = torch.Generator(device=q.device).manual_seed((seed + branch + 1) % (2**63))\n            _initialize_mla_cache(cache, cache_rng)\n            if cache_templates is not None:\n                cache_templates[key] = cache.clone()\n        indices.random_(0, cache.shape[0] * cache.shape[1], generator=rng)\n        width = indices.shape[-1]\n        lengths = torch.randint(\n            0,\n            width + 1,\n            (q.shape[0],),\n            dtype=torch.int32,\n            device=q.device,\n            generator=rng,\n        )\n        # Negative padding is applied independently by the case profile. Keep\n        # valid nonnegative indices beyond runtime lengths to detect ignored lengths.\n        if prefix + \"sparse_lens\" in inputs:\n            inputs[prefix + \"sparse_lens\"].copy_(lengths)\n    if sink is not None:\n        sink.normal_(generator=rng)\n    return inputs\n\n\n_callable = initialize_mla_inputs\n\n\ndef run(*args, **kwargs):\n    return _callable(*args, **kwargs)\n",
+    "compare": "from __future__ import annotations\nfrom abc import ABC as ABC\nfrom abc import abstractmethod as abstractmethod\nfrom dataclasses import dataclass as dataclass\nfrom dataclasses import field as field\nfrom typing import Any as Any\nimport math as math\nimport torch as torch\n\n@dataclass(frozen=True)\nclass ComparisonResult:\n    passed: bool\n    metrics: dict[str, float]\n    message: str | None = None\n\n\ndef _exact_result(actual, expected):\n    if expected.dtype == getattr(torch, \"float4_e2m1fn_x2\", None):\n        actual, expected = actual.view(torch.uint8), expected.view(torch.uint8)\n    bad = int((actual != expected).sum().item())\n    ratio = 1 - bad / actual.numel() if actual.numel() else 1.0\n    return ComparisonResult(\n        bad == 0,\n        {\"matched_ratio\": ratio},\n        f\"{bad}/{actual.numel()} elements differ\" if bad else None,\n    )\n\n\ndef validate_comparison(actual, expected, *, allow_packed=False):\n    \"\"\"Invalid references are ValueError; candidate contract failures are AssertionError.\"\"\"\n    if (\n        not isinstance(expected, torch.Tensor)\n        or expected.layout != torch.strided\n        or expected.device.type not in (\"cpu\", \"cuda\")\n        or expected.is_complex()\n        or expected.is_quantized\n    ):\n        raise ValueError(\"invalid reference: expected a dense real CPU/CUDA tensor\")\n    packed = expected.dtype == getattr(torch, \"float4_e2m1fn_x2\", None)\n    if packed and not allow_packed:\n        raise ValueError(\n            \"packed FP4 outputs must be decoded before numerical comparison\"\n        )\n    if (\n        expected.is_floating_point()\n        and not packed\n        and not torch.isfinite(expected.to(torch.float64)).all().item()\n    ):\n        raise ValueError(\"invalid reference: non-finite output\")\n    if not isinstance(actual, torch.Tensor) or actual.layout != torch.strided:\n        raise AssertionError(\"candidate must return one dense Tensor\")\n    if actual.shape != expected.shape:\n        raise AssertionError(f\"shape {actual.shape}, expected {expected.shape}\")\n    if actual.dtype != expected.dtype:\n        raise AssertionError(f\"dtype {actual.dtype}, expected {expected.dtype}\")\n    if actual.device != expected.device:\n        raise AssertionError(f\"device {actual.device}, expected {expected.device}\")\n    if (\n        actual.is_floating_point()\n        and not packed\n        and not torch.isfinite(actual.to(torch.float64)).all().item()\n    ):\n        raise AssertionError(\"candidate contains NaN or Inf\")\n\n\nclass Comparison(ABC):\n    \"\"\"Callable assertion plus a non-raising numerical report for valid tensor pairs.\"\"\"\n\n    allow_packed = False\n\n    @torch.no_grad()\n    def evaluate(self, actual, expected):\n        validate_comparison(actual, expected, allow_packed=self.allow_packed)\n        with torch.autocast(expected.device.type, enabled=False):\n            if not expected.is_floating_point():\n                return _exact_result(actual, expected)\n            return self.measure(actual, expected)\n\n    def __call__(self, actual, expected):\n        result = self.evaluate(actual, expected)\n        if not result.passed:\n            raise AssertionError(\n                result.message or f\"comparison failed: {result.metrics}\"\n            )\n\n    @abstractmethod\n    def measure(self, actual, expected) -> ComparisonResult:\n        \"\"\"Measure tensors already validated by evaluate.\"\"\"\n\n\n@dataclass(frozen=True)\nclass Tolerances:\n    atol: float\n    rtol: float\n    min_cosine_similarity: float\n\n\nclass TolerancePolicy(ABC):\n    @abstractmethod\n    def resolve(self, compute_dtype) -> Tolerances:\n        \"\"\"Resolve a mathematical compute format, which may differ from output dtype.\"\"\"\n\n\n@dataclass(frozen=True)\nclass DTypeTolerancePolicy(TolerancePolicy):\n    \"\"\"Legacy tolerances for elementwise and cosine comparisons.\"\"\"\n\n    def resolve(self, compute_dtype):\n        name = str(getattr(compute_dtype, \"value\", compute_dtype)).removeprefix(\n            \"torch.\"\n        )\n        aliases = {\n            \"fp64\": \"float64\",\n            \"fp32\": \"float32\",\n            \"fp16\": \"float16\",\n            \"bf16\": \"bfloat16\",\n            \"mxfp4\": \"fp4\",\n            \"nvfp4\": \"fp4\",\n            \"float4_e2m1\": \"fp4\",\n            \"float4_e2m1fn_x2\": \"fp4\",\n        }\n        name = aliases.get(name, name)\n        if name in (\n            \"float8_e4m3fn\",\n            \"float8_e5m2\",\n            \"float8_e4m3fnuz\",\n            \"float8_e5m2fnuz\",\n        ):\n            name = \"fp8\"\n        table = {\n            \"float64\": (1e-12, 1e-12, 1 - 1e-12),\n            \"float32\": (1e-5, 1e-5, 1 - 1e-6),\n            \"float16\": (1e-3, 1e-3, 0.9999),\n            \"bfloat16\": (1e-2, 1e-2, 0.999),\n            \"fp8\": (0.125, 0.125, 0.99),\n            \"fp4\": (0.25, 0.25, 0.98),\n        }\n        if name not in table:\n            raise ValueError(\n                f\"no tolerance profile for compute dtype {compute_dtype!r}\"\n            )\n        return Tolerances(*table[name])\n\n\ndef _check_threshold(name, value, *, lower=0, upper=None):\n    if (\n        isinstance(value, bool)\n        or not isinstance(value, (int, float))\n        or not math.isfinite(value)\n        or (lower is not None and value < lower)\n        or (upper is not None and value > upper)\n    ):\n        raise ValueError(f\"invalid {name}: {value!r}\")\n\n\n@dataclass(frozen=True)\nclass DefaultCompare(Comparison):\n    atol: float | None = None\n    rtol: float | None = None\n    compute_dtype: object = None\n    policy: TolerancePolicy = field(default_factory=DTypeTolerancePolicy)\n    mode: str = \"either\"\n    required_matched_ratio: float = 1.0\n\n    def __post_init__(self):\n        if self.mode not in (\"either\", \"additive\"):\n            raise ValueError(\"mode must be 'either' or 'additive'\")\n        _check_threshold(\"required_matched_ratio\", self.required_matched_ratio, upper=1)\n        for name in (\"atol\", \"rtol\"):\n            if getattr(self, name) is not None:\n                _check_threshold(name, getattr(self, name))\n\n    def measure(self, actual, expected):\n        atol, rtol = self.atol, self.rtol\n        if atol is None or rtol is None:\n            defaults = self.policy.resolve(\n                expected.dtype if self.compute_dtype is None else self.compute_dtype\n            )\n            atol = defaults.atol if atol is None else atol\n            rtol = defaults.rtol if rtol is None else rtol\n        _check_threshold(\"atol\", atol)\n        _check_threshold(\"rtol\", rtol)\n        if not expected.numel():\n            return ComparisonResult(\n                True,\n                {\n                    \"max_absolute_error\": 0.0,\n                    \"max_relative_error\": 0.0,\n                    \"matched_ratio\": 1.0,\n                },\n            )\n        dtype = torch.float64 if expected.dtype == torch.float64 else torch.float32\n        x, y = actual.to(dtype), expected.to(dtype)\n        absolute = (x - y).abs()\n        relative = absolute / (y.abs() + 1e-8)\n        matches = (\n            ((absolute <= atol) | (relative <= rtol))\n            if self.mode == \"either\"\n            else (absolute <= atol + rtol * y.abs())\n        )\n        matched = int(matches.sum().item())\n        ratio = matched / matches.numel()\n        metrics = {\n            \"max_absolute_error\": absolute.max().item(),\n            \"max_relative_error\": relative.max().item(),\n            \"matched_ratio\": ratio,\n        }\n        passed = ratio >= self.required_matched_ratio\n        return ComparisonResult(\n            passed,\n            metrics,\n            (\n                None\n                if passed\n                else f\"{matches.numel() - matched}/{matches.numel()} elements fail {self.mode} tolerance (atol={atol}, rtol={rtol}); {metrics}\"\n            ),\n        )\n\n\ndef mla_result_as_tuple(value: Any) -> Any:\n    \"\"\"Normalize the harness's named-output mapping into the tuple form.\"\"\"\n    if not isinstance(value, dict):\n        return value\n    if tuple(value) == (\"output\",):\n        return value[\"output\"]\n    if tuple(value) == (\"output\", \"lse\"):\n        return (value[\"output\"], value[\"lse\"])\n    return value\n\n\n@torch.no_grad()\ndef compare_mla_outputs(actual, expected):\n    \"\"\"BF16 output at 1e-2, FP32 LSE at 1e-3; empty rows retain positive infinity.\"\"\"\n    actual = mla_result_as_tuple(actual)\n    expected = mla_result_as_tuple(expected)\n    if isinstance(expected, torch.Tensor):\n        if expected.dtype != torch.bfloat16:\n            raise ValueError(\"invalid MLA reference: expected a BF16 output\")\n        return DefaultCompare(atol=1e-2, rtol=1e-2, mode=\"additive\")(actual, expected)\n    if (\n        not isinstance(expected, tuple)\n        or len(expected) != 2\n        or not isinstance(expected[0], torch.Tensor)\n    ):\n        raise ValueError(\"invalid MLA reference: expected output or (output, lse)\")\n    if not isinstance(actual, tuple) or len(actual) != 2:\n        raise AssertionError(\"candidate must return (output, lse)\")\n    compare_mla_outputs(actual[0], expected[0])\n    x, y = actual[1], expected[1]\n    if (\n        not isinstance(y, torch.Tensor)\n        or y.layout != torch.strided\n        or y.dtype != torch.float32\n        or y.shape != expected[0].shape[:-1]\n        or y.device != expected[0].device\n        or not (torch.isfinite(y) | torch.isposinf(y)).all().item()\n    ):\n        raise ValueError(\n            \"invalid MLA reference LSE: expected FP32 finite values or +inf\"\n        )\n    if (\n        not isinstance(x, torch.Tensor)\n        or x.layout != torch.strided\n        or x.shape != y.shape\n        or x.dtype != y.dtype\n        or x.device != y.device\n    ):\n        raise AssertionError(\n            \"candidate LSE must match the reference shape, dtype and device\"\n        )\n    infinite = torch.isposinf(y)\n    if torch.any(actual[0][infinite] != 0).item():\n        raise AssertionError(\"empty MLA rows must return exactly zero output\")\n    if not torch.equal(torch.isposinf(x), infinite):\n        raise AssertionError(\"candidate LSE must match empty-row +inf positions\")\n    return DefaultCompare(atol=1e-3, rtol=1e-3, mode=\"additive\")(\n        x.masked_fill(infinite, 0), y.masked_fill(infinite, 0)\n    )\n\n\n_callable = compare_mla_outputs\n\n\ndef run(*args, **kwargs):\n    return _callable(*args, **kwargs)\n",
+    "check": "def default_check(\n    reference_outputs: Any,\n    actual_outputs: Any,\n    *,\n    rtol: float | None = None,\n    atol: float | None = None,\n    max_mismatch_pct: float = 0.0,\n    min_cos_sim: float | None = 1.0 - 1e-3,\n) -> bool:\n    \"\"\"Validate outputs as individual values or matching lists, tuples and dictionaries.\"\"\"\n    if isinstance(reference_outputs, dict) or isinstance(actual_outputs, dict):\n        if not isinstance(reference_outputs, dict) or not isinstance(\n            actual_outputs, dict\n        ):\n            return False\n        if reference_outputs.keys() != actual_outputs.keys():\n            return False\n        refs = [reference_outputs[key] for key in reference_outputs]\n        actuals = [actual_outputs[key] for key in reference_outputs]\n    else:\n        refs = _as_output_list(reference_outputs)\n        actuals = _as_output_list(actual_outputs)\n\n    if len(refs) != len(actuals):\n        return False\n\n    for ref, actual in zip(refs, actuals, strict=True):\n        if isinstance(ref, torch.Tensor) != isinstance(actual, torch.Tensor):\n            return False\n        if not isinstance(ref, torch.Tensor):\n            if ref != actual:\n                return False\n            continue\n\n        if ref.shape != actual.shape:\n            return False\n        if ref.numel() == 0:\n            continue\n\n        ref_is_float = torch.is_floating_point(ref)\n        actual_is_float = torch.is_floating_point(actual)\n        if ref_is_float or actual_is_float:\n            tolerance_dtype = actual.dtype if actual_is_float else ref.dtype\n            default_rtol, default_atol = default_tolerances(tolerance_dtype)\n            rtol_value = default_rtol if rtol is None else rtol\n            atol_value = default_atol if atol is None else atol\n            close = torch.isclose(\n                actual.to(torch.float32),\n                ref.to(torch.float32),\n                rtol=rtol_value,\n                atol=atol_value,\n            )\n            mismatch_pct = 100.0 * (1.0 - close.to(torch.float32).mean().item())\n            if mismatch_pct > max_mismatch_pct:\n                return False\n            if min_cos_sim is not None:\n                cos_sim = _cosine_similarity(actual, ref)\n                if cos_sim < min_cos_sim:\n                    return False\n        else:\n            matches = actual == ref\n            mismatch_pct = 100.0 * (1.0 - matches.to(torch.float32).mean().item())\n            if mismatch_pct > max_mismatch_pct:\n                return False\n\n    return True\n"
+  },
+  "rows": [
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_0"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_0",
+        "lengths": {
+          "main": 0,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_1",
+        "lengths": {
+          "main": 1,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_2"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_2",
+        "lengths": {
+          "main": 2,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_31"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_31",
+        "lengths": {
+          "main": 31,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_32"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_32",
+        "lengths": {
+          "main": 32,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_33"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_33",
+        "lengths": {
+          "main": 33,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_63"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_63",
+        "lengths": {
+          "main": 63,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_64"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_64",
+        "lengths": {
+          "main": 64,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_65"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_65",
+        "lengths": {
+          "main": 65,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_127"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_127",
+        "lengths": {
+          "main": 127,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_length_128"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_length_128",
+        "lengths": {
+          "main": 128,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_holes_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_holes_1",
+        "lengths": {
+          "main": 1,
+          "extra": 512
+        },
+        "padding": {
+          "main": "holes"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_all_negative_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_all_negative_1",
+        "lengths": {
+          "main": 1,
+          "extra": 512
+        },
+        "padding": {
+          "main": "all_negative"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_holes_128"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_holes_128",
+        "lengths": {
+          "main": 128,
+          "extra": 512
+        },
+        "padding": {
+          "main": "holes"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__main_all_negative_128"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "main_all_negative_128",
+        "lengths": {
+          "main": 128,
+          "extra": 512
+        },
+        "padding": {
+          "main": "all_negative"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_0"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_0",
+        "lengths": {
+          "main": 128,
+          "extra": 0
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_1",
+        "lengths": {
+          "main": 128,
+          "extra": 1
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_2"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_2",
+        "lengths": {
+          "main": 128,
+          "extra": 2
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_31"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_31",
+        "lengths": {
+          "main": 128,
+          "extra": 31
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_32"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_32",
+        "lengths": {
+          "main": 128,
+          "extra": 32
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_33"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_33",
+        "lengths": {
+          "main": 128,
+          "extra": 33
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_63"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_63",
+        "lengths": {
+          "main": 128,
+          "extra": 63
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_64"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_64",
+        "lengths": {
+          "main": 128,
+          "extra": 64
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_65"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_65",
+        "lengths": {
+          "main": 128,
+          "extra": 65
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_127"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_127",
+        "lengths": {
+          "main": 128,
+          "extra": 127
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_128"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_128",
+        "lengths": {
+          "main": 128,
+          "extra": 128
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_129"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_129",
+        "lengths": {
+          "main": 128,
+          "extra": 129
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_255"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_255",
+        "lengths": {
+          "main": 128,
+          "extra": 255
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_256"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_256",
+        "lengths": {
+          "main": 128,
+          "extra": 256
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_257"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_257",
+        "lengths": {
+          "main": 128,
+          "extra": 257
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_511"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_511",
+        "lengths": {
+          "main": 128,
+          "extra": 511
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_length_512"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_length_512",
+        "lengths": {
+          "main": 128,
+          "extra": 512
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_holes_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_holes_1",
+        "lengths": {
+          "main": 128,
+          "extra": 1
+        },
+        "padding": {
+          "extra": "holes"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_all_negative_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_all_negative_1",
+        "lengths": {
+          "main": 128,
+          "extra": 1
+        },
+        "padding": {
+          "extra": "all_negative"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_holes_512"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_holes_512",
+        "lengths": {
+          "main": 128,
+          "extra": 512
+        },
+        "padding": {
+          "extra": "holes"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__extra_all_negative_512"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "extra_all_negative_512",
+        "lengths": {
+          "main": 128,
+          "extra": 512
+        },
+        "padding": {
+          "extra": "all_negative"
+        }
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__all_branches_empty"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "all_branches_empty",
+        "lengths": {
+          "main": 0,
+          "extra": 0
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__independent_0_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "independent_0_1",
+        "lengths": {
+          "main": 0,
+          "extra": 1
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__independent_1_0"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "independent_1_0",
+        "lengths": {
+          "main": 1,
+          "extra": 0
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__independent_1_1"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "independent_1_1",
+        "lengths": {
+          "main": 1,
+          "extra": 1
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c760fb832ac1dab2__independent_33_65"
+      },
+      "solution": null,
+      "evaluation": null,
+      "input_seed_id": "c760fb832ac1dab2",
+      "input_profile": {
+        "id": "independent_33_65",
+        "lengths": {
+          "main": 33,
+          "extra": 65
+        },
+        "padding": {}
+      }
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 2,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "c32f44dd1fec318b"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 4,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "cfa168c1bd189127"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 8,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "9408e284b70a83a7"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 16,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "2bd718354a9dcbbd"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 32,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "e56661a2159d3b2d"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 64,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "aa123e819c7af598"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 128,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "e672a8817244fc78"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 256,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "bb345ce68f35b8eb"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 512,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "b39f0a3acc6005a0"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 1024,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "02943faf621559cd"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 2048,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "1813d568f5049509"
+      },
+      "solution": null,
+      "evaluation": null
+    },
+    {
+      "definition": "flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512",
+      "workload": {
+        "axes": {
+          "batch": 4096,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "inputs": {
+          "q": {
+            "type": "random"
+          },
+          "kv_cache": {
+            "type": "random"
+          },
+          "sparse_indices": {
+            "type": "random"
+          },
+          "sparse_lens": {
+            "type": "random"
+          },
+          "extra_kv_cache": {
+            "type": "random"
+          },
+          "extra_sparse_indices": {
+            "type": "random"
+          },
+          "extra_sparse_lens": {
+            "type": "random"
+          },
+          "sm_scale": {
+            "type": "scalar",
+            "value": 0.04419417382415922
+          },
+          "sinks": {
+            "type": "random"
+          }
+        },
+        "uuid": "07092d17a7177890"
+      },
+      "solution": null,
+      "evaluation": null
+    }
+  ],
+  "baseline_spec": {
+    "language": "python",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "main.py::run",
+    "destination_passing_style": false
+  },
+  "reference_spec": {
+    "language": "python",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "main.py::run",
+    "destination_passing_style": false
+  },
+  "bundle_readme": "# Flash MLA with packed FP8 KV cache\n\nImplement `flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512` through `run(**kwargs)` in\n[source/kernel.py](source/kernel.py). This is an implemented Python starting\npoint to rewrite in Triton. The provided baseline and the unchanged initial\ncandidate call the installed SGLang production operator described below.\n\n## Initial candidate, final implementation, and runtime\n\n[config.yaml](config.yaml) declares `initial_state: implemented`,\n`initial_language: python`, and target `language: triton`. During initial\n`task_validation`, the executable Python wrapper in\n[source/implementation/main.py](source/implementation/main.py) is the declared\nstarting implementation. It calls the same production operator as the separate\nprotected [baseline](scripts/baseline/main.py). This dependency is allowed for\nthose two roles. Initial qualification checks their executable behavior, full\nnumerical contract, and timed replay; it does not certify a completed rewrite.\n\nThe final submitted candidate must implement its own GPU computation in Triton.\nIt must not call the production SGLang operator, the protected baseline or\nreference, or another library operator to perform that computation. Replace the\ninitial wrapper in the declared editable files while retaining `run(**kwargs)`.\nThe baseline remains protected and separate from candidate edits. All workload,\naccuracy, input immutability and measured-replay requirements apply in both\nphases; initial-language support does not waive the final Triton requirement.\n\nThe required GPU runtime is MI355X (`gfx950`) with the following immutable image:\n\n```text\nlmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69\n```\n\nThis image supplies the installed SGLang package and its TileLang/AITER GPU\nbackend dependencies, plus ROCm PyTorch and Triton. Its exact package set is\nbound to the image digest. The provided baseline and initial wrapper require:\n\n```text\nsglang.kernels.ops.attention.dsa.tilelang_kernel.dpsk_v4_fp8_attention_fwd\n```\n\nThe task imports this installed entrypoint through\n[scripts/baseline/main.py](scripts/baseline/main.py); it does not depend on a\nsibling repository or a copied source tree. No task action installs packages or\ndownloads runtime code. Select the pinned image before materializing the task;\nmissing packages or this entrypoint are execution failures. The task-local\ninitializer, independent FP32 reference, comparator and evaluation runner are\nbundled under `scripts/` and require the image's ROCm PyTorch installation.\n\n## Interface and semantics\n\nThe exact tensor shapes, dtypes, scalar values, workload identities and callback\nspecifications are in [scripts/workload.json](scripts/workload.json). Retain all\n13 original batch sizes (1 through 4096). Q is BF16 with shape `[batch, 1, 64, 512]`.\nThe packed KV format stores each page's FP8/BF16 payloads before its scale slots;\nsee [the reference decoder](scripts/reference/main.py). Inputs are functional and\nmust remain unmodified. The output is BF16 attention output plus FP32 LSE.\n\nSparse index widths (128 and 512) are capacities, not effective lengths.\nEach runtime length selects an index prefix, and every negative index inside\nthat prefix is ignored. Nonnegative indices outside the prefix must have no\neffect. Main and extra branches, when present, have independent lengths and\npadding. Attention sinks participate in output normalization and are excluded\nfrom returned LSE. Completely empty rows return exactly zero output and `+inf`\nLSE. Finite output uses additive `atol=rtol=1e-2`; finite LSE uses additive\n`atol=rtol=1e-3`, enforced by [the comparator](scripts/compare/main.py).\n\n## Executed coverage\n\n[scripts/mla_coverage.py](scripts/mla_coverage.py) defines the runtime profiles\nstored explicitly in the workload manifest. This task has 54 independently\nreported cases; every case participates in both correctness and performance.\nThe original shape cases remain. Batch 1 additionally sweeps empty, short,\nintermediate and full lengths, including values immediately around 32, 64, 128,\n256, 512 and 8192 when within its capacity. Main and extra sweeps hold the other\nbranch fixed, and joint cases exercise both-empty, either-empty and both-active\ncombinations. In-prefix holes and entirely negative prefixes are independent of\nthe length sweep; unselected suffixes retain legal nonnegative indices.\n\nLarger batches mix boundary rows, independently drawn lengths and padding,\nincluding a full row. Every timed replay is checked numerically, then checked\nagain on a second data seed with changed runtime lengths in the same buffers.\nBoth Q and the full packed caches, indices and sinks are refilled. This catches\nstale outputs and host-side assumptions about tensor contents. Original and\nrefilled checks together cover multiple data draws for each boundary regime.\n\n## Measurement and validation\n\nUse [scripts/task_runner.py](scripts/task_runner.py) for all seven v2 actions.\nInput initialization, reference calculations and checks occur outside kernel-only\ntiming. The benchmark retains 20 warmups, 100 repetitions and a 1 ms target,\nwith the same device timing helper and allocation boundaries for baseline and\ncandidate. Each original shape and each added runtime profile has its own case\nidentity and latency in the structured result; baseline and candidate manifests\nmust match.\n\nCache initialization batches pages into bounded scratch buffers. Within one\nshape group, immutable seeded cache templates are copied into independent input\nstorage to avoid regenerating the large KV pools for every scalar-length case.\nAt most the original and refill seed templates are retained; templates are\nreleased on a shape change. Adjacent batch-1 cases reuse input storage. Full\ncache copies and all setup remain outside timing, and input-mutation checks\nremain enabled.\n\nRun `python3 scripts/task_runner.py validate-task`, followed by the baseline and\ncandidate `compile`, `correctness`, and `performance` actions in the pinned GPU\nruntime. A fresh framework-finalized `task_validator` PASS on the declared\narchitecture is required for qualification. CPU regression tests check coverage,\nreference semantics and rejection behavior; they do not qualify GPU execution.\n",
+  "policy": {
+    "version": 1,
+    "seed": 29,
+    "rtol": 0.02,
+    "atol": 0.02,
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "cases": [
+    {
+      "test_case_id": "c760fb832ac1dab2",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_0",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_0",
+          "lengths": {
+            "main": 0,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_1",
+          "lengths": {
+            "main": 1,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_2",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_2",
+          "lengths": {
+            "main": 2,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_31",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_31",
+          "lengths": {
+            "main": 31,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_32",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_32",
+          "lengths": {
+            "main": 32,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_33",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_33",
+          "lengths": {
+            "main": 33,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_63",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_63",
+          "lengths": {
+            "main": 63,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_64",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_64",
+          "lengths": {
+            "main": 64,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_65",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_65",
+          "lengths": {
+            "main": 65,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_127",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_127",
+          "lengths": {
+            "main": 127,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_length_128",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_length_128",
+          "lengths": {
+            "main": 128,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_holes_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_holes_1",
+          "lengths": {
+            "main": 1,
+            "extra": 512
+          },
+          "padding": {
+            "main": "holes"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_all_negative_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_all_negative_1",
+          "lengths": {
+            "main": 1,
+            "extra": 512
+          },
+          "padding": {
+            "main": "all_negative"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_holes_128",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_holes_128",
+          "lengths": {
+            "main": 128,
+            "extra": 512
+          },
+          "padding": {
+            "main": "holes"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__main_all_negative_128",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "main_all_negative_128",
+          "lengths": {
+            "main": 128,
+            "extra": 512
+          },
+          "padding": {
+            "main": "all_negative"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_0",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_0",
+          "lengths": {
+            "main": 128,
+            "extra": 0
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_1",
+          "lengths": {
+            "main": 128,
+            "extra": 1
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_2",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_2",
+          "lengths": {
+            "main": 128,
+            "extra": 2
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_31",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_31",
+          "lengths": {
+            "main": 128,
+            "extra": 31
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_32",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_32",
+          "lengths": {
+            "main": 128,
+            "extra": 32
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_33",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_33",
+          "lengths": {
+            "main": 128,
+            "extra": 33
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_63",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_63",
+          "lengths": {
+            "main": 128,
+            "extra": 63
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_64",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_64",
+          "lengths": {
+            "main": 128,
+            "extra": 64
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_65",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_65",
+          "lengths": {
+            "main": 128,
+            "extra": 65
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_127",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_127",
+          "lengths": {
+            "main": 128,
+            "extra": 127
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_128",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_128",
+          "lengths": {
+            "main": 128,
+            "extra": 128
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_129",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_129",
+          "lengths": {
+            "main": 128,
+            "extra": 129
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_255",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_255",
+          "lengths": {
+            "main": 128,
+            "extra": 255
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_256",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_256",
+          "lengths": {
+            "main": 128,
+            "extra": 256
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_257",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_257",
+          "lengths": {
+            "main": 128,
+            "extra": 257
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_511",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_511",
+          "lengths": {
+            "main": 128,
+            "extra": 511
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_length_512",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_length_512",
+          "lengths": {
+            "main": 128,
+            "extra": 512
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_holes_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_holes_1",
+          "lengths": {
+            "main": 128,
+            "extra": 1
+          },
+          "padding": {
+            "extra": "holes"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_all_negative_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_all_negative_1",
+          "lengths": {
+            "main": 128,
+            "extra": 1
+          },
+          "padding": {
+            "extra": "all_negative"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_holes_512",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_holes_512",
+          "lengths": {
+            "main": 128,
+            "extra": 512
+          },
+          "padding": {
+            "extra": "holes"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__extra_all_negative_512",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "extra_all_negative_512",
+          "lengths": {
+            "main": 128,
+            "extra": 512
+          },
+          "padding": {
+            "extra": "all_negative"
+          }
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__all_branches_empty",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "all_branches_empty",
+          "lengths": {
+            "main": 0,
+            "extra": 0
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__independent_0_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "independent_0_1",
+          "lengths": {
+            "main": 0,
+            "extra": 1
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__independent_1_0",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "independent_1_0",
+          "lengths": {
+            "main": 1,
+            "extra": 0
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__independent_1_1",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "independent_1_1",
+          "lengths": {
+            "main": 1,
+            "extra": 1
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c760fb832ac1dab2__independent_33_65",
+      "shape": {
+        "q": [
+          1,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        },
+        "runtime_profile": {
+          "id": "independent_33_65",
+          "lengths": {
+            "main": 33,
+            "extra": 65
+          },
+          "padding": {}
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "c32f44dd1fec318b",
+      "shape": {
+        "q": [
+          2,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          2,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          2
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          2,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          2
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 2,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "cfa168c1bd189127",
+      "shape": {
+        "q": [
+          4,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          4,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          4
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          4,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          4
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 4,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "9408e284b70a83a7",
+      "shape": {
+        "q": [
+          8,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          8,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          8
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          8,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          8
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 8,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "2bd718354a9dcbbd",
+      "shape": {
+        "q": [
+          16,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          16,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          16
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          16,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          16
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 16,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "e56661a2159d3b2d",
+      "shape": {
+        "q": [
+          32,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          32,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          32
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          32,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          32
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 32,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "aa123e819c7af598",
+      "shape": {
+        "q": [
+          64,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          64,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          64
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          64,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          64
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 64,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "e672a8817244fc78",
+      "shape": {
+        "q": [
+          128,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          128,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          128
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          128,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          128
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 128,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "bb345ce68f35b8eb",
+      "shape": {
+        "q": [
+          256,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          256,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          256
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          256,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          256
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 256,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "b39f0a3acc6005a0",
+      "shape": {
+        "q": [
+          512,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          512,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          512
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          512,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          512
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 512,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "02943faf621559cd",
+      "shape": {
+        "q": [
+          1024,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          1024,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          1024
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          1024,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          1024
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 1024,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "1813d568f5049509",
+      "shape": {
+        "q": [
+          2048,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          2048,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          2048
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          2048,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          2048
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 2048,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "07092d17a7177890",
+      "shape": {
+        "q": [
+          4096,
+          1,
+          64,
+          512
+        ],
+        "kv_cache": [
+          2019,
+          256,
+          1,
+          584
+        ],
+        "sparse_indices": [
+          4096,
+          1,
+          128
+        ],
+        "sparse_lens": [
+          4096
+        ],
+        "extra_kv_cache": [
+          201836,
+          64,
+          1,
+          584
+        ],
+        "extra_sparse_indices": [
+          4096,
+          1,
+          512
+        ],
+        "extra_sparse_lens": [
+          4096
+        ],
+        "sinks": [
+          64
+        ]
+      },
+      "dtype": "{\"extra_kv_cache\": \"float8_e4m3fn\", \"extra_sparse_indices\": \"int32\", \"extra_sparse_lens\": \"int32\", \"kv_cache\": \"float8_e4m3fn\", \"q\": \"bfloat16\", \"sinks\": \"float32\", \"sm_scale\": \"float32\", \"sparse_indices\": \"int32\", \"sparse_lens\": \"int32\"}",
+      "params": {
+        "axes": {
+          "query_length": 1,
+          "heads": 64,
+          "head_dim": 512,
+          "page_size": 256,
+          "one": 1,
+          "packed_width": 584,
+          "topk": 128,
+          "extra_page_size": 64,
+          "extra_topk": 512,
+          "batch": 4096,
+          "extra_pages": 201836,
+          "pages": 2019
+        },
+        "scalars": {
+          "sm_scale": 0.04419417382415922
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    }
+  ]
+}

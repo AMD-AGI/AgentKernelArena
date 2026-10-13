@@ -31,6 +31,8 @@ def _outcome_fields(result: Dict[str, Any]) -> Dict[str, Any]:
         "delivery_status": delivery if delivery in ("COMPLETE", "INCOMPLETE", "NOT_ACCEPTED") else None,
         "agent_execution_status": status if status in ("COMPLETED", "FAILED", "NOT_RUN") else None,
         "candidate_changed": changed if type(changed) is bool else None,
+        "optimization_outcome": result.get('optimization_outcome') if result.get('optimization_outcome') in
+            {'unchanged', 'unchanged_computation', 'accepted_change', 'rejected_change', 'not_accepted', 'incomplete'} else None,
     }
 
 
@@ -207,6 +209,7 @@ def _build_general_report_lines(
         lines.append(
             f"         Agent: {outcome['agent_execution_status'] or 'N/A'}"
             f"  Source changed: {_acceptance_label(outcome['candidate_changed'])}"
+            f"  Optimization: {outcome['optimization_outcome'] or 'N/A'}"
         )
         if task["error"]:
             lines.append(f"         Error: {task['error']}")
@@ -796,6 +799,7 @@ def export_task_results_csv(
             "Delivery Status": outcome["delivery_status"] or "N/A",
             "Agent Execution": outcome["agent_execution_status"] or "N/A",
             "Candidate Changed": _acceptance_label(outcome["candidate_changed"]),
+            "Optimization Outcome": outcome['optimization_outcome'] or 'N/A',
             "Optimization_summary": optimization_summary.strip(),
         })
 
@@ -804,7 +808,7 @@ def export_task_results_csv(
             f,
             fieldnames=["Task Name", "Task Type", "Measurement", "Score", "Speedup", "Status",
                         "Candidate Accepted", "Delivery Status", "Agent Execution",
-                        "Candidate Changed", "Optimization_summary"]
+                        "Candidate Changed", "Optimization Outcome", "Optimization_summary"]
         )
         writer.writeheader()
         writer.writerows(rows)

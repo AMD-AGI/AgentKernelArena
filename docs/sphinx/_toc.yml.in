@@ -37,6 +37,8 @@ subtrees:
       title: Add a task
     - file: how-to/e2e-kernel-tasks
       title: Optimize kernels through serving throughput
+    - file: how-to/sikl-task-builder
+      title: Generate tasks from SIKL data
     - file: how-to/task-validator
       title: Validate tasks
     - file: how-to/quality-loop

@@ -21,6 +21,7 @@ import yaml
 
 from agents import register_agent
 from agents.prompt_input import prompt_input
+from agents.stream_log import StreamLog
 from .report_schema import finalize_report
 from .trusted_evidence import load_task_evidence
 from .validation_prompt import build_validation_prompt
@@ -57,6 +58,7 @@ def _run_backend(cmd: list[str], *, backend: str, workspace: str, timeout_second
         raise RuntimeError(f"Command {cmd[0]!r} not found; install/authenticate the validator backend")
     # Only argv metadata is logged here; never interpolate shell commands.
     logger.info("Launching validator backend %s in %s", backend, workspace)
+    event_log = StreamLog(workspace, "validator-" + backend, logger, env=env)
     process = subprocess.Popen(cmd, stdin=stdin, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, errors="replace", cwd=workspace,
                                env=env, bufsize=1, start_new_session=True)
@@ -66,28 +68,30 @@ def _run_backend(cmd: list[str], *, backend: str, workspace: str, timeout_second
 
     def read_stream(stream, output, is_stdout):
         try:
-            for line in stream:
-                output.append(line.rstrip("\n"))
-                if is_stdout:
-                    try:
-                        event = json.loads(line)
-                    except ValueError:
-                        continue
-                    if not isinstance(event, dict):
-                        continue
-                    kind = event.get("type")
-                    if backend == "codex":
-                        if kind in ("turn.failed", "thread.failed", "error"):
-                            failed.set()
-                        elif kind == "turn.completed":
-                            completed.set()
-                    elif kind == "result":
-                        if event.get("is_error") is True or event.get("subtype") != "success":
-                            failed.set()
-                        else:
-                            completed.set()
-                    if kind in ("turn.completed", "turn.failed", "result"):
-                        logger.info("Validator %s event: %s", backend, kind)
+            with event_log.open("stdout" if is_stdout else "stderr") as record:
+                for raw in stream:
+                    line = record(raw)
+                    output.append(line.rstrip("\n"))
+                    if is_stdout:
+                        try:
+                            event = json.loads(line)
+                        except ValueError:
+                            continue
+                        if not isinstance(event, dict):
+                            continue
+                        kind = event.get("type")
+                        if backend == "codex":
+                            if kind in ("turn.failed", "thread.failed", "error"):
+                                failed.set()
+                            elif kind == "turn.completed":
+                                completed.set()
+                        elif kind == "result":
+                            if event.get("is_error") is True or event.get("subtype") != "success":
+                                failed.set()
+                            else:
+                                completed.set()
+                        if kind in ("turn.completed", "turn.failed", "result"):
+                            logger.info("Validator %s event: %s", backend, kind)
         finally:
             stream.close()
 
@@ -106,7 +110,7 @@ def _run_backend(cmd: list[str], *, backend: str, workspace: str, timeout_second
         raise
     for reader in readers:
         reader.join(timeout=5)
-    error = None
+    error = event_log.error
     if any(reader.is_alive() for reader in readers):
         # A child holding a pipe open is still this invocation's process. It must
         # not leak work into the next task even if the CLI parent already exited.
@@ -234,6 +238,10 @@ def _resolve_backend_settings(
         run_agent = {}
 
     def _value(name: str, default: Any) -> Any:
+        # Explicit null selects the backend's own default. In particular a
+        # Codex run must not inherit a Claude model from the validator defaults.
+        if name in ("model", "effort") and name in run_agent:
+            return run_agent[name] or None
         configured = run_agent.get(name)
         return default if configured in (None, "") else configured
 
@@ -296,7 +304,11 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         context_path = None
         context_file_hash = None
         if is_v2:
-            request_id = uuid.uuid4().hex
+            request_id = eval_config.pop("_task_validation_controller_request_id", None)
+            if request_id is None:
+                request_id = uuid.uuid4().hex
+            if not isinstance(request_id, str) or not request_id.strip():
+                raise ValueError("Framework validation request ID must be a nonempty string")
             eval_config["_task_validation_request_id"] = request_id
             context_path = eval_config.get("_task_validation_context") or os.environ.get("ARENA_VALIDATION_CONTEXT")
             if not isinstance(context_path, str) or not context_path:

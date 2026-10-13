@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "patches": [
+    {
+      "module": "sglang.srt.layers.layernorm",
+      "symbol": "rms_norm",
+      "file": "rmsnorm.py",
+      "callable": "rms_norm"
+    },
+    {
+      "module": "sglang.srt.layers.layernorm",
+      "symbol": "fused_add_rms_norm",
+      "file": "rmsnorm.py",
+      "callable": "fused_add_rms_norm"
+    }
+  ]
+}

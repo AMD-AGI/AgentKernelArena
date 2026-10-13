@@ -1,0 +1,130 @@
+{
+  "cases": [
+    {
+      "test_case_id": "m2048_e128_k4_normal",
+      "shape": [
+        2048,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "rows": 2048,
+        "experts": 128,
+        "topk": 4,
+        "distribution": "normal"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m32768_e128_k4_normal",
+      "shape": [
+        32768,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "rows": 32768,
+        "experts": 128,
+        "topk": 4,
+        "distribution": "normal"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m65536_e128_k4_normal",
+      "shape": [
+        65536,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "rows": 65536,
+        "experts": 128,
+        "topk": 4,
+        "distribution": "normal"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m1_e64_k2_ties",
+      "shape": [
+        1,
+        64
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "rows": 1,
+        "experts": 64,
+        "topk": 2,
+        "distribution": "ties"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m31_e64_k1_normal",
+      "shape": [
+        31,
+        64
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "rows": 31,
+        "experts": 64,
+        "topk": 1,
+        "distribution": "normal"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m33_e256_k8_negative",
+      "shape": [
+        33,
+        256
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "rows": 33,
+        "experts": 256,
+        "topk": 8,
+        "distribution": "negative"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "m257_e128_k4_ties",
+      "shape": [
+        257,
+        128
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "rows": 257,
+        "experts": 128,
+        "topk": 4,
+        "distribution": "ties"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    }
+  ]
+}

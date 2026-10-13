@@ -29,18 +29,22 @@ tasks fail, nor a prediction about another runtime image.
 
 Commit `329bc9861f7199c4df4d6fc0fc0eb16353cfe995` specifically identifies
 `gemm_a16w16_nt_n4096_k2048` among tasks rejected by reference replay checking,
-and reports repeat-call disagreements at `m_1` and `m_8`. Only that named task
-retains `correctness_policy: diagnostic` on this historical basis. The other
-16 GEMM tasks use `required` pending task-specific GPU evidence; the aggregate
-count alone is not sufficient to declare their deviations known.
+and reports repeat-call disagreements at `m_1` and `m_8`. That historical
+report supports a diagnostic policy for the named task only; the aggregate
+count alone cannot establish a known deviation for any other task. Subsequent
+task-specific GPU evidence is recorded, where available, in the "Production
+baseline numerical evidence" section below. The current policy and its evidence
+are declared in this task's `config.yaml`; do not infer them from the historical
+family-wide count. Tasks with `correctness_policy: required` must pass baseline
+correctness, while `diagnostic` retains only the documented numerical exception.
 
 These commit messages are provenance, not fresh GPU validation. The actual
 runtime must record every case's comparison, executed baseline source hash,
 package versions and dispatch. A passing comparison is always reported PASS.
 A mismatch is reported FAIL with its real evidence; only a completed finite
 `numerical_mismatch` may use the configured diagnostic exception. Crashes,
-shape/dtype errors and nonfinite outputs never qualify. Baseline replay keeps
-its full verdict under `metadata.replay_correctness`. Unknown deviations need
+shape/dtype errors and nonfinite outputs never qualify. The baseline's timed
+output check keeps its full verdict under `metadata.timed_output_correctness`. Unknown deviations need
 GPU evidence and a justified policy update, not automatic reclassification.
 Candidate correctness and candidate replay have no diagnostic exception.
 
@@ -56,6 +60,10 @@ The builder receives shape arguments only, once per case, and returns a callable
 launch. Prepare compilation, shape-dependent tile choices and reusable scratch
 in the builder. Every launch must compute the complete operator on the supplied
 current tensor contents; it must not cache answers or alter input tensors.
+State kept across launches may be derived only from the weights (for example a
+one-time re-layout keyed on the weight tensor); it must never be derived from
+activations, routing or outputs. Recognizing inputs seen before and returning a
+stored or partial result games the measurement; it is not an optimization.
 All 13 variable-axis sizes (1 through 4096, powers of two) are scored. Tiling,
 fusion, split reductions and per-shape dispatch are implementation choices.
 
@@ -122,10 +130,18 @@ unchanged workload warmup, repetition and target duration. Preparation and input
 allocation occur outside timing; the timed callable is the complete operator
 invocation, including its device work and output/scratch use. Graph timing is
 preferred; event fallback is recorded and the framework checks that baseline
-and candidate timing methods match. The actual timed invocation is replayed
-with freshly initialized inputs and poisoned outputs, then checked against a
-new reference using the original comparator. Input mutation, nonfinite output,
-missing work or runtime failures cannot be treated as numerical diagnostics.
+and candidate timing methods match. Each sample times one logical invocation;
+calls are never batched into one capture. Before each sample, outside timing,
+the call-varying operand `a` is overwritten in place with one of several
+draws from the bundle's initializer, while the weight `b` stays fixed. Draw seeds come from the operating system when
+the case is timed. After the samples, the timed unit runs once over each of
+several further draws it has never read, timed like a sample, and the fastest
+of those may take at most `UNSEEN_DRAW_MARGIN` (in `scripts/task_measure.py`)
+times the reported mean. The outputs of randomly chosen reported samples and
+of every unseen-draw invocation are compared, with the original comparator,
+against the reference on the draw each one consumed, and the weights and loaded
+operands must be unchanged afterwards. Input mutation, nonfinite output, missing
+work or runtime failures cannot be treated as numerical diagnostics.
 No timing from an instrumented sanitizer build may become an official score.
 
 A task does not require any agent-specific driver or environment variable.
@@ -183,6 +199,58 @@ validation. The fixture checks' exact/FP32 rounding bounds do not alter the
 original candidate tolerances or scored workload data.
 
 ## Production baseline numerical evidence
+
+### Current pinned-image reproduction
+
+On 2026-09-30, MI355X/gfx950 job `181463` completed all 13 cases with
+`lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`.
+The baseline correctness action reported seven finite numerical mismatches,
+all at M=4 through M=256; every output contract passed. The complete action
+is captured in `validation_report.yaml` under `checks.correctness.result`.
+Its `validation_request_id` is `585be829078d479a87dfc432eccff2e8` and its
+`task_evidence_sha256` is
+`d348f93a19259fd33563c0bf15a1b060dda4a5e39bae8e7aaffebdb51bf32e5d`.
+
+| M | Status | Elements outside gate | Max absolute error | Dispatch |
+| ---: | --- | ---: | ---: | --- |
+| 1 | PASS | 0 | 0 | skinny |
+| 2 | PASS | 0 | 0.5 | skinny |
+| 4 | FAIL | 193 | 2 | flydsl |
+| 8 | FAIL | 394 | 2 | flydsl |
+| 16 | FAIL | 807 | 2 | flydsl |
+| 32 | FAIL | 1659 | 3 | flydsl |
+| 64 | FAIL | 2730 | 4 | flydsl |
+| 128 | FAIL | 6662 | 2 | flydsl |
+| 256 | FAIL | 9520 | 2 | flydsl |
+| 512 | PASS | 0 | 1 | torch |
+| 1024 | PASS | 0 | 1 | torch |
+| 2048 | PASS | 0 | 1 | torch |
+| 4096 | PASS | 0 | 1 | torch |
+
+The graph benchmark completed all 13 cases and retained seven numerical
+replay diagnostics; benchmark integrity passed. The overall validator result
+was **WARN**, because it could not independently retrieve the older action
+cited below. These observations do not claim a clean validator pass, a correct
+baseline kernel, or an implemented candidate.
+
+To reproduce, select only this task in a `task_validator` run configuration,
+set `target_gpu_model: MI355X`, and run `make docker-run CONFIG=<run-config>`
+with `AKA_DOCKER_IMAGE` set to the pinned image above. The framework materializes
+the task and its canonical helper and captures the declared actions. Inside
+that materialized GPU workspace, `python3 scripts/evaluate.py baseline correctness`
+uses workload seed 0 and emits all 13 per-case comparisons; a nonzero exit and
+numerical FAIL records are expected for this baseline. Baseline performance
+uses fresh secret draws, so its per-element mismatch counts need not repeat.
+
+The diagnostic policy is justified by completed finite numerical failures in
+the current action, with preserved output-contract and candidate checks. The
+historical count below describes a different image and is not a required count
+for a new run. Inspect the current action's case coverage, dispatch, output
+contracts and original comparator results; an old report is not needed to
+establish those current observations. Any missing case, execution failure or
+invalid output contract still fails the task.
+
+### Historical observation on a different image
 
 On 2026-09-15, MI355X/gfx950 job `139315`, `validator-07` ran every original
 case under image `sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93`

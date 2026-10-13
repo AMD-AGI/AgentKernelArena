@@ -736,9 +736,16 @@ as documentation; they do not qualify any task on GPU.
 
 An e2e task uses the same seven schema-v2 actions and `arena-eval-v1` envelope.
 Declare `evaluation.measurement` with `kind: serving`, a relative `runtime_lock`,
-3–20 fixed `pairs`, and optionally a positive `max_p99_tpot_ms`. The host-owned
+3–100 fixed `pairs`, an optional `minimum_speedup_ratio` (finite and at least 1),
+and optionally a positive `max_p99_tpot_ms`. The gain threshold caps positive
+ratios below that cutoff at 1.0 for scoring while preserving raw measurements. The host-owned
 runtime reconstructs each action in a fresh pinned container. Only this declared
 measurement accepts `serving_wall_clock`; kernel tasks retain device timing.
+The model-wide serving adapter uses `candidate.language: gpu` to allow the
+implementation backends available in its pinned image, and an editable source
+tree with a compute-replacement manifest. This does not grant permission to
+change runtime settings or the protected harness. A task that requires a specific
+backend should continue to declare that backend explicitly.
 See [e2e task setup, budget and evidence requirements](e2e-kernel-tasks.md).
 Imported benchmark YAML without a task `config.yaml` is catalog data and is not
 an executable or qualified task.

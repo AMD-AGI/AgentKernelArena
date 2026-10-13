@@ -1,0 +1,25 @@
+schema_version: 2
+description: Optimize topk_routing while preserving the full workload and independent correctness checks.
+instructions: [README.md]
+kernel_identity:
+  logical_operator: topk_routing
+  source_owner: triton-lang/triton
+candidate:
+  language: triton
+  initial_state: implemented
+  initial_language: triton
+  editable:
+  - path: source/kernel.py
+    scope: symbols
+    symbols: [get_topmask_and_fullmask, fpval_to_key, key_to_fpval, indx_to_key, key_to_indx, streaming_topk, _topk_forward]
+    allow_new_helpers: true
+baseline:
+  kind: initial_candidate
+  language: triton
+  correctness_policy: required
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: workloads.json
+  timeout_s: 1800
+platform_support:
+  required_arch: gfx950

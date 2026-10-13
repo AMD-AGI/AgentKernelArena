@@ -70,3 +70,19 @@ observer exception rejects the measurement and leaves the collector unbound.
 Serving tasks use the same workspace materialization mechanism for the canonical
 client adapter in `src/tools/perf/serving.py`. They declare a separate wall-clock measurement
 contract; this does not change device-timing rules for kernel tasks.
+`serving_bundle.py` is the task-local source for multi-file compute replacement,
+source hashing and execution evidence. It is materialized beside the adapter;
+do not edit the generated `_aka_serving_bundle.py` copies.
+To check the results of the reported samples themselves, set
+`timed_run.after_sample` to a callback accepting the sample's outputs (the
+captured outputs under CUDA-graph timing, the return value under Event timing).
+The helper invokes it after each reported sample's end event has completed,
+outside the measured interval, and never during warmup, capture, estimation,
+graph priming, `rerun()` or `rerun_ms()`. It must only read the outputs. The
+check happens after the sample has run, so nothing the implementation observes
+while running distinguishes a checked sample from an unchecked one -- unlike a
+separate post-timing invocation whose inputs or outputs were prepared for it.
+
+`timed_run.rerun_ms()` executes the timed unit once more through the reported
+sample path (preparation, start event, invocation, end event) and returns its
+device time, under both timing methods.

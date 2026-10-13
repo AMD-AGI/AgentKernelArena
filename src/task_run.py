@@ -157,7 +157,7 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
 
 
 def validate_task_session(session: TaskSession, *, eval_config: dict, task_config_dir: str,
-                          agent_launcher) -> dict:
+                          agent_launcher, validation_request_id: str | None = None) -> dict:
     """Provide identical trusted initial evidence to main and quality_loop."""
     from agents.task_validator.report_schema import finalize_report, validation_report_is_complete
 
@@ -167,7 +167,10 @@ def validate_task_session(session: TaskSession, *, eval_config: dict, task_confi
     context_path = session.state_directory / "validation_context.json"
     trusted_context = session.validation_context()
     eval_config.update(_task_id=session.spec.task_id, _task_validation_context=str(context_path))
-    eval_config["_task_validation_request_id"] = uuid.uuid4().hex
+    eval_config["_task_validation_request_id"] = validation_request_id or uuid.uuid4().hex
+    # Consumed once by the launcher. Direct repeated launcher calls still get
+    # fresh IDs, while an outer controller can bind this exact attempt.
+    eval_config["_task_validation_controller_request_id"] = eval_config["_task_validation_request_id"]
     environment = {"ARENA_EVAL_PHASE": "task_validation", "ARENA_VALIDATION_CONTEXT": str(context_path)}
     error = None
     try:
@@ -202,9 +205,15 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
 
     spec = load_task_spec(Path(task_config_dir), task_id=task_name)
     policy = budget_policy(eval_config)
+    if policy and "final_evaluation_pairs" in policy and measurement_kind(spec.to_mapping()) != "serving":
+        raise ValueError("final_evaluation_pairs applies only to serving tasks")
     if policy is None and measurement_kind(spec.to_mapping()) == "serving":
         # Refuse before any workspace, baseline or model work is spent.
         raise ValueError("Serving tasks require budget.task_wall_time_s and budget.final_evaluation_reserve_s")
+    from .candidate_verification import policy as review_policy, bind_policy
+    review = review_policy(eval_config, serving=measurement_kind(spec.to_mapping()) == 'serving')
+    if agent.value != 'task_validator':
+        bind_policy(_budget_path(run_directory, task_name).with_suffix('.verification.json'), review)
     record = open_budget(_budget_path(run_directory, task_name), policy)
     arguments = dict(eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
                      task_name=task_name, task_config_dir=task_config_dir, run_directory=run_directory,
@@ -261,7 +270,10 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     from .measurement import measurement_kind
     if initial.accepted and measurement_kind(config) == "serving":
         from .run_budget import reserve_from_validation
-        budget_record = reserve_from_validation(budget_record, session)
+        from .candidate_verification import policy as review_policy
+        review = None if agent.value == 'task_validator' else review_policy(eval_config, serving=True)
+        budget_record = reserve_from_validation(budget_record, session,
+            verification_seconds=review['timeout_seconds'] if review else 0)
         _json_file(_budget_path(run_directory, task_name), budget_record)
     harness = session.harness
     agent_config = {**eval_config, "_task_id": task_name,
@@ -303,6 +315,7 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         logger=logger, result_metadata={"agent_execution": agent_result, "process_sweep": sweep})
     accepted = all(result.get(key) is True for key in (
         "pass_compilation", "pass_correctness", "pass_tool_gate", "benchmark_method_consistent", "workload_consistent"))
+    accepted = accepted and result.get("pass_verification", True) is True
     accepted = accepted and result.get("best_optimized_execution_time", 0) > 0
     # Leftover processes taint any measurement; serving tasks additionally need
     # a container the framework could sweep at all.
@@ -318,6 +331,12 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     if any(row.get("candidate_unchanged") is False or row.get("protected_state_unchanged") is False
            for row in exports):
         result["candidate_accepted"] = False
+    changed = agent_result['candidate_changed']
+    result['optimization_outcome'] = ('unchanged' if changed is False else
+        'accepted_change' if changed is True and result['candidate_accepted'] else
+        'rejected_change' if changed is True else 'incomplete')
+    if result.get('candidate_verification', {}).get('implementation_changed') is False:
+        result['optimization_outcome'] = 'unchanged_computation' if result['candidate_accepted'] else 'not_accepted'
     (workspace / "task_result.yaml").write_text(yaml.safe_dump(result, sort_keys=False))
     _json_file(state / "completion.json", _completion_record(session, agent.value))
     return True, workspace
