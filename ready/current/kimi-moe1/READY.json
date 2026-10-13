@@ -1,10 +1,12 @@
 {
   "schema": "current-scoped-ready-entry-v1",
-  "status": "COMPLETE_GATES_PUBLISHED_PENDING_ROOT_SCOPED_READINESS_APPROVAL",
+  "status": "SCOPED_TASK_READINESS_VERIFIED_BY_INDEPENDENT_FULL_JOIN",
   "task": "headkernel/kimi-k3__moe_gemm1_stage1",
-  "ready": false,
-  "ready_tasks": [],
-  "root_scoped_readiness_approval": "PENDING",
+  "ready": true,
+  "ready_tasks": [
+    "headkernel/kimi-k3__moe_gemm1_stage1"
+  ],
+  "root_scoped_readiness_approval": "APPROVED_FOR_EXACT_EXECUTION_SCOPE",
   "completed_gates": true,
   "qualified_task_base": "18bb4d67bea577f6951f51a95cf524c9c425f952",
   "task_tree": "d9af79a96a8c3b8abe8fe00246502255981c20f0",
@@ -120,5 +122,19 @@
     "member_manifest_sha256": "272c5c5ff208ea56ac861683d0768d349dc380d312f3e3bf6715d24be5a42b3d",
     "qualification_sha256": "6a6b5c5d182a7391ead1f4e1207f7b004f737ca23d89fb1208d6276fe469bf9b",
     "source_pins_sha256": "ab4a35db30a41298eecac1ea02cc6f0e241ffd203a59834c206c116e52272090"
+  },
+  "qualification_basis": "exact_execution_with_framework_overlay",
+  "root_review": {
+    "status": "APPROVED_FOR_EXACT_EXECUTION_SCOPE",
+    "authority": "parent root",
+    "recorded_utc": "2026-10-13T01:51:09+00:00",
+    "reviewed_documentation_commit": "ae035becbfe818523bb5ba699691a55d0c629620",
+    "scope": "The three recorded Kimi MoE1 cases at 18bb4d67 plus the explicit framework prompt overlay, using both complete job 210191 gates.",
+    "reviewed_independent_audit_sha256": "95c3228bae7653b27ab3ce5545105adb3f53e59b5c5752e1c206e57ed7567393",
+    "reviewed_OCI_readback_receipt_sha256": "040fd87304d82dff50af20cb35d560d84a5e48c8a72417134f006430492e9cdc",
+    "immutable_publication_readiness_approval_state": "PENDING",
+    "immutable_publication_receipts_rewritten": false,
+    "accepted_gain": false,
+    "model_serving_qualification_claimed": false
   }
 }

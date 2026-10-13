@@ -488,10 +488,10 @@
       "capture_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
       "framework": "sglang",
       "primary_target": "sglang_v0520",
-      "task_compatibility": "completed_exact_gates_pending_root_scoped_readiness_approval",
-      "ready": false,
-      "framework_qualified": false,
-      "trusted_retest_qualified": false,
+      "task_compatibility": "scoped_qualification_approved_at_named_execution_identity",
+      "ready": true,
+      "framework_qualified": true,
+      "trusted_retest_qualified": true,
       "workload": "sg520_64x8192x1024_c64_tp8",
       "source_run": "kimi-served-194550",
       "target_callable": "aiter.ops.flydsl.moe_kernels:flydsl_moe_stage1",
@@ -518,7 +518,7 @@
       },
       "preparation_protocol": "trusted_task_v1",
       "scoped_qualification": {
-        "status": "COMPLETE_GATES_PUBLISHED_PENDING_ROOT_SCOPED_READINESS_APPROVAL",
+        "status": "APPROVED_SCOPED_TASK_READINESS",
         "task_execution_base": "18bb4d67bea577f6951f51a95cf524c9c425f952",
         "framework_execution_base": "18bb4d67bea577f6951f51a95cf524c9c425f952",
         "framework_prompt_overlay_sha256": "cf563f6152e1a667754d7808c478a7a7c012e101f706636473d68579b12b5df6",
@@ -529,10 +529,11 @@
         "case_count": 3,
         "framework_gate_complete": true,
         "trusted_gate_complete": true,
-        "root_scoped_readiness_approval": "PENDING",
+        "root_scoped_readiness_approval": "APPROVED_FOR_EXACT_EXECUTION_SCOPE",
         "accepted_gain": false,
         "model_serving_qualification_claimed": false,
-        "new_GPU_execution_at_documentation_base": false
+        "new_GPU_execution_at_documentation_base": false,
+        "qualification_basis": "exact_execution_with_framework_overlay"
       }
     },
     {
@@ -1217,7 +1218,7 @@
   "source_refreshed_qwen_task_count": 5,
   "fixture_preparation_task_count": 23,
   "historical_ready_subset_count": 5,
-  "unfinished_task_count": 15,
+  "unfinished_task_count": 14,
   "tasks_without_historical_ready_receipt_count": 18,
   "consolidation": {
     "branch": "head-kernels-top5",

@@ -2,8 +2,8 @@
 
 The three captured Kimi MoE stage 1 cases have complete trusted and framework
 gates on job **210191**, with independent verification and immutable OCI evidence.
-**Root approval of scoped readiness is pending.** These gates are not yet added
-to the branch's completed-task count.
+**Scoped readiness is approved for these three cases at the exact execution
+identities below.**
 
 Both gates retain the task base
 `18bb4d67bea577f6951f51a95cf524c9c425f952`, task tree
@@ -13,6 +13,8 @@ finite-session prompt overlay
 That overlay requires awaiting configured commands and finishing the draft
 report; it changes no task, case, sample count or numerical criterion.
 [READY.json](READY.json) pins the completed executions and publication.
+It records the later root approval; the immutable OCI receipts retain their
+original pending-approval status at publication time.
 [INPUT-PINS.json](INPUT-PINS.json) retains all 307 task input identities and the
 explicit framework overlay.
 

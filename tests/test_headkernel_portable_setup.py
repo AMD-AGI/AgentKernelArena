@@ -113,11 +113,13 @@ class PortableSetupTests(unittest.TestCase):
         self.assertEqual(self.catalog['refresh_scope']['excluded_models'], [])
         self.assertEqual(len(self.catalog['refresh_scope']['models']), 5)
         self.assertFalse(self.catalog['ready'])
-        qualified = [row for row in rows if row.get('scoped_qualification')]
+        qualified = [row for row in rows if row.get('scoped_qualification', {}).get('status')
+                     == 'APPROVED_SCOPED_TASK_READINESS']
         self.assertEqual({row['task'] for row in qualified}, {
             'headkernel/deepseek-v4-pro__unified_paged_attention_prefill',
             'headkernel/minimax-m3__gemm_afp4wfp4_kernel',
             'headkernel/kimi-k3__lean_attention_decode',
+            'headkernel/kimi-k3__moe_gemm1_stage1',
             'headkernel/qwen3.8-2.4t__gemma_fused_add_rmsnorm',
             'headkernel/qwen3.8-2.4t__paged_attention_decode',
             'headkernel/qwen3.8-2.4t__fused_recurrent_gated_delta_rule_decode',
@@ -125,16 +127,49 @@ class PortableSetupTests(unittest.TestCase):
             'headkernel/qwen3.8-2.4t__dense_bf16_gemm_cluster',
         })
         for row in rows:
-            approved = 'scoped_qualification' in row
+            approved = row in qualified
             for flag in ('ready', 'framework_qualified', 'trusted_retest_qualified'):
                 self.assertEqual(row[flag], approved)
             if not approved:
                 continue
             evidence = row['scoped_qualification']
             receipt = json.loads((ROOT / evidence['receipt']).read_text())
-            review = json.loads((ROOT / evidence['compatibility_review']).read_text())
             self.assertIn(row['task'], receipt['ready_tasks'])
             self.assertTrue((ROOT / evidence['guide']).is_file())
+            self.assertFalse(evidence['accepted_gain'])
+            self.assertFalse(evidence['model_serving_qualification_claimed'])
+            if evidence.get('qualification_basis') == 'exact_execution_with_framework_overlay':
+                self.assertEqual(evidence['qualification_basis'], receipt['qualification_basis'])
+                self.assertEqual(evidence['task_execution_base'], receipt['qualified_task_base'])
+                self.assertEqual(evidence['framework_execution_base'], receipt['framework_execution_base'])
+                self.assertEqual(evidence['trusted_execution_commit'], receipt['trusted_execution_commit'])
+                self.assertEqual(evidence['task_execution_base'], evidence['framework_execution_base'])
+                self.assertEqual(evidence['task_execution_base'], evidence['trusted_execution_commit'])
+                overlay = receipt['framework_overlays']['agents/task_validator/validation_prompt.py']
+                self.assertEqual(evidence['framework_prompt_overlay_sha256'], overlay['sha256'])
+                self.assertRegex(overlay['sha256'], r'^[0-9a-f]{64}$')
+                self.assertNotEqual(overlay['sha256'], overlay['base_sha256'])
+                pins_path = ROOT / evidence['input_pins']
+                self.assertEqual(hashlib.sha256(pins_path.read_bytes()).hexdigest(), receipt['input_pins_sha256'])
+                pins = json.loads(pins_path.read_text())
+                self.assertEqual(pins['framework_overlays'], receipt['framework_overlays'])
+                self.assertEqual(pins['source_commit'], receipt['qualified_task_base'])
+                self.assertEqual(pins['entry_count'], len(pins['entries']))
+                self.assertEqual(pins['entry_count'], receipt['framework']['input_entries'])
+                self.assertEqual(pins['entry_count'], receipt['trusted']['input_entries_per_phase'])
+                review = receipt['root_review']
+                self.assertEqual(review['status'], 'APPROVED_FOR_EXACT_EXECUTION_SCOPE')
+                self.assertEqual(evidence['root_scoped_readiness_approval'], review['status'])
+                self.assertEqual(review['reviewed_independent_audit_sha256'],
+                                 receipt['publication']['independent_review_sha256'])
+                self.assertEqual(review['reviewed_OCI_readback_receipt_sha256'],
+                                 receipt['publication']['readback_receipt_sha256'])
+                self.assertEqual(review['immutable_publication_readiness_approval_state'], 'PENDING')
+                self.assertFalse(review['immutable_publication_receipts_rewritten'])
+                self.assertFalse(evidence['new_GPU_execution_at_documentation_base'])
+                self.assertFalse(receipt['old_partial_phases_used'])
+                continue
+            review = json.loads((ROOT / evidence['compatibility_review']).read_text())
             self.assertEqual(evidence['framework_execution_commit'], receipt['qualified_framework_commit'])
             self.assertEqual(evidence['trusted_execution_commit'], receipt['qualified_trusted_commit'])
             reviewed_commit = review.get('compatible_checkout_commit', review.get('current_commit'))
@@ -143,8 +178,6 @@ class PortableSetupTests(unittest.TestCase):
                              evidence['framework_execution_commit'] == reviewed_commit)
             self.assertEqual(evidence['new_trusted_retest_at_compatible_checkout'],
                              evidence['trusted_execution_commit'] == reviewed_commit)
-            self.assertFalse(evidence['accepted_gain'])
-            self.assertFalse(evidence['model_serving_qualification_claimed'])
             self.assertFalse(evidence['strict_snapshot_verifier_acceptance_changed'])
         historical = [row for row in rows if 'historical_ready_receipt' in row]
         self.assertEqual(len(historical), 5)
