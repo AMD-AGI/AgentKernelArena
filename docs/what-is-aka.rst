@@ -46,7 +46,7 @@ AgentKernelArena includes the following key features.
 * **Docker-first runtime**: Experiments execute inside pinned ROCm/SGLang
   Docker images selected from the target GPU architecture.
 * **Task categories**: HIP (``hip2hip``), CUDA-to-HIP (``cuda2hip``), Triton
-  (``triton2triton``, ``instruction2triton``), Torch-to-HIP (``torch2hip``),
+  (``triton2triton``), Torch-to-HIP (``torch2hip``),
   Torch/Triton-to-FlyDSL (``torch2flydsl``, ``triton2flydsl``), FlyDSL
   (``flydsl2flydsl``), and production-operator-to-FlyDSL
   (``operator2flydsl``), plus image-backed kernels (``image_kernel``).

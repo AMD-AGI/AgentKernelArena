@@ -75,7 +75,7 @@ For a bounded smoke campaign:
 ```bash
 make docker-quality-loop \
   CONFIG=example_configs/quality_loop_mi300.yaml \
-  QUALITY_LOOP_ARGS="--tasks hip2hip/gpumode/GELU triton2triton/vllm/triton_rms_norm"
+  QUALITY_LOOP_ARGS="--tasks hip2hip/GELU triton2triton/vllm/triton_rms_norm"
 ```
 
 Resume with the run ID printed in `quality_loop_runs/`:
@@ -145,7 +145,7 @@ These are historical run settings, not new defaults.
 
 | Task | Initial validator | Independent review | Measured candidate outcome |
 | --- | --- | --- | --- |
-| `hip2hip/gpumode/GELU` | Framework-finalized PASS | Accepted | Original candidate retained; 1.001x |
+| `hip2hip/GELU` | Framework-finalized PASS | Accepted | Original candidate retained; 1.001x |
 | `torch2hip/gpumode/14539_GELU` | Framework-finalized PASS | Accepted | New HIP implementation; 0.893x |
 
 The audit reparsed 28 task-action stdout envelopes, verified four session contexts

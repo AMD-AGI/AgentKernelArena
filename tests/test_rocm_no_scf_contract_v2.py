@@ -13,8 +13,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-TASKS = ['instruction2triton/rocmbench/test_gemm_no_scf',
-         'triton2triton/rocmbench/medium/test_gemm_no_scf']
+TASKS = ['triton2triton/rocmbench/medium/test_gemm_no_scf']
 
 
 def load(path):
@@ -227,29 +226,7 @@ def test_fp32_oracle_is_not_rounded_to_half_before_comparison(task):
 
 
 # Stable expectations; no Git history needed in CI.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/test_gemm_no_scf': {'decorators': {'calculate_gemm_no_scf_gbps': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                        'calculate_gemm_no_scf_tflops': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                        'gemm_no_scf_triton_wrapper': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                        'is_hip': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                        'matmul_no_scf_kernel': '6978ec5d24aebd8ab58b32e8b910203a142e1c6a3159d082fd6c7179b0c8dc04',
-                                                                        'set_seed': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                        'test_gemm_no_scf': 'd8f19f3a2223d6821c34ba693a265c486e716edcfafb1deb92d708deda454327',
-                                                                        'test_performance': '8cd711a1611d993b3a80c766347378269ddc11824bfd4193881bfee12ee49b7b',
-                                                                        'test_save_performance_results': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
-                                                                        'test_save_results': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6'},
-                                                         'files': {'config.yaml': '4021d5e191c8e5aa4ab7f03b2e163e62fae90d7134e9cf6a48bd2fc127ba00fe',
-                                                                   'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
-                                                         'functions': {'calculate_gemm_no_scf_gbps': '46d8366a0efc2d55546c836a2ac7d4e0cd5fc28984aa0249d39472d9e90b39d8',
-                                                                       'calculate_gemm_no_scf_tflops': 'e00fdd0e78c2c271389fd816e7f9de2cf2777aae30804f51fea99b82972e789b',
-                                                                       'gemm_no_scf_triton_wrapper': 'a437ee2551e874aedd438934cb6a8446bfd3e3ecff97b4f9e562a76c348d8272',
-                                                                       'is_hip': '18a1484321fc6773db7fa5328ed8ad9af0261147caf1ed9d9ef3be4d42408c57',
-                                                                       'matmul_no_scf_kernel': '97cb9773c82c8f4bcb267f0bb024d94e795d0154e55283f6a01f5cb41a7313ff',
-                                                                       'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                                       'test_performance': 'ed3bc5f30244aec77a3d79f53cab766816dab3e652410629ab1f0cd90767a774',
-                                                                       'test_save_performance_results': 'e75049a8bfa70933554c63918336d2909e576a9a7940225ed7fa3c50aad1b8d9',
-                                                                       'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8'},
-                                                         'rows': '490ac51a96dfb8b58482eb4430f3c6994d52eb7c89991e5841e2a63b68bb6bcf'},
- 'tasks/triton2triton/rocmbench/medium/test_gemm_no_scf': {'decorators': {'calculate_gemm_no_scf_gbps': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
+ORIGINAL = {'tasks/triton2triton/rocmbench/medium/test_gemm_no_scf': {'decorators': {'calculate_gemm_no_scf_gbps': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
                                                                           'calculate_gemm_no_scf_tflops': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
                                                                           'gemm_no_scf_triton_wrapper': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',
                                                                           'is_hip': '3543b4693a36a1098850b8bc928887694ed59a6deb7d3dfd0339de01f55a77b6',

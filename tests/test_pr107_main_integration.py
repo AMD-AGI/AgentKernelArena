@@ -194,7 +194,7 @@ def test_native_mla_candidate_macros_cannot_change_host_harness(tmp_path):
     import subprocess
     compiler = shutil.which('g++')
     if not compiler: pytest.skip('C++ preprocessor unavailable')
-    source = ROOT / 'tasks/hip2hip/others/mla_decode'
+    source = ROOT / 'tasks/hip2hip/mla_decode'
     task = tmp_path / 'task'
     shutil.copytree(source, task)
     include = tmp_path / 'include/hip'
@@ -411,8 +411,8 @@ def test_refk_protected_inputs_preserve_generator_bytes_and_strides(shape):
     assert torch.equal(result, torch.tensor([[17.], [58.5]], dtype=torch.bfloat16))
 
 
-@pytest.mark.parametrize('family', ['instruction2triton/rocmbench', 'triton2triton/rocmbench/hard'])
-def test_moe_preparation_hoists_device_scalar_without_changing_launch(family):
+@pytest.mark.parametrize('family', ['triton2triton/rocmbench/hard'])
+def test_retained_moe_preparation_hoists_device_scalar_without_changing_launch(family):
     import functools
     import subprocess
     path = f'tasks/{family}/moe_gemm/moe_gemm.py'

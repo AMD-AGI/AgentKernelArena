@@ -336,7 +336,7 @@ def _infer_backend(task_config: dict[str, Any]) -> str:
         "<src>2<dst>" pair, so their explicit ``kernel_kind`` wins when present;
         otherwise ``repository_language`` describes the editable source language.
       * Snippet tasks are "<source>2<target>" (triton2triton, cuda2hip,
-        torch2hip, flydsl2flydsl, operator2flydsl, instruction2triton, ...); the
+        torch2hip, flydsl2flydsl, operator2flydsl, ...); the
         optimized kernel is in the TARGET language, i.e. the part after the last
         '2'.
 

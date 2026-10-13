@@ -43,7 +43,7 @@ Run the single-task Claude Code quickstart for the physical GPU.
 A successful `task_result.yaml` looks like:
 
 ```yaml
-task_name: hip2hip/gpumode/GELU
+task_name: hip2hip/GELU
 pass_compilation: true
 pass_correctness: true
 base_execution_time: 1.82
@@ -110,7 +110,7 @@ agent:
   template: task_validator
 
 tasks:
-  - hip2hip/others/my_new_kernel
+  - hip2hip/my_new_kernel
 
 target_gpu_model: MI300
 log_directory: logs
@@ -136,7 +136,7 @@ agent:
   template: claude_code
 
 tasks:
-  - hip2hip/gpumode
+  - hip2hip
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -181,7 +181,7 @@ agent:
   template: task_validator
 
 tasks:
-  - hip2hip/gpumode
+  - hip2hip
 
 target_gpu_model: MI355X
 log_directory: logs

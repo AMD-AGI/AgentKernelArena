@@ -2,7 +2,7 @@
 # Agent & Task Configuration
 # ============================================================================
 
-# Curated 60-task benchmark example for Cursor Agent on MI355X (gfx950).
+# Curated 54-task benchmark example for Cursor Agent on MI355X (gfx950).
 # For a first run, use one of the quickstart_claude_*.yaml examples instead.
 
 # Agent Template Selection
@@ -18,31 +18,31 @@ agent:
 #   - hip2hip                              # All tasks under hip2hip
 #   - triton2triton                        # All tasks under triton2triton
 #   - torch2hip                            # All tasks under torch2hip
-#   - hip2hip/gpumode/NormalAttention_dot  # single task under hip2hip
+#   - hip2hip/NormalAttention_dot  # single task under hip2hip
 #   - all                                  # Run ALL available tasks
 
 tasks:
-  # hip2hip: 20 tasks (18 from gpumode, 2 from others)
-  - hip2hip/gpumode/CrossEntropyLossLabelSmoothing
-  - hip2hip/gpumode/Feedforward
-  - hip2hip/gpumode/FusedLeakyReLU
-  - hip2hip/gpumode/GateGRUSelectionLayer
-  - hip2hip/gpumode/GELU
-  - hip2hip/gpumode/InnerProd
-  - hip2hip/gpumode/ItemQueryAttention
-  - hip2hip/gpumode/KDLoss
-  - hip2hip/gpumode/layer_normalization
-  - hip2hip/gpumode/MaskedLanguageModel
-  - hip2hip/gpumode/MLP_model
-  - hip2hip/gpumode/MultiHeadAttention
-  - hip2hip/gpumode/NormalAttention_dot
-  - hip2hip/gpumode/NormalAttention_embedded_gaussian
-  - hip2hip/gpumode/PositionWiseFeedForward
-  - hip2hip/gpumode/Sigmoid
-  - hip2hip/gpumode/SiLU
-  - hip2hip/gpumode/TransformerFFNLayer
-  - hip2hip/others/assign_score_withk
-  - hip2hip/others/ball_query
+  # hip2hip: 20 tasks
+  - hip2hip/CrossEntropyLossLabelSmoothing
+  - hip2hip/Feedforward
+  - hip2hip/FusedLeakyReLU
+  - hip2hip/GateGRUSelectionLayer
+  - hip2hip/GELU
+  - hip2hip/InnerProd
+  - hip2hip/ItemQueryAttention
+  - hip2hip/KDLoss
+  - hip2hip/layer_normalization
+  - hip2hip/MaskedLanguageModel
+  - hip2hip/MLP_model
+  - hip2hip/MultiHeadAttention
+  - hip2hip/NormalAttention_dot
+  - hip2hip/NormalAttention_embedded_gaussian
+  - hip2hip/PositionWiseFeedForward
+  - hip2hip/Sigmoid
+  - hip2hip/SiLU
+  - hip2hip/TransformerFFNLayer
+  - hip2hip/assign_score_withk
+  - hip2hip/ball_query
 
   # triton2triton/vllm: 10 tasks
   - triton2triton/vllm/triton_awq_dequantize
@@ -80,18 +80,11 @@ tasks:
   - torch2hip/gpumode/14539_GELU
   - torch2hip/gpumode/16636_SiLU
 
-  # instruction2triton/rocmbench: 10 tasks
-  - instruction2triton/rocmbench/gemm
-  - instruction2triton/rocmbench/layernorm
-  - instruction2triton/rocmbench/moe_gemm
-  - instruction2triton/rocmbench/multreduce_matmul_dot_kernel
-  - instruction2triton/rocmbench/naive_softmax
-  - instruction2triton/rocmbench/rmsnorm_bwd
-  - instruction2triton/rocmbench/rmsnorm_fwd
-  - instruction2triton/rocmbench/softmax
-  - instruction2triton/rocmbench/test_flashattention_fwd
-  - instruction2triton/rocmbench/test_gemm_fusion
-
+  # Distinct ROCmBench tasks retained from the former instruction selection: 4
+  - triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel
+  - triton2triton/rocmbench/hard/rmsnorm_bwd
+  - triton2triton/rocmbench/hard/test_flashattention_fwd
+  - triton2triton/rocmbench/hard/test_gemm_fusion
 
 target_gpu_model: MI355X # MI300 or MI355X
 log_directory: logs

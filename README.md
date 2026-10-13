@@ -83,12 +83,11 @@ AgentKernelArena/
 ├── tasks/
 │   ├── hip2hip/
 │   ├── triton2triton/
-│   ├── instruction2triton/
 │   ├── torch2hip/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
-│   ├── Aiter-task/                 # Production GEMM and MoE to FlyDSL
+│   ├── Aiter-task/                 # Production GEMM, MoE, mHC, top-k and MLA to FlyDSL
 │   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
@@ -142,13 +141,12 @@ for tested CLI/model versions, run-level overrides, and the scope of live checks
 | --- | --- |
 | `hip2hip` | Optimize an existing HIP implementation |
 | `triton2triton` | Optimize an existing Triton implementation |
-| `instruction2triton` | Implement a Triton kernel from a specification |
 | `torch2hip` | Replace a PyTorch reference with a HIP implementation |
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL implementation |
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
 | `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
-| `Aiter-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
+| `Aiter-task` | Reimplement production BF16 and blockwise-scaled FP8 GEMM, MXFP4 MoE, fused mHC, paged top-k and sparse flash MLA operators in FlyDSL |
 
 These names organize task selection; the candidate and evaluation declarations
 determine behavior. Every retained suite uses the unified task contract in
@@ -218,7 +216,7 @@ The following configurations provide starting points for supported runtimes:
 | `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | One DeepSeek Harness GELU task on MI300/MI300X; requires the pinned CLI and API key. |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | One DeepSeek Harness GELU task on MI355X; see [setup](agents/deepseek_harness/README.md). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 54-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
 quickstart. On another GPU, pass the matching configuration explicitly; for
@@ -244,8 +242,12 @@ architectures differ. To create a custom experiment, copy an example and edit
 the copy:
 
 ```bash
-cp example_configs/quickstart_claude_mi300.yaml my_experiment.yaml
+cp example_configs/quickstart_claude_mi300.yaml config_experiment.yaml
 ```
+
+Keep this local `config_*.yaml` copy untracked; the repository ignores that
+pattern. Commit reusable examples only after the
+[repository cleanliness checks](CONTRIBUTING.md#repository-cleanliness-before-committing).
 
 For Codex and Claude Code, the run config's `agent` mapping can override
 `model`, `effort`, `max_iterations`, and `timeout_seconds` from the selected
@@ -257,7 +259,7 @@ For a Cursor, Claude Code, Codex, or task-validator config, verify only the
 selected first-class host CLI (the validator resolves to its configured backend):
 
 ```bash
-CONFIG_PATH=my_experiment.yaml
+CONFIG_PATH=config_experiment.yaml
 make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
@@ -329,12 +331,18 @@ The `Aiter-task` suite was previously named `SIKL-task`. Update custom selectors
 to `Aiter-task/...`. This rename changes task IDs and report grouping; start a
 new run with the new selectors, since existing runs retain their original IDs.
 
+HIP tasks now live directly under `hip2hip/`; their former `gpumode/`, `others/`,
+and `vllm/` grouping directories are gone. The redundant
+`instruction2triton/rocmbench/` selections were removed in favor of the
+registered `triton2triton/rocmbench/` tasks. The distinct flip task is now
+`triton2triton/rocmbench/test_triton_flip`. These moves change task IDs, so use
+new selectors for new runs; existing reports keep their historical IDs.
+
 ```yaml
 tasks:
-  - hip2hip/gpumode
+  - hip2hip
   - triton2triton/vllm
   - triton2triton/rocmbench
-  - instruction2triton/rocmbench
   - torch2hip
   - torch2flydsl
   - triton2flydsl
@@ -368,7 +376,7 @@ files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
 for the canonical schema, examples, command/result contracts, baseline and
 candidate lifecycle, optional sanitizers, and migration instructions.
 
-All 438 retained tasks declare schema v2 and task-owned evaluation actions.
+All retained tasks declare schema v2 and task-owned evaluation actions.
 GPU qualification and agent campaign results are tracked separately from that
 migration. Task-family directory names remain useful selectors; no family has
 a separate configuration schema.
@@ -429,3 +437,25 @@ report interpretation.
 - Expand standardized private held-out coverage.
 - Support heterogeneous agent configurations within one multi-GPU experiment.
 - Continue expanding task coverage across the supported kernel environments.
+
+## Citation
+
+If you use AgentKernelArena in your research, please cite our paper:
+
+```bibtex
+@misc{younesian2026agentkernelarena,
+  title = {{AgentKernelArena}: Generalization-Aware Benchmarking of {GPU} Kernel Optimization Agents},
+  author = {Sharareh Younesian and Wenwen Ouyang and Sina Rafati
+            and Mehdi Rezagholizadeh and Sharon Zhou and Ji Liu
+            and Yue Liu and Yuchen Yang and Hao Li and Ziqiong Liu
+            and Dong Li and Vikram Appia and Zhenyu Gu and Emad Barsoum},
+  year = {2026},
+  eprint = {2605.16819},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.CL},
+  url = {https://arxiv.org/abs/2605.16819}
+}
+```
+
+For reproducibility, please also report the commit hash or release,
+task selection, hardware, and evaluation configuration used in your experiments.
