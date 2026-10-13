@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # CPU fixture for audited Hyperloom 0425bde3, not the runtime's source of truth.
 # Production launch uses the actual registry returned by the source-pinned probe.
 KNOWN_BACKENDS = {'aiter', 'ck', 'flydsl', 'fusion', 'gluon', 'hip', 'hipblaslt', 'triton'}
-EXPLICITLY_UNSUPPORTED = {'tilelang': 'No native backend in the pinned KernelForge release'}
+EXPLICITLY_UNSUPPORTED = {
+    'tilelang': 'No native backend in the pinned KernelForge release',
+    'gpu': 'No backend-neutral whole-model backend in the pinned KernelForge release',
+}
 
 
 def test_every_task_is_validated_and_its_forge_capability_is_explicit():
@@ -43,7 +46,7 @@ def _config(language='triton'):
             'evaluation': {'runner': ['python3', 'evaluate.py']}}
 
 
-@pytest.mark.parametrize('language', ['hip', 'triton', 'flydsl', 'tilelang'])
+@pytest.mark.parametrize('language', ['hip', 'triton', 'flydsl', 'tilelang', 'gpu'])
 def test_v2_backend_is_declared_language(language):
     assert _infer_backend(_config(language)) == language
 
@@ -56,9 +59,10 @@ def test_invalid_v2_contract_is_not_recovered_using_legacy_hints(changes):
         _infer_backend({**_config(), **changes})
 
 
-def test_capability_check_uses_reported_registry_without_aliases():
-    spec = TaskSpec.from_mapping(_config('tilelang'), task_id='arbitrary/operator')
-    with pytest.raises(ForgeRunError, match='has no tilelang backend'):
+@pytest.mark.parametrize('language', ['tilelang', 'gpu'])
+def test_capability_check_uses_reported_registry_without_aliases(language):
+    spec = TaskSpec.from_mapping(_config(language), task_id='arbitrary/operator')
+    with pytest.raises(ForgeRunError, match=f'has no {language} backend'):
         require_supported_backend(spec, {'backends': ['flydsl', 'triton']})
     # If a future audited upstream actually supplies it, preserve its name.
-    assert require_supported_backend(spec, {'backends': ['tilelang']}) == 'tilelang'
+    assert require_supported_backend(spec, {'backends': [language]}) == language

@@ -23,6 +23,11 @@ pool: `[[0, 1], [2, 3]]` creates two workers with two GPUs each. Group size must
 match every selected task's runtime lock. Overlap and unallocated devices fail.
 The same mapping applies to Docker and Slurm/Spur entrypoints.
 
+Whole-model tasks declare the backend-neutral `candidate.language: gpu` contract.
+Use an integration that accepts it, such as the direct Codex/Claude Code agents
+or GEAK. The pinned Forge engine has no generic `gpu` backend and rejects these
+tasks explicitly; selecting a narrower language would change the task contract.
+
 `budget.task_wall_time_s` is the per-task wall budget (86400 or 172800 for 24 or
 48 hours), including setup and final evaluation. Its absolute deadline is saved
 outside the candidate and retained on resume. The agent receives the remaining
