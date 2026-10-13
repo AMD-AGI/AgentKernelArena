@@ -35,7 +35,8 @@ Do not commit `_aka_benchmark.py` or `hip_graph_benchmark.hpp` copies under
 workspace, or `make materialize-perf-task TASK=tasks/...` for local inspection.
 
 See `docs/reference/benchmark-methodology.md` for measurement and fairness
-rules, including paired graph/Event baseline selection.
+rules, including paired graph/Event baseline selection and the opt-in
+cold-weight timing of `benchmark_cuda_graph_cold_weights_samples()`.
 
 ## Observing measured outputs
 

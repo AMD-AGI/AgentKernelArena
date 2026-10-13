@@ -18,7 +18,11 @@ from .task_spec import ACTIONS, BaselineSpec
 RESULT_PREFIX = "ARENA_EVAL_RESULT="
 PROTOCOL = "arena-eval-v1"
 IDENTITY_FIELDS = ("shape", "dtype", "params")
-TIMING_METHODS = {"cuda_graph", "cuda_event_fallback"}
+# cuda_graph_cold_weights is the opt-in decode timing of
+# benchmark_cuda_graph_cold_weights_samples(). One CUDA graph calls the operator
+# once per distinct weight copy and reports the replay time divided by the copy
+# count. src/testcases.py compares it only with itself.
+TIMING_METHODS = {"cuda_graph", "cuda_event_fallback", "cuda_graph_cold_weights"}
 
 
 class TaskProtocolError(ValueError):

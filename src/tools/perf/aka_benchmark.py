@@ -1195,10 +1195,150 @@ def benchmark_cuda_graph_or_events(
     return sum(samples) / len(samples), metadata
 
 
+COLD_WEIGHTS_METHOD = "cuda_graph_cold_weights"
+
+
+def cold_weight_copy_count(
+    weight_bytes: int,
+    rotate_bytes: int = 1 << 30,
+    min_copies: int = 8,
+) -> int:
+    """Number of distinct weight copies one cold-weight replay walks through.
+
+    Enough copies that together they span at least ``rotate_bytes`` (default
+    1 GiB, well above the L2 and MALL of current Instinct parts), and never
+    fewer than ``min_copies``. Each call in the replay then reads a weight the
+    caches no longer hold, the way one decode step reads each layer's weight
+    once from HBM.
+    """
+
+    weight_bytes, rotate_bytes, min_copies = int(weight_bytes), int(rotate_bytes), int(min_copies)
+    # Clamping a zero weight size to one byte would ask for about a billion
+    # copies, so sizes that cannot describe a weight raise instead.
+    if weight_bytes <= 0 or rotate_bytes <= 0 or min_copies < 2:
+        raise ValueError(
+            "cold-weight timing needs weight_bytes > 0, rotate_bytes > 0 and min_copies >= 2"
+        )
+    return max(min_copies, -(-rotate_bytes // weight_bytes))
+
+
+def benchmark_cuda_graph_cold_weights_samples(
+    calls: Any,
+    warmup: int = 10,
+    repetition: int = 100,
+    prepare_fn: Callable[[], Any] | None = None,
+    timed_run: Any | None = None,
+) -> tuple[list[float], dict[str, Any]]:
+    """Time one call per weight copy in a single CUDA graph and report per call.
+
+    ``calls`` holds one zero-argument callable per weight copy. Each callable must
+    run the complete operator on its own copy of the persistent operands. One graph
+    is captured that invokes every callable once, in order, and each reported
+    sample is that replay's device time divided by ``len(calls)``. Because the
+    copies together exceed the caches, every call reads its weight from HBM, and
+    the fixed per-replay cost (launch of the graph, its first kernel's ramp) is
+    shared by all calls instead of being charged to a single one.
+
+    ``prepare_fn`` and ``timed_run`` behave as in
+    :func:`benchmark_cuda_graph_or_events_samples`: preparation runs before the
+    start event of every replay, ``timed_run.outputs`` is the list of the
+    per-call outputs the captured graph writes, ``after_sample`` receives that
+    list, and ``rerun_ms`` returns the per-call time of one more replay.
+
+    This mode has no event fallback: event timing would charge host dispatch to
+    every call. A capture failure, an empty capture or an invalid replay raises.
+    """
+
+    if timed_run is not None:
+        timed_run._bind(None, None)
+    observer, after_observer = _sample_observers(timed_run)
+    _require_gpu_timing()
+    calls = list(calls)
+    if not calls or not all(callable(call) for call in calls):
+        raise ValueError("cold-weight timing needs one callable per weight copy")
+    if os.environ.get(_FORCE_EVENT_ENV) == "1":
+        raise RuntimeError(
+            "cold-weight timing requires CUDA-graph replay, and "
+            f"{_FORCE_EVENT_ENV}=1 selects event timing, which it does not support"
+        )
+    warmup = max(0, int(warmup))
+    repetition = _positive_int(repetition)
+    copies = len(calls)
+
+    def sequence() -> list[Any]:
+        return [call() for call in calls]
+
+    # One eager pass lets a lazy builder compile or load every specialization
+    # outside capture, as the single-invocation warm-up does.
+    if prepare_fn is not None:
+        prepare_fn()
+    sequence()
+    torch.cuda.synchronize()
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    holder: list[Any] = []
+    try:
+        graph = _capture_graph(sequence, 1, stream, prepare_fn=prepare_fn,
+                               output_holder=holder)
+    except _EmptyGraphCapture as exc:
+        raise RuntimeError(f"cold-weight timing: {exc}") from exc
+    captured_output = holder[0] if holder else None
+    # Warm-up replays also prime the graph executable outside the samples.
+    _graph_replay_samples(graph, stream, samples=max(1, warmup),
+                          calls_per_replay=copies, prepare_fn=prepare_fn)
+    observation_kwargs: dict[str, Any] = {}
+    if observer is not None:
+        observation_kwargs["before_sample"] = observer
+    if after_observer is not None:
+        observation_kwargs["after_sample"] = lambda: after_observer(captured_output)
+    values = _graph_replay_samples(graph, stream, samples=repetition,
+                                   calls_per_replay=copies, prepare_fn=prepare_fn,
+                                   **observation_kwargs)
+    if not values or any(
+        not math.isfinite(value) or value < _EMPTY_GRAPH_FLOOR_MS / copies
+        for value in values
+    ):
+        raise RuntimeError("cold-weight timing: empty or invalid CUDA-graph replay")
+    metadata: dict[str, Any] = {
+        "benchmark_method": COLD_WEIGHTS_METHOD,
+        "benchmark_samples": repetition,
+        "benchmark_warmup": warmup,
+        "benchmark_effective_repeats": copies,
+        "benchmark_calls_per_replay": copies,
+        "benchmark_cold_weight_copies": copies,
+    }
+    if timed_run is not None:
+        def _replay_once() -> Any:
+            stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(stream):
+                if prepare_fn is not None:
+                    prepare_fn()
+                graph.replay()
+            torch.cuda.synchronize()
+            return captured_output
+
+        def _replay_once_timed() -> tuple[Any, float]:
+            stream.wait_stream(torch.cuda.current_stream())
+            elapsed_ms = _graph_replay_samples(
+                graph, stream, samples=1, calls_per_replay=copies,
+                prepare_fn=prepare_fn,
+            )[0]
+            torch.cuda.synchronize()
+            return captured_output, elapsed_ms
+
+        timed_run._bind(_replay_once, captured_output, _replay_once_timed)
+        metadata["benchmark_timed_run_kind"] = "captured_graph"
+    return values, metadata
+
+
 __all__ = [
+    "COLD_WEIGHTS_METHOD",
     "TimedRun",
     "benchmark_cuda_event_samples",
     "benchmark_cuda_graph_or_events",
+    "benchmark_cuda_graph_cold_weights_samples",
     "benchmark_cuda_graph_or_events_samples",
+    "cold_weight_copy_count",
     "hip_source_graph_capture_policy",
 ]
