@@ -37,6 +37,18 @@ modes. The source snapshot was unchanged during publication.
 Readback-receipt SHA-256:
 `7b2ff5f2e5f933cd159e1bb50d53c2acc8ff40de66fbab674cf330196ba486ef`.
 
+The later [CPU resume-witness supplement](oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261013/campaign-progress/minimax-m3__decode_score_kernel/resume-admission-j211888-PARTIAL_NOT_QUALIFIED-20261013T1014Z/SUPPLEMENT.json)
+records independent review PASS (`ac4374bc`) and successful source admission,
+with **six complete units and ten pending**. Its unchanged-code configuration
+remains **execution-disabled**; partial phase reuse is disallowed. Any resumed
+GPU work requires a fresh usable, disjoint lease, fresh source admission and
+terminal histories, and an **explicit root grant**. The supplement's
+[full OCI readback](oci:ocieobject1/sapmajum/AgentKernelArena/headkernel_sg520_completion/20261013/campaign-progress/minimax-m3__decode_score_kernel/resume-admission-j211888-PARTIAL_NOT_QUALIFIED-20261013T1014Z/OCI-VERIFIED.json)
+verified **eight objects and 49 archive members**, while the earlier ten-object
+publication remained unchanged. This CPU review adds no qualification or gain.
+The supplement receipt SHA-256 is
+`a5e5e563caf4bd6f77ba1b17515308f97afa04d9c8995beedf27d6e5c69f6945`.
+
 ## Execution limits and campaign tooling
 
 The scheduler records for Burst jobs 211562, 211621 and 211888 show **00:20:00**
