@@ -75,8 +75,11 @@ and biases outside timing, poison output and replay the same measured call.
 Restore all inputs afterwards. The prepared function, padded output allocation,
 fixed metadata,10external warmups/100samples, diagnostic reference10warmups and
 graph policy are unchanged. No metadata construction moves into timed work.
-The unchanged source uses older FlyDSL APIs; record its pinned compatible image
-in full GPU qualification, and do not infer support for another runtime.
+The task-local `flydsl_compat` package supplies the removed buffer helpers on
+FlyDSL 0.3.2 and selects the installed helpers on older runtimes. MLIR type
+construction uses the current scalar type properties. The bounded
+store descriptor, original five workloads, numerical gate and timing scope are
+unchanged. Runtime compatibility requires fresh GPU qualification.
 
 
 The candidate audit permits the original launch-metadata calculation: slices

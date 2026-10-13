@@ -78,3 +78,14 @@ outputs through the canonical collector, with checks outside timed windows.
 Candidate-only dispatch auditing permits preparation allocations/copies/views,
 requires a FlyDSL runtime launch, and rejects AITER/operator compute shortcuts;
 reference and baseline calls cannot satisfy the candidate launch requirement.
+
+The action adapter reports the measured Event settings under
+`metadata.device_timing` and derives `metadata.timed_output_checked` from the
+harness's measured-output check. This lets the validator establish that graph
+replay is not applicable without changing numerical or timing checks.
+
+Candidate code must not inspect or mutate the evaluator's loaded Python modules,
+function internals, frames, or tracing hooks. The dependency check rejects module
+registry access and dynamic introspection before candidate import, including
+aliased imports. This protects the comparator from the known module-state bypass;
+it does not make same-process Python execution a security sandbox.

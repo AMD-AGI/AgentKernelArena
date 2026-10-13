@@ -1,7 +1,7 @@
 schema_version: 2
 description: "Optimize the FlyDSL Paged Attention Decode FP8 kernel for AMD MI300X GPU.\nThe kernel implements\
   \ paged KV-cache attention decode with FP8 quantized\nkeys/values, MFMA-based dot products, online softmax,\
-  \ multi-partition\nreduce, and supports both one-shot and split-reduce modes.\nYou MUST keep the kernel\
+  \ multi-partition\nreduce. The declared workload uses persistent scheduling with split-partial reduction, a 1027-token context, and no sliding window.\nYou MUST keep the kernel\
   \ in FlyDSL \u2014 do NOT rewrite it in HIP, CUDA, or Triton."
 instructions:
 - README.md

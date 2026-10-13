@@ -114,6 +114,40 @@ def extract_triton_aot(
     if not isinstance(signature, Mapping):
         raise CapsuleValidationError("CompiledKernel source signature is unavailable")
 
+    # ASTSource uses parameter names in newer Triton releases; IRSource and
+    # older releases use indices. Resolve names from the function declaration,
+    # never mapping insertion order (which need not match the launcher ABI).
+    arg_names = getattr(getattr(src, "fn", None), "arg_names", ())
+    if not isinstance(arg_names, (tuple, list)) or any(not isinstance(n, str) for n in arg_names):
+        arg_names = ()
+    if len(set(arg_names)) != len(arg_names):
+        raise CapsuleValidationError("Triton argument names are ambiguous")
+
+    def argument_index(key: Any) -> int:
+        if isinstance(key, str) and key in arg_names:
+            return arg_names.index(key)
+        if isinstance(key, int) and not isinstance(key, bool) and key >= 0:
+            return key
+        if isinstance(key, str) and key.isdecimal():
+            return int(key)
+        raise CapsuleValidationError(f"Triton argument {key!r} has no source position")
+
+    indexed_signature: dict[int, str] = {}
+    for key, value in signature.items():
+        index = argument_index(key)
+        if index in indexed_signature:
+            raise CapsuleValidationError(f"duplicate Triton argument position {index}")
+        indexed_signature[index] = str(value)
+    indexed_constants = {}
+    if not isinstance(constants, Mapping):
+        raise CapsuleValidationError("CompiledKernel source constants are unavailable")
+    for key, value in constants.items():
+        if isinstance(key, tuple):
+            if len(key) != 1:
+                raise CapsuleValidationError("nested Triton constexpr arguments are not supported")
+            key = key[0]
+        indexed_constants[argument_index(key)] = value
+
     dims = tuple(int(v) for v in grid)
     if len(dims) > 3 or not dims:
         raise CapsuleValidationError("Triton grid must have one to three dimensions")
@@ -125,6 +159,8 @@ def extract_triton_aot(
     launch = LaunchSpec(grid3, (num_warps * warp_size, 1, 1), int(_metadata_value(metadata, "shared", 0)))
     launch.validate()
     profile_per_grid = int(_metadata_value(metadata, "profile_scratch_size", 0))
+    if int(_metadata_value(metadata, "global_scratch_size", 0)) != 0:
+        raise CapsuleValidationError("Triton global scratch allocation is not supported by the AOT replay MVP")
     scratch = ScratchSpec(
         global_bytes=0,
         profile_bytes=profile_per_grid * grid3[0] * grid3[1] * grid3[2],
@@ -132,8 +168,8 @@ def extract_triton_aot(
     )
     scratch.validate()
     abi = build_triton_abi(
-        {int(k): str(v) for k, v in signature.items()},
-        constants=constants if isinstance(constants, Mapping) else {},
+        indexed_signature,
+        constants=indexed_constants,
         pointer_bindings=pointer_bindings,
         scalar_values=scalar_values,
     )

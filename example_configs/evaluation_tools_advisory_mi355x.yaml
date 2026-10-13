@@ -27,7 +27,7 @@ workspace_directory_prefix: workspace
 
 evaluation_tools:
   # Replace false with a list such as [gpu_asan, rocjitsu] only after the
-  # selected tasks define matching adapters. `true` enables all four tools and
+  # selected tasks define matching adapters. `true` enables all six tools and
   # is rarely appropriate for a heterogeneous run. Host AKA_EVAL_TOOLS, when
   # set, authoritatively replaces this subset for both sidecar startup and plan.
   enabled: false
@@ -39,7 +39,7 @@ evaluation_tools:
   # AKA_EVAL_TOOL_IMAGE_<TOOL> variable selects each image; the runner resolves
   # and injects its immutable local image ID into the plan automatically.
   # The scoring image must also resolve to the same immutable image ID as the
-  # pinned SGLang gfx950 content-addressed manifest reference; its selected
+  # pinned ROCm 10 SGLang gfx950 content-addressed manifest reference; its selected
   # reference and ID are added to plan source evidence.
   # Do not place positive_control_required or any runtime binary/library/header
   # path in options; those keys are reserved and configuration loading rejects

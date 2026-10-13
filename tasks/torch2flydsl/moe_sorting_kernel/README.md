@@ -75,3 +75,8 @@ plan still corresponds to the original case. Preserve the original10external
 warmups/100samples and graph policy. Candidate operator calls are audited outside
 timing for FlyDSL execution and permitted host preparation. The unchanged source
 uses older FlyDSL APIs; report the pinned compatible runtime used for validation.
+
+The task-local `flydsl_compat` helpers preserve the legacy buffer/vector API
+when the installed FlyDSL no longer supplies it. See `flydsl_compat/SOURCE.md`
+for the pinned upstream source and retained license. Workloads, numerical gates,
+and timing parameters are unchanged.

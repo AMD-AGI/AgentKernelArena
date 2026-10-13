@@ -77,5 +77,11 @@ Validate the last actual measured output against quantized FP32 GEMM/BF16 cast,
 then halve both scale tensors outside timing, poison the old output and rerun
 the same eager callable. Compare the result against the original numerical gate
 and restore inputs. No captured-graph claim is made for this Event invocation.
-The original source imports the older FlyDSL buffer_ops API: qualify it with the
-pinned compatible runtime and record that image digest, not an untested image.
+The task-local `flydsl_compat` helpers preserve the legacy buffer/vector API
+when the installed FlyDSL no longer supplies it. See `flydsl_compat/SOURCE.md`
+for the pinned upstream source and retained license. This does not change
+workloads, numerical gates, or timing parameters.
+
+The performance action exposes the existing measured-output verification and
+Event metadata as `timed_output_checked` and `device_timing` for the validator.
+These fields describe the checks above; they add no timed work.

@@ -86,7 +86,7 @@ def source_state(cfg):
 
 def check_dependencies(paths, final_language=True):
     """Enforce declared implementation dependencies, including from X import Y."""
-    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts"}
+    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts", "inspect", "gc", "builtins", "importlib"}
     backend_seen = False
     for path in paths:
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -106,6 +106,8 @@ def check_dependencies(paths, final_language=True):
                 parts = set(module.split("."))
                 if parts & forbidden:
                     raise ValueError(f"Protected dependency in candidate: {module}")
+                if module in {"sys.modules", "sys._getframe", "sys.settrace", "sys.setprofile"}:
+                    raise ValueError(f"Protected runtime state in candidate: {module}")
                 if final_language and module.split(".")[0] in {"triton", "cupy", "numba", "aiter", "ctypes", "subprocess"}:
                     raise ValueError(f"Final operator must execute FlyDSL, not {module}")
                 backend_seen |= module == "flydsl" or module.startswith("flydsl.")
@@ -114,8 +116,18 @@ def check_dependencies(paths, final_language=True):
             if isinstance(node, ast.Attribute): return dotted(node.value) + "." + node.attr
             return ""
         for node in ast.walk(tree):
+            name = dotted(node)
+            if name in {"sys.modules", "sys._getframe", "sys.settrace", "sys.setprofile"}:
+                raise ValueError(f"Protected runtime state in candidate: {name}")
+            if isinstance(node, ast.Attribute) and node.attr in {
+                "__dict__", "__globals__", "__builtins__", "__code__", "__closure__",
+                "__subclasses__", "__getattribute__", "f_globals", "f_locals", "f_back",
+            }:
+                raise ValueError(f"Runtime introspection is not allowed: {node.attr}")
             if not isinstance(node, ast.Call): continue
             name = dotted(node.func)
+            if name in {"globals", "locals", "vars", "getattr", "setattr", "delattr"}:
+                raise ValueError(f"Dynamic runtime introspection is not allowed: {name}")
             if final_language and (name in {"torch.mm", "torch.bmm", "torch.matmul", "torch.einsum", "torch.softmax", "torch.log_softmax", "torch.layer_norm", "torch.rms_norm"} or name.startswith("torch.nn.functional.")):
                 raise ValueError(f"Library operator shortcut in candidate: {name}")
             if name in {"eval", "exec", "__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:

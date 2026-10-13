@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+import pytest
+
 from src.eval_tools.config import EvalToolsConfig
 from src.eval_tools.contracts import (
     CapabilityCheck,
@@ -169,9 +171,14 @@ def test_repeated_evaluation_cannot_reuse_stale_tool_artifacts(tmp_path):
     assert not (second_dir / "build_attestation.json").exists()
 
 
-def test_runtime_evidence_cannot_be_shadowed_by_config_options(tmp_path):
+@pytest.mark.parametrize("key,value", [
+    ("asan_runtime_dir", "/trusted/sidecar/path"),
+    ("hsa_asan_runtime", "/trusted/libhsa-runtime64.so"),
+    ("asan_extra_library_dirs", ["/trusted/llvm/lib", "/trusted/rocm_sysdeps/lib"]),
+])
+def test_runtime_evidence_cannot_be_shadowed_by_config_options(tmp_path, key, value):
     runtime = FakeRuntime(
-        runtime=CapabilityCheck.ready(asan_runtime_dir="/trusted/sidecar/path")
+        runtime=CapabilityCheck.ready(**{key: value})
     )
     # Configuration parsing rejects this reserved key. Construct the immutable
     # object directly to retain a defense-in-depth assertion on the manager.
@@ -183,7 +190,7 @@ def test_runtime_evidence_cannot_be_shadowed_by_config_options(tmp_path):
                 base.tools[0],
                 options={
                     **dict(base.tools[0].options),
-                    "asan_runtime_dir": "/candidate/path",
+                    key: "/candidate/path",
                 },
             ),
         ),
@@ -193,7 +200,7 @@ def test_runtime_evidence_cannot_be_shadowed_by_config_options(tmp_path):
         task_config=_task(),
         config=config,
     )
-    assert runtime.invocations[0][1].options["asan_runtime_dir"] == "/trusted/sidecar/path"
+    assert runtime.invocations[0][1].options[key] == value
 
 
 def test_capsule_content_is_bound_into_plan_fingerprint(tmp_path):

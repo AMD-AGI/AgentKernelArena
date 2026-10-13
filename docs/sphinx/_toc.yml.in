@@ -57,6 +57,8 @@ subtrees:
       title: Configuration and API reference
     - file: reference/benchmark-methodology
       title: Performance measurement methodology
+    - file: reference/mi355x-runtime
+      title: MI355X runtime and compatibility
     - url: https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html
       title: Hyperloom
 

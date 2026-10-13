@@ -67,9 +67,9 @@ and the attention output negate. Page addresses and lengths stay unchanged.
 Output poisoning, independent reference work and restoration are outside timing.
 All original seeds42+i, ten external warmups and100graph samples remain.
 
-Runtime qualification must bind the exact image. The unchanged source's
-multi-stage pipeline has shown non-finite output for the128-head/lora512case in
-a newer Triton runtime; the original pinned runtime passed all six diagnostic
-cases. Diagnostics alone do not qualify the task. Use a full validator report
-for the selected runtime; do not waive that case, alter its tolerance, or select
-a different baseline implementation after a session has frozen it.
+Runtime qualification must bind the exact image. The gfx950 decode kernel uses
+one pipeline stage: the two-stage schedule produced incorrect and non-finite
+output on the ROCm 10 Triton runtime. The operator, all six workloads and their
+numerical gates remain unchanged. Repeated GPU checks include additional seeds
+for the 128-head/lora512 case. A full validator report is still required for the
+selected runtime; do not change the baseline after a session has frozen it.

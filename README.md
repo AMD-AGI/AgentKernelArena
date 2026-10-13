@@ -167,7 +167,7 @@ The prompt system also recognizes `cuda2hip`; the current bundled task tree does
 - Node.js 22+ and npm when using the alternative npm installation of Claude Code
   (or another npm-installed agent CLI); DeepSeek Harness uses a dedicated
   Node.js 24 prefix as described in [its setup guide](agents/deepseek_harness/README.md)
-- For MI300/MI355X, use the GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses `lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705`
+- For MI300/MI355X, use the GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses the digest-pinned SGLang 0.5.20 / ROCm 10 runtime. See the [runtime compatibility matrix](docs/reference/compatibility-matrix.md) for image selection and task-specific requirements.
 - For RDNA4 `gfx1201`, the runner automatically builds the default [pinned RDNA4 runtime](docker/rdna4/README.md) on first use if it is missing.
 - A supported agent CLI installed and logged in on the host, or the dependencies required by a specialized agent
 

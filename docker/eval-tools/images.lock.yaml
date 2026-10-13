@@ -1,36 +1,41 @@
 schema_version: 1
 
-# The scoring runtime remains unchanged.  Every tool image is an immutable child
-# of this verified MI355X/gfx950 image.
+# Every tool runtime is a child of the same pinned MI355X/gfx950 scoring base.
+# Native rocJITsu build dependencies have a separate builder lock below.
 base:
   gfx950:
-    reference: lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705
-    digest: sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
-    rocm: 7.2.0
+    reference: lmsysorg/sglang:v0.5.20-rocm10-mi35x
+    digest: sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
+    rocm: 10.0.0
+
+# The native C++ engines keep their GCC 13/Ubuntu 22.04 build toolchain.
+# Only installed engines and their C++ runtime libraries enter the ROCm 10
+# sidecars; HIP candidate/control compilation uses the new runtime SDK.
+builders:
+  rocjitsu:
+    reference: lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
 
 tools:
   triton_fpsan:
     triton:
-      version: 3.7.0+amd.rocm7.2.0.gitd0d77a509
-      sha256: 3a8acacdfb4723c8bb71844c427f4d3ce047658bf97fbdc23065c06205231687
-    triton_kernels:
-      version: 1.0.0+amd.rocm7.2.0.gitd0d77a509
-      sha256: df8b42ebf098767c0d31a3916913bd7557a623903aefa26602e7c6818c34b84a
+      version: 3.8.0+git4cff872c.rocm10.0.0
+      source: pinned_base_image
 
   gpu_asan:
+    repository: https://stable.repo.amd.com/rocm/core/packages-asan/ubuntu2404
     packages:
-      rocm-core-asan:
-        version: 7.2.0.70200-43~22.04
-        sha256: 3bd5b98b3ae2cb8fbfd10c248682feb86d0f5136914e7a226b701340f9b90f83
-      comgr-asan:
-        version: 3.0.0.70200-43~22.04
-        sha256: 31118ea2dc79fe9d8c69ad7ff2176a2f1c822128ece604d4438b6c13a1aa3179
-      hsa-rocr-asan:
-        version: 1.18.0.70200-43~22.04
-        sha256: c5d6e48846f6163b5c8d7168949e1c24dc41f69bd871705621b0972c2f1a03cc
-      hip-runtime-amd-asan:
-        version: 7.2.26015.70200-43~22.04
-        sha256: fa56c2192f28adb022dc323d2836dfbe4f12211287575ea27978dc96b10a5300
+      amdrocm-base-asan10.0:
+        version: 10.0.0-4
+        sha256: 030fc18229683369c77e7c9e124dd1b80114e7708a5ba8e86b985b031c2cda96
+      amdrocm-llvm-asan10.0:
+        version: 10.0.0-4
+        sha256: 3f45a0f26b4c9c01741fea8d42dec83f16dae4f754253d09fba32f1c32aec724
+      amdrocm-runtime-asan10.0:
+        version: 10.0.0-4
+        sha256: c23ff5640c087457980d0d8e9edda49b3eb1c2114dd21fe437ffcf5e942fd15b
+      amdrocm-sysdeps-asan10.0:
+        version: 10.0.0-4
+        sha256: ff3c7cecf40d8133692116455266a7c0c02a2bdf5b695fdae746e47e50ff7147
 
   rocjitsu:
     repository: https://github.com/ROCm/rocm-systems.git
@@ -70,5 +75,5 @@ tools:
     image_probe: src/eval_tools/probes/hip_fpsan_probe.hip
 
 verification:
-  gfx950: verified
+  gfx950: qualification_pending
   gfx942: unverified
