@@ -4,6 +4,8 @@ Status for **2026-10-13**: `head-kernels-top5` contains all **23 SG0.5.20 source
 
 Use [HEADKERNELS.md](../../HEADKERNELS.md) for the consolidation sources and [the unified validator config](../../example_configs/headkernel_sg520_current_mi355x.yaml) for task selection. All task paths and five preserved guides are in this branch. The [runtime catalog](../../tools/headkernel-runtime-targets.json) distinguishes current source/runtime selection, historical capture provenance and pending qualification. Its task readiness flags apply only to the linked exact-commit scoped approvals; global readiness remains false for the complete 23-task branch.
 
+The [October 13 campaign progress note](headkernel-progress-20261013.md) records partial MiniMax decode-score checkpoints and interrupted framework work. It is not a ready-task handoff and does not add a completed qualification.
+
 ## Completed October 11 qualifications
 
 These receipts retain the actual GPU execution revision, `7bc14698e1044931a3c893b3dbabc9676b0e57e6`. Their guides identify separately reviewed compatible revisions and the exact input sets each verifier accepts. A later branch tip needs its own compatibility assessment; copying a receipt does not qualify changed code.
