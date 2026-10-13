@@ -442,7 +442,7 @@ class ValidationLauncherTests(unittest.TestCase):
             {"agent": {}},
         )
         hip2hip_prompt = build_validation_prompt(
-            str(repo_root / "tasks/hip2hip/gpumode/SoftmaxModule/config.yaml"),
+            str(repo_root / "tasks/hip2hip/SoftmaxModule/config.yaml"),
             "/tmp/validator-workspace",
             {"agent": {}},
         )

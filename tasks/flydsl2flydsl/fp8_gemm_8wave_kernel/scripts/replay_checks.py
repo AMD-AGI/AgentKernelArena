@@ -55,8 +55,27 @@ def require_unchanged(inputs, originals):
         raise AssertionError("Operator modified a read-only input")
 
 
-def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare):
-    """Check last measured output, then perturb and replay the measured unit.
+def observe_measured_samples(timed, *, inputs, originals, expected, compare):
+    """Check each completed output without changing the timed invocation."""
+    checked = [0]
+
+    def after_sample(output):
+        require_unchanged(inputs, originals)
+        compare(output, expected)
+        checked[0] += 1
+
+    timed.after_sample = after_sample
+    return checked
+
+
+def require_sample_count(checked, metadata, samples):
+    if checked[0] != samples or metadata.get("benchmark_samples") != samples:
+        raise AssertionError("Reported measured samples were not all checked")
+    return {"validated_sample_count": checked[0]}
+
+
+def verify_timed_run(timed, *, inputs, originals, expected, perturbations, reference, compare):
+    """Check last measured output, then replay for each changing operand.
 
     A fresh ordinary correctness invocation cannot substitute for either check.
     Event support must expose the last actual measured output through TimedRun;
@@ -68,19 +87,26 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
         raise RuntimeError("Benchmark did not expose its measured invocation")
     require_unchanged(inputs, originals)
     compare(timed.outputs, expected)
-    try:
-        perturb()
-        changed = tuple(x.detach().clone() for x in inputs)
-        expected_replay = reference()
-        if not isinstance(timed.outputs, torch.Tensor):
-            raise AssertionError("Measured output must be a Tensor")
-        timed.outputs.fill_(float("nan"))
-        actual_replay = timed.rerun()
-        require_unchanged(inputs, changed)
-        compare(actual_replay, expected_replay)
-    finally:
-        # Subsequent diagnostic timings see the original declared input, too.
-        for value, original in zip(inputs, originals):
-            value.copy_(original)
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    if not perturbations:
+        raise ValueError("Replay requires an operand perturbation")
+    checked = []
+    for name, perturb in perturbations:
+        try:
+            perturb()
+            changed = tuple(x.detach().clone() for x in inputs)
+            expected_replay = reference()
+            if not isinstance(timed.outputs, torch.Tensor):
+                raise AssertionError("Measured output must be a Tensor")
+            timed.outputs.fill_(float("nan"))
+            actual_replay = timed.rerun()
+            require_unchanged(inputs, changed)
+            compare(actual_replay, expected_replay)
+            checked.append(name)
+        finally:
+            # Each replay starts from the same original input; diagnostic timing
+            # after validation also sees the declared input.
+            for value, original in zip(inputs, originals):
+                value.copy_(original)
+    return {"timed_output_correctness": "PASS", "timed_output_checked": True,
+            "replay_correctness": "PASS", "replay_operands_checked": checked,
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}

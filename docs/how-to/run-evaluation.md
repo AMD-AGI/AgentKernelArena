@@ -21,7 +21,7 @@ ships quickstarts and specialized examples, including:
 | --- | --- |
 | `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 54-task Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
 | `example_configs/evaluation_tools_advisory_mi355x.yaml` | Default-disabled template for experimental `gfx950` evaluation-tool sidecars. It still requires task-specific adapters before opt-in. |
 
 For a first run, select the quickstart that matches the physical GPU:
@@ -54,7 +54,7 @@ agent:
   template: cursor          # one agent template per run
 
 tasks:
-  - hip2hip/gpumode/GELU
+  - hip2hip/GELU
   - triton2triton/vllm/triton_rms_norm
   # - hip2hip                 # all tasks under a category
   # - all                     # every available task
@@ -74,7 +74,7 @@ select tasks at any level of granularity.
 | `all` | Every task in `tasks/` |
 | `hip2hip` | All tasks under `tasks/hip2hip/` |
 | `triton2triton/vllm` | All tasks under that subdirectory |
-| `hip2hip/gpumode/GELU` | A single task |
+| `hip2hip/GELU` | A single task |
 
 See [Configuration and API reference](../reference/api-reference.md) for the full
 set of run-configuration fields.
@@ -232,7 +232,7 @@ workspace_<gpu>_<agent>/
 Each `task_result.yaml` contains the scored outcome:
 
 ```yaml
-task_name: hip2hip/gpumode/GELU
+task_name: hip2hip/GELU
 pass_compilation: true
 pass_correctness: true
 base_execution_time: 1.82        # ms

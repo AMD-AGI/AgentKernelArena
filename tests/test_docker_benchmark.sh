@@ -540,7 +540,7 @@ printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) ec
     "$QUALITY_TEST_RUN_ID" "$QUALITY_ARTIFACT_REL" "$QUALITY_WORKTREE_REL" \
     > "$QUALITY_BIN/python3"
 chmod +x "$QUALITY_BIN/python3"
-printf 'tasks:\n  - hip2hip/gpumode/GELU\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
+printf 'tasks:\n  - hip2hip/GELU\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
 mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
 
 mapfile -t args < <(

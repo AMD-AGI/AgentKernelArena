@@ -45,7 +45,8 @@ def serial(v):
  return str(v)
 
 out={};errors={}
-for p in sorted([*Path('tasks/instruction2triton/rocmbench').glob('*/*.py'),*Path('tasks/triton2triton/rocmbench').glob('*/*/*.py')]):
+for p in sorted([*Path('tasks/triton2triton/rocmbench').glob('*/*.py'),
+                 *Path('tasks/triton2triton/rocmbench').glob('*/*/*.py')]):
  if p.name != p.parent.name+'.py' or not (p.parent/'config.yaml').exists():continue
  try:
   name='inventory_'+p.parent.name

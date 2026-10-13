@@ -402,5 +402,8 @@ def test_public_envelope_keeps_numerical_and_contract_failures_distinct(error,ki
         report=adapter.evaluate('baseline','correctness')
     parsed=parse_command_result('ARENA_EVAL_RESULT='+json.dumps(report),role='baseline',action='correctness',returncode=1)
     assert parsed.status=='FAIL' and parsed.failure_kind==kind
-    assert len(parsed.cases)==len(manifest['cases'])==10
+    assert len(parsed.cases)==len(manifest['cases'])==12
+    measured=[row for row in parsed.cases if 'performance' in row['checks']]
+    assert [row['test_case_id'] for row in measured]==[f'perf{i}' for i in range(1,6)]
+    assert [row['params']['configuration'] for row in measured]==manifest['input_table']
     assert all(row['failure_kind']==kind for row in parsed.cases)

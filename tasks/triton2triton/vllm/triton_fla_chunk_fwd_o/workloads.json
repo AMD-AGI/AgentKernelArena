@@ -16,6 +16,12 @@
     45,
     46
   ],
+  "input_distribution": {
+    "scored_q_k_v_h_amplitude": 0.3,
+    "historical_unscored_q_k_v_h_amplitude": 0.1,
+    "g_amplitude": 0.01,
+    "geometry": "B=1,T=64,H=2,K=32,V=32,BT=64"
+  },
   "cases": [
     {
       "test_case_id": "perf1",

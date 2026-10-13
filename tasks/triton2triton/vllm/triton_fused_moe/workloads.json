@@ -179,6 +179,17 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control_small_topk_one",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "control": "small_topk_one"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

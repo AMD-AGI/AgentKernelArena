@@ -54,10 +54,7 @@ def add_pass(text, symbol):
     return "".join(lines)
 
 
-@pytest.mark.parametrize("task", [
-    "instruction2triton/rocmbench/moe_gemm",
-    "triton2triton/rocmbench/hard/moe_gemm",
-])
+@pytest.mark.parametrize("task", ['triton2triton/rocmbench/hard/moe_gemm'])
 def test_actual_moe_digest_allows_kernel_but_rejects_protected_test(tmp_path, task):
     # Copies of the actual packages, with the canonical helper materializer.
     # No import of Triton, numerical execution, or claim of GPU qualification.

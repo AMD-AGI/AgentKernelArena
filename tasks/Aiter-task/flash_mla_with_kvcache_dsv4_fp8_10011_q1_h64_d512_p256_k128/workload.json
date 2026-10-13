@@ -1,0 +1,1677 @@
+{
+  "definition": "flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128",
+  "op_type": "mla",
+  "axes": {
+    "query_length": 1,
+    "heads": 64,
+    "head_dim": 512,
+    "page_size": 256,
+    "one": 1,
+    "packed_width": 584,
+    "topk": 128
+  },
+  "variable_axes": [
+    "batch",
+    "pages"
+  ],
+  "inputs": {
+    "q": {
+      "shape": [
+        "batch",
+        "query_length",
+        "heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "kv_cache": {
+      "shape": [
+        "pages",
+        "page_size",
+        "one",
+        "packed_width"
+      ],
+      "dtype": "float8_e4m3fn"
+    },
+    "sparse_indices": {
+      "shape": [
+        "batch",
+        "query_length",
+        "topk"
+      ],
+      "dtype": "int32"
+    },
+    "sparse_lens": {
+      "shape": [
+        "batch"
+      ],
+      "dtype": "int32"
+    },
+    "sm_scale": {
+      "shape": null,
+      "dtype": "float32"
+    },
+    "sinks": {
+      "shape": [
+        "heads"
+      ],
+      "dtype": "float32"
+    }
+  },
+  "outputs": {
+    "output": {
+      "shape": [
+        "batch",
+        "query_length",
+        "heads",
+        "head_dim"
+      ],
+      "dtype": "bfloat16"
+    },
+    "lse": {
+      "shape": [
+        "batch",
+        "query_length",
+        "heads"
+      ],
+      "dtype": "float32"
+    }
+  },
+  "scalars": {
+    "sm_scale": 0.04419417382415922
+  },
+  "length_grid": {
+    "sparse": [
+      0,
+      1,
+      63,
+      64,
+      65,
+      127,
+      128
+    ]
+  },
+  "seed": 0,
+  "bench": {
+    "warmup": 20,
+    "repetition": 100,
+    "target_ms": 1.0
+  },
+  "gate_policy": "Input initialization, reference, comparison and production baseline are the bundled task callbacks. Each case fixes the valid lengths and index pattern; the bundle cases keep the initializer's own lengths. Every case is checked and timed for both roles under the same callback comparison. A declared baseline numerical exception keeps the failed comparison evidence; candidates have none.",
+  "cases": [
+    {
+      "case_id": "batch_1_bundle",
+      "uuid": "5102756ab4c0900d",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_1_s0",
+      "uuid": "a9d5eb5c6c2a767d",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s1",
+      "uuid": "2486d19fb8f30b2d",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s63",
+      "uuid": "caea569625872fd6",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s64",
+      "uuid": "84265878c0e9a176",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s65",
+      "uuid": "544c2f6c24846324",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s127",
+      "uuid": "b1226d86784f32f1",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_s128",
+      "uuid": "0169e9b8acf9942a",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_holes",
+      "uuid": "85a05b84e916818d",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_1_tail",
+      "uuid": "d68c7c6938d35060",
+      "batch": 1,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_2_bundle",
+      "uuid": "3c85ace585ae3add",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_2_s0",
+      "uuid": "885207923cbf53d3",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s1",
+      "uuid": "2e9bd3e7b6732546",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s63",
+      "uuid": "92109132549caa05",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s64",
+      "uuid": "0906b8ba02056410",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s65",
+      "uuid": "2ca5464856807c8e",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s127",
+      "uuid": "3bc36f02218c905c",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_s128",
+      "uuid": "5db5aeb9091300e8",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_holes",
+      "uuid": "2ce2ba1305240fee",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_2_tail",
+      "uuid": "1c49e804787afc21",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_2_mixed",
+      "uuid": "0e2fc808fa912148",
+      "batch": 2,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_bundle",
+      "uuid": "96e5f69595229c6b",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_4_s0",
+      "uuid": "e7ebe6fe5c80ee9d",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s1",
+      "uuid": "d8c5de771876b8a0",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s63",
+      "uuid": "04f4d5e599c64a48",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s64",
+      "uuid": "feb8bdeee1d6725d",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s65",
+      "uuid": "4c598be57ddd0345",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s127",
+      "uuid": "47e256b2e41c858d",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_s128",
+      "uuid": "fc41d41153f28ab0",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_holes",
+      "uuid": "34bc35b2843f237f",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_4_tail",
+      "uuid": "6c4e8c64bf00b267",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_4_mixed",
+      "uuid": "8ebf16091ebbaf57",
+      "batch": 4,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_bundle",
+      "uuid": "8d0fc053650d8b9e",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_8_s0",
+      "uuid": "626954e4f1b04a86",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s1",
+      "uuid": "f3e20f8f9df504f5",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s63",
+      "uuid": "6640195109c3935c",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s64",
+      "uuid": "18901972e4cf3418",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s65",
+      "uuid": "736ff2df216bee2d",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s127",
+      "uuid": "a4cfd66a950ea958",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_s128",
+      "uuid": "88a859f0d0717c6d",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_holes",
+      "uuid": "af98d6611067162d",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_8_tail",
+      "uuid": "27c563e6e556d3d6",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_8_mixed",
+      "uuid": "ddc5acd84e58fcfc",
+      "batch": 8,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_bundle",
+      "uuid": "8050a723f46a7462",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_16_s0",
+      "uuid": "0dcec8863472e488",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s1",
+      "uuid": "27252a4829f690b6",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s63",
+      "uuid": "a349374d0ed5a7f8",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s64",
+      "uuid": "4fbecd0cb1ddff2e",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s65",
+      "uuid": "edc6d6b38adafb75",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s127",
+      "uuid": "82b3c59c1290c8b7",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_s128",
+      "uuid": "3114972770136162",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_holes",
+      "uuid": "bdc6be36864e3b4a",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_16_tail",
+      "uuid": "37f64eef45537ccc",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_16_mixed",
+      "uuid": "9fa90b479d7274c6",
+      "batch": 16,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_bundle",
+      "uuid": "a30c924284039e22",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_32_s0",
+      "uuid": "ea0358630fb9a664",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s1",
+      "uuid": "9b35a8733e2df05c",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s63",
+      "uuid": "5aba3d6ba6916d0f",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s64",
+      "uuid": "02d8207191b1f69c",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s65",
+      "uuid": "5989bf1c76887bf4",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s127",
+      "uuid": "be79573ba5915511",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_s128",
+      "uuid": "51579ef075304dfc",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_holes",
+      "uuid": "375c749a992328ab",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_32_tail",
+      "uuid": "43dfba22923c87b3",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_32_mixed",
+      "uuid": "41016d5e01a7a25e",
+      "batch": 32,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_bundle",
+      "uuid": "444307ed120fe941",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_64_s0",
+      "uuid": "be299e3882ae4aa9",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s1",
+      "uuid": "e96ba25e26c8a3a9",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s63",
+      "uuid": "f8b055cbc413cc54",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s64",
+      "uuid": "8a9553e0ab7712c7",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s65",
+      "uuid": "2b0cdc3d84750690",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s127",
+      "uuid": "989e085a9e444db3",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_s128",
+      "uuid": "0c63136928cd5404",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_holes",
+      "uuid": "61af70617b9b3858",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_64_tail",
+      "uuid": "9b0f26c64989dc78",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_64_mixed",
+      "uuid": "c2edbd88250bd9a9",
+      "batch": 64,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_bundle",
+      "uuid": "e4a61efa4e93c7ac",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_128_s0",
+      "uuid": "1ee60c40de5ddde7",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s1",
+      "uuid": "69cde8c367a10bfe",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s63",
+      "uuid": "4b647a98b272615c",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s64",
+      "uuid": "3a7f71f88e1782ee",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s65",
+      "uuid": "18fd16ef0dfc6835",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s127",
+      "uuid": "4352aa259f8a23ca",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_s128",
+      "uuid": "4f481738156e646b",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_holes",
+      "uuid": "6055bf4c44ab3158",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_128_tail",
+      "uuid": "8582b2956732eab5",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_128_mixed",
+      "uuid": "ff858cf2ac341898",
+      "batch": 128,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_bundle",
+      "uuid": "f9ae8ce5b7512d39",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_256_s0",
+      "uuid": "80b6d7c9bc39cd05",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s1",
+      "uuid": "9714d256be316acd",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s63",
+      "uuid": "4cfdb4382d5ed557",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s64",
+      "uuid": "e6039ad438c1ec12",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s65",
+      "uuid": "8579c8c7f74405e4",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s127",
+      "uuid": "6d43243b9f20d4fe",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_s128",
+      "uuid": "ec9aa149112b24b5",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_holes",
+      "uuid": "61ef770c5a403f9d",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_256_tail",
+      "uuid": "6c0f2c50b1e0f427",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_256_mixed",
+      "uuid": "0e934356998ea268",
+      "batch": 256,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_bundle",
+      "uuid": "18afbd964f3abc92",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_512_s0",
+      "uuid": "dde076f7bedc0402",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s1",
+      "uuid": "c91a45fb428c07bf",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s63",
+      "uuid": "8b54ee43a0c0813c",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s64",
+      "uuid": "894e33a89ef7d721",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s65",
+      "uuid": "c21a899e533ef3c6",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s127",
+      "uuid": "3218178faaf8cc49",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_s128",
+      "uuid": "8cfcddc846cf9bf0",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_holes",
+      "uuid": "70a3aeeeb922eebb",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_512_tail",
+      "uuid": "9f7ceafba5d451f5",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_512_mixed",
+      "uuid": "b7e6abee4e0a6ab1",
+      "batch": 512,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_bundle",
+      "uuid": "4595008c426b9259",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_1024_s0",
+      "uuid": "4527c5aac63d806d",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s1",
+      "uuid": "bacbb83377a45613",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s63",
+      "uuid": "68bae23fa966ae66",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s64",
+      "uuid": "809fbd82aa067ef5",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s65",
+      "uuid": "74499eccf005b161",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s127",
+      "uuid": "607f3165ab5fb044",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_s128",
+      "uuid": "0c9cbd9bf65a5f8e",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_holes",
+      "uuid": "1344ba13d9194a70",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_1024_tail",
+      "uuid": "d498164f7da58c28",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_1024_mixed",
+      "uuid": "077e1e464e1f7e45",
+      "batch": 1024,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_bundle",
+      "uuid": "244c9bc0db9987e2",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_2048_s0",
+      "uuid": "ab2107e37eae4870",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s1",
+      "uuid": "4bfea9b5b391af7b",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s63",
+      "uuid": "1d3924f3795c9c3a",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s64",
+      "uuid": "67f9818658bdcd55",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s65",
+      "uuid": "00a65a774fe05605",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s127",
+      "uuid": "0398768100bf53b0",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_s128",
+      "uuid": "4c1e57836cb9e0c2",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_holes",
+      "uuid": "707bef46f43615ec",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_2048_tail",
+      "uuid": "0089297a127775f2",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_2048_mixed",
+      "uuid": "bf1b9227d6473e61",
+      "batch": 2048,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_bundle",
+      "uuid": "ce35e9d81c708a39",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": "bundle"
+    },
+    {
+      "case_id": "batch_4096_s0",
+      "uuid": "3b9f87eabcd43410",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 0
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s1",
+      "uuid": "96165b9be58444a6",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 1
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s63",
+      "uuid": "41cf90513cb746f1",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 63
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s64",
+      "uuid": "795f06889cb0cff7",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s65",
+      "uuid": "a115d5cc50aad1c8",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 65
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s127",
+      "uuid": "b1fff19f3266fce7",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 127
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_s128",
+      "uuid": "08bf6ae97e57611c",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_holes",
+      "uuid": "2840d562d4f7c1c9",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 128
+        },
+        "holes": {
+          "sparse": 3
+        }
+      }
+    },
+    {
+      "case_id": "batch_4096_tail",
+      "uuid": "795d0735b492cbac",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "uniform": {
+          "sparse": 64
+        },
+        "tail": "legal"
+      }
+    },
+    {
+      "case_id": "batch_4096_mixed",
+      "uuid": "f2b7c96ef51614c7",
+      "batch": 4096,
+      "pages": 2019,
+      "lengths": {
+        "cycle": {
+          "stride": 5,
+          "offset": 0
+        }
+      }
+    }
+  ]
+}

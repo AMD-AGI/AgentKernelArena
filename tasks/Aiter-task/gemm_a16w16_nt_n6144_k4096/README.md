@@ -121,7 +121,13 @@ candidate. It checks dependencies, inputs and reference validity; in framework
 `task_validation` phase it verifies the actual initial stub and reports
 `metadata.candidate_state`. Compilation executes each specialization, including
 lazy JIT compilation on its first launch. Correctness uses the task's original
-comparison, independently for the requested role. An absent candidate, missing
+comparison, independently for the requested role. On each GEMM case, the same
+launch is also checked outside scoring with two freshly initialized weights:
+first by changing `b` in its original storage, then by passing a different
+same-shape `b` buffer. The original reference and numerical gate apply to both
+replays, and input buffers must remain unchanged. The scored performance path
+continues to hold its weight fixed across samples for both roles. An absent
+candidate, missing
 builder or `NotImplementedError` always fails candidate actions, in both phases;
 only the framework can defer candidate checks for an initially empty task.
 
@@ -139,9 +145,15 @@ several further draws it has never read, timed like a sample, and the fastest
 of those may take at most `UNSEEN_DRAW_MARGIN` (in `scripts/task_measure.py`)
 times the reported mean. The outputs of randomly chosen reported samples and
 of every unseen-draw invocation are compared, with the original comparator,
-against the reference on the draw each one consumed, and the weights and loaded
-operands must be unchanged afterwards. Input mutation, nonfinite output, missing
-work or runtime failures cannot be treated as numerical diagnostics.
+against the reference on the draw each one consumed. Before replacing a draw,
+the task checks the live activation and fixed weight byte for byte against the
+previous invocation's expected inputs. It also checks the final reported and
+final unseen invocations before either result can be accepted. These checks run
+outside the device timing interval for both roles; they cover warmup and capture
+invocations as well as all reported and unseen replays. The extra input reads can
+affect cache and pacing between samples, so earlier timing reports are not
+directly comparable. Input mutation, nonfinite output, missing work or runtime
+failures cannot be treated as numerical diagnostics.
 No timing from an instrumented sanitizer build may become an official score.
 
 A task does not require any agent-specific driver or environment variable.

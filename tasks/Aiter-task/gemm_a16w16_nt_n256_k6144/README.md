@@ -121,7 +121,13 @@ candidate. It checks dependencies, inputs and reference validity; in framework
 `task_validation` phase it verifies the actual initial stub and reports
 `metadata.candidate_state`. Compilation executes each specialization, including
 lazy JIT compilation on its first launch. Correctness uses the task's original
-comparison, independently for the requested role. An absent candidate, missing
+comparison, independently for the requested role. On each GEMM case, the same
+launch is also checked outside scoring with two freshly initialized weights:
+first by changing `b` in its original storage, then by passing a different
+same-shape `b` buffer. The original reference and numerical gate apply to both
+replays, and input buffers must remain unchanged. The scored performance path
+continues to hold its weight fixed across samples for both roles. An absent
+candidate, missing
 builder or `NotImplementedError` always fails candidate actions, in both phases;
 only the framework can defer candidate checks for an initially empty task.
 
@@ -139,9 +145,15 @@ several further draws it has never read, timed like a sample, and the fastest
 of those may take at most `UNSEEN_DRAW_MARGIN` (in `scripts/task_measure.py`)
 times the reported mean. The outputs of randomly chosen reported samples and
 of every unseen-draw invocation are compared, with the original comparator,
-against the reference on the draw each one consumed, and the weights and loaded
-operands must be unchanged afterwards. Input mutation, nonfinite output, missing
-work or runtime failures cannot be treated as numerical diagnostics.
+against the reference on the draw each one consumed. Before replacing a draw,
+the task checks the live activation and fixed weight byte for byte against the
+previous invocation's expected inputs. It also checks the final reported and
+final unseen invocations before either result can be accepted. These checks run
+outside the device timing interval for both roles; they cover warmup and capture
+invocations as well as all reported and unseen replays. The extra input reads can
+affect cache and pacing between samples, so earlier timing reports are not
+directly comparable. Input mutation, nonfinite output, missing work or runtime
+failures cannot be treated as numerical diagnostics.
 No timing from an instrumented sanitizer build may become an official score.
 
 A task does not require any agent-specific driver or environment variable.
@@ -200,7 +212,39 @@ original candidate tolerances or scored workload data.
 
 ## Production baseline numerical evidence
 
-### Current pinned-image reproduction
+### 2026-10-09 configured-image observation
+
+An MI355X/gfx950 validation run with
+`lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69`
+completed all 13 baseline cases. Validation request
+`935989825de94f69b57ddb6f4314e058` reported nine finite numerical
+mismatches at M=4 through M=1024. Every output contract passed. The baseline
+graph performance action completed all 13 cases and retained its numerical
+replay failures as diagnostics; the initial FlyDSL candidate was unimplemented.
+
+| M | Status | Elements outside gate | Max absolute error |
+| ---: | --- | ---: | ---: |
+| 1 | PASS | 0 | 0 |
+| 2 | PASS | 0 | 0.5 |
+| 4 | FAIL | 172 | 2 |
+| 8 | FAIL | 375 | 2 |
+| 16 | FAIL | 805 | 3 |
+| 32 | FAIL | 1627 | 2 |
+| 64 | FAIL | 2740 | 2 |
+| 128 | FAIL | 6086 | 2 |
+| 256 | FAIL | 9535 | 2 |
+| 512 | FAIL | 17204 | 2 |
+| 1024 | FAIL | 29822 | 2 |
+| 2048 | PASS | 0 | 1 |
+| 4096 | PASS | 0 | 1 |
+
+These are baseline observations from that completed run, not a clean validator
+PASS or evidence for an implemented candidate. The numerical diagnostic policy
+still applies only to completed finite baseline mismatches; candidate correctness
+and timed replay keep the original gate. The edited task package needs its own
+fresh validation.
+
+### 2026-09-30 pinned-image reproduction
 
 On 2026-09-30, MI355X/gfx950 job `181463` completed all 13 cases with
 `lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78`.
@@ -243,9 +287,9 @@ numerical FAIL records are expected for this baseline. Baseline performance
 uses fresh secret draws, so its per-element mismatch counts need not repeat.
 
 The diagnostic policy is justified by completed finite numerical failures in
-the current action, with preserved output-contract and candidate checks. The
-historical count below describes a different image and is not a required count
-for a new run. Inspect the current action's case coverage, dispatch, output
+each captured action, with preserved output-contract and candidate checks. The
+historical counts are image-specific and are not a required count for a new run.
+Inspect the new action's case coverage, dispatch, output
 contracts and original comparator results; an old report is not needed to
 establish those current observations. Any missing case, execution failure or
 invalid output contract still fails the task.

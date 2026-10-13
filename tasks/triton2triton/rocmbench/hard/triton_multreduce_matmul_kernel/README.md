@@ -7,6 +7,23 @@ of this directory's historical suite name. Edit only the declared function scope
 references, input generation, assertions, test parameters and timing policy.
 Deliver edits to those files; a fenced code block alone is not a submission.
 
+## Allowed implementation methods
+
+This task optimizes matrix multiplication with optional bias. Candidates may use
+mathematically equivalent Triton implementations, including `tl.dot`, within the
+declared editable scopes. The starting implementation uses element-wise products
+followed by summation; that method and the historical `multreduce` name do not
+restrict the candidate's algorithm. The fixed `USE_DOT=False` launch argument is
+part of the existing calling interface, not a prohibition on `tl.dot` inside an
+editable kernel body.
+
+Preserve both entrypoint interfaces, input/output semantics, all correctness
+cases and tolerances, and the protected launch and timing policy. Permission to
+use another algorithm does not allow calls to the protected reference or changes
+to the frozen initial-candidate baseline. Every candidate must pass the same
+numerical and measured-output checks; `tl.dot` is not assumed to be bitwise
+identical or faster.
+
 ## Evaluation contract
 
 Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
@@ -18,6 +35,19 @@ functions run unchanged. Performance inputs additionally run the task-local
 oracle in `_arena_reference.py`, before timing and against observed timed output.
 Seeds, case parameters, original assertions/tolerances, launch parameters,
 prepare/reset callbacks, warmups and sample counts are unchanged.
+
+An unscored correctness control exercises every additional legal row count
+M=3 through 8 through the declared matmul wrapper, using small nontrivial
+FP16 matrices and both bias settings across the controls. Each row count also
+has a larger or uneven N/K control, spanning contiguous and transposed B and
+the complementary bias setting; M=3 includes N=K=4096. These controls are
+correctness-only and leave the 80 declared case identities unchanged. Before each measured
+sample, the adapter invalidates the scored output buffer outside the timing
+interval; the canonical graph timer therefore captures one complete kernel
+call per replay. Every sample must rewrite that output correctly. The original
+66 scored cases, 10 warmups, 100 samples and numerical tolerances remain.
+Latency values from the earlier batched graph policy are not directly
+comparable to the checked one-call policy.
 
 Arena times the same Triton path in its independently frozen baseline workspace
 and the edited candidate workspace. The old benchmark helper's optional PyTorch
@@ -33,15 +63,18 @@ A missing/empty final kernel never falls back to a reference or starting kernel.
 
 ## Original operator instructions
 
-The historical instructions below retain the operator semantics and interface;
-the v2 on-disk edit and evaluation contract above governs submission format.
+The historical instructions below describe the starting implementation's
+operator semantics and interface. The allowed-method policy and v2 on-disk edit
+and evaluation contract above govern optimization and submission format.
 
 
 You are an expert in triton programming language. You will be given the function definition for the `triton_multreduce_matmul_kernel`. Your task is to optimize the kernel code for better performance while preserving correctness. Only optimize the kernel code in the function definition, DONT remove any python imports or helper utils in the instruction/code provided, DONT change/interfere with the provided function definition and parameter list ,
 
-This kernel, `triton_multreduce_matmul_kernel`,  is designed to perform matrix multiplication by explicitly using element-wise multiplication followed by a reduction (summation), instead of relying on Triton's `tl.dot` intrinsic.
+The starting kernel, `triton_multreduce_matmul_kernel`, performs matrix multiplication using element-wise multiplication followed by a reduction (summation). Candidates may replace this method with a mathematically equivalent Triton implementation, including `tl.dot`, subject to the contract above.
 
-**Your objective is to optimize the body of `triton_multreduce_matmul_kernel`.**
+**Optimize the declared editable implementation scopes. The scored entrypoint is
+`triton_matmul_kernel`; `triton_multreduce_matmul_kernel` remains a required
+correctness entrypoint.**
 
 You must ensure that:
 1.  All arguments received by `triton_multreduce_matmul_kernel` (i.e., `a_ptr`, `b_ptr`, `c_ptr`, `bias_ptr`, `M`, `N`, `K`, all stride arguments, `BLOCK_SIZE_M`, `BLOCK_SIZE_N`, `BLOCK_SIZE_K`, `USE_BIAS`, and `EVEN_K`) are kept intact and not modified.
@@ -52,7 +85,9 @@ Example:
 ```
 
 
-The full definition for `triton_multreduce_matmul_kernel` and relevant helper utilities are provided in the context below. You only need to optimize the code for `triton_multreduce_matmul_kernel` whilst keeping other things.
+The starting definition for `triton_multreduce_matmul_kernel` and relevant helper
+utilities are shown below. Consult `config.yaml` for all editable scopes and
+preserve the protected code outside them.
 
 
 # Imports:
@@ -112,12 +147,13 @@ def triton_multreduce_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,  #
                                     USE_BIAS: tl.constexpr, EVEN_K: tl.constexpr  #
                                     ):
     """
-    Performs matrix multiplication (C = A @ B + bias) using an explicit
-    element-wise multiplication followed by a reduction (summation) strategy,
-    instead of `tl.dot()`.
+    Computes C = A @ B + bias. The starting implementation uses explicit
+    element-wise multiplication followed by summation. Equivalent Triton
+    implementations, including tl.dot(), are allowed for candidates.
 
-    This kernel is a wrapper around `triton_matmul_kernel`, configured
-    to use the non-`tl.dot` path by setting `USE_DOT=False`.
+    This starting wrapper calls triton_matmul_kernel with USE_DOT=False.
+    That argument selects the starting path; it does not constrain the
+    algorithm inside the editable candidate implementation.
 
     Args:
         a_ptr: Pointer to the first input matrix A.
@@ -150,7 +186,8 @@ def triton_multreduce_matmul_kernel(a_ptr, b_ptr, c_ptr, bias_ptr,  #
 
 The scored workload directly launches `triton_matmul_kernel` with the declared
 fixed block sizes, warps and stages and `USE_DOT=False`. This actual entrypoint
-is explicitly declared alongside `triton_multreduce_matmul_kernel`, the autotuned
+may use `tl.dot` inside its editable body while preserving that launch interface.
+It is explicitly declared alongside `triton_multreduce_matmul_kernel`, the autotuned
 wrapper exercised by the original correctness cases. Optimizing only wrapper
 autotuning does not improve the fixed-launch measurements. Keep both interfaces
 implemented; the wrapper remains part of correctness coverage. This declaration

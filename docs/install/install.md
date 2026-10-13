@@ -154,7 +154,7 @@ Specialized integrations require additional runtime setup. Review
 
 Choose the configuration that matches the physical GPU and installed agent.
 The quickstart configurations each run one GELU task; the benchmark
-configuration is a longer 60-task Cursor Agent run.
+configuration is a longer 54-task Cursor Agent run.
 
 | Configuration | Purpose |
 | --- | --- |
@@ -163,7 +163,7 @@ configuration is a longer 60-task Cursor Agent run.
 | `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | First DeepSeek Harness run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | First DeepSeek Harness run on MI355X (`gfx950`). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 54-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
 The default `make docker-run` configuration is the MI300/MI300X quickstart.
 On another GPU, always pass the matching `CONFIG`; for MI355X, use

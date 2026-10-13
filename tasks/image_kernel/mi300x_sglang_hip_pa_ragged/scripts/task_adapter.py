@@ -40,6 +40,25 @@ def validate_workloads(harness):
               "performance": getattr(harness, "PERF_CASES", None)}
     if json.loads(json.dumps(actual)) != data["original_cases"]:
         raise ValueError("Protected manifest and harness case definitions disagree")
+    additional = {"correctness": harness.EXTRA_CASES, "performance": harness.EXTRA_PERF_CASES}
+    if json.loads(json.dumps(additional)) != data.get("additional_cases"):
+        raise ValueError("Additional ragged workloads differ from the protected manifest")
+    expected = []
+    declarations = [(f"correctness-{i}", cfg, False) for i, cfg in enumerate(harness.CASES)]
+    declarations += [(name, cfg, True) for name, cfg in harness.PERF_CASES]
+    declarations += [(f"uneven-correctness-{i}", cfg, False) for i, cfg in enumerate(harness.EXTRA_CASES)]
+    declarations += [(name, cfg, True) for name, cfg in harness.EXTRA_PERF_CASES]
+    for name, cfg, measured in declarations:
+        harness._context_lengths(cfg["ctx_lens"], cfg["num_seqs"], cfg.get("context_lengths"))
+        row = {"test_case_id": name, "params": {**cfg, "seed": 0},
+               "checks": ["correctness", "performance"] if measured else ["correctness"],
+               "shape": [cfg["num_seqs"], cfg["num_heads"][0], cfg["head_size"], cfg["ctx_lens"]],
+               "dtype": cfg["dtype_str"]}
+        if measured:
+            row["metadata"] = {"timed_replay_input_transform": {"query": "negate_in_place"}}
+        expected.append(row)
+    if json.loads(json.dumps(expected)) != data["cases"]:
+        raise ValueError("Ragged manifest identities do not match executed workloads")
 
 
 def prepare(harness):

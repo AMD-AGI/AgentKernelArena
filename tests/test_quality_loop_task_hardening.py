@@ -93,7 +93,7 @@ def test_moe_rejects_omitted_writes_even_with_small_reference(runner):
 
 @pytest.mark.parametrize("seed", [0, 17])
 def test_assign_score_backward_reference_accumulates_duplicate_neighbors(runner, seed):
-    task = runner("hip2hip/others/assign_score_withk")
+    task = runner("hip2hip/assign_score_withk")
     torch.manual_seed(seed)
     scores = torch.randn(2, 3, 3, 2, dtype=torch.float64, requires_grad=True)
     points = torch.randn(2, 4, 2, 3, dtype=torch.float64, requires_grad=True)

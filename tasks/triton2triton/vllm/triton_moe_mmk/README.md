@@ -53,3 +53,8 @@ corrects the public rectangular matrix contract; original scored cases are uncha
 
 Four additional unscored PR105 controls isolate M/N tails and K63/65 on
 either side of the tile selection boundary; all original scoring is unchanged.
+An additional correctness-only M=65, K=N=64 control checks the single active
+row in the second 64-row M tile. Its deterministic signed operands give that
+row a nonzero independent matrix-product answer. It uses the same public
+wrapper, output comparator and read-only input checks as the other controls;
+the five scored workloads and timing policy are unchanged.

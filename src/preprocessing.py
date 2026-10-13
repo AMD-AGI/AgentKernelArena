@@ -428,7 +428,7 @@ def setup_repo_from_config(
 
 
 def _sanitize_task_name(task_name: str) -> str:
-    """Convert a task name like 'hip2hip/gpumode/SiLU' to 'hip2hip_gpumode_SiLU' for use in directory names."""
+    """Convert a task name like 'hip2hip/SiLU' to 'hip2hip_SiLU' for use in directory names."""
     return task_name.replace("/", "_")
 
 
@@ -449,7 +449,7 @@ def is_task_complete(
 
     Args:
         run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
-        task_name: Full task name (e.g., "hip2hip/gpumode/SiLU")
+        task_name: Full task name (e.g., "hip2hip/SiLU")
         timestamp: Timestamp string used in task directory name
         agent_name: task_validator uses the finalized validation report. V2
             optimization requires the framework completion record; legacy
@@ -510,7 +510,7 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
         run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
         timestamp: Timestamp string for unique workspace naming
         logger: Logger instance
-        task_name: Full task name (e.g., "hip2hip/gpumode/SiLU") for unique directory naming
+        task_name: Full task name (e.g., "hip2hip/SiLU") for unique directory naming
 
     Returns:
         Path to the created workspace directory

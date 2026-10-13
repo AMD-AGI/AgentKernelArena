@@ -143,7 +143,7 @@ agent:
   template: task_validator
 
 tasks:
-  - hip2hip/gpumode
+  - hip2hip
 
 target_gpu_model: MI355X
 log_directory: logs

@@ -1,0 +1,25 @@
+{
+  "name": "mhc_fused_post_pre_flat_rmsnorm_c4_d4096__flydsl",
+  "definition": "mhc_fused_post_pre_flat_rmsnorm_c4_d4096",
+  "author": "",
+  "spec": {
+    "language": "",
+    "target": [
+      {
+        "arch": "gfx950",
+        "hardware_id": "MI355X"
+      }
+    ],
+    "entry_point": "",
+    "dependencies": [],
+    "destination_passing_style": false,
+    "binding": null
+  },
+  "sources": [
+    {
+      "path": "",
+      "content": ""
+    }
+  ],
+  "description": "FlyDSL solution slot for mhc_fused_post_pre_flat_rmsnorm_c4_d4096 -- language, entry_point and sources to be filled in."
+}

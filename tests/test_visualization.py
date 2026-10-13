@@ -15,7 +15,7 @@ def write_report(report_dir: Path, *, agent: str, gpu: str, score: float) -> Non
     report_dir.mkdir(parents=True)
     (report_dir / "overall_summary.csv").write_text(
         "Task Name,Task Type,Score,Speedup,Optimization_summary\n"
-        f"hip2hip/gpumode/GELU,hip2hip,{score},1.5,optimized GELU\n"
+        f"hip2hip/GELU,hip2hip,{score},1.5,optimized GELU\n"
     )
     (report_dir / "task_type_breakdown.json").write_text(
         json.dumps(
@@ -35,7 +35,7 @@ def write_report(report_dir: Path, *, agent: str, gpu: str, score: float) -> Non
         )
     )
     (report_dir / "overall_report.txt").write_text(
-        f"PASS hip2hip/gpumode/GELU Score: {score} Speedup: 1.5x\n"
+        f"PASS hip2hip/GELU Score: {score} Speedup: 1.5x\n"
     )
 
 

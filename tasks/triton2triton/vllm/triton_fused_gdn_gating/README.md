@@ -41,6 +41,22 @@ seed 42, FP16 a/b inputs, full wrapper, 10 warmups and 100 samples are unchanged
 
 An unscored 2x11-head diagnostic checks the masked tail, softplus beta=.5 and
 threshold=2, and finite inputs on both sides of the stable softplus branch.
+Additional unscored views independently stride each of A_log, a, b, and dt_bias;
+all four must produce the same two outputs as the layout-aware reference and
+leave caller storage and layout unchanged. The wrapper normalizes such views
+before its flat-offset kernel. This copy is needed only for noncontiguous inputs;
+the five original scored inputs are contiguous and retain their original device
+work, allocation boundary, warmups, samples and comparison tolerance. Strided
+control timings are not scored, and this fix is not a performance-gain claim.
 Actual timed outputs and a poisoned replay after changing all four inputs must
 match the reference. Inputs are compared to pristine copies and restored even
 on replay or validation failure. Added checks are outside the timed interval.
+
+Each timed graph replays the GPU work captured from one complete wrapper
+invocation; Python allocation and dispatch run during capture. Both captured
+output buffers are filled with NaNs before every sample's start event, and both
+are checked after that sample completes. This rejects replays that reuse a
+capture-time result or omit either output write. The previous graph batching
+policy could count several calls while observing only the last call's outputs;
+its historical latency is not directly comparable to this single-call policy.
+Baseline and candidate use the same preparation and measurement boundary.

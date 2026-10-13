@@ -101,15 +101,31 @@ benchmark_fallback_reason: "cuda_graph_failed: RuntimeError: ..."
 benchmark_effective_repeats: 1
 ```
 
-Tasks may disable graph capture for a known incompatibility by passing
-`use_cuda_graph=False` with a stable `fallback_reason`.  A result is never
-silently changed to event timing merely because graph timing is slower.
+Tasks may select Event timing for a known graph-capture incompatibility, or
+when the declared measured unit requires a fresh invocation of the public
+Python callable on every sample (for example, a wrapper that allocates and
+returns a new output). Pass `use_cuda_graph=False` with a stable
+`fallback_reason`, document why graph replay is not equivalent, and apply the
+same method and callable to baseline and candidate. A result is never silently
+changed to Event timing merely because graph timing is slower.
+
+Graph `after_sample` receives the captured output after each reported replay.
+When one graph contains multiple calls, capture retains only the last returned
+output; graph replay also does not rerun Python dispatch or allocation. A
+single-call graph can make every replay's captured output observable, but it
+still measures graph replay rather than a fresh public call. Choose the method
+from the task contract, not from the apparent speedup. Disclose a method change
+and compare its before/after device times only under matched hardware, image,
+runtime, inputs and sampling settings. Device Events report GPU elapsed time;
+they do not turn host allocation or dispatch into CPU wall-clock timing.
 
 Before accepting fallback, task harnesses should hoist host-side shape work,
 pointer-table creation, temporary allocation, and JIT setup out of `fn`, then
 directly launch the underlying kernel where that is part of the task's stable
-API. A legacy HIP extension that hard-codes stream `0` is a legitimate example
-of an incompatible launch: CUDA/HIP Graph capture begins on a non-default side
+API. Do not remove a public wrapper's required allocation or dispatch merely
+to make its declared measured unit graph-capturable. A legacy HIP extension
+that hard-codes stream `0` is a legitimate example of an incompatible launch:
+CUDA/HIP Graph capture begins on a non-default side
 stream, while capturable PyTorch allocation/fill nodes can otherwise make a
 graph look non-empty even when the target kernel escaped to stream zero. HIP
 task harnesses therefore run a conservative source preflight. Every visible

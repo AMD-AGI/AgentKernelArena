@@ -167,6 +167,58 @@
           "query": "negate_in_place"
         }
       }
+    },
+    {
+      "test_case_id": "partial-correctness-0",
+      "params": {
+        "ctx_lens": 1025,
+        "num_seqs": 4,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "context_lengths": [
+          1025,
+          1024,
+          1009,
+          1008
+        ],
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "shape": [
+        4,
+        8,
+        128,
+        1025
+      ],
+      "dtype": "bfloat16"
     }
-  ]
+  ],
+  "additional_cases": {
+    "correctness": [
+      {
+        "ctx_lens": 1025,
+        "num_seqs": 4,
+        "num_heads": [
+          8,
+          1
+        ],
+        "head_size": 128,
+        "block_size": 16,
+        "dtype_str": "bfloat16",
+        "context_lengths": [
+          1025,
+          1024,
+          1009,
+          1008
+        ]
+      }
+    ]
+  }
 }

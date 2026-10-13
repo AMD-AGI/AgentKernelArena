@@ -1,20 +1,28 @@
 schema_version: 2
+kernel_identity:
+  logical_operator: gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024
+  source_owner: aiter
 candidate:
-  language: triton
-  initial_state: implemented
-  initial_language: python
+  language: flydsl
+  initial_state: unimplemented
   editable:
-  - source/implementation/main.py
-  - source/kernel.py
+  - kernel.py
   entrypoints:
-  - file: source/kernel.py
-    kind: function
-    symbol: run
+  - file: kernel.py
+    kind: builder
+    symbol: build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024_module
 baseline:
   kind: provided
   language: python
   source_files:
   - scripts/baseline/main.py
+  correctness_policy: diagnostic
+  diagnostic_reason: >-
+    deepseek-v4-flash family policy: the reference is the bundle's FP32 PyTorch computation and its
+    comparator; the production baseline is the performance reference and is not required to meet
+    that comparison. Baseline correctness keeps every case's actual comparison; only completed
+    finite numerical mismatches are diagnostic. Candidate checks retain the full original gate. On
+    MI355X/gfx950 with ROCm 7.2 the baseline met the comparison on every case.
 evaluation:
   runner:
   - python3
@@ -26,21 +34,26 @@ platform_support:
   status: active
 description: >-
   Implement gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024 in
-  Triton with the source/kernel.py run(**kwargs) interface. The declared implemented Python initial
-  candidate is an executable production wrapper used during task_validation; it is not a completed
-  Triton rewrite. The provided baseline and unchanged initial wrapper are permitted to call the
-  installed runtime entrypoint aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle. Their
-  required GPU runtime is MI355X/gfx950 with image
-  lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69, which
-  supplies AITER, its GPU backend dependencies, ROCm PyTorch and Triton. See BUNDLE_README.md for
-  the role and dependency contract. The final submitted candidate must implement its own GPU
-  computation in Triton and must not delegate that computation to the production operator, protected
-  baseline, reference or another library operator. Read scripts/workload.json and the protected
-  reference for the full numerical contract. The supported axis and scalar combinations are exactly
-  those enumerated by the supplied workload rows; tensor values vary according to the task
-  initializer and replay-refill checks. The source definition documents the upstream operator and
-  does not extend this task to unlisted axis or scalar combinations. Retain all cases, dtypes,
-  tolerances and benchmark policy. Inputs are functional and may not be mutated. Edit only the
-  declared source files.
+  FlyDSL as the builder
+  build_gemm_a8w8_blockwise_scaled_blk128x128_nt_obfloat16_bshuf16x16_asraw_n32768_k1024_module in
+  kernel.py; the builder takes the row's axes as keyword arguments and returns launch, which takes
+  the definition's inputs as positional arguments and returns its outputs. The candidate starts
+  unimplemented. The protected baseline calls the installed runtime entrypoint
+  aiter.ops.gemm_op_a8w8.gemm_a8w8_blockscale_bpreshuffle. The validator configuration pins
+  MI355X/gfx950 with image
+  lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69; the
+  candidate also requires FlyDSL. See BUNDLE_README.md. The candidate must implement its own GPU
+  computation and must not delegate it to the production operator, protected baseline, reference or
+  another library operator. Read scripts/workload.json and the protected reference for the full
+  numerical contract. The supported axis and scalar combinations are exactly those enumerated by the
+  supplied workload rows. Retain all cases, dtypes, tolerances and benchmark policy. Inputs are
+  functional and may not be mutated. Edit only the declared source file.
 instructions:
 - BUNDLE_README.md
+exports:
+- format: sikl-solution
+  output: artifacts/solution.json
+  command:
+  - python3
+  - scripts/export_solution.py
+  timeout_s: 60

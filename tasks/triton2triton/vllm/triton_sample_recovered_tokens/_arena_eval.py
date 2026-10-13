@@ -115,7 +115,10 @@ def evaluate(role, action):
                     row.update(status='FAIL', reason='Missing/unsupported device timing method', failure_kind='measurement_failure')
                 else:
                     row.update(execution_time_ms=ms, benchmark_method=method,
-                               metadata={'harness_measurement':record})
+                               metadata={'harness_measurement':record,
+                                         'device_timing':{key:value for key,value in record.items()
+                                                          if key.startswith('benchmark_')},
+                                         'timed_output_checked':record.get('timed_output_checked') is True})
         else:
             raise ValueError(f'Unsupported action {action}')
         failures = [r for r in cases if r['status'] != 'PASS']

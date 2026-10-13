@@ -380,10 +380,18 @@ def test_rmsnorm(M, N, ZERO_CENTERED_GAMMA, in_dtype_str, out_dtype_str, request
     USE_BLOCKED = n_cols > blk_size
     NUM_PRGMS = min(n_rows, get_num_sms())
 
+    # Freeze the operands and independent reference before calling the editable
+    # kernel. Computing the reference from live operands afterwards would let
+    # an input-mutating implementation change both sides of the comparison.
+    x_original = x.detach().clone()
+    g_original = g.detach().clone()
+    y_torch, rsigma_torch = torch_rmsnorm_fwd(x_original, g_original, ZERO_CENTERED_GAMMA, out_dtype)
     y_triton = rmsnorm(x, g, y, rsigma, dx, dg, dg_tmp, n_rows, n_cols, ZERO_CENTERED_GAMMA, blk_size, USE_BLOCKED,
                        NUM_PRGMS)
-
-    y_torch, rsigma_torch = torch_rmsnorm_fwd(x, g, ZERO_CENTERED_GAMMA, out_dtype)
+    assert torch.equal(x.detach().contiguous().view(torch.uint8), x_original.view(torch.uint8)), \
+        'RMS norm modified its read-only x input'
+    assert torch.equal(g.detach().contiguous().view(torch.uint8), g_original.view(torch.uint8)), \
+        'RMS norm modified its read-only gamma input'
 
     if out_dtype in (torch.float16, torch.bfloat16):
         atol, rtol = 1e-3, 1e-2
