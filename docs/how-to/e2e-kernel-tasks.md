@@ -42,6 +42,9 @@ The runtime lock can specify a further minimum. Search does not begin if that
 reserve cannot fit. Resume still evaluates retained candidate files within the
 original deadline and writes a result if evaluation exhausts it. A timeout or
 incomplete measurement cannot produce a gain.
+`agent_execution.candidate_changed` describes the current agent invocation;
+`candidate_changed_from_initial` and `optimization_outcome` compare the retained
+submission with the original task, including after a resume with no new search.
 
 For a measurement campaign with a preselected repetition count, set `budget.final_evaluation_pairs`
 to an integer from 3 to 100, at least the task's declared pair count. Otherwise

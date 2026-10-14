@@ -347,7 +347,13 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     if any(row.get("candidate_unchanged") is False or row.get("protected_state_unchanged") is False
            for row in exports):
         result["candidate_accepted"] = False
-    changed = agent_result['candidate_changed']
+    # A resumed invocation may do no new search while retaining an earlier
+    # submission. Report its change against the original, not this invocation.
+    original = session.candidate_source_evidence(initial=True)
+    evaluated = result.get('evaluated_candidate_sources')
+    changed = (evaluated != original['sources']
+               if evaluated is not None and original['error'] is None else None)
+    result['candidate_changed_from_initial'] = changed
     result['optimization_outcome'] = ('unchanged' if changed is False else
         'accepted_change' if changed is True and result['candidate_accepted'] else
         'rejected_change' if changed is True else 'incomplete')

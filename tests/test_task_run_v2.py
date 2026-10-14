@@ -290,6 +290,9 @@ def test_resume_in_final_reserve_keeps_candidate_and_writes_result(tmp_path, rem
     assert (workspace/'kernel.py').read_bytes() == retained
     assert json.loads(budget_path.read_text())['deadline_epoch'] == budget['deadline_epoch']
     assert result['candidate_accepted'] is (remaining > 0)
+    assert result['agent_execution']['candidate_changed'] is False
+    assert result['candidate_changed_from_initial'] is True
+    assert result['optimization_outcome'] == ('accepted_change' if remaining > 0 else 'rejected_change')
 
 
 @pytest.mark.parametrize("modify_report", [False, "delete", "symlink", "directory"])
