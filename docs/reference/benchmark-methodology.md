@@ -172,9 +172,11 @@ samples, metadata = benchmark_cuda_graph_cold_weights_samples(
     calls, warmup=20, repetition=100, prepare_fn=rotation, timed_run=TimedRun())
 ```
 
-One CUDA graph calls every callable once, in order. Each sample is the replay time divided by the number of calls, so every call reads its weight from HBM and the fixed replay cost is shared by all calls. `prepare_fn` runs once before the start event of each replay, so all calls of one replay see the same call-varying inputs. `TimedRun.outputs` is the list of per-call outputs, `after_sample` receives that list, and `rerun_ms()` returns the per-call time of one more replay. The metadata reports `benchmark_method: cuda_graph_cold_weights`, `benchmark_calls_per_replay` and `benchmark_cold_weight_copies`. The method has no event fallback, and `AKA_BENCHMARK_FORCE_EVENT=1` makes it raise.
+One CUDA graph calls every callable once, in order. Each sample is the replay time divided by the number of calls, so every call reads its weight from HBM and the fixed replay cost is shared by all calls. `TimedRun.outputs` is the list of per-call outputs, `after_sample` receives that list, and `rerun_ms()` returns the per-call time of one more replay. The metadata reports `benchmark_method: cuda_graph_cold_weights`, `benchmark_calls_per_replay` and `benchmark_cold_weight_copies`. The method has no event fallback, and `AKA_BENCHMARK_FORCE_EVENT=1` makes it raise.
 
-A task that uses this method keeps the integrity checks of its default timing. It rotates the call-varying inputs, checks the outputs of the timed graph on several weight copies and on unseen inputs, holds the reported time to the cost of the unseen inputs, and checks that no weight copy changed.
+Every call needs its own weight copy and its own input buffer. Each weight copy is a separate draw from the task's initializer and stays fixed. `prepare_fn` runs once before the start event of each replay and draws a fresh, independent input into every call's buffer. With identical copies an implementation could read one copy for every call, so the weight stays in the caches. With identical copies and one shared input it could also compute one result and copy it to the other outputs. Both shortcuts pass the output checks.
+
+A task that uses this method keeps the integrity checks of its default timing. It checks the output of every call against a reference for that call's input and weight copy, in the timed replays and in replays with fresh unseen inputs for every call. It also holds the reported time to the cost of the unseen inputs and checks that no weight copy changed.
 
 ## Independent task workspaces
 

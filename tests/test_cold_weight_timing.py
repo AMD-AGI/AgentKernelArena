@@ -11,6 +11,7 @@ import types
 from contextlib import nullcontext
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from src.task_protocol import RESULT_PREFIX, parse_command_result, performance_cases
@@ -145,6 +146,70 @@ def test_empty_cold_capture_raises(helper, monkeypatch):
     monkeypatch.setattr(helper, "_capture_graph", capture)
     with pytest.raises(RuntimeError, match="cold-weight"):
         helper.benchmark_cuda_graph_cold_weights_samples([lambda: None] * 2)
+
+
+def _replaying_capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+    # A real replay runs the captured kernels again on the same buffers. Running
+    # the captured calls again is the CPU stand-in for that.
+    output_holder[:] = [fn()]
+    return types.SimpleNamespace(replay=fn)
+
+
+class _ColdGemmTask:
+    """A CPU GEMM task that follows the cold-weight contract.
+
+    Every call has its own weight copy, drawn separately, and its own input buffer,
+    which prepare() fills with a fresh draw before every replay. The shortcuts
+    share work across calls: one computes only the first result and copies it, the
+    other reads the first weight copy for every call.
+    """
+
+    def __init__(self, shortcut=None, copies=8):
+        self.rng = np.random.default_rng(0)
+        self.weights = [self.rng.standard_normal((16, 16)) for _ in range(copies)]
+        self.inputs = [np.zeros((4, 16)) for _ in range(copies)]
+        self.outputs = [np.zeros((4, 16)) for _ in range(copies)]
+        self.shortcut = shortcut
+
+    def prepare(self):
+        for buffer in self.inputs:
+            buffer[:] = self.rng.standard_normal(buffer.shape)
+
+    def call(self, index):
+        if index and self.shortcut == "copy_first_result":
+            self.outputs[index][:] = self.outputs[0]
+        elif self.shortcut == "read_first_weight":
+            np.matmul(self.inputs[index], self.weights[0], out=self.outputs[index])
+        else:
+            np.matmul(self.inputs[index], self.weights[index], out=self.outputs[index])
+        return self.outputs[index]
+
+    def check(self, outputs):
+        for index, output in enumerate(outputs):
+            expected = self.inputs[index] @ self.weights[index]
+            assert np.allclose(output, expected), (
+                f"call {index} does not match the reference for its input and weight copy")
+
+
+@pytest.mark.parametrize("shortcut", [None, "copy_first_result", "read_first_weight"])
+def test_per_call_check_catches_work_shared_across_calls(helper, monkeypatch, shortcut):
+    monkeypatch.setattr(helper, "_capture_graph", _replaying_capture)
+    task = _ColdGemmTask(shortcut)
+    timed = helper.TimedRun()
+    timed.after_sample = task.check
+    calls = [lambda index=index: task.call(index) for index in range(len(task.weights))]
+
+    def measure():
+        helper.benchmark_cuda_graph_cold_weights_samples(
+            calls, warmup=1, repetition=3, prepare_fn=task.prepare, timed_run=timed)
+        # One more replay with fresh unseen inputs for every call, checked per call.
+        task.check(timed.rerun())
+
+    if shortcut is None:
+        measure()
+    else:
+        with pytest.raises(AssertionError, match="does not match"):
+            measure()
 
 
 def _case(method, time_ms):

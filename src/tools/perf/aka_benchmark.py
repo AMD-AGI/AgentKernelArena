@@ -1232,12 +1232,19 @@ def benchmark_cuda_graph_cold_weights_samples(
     """Time one call per weight copy in a single CUDA graph and report per call.
 
     ``calls`` holds one zero-argument callable per weight copy. Each callable must
-    run the complete operator on its own copy of the persistent operands. One graph
-    is captured that invokes every callable once, in order, and each reported
-    sample is that replay's device time divided by ``len(calls)``. Because the
-    copies together exceed the caches, every call reads its weight from HBM, and
-    the fixed per-replay cost (launch of the graph, its first kernel's ramp) is
-    shared by all calls instead of being charged to a single one.
+    run the complete operator on its own weight copy and its own input buffer. The
+    weight copies are separate draws from the task's initializer, and
+    ``prepare_fn`` draws a fresh, independent input into every buffer before each
+    replay. With identical copies an implementation could read one copy for every
+    call, and with identical copies and one shared input it could also compute one
+    result and copy it to the other outputs. The task checks the output of every
+    call against a reference for that call's input and weight copy.
+
+    One graph is captured that invokes every callable once, in order, and each
+    reported sample is that replay's device time divided by ``len(calls)``.
+    Because the copies together exceed the caches, every call reads its weight
+    from HBM, and the fixed per-replay cost (launch of the graph, its first
+    kernel's ramp) is shared by all calls instead of being charged to a single one.
 
     ``prepare_fn`` and ``timed_run`` behave as in
     :func:`benchmark_cuda_graph_or_events_samples`: preparation runs before the
