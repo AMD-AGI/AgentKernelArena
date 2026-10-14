@@ -417,6 +417,45 @@ def mock_engine(monkeypatch, *, fail=False, port_ok=True, timeout=False, applyba
     return commands
 
 
+def test_claude_roles_preserve_native_login_and_provider_options(monkeypatch):
+    monkeypatch.setenv("FORGE_AGENT_OPTIONS_JSON", json.dumps({
+        "extra_args": {"bare": None, "no-session-persistence": None},
+        "setting_sources": ["user"],
+    }))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/private/test-auth-state")
+    before = os.environ["FORGE_AGENT_OPTIONS_JSON"]
+    env = adapter._agent_environment({"agent_backend": "claude", "effort": "high"})
+    options = json.loads(env["FORGE_AGENT_OPTIONS_JSON"])
+    # Match the native SDK's precedence: role defaults first, runtime options last.
+    native_role_options = {"extra_args": {"bare": None}, "effort": "high"}
+    native_role_options.update(options)
+    assert "bare" not in native_role_options["extra_args"]
+    assert native_role_options["extra_args"]["no-session-persistence"] is None
+    assert options["setting_sources"] == ["user"]
+    assert env["CLAUDE_CONFIG_DIR"] == "/private/test-auth-state"
+    assert env["FORGE_AGENT_REASONING_EFFORT"] == "high"
+    assert os.environ["FORGE_AGENT_OPTIONS_JSON"] == before
+
+
+def test_claude_default_overrides_native_bare_role(monkeypatch):
+    monkeypatch.delenv("FORGE_AGENT_OPTIONS_JSON", raising=False)
+    env = adapter._agent_environment({"agent_backend": "claude"})
+    assert json.loads(env["FORGE_AGENT_OPTIONS_JSON"])["extra_args"] == {}
+
+
+@pytest.mark.parametrize("options", ["invalid", "[]", '{"extra_args":null}', '{"extra_args":[]}'])
+def test_claude_rejects_malformed_provider_options(monkeypatch, options):
+    monkeypatch.setenv("FORGE_AGENT_OPTIONS_JSON", options)
+    with pytest.raises(ValueError, match="JSON object"):
+        adapter._agent_environment({"agent_backend": "claude"})
+
+
+def test_other_provider_environment_remains_unchanged(monkeypatch):
+    monkeypatch.setenv("FORGE_AGENT_OPTIONS_JSON", '{"native_option":true}')
+    env = adapter._agent_environment({"agent_backend": "codex"})
+    assert env["FORGE_AGENT_OPTIONS_JSON"] == '{"native_option":true}'
+
+
 @pytest.mark.parametrize("state", ["implemented", "unimplemented"])
 def test_launcher_delivers_complete_bundle_without_repeating_loop(tmp_path, monkeypatch, state):
     context, _, _ = fixture_task(tmp_path, initial_state=state)
@@ -750,6 +789,46 @@ def test_no_commit_fallback_rejects_incomplete_or_contradictory_result(tmp_path,
     assert (context.workspace / "source/helper.py").read_text() == "3"
 
 
+@pytest.mark.parametrize("termination", ["orchestration_failed", "budget_exhausted", "gate_met"])
+@pytest.mark.parametrize("selected_best", [True, False])
+def test_native_termination_status_is_separate_from_candidate_delivery(
+        tmp_path, monkeypatch, termination, selected_best):
+    context, _, _ = fixture_task(tmp_path)
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    mock_engine(monkeypatch)
+    run = adapter.run_forge_subprocess
+
+    def terminated(*args, **kwargs):
+        output = run(*args, **kwargs)
+        engine = Path(kwargs["workspace"])
+        experiments = engine / "forge_experiments"
+        experiments.mkdir()
+        (experiments / "run_state.json").write_text(json.dumps({"termination_reason": termination}))
+        if not selected_best:
+            plan = json.loads(Path(kwargs["env"]["ARENA_FORGE_PLAN"]).read_text())
+            result_path = Path(plan["result"])
+            result = json.loads(result_path.read_text())
+            result.update(best_commit="", best_iteration=0, iteration_count=0)
+            result_path.write_text(json.dumps(result))
+        return output
+
+    monkeypatch.setattr(adapter, "run_forge_subprocess", terminated)
+    if termination == "orchestration_failed":
+        with pytest.raises(adapter.ForgeRunError, match="native orchestration failed"):
+            adapter.launch({}, "unused", str(context.workspace))
+    else:
+        adapter.launch({}, "unused", str(context.workspace))
+    status_path, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
+    status = json.loads(status_path.read_text())
+    assert status["exit_code"] == 0
+    assert status["native_termination_reason"] == termination
+    assert status["status"] == ("FAILED" if termination == "orchestration_failed" else "DELIVERED")
+    assert status["candidate_delivery"] == "DELIVERED"
+    assert status["selected_commit"]
+    assert (context.workspace / "source/helper.py").read_text() == ("6" if selected_best else "3")
+    assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
+
+
 def test_broken_changed_candidate_not_reclassified_as_empty(tmp_path, monkeypatch):
     context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
     (context.workspace / "source/helper.py").write_text("100")
@@ -969,3 +1048,23 @@ def test_internal_candidate_symlink_cannot_change_declared_delivery_path(tmp_pat
     (engine / "source/kernel.py").symlink_to("real.py")
     with pytest.raises(ValueError, match="Candidate symlink"):
         install_candidate(context.spec, engine, context.workspace)
+
+
+def test_explicit_effort_is_preserved_in_engine_command(tmp_path):
+    context, plan, _ = fixture_task(tmp_path)
+    plan['workflow'] = 'optimize'
+    config = adapter._config({'agent': {'effort': 'high'}})
+    command = adapter.build_command(plan, context, config, gpu_arch='gfx950', gpu_type='mi355x')
+    assert command[command.index('--agent-reasoning-effort')+1] == 'high'
+    with pytest.raises(ValueError,match='effort'):
+        adapter._config({'agent': {'effort': 'unknown'}})
+
+
+@pytest.mark.parametrize('workflow', ['optimize', 'initialize'])
+def test_fixed_task_bridge_disables_native_driver_authoring(tmp_path, workflow):
+    context, plan, _ = fixture_task(tmp_path)
+    plan['workflow'] = workflow
+    command = adapter.build_command(plan, context, adapter._config({}), gpu_arch='gfx950', gpu_type='mi355x')
+    assert '--no-prepare-task' in command
+    assert '--prepare-task' not in command
+    assert command[command.index('--driver') + 1] == str(Path(plan['engine_root'])/'arena_forge_driver.py')
