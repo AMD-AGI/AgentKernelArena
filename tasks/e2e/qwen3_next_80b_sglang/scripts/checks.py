@@ -1,88 +1,14 @@
 """Independent FP32 recurrent-state oracle and protected serving integration."""
-import ast
-from contextlib import contextmanager, nullcontext
-import importlib.util
 import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
-def source_policy(*, target_only=False):
-    """Reject ordinary configuration/file/dispatch edits in a kernel submission.
-
-    This is a narrow source contract, not a Python security sandbox. Runtime
-    settings and rank evidence are checked separately by the protected adapter.
-    """
-    lock_path = ROOT / 'runtime.lock.json'
-    if lock_path.exists():
-        import json
-        lock = json.loads(lock_path.read_text())
-        if 'candidate_bundle' in lock:
-            from _aka_serving_bundle import Bundle
-            return Bundle(ROOT, lock).check_sources()
-    tree = ast.parse((ROOT / 'source/gdn.py').read_text())
-    allowed = {'torch', 'triton', 'aiter', 'math', 'typing', 'functools'}
-    if target_only:
-        allowed.remove('aiter')
-    forbidden = {'open', 'eval', 'exec', 'compile', '__import__', 'getattr', 'setattr',
-                 'globals', 'locals', 'vars', 'breakpoint'}
-    # Modules reachable as attributes of allowed packages (torch.os, triton.sys, ...).
-    escape_hatches = {'os', 'sys', 'subprocess', 'importlib', 'ctypes', 'builtins', 'environ',
-                      'shutil', 'pathlib', 'socket', 'signal', 'threading', 'multiprocessing'}
-    aliases = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            aliases.update({item.asname or item.name: item.name for item in node.names})
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            aliases.update({item.asname or item.name: node.module+'.'+item.name for item in node.names})
-    def qualified(node):
-        if isinstance(node, ast.Name):
-            return aliases.get(node.id, node.id)
-        if isinstance(node, ast.Attribute):
-            return qualified(node.value)+'.'+node.attr
-        return ''
-    allocation_and_metadata = {'torch.empty', 'torch.empty_like', 'torch.empty_strided',
-        'torch.zeros', 'torch.zeros_like', 'torch.finfo', 'torch.iinfo', 'torch.device',
-        'torch.is_tensor', 'torch.cuda.current_device', 'torch.cuda.get_device_properties'}
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or '']
-            if any(name.split('.')[0] not in allowed and name != 'sglang.srt.layers.attention.fla.op' for name in names):
-                raise ValueError('Kernel source imported an undeclared dependency')
-        if isinstance(node, ast.Name) and (node.id in forbidden or node.id.startswith('__')):
-            raise ValueError('Kernel source uses a prohibited runtime access')
-        if isinstance(node, ast.Attribute) and (node.attr.startswith(('_', 'set_', 'enable_', 'disable_')) or isinstance(node.ctx, (ast.Store, ast.Del))):
-            raise ValueError('Kernel source changes runtime attributes or uses reflective access')
-        if isinstance(node, ast.Attribute) and node.attr in escape_hatches:
-            raise ValueError('Kernel source reaches process or filesystem state through a module attribute')
-        if isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del)) and isinstance(node.value, ast.Attribute):
-            raise ValueError('Kernel source mutates state owned by another module')
-        if target_only and isinstance(node, ast.Call):
-            name = qualified(node.func)
-            if name.startswith('torch.') and name not in allocation_and_metadata:
-                raise ValueError('Torch is limited to allocation and metadata; implement computation in Triton')
-
-
-def target_kernels():
-    tree = ast.parse((ROOT/'source/gdn.py').read_text())
-    aliases = {}
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            aliases.update({item.asname or item.name: item.name for item in node.names})
-        if isinstance(node, ast.ImportFrom) and node.module:
-            aliases.update({item.asname or item.name: node.module+'.'+item.name for item in node.names})
-    def qualified(node):
-        if isinstance(node, ast.Call):
-            return qualified(node.func)
-        if isinstance(node, ast.Name):
-            return aliases.get(node.id, node.id)
-        if isinstance(node, ast.Attribute):
-            return qualified(node.value)+'.'+node.attr
-        return ''
-    names = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)
-             and any(qualified(d) == 'triton.jit' for d in node.decorator_list)]
-    if not names:
-        raise ValueError('Final candidate must implement and execute a Triton GPU kernel')
-    return names
+def source_policy():
+    """Check the backend-neutral compute bundle; this is not a security sandbox."""
+    import json
+    from _aka_serving_bundle import Bundle
+    lock = json.loads((ROOT / 'runtime.lock.json').read_text())
+    return Bundle(ROOT, lock).check_sources()
 
 
 def launch_command(config, port):
@@ -101,18 +27,12 @@ def launch_command(config, port):
 
 def load_candidate():
     import json
+    from types import SimpleNamespace
+    from _aka_serving_bundle import effective_function
     lock = json.loads((ROOT/'runtime.lock.json').read_text())
-    if 'candidate_bundle' in lock:
-        from types import SimpleNamespace
-        from _aka_serving_bundle import effective_function
-        return SimpleNamespace(fused_recurrent_gated_delta_rule_packed_decode=effective_function(
-            ROOT, lock, 'sglang.srt.layers.attention.fla.fused_recurrent',
-            'fused_recurrent_gated_delta_rule_packed_decode'))
-    spec = importlib.util.spec_from_file_location('candidate', ROOT/'source/gdn.py')
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return SimpleNamespace(fused_recurrent_gated_delta_rule_packed_decode=effective_function(
+        ROOT, lock, 'sglang.srt.layers.attention.fla.fused_recurrent',
+        'fused_recurrent_gated_delta_rule_packed_decode'))
 
 
 def audit_kernel_dtypes(input_dtype, state_dtype, output_dtype):
@@ -198,31 +118,8 @@ def compare_tensor(actual, expected, rule, *, state=False):
     return dict(max_abs_error=float(delta.abs().max()), relative_rms=relative_rms)
 
 
-@contextmanager
-def candidate_operations():
-    """Observe actual Tensor operations, including methods and aliased functions.
-
-    Triton launches do not dispatch ATen math. Restrict host Tensor dispatch to
-    allocation and storage views; the numerical oracle runs outside this scope.
-    This complements source checks, not a sandbox against hostile Python.
-    """
-    from torch.utils._python_dispatch import TorchDispatchMode
-
-    class AllocationOnly(TorchDispatchMode):
-        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-            allowed = {'aten::empty', 'aten::empty_like', 'aten::empty_strided',
-                       'aten::zeros', 'aten::zeros_like', 'aten::view',
-                       'aten::as_strided', 'aten::alias'}
-            if func._schema.name not in allowed:
-                raise ValueError('Candidate delegates computation to Torch: ' + str(func))
-            return func(*args, **(kwargs or {}))
-
-    with AllocationOnly():
-        yield
-
-
 def operator_checks(lock):
-    source_policy(target_only=True)
+    source_policy()
     import torch
     torch.manual_seed(lock['correctness']['seed'])
     module = load_candidate()
@@ -234,8 +131,7 @@ def operator_checks(lock):
         for step in range(4):
             expected, state = oracle(args)
             immutable = [args[i].clone() for i in (0,1,2,3,4,8)]
-            with nullcontext() if 'candidate_bundle' in lock else candidate_operations():
-                result = function(*args)
+            result = function(*args)
             torch.cuda.synchronize()
             output_error = compare_tensor(args[7], expected, rule)
             state_error = compare_tensor(args[6], state, rule, state=True)
@@ -249,10 +145,9 @@ def operator_checks(lock):
     for batch in (32, 128, 512):
         spec = dict(batch=batch, pool_size=1016, active=min(batch, 32))
         args=make_case(**spec)
-        with nullcontext() if 'candidate_bundle' in lock else candidate_operations():
-            function(*args)
+        function(*args)
         graph=torch.cuda.CUDAGraph()
-        with torch.cuda.graph(graph), (nullcontext() if 'candidate_bundle' in lock else candidate_operations()):
+        with torch.cuda.graph(graph):
             function(*args)
         for step in range(4):
             # Keep addresses/state while changing inputs and active slots.
@@ -271,19 +166,3 @@ def operator_checks(lock):
                                  output_error=output_error,state_error=state_error))
         del graph
     return evidence
-
-
-def compile_candidate(lock):
-    import torch
-    names=target_kernels()
-    evidence=operator_checks(lock)
-    module=sys.modules['candidate']
-    args=make_case(32)
-    with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,torch.profiler.ProfilerActivity.CUDA]) as profile:
-        with nullcontext() if 'candidate_bundle' in lock else candidate_operations():
-            module.fused_recurrent_gated_delta_rule_packed_decode(*args)
-        torch.cuda.synchronize()
-    events=sorted({event.name for event in profile.events() if event.device_type==torch.autograd.DeviceType.CUDA})
-    if not any(name in event for name in names for event in events):
-        raise ValueError('No candidate Triton kernel executed')
-    return dict(operator_cases=evidence,candidate_gpu_kernels=events)

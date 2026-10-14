@@ -61,17 +61,6 @@ def test_per_rank_dimensions_and_numerical_negative_controls(checks):
         checks.compare_tensor(state + 0.01, state, rules, state=True)
 
 
-def test_tensor_math_cannot_substitute_for_kernel(checks):
-    x = torch.ones((2, 8))
-    for compute in (lambda: x.square(), lambda: x+x, lambda: x.copy_(x)):
-        with pytest.raises(ValueError, match='delegates computation'):
-            with checks.candidate_operations():
-                compute()
-    with checks.candidate_operations():
-        assert torch.empty_like(x).shape == x.shape
-        assert x.view(-1).numel() == 16
-
-
 @pytest.fixture
 def quality(tmp_path, monkeypatch):
     spec = importlib.util.spec_from_file_location('q80_quality', TASK/'scripts/quality.py')

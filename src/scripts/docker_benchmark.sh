@@ -551,24 +551,6 @@ read_run_agent_setting() {
     ' "$run_config"
 }
 
-read_forge_cli_backends() {
-    local config="$1" backend supervisor
-    backend="$(read_run_agent_setting "$config" agent_backend)"
-    if [[ -z "$backend" ]]; then
-        backend="$(sed -nE 's/^agent_backend:[[:space:]]*([A-Za-z0-9_]+).*/\1/p' "$HOST_ROOT/agents/forge/agent_config.yaml")"
-    fi
-    supervisor="$(read_run_agent_setting "$config" supervisor_backend)"
-    local provider
-    for provider in "$backend" "${supervisor:-$backend}"; do
-        case "$provider" in
-            claude|claude_code) printf 'claude_code\n' ;;
-            codex) printf 'codex\n' ;;
-            *) die "Docker provisioning does not support Forge backend '$provider'" ;;
-        esac
-        [[ -n "$supervisor" && "$supervisor" != "$backend" ]] || break
-    done
-}
-
 # Decide which agent CLIs to provision into the container.
 # AKA_AGENTS env (comma/space list) overrides; else derive from config's
 # agent.template (task_validator -> its backend); else all three.
@@ -590,7 +572,6 @@ resolve_optimizer_agents() {
         tmpl="${run_backend:-$(read_validator_backend)}"
     fi
     case "$tmpl" in
-        forge) read_forge_cli_backends "$config" ;;
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
         codex) printf 'codex\n' ;;

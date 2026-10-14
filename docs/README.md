@@ -29,7 +29,6 @@ python -m sphinx -T -b html docs docs/_build/html
 | `reference/compatibility-matrix.md` | Compatibility Matrix | Verified hardware/software versions. |
 | `reference/api-reference.md` | Configuration and API reference | Run configuration, task-contract links, CLI flags, result schema, scoring, and the agent registry. |
 | `reference/benchmark-methodology.md` | Reference | Timing methodology, performance-helper materialization, serving wall-clock measurement, and speedup interpretation. |
-| `reference/e2e-qualification-2026-09-29.md` | Reference | GPU qualification evidence for the first serving task and the revision it applies to. |
 | `how-to/run-evaluation.md` | How-to | Choose or create a run configuration, run an experiment through Docker, resume runs, and read results. |
 | `how-to/slurm-run.md` | How-to | Allocate MI355X GPUs from a GPU-less Slurm/Spur login node and run Docker on the compute node. |
 | `how-to/use-evaluation-tools.md` | How-to | Configure isolated sanitizer/analysis sidecars, interpret capability and findings, and understand the strict language/GPU support matrix. |

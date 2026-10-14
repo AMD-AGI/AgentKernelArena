@@ -491,19 +491,8 @@ def stop_server(process, log):
 
 
 def audit(lock):
-    if 'candidate_bundle' in lock:
-        from _aka_serving_bundle import audit as audit_bundle
-        return audit_bundle(ROOT, lock)
-    calls = [json.loads(line) for line in (ROOT / 'rank_calls.jsonl').read_text().splitlines()]
-    expected = digest(ROOT / lock['candidate_module'])
-    if any(row['sha256'] != expected or row['source'] != str(ROOT / lock['candidate_module']) for row in calls):
-        raise ValueError('A server rank loaded a different candidate')
-    if 'server_seed' in lock and any(row.get('server_settings', {}).get('random_seed') != lock['server_seed'] for row in calls):
-        raise ValueError('A server rank changed the locked random seed')
-    for rank in range(lock['gpu_count']):
-        if {r['function'] for r in calls if r['rank'] == rank} != set(lock['target_functions']):
-            raise ValueError(f'Rank {rank} did not invoke every declared candidate operator')
-    return calls
+    from _aka_serving_bundle import audit as audit_bundle
+    return audit_bundle(ROOT, lock)
 
 
 def runtime_identity(lock_digest, calls):
@@ -525,37 +514,26 @@ def runtime_identity(lock_digest, calls):
 
 def evaluate(args, config, lock, limits):
     from checks import source_policy
-    final_candidate = args.role == 'candidate' and os.environ.get('ARENA_EVAL_PHASE') == 'candidate_evaluation'
-    source_policy(target_only=final_candidate)
-    bundle = None
-    if 'candidate_bundle' in lock:
-        from _aka_serving_bundle import Bundle
-        bundle = Bundle(ROOT, lock)
-        bundle.check_sources()
-    if final_candidate and bundle is None:
-        from checks import target_kernels
-        target_kernels()
+    source_policy()
+    from _aka_serving_bundle import Bundle
+    bundle = Bundle(ROOT, lock)
+    bundle.check_sources()
     row = identity(config)
     if args.action == 'validate-task':
         if digest(ROOT / 'benchmark.yaml') != lock['workload_sha256']:
             raise ValueError('Workload configuration differs from lock')
-        initial = bundle.digest if bundle else digest(ROOT / lock['candidate_module'])
-        if initial != lock.get('initial_bundle_sha256', lock.get('initial_candidate_sha256')):
+        initial = bundle.digest
+        if initial != lock['initial_bundle_sha256']:
             raise ValueError('Initial implementation differs from the locked production source')
         row['checks'] = ['correctness', 'performance']
         return [row], dict(candidate_state='implemented', initial_source_sha256=initial)
     if args.action == 'compile':
-        if bundle:
-            # Syntax/import checks for every submitted entrypoint. GPU JIT paths
-            # are compiled and executed by the mandatory model correctness action.
-            from _aka_serving_bundle import effective_function
-            for patch in bundle.patches:
-                effective_function(ROOT, lock, patch['module'], patch['symbol'])
-            return [], dict(**bundle.check_sources(), gpu_execution='required_by_correctness')
-        if final_candidate:
-            from checks import compile_candidate
-            return [], compile_candidate(lock)
-        return [], dict(operator_cases=operator_checks(lock))
+        # Syntax/import checks for every submitted entrypoint. GPU JIT paths
+        # are compiled and executed by the mandatory model correctness action.
+        from _aka_serving_bundle import effective_function
+        for patch in bundle.patches:
+            effective_function(ROOT, lock, patch['module'], patch['symbol'])
+        return [], dict(**bundle.check_sources(), gpu_execution='required_by_correctness')
     metadata = {}
     diagnostics = []
     reference_kind = lock['correctness'].get('model_reference', 'transformers_fp32')
@@ -628,7 +606,7 @@ def evaluate(args, config, lock, limits):
         fingerprint, stable_settings = runtime_identity(digest(ROOT / 'runtime.lock.json'), metadata['rank_calls'])
         metadata['server_settings'] = stable_settings
         row['metadata'] = dict(runtime_fingerprint=fingerprint,
-                               kernel_sha256=bundle.digest if bundle else digest(ROOT / lock['candidate_module']))
+                               kernel_sha256=bundle.digest)
     finally:
         stop_server(process, log)
     if args.action == 'correctness':

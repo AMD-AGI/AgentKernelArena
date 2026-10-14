@@ -31,27 +31,6 @@ def _write(path: Path, data) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
 
-def _agent_environment(config: dict) -> dict[str, str]:
-    """Preserve native authentication for every Claude SDK role, including planning."""
-    env = os.environ.copy()
-    if config.get("effort"):
-        env["FORGE_AGENT_REASONING_EFFORT"] = config["effort"]
-    if config["agent_backend"] == "claude":
-        try:
-            options = json.loads(env.get("FORGE_AGENT_OPTIONS_JSON") or "{}")
-        except ValueError as exc:
-            raise ValueError("FORGE_AGENT_OPTIONS_JSON must be a JSON object") from exc
-        if not isinstance(options, dict) or not isinstance(options.get("extra_args", {}), dict):
-            raise ValueError("Forge provider options and extra_args must be JSON objects")
-        # Native read-only roles default to --bare, which skips OAuth entirely.
-        # Runtime options override that default without reading or copying auth.
-        # Keep other provider options and CLI arguments intact.
-        options["extra_args"] = {key: value for key, value in options.get("extra_args", {}).items()
-                                 if key != "bare"}
-        env["FORGE_AGENT_OPTIONS_JSON"] = json.dumps(options)
-    return env
-
-
 def _digest(spec, root: Path):
     return {name: hashlib.sha256(path.read_bytes()).hexdigest()
             for name, path in candidate_files(spec, root, required=False).items()}
@@ -78,12 +57,10 @@ def _config(eval_config: dict) -> dict:
     overrides = eval_config.get("agent") or {}
     if not isinstance(overrides, dict):
         raise ValueError("agent run configuration must be a mapping")
-    allowed = {"workflow", "model", "effort", "timeout_seconds", "permission_mode", "agent_backend",
+    allowed = {"workflow", "model", "timeout_seconds", "permission_mode", "agent_backend",
                "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds",
                "initialization_max_attempts", "initialization_budget_fraction"}
     config.update({key: value for key, value in overrides.items() if key in allowed})
-    if config.get("effort") not in (None, "low", "medium", "high", "xhigh", "max"):
-        raise ValueError("Unsupported Forge effort")
     if overrides.get("agent_backend") not in (None, "claude") and "model" not in overrides:
         # A Claude default is not a model ID for another provider. Let upstream
         # resolve that provider's configured model unless explicitly overridden.
@@ -260,8 +237,6 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                "--permission-mode", config["permission_mode"]]
     if config.get("model"):
         command.extend(["--model", config["model"]])
-    if config.get("effort"):
-        command.extend(["--agent-reasoning-effort", config["effort"]])
     symbols = [entry.symbol for entry in context.spec.candidate.entrypoints if entry.symbol]
     identity = context.spec.to_mapping().get("kernel_identity", {})
     operator = identity.get("logical_operator") or context.spec.task_id
@@ -281,10 +256,6 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                     # prompt sections with it.
                     "--task-type", "repository",
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
-                    # Arena already supplies a protected task-action bridge.
-                    # Native preparation can author a measurement driver and
-                    # requires profiling/graph capabilities serving tasks lack.
-                    "--no-prepare-task",
                     "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]
     else:
@@ -337,7 +308,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
                 "gpu_type": _resolve_gpu_type(eval_config)}
         plan_path = artifact_root / "bridge_plan.json"
         _write(plan_path, plan)
-        env = _agent_environment(config)
+        env = os.environ.copy()
         env.update({"ARENA_FORGE_PLAN": str(plan_path), "PYTHONUNBUFFERED": "1", "IS_SANDBOX": "1",
                     "FORGE_AGENT_BACKEND": config["agent_backend"],
                     "FORGE_AGENT_TIMEOUT_SEC": str(config["session_timeout_seconds"]),
@@ -431,13 +402,6 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         (artifact_root / "engine.log").write_text(output)
         result = _read_forge_result(Path(plan["result"]), "\n".join(stdout))
         status.update({"exit_code": process.returncode, "timed_out": timed_out, "engine_result": result})
-        # The native loop can publish a normal result and exit zero after its
-        # orchestrator failed. Candidate delivery and agent completion are
-        # separate: retain a verifiable commit, but propagate that failure.
-        state = _published(resolve_task_path(engine, "forge_experiments/run_state.json")) or {}
-        native_termination = state.get("termination_reason")
-        if isinstance(native_termination, str) and re.fullmatch(r"[a-z_]{1,80}", native_termination):
-            status["native_termination_reason"] = native_termination
         if Path(plan["initialization_result"]).is_file():
             status["initialization"] = json.loads(Path(plan["initialization_result"]).read_text())
         if timed_out:
@@ -491,9 +455,6 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         # No newest-file search, no git checkout that discards an uncommitted
         # candidate, no task-family-specific exporter. Arena evaluates delivery.
         status["artifacts"] = install_candidate(context.spec, source, context.workspace)
-        status["candidate_delivery"] = "DELIVERED"
-        if native_termination == "orchestration_failed":
-            raise ForgeRunError("Forge native orchestration failed; selected candidate retained for evaluation")
         status["status"] = "DELIVERED"
         _write(status_path, status)
         return output + "\nARENA_FORGE_STATUS=" + json.dumps(status)

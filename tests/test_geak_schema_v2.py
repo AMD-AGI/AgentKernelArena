@@ -96,9 +96,6 @@ sys.exit(0 if status == "PASS" else 1)
 @pytest.fixture
 def task_factory(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
-    monkeypatch.setattr("agents.geak.compatibility.runtime_gpu_identity", lambda: dict(
-        device_gfx="gfx950", device_target="unknown", device_name="CPU fixture MI355X",
-        physical_cu_count=256))
     def create(language="hip", state="implemented", baseline="provided", probe=None, tree=False,
                scoped=False, initial_language=None):
         root = tmp_path / (language + "-" + state + "-" + baseline)
@@ -344,7 +341,6 @@ def test_materialization_preserves_nested_inputs_and_private_git(task_factory):
 
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Process descendant cleanup uses Linux /proc")
 def test_hard_deadline_kills_detached_runner_children(task_factory, tmp_path):
     bridge = task_factory()
     launcher = importlib.import_module("agents.geak.launch_agent")
@@ -357,7 +353,8 @@ def test_hard_deadline_kills_detached_runner_children(task_factory, tmp_path):
                            "time.sleep(30)\n")
     interpreter.chmod(0o755)
     bridge.deadline = time.monotonic() + 0.3
-    assert launcher._run_engine(bridge, str(interpreter)) == 124
+    with pytest.raises(subprocess.TimeoutExpired):
+        launcher._run_engine(bridge, str(interpreter))
     child_pid = int(pid_path.read_text())
     for _ in range(20):
         state = Path(f"/proc/{child_pid}/stat")
@@ -802,7 +799,7 @@ const globals = {
     if (label === 'tech_lead:analyze') return {kernel_type:'arbitrary', roadmap_summary:'probe'};
     if (label.includes('profile_engineer')) return {bottleneck:'unknown',top_opportunities:[],device:'gfx950'};
     if (label.startsWith('tech_lead:plan')) return {stop:false,directions:[{id:'cpu',specialty:'compute'}]};
-    if (label.startsWith('eng ')) return {status:'ok',speedup_geomean:2,measurement_valid:true};
+    if (label.startsWith('eng ')) return {status:'ok',speedup_geomean:2};
     if (label.startsWith('verify ')) return {status:'verified',correctness:'pass',verified_geomean:2};
     if (label.startsWith('commit ')) return {committed:true};
     if (label === 'tech_lead:report') return {final_patch:input.engine_args.eval_dir+'/final_patch.diff',final_speedup_geomean:0.5};
@@ -850,65 +847,3 @@ def test_initial_language_translation_uses_author_mode(task_factory, upstream):
     engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
     assert engine["engine_args"]["mode"] == "author"
     assert engine["engine_args"]["target_language"] == "flydsl"
-
-
-def test_explicit_effort_and_model_bind_every_agent_dispatch(upstream):
-    workflow = adapt_workflow((upstream/'kernel_workflow/kernel_workflow.js').read_text(),'contract')
-    lane = adapt_lane((upstream/'kernel_workflow/kernel_lane.js').read_text())
-    for source in (workflow,lane):
-        body=source.split('async function agentT(p, o) {',1)[1].split('const label',1)[0]
-        assert 'effort: A.arena_effort' in body
-        assert 'model: A.arena_model' in body
-
-
-def test_artifact_only_delivery_keeps_acceptance_pending(task_factory, monkeypatch):
-    bridge=task_factory(tree=True)
-    root=bridge.eval_dir/'workspace'
-    (root/'source/new_helper.py').write_text('value = 123\n')
-    monkeypatch.setattr(bridge,'check',lambda *a,**k: pytest.fail('handoff must not spend GPU validation budget'))
-    delivery=bridge.deliver(root,validate=False)
-    assert delivery['validation_deferred'] is True
-    assert delivery['arena_acceptance']=='PENDING'
-    assert delivery['agent_measurement'] is None
-    assert (bridge.context.workspace/'source/new_helper.py').read_text()=='value = 123\n'
-
-
-def test_search_cache_is_bound_to_source_and_never_caches_timing(task_factory,monkeypatch):
-    from types import SimpleNamespace
-    from src.task_protocol import ActionResult
-    bridge=task_factory()
-    bridge.context.raw['task_config']['evaluation']['measurement']={'kind':'serving'}
-    calls=[]
-    def execute(spec,root,**kw):
-        calls.append(kw['action'])
-        return SimpleNamespace(invocation_id=str(len(calls)), commands=[],
-            result=ActionResult('candidate',kw['action'],'PASS',() if kw['action']=='compile' else
-                (dict(test_case_id='sample',shape=[2],dtype='int64',params={'seed':7},status='PASS'),)))
-    monkeypatch.setattr('agents.geak.bridge.run_action',execute)
-    root=bridge.eval_dir/'workspace'
-    for _ in range(2):
-        bridge.action('candidate','compile',root)
-        bridge.action('candidate','correctness',root)
-        bridge.action('candidate','performance',root)
-    assert calls==['compile','correctness','performance','performance']
-    (root/'source/nested/implementation.py').write_text('value = 8\n')
-    bridge.action('candidate','correctness',root)
-    assert calls[-1]=='correctness' and len(calls)==5
-
-
-def test_backend_neutral_gpu_is_a_normal_multifile_task(task_factory):
-    bridge=task_factory(language='gpu',tree=True)
-    assert bridge.spec.candidate.language=='gpu'
-    assert bridge.spec.candidate.initial_language=='gpu'
-
-
-def test_tree_delivery_excludes_runtime_caches(task_factory):
-    bridge = task_factory(tree=True)
-    root = bridge.eval_dir / 'workspace'
-    expected = digests(candidate_files(bridge.spec, root))
-    cache = root / 'source/__pycache__'
-    cache.mkdir()
-    (cache / 'helper.cpython-310.pyc').write_bytes(b'generated')
-    assert digests(candidate_files(bridge.spec, root)) == expected
-    bridge.deliver(root, validate=False)
-    assert not (bridge.context.workspace / 'source/__pycache__/helper.cpython-310.pyc').exists()

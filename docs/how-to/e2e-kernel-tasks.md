@@ -24,9 +24,9 @@ match every selected task's runtime lock. Overlap and unallocated devices fail.
 The same mapping applies to Docker and Slurm/Spur entrypoints.
 
 Whole-model tasks declare the backend-neutral `candidate.language: gpu` contract.
-Use an integration that accepts it, such as the direct Codex/Claude Code agents
-or GEAK. The pinned Forge engine has no generic `gpu` backend and rejects these
-tasks explicitly; selecting a narrower language would change the task contract.
+The supported integrations for this contract are Codex, Cursor, DeepSeek Harness
+and Claude Code. GEAK and KernelForge adaptation is separate work; their existing
+single-kernel integrations are unchanged by this feature.
 
 `budget.task_wall_time_s` is the per-task wall budget (86400 or 172800 for 24 or
 48 hours), including setup and final evaluation. Its absolute deadline is saved
@@ -39,15 +39,18 @@ Each task action also retains its own timeout, capped by the remaining wall time
 a second floor: 1.5 times compile + correctness + all final A/B performance actions.
 The independent verifier timeout is added to the measured reserve.
 The runtime lock can specify a further minimum. Search does not begin if that
-reserve cannot fit. A timeout or incomplete measurement cannot produce a gain.
+reserve cannot fit. Resume still evaluates retained candidate files within the
+original deadline and writes a result if evaluation exhausts it. A timeout or
+incomplete measurement cannot produce a gain.
 
 For a measurement campaign with a preselected repetition count, set `budget.final_evaluation_pairs`
-to an integer from 1 to 100. Otherwise the task's declared pair count applies.
+to an integer from 3 to 100, at least the task's declared pair count. Otherwise
+the task's declared count applies; a run cannot reduce it.
 This run-level policy is persisted with the deadline and cannot change on resume;
 it controls both reserve estimation and the final fresh A/B count without editing
 the task or its correctness checks. Reports preserve the task's declared count,
-the override, and all raw measurements. One pair reports unavailable noise estimates,
-never zero variance or statistical significance. Choose the count before the run;
+the override, and all raw measurements. Repetition spread is reported without
+claiming statistical significance. Choose the count before the run;
 do not select the best result from extra repetitions.
 
 Prepare immutable dependencies and weights on the Docker host, then validate:
@@ -93,8 +96,10 @@ Effective server settings and selected runtime environment are compared across
 paired measurements. Initial sources preserve the pinned production implementation.
 `AKA_DOCKER_WORKDIR` selects the worker checkout mount (default `/workspace`);
 the trusted launcher passes the same root to the executor. Submitted paths must
-remain within that checkout and outside its task templates, including after
-symlink resolution.
+remain within that checkout and outside its task templates, without following symlinks. Files are read through open directory descriptors
+and bounded before being copied into the trusted action directory. A disconnected
+caller cancels its active action; container removal is confirmed before the next
+GPU action starts. Requests retain their original deadline while queued.
 
 Leftover worker processes invalidate performance for any task. Serving also
 requires a successful process sweep; an unavailable or failed sweep blocks
@@ -195,7 +200,7 @@ is actual client wall duration; throughput is a separate metric, checked against
 completed requests, output tokens and that duration.
 
 By default, final evaluation alternates baseline/candidate order for at least
-three fresh pairs; the explicit run-level override above can reduce or increase this count.
+three fresh pairs; the explicit run-level override above can only increase this count.
 Each case uses the median paired throughput ratio; multiple cases use a
 geometric mean. Raw pair samples and rank evidence are retained. An optional
 `max_p99_tpot_ms` rejects candidates exceeding a fixed tail-latency threshold.
@@ -229,8 +234,8 @@ restricted/safe mode and Read/Glob/Grep-only tools is required; missing credenti
 unsupported options, timeout, malformed reports and inconclusive findings block
 acceptance. The reviewer has no editing, shell or external MCP tools. It checks
 allowed scope, computation/precision/work preservation, measurement integrity,
-and whether computation actually changed. Pure wrappers may pass but cannot earn
-gain credit. Reports bind evidence hashes and source locations; source mutations
+and whether computation actually changed. Wrappers identified as unchanged
+computation may pass correctness but cannot earn gain credit. Reports bind evidence hashes and source locations; source mutations
 invalidate the review. The policy is fixed before optimization and on resume.
 This supplements runtime fingerprints and numerical tests. It cannot override a
 failed numeric gate or guarantee detection of every possible malicious program.
@@ -253,8 +258,6 @@ bound the new task's optimization scope. Agents may use profiling to identify
 attention, GEMM, MoE or other useful targets. The locked client window must stay
 long enough (`minimum_measurement_s`) that startup and ramp effects do not dominate.
 
-Historical qualification evidence for the original task is recorded in
-[the e2e qualification record](../reference/e2e-qualification-2026-09-29.md).
 Changing `benchmark.yaml`, the lock, or `config.yaml` changes the task contract
 and requires a fresh validator PASS before the task is treated as qualified.
 
@@ -324,9 +327,9 @@ the runtime's file operations; preserve logs and results in the experiment store
 The executable Qwen3 and Qwen3-Next tasks now declare a backend-neutral `gpu`
 source tree. Their initial RMSNorm/GDN implementations are seeds, not a closed
 list of editable kernels. `source/patches.json` selects callable compute boundaries
-in the pinned image. The direct CLI agents and GEAK accept this backend-neutral
-contract. Backend-specific integrations still need a compatible capability;
-Forge currently requires a concrete registered backend and rejects `gpu`.
+in the pinned image. Codex, Cursor, DeepSeek Harness and Claude Code accept this
+backend-neutral contract. GEAK and KernelForge adaptation is deferred to a
+separate change; this change preserves their existing single-kernel integration.
 The manifest supports multiple files and model/layer-level fusion in the locked runtime.
 The protected installer rejects duplicate targets, escaping paths and targets
 outside the declared compute namespaces. It records complete bundle hashes,
@@ -345,12 +348,9 @@ per-fusion oracle generation. Existing targeted operator checks do not claim
 coverage of every model-wide replacement. Whole-model numerical and quality gates
 remain mandatory, with their finite coverage stated in task instructions.
 
-Serving GEAK runs reserve up to 45 seconds of their existing agent budget for
-artifact-only delivery. Within the same search invocation, identical source/task/
-harness bytes may reuse passed compile and correctness results; performance is
-never cached. Timeout recovery uses the last correctness-checked checkpoint when
-available and records recovery separately from engine success. The independent
-framework reserve always checks delivered bytes again. `optimization_outcome`
+The independent framework reserve always checks delivered bytes again, including
+when search has exhausted its budget. Resuming within that reserve finalizes the
+retained candidate without renewing the original deadline. `optimization_outcome`
 distinguishes unchanged controls, accepted changes, rejected changes and incomplete
 runs; it does not assert a statistically significant performance gain.
 

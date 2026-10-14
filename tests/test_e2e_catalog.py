@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1] / "tasks/e2e"
 def test_complete_pinned_catalog():
     manifest = json.loads((ROOT / "upstream_manifest.json").read_text())
     assert len(manifest["revision"]) == 40
-    assert len(manifest["files"]) == 49
+    assert manifest["files"]
     paths = set()
     for entry in manifest["files"]:
         path = ROOT / entry["path"]
@@ -22,5 +22,10 @@ def test_complete_pinned_catalog():
         assert hashlib.sha256(data).hexdigest() == entry["sha256"]
         assert isinstance(yaml.safe_load(data)["benchmark"], dict)
         assert entry["status"] == "imported"
-    assert len([p for p in paths if "sglang_mi355x" in p.parts]) == 14
+        assert entry["used_by"]
+        for consumer in entry["used_by"]:
+            assert (ROOT / consumer).read_bytes() == data
+            assert (ROOT / consumer).parent.joinpath("config.yaml").is_file()
+    imported = set(ROOT.glob("*/benchmark_*.yaml")) | set(ROOT.glob("*/*/benchmark_*.yaml"))
+    assert imported == paths
     assert (ROOT / "MAGPIE_LICENSE").is_file()

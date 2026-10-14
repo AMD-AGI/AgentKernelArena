@@ -265,6 +265,33 @@ def test_resume_retains_original_baseline_and_performs_new_candidate_checks(tmp_
     assert before == after
 
 
+@pytest.mark.parametrize('remaining', [60, -1])
+def test_resume_in_final_reserve_keeps_candidate_and_writes_result(tmp_path, remaining):
+    import time
+    from src.task_run import _budget_path
+    path = package(tmp_path)
+    config = {'agent': {'template': 'codex'}, 'budget': {
+        'task_wall_time_s': 3600, 'final_evaluation_reserve_s': 300}}
+    args = dict(eval_config=config, agent=SimpleNamespace(value='codex'),
+        task_name='suite/protocol_fixture', task_config_dir=str(path),
+        run_directory=tmp_path/'run', timestamp='fixture', logger=logging.getLogger(__name__))
+    def deliver(**kwargs):
+        (Path(kwargs['workspace'])/'kernel.py').write_text('def compute(): return 1 + 2\n')
+    _, workspace = run_task_v2(agent_launcher=deliver, **args)
+    budget_path = _budget_path(args['run_directory'], args['task_name'])
+    budget = json.loads(budget_path.read_text())
+    budget['deadline_epoch'] = time.time() + remaining
+    budget_path.write_text(json.dumps(budget))
+    retained = (workspace/'kernel.py').read_bytes()
+    (workspace/'task_result.yaml').unlink()
+    complete, workspace = run_task_v2(agent_launcher=lambda **_: pytest.fail('Search must not restart'), **args)
+    result = read_report(workspace)
+    assert complete and result['agent_execution']['status'] == 'BUDGET_EXHAUSTED'
+    assert (workspace/'kernel.py').read_bytes() == retained
+    assert json.loads(budget_path.read_text())['deadline_epoch'] == budget['deadline_epoch']
+    assert result['candidate_accepted'] is (remaining > 0)
+
+
 @pytest.mark.parametrize("modify_report", [False, "delete", "symlink", "directory"])
 def test_common_export_for_any_agent_and_report_tampering_detection(tmp_path, modify_report):
     code = '''import json, os, pathlib, yaml

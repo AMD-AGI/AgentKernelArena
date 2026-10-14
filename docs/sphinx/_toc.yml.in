@@ -59,7 +59,6 @@ subtrees:
       title: Configuration and API reference
     - file: reference/benchmark-methodology
       title: Performance measurement methodology
-    - file: reference/e2e-qualification-2026-09-29
       title: E2E serving task qualification
     - url: https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html
       title: Hyperloom

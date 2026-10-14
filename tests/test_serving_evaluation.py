@@ -329,34 +329,6 @@ def test_clean_executor_rejects_nonaction_before_docker(tmp_path):
         CleanExecutor(selected,ROOT,tmp_path/'other','2,3',tmp_path/'cache')
 
 
-def test_task_kernel_policy_rejects_environment_and_flag_mutation(tmp_path):
-    import importlib.util
-    source = ROOT/'tasks/e2e/qwen3_0_6b_sglang/scripts/checks.py'
-    spec = importlib.util.spec_from_file_location('serving_contract',source)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    module.ROOT = tmp_path
-    (tmp_path/'source').mkdir()
-    candidate = tmp_path/'source/rmsnorm.py'
-    for text in ['import os\nos.environ["TP"]="2"',
-                 'import torch\ntorch.backends.cuda.matmul.allow_tf32=True',
-                 'import torch\ntorch.os.environ["TP"]="2"',
-                 'import torch\ntorch.backends.cudnn.flags[0]=1',
-                 'import triton\ntriton.runtime.driver.active.utils.os.system("id")',
-                 'exec("print(1)")']:
-        candidate.write_text(text)
-        with pytest.raises(ValueError):
-            module.source_policy()
-    candidate.write_text('import triton\nimport triton.language as tl\n@triton.jit\ndef kernel(x):\n    tl.store(x, 0)\n')
-    module.source_policy(target_only=True)
-    candidate.write_text('import aiter\n')
-    module.source_policy()
-    with pytest.raises(ValueError):
-        module.source_policy(target_only=True)
-    candidate.write_text('import torch as t\ndef rms_norm(x,w,e): return t.nn.functional.rms_norm(x, (1024,), w, e)\n')
-    with pytest.raises(ValueError,match='allocation and metadata'):
-        module.source_policy(target_only=True)
-
 
 def test_reserve_scales_with_measured_startup(tmp_path,monkeypatch):
     monkeypatch.setattr('src.run_budget.time.time',lambda: 1000)
@@ -370,8 +342,8 @@ def test_reserve_scales_with_measured_startup(tmp_path,monkeypatch):
     assert reserved['effective_reserve_s'] == 4695
     assert record['policy']['final_evaluation_reserve_s'] == 1200
     record['deadline_epoch']=2000
-    with pytest.raises(TimeoutError):
-        reserve_from_validation(record,session)
+    assert reserve_from_validation(record,session)['effective_reserve_s'] == 4695
+    assert record['deadline_epoch'] == 2000
 
 
 def test_trusted_templates_cannot_live_in_agent_checkout(tmp_path):
@@ -858,23 +830,6 @@ def test_shared_dependencies_are_mounted_at_container_visible_paths(tmp_path):
         runtime_mounts(runtime, {'dependencies': {'../escape': {}}})
 
 
-def test_large_task_rejects_indirect_builtin_lookup(tmp_path, monkeypatch):
-    import importlib.util
-    task = ROOT/'tasks/e2e/qwen3_next_80b_sglang'
-    spec = importlib.util.spec_from_file_location('large_task_policy', task/'scripts/checks.py')
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    (tmp_path/'source').mkdir()
-    source = tmp_path/'source/gdn.py'
-    initial = (task/'source/gdn.py').read_text()
-    source.write_text(initial)
-    monkeypatch.setattr(module, 'ROOT', tmp_path)
-    module.source_policy(target_only=True)
-    for lookup in ('__builtins__["open"]', '__builtins__["__import__"]', '__loader__'):
-        source.write_text(initial + '\ndef indirect_lookup():\n    return ' + lookup + '\n')
-        with pytest.raises(ValueError, match='prohibited runtime access'):
-            module.source_policy(target_only=True)
-
 
 def test_large_task_rejects_serving_dtype_drift():
     import importlib.util
@@ -987,17 +942,17 @@ def test_model_quality_gate_checks_answers_coverage_and_regression(tmp_path, mon
     assert quality.completion_answer('#### 42', 'stop', 'separated reasoning') == '42'
 
 
-@pytest.mark.parametrize("value", [0, 101, True, 1.5, "1", None])
+@pytest.mark.parametrize("value", [0, 1, 2, 101, True, 1.5, "1", None])
 def test_invalid_run_pair_count(value):
     with pytest.raises(ValueError, match="final_evaluation_pairs"):
         budget_policy({"budget": {"task_wall_time_s": 86400,
             "final_evaluation_reserve_s": 7200, "final_evaluation_pairs": value}})
 
 
-def test_single_pair_policy_persists_and_reserve_uses_actual_count(tmp_path, monkeypatch):
+def test_pair_policy_persists_and_reserve_uses_actual_count(tmp_path, monkeypatch):
     monkeypatch.setattr("src.run_budget.time.time", lambda: 1000)
     policy = budget_policy({"budget": {"task_wall_time_s": 86400,
-        "final_evaluation_reserve_s": 1200, "final_evaluation_pairs": 1}})
+        "final_evaluation_reserve_s": 1200, "final_evaluation_pairs": 5}})
     record = open_budget(tmp_path/"budget.json", policy)
     with pytest.raises(ValueError, match="resume"):
         open_budget(tmp_path/"budget.json", {**policy, "final_evaluation_pairs": 3})
@@ -1008,7 +963,7 @@ def test_single_pair_policy_persists_and_reserve_uses_actual_count(tmp_path, mon
         commands=[SimpleNamespace(elapsed_s=seconds)])
         for action, seconds in [("compile", 30), ("correctness", 100), ("performance", 500)]}
     session = SimpleNamespace(spec=spec, workspace=tmp_path, results=results)
-    assert reserve_from_validation(record, session)["effective_reserve_s"] == 1695
+    assert reserve_from_validation(record, session)["effective_reserve_s"] == 7695
     assert spec.to_mapping()["evaluation"]["measurement"]["pairs"] == 3
 
 
@@ -1024,7 +979,35 @@ def test_single_pair_has_no_noise_estimate():
     assert spread["median_within_noise"] is None
 
 
-@pytest.mark.parametrize("override,count", [(None, 3), (1, 1)])
+@pytest.mark.parametrize('declared,override', [(3, 1), (5, 3)])
+def test_run_cannot_reduce_task_measurement_count(declared, override):
+    from src.measurement import serving_pair_count
+    config = {'evaluation': {'measurement': {'pairs': declared}}}
+    with pytest.raises(ValueError, match='final_evaluation_pairs'):
+        serving_pair_count(config, override)
+
+
+@pytest.mark.parametrize('task', ['qwen3_0_6b_sglang', 'qwen3_next_80b_sglang'])
+def test_task_policy_uses_the_backend_neutral_bundle(tmp_path, monkeypatch, task):
+    import importlib.util
+    import shutil
+    import sys
+    from src.tools.perf import serving_bundle
+    source = ROOT / 'tasks/e2e' / task
+    shutil.copytree(source, tmp_path / 'task')
+    spec = importlib.util.spec_from_file_location('task_checks', source / 'scripts/checks.py')
+    checks = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checks)
+    checks.ROOT = tmp_path / 'task'
+    monkeypatch.setitem(sys.modules, '_aka_serving_bundle', serving_bundle)
+    checks.source_policy()
+    candidate = next((checks.ROOT / 'source').glob('*.py'))
+    candidate.write_text(candidate.read_text() + '\nimport os\n')
+    with pytest.raises(ValueError):
+        checks.source_policy()
+
+
+@pytest.mark.parametrize("override,count", [(None, 3), (5, 5)])
 def test_evaluator_runs_requested_complete_pairs_after_correctness(tmp_path, monkeypatch, override, count):
     from src.evaluator import evaluate_kernel
     calls = []

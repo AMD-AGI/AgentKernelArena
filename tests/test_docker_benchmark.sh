@@ -977,27 +977,6 @@ assert_has "claude_code" "${args[@]}"
 assert_has "cursor" "${args[@]}"
 assert_not_has "all" "${args[@]}"
 
-# Forge must provision and check its native backend before expensive task setup.
-FORGE_CONFIG="$TEST_HOME/forge-config.yaml"
-printf 'agent:\n  template: forge\n' > "$FORGE_CONFIG"
-mapfile -t args < <(run_check_args "$ALL_HOME" "$FORGE_CONFIG" AKA_NODE_PREFIX="$ALL_NODE_PREFIX")
-assert_has "$ALL_NODE_PREFIX:/opt/claude-node:ro" "${args[@]}"
-assert_has "$ALL_HOME/.claude:$ALL_HOME/.claude" "${args[@]}"
-assert_has "claude_code" "${args[@]}"
-assert_not_has "$ALL_NODE_PREFIX:/opt/node:ro" "${args[@]}"
-assert_not_has "forge" "${args[@]}"
-printf 'agent:\n  template: forge\n  agent_backend: "codex"\ntasks:\n  - agent_backend: ignored\n' > "$FORGE_CONFIG"
-mapfile -t args < <(run_check_args "$ALL_HOME" "$FORGE_CONFIG" AKA_NODE_PREFIX="$ALL_NODE_PREFIX")
-assert_has "$ALL_NODE_PREFIX:/opt/node:ro" "${args[@]}"
-assert_has "codex" "${args[@]}"
-assert_not_has "$ALL_NODE_PREFIX:/opt/claude-node:ro" "${args[@]}"
-printf 'agent:\n  template: forge\n  agent_backend: codex\n  supervisor_backend: claude\n' > "$FORGE_CONFIG"
-mapfile -t args < <(run_check_args "$ALL_HOME" "$FORGE_CONFIG" AKA_NODE_PREFIX="$ALL_NODE_PREFIX")
-assert_has "$ALL_NODE_PREFIX:/opt/node:ro" "${args[@]}"
-assert_has "$ALL_NODE_PREFIX:/opt/claude-node:ro" "${args[@]}"
-assert_has "codex" "${args[@]}"
-assert_has "claude_code" "${args[@]}"
-
 # A geak_v4 config provisions the Claude Code CLI/auth and, when
 # GEAK_V4_WORKFLOW_DIR is exported, mounts that checkout and forwards the var.
 GEAK_HOME="$TEST_HOME/geak-home"

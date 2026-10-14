@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 import shutil
 import socket
 import socketserver
+import select
 import subprocess
 import time
 import signal
@@ -97,7 +98,8 @@ def action_client(*, task_id: str, workspace: Path, role: str, action: str,
     if not endpoint:
         raise RuntimeError("Serving actions require the host-owned clean runtime service")
     request = {"task_id": task_id, "workspace": str(workspace), "role": role,
-               "action": action, "phase": phase, "timeout": timeout}
+               "action": action, "phase": phase, "timeout": timeout,
+               "deadline_epoch": time.time() + timeout}
     with socket.socket(socket.AF_UNIX) as client:
         client.settimeout(timeout + 30)
         client.connect(endpoint)
@@ -135,6 +137,7 @@ class CleanExecutor:
             raise ValueError("Container checkout root must be an absolute path without traversal")
         self.tasks = {}
         self.active_container = None
+        self.cleanup_error = None
         from .prepare_serving_runtime import VerifiedRuntime
         self.runtime_verifier = VerifiedRuntime()
         if artifacts.resolve().is_relative_to(self.root):
@@ -150,7 +153,9 @@ class CleanExecutor:
             materialize_perf_helpers_in_workspace(template, root=self.root)
             self.tasks[task_id] = template, spec, lock
 
-    def execute(self, request: dict) -> dict:
+    def execute(self, request: dict, *, cancelled=lambda: False) -> dict:
+        if self.cleanup_error:
+            raise RuntimeError(self.cleanup_error)
         template, spec, lock = self.tasks[request["task_id"]]
         role, action, phase = request["role"], request["action"], request["phase"]
         if phase not in {"task_validation", "candidate_evaluation"}:
@@ -162,58 +167,69 @@ class CleanExecutor:
         if not math.isfinite(requested_timeout):
             raise ValueError("Action timeout must be finite")
         timeout = min(requested_timeout, declared.timeout_s)
+        deadline = request.get("deadline_epoch", time.time() + timeout)
+        if type(deadline) not in (int, float) or not math.isfinite(deadline):
+            raise ValueError("Action deadline must be finite")
+        timeout = min(timeout, deadline - time.time())
         if timeout <= 0:
             raise TimeoutError("Serving action deadline exhausted")
         started = time.monotonic()
+        def check_request():
+            if cancelled():
+                raise ConnectionAbortedError("Serving action caller disconnected")
+            if time.monotonic() - started >= timeout:
+                raise TimeoutError("Serving action deadline exhausted")
+        check_request()
         supplied = PurePosixPath(request["workspace"])
         # Only the trusted host launcher selects the worker's checkout mount.
         if ".." in supplied.parts:
             raise ValueError("Action workspace must not contain path traversal")
         relative = supplied.relative_to(self.container_root)
-        source = (self.root / relative).resolve(strict=True)
-        if source == self.root or not source.is_relative_to(self.root) or source.is_relative_to(self.root / "tasks"):
+        if not relative.parts or relative.parts[0] == "tasks":
             raise ValueError("Action workspace must be an experiment directory inside the checkout")
-        # A resumed session must still refer to the same trusted task bytes.
-        # Baseline requests carry the original frozen workspace, not candidate code.
-        if role == "baseline":
-            for path in template.rglob("*"):
-                if path.is_file() and "__pycache__" not in path.parts:
-                    original = source / path.relative_to(template)
-                    if not original.is_file() or original.read_bytes() != path.read_bytes():
-                        raise ValueError("Frozen baseline differs from the current trusted template; use a new experiment")
         action_id = uuid.uuid4().hex
         directory = self.artifacts / action_id
-        shutil.copytree(template, directory)
-        if phase == "candidate_evaluation" and role == "candidate":
-            from .harness_guard import snapshot_workspace_harness, verify_workspace_harness
-            snapshot = snapshot_workspace_harness(directory, task_spec=spec)
-            for edit in spec.candidate.editable:
-                if edit.scope == "tree":
-                    if edit.path != lock.get("candidate_bundle", {}).get("root"):
-                        raise ValueError("Serving trees must be declared as the kernel bundle root")
-                    from .tools.perf.serving_bundle import source_files
-                    src = resolve_task_path(source, edit.path, must_exist=True)
-                    if (source / edit.path).is_symlink():
-                        raise ValueError("Kernel bundle root must not be a symlink")
-                    files = source_files(src, max_bytes=lock_limits(lock)["max_candidate_source_bytes"])
+        from .serving_snapshot import workspace_at, read_file_at, read_tree_at
+        with workspace_at(self.root, relative) as source_fd:
+            # Compare/read through anchored descriptors, including all ancestors.
+            if role == "baseline":
+                for path in template.rglob("*"):
+                    if path.is_file() and "__pycache__" not in path.parts:
+                        expected = path.read_bytes()
+                        original = read_file_at(source_fd, path.relative_to(template), max_bytes=len(expected))
+                        if original != expected:
+                            raise ValueError("Frozen baseline differs from the current trusted template; use a new experiment")
+            shutil.copytree(template, directory)
+            if phase == "candidate_evaluation" and role == "candidate":
+                from .harness_guard import snapshot_workspace_harness, verify_workspace_harness
+                snapshot = snapshot_workspace_harness(directory, task_spec=spec)
+                limit = lock_limits(lock)["max_candidate_source_bytes"]
+                for edit in spec.candidate.editable:
+                    check_request()
                     dst = resolve_task_path(directory, edit.path)
-                    shutil.rmtree(dst)
-                    dst.mkdir()
-                    for name, path in files.items():
-                        target = dst / name
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        target.write_bytes(path.read_bytes())
-                    continue
-                src = resolve_task_path(source, edit.path, must_exist=True)
-                dst = resolve_task_path(directory, edit.path)
-                if not src.is_file() or src.stat().st_size > lock_limits(lock)["max_candidate_source_bytes"]:
-                    raise ValueError("Invalid candidate source file")
-                dst.write_bytes(src.read_bytes())
-            verify_workspace_harness(snapshot, discard_added=False)
+                    if edit.scope == "tree":
+                        if edit.path != lock.get("candidate_bundle", {}).get("root"):
+                            raise ValueError("Serving trees must be declared as the kernel bundle root")
+                        files = read_tree_at(source_fd, edit.path, max_bytes=limit)
+                        shutil.rmtree(dst)
+                        dst.mkdir()
+                        for name, data in files.items():
+                            target = dst / name
+                            target.parent.mkdir(parents=True, exist_ok=True)
+                            target.write_bytes(data)
+                        # Enforce the same language/file contract on the frozen
+                        # tree; no subsequent read reopens the untrusted source.
+                        from .tools.perf.serving_bundle import source_files
+                        source_files(dst, max_bytes=limit)
+                    else:
+                        dst.write_bytes(read_file_at(source_fd, edit.path, max_bytes=limit))
+                verify_workspace_harness(snapshot, discard_added=False)
+        check_request()
         identity = {key: lock[key] for key in ("model", "dependencies")}
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         runtime = self.model_cache / key
         self.runtime_verifier.verify(runtime, identity)
+        check_request()
         container_name = "aka-eval-" + action_id
         command = ["docker", "run", "--rm", "--init", "--name", container_name,
                    "--network=host", "--device=/dev/kfd", "--device=/dev/dri",
@@ -241,19 +257,69 @@ class CleanExecutor:
             stdout_path, stderr_path = directory / "stdout.log", directory / "stderr.log"
             with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
                 try:
-                    result = subprocess.run(command, stdout=stdout, stderr=stderr, timeout=remaining)
-                    returncode = result.returncode
-                except subprocess.TimeoutExpired:
-                    returncode = -signal.SIGKILL
-                    stderr.write("\nServing action exceeded its deadline\n")
+                    with subprocess.Popen(command, stdout=stdout, stderr=stderr) as process:
+                        try:
+                            while process.poll() is None:
+                                check_request()
+                                try:
+                                    process.wait(timeout=min(0.2, max(0.01, timeout - (time.monotonic() - started))))
+                                except subprocess.TimeoutExpired:
+                                    pass
+                            returncode = process.returncode
+                        except (TimeoutError, ConnectionAbortedError) as exc:
+                            process.kill()
+                            process.wait()
+                            returncode = -signal.SIGKILL
+                            stderr.write(f"\n{exc}\n")
+                        except BaseException:
+                            process.kill()
+                            process.wait()
+                            raise
+                except OSError as exc:
+                    returncode = 127
+                    stderr.write(f"\nUnable to launch serving action: {exc}\n")
             response = {"argv": list(declared.commands[0]), "returncode": returncode,
                         "stdout": stdout_path.read_text(errors="replace"), "stderr": stderr_path.read_text(errors="replace"),
                         "elapsed_s": time.monotonic() - started}
             (directory / "command_evidence.json").write_text(json.dumps(response, indent=2))
             return response
         finally:
-            subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=30)
-            self.active_container = None
+            try:
+                subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=30)
+                # --rm may have removed it already; prove absence, rather than
+                # interpreting either rm exit code as successful cleanup.
+                remaining = subprocess.run(["docker", "ps", "-aq", "--filter", f"name=^/{container_name}$"],
+                                           capture_output=True, text=True, timeout=30, check=True)
+                if remaining.stdout.strip():
+                    raise RuntimeError("Serving container remained after cleanup")
+                self.active_container = None
+            except Exception as exc:
+                self.cleanup_error = "Serving cleanup failed; refusing further GPU actions"
+                raise RuntimeError(self.cleanup_error) from exc
+
+
+def request_handler(executor):
+    """Serialize GPU actions while cancelling work whose socket owner has exited."""
+    class Handler(socketserver.StreamRequestHandler):
+        def disconnected(self):
+            try:
+                readable, _, _ = select.select([self.connection], [], [], 0)
+                return bool(readable) and not self.connection.recv(1, socket.MSG_PEEK)
+            except OSError:
+                return True
+
+        def handle(self):
+            self.connection.settimeout(30)
+            try:
+                request = json.loads(self.rfile.readline(1024 * 1024))
+                response = executor.execute(request, cancelled=self.disconnected)
+            except Exception as exc:
+                response = {"error": f"{type(exc).__name__}: {exc}"}
+            try:
+                self.wfile.write((json.dumps(response) + "\n").encode())
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+    return Handler
 
 
 def main():
@@ -304,16 +370,7 @@ def main():
     signal.signal(signal.SIGTERM, terminate)
     signal.signal(signal.SIGINT, terminate)
 
-    class Handler(socketserver.StreamRequestHandler):
-        def handle(self):
-            try:
-                request = json.loads(self.rfile.readline(1024 * 1024))
-                response = executor.execute(request)
-            except Exception as exc:
-                response = {"error": f"{type(exc).__name__}: {exc}"}
-            self.wfile.write((json.dumps(response) + "\n").encode())
-
-    with socketserver.UnixStreamServer(str(args.socket), Handler) as server:
+    with socketserver.UnixStreamServer(str(args.socket), request_handler(executor)) as server:
         os.chmod(args.socket, 0o600)
         server.serve_forever()
 

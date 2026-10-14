@@ -42,7 +42,6 @@ repository.
 
       * :doc:`Configuration and API reference <reference/api-reference>`
       * :doc:`Performance measurement methodology <reference/benchmark-methodology>`
-      * :doc:`E2E serving task qualification <reference/e2e-qualification-2026-09-29>`
 
 To contribute to the documentation, see the
 `AgentKernelArena GitHub repository <https://github.com/AMD-AGI/AgentKernelArena>`_.

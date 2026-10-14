@@ -300,9 +300,9 @@ def evaluate_kernel(
             from .measurement import measurement_kind, paired_throughput
             if measurement_kind(task_config) == "serving":
                 pairs = []
-                from .measurement import validate_pair_count
+                from .measurement import serving_pair_count
                 declared_pairs = task_config["evaluation"]["measurement"]["pairs"]
-                count = declared_pairs if final_evaluation_pairs is None else validate_pair_count(final_evaluation_pairs)
+                count = serving_pair_count(task_config, final_evaluation_pairs)
                 for index in range(count):
                     measured = {}
                     for role in (("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")):

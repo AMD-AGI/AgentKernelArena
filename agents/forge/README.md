@@ -53,12 +53,6 @@ still applies. The implementer session budget also includes its in-session
 checks, so a task with long checks needs enough session time as well as campaign
 time; increasing a driver ceiling does not extend either budget.
 
-The adapter disables native task preparation because Arena already provides the
-fixed task-action driver. Native preparation may author or repair a measurement
-driver and requires profiling/graph capabilities that serving tasks do not expose.
-Kernel initialization and optimization still run, and every public task action
-retains its compilation, correctness and performance checks.
-
 Every public action keeps an append-only diagnostic record under the Forge
 artifact root's `action-evidence/` directory, outside its temporary build tree.
 Each unique action directory contains a start record and, when the action
@@ -112,13 +106,6 @@ loop reports no best commit because no iteration earned KEEP, delivery can selec
 the recorded initial correct commit; its status says
 `delivery_selection: initial_correct_implementation`. The loop's measurements and
 iteration count remain unchanged. An engine error or timeout still fails the run.
-
-The native loop can exit zero after an orchestration failure. The adapter also
-checks its published termination state and reports that failure independently of
-candidate delivery. A selected, structurally valid commit remains available for
-Arena's independent evaluation; a delivered candidate does not establish that
-the optimization agent completed successfully. A normal no-improvement result or
-budget stop alone is not classified as an orchestration failure.
 
 The phase has a bounded attempt count and uses at most
 `initialization_budget_fraction` of the remaining campaign budget, reserving the
@@ -344,12 +331,6 @@ Claude Agent SDK and OpenAI Codex SDK. `torch` is deliberately supplied by the
 ROCm image; do not install an arbitrary PyPI Torch wheel over it. FlyDSL must be
 present for FlyDSL tasks. Provider authentication must be available to the
 selected backend; existing authentication environment values are preserved.
-
-For the Claude backend, Arena overrides the native engine's `--bare` default
-for planning and other SDK roles. That CLI mode does not read OAuth login state,
-even when a normal CLI availability probe succeeds. Other provider options and
-CLI arguments remain intact; authentication files are neither read nor copied
-by the adapter. The same normal login mechanism is used throughout the run.
 A dedicated interpreter can be selected with run-level `agent.python`.
 
 Backend selection follows validated `candidate.language`. Operator and source
@@ -371,10 +352,7 @@ override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
 `supervisor_backend`, and `python`. An empty supervisor follows the selected
-backend. Docker provisions and checks the selected Claude or Codex CLI and its
-authentication before task setup, including a different configured supervisor.
-Native driver preparation is disabled because Arena supplies the protected
-task-action bridge. Lane count, profiling, planning probes and knowledge
+backend. Lane count, task preparation, profiling, planning probes and knowledge
 warm starts follow the engine defaults. Arena publishes the task and leaves the
 search policy to Forge. Two consequences are load bearing. The public task
 protocol exposes no profiler invocation, so the bridge answers `--profile-run`
@@ -426,8 +404,3 @@ The framework integration must:
 Remaining private legacy helpers in `common.py`, `launch_agent.py` and
 `drivers/arena_task_adapter.py` are compatibility imports only. The public v2
 launcher does not call their legacy task dispatch or report parsers.
-
-An explicit run-level `agent.effort` is forwarded to the engine CLI and its
-session environment. The installed engine may impose internal ceilings; verify
-its effective child-session settings when a campaign requires one effort for
-all roles.

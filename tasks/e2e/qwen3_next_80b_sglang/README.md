@@ -79,8 +79,11 @@ final acceptance. A single pair does not establish variance or significance.
 The paired median must improve by at least 5% to earn gain credit; smaller gains
 remain in the raw results. A fresh read-only verification agent also checks the
 frozen submission and measurement evidence. Failed or inconclusive review blocks
-acceptance. A wrapper that retains the original computation cannot earn gain
-credit, even if its measured throughput is higher.
+acceptance. When the reviewer identifies unchanged computation, gain credit is withheld
+even if throughput is higher. This finite semantic review is not proof that every
+renamed wrapper is detected. Performance actions check workload and runtime
+identity; numerical output checks run in the separate correctness action, not on
+every timed response.
 
 ## Fixed recipe and reference coverage
 
@@ -108,7 +111,50 @@ are still checked after a divergence. The numerical bounds in
 `correctness.production_tolerances` must also pass independent baseline
 qualification; agents cannot change them.
 
+### Numerical calibration
+
+These limits describe FP8 serving variation, not operator error allowances. The
+independent BF16/FP32 GDN oracle above retains its own stricter bounds. Calibration
+used the locked image/model/workload and seed with no candidate injection: two
+fresh original servers, five repeats per server, 40 cases per repeat (eight short
+prompts and a full 32-request workload batch). Each repeat collected both logprob
+and no-logprob generations; every actual no-logprob continuation was then
+teacher-forced on the original server.
+
+For prefix statistics, compare only the identical input prefix of matching cases
+across all 45 pairs of the ten repeats. For decode statistics, subtract each
+actual generated token's teacher-forced logprob from the reference top-token
+logprob and clamp negative roundoff to zero. Compute max, mean and nearest-rank
+p99 **within each case**, then take the largest case statistic. Do not average
+away an outlying case or compare logprobs after different generated prefixes.
+
+| Statistic (nats) | Observed maximum over cases | Locked limit |
+| --- | ---: | ---: |
+| Prefix max absolute error | 10.065354 | 13.0 |
+| Prefix mean absolute error | 0.223844 | 0.3 |
+| Prefix p99 absolute error | 3.415192 | 4.5 |
+| Decode max regret | 3.750000 | 5.0 |
+| Decode mean regret | 0.039063 | 0.06 |
+| Decode p99 regret | 0.375000 | 0.5 |
+
+This covers 1,800 prefix-case comparisons and 400 decode cases. The rounded limits
+leave margin above observed original-model variation; they are an empirical
+regression policy, not a mathematical error bound or proof of semantic equality.
+Raw token/logprob arrays are experiment evidence, not part of the task package.
+The source-bound validation record and evidence hashes belong in the PR. A new
+image, model revision, workload or numerical policy requires fresh calibration,
+independent baseline qualification, and wrong-computation negative controls.
+
+To repeat the procedure, materialize the protected task helpers and prepare the
+runtime from this lock. Use the shared adapter's `model_inputs`/`model_check_plan`,
+`start_server(..., install_kernel=False)`, and `generation_checks` for both
+`return_logprob` modes; use `production_teacher_reference` for each actual
+continuation. Retain all raw arrays and server commands before applying
+`error_statistics` with the aggregation above. A calibration run does not replace
+the normal framework-finalized `task_validator` PASS.
+
 The task default is three final pairs; choose `budget.final_evaluation_pairs`
-before the run to request 1 through 100 complete pairs. Use dozens when the
-budget permits; one pair cannot estimate variability. Neither the agent's search checks nor
+before the run to request 3 through 100 complete pairs, never fewer than the
+task declares. Use dozens when the budget permits; no statistical significance
+is inferred from the median alone. Neither the agent's search checks nor
 a passing historical report qualify new task or candidate bytes.

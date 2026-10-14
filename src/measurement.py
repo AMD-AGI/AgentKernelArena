@@ -35,9 +35,18 @@ def measurement_kind(config: dict) -> str:
 
 
 def validate_pair_count(value: int) -> int:
-    if type(value) is not int or not 1 <= value <= 100:
-        raise ValueError("final_evaluation_pairs must be an integer from 1 to 100")
+    if type(value) is not int or not 3 <= value <= 100:
+        raise ValueError("final_evaluation_pairs must be an integer from 3 to 100")
     return value
+
+
+def serving_pair_count(config: dict, override: int | None = None) -> int:
+    """A run may increase, but never reduce, the task's measurement count."""
+    declared = validate_pair_count(config["evaluation"]["measurement"]["pairs"])
+    count = declared if override is None else validate_pair_count(override)
+    if count < declared:
+        raise ValueError("final_evaluation_pairs cannot reduce the task's declared pairs")
+    return count
 
 
 def validate_serving_case(row: dict) -> None:

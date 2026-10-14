@@ -1,12 +1,13 @@
 # End-to-end kernel optimization
 
-These workload YAML files are copied without modification from
+The upstream workload recipe retained for the 80B task is copied unchanged from
 [Magpie examples/benchmarks](https://github.com/AMD-AGI/Magpie/tree/f4bed327e434c19ef8daba5868027c590abf032c/examples/benchmarks).
 `upstream_manifest.json` records the source commit, original paths and SHA256
 digests. `MAGPIE_LICENSE` preserves the upstream license.
 
-The directory ID is the original relative filename without its extension.
-An imported recipe is catalog data, not an executable Arena task. Only a
+The manifest links the retained recipe to its executable task. Unused upstream
+recipes are not vendored here. An imported recipe is provenance data, not an
+executable Arena task. Only a
 directory with an Arena schema-v2 `config.yaml` is discovered as a task.
 Qualification requires a framework-finalized GPU task-validator PASS.
 

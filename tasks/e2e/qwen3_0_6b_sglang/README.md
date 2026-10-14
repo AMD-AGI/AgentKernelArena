@@ -72,8 +72,10 @@ complete baseline/candidate pairs. Search checks and recovered artifacts are not
 final acceptance. A single pair does not establish variance or significance.
 The paired median must improve by at least 5% to earn gain credit; smaller gains
 remain in the raw results. Choose `budget.final_evaluation_pairs` before the run
-to request 1 through 100 complete pairs, using dozens when the budget permits.
+to request 3 through 100 complete pairs, never fewer than the task declares,
+using dozens when the budget permits.
 A fresh read-only verification agent also checks the frozen submission and
-measurement evidence. Failed or inconclusive review blocks acceptance. A wrapper
-that retains the original computation cannot earn gain credit, even if its
-measured throughput is higher.
+measurement evidence. Failed or inconclusive review blocks acceptance. Wrappers identified by the reviewer as unchanged computation receive no gain
+credit. Finite semantic review cannot guarantee detection of every renamed
+wrapper. Performance actions check workload and runtime identity; numerical
+output checks run in the separate correctness action, not on every timed response.

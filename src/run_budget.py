@@ -62,12 +62,13 @@ def reserve_from_validation(record: dict | None, session, *, verification_second
     for (phase, role, action), result in session.results.items():
         if phase == "task_validation" and role == "baseline":
             elapsed[action] = sum(command.elapsed_s for command in result.commands)
-    pairs = record["policy"].get("final_evaluation_pairs", config["evaluation"]["measurement"]["pairs"])
+    from .measurement import serving_pair_count
+    pairs = serving_pair_count(config, record["policy"].get("final_evaluation_pairs"))
     estimate = int(1.5 * (elapsed.get("compile", 0) + elapsed.get("correctness", 0) + 2*pairs*elapsed.get("performance", 0)))
     estimate += verification_seconds
     result = dict(record)
     result["effective_reserve_s"] = max(record.get("effective_reserve_s", 0),
         record["policy"]["final_evaluation_reserve_s"], lock["minimum_final_evaluation_s"], estimate)
-    if result["effective_reserve_s"] >= record["deadline_epoch"] - time.time():
-        raise TimeoutError("Measured final evaluation reserve exceeds remaining task budget")
+    # The reserve stops search, not finalization. On resume, evaluate the retained
+    # candidate (or record deadline exhaustion) without renewing the deadline.
     return result

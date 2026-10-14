@@ -36,13 +36,6 @@ instead point to its `kernel_workflow` directory. The pin checks git revision,
 clean engine/knowledge trees and the dispatcher/lane SHA-256 digests; another
 revision fails preflight and requires an explicit compatibility update.
 
-The current pin includes upstream hardware-identity checks and per-role usage
-reporting. Arena obtains the visible GPU architecture, device name and compute
-unit count from the runtime before preparing the lane; missing hardware fails
-preparation. The upstream report writer uses the same explicit model and effort
-as the optimization roles. Report helpers are copied into the private run with
-the engine; their output is diagnostic, not candidate acceptance evidence.
-
 Install [requirements.txt](requirements.txt) into the agent's runtime Python.
 Arena and PyYAML must also be importable. `GEAK_PYTHON` selects that interpreter;
 otherwise the launcher uses its own Python. `GEAK_CLAUDE_BIN` selects Claude Code
@@ -241,17 +234,3 @@ Generic profiling is explicitly unavailable because the
 v2 public protocol has no profiling action; no evaluator-tool analysis is
 claimed. GEAK bakeoff, cross-run resume and external knowledge publication are
 not exposed by this adapter.
-
-Run-level `agent.model` and `agent.effort` also bind the dispatcher's and lane's
-internal agent calls. Role-local defaults cannot silently change an explicitly
-selected campaign model or effort.
-
-Serving tasks may declare a backend-neutral `gpu` tree. The task instructions,
-not a single kernel name, define its scope. Profiling is optional advice and the
-agent can choose available tools without modifying protected runners.
-
-Serving runs keep up to 45 seconds of the invocation budget for artifact handoff.
-Identical-source compile/correctness checks may be reused only during that private
-search; timing is always fresh. The last correctness-checked workspace is retained
-as a timeout checkpoint. Delivery does not repeat GPU measurements or imply
-acceptance: the framework independently validates the delivered files.

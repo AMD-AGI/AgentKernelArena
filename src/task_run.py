@@ -255,8 +255,18 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
                 logger: logging.Logger, spec: TaskSpec, budget_record: dict | None) -> tuple[bool, Path]:
     """Preserve agent failures and score the delivered files independently."""
     config = spec.to_mapping()
+    from .measurement import measurement_kind, serving_pair_count
+    if measurement_kind(config) == "serving":
+        serving_pair_count(config, (eval_config.get("budget") or {}).get("final_evaluation_pairs"))
     merge_task_tool_config(EvalToolsConfig.from_mapping(eval_config), config)
-    workspace = setup_workspace(task_config_dir, run_directory, timestamp, logger, task_name=task_name)
+    from .preprocessing import get_task_workspace_path
+    retained = get_task_workspace_path(run_directory, task_name, timestamp)
+    expired_resume = (budget_record is not None and budget_record['deadline_epoch'] <= time.time()
+                      and _state_directory(retained).is_dir())
+    # Loading a prior session to write a failed final result is bookkeeping, not
+    # new setup/search/GPU work. Action deadlines below remain expired.
+    workspace = retained if expired_resume else setup_workspace(
+        task_config_dir, run_directory, timestamp, logger, task_name=task_name)
     state = _state_directory(workspace)
     if state.exists():
         session = TaskSession.load(spec, workspace, state, logger)
@@ -284,7 +294,10 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         environment["ARENA_TASK_CONTEXT"] = str(session.agent_context_path)
     if agent.value == "task_validator":
         from .run_budget import agent_budget
-        agent_config = agent_budget(agent_config, budget_record)
+        # Qualification review uses the remaining wall time; there is no later
+        # optimization search for which it must reserve another evaluation.
+        review_budget = {**budget_record, "effective_reserve_s": 0} if budget_record else None
+        agent_config = agent_budget(agent_config, review_budget)
         validate_task_session(session, eval_config=agent_config, task_config_dir=task_config_dir,
                               agent_launcher=agent_launcher)
         from agents.task_validator.report_schema import validation_report_is_complete
@@ -301,6 +314,9 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
             with _agent_environment(environment):
                 agent_launcher(eval_config=agent_config, task_config_dir=task_config_dir, workspace=str(workspace))
             agent_result["status"] = "COMPLETED"
+        except TimeoutError as exc:
+            agent_result.update(status="BUDGET_EXHAUSTED", error=str(exc))
+            logger.info("Search budget exhausted; evaluating the retained candidate")
         except Exception as exc:
             agent_result.update(status="FAILED", error=f"{type(exc).__name__}: {exc}")
             logger.warning("Agent execution failed; evaluating retained candidate: %s", exc)

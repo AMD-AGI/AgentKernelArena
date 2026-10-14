@@ -9,7 +9,6 @@ import hashlib
 import json
 import math
 from pathlib import Path
-import re
 import shlex
 import subprocess
 from typing import Callable
@@ -18,10 +17,10 @@ from .bridge import Bridge, copy_file, copy_tree, write_json
 from .argument_transport import DECODER_JS, FIXED_ARGS_GUARD_JS, decode_workflow_args
 
 
-UPSTREAM_REVISION = "243cb77ab3b35591339e253e790e79c4cedef879"
+UPSTREAM_REVISION = "c0c0e2aee5e2bec70583253058382523bdf7a3ab"
 SCRIPT_SHA256 = {
-    "kernel_workflow.js": "ab337aabd156d7021558c73ac13824ca16390bee5d755ee3726ac818d2ae5859",
-    "kernel_lane.js": "b1e9a1d2b80149030de2f0f208405b41dcb0e6263e5e186145ce1b82bfd2de63",
+    "kernel_workflow.js": "9b4fef04fac1816db04ee2a29c414c5db3fefdbd6dda9d7154e6910a08af2bf6",
+    "kernel_lane.js": "121db35f7e147261dec038b833c738f3a24dfab5da01b7a9d435ae2953d68e34",
 }
 
 
@@ -34,7 +33,7 @@ def verify_upstream(checkout: Path, *, remaining: Callable[[], float] | None = N
     if revision != UPSTREAM_REVISION:
         raise ValueError("Unqualified GEAK revision; see agents/geak/compatibility.py")
     dirty = subprocess.run(["git", "-C", str(checkout), "status", "--porcelain", "--",
-                            "kernel_workflow", "perf_knowledge", "interface", "e2e_workflow"],
+                            "kernel_workflow", "perf_knowledge"],
                            capture_output=True, text=True, timeout=timeout(), check=True).stdout
     if dirty.strip():
         raise ValueError("GEAK engine/knowledge must match the clean pinned checkout")
@@ -55,19 +54,6 @@ def adapt_workflow(source: str, contract: str, *, trusted_args: dict | None = No
         raise ValueError("GEAK workflow argument extension point changed")
     if not isinstance(contract, str) or not contract:
         raise ValueError("GEAK task contract must be a nonempty string")
-    source = source.replace("async function agentT(p, o) {", "async function agentT(p, o) {"
-                            "\n  if (A.arena_model) o = { ...o, model: A.arena_model };"
-                            "\n  if (A.arena_effort) o = { ...o, effort: A.arena_effort };", 1)
-    # Upstream's new best-effort report writer bypasses agentT in the early
-    # single-lane return. Bind it to the same campaign model and effort too.
-    report_marker = "await agent(\n        `You are the file_writer."
-    if source.count(report_marker) != 1:
-        raise ValueError("GEAK report writer extension point changed")
-    source = source.replace(report_marker, "await arenaReportAgent(\n        `You are the file_writer.", 1)
-    source += "\nasync function arenaReportAgent(p, o) {\n" \
-              "  return agent(p + '\\n\\n' + A.arena_contract, { ...o,\n" \
-              "    ...(A.arena_model ? {model: A.arena_model} : {}),\n" \
-              "    ...(A.arena_effort ? {effort: A.arena_effort} : {}) });\n}\n"
     # JSON string literals preserve quotes, backticks, newlines and Unicode as
     # data. Trusted values follow the spread so callers cannot replace them.
     if trusted_args is not None:
@@ -100,8 +86,7 @@ def adapt_lane(source: str) -> str:
     if source.count(marker) != 1:
         raise ValueError("GEAK agent extension point changed")
     source = source.replace(marker, marker + "\n  p += '\\n\\n' + A.arena_contract;"
-                            "\n  if (A.arena_model) o = { ...o, model: A.arena_model };"
-                            "\n  if (A.arena_effort) o = { ...o, effort: A.arena_effort };", 1)
+                            "\n  if (A.arena_model) o = { ...o, model: A.arena_model };", 1)
     # Request a public decision summary, never private model deliberations.
     source = source.replace("reasoning: { type: 'string' }",
                             "decision_summary: { type: 'string', description: 'Brief decision summary only; no private deliberations.' }")
@@ -140,15 +125,11 @@ Run these exact commands from that workspace (copies in round directories are su
 COMPILE: {command} compile --workspace "$PWD"
 CORRECTNESS: {command} correctness --workspace "$PWD"
 FULL_BENCHMARK: {command} performance --workspace "$PWD"
-PROFILE: no managed profiling command is provided. You may use available profiling tools
-and your own temporary analysis scripts outside protected task files. Studying kernel time,
-actual shapes, layouts, dtypes, call frequency and fusion opportunities is recommended, not
-required. Such analysis does not replace the fixed public correctness or benchmark runner.
+PROFILE: unavailable through this adapter; report unavailable, never create a substitute harness.
 BASELINE: {command} baseline
 DIRECTOR_VALIDATION: {command} validate --workspace "$PWD"
-The bridge enforces the captured case manifest. Serving search may reuse successful compile
-and correctness checks for identical source, task and harness bytes within this invocation;
-timing and final framework acceptance always run independently. Nonzero exit means failure.
+The bridge rebuilds before correctness and rebuilds/checks before timing, enforcing the full
+captured case manifest. GEAK_ARENA_RESULT is fresh JSON; nonzero exit means failure.
 Baseline timings always come from Arena's frozen baseline role. Never use a generated seed
 as the denominator. All actions share the invocation deadline and existing GPU visibility.
 Do not nest gpu_lock around bridge commands or remap HIP/CUDA/ROCR device IDs.
@@ -162,23 +143,6 @@ GEAK metrics guide search only. Arena independently evaluates delivered candidat
 """
 
 
-def runtime_gpu_identity() -> dict:
-    """Measure the visible GPU, never infer hardware from a task or model name."""
-    import torch
-
-    if not torch.cuda.is_available():
-        raise ValueError("GEAK requires a visible GPU for its hardware identity")
-    properties = torch.cuda.get_device_properties(0)
-    arch = str(getattr(properties, "gcnArchName", "")).split(":", 1)[0]
-    name = str(properties.name)
-    units = int(properties.multi_processor_count)
-    if not re.fullmatch(r"gfx[0-9a-f]+", arch) or units <= 0 or not name:
-        raise ValueError("GEAK GPU architecture or compute-unit identity is unavailable")
-    target = "r9700" if arch == "gfx1201" and "R9700" in name.upper() else "unknown"
-    return dict(device_gfx=arch, device_target=target, device_name=name,
-                physical_cu_count=units)
-
-
 def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict) -> dict:
     verify_upstream(checkout, remaining=bridge.remaining)
     bridge.remaining()
@@ -187,10 +151,6 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
     workflow = private / "kernel_workflow"
     copy_tree(checkout / "kernel_workflow", workflow, remaining=bridge.remaining)
     copy_tree(checkout / "perf_knowledge", private / "perf_knowledge", remaining=bridge.remaining)
-    # The pinned dispatcher reports through these read-only upstream helpers.
-    # Copy them into the private run so its report never writes the shared checkout.
-    for name in ("interface", "e2e_workflow"):
-        copy_tree(checkout / name, private / name, remaining=bridge.remaining)
     lane = workflow / "kernel_lane.js"
     lane.write_text(adapt_lane(lane.read_text()))
     roles = Path(__file__).with_name("roles")
@@ -226,7 +186,6 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
     baseline = [{"name": row["test_case_id"], "baseline_ms": row["execution_time_ms"],
                  "ms": row["execution_time_ms"], "speedup": 1.0} for row in cases]
     candidate = bridge.spec.candidate
-    hardware = runtime_gpu_identity()
     author = candidate.initial_state == "unimplemented" or candidate.initial_language != candidate.language
     args = {
         "kernel_path": str(bridge.eval_dir / "original"),
@@ -242,9 +201,7 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
         "kb_remote": "off",
         "dra_enabled": "false", "use_expert_skills": "false", "frozen_oracle": "false",
         "arena_model": options.get("model"),
-        "arena_effort": options.get("effort"),
         "arena_setup": {"eval_dir": str(bridge.eval_dir),
-                        **hardware,
                         "workspace": str(bridge.eval_dir / "workspace"),
                         "baseline_dir": str(bridge.context.baseline), "kernel_name": "arena_candidate",
                         "baseline_frozen": True, "baseline_callable": "",

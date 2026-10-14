@@ -1,106 +1,24 @@
 """Task-owned RMSNorm numerical oracle, independent of candidate kernels."""
-import ast
-from contextlib import contextmanager, nullcontext
-import importlib.util
 import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
-def source_policy(*, target_only=False):
-    """Reject ordinary configuration/file/dispatch edits in a kernel submission.
-
-    This is a narrow source contract, not a Python security sandbox. Runtime
-    settings and rank evidence are checked separately by the protected adapter.
-    """
-    lock_path = ROOT / 'runtime.lock.json'
-    if lock_path.exists():
-        import json
-        lock = json.loads(lock_path.read_text())
-        if 'candidate_bundle' in lock:
-            from _aka_serving_bundle import Bundle
-            return Bundle(ROOT, lock).check_sources()
-    tree = ast.parse((ROOT / 'source/rmsnorm.py').read_text())
-    allowed = {'torch', 'triton', 'aiter', 'math', 'typing', 'functools'}
-    if target_only:
-        allowed.remove('aiter')
-    forbidden = {'open', 'eval', 'exec', 'compile', '__import__', 'getattr', 'setattr',
-                 'globals', 'locals', 'vars', 'breakpoint'}
-    # Modules reachable as attributes of allowed packages (torch.os, triton.sys, ...).
-    escape_hatches = {'os', 'sys', 'subprocess', 'importlib', 'ctypes', 'builtins', 'environ',
-                      'shutil', 'pathlib', 'socket', 'signal', 'threading', 'multiprocessing'}
-    aliases = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            aliases.update({item.asname or item.name: item.name for item in node.names})
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            aliases.update({item.asname or item.name: node.module+'.'+item.name for item in node.names})
-    def qualified(node):
-        if isinstance(node, ast.Name):
-            return aliases.get(node.id, node.id)
-        if isinstance(node, ast.Attribute):
-            return qualified(node.value)+'.'+node.attr
-        return ''
-    allocation_and_metadata = {'torch.empty', 'torch.empty_like', 'torch.empty_strided',
-        'torch.zeros', 'torch.zeros_like', 'torch.finfo', 'torch.iinfo', 'torch.device',
-        'torch.is_tensor', 'torch.cuda.current_device', 'torch.cuda.get_device_properties'}
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or '']
-            if any(name.split('.')[0] not in allowed for name in names):
-                raise ValueError('Kernel source imported an undeclared dependency')
-        if isinstance(node, ast.Name) and node.id in forbidden:
-            raise ValueError('Kernel source uses a prohibited runtime access')
-        if isinstance(node, ast.Attribute) and (node.attr.startswith(('_', 'set_', 'enable_', 'disable_')) or isinstance(node.ctx, (ast.Store, ast.Del))):
-            raise ValueError('Kernel source changes runtime attributes or uses reflective access')
-        if isinstance(node, ast.Attribute) and node.attr in escape_hatches:
-            raise ValueError('Kernel source reaches process or filesystem state through a module attribute')
-        if isinstance(node, ast.Subscript) and isinstance(node.ctx, (ast.Store, ast.Del)) and isinstance(node.value, ast.Attribute):
-            raise ValueError('Kernel source mutates state owned by another module')
-        if target_only and isinstance(node, ast.Call):
-            name = qualified(node.func)
-            if name.startswith('torch.') and name not in allocation_and_metadata:
-                raise ValueError('Torch is limited to allocation and metadata; implement computation in Triton')
+def source_policy():
+    """Check the backend-neutral compute bundle; this is not a security sandbox."""
+    import json
+    from _aka_serving_bundle import Bundle
+    lock = json.loads((ROOT / 'runtime.lock.json').read_text())
+    return Bundle(ROOT, lock).check_sources()
 
 
-@contextmanager
-def candidate_operations():
-    """Observe actual Tensor operations, including methods and aliased functions.
-
-    Triton launches do not dispatch ATen math. Restrict host Tensor dispatch to
-    allocation and storage views; the numerical oracle runs outside this scope.
-    This complements source checks, not a sandbox against hostile Python.
-    """
-    from torch.utils._python_dispatch import TorchDispatchMode
-
-    class AllocationOnly(TorchDispatchMode):
-        def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-            allowed = {'aten::empty', 'aten::empty_like', 'aten::empty_strided',
-                       'aten::zeros', 'aten::zeros_like', 'aten::view',
-                       'aten::as_strided', 'aten::alias'}
-            if func._schema.name not in allowed:
-                raise ValueError('Candidate delegates computation to Torch: ' + str(func))
-            return func(*args, **(kwargs or {}))
-
-    with AllocationOnly():
-        yield
-
-
-def operator_checks(lock, *, target_only=False):
-    source_policy(target_only=target_only)
+def operator_checks(lock):
+    source_policy()
     import torch
     torch.manual_seed(lock['correctness']['seed'])
-    if 'candidate_bundle' in lock:
-        from types import SimpleNamespace
-        from _aka_serving_bundle import effective_function
-        module = SimpleNamespace(**{name: effective_function(ROOT, lock,
-            'sglang.srt.layers.layernorm', name) for name in ('rms_norm', 'fused_add_rms_norm')})
-        target_only = False  # Backend-neutral compute bundle; numerical checks remain identical.
-    else:
-        spec = importlib.util.spec_from_file_location('candidate', ROOT / 'source/rmsnorm.py')
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        with candidate_operations() if target_only else nullcontext():
-            spec.loader.exec_module(module)
+    from types import SimpleNamespace
+    from _aka_serving_bundle import effective_function
+    module = SimpleNamespace(**{name: effective_function(ROOT, lock,
+        'sglang.srt.layers.layernorm', name) for name in ('rms_norm', 'fused_add_rms_norm')})
     evidence = []
     for rows in (1, 7, 8, 64, 128, 1024, 2048, 16384):
         for width in (128, 1024):
@@ -113,8 +31,7 @@ def operator_checks(lock, *, target_only=False):
                     return (value * torch.rsqrt(value.square().mean(-1, keepdim=True) + eps) * weight.float()).to(x.dtype)
                 original, wcopy = x.clone(), weight.clone()
                 expected = reference(x)
-                with candidate_operations() if target_only else nullcontext():
-                    actual = module.rms_norm(x, weight, eps)
+                actual = module.rms_norm(x, weight, eps)
                 torch.testing.assert_close(weight, wcopy, rtol=0, atol=0)
                 torch.testing.assert_close(actual, expected, rtol=lock['correctness']['rtol'], atol=lock['correctness']['atol'])
                 torch.testing.assert_close(x, original, rtol=0, atol=0)
@@ -123,8 +40,7 @@ def operator_checks(lock, *, target_only=False):
                 # Construct the oracle before calling editable code.
                 expected_added = (x.float() + residual.float()).to(x.dtype)
                 expected_norm = reference(expected_added)
-                with candidate_operations() if target_only else nullcontext():
-                    module.fused_add_rms_norm(output, x, residual, added, weight, eps)
+                module.fused_add_rms_norm(output, x, residual, added, weight, eps)
                 torch.testing.assert_close(weight, wcopy, rtol=0, atol=0)
                 torch.testing.assert_close(added, expected_added, rtol=0, atol=0)
                 torch.testing.assert_close(output, expected_norm, rtol=lock['correctness']['rtol'], atol=lock['correctness']['atol'])
@@ -133,52 +49,3 @@ def operator_checks(lock, *, target_only=False):
                 evidence.append(dict(shape=[rows, width], eps=eps))
     torch.cuda.synchronize()
     return evidence
-
-
-
-def target_kernels():
-    tree = ast.parse((ROOT/'source/rmsnorm.py').read_text())
-    aliases = {}
-    for node in tree.body:
-        if isinstance(node, ast.Import):
-            aliases.update({item.asname or item.name: item.name for item in node.names})
-        if isinstance(node, ast.ImportFrom) and node.module:
-            aliases.update({item.asname or item.name: node.module+'.'+item.name for item in node.names})
-    def qualified(node):
-        if isinstance(node, ast.Call):
-            return qualified(node.func)
-        if isinstance(node, ast.Name):
-            return aliases.get(node.id, node.id)
-        if isinstance(node, ast.Attribute):
-            return qualified(node.value)+'.'+node.attr
-        return ''
-    names = [node.name for node in tree.body if isinstance(node, ast.FunctionDef)
-             and any(qualified(d) == 'triton.jit' for d in node.decorator_list)]
-    if not names:
-        raise ValueError('Final candidate must implement and execute a Triton GPU kernel')
-    return names
-
-
-def compile_candidate(lock):
-    import torch
-    names = target_kernels()
-    cases = operator_checks(lock, target_only=True)
-    module = sys.modules['candidate']
-    x = torch.randn((8, 1024), device='cuda', dtype=torch.float16)
-    weight = torch.ones(1024, device='cuda', dtype=x.dtype)
-    inputs = {'rms_norm': (x, weight, 1e-6),
-              'fused_add_rms_norm': (torch.empty_like(x), x, torch.randn_like(x),
-                                     torch.empty_like(x), weight, 1e-6)}
-    observed = {}
-    for function, args in inputs.items():
-        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CPU,
-                                               torch.profiler.ProfilerActivity.CUDA]) as profile:
-            with candidate_operations():
-                getattr(module, function)(*args)
-            torch.cuda.synchronize()
-        events = sorted({event.name for event in profile.events()
-                         if event.device_type == torch.autograd.DeviceType.CUDA})
-        if not any(name in event for name in names for event in events):
-            raise ValueError(f'{function} did not execute a declared candidate Triton kernel')
-        observed[function] = events
-    return dict(operator_cases=cases, candidate_gpu_kernels=observed)
