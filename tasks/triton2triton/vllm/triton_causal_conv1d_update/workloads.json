@@ -156,10 +156,111 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-width-width2",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 20000,
+        "configuration": {
+          "name": "width2",
+          "shape": [
+            2,
+            17,
+            1,
+            2
+          ],
+          "bias": false,
+          "activation": null
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-width-width5_silu",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 20001,
+        "configuration": {
+          "name": "width5_silu",
+          "shape": [
+            2,
+            33,
+            1,
+            5
+          ],
+          "bias": true,
+          "activation": "silu"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-width-width6",
+      "dtype": "float32,int32",
+      "params": {
+        "case_index": 20002,
+        "configuration": {
+          "name": "width6",
+          "shape": [
+            3,
+            65,
+            1,
+            6
+          ],
+          "bias": true,
+          "activation": null
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "c1c653e069253dc9e2d29727af7ef614890db14228e3e7e46f229ed01c36488b",
     "original_correctness_sha256": "90bd3d2f560a57539ee2c8c2c8831e1193e02cf431c17fcc8fd954c3e6d75a2f"
-  }
+  },
+  "width_controls": [
+    {
+      "name": "width2",
+      "shape": [
+        2,
+        17,
+        1,
+        2
+      ],
+      "bias": false,
+      "activation": null
+    },
+    {
+      "name": "width5_silu",
+      "shape": [
+        2,
+        33,
+        1,
+        5
+      ],
+      "bias": true,
+      "activation": "silu"
+    },
+    {
+      "name": "width6",
+      "shape": [
+        3,
+        65,
+        1,
+        6
+      ],
+      "bias": true,
+      "activation": null
+    }
+  ]
 }

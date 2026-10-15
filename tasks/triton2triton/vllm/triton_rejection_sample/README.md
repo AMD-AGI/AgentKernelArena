@@ -37,3 +37,26 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 Controls cover full acceptance with bonus token, early/late rejection and zero speculative steps. Output metadata and accepted counts are strict; only each returned accepted prefix is defined by this operator, so unused output tail values are not invented as a new contract.
 
 The task-local `_arena_contract.py` and `_arena_replay.py` are protected evaluation code. Original cases, seeds, tolerances, warmups, sample counts, allocations and preparation boundaries remain in `scripts/task_runner.py`. The extra `contract_controls` manifest row is correctness-only. Both the frozen baseline and candidate receive the same checks. The measured graph exposes its real outputs; an untimed replay changes a domain-valid input, recomputes the CPU oracle and restores all input buffers in `finally`. For the zero operator the replay control instead poisons its output. References and snapshots are outside device timing. Failure to observe or replay the measured invocation is an error, never an accepted timing sample.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_rejection_sample_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+### Ragged speculative-decoding offsets
+
+Two additional correctness-only rows use per-request positive spans `[1,3,5,2]`
+and `[4,2,6,1]` in cumulative logits offsets. The output capacity stays uniform
+while each active request may have a different number of draft/target logits.
+They cover bonus-only requests, full acceptance, and early/late rejection. In
+addition to the retained protected reference and read-only checks, an independent
+scalar oracle selects the first mismatch and checks every accepted prefix and
+exact count. Undefined unused output tails remain unchecked. The original five
+scored cases and earlier controls, kernel, seeds, integer comparison, ten warmups,
+100 samples and timer are unchanged. These added cases do not contribute a score.
+A zero speculative-step request has one bonus logit; no zero-logit request is
+introduced by these active-request controls.

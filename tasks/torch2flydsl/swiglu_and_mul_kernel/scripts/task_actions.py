@@ -17,4 +17,6 @@ def check(h):
     return sorted(observed)
 
 def performance(h):
-    return h.arena_benchmark(warmup=10, iters=100, verbose=True)
+    from scripts.candidate_checks import audit_candidate_calls
+    with audit_candidate_calls(h, performance=True):
+        return h.arena_benchmark(warmup=10, iters=100, verbose=True)

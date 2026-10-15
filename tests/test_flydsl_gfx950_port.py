@@ -73,7 +73,12 @@ def test_port_retains_original_architecture_and_adds_explicit_target(task):
     from src.task_spec import load_task_spec
     spec = load_task_spec(ROOT / task / 'config.yaml', task_id='flydsl2flydsl/' + task)
     assert spec.to_mapping()['platform_support']['required_arch'] == ['gfx942', 'gfx950']
-    assert spec.to_mapping()['candidate']['editable'] == ['kernel.py']
+    editable = spec.to_mapping()['candidate']['editable']
+    if task == 'softmax_kernel':
+        assert editable == [{'path':'kernel.py','scope':'symbols',
+                             'symbols':['build_softmax_module'],'allow_new_helpers':True}]
+    else:
+        assert editable == ['kernel.py']
     assert spec.to_mapping()['baseline']['kind'] == 'initial_candidate'
     assert spec.to_mapping()['baseline']['correctness_policy'] == 'required'
 

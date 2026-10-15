@@ -125,6 +125,34 @@
         "performance"
       ],
       "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "control_softplus_default_linear",
+      "params": {
+        "batch": 1,
+        "num_heads": 4,
+        "control": "default_linear",
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "control_softplus_explicit_threshold",
+      "params": {
+        "batch": 1,
+        "num_heads": 4,
+        "control": "explicit_threshold",
+        "beta": 2.0,
+        "threshold": 1.0,
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bfloat16"
     }
   ]
 }

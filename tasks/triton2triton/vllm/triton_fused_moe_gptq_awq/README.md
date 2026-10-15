@@ -35,8 +35,11 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 ## Protected kernel and validation boundaries
 
 Only the declared Triton kernel and permitted implementation helpers are editable.
-Host routing and output allocation remain protected; the measured callable still
-includes the complete original public wrapper. All five scored workloads, input
+Host routing and output allocation remain protected. Each sample calls the
+complete original public wrapper between GPU start/end event records. The score
+is elapsed time between those GPU-stream events, including the wrapper's issued
+GPU operations and any stream gaps inside that interval. It is not a separate
+CPU wall-clock measurement of routing, allocation or end-to-end wrapper latency. All five scored workloads, input
 distributions, seed 42 + case index, original numerical tolerance, 10 warmups and
 100 samples remain unchanged. Timing stays explicit GPU-event fallback for host
 routing/dynamic allocation; it never changes because of a candidate failure.

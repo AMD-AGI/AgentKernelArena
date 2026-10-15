@@ -71,6 +71,50 @@
         "correctness",
         "performance"
       ]
+    },
+    {
+      "test_case_id": "control_single_group",
+      "params": {
+        "m": 1,
+        "n": 128,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_three_groups",
+      "params": {
+        "m": 3,
+        "n": 384,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_nine_groups",
+      "params": {
+        "m": 5,
+        "n": 1152,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_33_groups",
+      "params": {
+        "m": 2,
+        "n": 4224,
+        "seed": 20260401
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ]
 }

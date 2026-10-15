@@ -1577,6 +1577,16 @@ if selected_arch and actual_arch and not actual_arch.startswith(selected_arch):
         f"selected GPU arch {selected_arch} does not match visible device arch {actual_arch}; "
         "fix target_gpu_model for experiment runs, or use AKA_GPU_ARCH only for shell/smoke diagnostics"
     )
+
+# Device discovery and memory copies can succeed even when the first actual
+# kernel crashes. Exercise arithmetic and validate its result before task work.
+host_values = torch.arange(32, dtype=torch.float32)
+device_values = host_values.to("cuda:0")
+device_result = device_values + 2.0
+torch.cuda.synchronize()
+if not torch.equal(device_result.cpu(), host_values + 2.0):
+    raise SystemExit("GPU arithmetic smoke produced incorrect values")
+print("torch_gpu_numerical_smoke=PASS")
 PY
 }
 

@@ -40,3 +40,12 @@ unchanged; diagnostics do not add measurements to the score.
 Additional unscored public-branch controls from PR105: Exact FP16 extrema/subnormal/half-step quantization and non-power-of-two epsilon controls.
 Their `control-upstream-*` manifest rows preserve all existing scored cases,
 numerical gates, seeds and timing.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_per_token_group_quant_int8`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

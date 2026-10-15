@@ -36,7 +36,9 @@
 #include <cstring>
 #include <random>
 #include <numeric>
+#include <limits>
 #include "scripts/native/routing_controls.hpp"
+#include "scripts/native/output_validation.hpp"
 #include <string>
 #include <vector>
 
@@ -200,19 +202,17 @@ static void max_diff(
     max_abs = 0.0;
     max_rel = 0.0;
     for (size_t i = 0; i < a.size(); ++i) {
+        // Read raw BF16 exponent bits before a fast-math FP promotion can
+        // attach finite-value assumptions and erase a later NaN/Inf check.
+        if (!mla_finite_storage(a[i]) || !mla_finite_storage(b[i])) {
+            // A finite sentinel keeps this rejection valid under -ffast-math.
+            max_abs = std::numeric_limits<double>::max();
+            max_rel = std::numeric_limits<double>::max();
+            return;
+        }
         const double x = static_cast<double>(__bfloat162float(a[i]));
         const double y = static_cast<double>(__bfloat162float(b[i]));
         const double d = std::fabs(x - y);
-        uint64_t xb, yb;
-        std::memcpy(&xb, &x, sizeof(xb));
-        std::memcpy(&yb, &y, sizeof(yb));
-        // std::isfinite may be folded away by this task's -ffast-math build.
-        if ((xb & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL ||
-            (yb & 0x7ff0000000000000ULL) == 0x7ff0000000000000ULL) {
-            max_abs = INFINITY;
-            max_rel = INFINITY;
-            return;
-        }
         max_abs = std::fmax(max_abs, d);
         const double denom = std::fmax(1e-8, std::fmax(std::fabs(x), std::fabs(y)));
         max_rel = std::fmax(max_rel, d / denom);
@@ -316,8 +316,8 @@ int main(int argc, char** argv) {
 
     // Correctness (full or check mode).
     if (mode == Mode::Full || mode == Mode::Check) {
-        std::fill(h_o.begin(), h_o.end(), __float2bfloat16(NAN));
-        HIP_CHECK(hipMemcpy(d_o, h_o.data(), o_e * sizeof(bf16), hipMemcpyHostToDevice));
+        // Byte poisoning is independent of host BF16 NaN conversion flags.
+        HIP_CHECK(hipMemset(d_o, 0xFF, o_e * sizeof(bf16)));
         launch();
         HIP_CHECK(hipDeviceSynchronize());
         HIP_CHECK(hipMemcpy(h_o.data(), d_o, o_e * sizeof(bf16), hipMemcpyDeviceToHost));

@@ -71,6 +71,28 @@
         "correctness",
         "performance"
       ]
+    },
+    {
+      "test_case_id": "control_zero_rows",
+      "params": {
+        "m": 3,
+        "n": 5120,
+        "control": "all_zero_rows"
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_mixed_zero_rows",
+      "params": {
+        "m": 3,
+        "n": 5120,
+        "control": "mixed_zero_rows"
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ]
 }

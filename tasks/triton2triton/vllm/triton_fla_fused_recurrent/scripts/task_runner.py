@@ -13,12 +13,19 @@ if TASK_DIR not in sys.path:
 from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
 from scripts import semantic_controls
 
+GEOMETRY_CONTROLS = semantic_controls.GEOMETRY_CONTROLS
+
 TASK_NAME = "triton2triton/triton_fla_fused_recurrent"
 SOURCE_FILE = os.path.join(TASK_DIR, "source", "triton_fla_fused_recurrent.py")
 
 SEEDS = [42, 43, 44, 45, 46]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
+INPUT_DISTRIBUTION = {"name": "strong_signal_v2", "operand_scales": {"q": 8, "v": 8, "h0": 8}}
+HISTORICAL_CASES = [
+    {"test_case_id": f"historical{i + 1}", "case_index": 20000 + i, "seed": seed}
+    for i, seed in enumerate(SEEDS)
+]
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
@@ -75,7 +82,7 @@ def reference(q, k, v, g, beta, scale, initial_state=None):
     return o
 
 
-def gen_inputs(seed, device):
+def gen_inputs(seed, device, *, historical=False):
     import torch
     torch.manual_seed(seed)
     B, T, H, K, V = 1, 32, 2, 16, 16
@@ -85,6 +92,11 @@ def gen_inputs(seed, device):
     g = torch.randn(B, T, H, device=device, dtype=torch.float32).sigmoid().log()
     beta = torch.rand(B, T, H, device=device, dtype=torch.float32).sigmoid()
     h0 = torch.randn(B, H, V, K, device=device, dtype=torch.float32) * 0.01
+    if not historical:
+        # Scale the original rounded draws in place, outside device timing.
+        q.mul_(8)
+        v.mul_(8)
+        h0.mul_(8)
     return (q, k, v, g, beta, 0.25, h0), {}
 
 
@@ -103,6 +115,13 @@ def run_compile():
 
 
 def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 30000:
+        return semantic_controls.run_geometry_control(case_index - 30000, load_module)
+    historical = case_index is not None and case_index >= 20000
+    if historical:
+        case_index -= 20000
+        if not 0 <= case_index < len(HISTORICAL_CASES):
+            return False, "Invalid historical case index"
     import torch
     try:
         mod = load_module()
@@ -114,13 +133,17 @@ def run_correctness(*, case_index=None):
         if case_index is not None and i != case_index:
             continue
         try:
-            args, kwargs = gen_inputs(seed, device)
+            args, kwargs = gen_inputs(seed, device, historical=historical)
             args_cpu = tuple(a.float().cpu() if isinstance(a, torch.Tensor) else a for a in args)
+            expected = (reference(*args, **kwargs).to(device),
+                        semantic_controls.reference_outputs(*args, **kwargs)[1])
+            if not historical:
+                semantic_controls.require_signal(expected)
 
             readonly = InputSnapshot({str(i): a for i,a in enumerate(args) if isinstance(a, torch.Tensor)})
             result_tuple = mod.fused_recurrent_gated_delta_rule_fwd(*args, **kwargs)
             readonly.check()
-            check_outputs(result_tuple, (reference(*args, **kwargs).to(device), semantic_controls.reference_outputs(*args, **kwargs)[1]), atol=5e-2, rtol=5e-2,
+            check_outputs(result_tuple, expected, atol=5e-2, rtol=5e-2,
                           inputs=[e[1] for e in readonly.entries])
             result = result_tuple[0] if isinstance(result_tuple, tuple) else result_tuple
             ref = reference(*args_cpu, **kwargs)

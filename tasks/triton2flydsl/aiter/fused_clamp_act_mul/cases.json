@@ -783,6 +783,62 @@
       "checks": [
         "correctness"
       ]
+    },
+    {
+      "test_case_id": "control_gelu",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "none",
+        "activation": "gelu",
+        "provided_out": false
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_gelu_weighted_out",
+      "params": {
+        "M": 3,
+        "D": 2048,
+        "limit": 2.0,
+        "wm": "broadcast",
+        "activation": "gelu",
+        "provided_out": true
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_gelu_tanh",
+      "params": {
+        "M": 1,
+        "D": 2048,
+        "limit": 0.0,
+        "wm": "none",
+        "activation": "gelu_tanh",
+        "provided_out": false
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_gelu_tanh_weighted_out",
+      "params": {
+        "M": 3,
+        "D": 2048,
+        "limit": 2.0,
+        "wm": "elementwise",
+        "activation": "gelu_tanh",
+        "provided_out": true
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ]
 }

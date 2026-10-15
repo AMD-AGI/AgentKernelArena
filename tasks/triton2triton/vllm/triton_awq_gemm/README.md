@@ -49,3 +49,12 @@ hooks are restored on success or failure. The original ten warmups, 100 samples
 and canonical graph/event timing parameters are retained. References, checks and
 the extra replay run outside the measured interval. A fresh complete GPU task
 validation is required for this task package.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `awq_gemm_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

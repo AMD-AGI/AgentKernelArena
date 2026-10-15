@@ -9,6 +9,23 @@
     ]
   },
   "case_table": "TEST_SHAPES",
+  "input_contract": {
+    "token_count": 1,
+    "qk_layout": "B,H,1,D",
+    "value_layout": "B,H,1,D_v",
+    "cache_layout": "num_slots,H,D,D_v",
+    "slope_layout": "H",
+    "slot_layout": "B",
+    "slot_dtypes": [
+      "int32",
+      "int64"
+    ],
+    "active_slots": "unique_in_range",
+    "padding_slot": -1,
+    "padding_output": "unwritten",
+    "default_block_size": 32,
+    "dimension_constraint": "D_and_BLOCK_SIZE_power_of_two;D_v_divisible_by_BLOCK_SIZE"
+  },
   "input_table": [
     [
       1,

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_w8a8_block_scaled_mm.py
+  - path: source/triton_w8a8_block_scaled_mm.py
+    scope: symbols
+    symbols:
+    - _w8a8_triton_block_scaled_mm
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_w8a8_block_scaled_mm.py
     kind: function

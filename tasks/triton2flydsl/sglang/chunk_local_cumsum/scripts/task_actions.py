@@ -26,4 +26,6 @@ def check(h):
 
 
 def performance(h):
-    return h.run_performance()
+    from scripts.candidate_checks import audit_candidate_calls
+    with audit_candidate_calls(h, performance=True):
+        return h.run_performance()

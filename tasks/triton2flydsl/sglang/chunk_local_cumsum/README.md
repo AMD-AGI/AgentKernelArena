@@ -64,3 +64,27 @@ outside timing. Both roles retain seed 42+case index, 10 external warmups and
 The frozen original Triton source is unchanged; final candidate operator calls
 are audited separately for FlyDSL computation and cannot call protected references
 or AITER/Triton/PyTorch operator implementations.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy remains active on every actual
+operator call made by canonical benchmark warmup, graph capture and eager event
+timing. Tensor arithmetic, reductions and library operators must execute as
+FlyDSL kernels even when candidate behavior changes after earlier calls. A
+probe of the actual performance closure observes FlyDSL invocation outside
+clocks and capture; Python profiling is disabled inside canonical measurement.
+Allocation and view preparation retain the existing allowlist. Baseline and
+reference operators keep their original policy and all original device timing
+parameters. One additional untimed audit probe of each performance closure runs
+before canonical benchmarking; stateful closures use the existing prepare
+callback before and after that probe. This probe is separate from the retained
+benchmark warmup/sample counts. A forbidden operation remains a failure even if
+a capture fallback or candidate code catches its exception. These checks are
+implementation-contract evidence, not a Python
+security sandbox.
+
+Candidate sources and their normal local-import helpers must not access the
+evaluator's module registry, stack frames or profiling controls through `sys`,
+including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
+available, and installed FlyDSL library internals are not scanned as candidate
+code. Protected reference imports remain prohibited.

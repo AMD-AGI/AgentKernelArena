@@ -52,3 +52,13 @@ FP32 and rounds to the supplied output dtype. For the five original fully active
 workloads and their replay inputs, this preserves the original FP16 reference
 values; the same shape, dtype, in-place return, and read-only checks also apply
 to the additional controls.
+
+
+## Editable device implementation
+
+The declared device kernels `cdiv_fn`, `find_seq_idx`, `reduce_segments` and permitted new compiler helpers are editable. Existing imports, module-level
+execution, the public host wrapper, launch preparation, numerical checks and
+timing remain protected. Kernel arithmetic, tiling and memory operations can
+be optimized within that boundary. The implementation, workload values,
+correctness tolerances and scored samples are unchanged by this boundary.
+This is a reproducibility boundary, not an isolation guarantee for arbitrary code.

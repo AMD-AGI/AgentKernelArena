@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_reshape_and_cache_flash.py
+  - path: source/triton_reshape_and_cache_flash.py
+    scope: symbols
+    symbols:
+    - reshape_and_cache_kernel_flash
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_reshape_and_cache_flash.py
     kind: function

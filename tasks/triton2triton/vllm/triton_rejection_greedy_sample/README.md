@@ -1,6 +1,6 @@
 # triton_rejection_greedy_sample
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve the declared device kernel in place;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -10,6 +10,16 @@ Constraints:
 - Must maintain the same function signature for `rejection_greedy_sample`
 - Output must match reference exactly for integer outputs or within atol=1e-2, rtol=1e-2 for float outputs
 
+
+## Candidate edit boundary
+
+Only `rejection_greedy_sample_kernel` and new implementation helpers in
+`source/triton_rejection_greedy_sample.py` are editable. Keep the public
+`rejection_greedy_sample` wrapper, existing imports, module constants and
+launch configuration unchanged. New helpers must follow the framework definition
+policy. The task configuration, references, workload manifest, runners and benchmark
+helpers remain protected. This preserves the same wrapper and evaluation path for
+the frozen baseline and candidate.
 
 ## Evaluation contract
 

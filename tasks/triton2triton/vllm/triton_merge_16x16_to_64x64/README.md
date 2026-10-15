@@ -25,6 +25,12 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Only `merge_16x16_to_64x64_inverse_kernel` and permitted new implementation helpers
+in `source/triton_merge_16x16_to_64x64.py` are editable. Triton compiler decorators
+and autotune configurations remain available under the shared definition policy.
+The public `merge_16x16_to_64x64` wrapper, imports, module-level execution, output
+allocation and launch boundary are protected, along with the reference, checks,
+workload manifest and benchmark runner.
 
 The protected manifest requires the declared kernel symbols to remain Triton JIT
 functions, including kernels originally decorated with `@triton.jit()`. Removing

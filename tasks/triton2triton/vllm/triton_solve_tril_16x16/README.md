@@ -45,3 +45,12 @@ unit. The exact captured output is checked after timing, then the input is
 scaled by -0.5 and the output poisoned with NaN before the same graph is replayed
 and checked against a new reference. Input checks, reference computation and
 poisoning stay outside timing; input is restored even if replay raises.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `solve_tril_16x16_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

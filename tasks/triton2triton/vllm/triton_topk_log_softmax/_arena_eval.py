@@ -80,10 +80,23 @@ def evaluate(role, action):
         actual = json.loads(json.dumps(getattr(harness, data['case_table'])))
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
+        controls_spec = importlib.util.spec_from_file_location('_extra_layout_controls', ROOT / '_layout_controls.py')
+        controls = importlib.util.module_from_spec(controls_spec)
+        controls_spec.loader.exec_module(controls)
+        if json.dumps(data['layout_controls'], sort_keys=True) != json.dumps(controls.CASES, sort_keys=True):
+            raise ValueError('Protected layout control table differs from manifest')
+        expected_controls = [{'test_case_id': 'control-layout-' + case['name'],
+            'dtype': 'float32,int64', 'params': {'case_index': 20000 + index, 'configuration': case},
+            'checks': ['correctness'], 'status': 'PASS'} for index, case in enumerate(controls.CASES)]
+        actual_controls = [row for row in data['cases'] if row['test_case_id'].startswith('control-layout-')
+                           or row['params'].get('case_index', -1) >= 20000]
+        if json.dumps(actual_controls, sort_keys=True) != json.dumps(expected_controls, sort_keys=True):
+            raise ValueError('Protected layout correctness rows differ from manifest')
         if action == 'validate-task':
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
                     raise RuntimeError(f'Required runtime dependency unavailable: {dependency}')
+            controls.validate_reference(harness)
             result['metadata']={'candidate_state':state,'input_table_verified':True}
         elif action == 'compile':
             ok, error = harness.run_compile()

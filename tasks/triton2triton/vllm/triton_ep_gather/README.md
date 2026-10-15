@@ -42,3 +42,12 @@ output allocation, ten warmups and 100 samples are unchanged. Both actual
 `TimedRun` output and its poisoned exact replay are checked after changing all
 four inputs. Checks and perturbations are outside timing. All input buffers and
 the caller's original output state are restored after timing, even on failure.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_fwd_kernel_ep_gather`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

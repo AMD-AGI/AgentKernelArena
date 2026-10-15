@@ -46,7 +46,7 @@
 ///   of loading the same values from the global device memory individually.
 ///   The end result is accumulated through each step on a per-thread basis.
 /// - The matrix dimensions are assumed to be multiples of the block size for simplicity.
-#include "source/kernel.hpp"
+#include "scripts/native/matrix_launch.hpp"
 
 template<unsigned int BlockSize>
 void configure_parser(cli::Parser& parser)
@@ -130,10 +130,9 @@ int main(int argc, const char* argv[])
     // Launch matrix multiplication kernel.
     std::cout << "Matrix multiplication: [" << a_rows << 'x' << a_cols << "] * [" << b_rows << 'x'
               << b_cols << "], block size: " << block_size << 'x' << block_size << std::endl;
-    matrix_multiplication_kernel<block_size>
-        <<<grid_dim, block_dim, 0, hipStreamDefault>>>(d_A, d_B, d_C, a_cols);
-    // Check if the kernel launch was successful.
-    HIP_CHECK(hipGetLastError());
+    // The out-of-line adapter launches the same BlockSize16 candidate kernel.
+    HIP_CHECK(aka_matrix_launch(d_A, d_B, d_C, a_cols, grid_dim, block_dim,
+                               hipStreamDefault));
 
     // Copy the resulting matrix to the host. This call synchronizes with the host.
     HIP_CHECK(hipMemcpy(C.data(), d_C, c_bytes, hipMemcpyDeviceToHost));

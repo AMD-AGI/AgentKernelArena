@@ -49,7 +49,16 @@ def test_native_drivers_use_nonzero_inputs_and_validate_an_actual_replay():
     helper = (ROOT / "src/tools/perf/native_hip_graph_benchmark.hpp").read_text()
 
     assert "hipMemcpyAsync(d_a, h_a.data()" in matrix
-    assert "matrix replay validation" in matrix
+    # Dense independent replay replaced the old fixed-input diagnostic label.
+    # Keep validation of the actual measured result, changed inputs, poison,
+    # exact captured replay, full output checks and caller restoration explicit.
+    for required in ('Initial matrix output mismatch', 'independent replay A',
+                     'independent replay B', 'poison replay C',
+                     'changed-input exact replay', 'Independent replay matrix output mismatch',
+                     'Matrix initial-input restoration mismatch'):
+        assert required in matrix
+    assert 'matrix_reference::validate(h_c, expected, b_cols)' in matrix
+    assert 'matrix_reference::validate(h_c, replay_expected, b_cols)' in matrix
     assert "hipMemcpyAsync(d_q, h_q.data()" in mla
     assert "MLA replay validation" in mla
     assert "graph replay output validation failed" in helper

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_fused_gdn_gating.py
+  - path: source/triton_fused_gdn_gating.py
+    scope: symbols
+    symbols:
+    - fused_gdn_gating_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_fused_gdn_gating.py
     kind: function

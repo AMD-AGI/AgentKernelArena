@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import hashlib
 from pr107_integration_helpers import original_manifest
+from triton_signal_migration_helpers import historical_manifest
 import sys
 import types
 
@@ -159,7 +160,7 @@ def test_original_workloads_gates_kernels_and_timing_preserved(task):
     for relative,digest in saved['files'].items():
         text=(root/relative).read_text()
         if relative=='workloads.json':
-            text=json.dumps(original_manifest(json.loads(text)),indent=2)+'\n'
+            text=json.dumps(original_manifest(historical_manifest(json.loads(text), root.name)),indent=2)+'\n'
         assert _digest(text)==digest
     config=yaml.safe_load((root/'config.yaml').read_text())
     edit=config['candidate'].pop('editable')[0]
@@ -203,7 +204,7 @@ def test_protocol_manifest_controls_and_failed_performance(task,monkeypatch):
     monkeypatch.setattr(importlib.util,'find_spec',lambda name,*a: object() if name=='triton' else real_find(name,*a))
     report=m.evaluate('task','validate-task')
     assert report['status']=='PASS' and report['metadata']['reference_controls']
-    assert len(original_manifest(m.load_manifest())['cases'])==5
+    assert len(original_manifest(historical_manifest(m.load_manifest(), root.name))['cases'])==5
     assert len(report['cases'])==len(m.load_manifest()['cases'])
     from src.task_spec import load_task_spec
     from src.task_protocol import parse_command_result,CaseManifest

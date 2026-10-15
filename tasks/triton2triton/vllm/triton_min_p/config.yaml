@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_min_p.py
+  - path: source/triton_min_p.py
+    scope: symbols
+    symbols:
+    - _min_p_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_min_p.py
     kind: function

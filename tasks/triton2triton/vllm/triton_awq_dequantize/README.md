@@ -11,13 +11,14 @@ The kernel unpacks 4-bit AWQ quantized weights, applies zero-point subtraction
 and scale multiplication to produce dequantized float16 weights.
 
 Key optimization opportunities:
-- Tile size tuning (BLOCK_SIZE_X, BLOCK_SIZE_Y) for the target GPU
+- Kernel tiling within the protected launch grid
 - Memory access pattern optimization
 - Warp scheduling and occupancy tuning
 
 Constraints:
 - Must maintain the same function signature for `awq_dequantize_triton`
 - Output must match reference within atol=1e-2, rtol=1e-2 for float16
+- Packed weights, packed zero points and scales are read-only
 
 
 ## Evaluation contract
@@ -31,12 +32,24 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Only `awq_dequantize_kernel` and permitted new implementation helpers in
+`source/triton_awq_dequantize.py` are editable. Triton compiler decorators and
+autotune configurations remain available under the shared definition policy.
+The public wrapper, supported group-size table, imports, output allocation and
+launch boundary are protected, along with the reference and all evaluation code.
+
 The protected `_arena_checks.py` validates the exact captured output against the
-original unpacking reference with `atol=1e-2, rtol=1e-2`. After timing, it changes
+original unpacking reference with `atol=1e-2, rtol=1e-2`. Correctness and performance
+snapshot all three input buffers and compute the reference before candidate
+execution. Exact read-only checks reject input changes even when the output is
+otherwise correct, and restore the original buffers on success or failure.
+After timing, the checker changes
 the packed weights (including the sign/high bits), packed zeros and scales,
-poisons the output, and validates the same graph's replay. Shape, dtype, device
-and finiteness are checked as well. Original timed inputs, seeds, cases and timing
-parameters are unchanged. Unobservable event fallback fails explicitly.
+computes a new pristine reference, poisons the output, and validates the same
+graph's replay and read-only inputs. Shape, dtype, device and finiteness are
+checked as well. Snapshots, references, checks and restoration run outside timing
+with the same policy for baseline and candidate. Original timed inputs, seeds,
+cases and timing parameters are unchanged. Unobservable event fallback fails explicitly.
 
 Additional unscored public-branch controls from PR105: FP32/BF16 scale dtypes and signed packed/tail group boundaries.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,

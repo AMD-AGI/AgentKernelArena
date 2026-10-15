@@ -19,7 +19,7 @@ module loading, external native kernels, subprocess dispatch or launch bypasses.
 The protected harness's existing glue operations and allocation/reset boundaries
 remain identical for baseline and candidate.
 
-`cases.json` contains 60 independent correctness identities and 4
+`cases.json` contains 64 independent correctness identities and 4
 performance identities, including every original dtype, bias, activation, routing
 and shape variant. Performance variants have correctness coverage. Input generators,
 explicit seeds, numerical gates, output-contract checks, warmups, sample counts,
@@ -62,3 +62,51 @@ Both roles retain 10 external warmups and 100 graph samples. Actual measured
 outputs and the same graph replay after changing input values must satisfy the
 original numerical gate and output contract. Inputs are restored and outputs
 poisoned for replay outside timing; capture failure is not an unchecked fallback.
+
+## Local implementation helpers
+
+Declared editable candidate sources may import additional task-local Python
+device/compiler helpers, including packages. Dependency review and syntax
+compilation follow the complete normal local-import closure. The same declared
+implementation restrictions apply to every helper: protected references,
+alternative final-language backends and dynamic implementation loading remain
+disallowed. Source symlinks, imports escaping the task and local modules shadowing
+the supported runtime libraries are rejected. Installed library source is not
+traversed. Existing candidate-only PyTorch preparation and per-call FlyDSL launch
+audits remain active outside timing. These checks enforce the task contract;
+they are not a Python security sandbox.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy remains active on every actual
+operator call made by canonical benchmark warmup, graph capture and eager event
+timing. Tensor arithmetic, reductions and library operators must execute as
+FlyDSL kernels even when candidate behavior changes after earlier calls. A
+probe of the actual performance closure observes FlyDSL invocation outside
+clocks and capture; Python profiling is disabled inside canonical measurement.
+Allocation and view preparation retain the existing allowlist. Baseline and
+reference operators keep their original policy and all original device timing
+parameters. One additional untimed audit probe of each performance closure runs
+before canonical benchmarking; stateful closures use the existing prepare
+callback before and after that probe. This probe is separate from the retained
+benchmark warmup/sample counts. A forbidden operation remains a failure even if
+a capture fallback or candidate code catches its exception. These checks are
+implementation-contract evidence, not a Python
+security sandbox.
+
+Candidate sources and their normal local-import helpers must not access the
+evaluator's module registry, stack frames or profiling controls through `sys`,
+including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
+available, and installed FlyDSL library internals are not scanned as candidate
+code. Protected reference imports remain prohibited.
+
+## Activation correctness controls
+
+Four additional correctness-only identities execute the public GELU and
+GELU-tanh modes. Each mode has an unclamped unweighted case and a clamped
+weighted case; the latter also checks the caller-owned output. Inputs use the
+original width 2048. Base, changed and base-again calls reuse the input/weight
+allocations and check they remain read-only. GELU references use FP32 compute
+and the original 0.01 absolute/relative gate; no stricter distinction between
+approximations is required. All 60 original SiLU cases and four timed cases
+remain unchanged, as do the original warmups and samples.

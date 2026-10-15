@@ -61,3 +61,12 @@ substitute an easier timing workload or a different output dtype.
 Performance check failures also emit the underlying exception to stderr before
 the original harness records its failing timing sentinel. Failed cases remain
 failures; diagnostic output does not substitute for a valid measurement.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_w8a8_block_int8_matmul`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

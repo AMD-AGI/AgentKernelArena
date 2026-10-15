@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_fla_cumsum_scalar.py
+  - path: source/triton_fla_cumsum_scalar.py
+    scope: symbols
+    symbols:
+    - chunk_local_cumsum_scalar_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_fla_cumsum_scalar.py
     kind: function

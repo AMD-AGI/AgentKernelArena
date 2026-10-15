@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/_fwd_kernel_stage2.py
+  - path: source/_fwd_kernel_stage2.py
+    scope: symbols
+    symbols:
+    - _fwd_kernel_stage2
+    allow_new_helpers: true
   entrypoints:
   - file: source/_fwd_kernel_stage2.py
     kind: function

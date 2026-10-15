@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_fla_layernorm.py
+  - path: source/triton_fla_layernorm.py
+    scope: symbols
+    symbols:
+    - layer_norm_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_fla_layernorm.py
     kind: function

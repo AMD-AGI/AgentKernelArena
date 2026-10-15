@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_mrope.py
+  - path: source/triton_mrope.py
+    scope: symbols
+    symbols:
+    - _triton_mrope_forward
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_mrope.py
     kind: function

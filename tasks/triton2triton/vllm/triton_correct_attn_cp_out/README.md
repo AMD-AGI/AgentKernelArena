@@ -52,3 +52,24 @@ and every output poisoned, then the same captured graph is replayed and fully
 compared against a new reference. Inputs are restored afterward. No reference,
 poisoning, comparison, or extra GPU check is added inside the timed invocation.
 A timing fallback that cannot expose the actual measured outputs fails closed.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_correct_attn_cp_out_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+### Additional unscored interface coverage
+
+Three explicit correctness-only rows exercise base-2 exponent/logarithm correction,
+nonzero current-rank indices, and both accepted four-dimensional LSE layouts
+`[N,B,H,1]` / `[N,1,B,H]` with `[B,1,H,D]` output inputs. Returned corrected output
+and global LSE retain normalized shapes `[B,H,D]` / `[B,H]`. Each real wrapper call
+uses the protected pristine reference, full-output checks, immutable inputs and
+Triton dispatch audit. Manifest parameters are matched to the actual generator.
+These are finite representative controls, not an arbitrary-layout guarantee.
+All five original scored shapes, seeds, values, tolerances, ten warmups, 100 samples,
+reference and timing code are unchanged; the three new rows do not affect scoring.

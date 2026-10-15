@@ -12,6 +12,7 @@ import types
 import pytest
 import torch
 import yaml
+from reviewed_contract_history import historical_kda_manifest, KDA_DECLARATIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -217,14 +218,20 @@ def test_protocol_manifest_controls_and_failed_performance(task,monkeypatch):
     monkeypatch.setattr(importlib.util,'find_spec',lambda name,*a: object() if name=='triton' else real_find(name,*a))
     report=m.evaluate('task','validate-task')
     assert report['status']=='PASS' and report['metadata']['reference_controls']
-    assert len(report['cases'])==5
+    dimension_case = root.name in {'triton_kda_dot_kkt_inter', 'triton_kda_dot_kkt_intra'}
+    assert len(report['cases']) == (7 if dimension_case else 5)
+    performance_cases = [row for row in report['cases'] if 'performance' in row['checks']]
+    assert [row['test_case_id'] for row in performance_cases] == [f'perf{i}' for i in range(1,6)]
+    if dimension_case:
+        assert [row['params']['semantic_control'] for row in report['cases'][5:]] == [row['name'] for row in KDA_DECLARATIONS]
+        assert all(row['checks'] == ['correctness'] for row in report['cases'][5:])
     from src.task_spec import load_task_spec
     from src.task_protocol import parse_command_result,CaseManifest
     spec=load_task_spec(root/'config.yaml',task_id='triton2triton/vllm/'+root.name)
     assert spec.candidate.initial_state=='implemented'
     result=parse_command_result('ARENA_EVAL_RESULT='+json.dumps(report),role='task',action='validate-task',returncode=0)
     manifest=CaseManifest.from_result(result)
-    monkeypatch.setattr(h,'run_performance',lambda:[{'test_case_id':r['test_case_id'],'execution_time_ms':-1.,'error':'replay rejected'} for r in report['cases']])
+    monkeypatch.setattr(h,'run_performance',lambda:[{'test_case_id':r['test_case_id'],'execution_time_ms':-1.,'error':'replay rejected'} for r in performance_cases])
     failed=m.evaluate('candidate','performance')
     assert failed['status']=='FAIL'
     assert all(r['reason']=='replay rejected' for r in failed['cases'])
@@ -236,7 +243,10 @@ def test_original_contract_preserved(task):
     root,h,_,_=task
     saved=BASELINE[root.name]
     for relative,digest in saved['files'].items():
-        assert _digest((root/relative).read_text())==digest
+        text = (root/relative).read_text()
+        if relative == 'workloads.json' and root.name in {'triton_kda_dot_kkt_inter', 'triton_kda_dot_kkt_intra'}:
+            text = historical_kda_manifest(text)
+        assert _digest(text)==digest
     text=(root/'scripts/task_runner.py').read_text();tree=ast.parse(text)
     def protected(tree):
         nodes=[]

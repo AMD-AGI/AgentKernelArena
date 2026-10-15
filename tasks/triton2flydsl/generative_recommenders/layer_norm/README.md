@@ -74,3 +74,21 @@ segment offsets and shapes remain unchanged. Poisoning, perturbation, reference
 calculation and restoration are outside timing. Capture failure cannot bypass
 validation. Final candidate calls are audited for FlyDSL operator execution;
 the original Triton source and frozen baseline algorithm remain unchanged.
+
+## Candidate execution policy
+
+The candidate-only PyTorch preparation policy stays active on every actual
+performance call, including canonical warmup, graph capture, event timing and
+retained eager replay. Arithmetic and reductions belong in FlyDSL kernels. The
+actual performance closure receives one additional untimed FlyDSL invocation
+probe; existing prepare callbacks restore state around it. Python profiling
+runs outside capture/clocks, and the original benchmark parameters remain. A
+forbidden operation remains a failure even if candidate code or a capture
+fallback catches the error. Baseline/reference operators retain their policy.
+
+Normal task-local implementation imports are reviewed recursively and syntax
+checked. Candidate code must not access the evaluator module registry, frames
+or profiling controls through sys, aliases or dynamic lookup. Ordinary sys
+metadata and installed FlyDSL library internals are unaffected. Existing
+backend/native-dispatch restrictions and any exact protected helper exceptions
+remain. These checks enforce the task contract, not a Python security sandbox.

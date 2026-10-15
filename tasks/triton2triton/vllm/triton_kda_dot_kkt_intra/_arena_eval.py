@@ -70,6 +70,9 @@ def evaluate(role, action):
         actual = json.loads(json.dumps(getattr(harness, data['case_table'])))
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
+        declared_controls = harness.semantic_controls.control_declarations()
+        if declared_controls != data.get('semantic_control_cases'):
+            raise ValueError('Semantic control dimensions disagree with protected manifest')
         if action == 'validate-task':
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
@@ -81,9 +84,20 @@ def evaluate(role, action):
             if not ok:
                 raise RuntimeError(error or 'Compilation/import check failed')
         elif action == 'correctness':
-            result['metadata']={'unscored_semantic_controls':harness.run_semantic_controls()}
+            controls = harness.run_semantic_controls()
+            result['metadata']={'unscored_semantic_controls':controls}
+            control_rows = {row['control']:row for row in controls}
+            if len(control_rows) != len(controls):
+                raise RuntimeError('Duplicate semantic correctness control evidence')
             for index, row in enumerate(cases):
                 try:
+                    control = row['params'].get('semantic_control')
+                    if control is not None:
+                        evidence = control_rows.get(control)
+                        if evidence is None or evidence.get('status') != 'PASS' or evidence.get('scored') is not False:
+                            raise RuntimeError('Missing or failed declared semantic control')
+                        row['metrics']={'semantic_control_checks_passed':True,'scored':False}
+                        continue
                     ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
                     if not ok:
                         raise RuntimeError(error or 'Original numerical/output contract rejected candidate')

@@ -4,7 +4,14 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_fused_moe_lora.py
+  - path: source/triton_fused_moe_lora.py
+    scope: symbols
+    symbols:
+    - _get_lora_id
+    - _get_expert_id
+    - _get_token_offs
+    - fused_moe_lora_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_fused_moe_lora.py
     kind: function

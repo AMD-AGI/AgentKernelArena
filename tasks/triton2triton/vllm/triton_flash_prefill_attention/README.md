@@ -74,3 +74,12 @@ Every added control declares only `correctness`. Its real measured/replayed
 branch is checked inside the correctness action and reported as an explicitly
 unscored diagnostic in that case's metrics. The performance action executes
 only the five original workloads; neither their weights nor aggregation change.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_fwd_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

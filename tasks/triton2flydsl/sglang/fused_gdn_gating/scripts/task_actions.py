@@ -1,9 +1,16 @@
 """Task-owned initial Triton and final FlyDSL action bindings."""
 EXPECTED_SHAPES = [(1, 32), (8, 32), (32, 32), (128, 16), (256, 16), (512, 32), (64, 8), (16, 4), (128, 128)]
 PERFORMANCE_IDS = {'perf1': 'case_0000', 'perf2': 'case_0001', 'perf3': 'case_0002', 'perf4': 'case_0003', 'perf5': 'case_0004', 'perf6': 'case_0005', 'perf7': 'case_0006', 'perf8': 'case_0007', 'perf9': 'case_0008'}
-CORRECTNESS_COUNT = 9
+CORRECTNESS_COUNT = 11
 
 def select_role(h, role, provided):
+    import json
+    from pathlib import Path
+    from scripts.semantic_controls import CONTROL_CASES
+    declared = json.loads(Path(h.__file__).with_name("cases.json").read_text())["cases"]
+    controls = [case for case in declared if case["test_case_id"].startswith("control_")]
+    if controls != CONTROL_CASES:
+        raise ValueError("Semantic controls disagree with protected manifest")
     import os
     h.ARENA_FINAL_CANDIDATE = role == "candidate" and os.environ.get("ARENA_EVAL_PHASE") != "task_validation"
     if provided:
@@ -26,4 +33,6 @@ def check(h):
 
 
 def performance(h):
-    return h.run_performance()
+    from scripts.candidate_checks import audit_candidate_calls
+    with audit_candidate_calls(h, performance=True):
+        return h.run_performance()

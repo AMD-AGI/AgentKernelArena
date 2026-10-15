@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_causal_conv1d_update.py
+  - path: source/triton_causal_conv1d_update.py
+    scope: symbols
+    symbols:
+    - _causal_conv1d_update_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_causal_conv1d_update.py
     kind: function

@@ -53,3 +53,12 @@ requires a complete finalized validator report for this task package.
 Additional unscored public-branch controls from PR105: FP16/BF16 partial triangular tiles and odd head counts.
 They have independent `control-upstream-*` manifest rows; existing scored
 inputs, numerical gates and timing remain unchanged.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `merge_16x16_to_32x32_inverse_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

@@ -353,6 +353,130 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "kv_group_17_two_heads",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "kv_group_17_two_heads",
+        "batch": 2,
+        "query_heads": 34,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          63,
+          37
+        ],
+        "page_mapping": "reversed physical page order",
+        "logit_cap": 0.0,
+        "input_shapes": {
+          "q": [
+            2,
+            34,
+            64
+          ],
+          "k_buffer": [
+            128,
+            2,
+            64
+          ],
+          "v_buffer": [
+            128,
+            2,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            34,
+            4,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 815
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "kv_group_24_two_heads",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "kv_group_24_two_heads",
+        "batch": 2,
+        "query_heads": 48,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          63,
+          37
+        ],
+        "page_mapping": "reversed physical page order",
+        "logit_cap": 1.5,
+        "input_shapes": {
+          "q": [
+            2,
+            48,
+            64
+          ],
+          "k_buffer": [
+            128,
+            2,
+            64
+          ],
+          "v_buffer": [
+            128,
+            2,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            48,
+            4,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 816
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

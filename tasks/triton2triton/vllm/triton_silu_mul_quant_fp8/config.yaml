@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_silu_mul_quant_fp8.py
+  - path: source/triton_silu_mul_quant_fp8.py
+    scope: symbols
+    symbols:
+    - _silu_mul_per_token_group_quant_fp8_colmajor
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_silu_mul_quant_fp8.py
     kind: function

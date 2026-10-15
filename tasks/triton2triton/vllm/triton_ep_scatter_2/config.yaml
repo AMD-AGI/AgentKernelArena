@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ep_scatter_2.py
+  - path: source/triton_ep_scatter_2.py
+    scope: symbols
+    symbols:
+    - _fwd_kernel_ep_scatter_2
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ep_scatter_2.py
     kind: function

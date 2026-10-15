@@ -40,6 +40,9 @@ Run a short runtime check before starting an experiment:
 make slurm-smoke
 ```
 
+The smoke check executes GPU tensor arithmetic, synchronizes, and verifies the
+copied result. Device discovery alone does not establish a working runtime.
+
 Check the CLI and authentication selected by a run config:
 
 ```bash

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_layernorm_gated.py
+  - path: source/triton_layernorm_gated.py
+    scope: symbols
+    symbols:
+    - _layer_norm_fwd_1pass_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_layernorm_gated.py
     kind: function

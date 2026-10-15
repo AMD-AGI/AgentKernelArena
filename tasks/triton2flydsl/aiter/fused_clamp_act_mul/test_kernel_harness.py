@@ -164,6 +164,12 @@ def run_correctness(verbose=True):
             if verbose:
                 print(f"  FAIL: {tag} - {str(e)[:160]}")
 
+    from scripts.semantic_controls import run_controls
+    def compare_control(actual, expected, inp):
+        _checked_elementwise_output(actual, inp)
+        allclose_output(actual, expected, atol=1e-2, rtol=1e-2)
+    run_controls(mod.fused_clamp_act_mul, compare_control, require_unchanged)
+
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(cases)})"
     print(f"Status: {status}")
     print(f"correctness: {'pass' if not failures else 'fail'}")

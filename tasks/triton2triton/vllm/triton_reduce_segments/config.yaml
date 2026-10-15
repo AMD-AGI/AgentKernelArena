@@ -4,7 +4,13 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_reduce_segments.py
+  - path: source/triton_reduce_segments.py
+    scope: symbols
+    symbols:
+    - cdiv_fn
+    - find_seq_idx
+    - reduce_segments
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_reduce_segments.py
     kind: function

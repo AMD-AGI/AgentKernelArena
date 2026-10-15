@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_rms_norm.py
+  - path: source/triton_rms_norm.py
+    scope: symbols
+    symbols:
+    - _rms_norm_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_rms_norm.py
     kind: function

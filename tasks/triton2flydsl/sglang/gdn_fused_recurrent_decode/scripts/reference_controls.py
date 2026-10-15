@@ -32,4 +32,6 @@ def run():
             except AssertionError: return False
         rows.append(control((o,s)[slot],expected[slot],accept,
                             f"actual decode recurrence comparator output{slot}"))
+    from scripts.normalization_controls import reference_self_test
+    rows.extend(reference_self_test(r.reference_decode, r._compare_recurrent_output))
     return rows

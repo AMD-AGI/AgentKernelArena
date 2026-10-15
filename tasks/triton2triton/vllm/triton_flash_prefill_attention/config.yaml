@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_flash_prefill_attention.py
+  - path: source/triton_flash_prefill_attention.py
+    scope: symbols
+    symbols:
+    - _fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_flash_prefill_attention.py
     kind: function

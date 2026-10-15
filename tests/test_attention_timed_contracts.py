@@ -153,7 +153,12 @@ def test_merge_adapter_installs_checks_and_preserves_original_work(monkeypatch):
         "config.yaml": "e7d6291904f5a87e3b14a561e60a781b7074391c863c3568e74dca4709e43d9b",
     }
     for relative, digest in expected.items():
-        assert hashlib.sha256((MERGE / relative).read_bytes()).hexdigest() == digest
+        from reviewed_contract_history import historical_triton_device_boundary_file
+        source = (MERGE / relative).read_bytes()
+        if relative == 'config.yaml':
+            source = historical_triton_device_boundary_file(
+                'tasks/triton2triton/vllm/triton_merge_attn_states/config.yaml', source.decode()).encode()
+        assert hashlib.sha256(source).hexdigest() == digest
 
 
 def none_diag_cpu(q, out, slope, kv, BLOCK=256, CBLOCK=64):
