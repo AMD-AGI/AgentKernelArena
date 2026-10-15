@@ -27,25 +27,19 @@ class MaskedLanguageModel(nn.Module):
 
 def get_inputs():
     """
-    Generate multiple test cases with varying sizes
-    HIP kernel requires 4D input [B, S1, S2, H] where H=hidden=4
+    A 512-to-4096 vocabulary projection and log-softmax with 1/17/63/246/256
+    token rows.
     """
-    configs = [
-        # (B, S1, S2, H) - 4D tensors where H must be 4 to match hidden=4
-        ([4, 4, 4, 4],),  # B=4, S1=4, S2=4, H=4
-        ([8, 4, 4, 4],),  # B=8, S1=4, S2=4, H=4
-        ([16, 4, 4, 4],),  # B=16, S1=4, S2=4, H=4
-        ([32, 4, 4, 4],),  # B=32, S1=4, S2=4, H=4
-        ([64, 4, 4, 4],),  # B=64, S1=4, S2=4, H=4
+    shapes = [
+        [(1, 1, 1, 512)],
+        [(1, 1, 17, 512)],
+        [(3, 1, 21, 512)],
+        [(2, 3, 41, 512)],
+        [(4, 4, 16, 512)],
     ]
-    
-    for shape in configs:
-        # Unpack tuple if shape is a tuple containing a list (e.g., ([1024],) -> [1024])
-        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
-        # Only yield x - weight and bias are model parameters
-        x = torch.randn(shape_list, dtype=torch.float32)
-        yield [x]
+    for case_shapes in shapes:
+        yield [torch.randn(shape, dtype=torch.float32) for shape in case_shapes]
 
 
 def get_init_inputs():
-    return [[], {'hidden': 4, 'vocab_size': 4}]
+    return [[], {'hidden': 512, 'vocab_size': 4096}]

@@ -36,3 +36,12 @@ sign and magnitude, poisons both captured outputs, and numerically checks the sa
 replay. Inputs and module hooks are restored even on failure. All five scored cases,
 seeds, original source/harness, full-wrapper timing, 10 warmups and 100 samples stay
 unchanged; diagnostics do not add measurements to the score.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_per_token_quant_int8`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

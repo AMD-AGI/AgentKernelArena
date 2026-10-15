@@ -60,3 +60,12 @@ capture-time result or omit either output write. The previous graph batching
 policy could count several calls while observing only the last call's outputs;
 its historical latency is not directly comparable to this single-call policy.
 Baseline and candidate use the same preparation and measurement boundary.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `fused_gdn_gating_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

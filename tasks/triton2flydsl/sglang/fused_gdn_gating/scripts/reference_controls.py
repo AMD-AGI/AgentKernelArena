@@ -29,4 +29,9 @@ def run():
         except AssertionError: return False
     rows.append(control(g,expected[0],accept_g,"actual GDN comparator origin and linear branch"))
     rows.append(control(beta,expected[1],accept_beta,"actual sigmoid comparator odds1and3"))
+    from semantic_controls import run_controls
+    from scripts.replay_checks import require_unchanged
+    def operator(A_log, a, b, dt_bias, beta=1., threshold=20.):
+        return r.reference_gating(dict(A_log=A_log, a=a, b=b, dt_bias=dt_bias), beta, threshold)
+    rows.extend(run_controls(operator, r._compare_router_output, require_unchanged, device="cpu"))
     return rows

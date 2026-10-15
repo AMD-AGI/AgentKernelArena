@@ -87,3 +87,27 @@ Every added control declares only `correctness`. Its real measured/replayed
 branch is checked inside the correctness action and reported as an explicitly
 unscored diagnostic in that case's metrics. The performance action executes
 only the five original workloads; neither their weights nor aggregation change.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `tanh`, `_fwd_grouped_kernel_stage1`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+### Group boundaries crossing a 16-head tile
+
+Two additional correctness-only controls use 2 KV heads with 34 or 48 query heads
+(group sizes 17 and 24), ragged lengths 63/37 and nonidentity page routing. The
+second also uses logit capping. They reuse the existing independent FP32 reference,
+full active-output/unchanged inactive-slot checks and unscored graph replay.
+The launch grid assigns `ceil(group_size/16)` blocks to each KV head independently;
+query-head offsets start at that KV group's base and the final block is masked at
+the group boundary. This prevents cross-group routing when a group needs a partial
+second block. The original group sizes 1/4/8 have exactly the same launch grid and
+head assignments as before. All original five scored cases and the three earlier
+controls remain, along with seeds, inputs, tolerances, ten warmups and 100 samples.
+No score weight or timing boundary changes. Kernel source changes require fresh
+baseline/candidate measurements; historical GPU qualification does not transfer.

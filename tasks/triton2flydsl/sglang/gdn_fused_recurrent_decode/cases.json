@@ -179,6 +179,44 @@
         "performance"
       ],
       "dtype": "bfloat16"
+    },
+    {
+      "test_case_id": "control_qk_false_explicit",
+      "dtype": "bfloat16",
+      "params": {
+        "B": 2,
+        "H": 1,
+        "HV": 2,
+        "K": 128,
+        "V": 128,
+        "pool": 4,
+        "qk_l2norm": false,
+        "argument": "explicit_false",
+        "scale": 0.25,
+        "input_distribution": "independent_dyadic_closed_form"
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_qk_false_default",
+      "dtype": "bfloat16",
+      "params": {
+        "B": 2,
+        "H": 1,
+        "HV": 2,
+        "K": 128,
+        "V": 128,
+        "pool": 4,
+        "qk_l2norm": false,
+        "argument": "omitted_default",
+        "scale": 0.25,
+        "input_distribution": "independent_dyadic_closed_form"
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ]
 }

@@ -156,6 +156,9 @@ CANDIDATE_AUDIT_TASKS = [ROOT / "tasks/torch2flydsl" / name for name in (
 ])
 def test_final_flydsl_candidate_rejects_operator_backends(task, source, tmp_path):
     runtime = module(task / "task_runtime.py")
+    # The submitted source belongs to this disposable task root. Newer task
+    # runtimes also enforce containment while following local helper imports.
+    runtime.ROOT = tmp_path
     path = tmp_path / "candidate.py"
     path.write_text("import flydsl\n" + source + "\n")
     with pytest.raises(ValueError, match="Final operator must execute FlyDSL"):
@@ -409,6 +412,25 @@ def test_actual_torch_starters_and_frozen_implementations():
         assert cfg["baseline"]["kind"]==("initial_candidate" if expected else "provided")
         actions=module(cp.parent/"scripts/task_actions.py")
         cases=json.loads((cp.parent/"cases.json").read_text())["cases"]
+        if cp.parent.name == "per_token_i8_quant_kernel":
+            # The only added row is an independently checked, untimed zero-scale control.
+            assert cases[-1] == {
+                "test_case_id": "control_all_zero_rows",
+                "params": {"m": 3, "n": 4096, "input": "all_zero", "dtype": "bfloat16"},
+                "checks": ["correctness"],
+            }
+            cases = cases[:-1]
+        if cp.parent.name == "per_1x128_fp8_quant_kernel":
+            # Exactly four additional correctness-only geometries. Original
+            # six case identities/params/checks and all scored work stay exact.
+            assert cases[-4:] == [{'test_case_id': 'control_single_group', 'params': {'m': 1, 'n': 128, 'seed': 20260401}, 'checks': ['correctness']}, {'test_case_id': 'control_three_groups', 'params': {'m': 3, 'n': 384, 'seed': 20260401}, 'checks': ['correctness']}, {'test_case_id': 'control_nine_groups', 'params': {'m': 5, 'n': 1152, 'seed': 20260401}, 'checks': ['correctness']}, {'test_case_id': 'control_33_groups', 'params': {'m': 2, 'n': 4224, 'seed': 20260401}, 'checks': ['correctness']}]
+            cases = cases[:-4]
+            assert hashlib.sha256(json.dumps(cases, sort_keys=True).encode()).hexdigest() == 'af746bced5b340c5efdef2bbb9da7d55b71961e9309b9bfd53f368208eae6f0b'
+        if cp.parent.name == 'smoothquant_kernel':
+            recipe = _REVIEWED_SEMANTIC_BOUNDARIES['torch2flydsl/smoothquant_kernel']
+            assert cases[-2:] == recipe['added_cases']
+            cases = cases[:-2]
+            assert hashlib.sha256(json.dumps(cases, sort_keys=True).encode()).hexdigest() == recipe['old_cases_sha256']
         assert len(cases)==len(actions.EXPECTED_CASES)
         assert set(actions.PERFORMANCE_IDS.values())=={r["test_case_id"] for r in cases}
 
@@ -505,10 +527,207 @@ TORCH_ORIGINAL_CORRECTNESS_AND_MODEL_SHA256 = {'batched_gemm_a8w8_kernel': ('e8a
                            '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4')}
 
 
+# Three reviewed untimed semantic boundary additions. Historical fixtures keep
+# exercising the complete old math/timing bodies after this exact full-file
+# reverse normalization; the new controls have independent behavior tests.
+_REVIEWED_SEMANTIC_BOUNDARIES = {'torch2flydsl/smoothquant_kernel': {'before_sha256': 'e69992734231aa881e8608bb8c85a6ddbcf1bf4e33de93545dfd83da58a774a9',
+                                     'after_sha256': '2ff66133983d9d5e849fef56a4ec8b61211cd75fd6a09f749d36ada5ff1125ae',
+                                     'reverse_edits': [('    from scripts.semantic_controls import '
+                                                        'run_controls\n'
+                                                        '    def compare_control(actual, expected, inputs):\n'
+                                                        '        _compare_quant_outputs(actual, expected, '
+                                                        'inputs, mmod)\n'
+                                                        "    # Both roles must satisfy the task's zero-row "
+                                                        'rule, including the provided\n'
+                                                        '    # runtime oracle; a candidate cannot mask an '
+                                                        'invalid baseline.\n'
+                                                        '    run_controls(_aiter_op, compare_control, '
+                                                        'require_unchanged)\n'
+                                                        '    if has_kernel:\n'
+                                                        '        run_controls(kmod.flydsl_smoothquant, '
+                                                        'compare_control, require_unchanged)\n'
+                                                        '\n',
+                                                        '')],
+                                     'helper_sha256': 'a4487b0e0794fcccc720b498af1dae2f55bb00118b2c6a175ecea7c2d1b2dd77',
+                                     'old_case_count': 6,
+                                     'old_cases_sha256': '0380978563070eb9e34678fec181665bc9c345071bc4fe027ffc982daa227eb0',
+                                     'added_cases': [{'test_case_id': 'control_zero_rows',
+                                                      'params': {'m': 3,
+                                                                 'n': 5120,
+                                                                 'control': 'all_zero_rows'},
+                                                      'checks': ['correctness']},
+                                                     {'test_case_id': 'control_mixed_zero_rows',
+                                                      'params': {'m': 3,
+                                                                 'n': 5120,
+                                                                 'control': 'mixed_zero_rows'},
+                                                      'checks': ['correctness']}]},
+ 'triton2flydsl/sglang/fused_gdn_gating': {'before_sha256': 'c782cccc42dba69550eb54b2e27ef25cb711b0fd888d7b207bf013c82c7b1e20',
+                                           'after_sha256': '37a1b860f9464fcf1b25f71403cb820f79af320246bafaf6a7ab1b2c0ac2184b',
+                                           'reverse_edits': [('    from scripts.semantic_controls import '
+                                                              'run_controls\n'
+                                                              '    try:\n'
+                                                              '        '
+                                                              'details.extend(run_controls(mod.fused_gdn_gating, '
+                                                              '_compare_router_output,\n'
+                                                              '                                    '
+                                                              'require_unchanged, '
+                                                              'start_shape_id=len(details) + 1))\n'
+                                                              '    except Exception as error:\n'
+                                                              '        return False, f"Softplus semantic '
+                                                              'control: {error}", details\n',
+                                                              '')],
+                                           'helper_sha256': 'c0d28b1db63f45ad4822b3707c7cb1f10ce65dc2b5637baffe40be6b14c2706f',
+                                           'old_case_count': 9,
+                                           'old_cases_sha256': 'ab32986ab9c59a56781ec66878c802a4a19ba5f9acfd4b4e8683b0e47454ead0',
+                                           'added_cases': [{'test_case_id': 'control_softplus_default_linear',
+                                                            'params': {'batch': 1,
+                                                                       'num_heads': 4,
+                                                                       'control': 'default_linear',
+                                                                       'dtype': 'bfloat16'},
+                                                            'checks': ['correctness'],
+                                                            'dtype': 'bfloat16'},
+                                                           {'test_case_id': 'control_softplus_explicit_threshold',
+                                                            'params': {'batch': 1,
+                                                                       'num_heads': 4,
+                                                                       'control': 'explicit_threshold',
+                                                                       'beta': 2.0,
+                                                                       'threshold': 1.0,
+                                                                       'dtype': 'bfloat16'},
+                                                            'checks': ['correctness'],
+                                                            'dtype': 'bfloat16'}]},
+ 'triton2flydsl/aiter/fused_clamp_act_mul': {'before_sha256': '6738ede041e76ec1026555cd89a1d22ea68e2685778c6a2900266fdb86b8e84f',
+                                             'after_sha256': 'a4e06bbcc86d72207b45dbb737814494843ace94433ba27c2b2b6998f4c82dd3',
+                                             'reverse_edits': [('    from scripts.semantic_controls import '
+                                                                'run_controls\n'
+                                                                '    def compare_control(actual, expected, '
+                                                                'inp):\n'
+                                                                '        _checked_elementwise_output(actual, '
+                                                                'inp)\n'
+                                                                '        allclose_output(actual, expected, '
+                                                                'atol=1e-2, rtol=1e-2)\n'
+                                                                '    run_controls(mod.fused_clamp_act_mul, '
+                                                                'compare_control, require_unchanged)\n'
+                                                                '\n',
+                                                                '')],
+                                             'helper_sha256': 'eb0e51b48103d90027c0311b75e6d46dec35002dcc78a9a74015c68d73fdc230',
+                                             'old_case_count': 60,
+                                             'old_cases_sha256': '91681e23e01129a95644d71b846c0f15aeaa30ff153701b6bb5a4671a92b9f6a',
+                                             'added_cases': [{'test_case_id': 'control_gelu',
+                                                              'params': {'M': 1,
+                                                                         'D': 2048,
+                                                                         'limit': 0.0,
+                                                                         'wm': 'none',
+                                                                         'activation': 'gelu',
+                                                                         'provided_out': False},
+                                                              'checks': ['correctness']},
+                                                             {'test_case_id': 'control_gelu_weighted_out',
+                                                              'params': {'M': 3,
+                                                                         'D': 2048,
+                                                                         'limit': 2.0,
+                                                                         'wm': 'broadcast',
+                                                                         'activation': 'gelu',
+                                                                         'provided_out': True},
+                                                              'checks': ['correctness']},
+                                                             {'test_case_id': 'control_gelu_tanh',
+                                                              'params': {'M': 1,
+                                                                         'D': 2048,
+                                                                         'limit': 0.0,
+                                                                         'wm': 'none',
+                                                                         'activation': 'gelu_tanh',
+                                                                         'provided_out': False},
+                                                              'checks': ['correctness']},
+                                                             {'test_case_id': 'control_gelu_tanh_weighted_out',
+                                                              'params': {'M': 3,
+                                                                         'D': 2048,
+                                                                         'limit': 2.0,
+                                                                         'wm': 'elementwise',
+                                                                         'activation': 'gelu_tanh',
+                                                                         'provided_out': True},
+                                                              'checks': ['correctness']}]}}
+
+
+# The canonical Model's zero-row rule predates the semantic controls. This
+# exact role-wiring/doc delta retains all six original AITER cross-checks and
+# the complete pre-existing Model mathematics, case and timing fingerprints.
+_REVIEWED_SMOOTHQUANT_CANONICAL_ZERO_ROLE = {'before_harness_sha256': '2ff66133983d9d5e849fef56a4ec8b61211cd75fd6a09f749d36ada5ff1125ae', 'after_harness_sha256': 'bc3bac47c0c200360bf7130def85000591c58feb28035199048828eaf2ba6016', 'before_model_sha256': '989f11c99744efffc0ac8ab43cb828a7a11b23f1cce3a7958e323845be88695d', 'after_model_sha256': '3809ebebb3688cb5d1a1e1f92065fbaf5af41b1d4f40e5648b658936ea8d7a8d', 'harness_reverse_edits': [('"""Build / correctness / performance harness for the smoothquant task.\n\nThe provided baseline is the pure-torch Model in ``model.py``. Its six original\nrandom workloads are independently cross-checked against AMD\'s runtime op\n(``aiter.smoothquant_fwd``). The final FlyDSL candidate is checked against that\nsame op on those workloads. ``model.py`` imports no ``aiter``/``flydsl``.\n\nGate (tight, quantized op): the fp32 per-token scale must match within\nSCALE_RTOL and the INT8 codes must match within CODE_TOL ULP; the exact-match\npercentage is reported. Additional untimed zero-row controls check the provided\nModel and candidate against independent analytic answers. The task\'s zero-row\nconvention is zero codes with scale 1; the runtime cross-oracle is not required\nto share that zero-row convention.\n\nModes:\n  --compile         import the reference, build the Model, run a CPU smoke pass\n  --correctness     run the original cross-checks and the zero-row controls\n  --full-benchmark  time the op + reference (+ kernel.py if present), write report\n"""', '"""Build / correctness / performance harness for the smoothquant task.\n\nModel-only task: there is no shipped FlyDSL ``kernel.py`` (FlyDSL is the agent\'s\ntarget). Correctness validates the pure-torch reference in ``model.py`` against\nAMD\'s real runtime op (``aiter.smoothquant_fwd``) as ground truth. ``model.py``\nimports no ``aiter``/``flydsl``; only this harness may.\n\nGate (tight, quantized op): the fp32 per-token scale must match within\nSCALE_RTOL and the INT8 codes must match within CODE_TOL ULP; the exact-match\npercentage is reported (the device kernel truncates toward zero, matching the\nreference). Once an agent drops a ``kernel.py`` exposing\n``flydsl_smoothquant``, the harness also checks it against the same op.\n\nModes:\n  --compile         import the reference, build the Model, run a CPU smoke pass\n  --correctness     compare the reference (and kernel.py if present) vs the op\n  --full-benchmark  time the op + reference (+ kernel.py if present), write report\n"""'), ('    # The provided Model owns the task\'s zero-row convention. The six original\n    # random workloads retain their independent AITER cross-checks above.\n    canonical_model = mmod.Model(*mmod.get_init_inputs()).to("cuda")\n    run_controls(canonical_model, compare_control, require_unchanged)\n', "    # Both roles must satisfy the task's zero-row rule, including the provided\n    # runtime oracle; a candidate cannot mask an invalid baseline.\n    run_controls(_aiter_op, compare_control, require_unchanged)\n")], 'model_reverse_edits': [('"""Pure-PyTorch reference for SmoothQuant dynamic per-token INT8 quantization.\n\nSmoothQuant first applies a per-channel smoothing scale to the activations\n(``x * x_scale``, ``x_scale`` of shape ``[n]``), then performs dynamic per-token\n(per-row) INT8 quantization. It returns ``(y, y_scale)`` with ``y`` of shape\n``[m, n]`` and dtype int8, and ``y_scale`` of shape ``[m, 1]`` and dtype fp32.\n\nThe task scale is ``amax(|x * x_scale|) / 127`` for nonzero rows. An all-zero\nrow returns zero INT8 codes and scale 1. Smoothed values are divided by the\nscale, saturated to ``[-128, 127]``, and converted by truncation toward zero.\nThe task owns this zero-row convention; a runtime cross-oracle may use a\ndifferent zero-row convention while agreeing on the original nonzero draws.\n"""', '"""Pure-PyTorch reference for SmoothQuant dynamic per-token INT8 quantization.\n\nSmoothQuant first applies a per-channel smoothing scale to the activations\n(``x * x_scale``, ``x_scale`` of shape ``[n]``), then performs a dynamic\nper-token (per-row) INT8 quantization of the smoothed tensor. The op returns\n``(y, y_scale)`` where ``y`` is ``[m, n]`` int8 and ``y_scale`` is fp32 of\nshape ``[m, 1]``.\n\nAMD-runtime semantics (option-b): this mirrors the AMD runtime\n``smoothquant_fwd`` / ``pertoken_quant`` (int8) op. The per-row scale is\n``amax(|x * x_scale|) /\n127`` (INT8 max), with an all-zero row keeping a scale of 1. The smoothed\nvalues are divided by the per-row scale and converted to int8 by truncation\ntoward zero (saturated to ``[-128, 127]``), matching the device kernel\'s\n``static_cast<int8_t>`` store.\n"""')]}
+
+
+def _smoothquant_canonical_zero_legacy_source(source, *, model=False):
+    marker = ("The task scale is ``amax(|x * x_scale|) / 127``" if model
+              else "canonical_model = mmod.Model(*mmod.get_init_inputs())")
+    if marker not in source:
+        return source
+    recipe = _REVIEWED_SMOOTHQUANT_CANONICAL_ZERO_ROLE
+    kind = 'model' if model else 'harness'
+    assert hashlib.sha256(source.encode()).hexdigest() == recipe['after_' + kind + '_sha256'], 'Unreviewed SmoothQuant canonical-zero role change'
+    for added, old in recipe[kind + '_reverse_edits']:
+        assert source.count(added) == 1
+        source = source.replace(added, old, 1)
+    assert hashlib.sha256(source.encode()).hexdigest() == recipe['before_' + kind + '_sha256']
+    return source
+
+
+def _semantic_boundary_legacy_harness_source(source):
+    # A separately reviewed loader delta wraps the complete semantic harness.
+    # Reverse its exact full-source identity first; every semantic hash remains.
+    source = _module_lifetime_legacy_harness_source(source)
+    source = _smoothquant_canonical_zero_legacy_source(source)
+    if 'from scripts.semantic_controls import run_controls' not in source:
+        return source
+    actual = hashlib.sha256(source.encode()).hexdigest()
+    matches = [r for r in _REVIEWED_SEMANTIC_BOUNDARIES.values() if r['after_sha256'] == actual]
+    assert len(matches) == 1, 'Unreviewed semantic-boundary harness change'
+    recipe = matches[0]
+    for added, old in recipe['reverse_edits']:
+        assert source.count(added) == 1
+        source = source.replace(added, old, 1)
+    assert hashlib.sha256(source.encode()).hexdigest() == recipe['before_sha256']
+    return source
+
+
+def test_reviewed_semantic_boundary_additions_pin_complete_harness_helper_and_old_cases():
+    for task, recipe in _REVIEWED_SEMANTIC_BOUNDARIES.items():
+        base = ROOT / 'tasks' / task
+        source = _smoothquant_canonical_zero_legacy_source(_module_lifetime_legacy_harness_source((base / 'test_kernel_harness.py').read_text()))
+        assert hashlib.sha256(source.encode()).hexdigest() == recipe['after_sha256']
+        assert hashlib.sha256((base / 'scripts/semantic_controls.py').read_bytes()).hexdigest() == recipe['helper_sha256']
+        _semantic_boundary_legacy_harness_source(source)
+        cases = json.loads((base / 'cases.json').read_text())['cases']
+        count = recipe['old_case_count']
+        assert hashlib.sha256(json.dumps(cases[:count], sort_keys=True).encode()).hexdigest() == recipe['old_cases_sha256']
+        assert cases[count:] == recipe['added_cases']
+        assert all(case['checks'] == ['correctness'] for case in cases[count:])
+
+
+@pytest.mark.parametrize('task', list(_REVIEWED_SEMANTIC_BOUNDARIES))
+def test_semantic_boundary_normalization_rejects_unreviewed_numerical_change(task):
+    source = _smoothquant_canonical_zero_legacy_source(_module_lifetime_legacy_harness_source((ROOT / 'tasks' / task / 'test_kernel_harness.py').read_text()))
+    changed = source.replace('import torch', 'import torch  # unreviewed delta', 1)
+    assert changed != source
+    with pytest.raises(AssertionError, match='Unreviewed semantic-boundary'):
+        _semantic_boundary_legacy_harness_source(changed)
+
+
+def _reviewed_per128_original_harness_text(task):
+    # Only four legal untimed group-count controls were added. Keep the full
+    # new source pinned, undo that exact delta, then run every old math/timing
+    # fingerprint below. This cannot normalize an unrelated harness change.
+    raw = (task / 'test_kernel_harness.py').read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == '0d905c75a681424149bf10dbcb1f4aa0ebaa8fc9cc8b9bc1271b30d5d2748235'
+    text = raw.decode()
+    for added, previous in [('    {"name": "m1024_n4096", "m": 1024, "n": 4096},\n    {"name": "m4096_n4096", "m": 4096, "n": 4096},\n]\n\n# Correctness-only legal small/non-power-of-two group counts. The original\n# six SHAPES remain the complete performance workload, unchanged.\nCORRECTNESS_CONTROLS = [{\'name\': \'control_single_group\', \'m\': 1, \'n\': 128}, {\'name\': \'control_three_groups\', \'m\': 3, \'n\': 384}, {\'name\': \'control_nine_groups\', \'m\': 5, \'n\': 1152}, {\'name\': \'control_33_groups\', \'m\': 2, \'n\': 4224}]\nCORRECTNESS_SHAPES = SHAPES + CORRECTNESS_CONTROLS\n\n# Tight quantized gate: near-exact scale + FP8 codes within CODE_TOL ULP.\nSCALE_RTOL = 1e-3\n', '    {"name": "m1024_n4096", "m": 1024, "n": 4096},\n    {"name": "m4096_n4096", "m": 4096, "n": 4096},\n]\n\n# Tight quantized gate: near-exact scale + FP8 codes within CODE_TOL ULP.\nSCALE_RTOL = 1e-3\n'), ('    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)\n\n    failures = []\n    for shape in CORRECTNESS_SHAPES:\n        inp = _make_inputs(shape)\n        originals = tuple(x.clone() for x in inp)\n        model = mmod.Model(*mmod.get_init_inputs()).to("cuda")\n', '    has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)\n\n    failures = []\n    for shape in SHAPES:\n        inp = _make_inputs(shape)\n        originals = tuple(x.clone() for x in inp)\n        model = mmod.Model(*mmod.get_init_inputs()).to("cuda")\n'), ('        del inp, model\n        torch.cuda.empty_cache()\n\n    status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(CORRECTNESS_SHAPES)})"\n    print(f"Status: {status}")\n    print(f"correctness: {\'pass\' if not failures else \'fail\'}")\n    assert not failures, f"correctness FAILED for: {failures}"\n', '        del inp, model\n        torch.cuda.empty_cache()\n\n    status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(SHAPES)})"\n    print(f"Status: {status}")\n    print(f"correctness: {\'pass\' if not failures else \'fail\'}")\n    assert not failures, f"correctness FAILED for: {failures}"\n')]:
+        assert text.count(added) == 1
+        text = text.replace(added, previous, 1)
+    assert hashlib.sha256(text.encode()).hexdigest() == 'b465c0273f85a06ceca63ea620ef0922c81148fae16905182634a4036da67bde'
+    return text
+
+
 def test_torch_numerical_gates_cases_and_models_preserved():
     for name,(expected,model_hash) in TORCH_ORIGINAL_CORRECTNESS_AND_MODEL_SHA256.items():
         task=ROOT/"tasks/torch2flydsl"/name
-        tree=ast.parse((task/"test_kernel_harness.py").read_text())
+        source = (_reviewed_per128_original_harness_text(task) if name == "per_1x128_fp8_quant_kernel"
+                  else (task/"test_kernel_harness.py").read_text())
+        tree=ast.parse(_semantic_boundary_legacy_harness_source(source))
         fn=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="run_correctness")
         for handler in ast.walk(fn):
             if isinstance(handler,ast.ExceptHandler) and isinstance(handler.type,ast.Name) and handler.type.id=="NotImplementedError":
@@ -552,7 +771,10 @@ def test_torch_numerical_gates_cases_and_models_preserved():
         if name in {"gelu_fast_kernel", "gelu_and_mul_kernel", "gelu_tanh_and_mul_kernel", "swiglu_and_mul_kernel"}:
             fn = _RemoveActivationReplayChecks().visit(fn)
         assert hashlib.sha256(ast.dump(fn,include_attributes=False).encode()).hexdigest()==expected,name
-        assert hashlib.sha256((task/"model.py").read_bytes()).hexdigest()==model_hash,name
+        model_source = (task / "model.py").read_text()
+        if name == "smoothquant_kernel":
+            model_source = _smoothquant_canonical_zero_legacy_source(model_source, model=True)
+        assert hashlib.sha256(model_source.encode()).hexdigest()==model_hash,name
         original=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="run_benchmark")
         direct=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="arena_benchmark")
         def calls(fn):
@@ -601,8 +823,272 @@ class _InlineTritonReference(ast.NodeTransformer):
         return self.generic_visit(node)
 
 
+
+def _gdn_false_coverage_legacy_source(source):
+    """Reverse only the exact reviewed two-mode oracle/control dispatch delta."""
+    if 'def reference_decode(inp, *, use_qk_l2norm_in_kernel=True):' not in source:
+        return source
+    assert hashlib.sha256(source.encode()).hexdigest() == '5238ef0995de0a51765f098516f563537d143815b48623ecfdf6152e5d75f14d'
+    replacements = [('def reference_decode(inp, *, use_qk_l2norm_in_kernel=True):', 'def reference_decode(inp):'),
+ ('    The internal default True preserves the ten historical scored calls. The\n'
+  '    public operator defaults to False, exercised explicitly by extra controls.\n',
+  ''),
+ ('            if use_qk_l2norm_in_kernel:\n'
+  '                q = q / torch.sqrt((q * q).sum() + 1e-6)\n'
+  '                k = k / torch.sqrt((k * k).sum() + 1e-6)',
+  '            q = q / torch.sqrt((q * q).sum() + 1e-6)\n'
+  '            k = k / torch.sqrt((k * k).sum() + 1e-6)'),
+ ('    from scripts.normalization_controls import run_cases\n'
+  '    extra = run_cases(mod, _compare_recurrent_output, require_unchanged)\n'
+  '    details.extend(extra)\n'
+  '    if any(row.get("passed") is not True for row in extra):\n'
+  '        return False, "Default/explicit non-normalized decode controls failed", details\n',
+  '')]
+    for new, old in replacements:
+        assert source.count(new) == 1
+        source = source.replace(new, old, 1)
+    assert hashlib.sha256(source.encode()).hexdigest() == 'b6b5b1812449eacfab8646af7023d562fab055f9b3c184f8572ac82910b0956c'
+    return source
+
+# Only the four explicitly reviewed module-lifetime loaders changed. Pin the
+# entire upgraded harness, undo just imports/cache/load_module, and pin every
+# original byte before applying existing mathematical and timing fingerprints.
+_REVIEWED_MODULE_LIFETIME_LOADERS = {'triton2flydsl/sglang/fused_gdn_gating': {'before_sha256': '37a1b860f9464fcf1b25f71403cb820f79af320246bafaf6a7ab1b2c0ac2184b',
+ 'after_sha256': 'e9badf13ec14f4a7b5ce13db0ca79c917d0e9637bac1b06e56cfa608f53f85db',
+ 'exact_reverse_edits': [('import hashlib\n', ''),
+                         ('# Retain compiled-module owners for this isolated task action. '
+                          'Loading occurs\n'
+                          '# before correctness/performance work, outside every benchmark '
+                          'clock/capture.\n'
+                          '_SOURCE_MODULE_CACHE = {}\n'
+                          '\n'
+                          '\n'
+                          'def load_module():\n'
+                          '    source_path = os.path.realpath(SOURCE_FILE)\n'
+                          '    with open(source_path, "rb") as source:\n'
+                          '        source_identity = (source_path, '
+                          'hashlib.sha256(source.read()).hexdigest())\n'
+                          '    if source_identity in _SOURCE_MODULE_CACHE:\n'
+                          '        return _SOURCE_MODULE_CACHE[source_identity]\n'
+                          '    spec = '
+                          'importlib.util.spec_from_file_location("fused_gdn_gating_src", '
+                          'source_path)\n'
+                          '    mod = importlib.util.module_from_spec(spec)\n'
+                          '    sys.modules[spec.name] = mod\n'
+                          '    spec.loader.exec_module(mod)\n'
+                          '    _SOURCE_MODULE_CACHE[source_identity] = mod\n'
+                          '    return mod\n',
+                          'def load_module():\n'
+                          '    spec = '
+                          'importlib.util.spec_from_file_location("fused_gdn_gating_src", '
+                          'SOURCE_FILE)\n'
+                          '    mod = importlib.util.module_from_spec(spec)\n'
+                          '    sys.modules[spec.name] = mod\n'
+                          '    spec.loader.exec_module(mod)\n'
+                          '    return mod\n')]},
+ 'triton2flydsl/sglang/gdn_l2norm_fwd': {'before_sha256': '6e5d6aac4d89945066bf2e8215719ad06195928cd62a2c45c9e66d917d146e9d',
+                                         'after_sha256': '73486e4e0e34b28a126c544ae36979ddf56620b6ab267d71d9569685668abf8e',
+                                         'exact_reverse_edits': [('import argparse\n'
+                                                                  'import importlib.util\n'
+                                                                  'import hashlib\n'
+                                                                  'from _aka_benchmark import '
+                                                                  'TimedRun, '
+                                                                  'benchmark_cuda_graph_or_events\n'
+                                                                  'from scripts.replay_checks '
+                                                                  'import require_unchanged, '
+                                                                  'require_tensor_contract, '
+                                                                  'verify_timed_run\n',
+                                                                  'import argparse\n'
+                                                                  'import importlib.util\n'
+                                                                  'from _aka_benchmark import '
+                                                                  'TimedRun, '
+                                                                  'benchmark_cuda_graph_or_events\n'
+                                                                  'from scripts.replay_checks '
+                                                                  'import require_unchanged, '
+                                                                  'require_tensor_contract, '
+                                                                  'verify_timed_run\n'),
+                                                                 ('\n'
+                                                                  '\n'
+                                                                  '# Retain compiled-module owners '
+                                                                  'for this isolated task action. '
+                                                                  'Loading occurs\n'
+                                                                  '# before '
+                                                                  'correctness/performance work, '
+                                                                  'outside every benchmark '
+                                                                  'clock/capture.\n'
+                                                                  '_SOURCE_MODULE_CACHE = {}\n'
+                                                                  '\n'
+                                                                  '\n'
+                                                                  'def load_module():\n'
+                                                                  '    source_path = '
+                                                                  'os.path.realpath(SOURCE_FILE)\n'
+                                                                  '    with open(source_path, '
+                                                                  '"rb") as source:\n'
+                                                                  '        source_identity = '
+                                                                  '(source_path, '
+                                                                  'hashlib.sha256(source.read()).hexdigest())\n'
+                                                                  '    if source_identity in '
+                                                                  '_SOURCE_MODULE_CACHE:\n'
+                                                                  '        return '
+                                                                  '_SOURCE_MODULE_CACHE[source_identity]\n'
+                                                                  '    spec = '
+                                                                  'importlib.util.spec_from_file_location("gdn_l2norm_src", '
+                                                                  'source_path)\n'
+                                                                  '    mod = '
+                                                                  'importlib.util.module_from_spec(spec)\n'
+                                                                  '    sys.modules[spec.name] = '
+                                                                  'mod\n'
+                                                                  '    '
+                                                                  'spec.loader.exec_module(mod)\n'
+                                                                  '    '
+                                                                  '_SOURCE_MODULE_CACHE[source_identity] '
+                                                                  '= mod\n'
+                                                                  '    return mod\n'
+                                                                  '\n',
+                                                                  '\n'
+                                                                  '\n'
+                                                                  'def load_module():\n'
+                                                                  '    spec = '
+                                                                  'importlib.util.spec_from_file_location("gdn_l2norm_src", '
+                                                                  'SOURCE_FILE)\n'
+                                                                  '    mod = '
+                                                                  'importlib.util.module_from_spec(spec)\n'
+                                                                  '    sys.modules[spec.name] = '
+                                                                  'mod\n'
+                                                                  '    '
+                                                                  'spec.loader.exec_module(mod)\n'
+                                                                  '    return mod\n'
+                                                                  '\n')]},
+ 'triton2flydsl/sglang/fused_norm_gate': {'before_sha256': '55d52e52921939bf310034acc4ff5f309356e3c14e9459bded16434bdf095775',
+                                          'after_sha256': '240c7af59c96c71106509d8a0b81dab44857e6314c26eee75f9d03a1f61b6b8f',
+                                          'exact_reverse_edits': [('import argparse\n'
+                                                                   'import importlib.util\n'
+                                                                   'import hashlib\n'
+                                                                   'from _aka_benchmark import '
+                                                                   'TimedRun, '
+                                                                   'benchmark_cuda_graph_or_events\n'
+                                                                   'from scripts.replay_checks '
+                                                                   'import require_unchanged, '
+                                                                   'require_tensor_contract, '
+                                                                   'verify_timed_run\n',
+                                                                   'import argparse\n'
+                                                                   'import importlib.util\n'
+                                                                   'from _aka_benchmark import '
+                                                                   'TimedRun, '
+                                                                   'benchmark_cuda_graph_or_events\n'
+                                                                   'from scripts.replay_checks '
+                                                                   'import require_unchanged, '
+                                                                   'require_tensor_contract, '
+                                                                   'verify_timed_run\n'),
+                                                                  ('\n'
+                                                                   '\n'
+                                                                   '# Retain compiled-module '
+                                                                   'owners for this isolated task '
+                                                                   'action. Loading occurs\n'
+                                                                   '# before '
+                                                                   'correctness/performance work, '
+                                                                   'outside every benchmark '
+                                                                   'clock/capture.\n'
+                                                                   '_SOURCE_MODULE_CACHE = {}\n'
+                                                                   '\n'
+                                                                   '\n'
+                                                                   'def load_module():\n'
+                                                                   '    source_path = '
+                                                                   'os.path.realpath(SOURCE_FILE)\n'
+                                                                   '    with open(source_path, '
+                                                                   '"rb") as source:\n'
+                                                                   '        source_identity = '
+                                                                   '(source_path, '
+                                                                   'hashlib.sha256(source.read()).hexdigest())\n'
+                                                                   '    if source_identity in '
+                                                                   '_SOURCE_MODULE_CACHE:\n'
+                                                                   '        return '
+                                                                   '_SOURCE_MODULE_CACHE[source_identity]\n'
+                                                                   '    spec = '
+                                                                   'importlib.util.spec_from_file_location("fused_norm_gate_src", '
+                                                                   'source_path)\n'
+                                                                   '    mod = '
+                                                                   'importlib.util.module_from_spec(spec)\n'
+                                                                   '    sys.modules[spec.name] = '
+                                                                   'mod\n'
+                                                                   '    '
+                                                                   'spec.loader.exec_module(mod)\n'
+                                                                   '    '
+                                                                   '_SOURCE_MODULE_CACHE[source_identity] '
+                                                                   '= mod\n'
+                                                                   '    return mod\n'
+                                                                   '\n',
+                                                                   '\n'
+                                                                   '\n'
+                                                                   'def load_module():\n'
+                                                                   '    spec = '
+                                                                   'importlib.util.spec_from_file_location("fused_norm_gate_src", '
+                                                                   'SOURCE_FILE)\n'
+                                                                   '    mod = '
+                                                                   'importlib.util.module_from_spec(spec)\n'
+                                                                   '    sys.modules[spec.name] = '
+                                                                   'mod\n'
+                                                                   '    '
+                                                                   'spec.loader.exec_module(mod)\n'
+                                                                   '    return mod\n'
+                                                                   '\n')]},
+ 'triton2flydsl/aiter/rope_fwd': {'before_sha256': 'fea92c5a287fb99f1c313e4099dafb3d8ade113275d45386bd550761bdb6562e',
+ 'after_sha256': 'ef48b24f5b7a1496d34a452459a279358551754926c01bb95b081db4912c86f3',
+ 'exact_reverse_edits': [('import hashlib\n', ''),
+                         ('# Retain compiled-module owners for this isolated task action. Loading '
+                          'occurs\n'
+                          '# before correctness/performance work, outside every benchmark '
+                          'clock/capture.\n'
+                          '_SOURCE_MODULE_CACHE = {}\n'
+                          '\n'
+                          '\n',
+                          ''),
+                         ('    entry = os.path.realpath(os.path.join(_HERE, SOURCE_FILE))\n'
+                          '    with open(entry, "rb") as source:\n'
+                          '        source_identity = (entry, '
+                          'hashlib.sha256(source.read()).hexdigest())\n'
+                          '    if source_identity in _SOURCE_MODULE_CACHE:\n'
+                          '        return _SOURCE_MODULE_CACHE[source_identity]\n',
+                          '    entry = os.path.join(_HERE, SOURCE_FILE)\n'),
+                         ('    _SOURCE_MODULE_CACHE[source_identity] = mod\n', '')]}}
+
+
+def _module_lifetime_legacy_harness_source(source):
+    marker = '# Retain compiled-module owners for this isolated task action.'
+    if marker not in source:
+        return source
+    actual = hashlib.sha256(source.encode()).hexdigest()
+    matches = [r for r in _REVIEWED_MODULE_LIFETIME_LOADERS.values()
+               if r['after_sha256'] == actual]
+    assert len(matches) == 1, 'Unreviewed module-lifetime harness delta'
+    record = matches[0]
+    for added, previous in record['exact_reverse_edits']:
+        assert source.count(added) == 1
+        source = source.replace(added, previous, 1)
+    assert hashlib.sha256(source.encode()).hexdigest() == record['before_sha256']
+    return source
+
+
+def _gemm_a8w8_optional_api_legacy_source(source):
+    """Inverse only the four reviewed unscored API calls, with full byte pins."""
+    added = '    from scripts.api_controls import API_CASES, run_api_controls\n    failures.extend(run_api_controls(mod, _make_inputs, _torch_ref,\n                                     _checked_scaled_gemm_output, in_dtype, verbose=verbose))\n    total = len(TEST_SHAPES) * 2 + len(API_CASES)\n'
+    previous = '    total = len(TEST_SHAPES) * 2\n'
+    if added not in source:
+        # Every other task is returned verbatim; a partial Gemm edit is rejected.
+        assert 'from scripts.api_controls import API_CASES, run_api_controls' not in source
+        return source
+    assert hashlib.sha256(source.encode()).hexdigest() == 'a9e15add52091c40ed69728c1d92f3a0caad66eb52cc3a048aed5f7949a89b94'
+    assert source.count(added) == 1
+    restored = source.replace(added, previous, 1)
+    assert hashlib.sha256(restored.encode()).hexdigest() == '337e11faebf476a73ceb695787c22e56f9892ec24d2a49c9a8af9a497bbfd369'
+    return restored
+
+
 def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_elementwise=False, attention_two=False, mla_checks=False, gr_checks=False, state_checks=False, flat_checks=False, router_checks=False, combine_checks=False, gdn_checks=False, unified_checks=False, recurrent_checks=False, prepared_two=False, sage_two=False, final_two=False):
-    tree=ast.parse(source)
+    source = _gemm_a8w8_optional_api_legacy_source(source)
+    source = _module_lifetime_legacy_harness_source(source)
+    source = _semantic_boundary_legacy_harness_source(source)
+    tree=ast.parse(_gdn_false_coverage_legacy_source(source))
     if final_two:
         tree = _RemoveFinalSglangChecks().visit(tree)
     if sage_two:
@@ -674,15 +1160,28 @@ def test_triton_manifest_covers_every_original_variant():
     tasks=[t for t in TASKS if "triton2flydsl" in t.parts]
     assert len(tasks)==51
     counts=[0,0]
+    current_counts=[0,0]
     for task in tasks:
         rows=json.loads((task/"cases.json").read_text())["cases"]
         actions=module(task/"scripts/task_actions.py")
         assert len(rows)==actions.CORRECTNESS_COUNT
         assert set(actions.PERFORMANCE_IDS.values())=={r["test_case_id"] for r in rows if "performance" in r["checks"]}
-        counts[0]+=len(rows);counts[1]+=len(actions.PERFORMANCE_IDS)
+        current_counts[0]+=len(rows);current_counts[1]+=len(actions.PERFORMANCE_IDS)
+        historical_rows = rows
+        if task.name == 'gemm_a8w8':
+            # Keep all original 18 rows byte-for-value; four API rows are additive.
+            assert len(rows) == actions.CORRECTNESS_COUNT == 22
+            assert hashlib.sha256((task/'cases.json').read_bytes()).hexdigest() == '9f6ee9f08ce6ac50327680ffab38a372b22a047400cea3bd3247993f43a1acd2'
+            assert hashlib.sha256(json.dumps(rows[:18],sort_keys=True,separators=(',', ':')).encode()).hexdigest() == '118cc00445e062845a378dd8be1573284a3901ca2c5c8efa92b8f2ecdd9533bc'
+            assert len([row for row in rows[:18] if 'performance' in row['checks']]) == 9
+            assert [row['test_case_id'] for row in rows[18:]] == ['api_fp16_matrix_scales', 'api_fp16_vector_preallocated', 'api_bf16_vector_preallocated', 'api_bf16_strided_output']
+            assert all(row['checks'] == ['correctness'] for row in rows[18:])
+            historical_rows = rows[:18]
+        counts[0]+=len(historical_rows);counts[1]+=len(actions.PERFORMANCE_IDS)
         for row in rows:
             assert "correctness" in row["checks"]
-    assert counts==[593,363]
+    assert counts==[601,363]  # +2 GDN/+4 activation controls; scored identities unchanged
+    assert current_counts==[605,363]  # Four new Gemm API controls are correctness-only.
     def variants(name,key):
         rows=json.loads((ROOT/"tasks/triton2flydsl/aiter"/name/"cases.json").read_text())["cases"]
         return {r["params"][key] for r in rows}
@@ -783,7 +1282,9 @@ TRITON_PROTECTED_SHA256 = {'aiter/batched_gemm_a8w8': 'd8740097efba2676164543599
  'aiter/fused_silu_mul': '79fdf195148b9f089b910d85f7217c1fa07481dac46e4dbb80c2b80670a981c2',
  'aiter/gemm_a16w16': '282a1199cc83a47a57f02e7b3f7ad84bc3ba804efa5b2714a3249e388b3fd3ee',
  'aiter/gemm_a16w8_blockscale': '2eaa821a6f6ad09ff2ad5cd42ff98fea704576c15d7d66d7d4bc2b51e51b6075',
- 'aiter/gemm_a8w8': '0699185f68711faafff6caac01859f38d807def2d9d4b652962f95bb3fe04aa1',
+ # This task now prepares independent X/W per sample and checks every output.
+ # Pin that explicit protocol change; original shape/oracle/gate pins remain below.
+ 'aiter/gemm_a8w8': '7bc308d2909d8164cbc343877920117e993315533bbf677dee8b47022d30d21a',
  'aiter/gemm_a8w8_blockscale': '0736be31cb99af41a8d00ebccd24a11153a040bf291337f526d4b4469c174674',
  'aiter/gemm_afp8wfp8': 'e23e2d7e24bf8965fd43ab10521debeb6df4c7caee75e4b08dce812f6c4d5a2b',
  'aiter/layernorm': '6ce5fe3a4c299f3da1b738d7edd4180a6bd85cfe7fde7fb1079ca3fc229c2de9',
@@ -1073,7 +1574,7 @@ def test_replay_rejects_invalid_output_contract(task_name, bad):
 
 
 def _harness_functions(task, names, namespace):
-    tree = ast.parse((task / "test_kernel_harness.py").read_text())
+    tree = ast.parse(_semantic_boundary_legacy_harness_source((task / "test_kernel_harness.py").read_text()))
     nodes = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
     exec(compile(ast.Module(nodes, type_ignores=[]), "actual_harness_functions", "exec"), namespace)
     return namespace
@@ -3462,7 +3963,10 @@ def test_standard_quantizer_keeps_one_code_step_and_original_scale_gate(name):
 def test_standard_quantizers_preserve_original_numerics_inputs_and_timing():
     hashes={'per_tensor_fp8_quant_kernel': {'_make_inputs': '17800253aebd6dc6f79a2f102d9127e1bf787de9708ee39e29e408d421377b3d', '_aiter_op': '337fc0e0288af0d8c6e08c202c9815167a08a54a62d99721132814b3d6f040c7', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', 'run_correctness': 'c7991fb82df9aee3ff159b03aef748e6d72ee670fbd2e7eaa46e9c04c6d53d01', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '90bfab17dbc2c9bf422a8deca038a9ba100c6791af0ab642cb95c09c66a4b538', 'arena_benchmark': 'ca5e3fcd67f5d57c95ee648c27b44432f7d32cb354dbc8c1eaccc897d81f4df4'}, 'per_token_fp8_quant_kernel': {'_make_inputs': '17800253aebd6dc6f79a2f102d9127e1bf787de9708ee39e29e408d421377b3d', '_aiter_op': 'b7962f1966999d19c5161d0d50e996868b44268d6e556b8fabc8eb6a4a4f0139', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', 'run_correctness': '09320c212eec2c7c965d155721e4c0037ff143ed3b470ef83fcdd3b745b45d05', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '71bba4b5222624e432ddbec8bd71b1df401e07b7785c58d2fffde407847a181c', 'arena_benchmark': '4b10fcd809f486c9cd23059979c72f62c292fe01f7a8d34296126ac5119ed493'}, 'per_1x128_fp8_quant_kernel': {'_make_inputs': '17800253aebd6dc6f79a2f102d9127e1bf787de9708ee39e29e408d421377b3d', '_aiter_op': '3ebcae67fe0961a1b266815022db4de2222e31a9ebce95b4b052ead1fc38286c', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', 'run_correctness': '9f141b10b3eae32f373b1605c510dda09ca44e70432155362cfb102d3716bbc9', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '2ac80fb49c0a10f04026bf05926c1ecce39e9bb173251c5c20cb7355bd7e2ca8', 'arena_benchmark': 'fe43be52eeae8e690f57386df4ba9a0a5aed3a8c3956c33c008d937898ea7bd4'}, 'per_token_i8_quant_kernel': {'_make_inputs': 'b189ce05262cdd417908cc9746babb21a576bc68927754e8beb7e1e36c9e2038', '_aiter_op': 'e1367df215a4f2c7d0ffb3b9b2a52f9b13e6e7baafd7babad17d814b35a765da', '_compare': '26b0aed52720cd3ac91782410828b02e1947aed8ed614f5b2ab148c5dabb5be2', 'run_correctness': 'ee742cf41d63d6b6b1fe879acdcd45b08907e722b13c982c434b75c56d533aee', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '49e51bb6201effc168702a851ca698e99d3c3ae2daf77eb9cb8a3ee549519b9d', 'arena_benchmark': 'a9f07227c9f5d46eb6cd3398115fa4e0b0bbe622815cd0deb44eba127940fb91'}}
     for name,functions in hashes.items():
-        tree=ast.parse((ROOT/'tasks/torch2flydsl'/name/'test_kernel_harness.py').read_text())
+        task = ROOT/'tasks/torch2flydsl'/name
+        source = (_reviewed_per128_original_harness_text(task) if name == 'per_1x128_fp8_quant_kernel'
+                  else (task/'test_kernel_harness.py').read_text())
+        tree=ast.parse(source)
         for fn in tree.body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 restored=_RemoveStandardQuantChecks().visit(fn)
@@ -4229,7 +4733,7 @@ def test_triton_elementwise_original_math_cases_and_timing_preserved():
     hashes={'ff_a16w16': {'_make_inputs': '1d20457066b97fb6d915307a899281b0ca4158fbcda9a95c1a44b5f8248fc0f7', '_torch_ref': 'e9997ea7b309abd3b0d775ea166838be4742859f0fd36d2a20dbfb3dd02f2f06', 'run_correctness': 'c3664fc353a1d6ae2f7237f21b56e931e3d58d2b6c14734e041c2b3554746cb0', 'run_benchmark': '4d17a4fde8eb9009731cce6f94d7edd74bd5c681036c5ba35007a995ee70756a'}, 'fused_silu_mul': {'_torch_dtype': '664e9bfa3e0f1b752c5ff297485baf851e06ceaa2bc5873012159e8ccff77add', '_make_inputs': 'cb3d2a74241c7e5e43322f9ad9012d3d15f78b982ff9b30252db15088031f7fe', '_torch_silu_mul': '5101cf3a84972ba87ee20666543fe377bbbc2cec45d007d2e57d8a539ac8abd1', 'run_correctness': 'ae04a207e6407d253191b44a55e157dc014c1a36e7c4e80dfc059d1610f9e59c', 'run_benchmark': '699d90764342286d45dbbc6c167ad605612ee39253449946a818c5641c4941ec'}, 'fused_clamp_act_mul': {'_make_inputs': '4141c4cd053618d4c28302405ea076c203dd61d3c869619acb541f54f5e16927', '_torch_reference': '21a38febcca29b3929afce48f5665aab1d11224bcc5b7307b57310d703fac298', '_cases': '7e046fa5de5141a3f79224ee5b1609fba75f5361ef221b91dfd64942abc641ab', 'run_correctness': 'e8c9cbaff5f22a5084f0c42d34adfd50badea4721a1401d23e94aad017026ef7', 'run_benchmark': '2d2790a34d14b3f9d8a0f6a97bba0665fd3a3de446329947951d997ad191ca9b'}, 'rmsnorm': {'_torch_dtype': '664e9bfa3e0f1b752c5ff297485baf851e06ceaa2bc5873012159e8ccff77add', '_make_inputs': 'a580372ddba80a3ab421ca36d1bc22ada43dd0de2cb2ddeded1660176980e219', '_torch_rmsnorm': '3cefb6753eee682122bf267e3d587f5d1d7765545ecc36122d8fe82befbac3a4', 'run_correctness': 'cec48cbe43d807df0a3ac556b3bfb55354a9b80063796da549585ca535fe851f', 'run_benchmark': 'd76c41e25a86d0f9391405eed6fb88399e2789dcbb244f2a5ef4b7c57371a30f'}}
     for name,functions in hashes.items():
         t=ROOT/'tasks/triton2flydsl/aiter'/name
-        for fn in ast.parse((t/'test_kernel_harness.py').read_text()).body:
+        for fn in ast.parse(_semantic_boundary_legacy_harness_source((t/'test_kernel_harness.py').read_text())).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveElementwiseChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
@@ -4429,7 +4933,7 @@ def test_fused_quant_two_original_inputs_models_comparators_and_timing_retained(
     hashes={'silu_and_mul_quant_kernel': {'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_make_inputs': 'b189ce05262cdd417908cc9746babb21a576bc68927754e8beb7e1e36c9e2038', '_aiter_op': '0082a34698dd9082c8d48a1decf3046633ce29bb72d7e316562c37a2fb6b96df', '_compare': '7370859da62e853ba8a197c5ba6e4f07f7f41f1f815a55c24cb4c54ed73d3390', '_retry': '1ac6a6d4264ec7293e454d1721c31e136efdb38788ec8e16081461ece902fd2a', 'run_compile': 'dafa99d58c67b18fcdcd9fae2c81b87505f7e0487b351837744a828e0a147328', 'run_correctness': '56d4b423f3fd74d8c98c8a38042c8d5e89f942ee9d6fdc3d4c70a8e146ec1260', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': '0f743381713215eb7b13801d171208ff277c7ec3018962efef6a6b667e11a3f9', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': 'b397c6b04fcc8c4a7e61af22a14bb4a112c188dde2f2c75f1f085e27d9f7268b'}, 'smoothquant_kernel': {'_resolve_kernel_dir': 'ebfabcdd05c1a3f254b035e42b1783890c241f92613bda21ccb77fa064039f1a', '_load_module': 'caae8222257891caee15a695bfc7cff029ec363f792c4331f20ff92c86efb520', '_make_inputs': '8503f4be576083cc00f8040f453ec57700f13c5ea3efd59e917aaa878f517bf2', '_aiter_op': '1b8156d73d386fff80bb5ec7f30145d953bcda12cc353b70151b012cd5dee5ea', '_compare': '26b0aed52720cd3ac91782410828b02e1947aed8ed614f5b2ab148c5dabb5be2', '_retry': '1ac6a6d4264ec7293e454d1721c31e136efdb38788ec8e16081461ece902fd2a', 'run_compile': 'dafa99d58c67b18fcdcd9fae2c81b87505f7e0487b351837744a828e0a147328', 'run_correctness': '1d3750228c51807a019c5ee85beddfbd10ba710455ba12c69768401cff0faf7f', '_mean_ms': 'd577e74039d622acefe0c724d81ab5149f872772160fc2a2c7b229700fb428be', 'run_benchmark': 'cd88a8ef49765a1af92d2479df336632e06aa028f859ec698767dd016d0415bc', '_require_candidate_outputs': 'e5f69466d2ec4497fe192bf53ce8d7b034bb14cd59272fc7b1dea160a574e09e', 'arena_benchmark': 'c7a397c370af7236f8aee2551f052dcdc1ae2a1d0495b8133925ec4d8d394db0'}}
     for name,functions in hashes.items():
         task=ROOT/'tasks/torch2flydsl'/name
-        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        for fn in ast.parse(_semantic_boundary_legacy_harness_source((task/'test_kernel_harness.py').read_text())).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveFusedQuantChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
@@ -4669,15 +5173,16 @@ def test_sglang_elementwise_copied_audit_and_action_propagation(name, monkeypatc
     with pytest.raises(RuntimeError, match='non-preparation PyTorch operation'):
         with audit.candidate_preparation_only():
             torch.ones(2).square()
-    assert (task / 'scripts/candidate_checks.py').read_bytes() == (ROOT / 'tasks/triton2flydsl/aiter/fp8_mqa_logits/scripts/candidate_checks.py').read_bytes()
-    assert (task / 'scripts/replay_checks.py').read_bytes() == (ROOT / 'tasks/triton2flydsl/aiter/fp8_mqa_logits/scripts/replay_checks.py').read_bytes()
+    assert _reviewed_migration_helper_bytes(task / 'scripts/candidate_checks.py') == _reviewed_migration_helper_bytes(ROOT / 'tasks/triton2flydsl/aiter/fp8_mqa_logits/scripts/candidate_checks.py')
+    assert _reviewed_migration_helper_bytes(task / 'scripts/replay_checks.py') == _reviewed_migration_helper_bytes(ROOT / 'tasks/triton2flydsl/aiter/fp8_mqa_logits/scripts/replay_checks.py')
 
 
 def test_sglang_elementwise_original_inputs_seeds_references_gates_and_timing():
     hashes = {'gdn_l2norm_fwd': {'load_module': 'c36c53e82ca1a8838919c427b1a370d2ef0438789a451e3a3df7c2e0f5c6df0a', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_x': '43a8c24b405e3c222c5d716f8a4c7d8fd8a736f98935914f8b66c2f497be37c8', 'reference_l2norm': 'e84d9abe9ec04b64a76502104c61db81b66aa1a2c972fe14dd759b28ba0dbb01', 'run_compile': '0b48af5b7f311fb4f4219c09fee8175b1becb7715f1ba47e0ada836dfc6969d0', 'run_correctness': '67db83bf8dc83a9cff2faad8dba9d710e575dc6bd973e7e558bcd6ab0093ba97', 'run_performance': 'b2f5193d24a348ef8517fdbaaf6f8d1c6a4ed689daec1f508b6972e77b2fa886', 'main': 'f71a0eca447c73e79099d35ccf944d04173587ec5c41a316b6245efb0b6fca4f'}, 'fused_norm_gate': {'load_module': '6c0eaa337759666cb08631be7de786cad7efd062fa04f0e064d89fdc985fc30a', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_test_data': '69948fb1e87722247812dc5068f0cbbf694ed31ac703e8a4c831e637b7b97d9b', 'reference_norm_gate': '41640fb658ce94671a055326711c46a6f642f62bf1b638f8d0a4ccbad06cb53c', 'run_compile': '1db90d55271c579ee45aec9eda512006a49b31b88e77f044af0994324903ca5c', 'run_correctness': '6b7d95841f019489e89caa957fe7ae21746a228c1889da759763f529cc955769', 'run_performance': '6de4d4747db4e2da5d1a2364ec88fe3f9825e50763dfb18075654abaa9c8033f', 'main': '4cd9b931b1bb38cc5868ed2f101b083f973cd9663e4429f8870faead285981f6'}, 'chunk_local_cumsum': {'load_module': '4ca849e18c8b68f3a230283dd813b8085f55b7863e18cc025b00370a714397e7', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_g': 'f60c65683f65c46600f3cc871ec82c15a616d3f58aae311158b32fbbdcc5608c', 'reference_cumsum': 'ef53138ec4c7abfc028b8096edad2e4d3fcf0edb706a16890860c5fbf9d85e67', '_shape_of': 'c111669b72d1d44501e511a2873860b9be4827e8b6de9e20bad6eca53c4548d8', 'run_compile': 'f567feb9581378fd43f738b902c3dc860aae0f55197336d9bbe3622e4919d4cc', 'run_correctness': 'ef65af08b9b5aff5ab8a58e4842d3d1cde2e13c851b248f13904740a43f9a2a6', 'run_performance': 'e0f378044e5ece6aeac90876a689387d636e5a9ea7dfec307282b3ef69199ae7', 'main': '619e83159bd006e04c6f20f5a206688e1f05896109808711979b45aa6427e8e3'}}
     for name, functions in hashes.items():
         task = ROOT / 'tasks/triton2flydsl/sglang' / name
-        for fn in ast.parse((task / 'test_kernel_harness.py').read_text()).body:
+        original_source = _module_lifetime_legacy_harness_source((task / 'test_kernel_harness.py').read_text())
+        for fn in ast.parse(original_source).body:
             if isinstance(fn, ast.FunctionDef) and fn.name in functions:
                 normalized = _RemoveSglangElementwiseChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized, include_attributes=False).encode()).hexdigest() == functions[fn.name], (name, fn.name)
@@ -4783,12 +5288,29 @@ def test_triton_scaled_gemm_real_original_rules_and_measured_replay(name, phase,
     class Collector:
         bound = False
     calls = []
-    def benchmark(fn, *, warmup, repetition, timed_run):
+    def benchmark(fn, *, warmup, repetition, timed_run, prepare_fn=None):
         calls.append((warmup, repetition))
-        state['phase'] = 'measured'; timed_run.outputs = fn(); timed_run.bound = True; state['phase'] = 'setup'
+        if name == 'gemm_a8w8':
+            assert prepare_fn is not None
+            # Simulate graph preparation/calibration without advancing scored draws.
+            for _ in range(3):
+                prepare_fn(); fn()
+            for _ in range(repetition):
+                prepare_fn()
+                timed_run.before_sample(1)
+                state['phase'] = 'measured'
+                timed_run.outputs = fn()
+                timed_run.after_sample(timed_run.outputs)
+                state['phase'] = 'setup'
+            timed_run.bound = True
+        else:
+            assert prepare_fn is None
+            state['phase'] = 'measured'; timed_run.outputs = fn(); timed_run.bound = True; state['phase'] = 'setup'
         def replay():
             state['phase'] = 'replay'
-            try: return fn()
+            try:
+                if prepare_fn is not None: prepare_fn()
+                return fn()
             finally: state['phase'] = 'setup'
         timed_run.rerun = replay
         return .1, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
@@ -4797,7 +5319,22 @@ def test_triton_scaled_gemm_real_original_rules_and_measured_replay(name, phase,
               _load_source=lambda: types.SimpleNamespace(**{name: compute}), _fp8_e4m3_dtype=lambda: torch.float8_e4m3fn,
               _make_inputs=lambda *a: args(a[-1] if name == 'gemm_a8w8' else False)[:-1],
               TEST_SHAPES=[dict(name='controlled', M=2, N=n, K=k)], WARMUP=10, ITERS=100, _HERE=str(tmp_path), Path=Path, json=json, math=math)
+    if name == 'gemm_a8w8':
+        # Execute the real task-local stream with its real comparison helpers.
+        helper_tree = ast.parse((task / 'scripts/sample_controls.py').read_text())
+        helper_ns = {'require_unchanged': checks.require_unchanged,
+                     'allclose_output': checks.allclose_output}
+        helper_tree.body = [node for node in helper_tree.body if not isinstance(node, ast.ImportFrom)]
+        exec(compile(helper_tree, 'scaled_gemm_sample_controls', 'exec'), helper_ns)
+        ns['MeasuredScaledGemmInputs'] = helper_ns['MeasuredScaledGemmInputs']
     _harness_functions(task, {'_checked_scaled_gemm_output', '_scaled_gemm_replay_validator', 'run_correctness', 'run_benchmark'}, ns)
+    if name == 'gemm_a8w8' and phase == 'correctness':
+        # This fixture owns the original-case adversarial checks. Retain their
+        # real historical function after the exact reviewed inverse; the added
+        # API cases have independent CPU positive/negative coverage.
+        legacy = ast.parse(_gemm_a8w8_optional_api_legacy_source((task/'test_kernel_harness.py').read_text()))
+        original = next(node for node in legacy.body if isinstance(node,ast.FunctionDef) and node.name == 'run_correctness')
+        exec(compile(ast.Module(body=[original],type_ignores=[]),'original_gemm_correctness_fixture','exec'),ns)
     if phase == 'correctness':
         assert ns['run_correctness'](verbose=False) == (behavior == 'correct')
     elif behavior == 'correct':
@@ -4823,10 +5360,16 @@ def test_triton_scaled_gemm_audit_helper_and_static_dependencies(name, tmp_path)
 
 
 def test_triton_scaled_gemm_original_refs_inputs_gates_bias_and_timing():
-    hashes = {'gemm_a8w8': {'_fp8_e4m3_dtype': 'dce8a3e9b226a3bc53cc87697bd3973be028c96ccf5c71e61ec7667cfba2292a', '_load_source': '0109b3040e9f8cd2dd24ee21b710aa28eafca60be1a275b3481c54bead0535f4', '_make_inputs': '267dfecc9adb861fa25922aa1a683fc927c6732f4c9abf30d9896ab9767e81f7', '_torch_ref': '825e9cfcea4d5ab06de921ccfc00567cb9f010f5312bbe6a3f41e30e93e486b6', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '36fd9f15a29a2efd01f60d65502f57af0978322148f19d3513112ab67d97e846', 'run_benchmark': '42711707b4bbda7e3b855c1ffa95bec3cabd6c56336a660859269bf8df3b7afd'}, 'gemm_a16w8_blockscale': {'_fp8_e4m3_dtype': 'dce8a3e9b226a3bc53cc87697bd3973be028c96ccf5c71e61ec7667cfba2292a', '_load_source': 'b4c9fd411a1dc0a557d5d7e34ebeb217dd8764c81c29b98dd38adb834c132ec0', '_make_inputs': '94ce346bf7f3e6f7694e32c17cfc137fa1e6158ff1ba820c6b922df63dab1e6c', '_torch_ref': 'cf0a0ef309f0a880ffb08ae655c4b080318d571162bb29cf41a4368e10d379e8', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '04248b0bb97a7d4453f15b327d971d883fd0469f478eb79690d56ff9c69aa059', 'run_benchmark': 'a89f9c6b1a5f8dd4afafb2864bb674f9e6e5917b8b7811336417ea9cccd90a4f'}, 'gemm_a8w8_blockscale': {'_fp8_e4m3_dtype': 'dce8a3e9b226a3bc53cc87697bd3973be028c96ccf5c71e61ec7667cfba2292a', '_load_source': '41ba03fd742602a208651c5ecd7eabb4be2c2c52e8bc60cffb745b01e4d1a52d', '_make_inputs': '5a5bd4923a985c42de6f7a34471eb8322cb7ea58b6ae50bb3e1509b8a351569d', '_torch_ref': '9d24f0a69145ed3a490a564f817be94e7b21368a011304f41e289132e2055ff0', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '5d9de3cafd955c9ee89b80ca5ed13a16abff4c4b60c8ba9863f31d6ed4edb605', 'run_benchmark': '72e2c9cc1bb490b7e273959fd0fe3c5fcd67c9ce1bc04ecd44db45d2674f478e'}, 'gemm_afp8wfp8': {'_load_source': '3d369c1f5bbcee527cb2dc79d301e71afaef8119ab0bc49ea64769a39a53a956', '_e8m0_to_f32': 'ffc2caaa5468c8c2a7b505ef046dfde68643edeb9921a53c1e63de6fa44a9f8e', '_make_inputs': 'bceee075948c1fae518a33c6b930db1172a09a9318f09b6bf6f3ac1f58b9eb99', '_torch_ref': 'f19986d79754472dd0cf416134b5671e187bae77583cfdf5398970ef847c6e12', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '7849c97309a0b5b051c4e307c05bb6904b80a6917477eb56308d5839e1f44b56', 'run_benchmark': 'ffcc455e8d48031987a57ac9edae19f37e907706c6653db6f3a490a6e3c34120'}}
+    # Only gemm_a8w8 timing is repinned for independently varying, fully observed
+    # samples. Input generation, oracle, correctness and all other tasks retain
+    # their historical hashes; adversarial stream checks live in the RL regression.
+    hashes = {'gemm_a8w8': {'_fp8_e4m3_dtype': 'dce8a3e9b226a3bc53cc87697bd3973be028c96ccf5c71e61ec7667cfba2292a', '_load_source': '0109b3040e9f8cd2dd24ee21b710aa28eafca60be1a275b3481c54bead0535f4', '_make_inputs': '267dfecc9adb861fa25922aa1a683fc927c6732f4c9abf30d9896ab9767e81f7', '_torch_ref': '825e9cfcea4d5ab06de921ccfc00567cb9f010f5312bbe6a3f41e30e93e486b6', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '36fd9f15a29a2efd01f60d65502f57af0978322148f19d3513112ab67d97e846', 'run_benchmark': '153bd91502bda6ee8f192d765a4c581a4466e1d97f877a5404123bbcd05cc32c'}, 'gemm_a16w8_blockscale': {'_fp8_e4m3_dtype': 'dce8a3e9b226a3bc53cc87697bd3973be028c96ccf5c71e61ec7667cfba2292a', '_load_source': 'b4c9fd411a1dc0a557d5d7e34ebeb217dd8764c81c29b98dd38adb834c132ec0', '_make_inputs': '94ce346bf7f3e6f7694e32c17cfc137fa1e6158ff1ba820c6b922df63dab1e6c', '_torch_ref': 'cf0a0ef309f0a880ffb08ae655c4b080318d571162bb29cf41a4368e10d379e8', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '04248b0bb97a7d4453f15b327d971d883fd0469f478eb79690d56ff9c69aa059', 'run_benchmark': 'a89f9c6b1a5f8dd4afafb2864bb674f9e6e5917b8b7811336417ea9cccd90a4f'}, 'gemm_a8w8_blockscale': {'_fp8_e4m3_dtype': 'dce8a3e9b226a3bc53cc87697bd3973be028c96ccf5c71e61ec7667cfba2292a', '_load_source': '41ba03fd742602a208651c5ecd7eabb4be2c2c52e8bc60cffb745b01e4d1a52d', '_make_inputs': '5a5bd4923a985c42de6f7a34471eb8322cb7ea58b6ae50bb3e1509b8a351569d', '_torch_ref': '9d24f0a69145ed3a490a564f817be94e7b21368a011304f41e289132e2055ff0', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '5d9de3cafd955c9ee89b80ca5ed13a16abff4c4b60c8ba9863f31d6ed4edb605', 'run_benchmark': '72e2c9cc1bb490b7e273959fd0fe3c5fcd67c9ce1bc04ecd44db45d2674f478e'}, 'gemm_afp8wfp8': {'_load_source': '3d369c1f5bbcee527cb2dc79d301e71afaef8119ab0bc49ea64769a39a53a956', '_e8m0_to_f32': 'ffc2caaa5468c8c2a7b505ef046dfde68643edeb9921a53c1e63de6fa44a9f8e', '_make_inputs': 'bceee075948c1fae518a33c6b930db1172a09a9318f09b6bf6f3ac1f58b9eb99', '_torch_ref': 'f19986d79754472dd0cf416134b5671e187bae77583cfdf5398970ef847c6e12', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': '7849c97309a0b5b051c4e307c05bb6904b80a6917477eb56308d5839e1f44b56', 'run_benchmark': 'ffcc455e8d48031987a57ac9edae19f37e907706c6653db6f3a490a6e3c34120'}}
     for name, functions in hashes.items():
         task = ROOT / 'tasks/triton2flydsl/aiter' / name
-        for fn in ast.parse((task / 'test_kernel_harness.py').read_text()).body:
+        source = (task / 'test_kernel_harness.py').read_text()
+        if name == 'gemm_a8w8':
+            source = _gemm_a8w8_optional_api_legacy_source(source)
+        for fn in ast.parse(source).body:
             if isinstance(fn, ast.FunctionDef) and fn.name in functions:
                 normalized = _RemoveTritonBatchedChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized, include_attributes=False).encode()).hexdigest() == functions[fn.name], (name, fn.name)
@@ -5319,7 +5862,7 @@ def test_gr_four_real_cpu_known_answers_and_copied_audit(name):
     assert result.metadata['candidate_state']=='implemented'
     assert all(c['known_answer']=='PASS' and c['negative_output']=='rejected' for c in result.metadata['reference_controls'])
     for helper in ['candidate_checks.py','replay_checks.py']:
-        assert (task/'scripts'/helper).read_bytes()==(ROOT/'tasks/triton2flydsl/aiter/mha/scripts'/helper).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/'scripts'/helper)==_reviewed_migration_helper_bytes(ROOT/'tasks/triton2flydsl/aiter/mha/scripts'/helper)
 
 
 def test_gr_four_original_math_cases_seeds_and_timing_except_explicit_zero_branch_fix():
@@ -5438,9 +5981,9 @@ def test_sglang_state_two_real_cpu_controls_and_unchanged_helpers(name):
     assert result.passed,result.reason
     assert len(result.cases)==(7 if name=='merge_state' else 6)
     assert all(c['known_answer']=='PASS' and c['negative_output']=='rejected' for c in result.metadata['reference_controls'])
-    assert (task/'scripts/candidate_checks.py').read_bytes()==(ROOT/'tasks/triton2flydsl/aiter/mha/scripts/candidate_checks.py').read_bytes()
+    assert _reviewed_migration_helper_bytes(task/'scripts/candidate_checks.py')==_reviewed_migration_helper_bytes(ROOT/'tasks/triton2flydsl/aiter/mha/scripts/candidate_checks.py')
     source='fused_add_rmsnorm' if name=='merge_state' else 'mha'
-    assert (task/'scripts/replay_checks.py').read_bytes()==(ROOT/'tasks/triton2flydsl/aiter'/source/'scripts/replay_checks.py').read_bytes()
+    assert _reviewed_migration_helper_bytes(task/'scripts/replay_checks.py')==_reviewed_migration_helper_bytes(ROOT/'tasks/triton2flydsl/aiter'/source/'scripts/replay_checks.py')
 
 
 def test_sglang_state_two_original_input_reference_dtype_gates_and_sample_fingerprints():
@@ -5649,14 +6192,14 @@ def test_flat_rope_moe_real_cpu_full_manifest_and_copied_candidate_checks(name):
     assert result.passed,result.reason
     assert len(result.cases)==(48 if name=='rope_fwd' else 10)
     for helper in ['candidate_checks.py','replay_checks.py']:
-        assert (task/'scripts'/helper).read_bytes()==(ROOT/'tasks/triton2flydsl/aiter/rmsnorm/scripts'/helper).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/'scripts'/helper)==_reviewed_migration_helper_bytes(ROOT/'tasks/triton2flydsl/aiter/rmsnorm/scripts'/helper)
 
 
 def test_flat_rope_moe_original_input_reference_rotation_and_prepare_timing_fingerprints():
     hashes={'rope_fwd': {'_load_source': '017ca74e8b8637ad01ca6762de871208612ea351fafe400285bf447f7126e1e9', '_make_inputs': '23a4c5182690aa833c119a7d0ad65828da778d22ce91b8dfa12b400b5939e2fe', '_rotate_half_neox': '8d7d330c98e9e99e6ec1387ad8386bf055d05eb58f4ed2fdf17d48c80bf39e37', '_rotate_half_gptj': '434b5d4257c29863c21c7cba46a0cba71abb02a842e384d1e622f50ffb992b9f', '_ref_rope_sbhd_fwd': '3f450126474ef56a8365d1d4c525d6725c733eb5bc0ff0f5fbcf027125ec98d6', '_cases': '4957ee8a62fd55e1069503ad693b03ec3e9a67bb9c9731acf9e18f325de00c02', 'run_compile': '8f829e9dafe3fa510b965656f9805ccbd0727c1cb47081513760f5bd2d68c083', 'run_correctness': 'cae0149f4c1b3e66b7c371411fb0c5241610cca98effd45818d4038ca900c5b5', 'run_benchmark': 'd5fe98996e6cd12947ef6efe87c61ea096c734b9ed75b0265e6cce36f4f231b1'}, 'moe_fused_gemm': {'_load_source': 'acdced07419dae8b1803a737870c38687adf7a2bf35b3f0e183c8bb4be502574', '_make_inputs': 'b9efac3a95b3d642146377e84daf3e95da946ce0f127b00e17a5fce39dd81ede', '_prepare_kernel': '8f118965ce7ad15869b75eaf60f308ea15be3887b1cbeaae879c64079d450cf6', '_run_kernel': '97e4e85950df57de831c64d15685a877f772c9280ec5a46ce0b655ae098843f3', '_ref_moe_gemm': 'bbaf201bcabbbdb6d897c8c29b493b722fd7760a7715afd3c4b868001410b873', 'run_compile': '4dde78d7144a193df6c53c38c92b102947afbf8ae15656268d197f0ea4097d56', 'run_correctness': '5105c851019f177cb65300e38f96ca7c8f1a400ca3dddd704e2bc398c6481656', 'run_benchmark': 'f1109cf5a43830a0f14d456fcf39b9caacf3acfd134ab1bc95720cf26b24ddb5'}}
     for name,functions in hashes.items():
         task=ROOT/'tasks/triton2flydsl/aiter'/name
-        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        for fn in ast.parse(_module_lifetime_legacy_harness_source((task/'test_kernel_harness.py').read_text())).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveFlatChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
@@ -5759,7 +6302,7 @@ def test_sglang_router_two_independent_controls_reject_reference_and_comparator_
     result=invoke(task,'validate-task')
     assert result.passed==(fault=='none'),result.reason
     if fault=='none':
-        assert len(result.cases)==(9 if name=='fused_gdn_gating' else 8)
+        assert len(result.cases)==(11 if name=='fused_gdn_gating' else 8)
         assert all(c['known_answer']=='PASS' and c['negative_output']=='rejected' for c in result.metadata['reference_controls'])
     else:assert 'known answer' in result.reason or 'incorrect output' in result.reason
 
@@ -5768,14 +6311,14 @@ def test_sglang_router_two_independent_controls_reject_reference_and_comparator_
 def test_sglang_router_two_helpers_identical_to_reviewed_measured_pair_and_audit(name):
     task=ROOT/'tasks/triton2flydsl/sglang'/name;base=ROOT/'tasks/triton2flydsl/sglang/merge_state'
     for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
-        assert (task/rel).read_bytes()==(base/rel).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(base/rel)
 
 
 def test_sglang_router_two_preserves_all_original_math_inputs_shapes_gates_sampling():
     hashes={'fused_gdn_gating': {'load_module': '037642864242b26b505dfbd39aa5fa58023551b14b55d5e4f893fc3a000a80c6', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_test_data': '9665205015bcccff2084920733ec802621249d3fcb5ab04b735d3c970894618d', 'reference_gating': '2d0f6ef3d9636af2a4198438fdf564454ec972df605803c5dbaeeab84b3f5472', 'run_compile': '6f3d546d2a7a3d382b1440d69c614860580b849c1dc4d848b3fda236b791ca92', 'run_correctness': 'f3905f19c863be7dae8654763111994df870c8a3ee36f4f34bb53c5fe17c6e7f', 'run_performance': 'ff4a33ad71cfe56f1ac04ab438920cc74b1b3c054e28458e28cd1bcf636ac16f', 'main': '69f2c9d7455496f97c31a580e679c4361271c4db6f05482dbfe424df9641c15a'}, 'fused_moe_router': {'load_module': '953696d189c1fbd01e5400c59617345300e9d9c4605526653fc33b38a5b1b407', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_inputs': '5ff114739e6c974d57f187d49b768ad06a45307575b4f507207c03cc643e8ae4', 'reference': 'c6e999edcab9cd51b4b00ab58aaa847a31913a9abe008e128218ddd7548e1da4', '_shape_of': 'b96d3ad069d4f767c1afa4a64fe11645cafc2fac1a66bc72ea43ccceaded8180', 'run_compile': 'f3df7f8ad05b681d25a2f64479e7dfde1e75395283b6504922f171d10fc8c6a9', 'run_correctness': '9d319633583e26faf8f206584d0b0079ae6b4d09d884b0e22d0ceeac010d7e20', 'run_performance': '3e518aff630943bc2e91859443472f8a8fb7ef8bee16bde56a5e411574e16258', 'main': '6f1fc7fcef166b402f53f12edef0c19e168f192c2d7bbc04cd405e9bd51e7cc5'}}
     for name,functions in hashes.items():
         task=ROOT/'tasks/triton2flydsl/sglang'/name
-        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        for fn in ast.parse(_semantic_boundary_legacy_harness_source((task/'test_kernel_harness.py').read_text())).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveRouterChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
@@ -5906,7 +6449,7 @@ def test_sglang_combine_two_real_cpu_known_answers_comparators_and_reviewed_help
     assert all(c['known_answer']=='PASS' and c['negative_output']=='rejected' for c in result.metadata['reference_controls'])
     base=ROOT/'tasks/triton2flydsl/sglang/fused_gdn_gating'
     for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
-        assert (task/rel).read_bytes()==(base/rel).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(base/rel)
 
 
 def test_sglang_combine_two_original_source_math_inputs_shapes_gates_sampling():
@@ -6062,7 +6605,7 @@ def test_sglang_kkt_wy_real_controls_and_identical_reviewed_helpers(name):
     assert all(c['known_answer']=='PASS' and c['negative_output']=='rejected' for c in result.metadata['reference_controls'])
     base=ROOT/'tasks/triton2flydsl/sglang/merge_state'
     for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
-        assert (task/rel).read_bytes()==(base/rel).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(base/rel)
 
 
 def test_sglang_kkt_wy_preserves_original_math_input_generation_shapes_tolerance_and_timing():
@@ -6202,6 +6745,13 @@ def test_gdn_recurrence_two_real_state_outputs_prepare_and_original_gates(name,v
     import torch
     import types
     chunk=name=='gdn_chunk_fwd_h';task=ROOT/'tasks/triton2flydsl/sglang'/name;checks=module(task/'scripts/replay_checks.py')
+    if not chunk:
+        package=types.ModuleType('scripts');package.__path__=[str(task/'scripts')]
+        monkeypatch.setitem(sys.modules,'scripts',package)
+        controls=module(task/'scripts/normalization_controls.py')
+        real_controls=controls.run_cases
+        monkeypatch.setattr(controls,'run_cases',lambda *args:real_controls(*args,device='cpu'))
+        monkeypatch.setitem(sys.modules,'scripts.normalization_controls',controls)
     ns=dict(BT=2,DTYPE_NAME='bfloat16',WARMUP_ITERATIONS=10,BENCHMARK_ITERATIONS=100,require_unchanged=checks.require_unchanged,verify_timed_pair=checks.verify_timed_pair)
     _harness_functions(task,{'make_test_data','_chunk_local_cumsum','reference_h','reference_decode','_close','_run_triton','_checked_recurrent_output','_require_unused_state','_compare_recurrent_output','_recurrent_replay_validator'},ns)
     torch.manual_seed(2)
@@ -6215,7 +6765,15 @@ def test_gdn_recurrence_two_real_state_outputs_prepare_and_original_gates(name,v
     pristine=inp[key].clone();cached=tuple(v.clone() for v in ns[ref](inp));state={'phase':'setup'}
     protected=tuple(v for k,v in inp.items() if isinstance(v,torch.Tensor) and not (phase=='performance' and not chunk and k==key));originals=tuple(v.clone() for v in protected)
     def compute(*args,**kwargs):
-        working=kwargs['initial_state'];ri=dict(inp,**{key:working});outputs=list(ns[ref](ri))
+        working=kwargs['initial_state'];ri=dict(inp,**{key:working})
+        if not chunk and kwargs['mixed_qkv'].shape != inp['mixed_qkv'].shape:
+            batch,projection=kwargs['mixed_qkv'].shape;pool,hv,v,k=working.shape
+            ri=dict(B=batch,H=(projection-hv*v)//(2*k),HV=hv,V=v,K=k,
+                mixed_qkv=kwargs['mixed_qkv'],a=kwargs['a'],b=kwargs['b'],
+                A_log=kwargs['A_log'],dt_bias=kwargs['dt_bias'],scale=kwargs['scale'],
+                ssm_states=working,cache_indices=kwargs['ssm_state_indices'])
+            outputs=list(ns[ref](ri,use_qk_l2norm_in_kernel=kwargs.get('use_qk_l2norm_in_kernel',False)))
+        else:outputs=list(ns[ref](ri))
         active=phase=='correctness' or state['phase']=='measured'
         if active:
             if behavior=='wrong_output':outputs[0].fill_(100)
@@ -6233,6 +6791,7 @@ def test_gdn_recurrence_two_real_state_outputs_prepare_and_original_gates(name,v
         if behavior=='shape' and active:kwargs['out'].resize_(outputs[0].shape)
         if behavior=='dtype' and active:kwargs['out'].data=kwargs['out'].float()
         kwargs['out'].copy_(outputs[0])
+        return kwargs['out'],working
     class Collector:bound=False
     calls=[];prepare_calls=[]
     def benchmark(fn,*,warmup,repetition,prepare_fn,timed_run):
@@ -6263,11 +6822,11 @@ def test_gdn_recurrence_two_real_state_outputs_prepare_and_original_gates(name,v
 def test_gdn_recurrence_two_real_controls_and_reviewed_helpers(name):
     task=ROOT/'tasks/triton2flydsl/sglang'/name;result=invoke(task,'validate-task')
     assert result.passed,result.reason
-    assert len(result.cases)==(8 if name=='gdn_chunk_fwd_h' else 10)
+    assert len(result.cases)==(8 if name=='gdn_chunk_fwd_h' else 12)
     assert all(c['known_answer']=='PASS' and c['negative_output']=='rejected' for c in result.metadata['reference_controls'])
     base=ROOT/'tasks/triton2flydsl/sglang/merge_state'
     for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
-        assert (task/rel).read_bytes()==(base/rel).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(base/rel)
 
 
 def test_gdn_chunk_state_preserves_original_five_percent_gate_but_not_nonfinite_or_untouched_writes():
@@ -6290,7 +6849,7 @@ def test_gdn_recurrence_two_original_math_rounding_inputs_shapes_gates_prepare_a
     hashes={'gdn_chunk_fwd_h': {'load_module': '3be1c8b8de184e266bcc06f091002ef6d4ec686c60e82135e21dd93dff317636', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', '_chunk_local_cumsum': '13ff0f7a64a6d56b2ff1b1712f6993d65d6167edd3d8187fa2c8db443fb460b9', 'make_test_data': 'ab277c56d4c77891b28db9451ae943dcec518d384ec8022a17f6a2671bf5b139', 'reference_h': '45c4284f5bfad011d720103d06b2518f48e2c51ee0a32f3f83f19d6d60c6f04b', '_run_triton': 'fcc5e08d5559850dd29491477e0264b771284d2e0e2a12715d5ce4750e91dc64', '_close': '1149de54ce522db86c5c48a14941041ac23269b824dc7ab0ea3b751532a83558', 'run_compile': '18356653f825307ef99e38503f2bc2a83b21c38354fcf9c86691ff0b6a4ffc61', 'run_correctness': 'ea122d37d3d38d703602dd90938f437c0a7c0409aa54770427784889613501bb', 'run_performance': '5a081b794f0e52eaf07b8599b1e672df393a976c4c50f43037a1ad73f5899cb4', 'main': 'd65964b4838396e1740d69844f3766ffd9dad1fe46deddcb3c90f5ab1c762e10'}, 'gdn_fused_recurrent_decode': {'load_module': '9c8dff0eeb1dcf074909d4decc0ce814676a860038feaf2d7e2eaa55161759f1', '_is_oom': 'ed52be36a07f980a32da6a46b4c5f1c58342d8775fe3549702ff18460070be57', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_test_data': '0ed814c9afce3c3675a3e3d54b074785f8fe20abb44c1950bb1c0cb5d1670189', 'reference_decode': '5c46d4696bcd7bf2e0f7b220c94e5ca1851f7e42e98f09a526a7b4baa6aef723', '_run_triton': '9f1f316be642b7b0db6121cac9f8d71e7463094d8f33be464ff2fb768ce03edd', 'run_compile': '4b6c7314566f87a548e062599accdfca44a83b040fd3654ac7cceef2eb659037', 'run_correctness': '2438fafe7dd56933d0993754d78e21c75a239176b37455c8c0aab9261ebc06e7', 'run_performance': '434e7987e634921a77bfb1773dc40c6b85533f99fda67701c0a41a464835ac20', 'main': '5c31292c4ac77f4d840c27262bc207170ec1fcbd986b2ace281f25dcc84507d3'}}
     for name,functions in hashes.items():
         task=ROOT/'tasks/triton2flydsl/sglang'/name
-        for fn in ast.parse((task/'test_kernel_harness.py').read_text()).body:
+        for fn in ast.parse(_gdn_false_coverage_legacy_source((task/'test_kernel_harness.py').read_text())).body:
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveRecurrentChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
@@ -6439,7 +6998,7 @@ def test_prepared_two_real_controls_reject_bad_outputs_and_reviewed_helpers_matc
     assert len(result.metadata['reference_controls'])>=6
     base=ROOT/'tasks/triton2flydsl/sglang/merge_state'
     for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
-        assert (task/rel).read_bytes()==(base/rel).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(base/rel)
 
 
 def test_lightning_preserves_disjunctive_numeric_rule_with_explicit_finiteness():
@@ -6671,7 +7230,7 @@ def test_generic_moe_real_controls_and_original_normalized_denominator():
     actual=ref.clone();actual[0,0]=float('nan')
     with pytest.raises(AssertionError,match='Non-finite'):ns['_compare_generic_output'](actual,ref)
     for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py','task_runtime.py']:
-        assert (task/rel).read_bytes()==(ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'/rel).read_bytes()
+        assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'/rel)
 
 
 def test_generic_moe_original_math_cases_seed_preparation_and_timing_unchanged():
@@ -7027,7 +7586,7 @@ def test_bpreshuffle_preserves_original_source_model_cases_math_and_event_bounda
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==expected,fn.name
     peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
     for rel in ['task_runtime.py','scripts/candidate_checks.py','scripts/replay_checks.py']:
-        task_bytes = (task/rel).read_bytes()
+        task_bytes = _reviewed_migration_helper_bytes(task/rel)
         if rel == 'task_runtime.py':
             # The Event evidence binding is tested through the actual
             # report reader elsewhere; compare all remaining legacy bytes.
@@ -7059,7 +7618,7 @@ def test_bpreshuffle_preserves_original_source_model_cases_math_and_event_bounda
             old = b'return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",'
             assert task_bytes.count(new) == 1
             task_bytes = task_bytes.replace(new, old)
-        assert task_bytes == (peer/rel).read_bytes(), rel
+        assert task_bytes == _reviewed_migration_helper_bytes(peer/rel), rel
     cfg=load_task_spec(task/'config.yaml',task_id='torch2flydsl/gemm_a8w8_bpreshuffle_kernel').to_mapping()
     assert [e['symbol'] for e in cfg['candidate']['entrypoints']]==['flydsl_gemm_a8w8_bpreshuffle','preshuffle_weight_a8']
 
@@ -7203,8 +7762,8 @@ def test_final_sglang_original_inputs_refs_cases_bit_rules_gates_and_sampling():
             if isinstance(fn,ast.FunctionDef) and fn.name in functions:
                 normalized=_RemoveFinalSglangChecks().visit(fn)
                 assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==functions[fn.name],(name,fn.name)
-        for rel in ['scripts/candidate_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(ROOT/'tasks/triton2flydsl/aiter/mla'/rel).read_bytes()
-        assert (task/'scripts/replay_checks.py').read_bytes()==(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts/replay_checks.py').read_bytes()
+        for rel in ['scripts/candidate_checks.py','task_runtime.py']:assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(ROOT/'tasks/triton2flydsl/aiter/mla'/rel)
+        assert _reviewed_migration_helper_bytes(task/'scripts/replay_checks.py')==_reviewed_migration_helper_bytes(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts/replay_checks.py')
 
 
 class _RemoveQkChecks(_RemoveSglangElementwiseChecks):
@@ -7295,7 +7854,7 @@ def test_qk_original_model_strided_inputs_rotary_scope_and_timing_preserved():
             normalized=_RemoveQkChecks().visit(fn)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
     peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
-    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()
+    for rel in ['scripts/candidate_checks.py','scripts/replay_checks.py']:assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(peer/rel)
 
 
 class _RemoveSortingChecks(_RemoveSglangElementwiseChecks):
@@ -7367,8 +7926,8 @@ def test_sorting_original_known_answers_sources_and_timing_fingerprints():
             normalized=_RemoveSortingChecks().visit(fn)
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
     result=invoke(task,'validate-task');assert result.passed,result.reason
-    for rel in ['scripts/candidate_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'/rel).read_bytes()
-    assert (task/'scripts/replay_checks.py').read_bytes()==(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts/replay_checks.py').read_bytes()
+    for rel in ['scripts/candidate_checks.py','task_runtime.py']:assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'/rel)
+    assert _reviewed_migration_helper_bytes(task/'scripts/replay_checks.py')==_reviewed_migration_helper_bytes(ROOT/'tasks/triton2flydsl/sglang/merge_state/scripts/replay_checks.py')
 
 
 class _RemoveJaggedChecks(_RemoveSglangElementwiseChecks):
@@ -7471,7 +8030,7 @@ def test_jagged_original_group_model_metadata_allocation_and_timing_unchanged():
             assert hashlib.sha256(ast.dump(normalized,include_attributes=False).encode()).hexdigest()==hashes[fn.name],fn.name
     result=invoke(task,'validate-task');assert result.passed,result.reason;assert len(result.cases)==5
     peer=ROOT/'tasks/torch2flydsl/rmsnorm2d_kernel'
-    for rel in ['scripts/replay_checks.py','task_runtime.py']:assert (task/rel).read_bytes()==(peer/rel).read_bytes()
+    for rel in ['scripts/replay_checks.py','task_runtime.py']:assert _reviewed_migration_helper_bytes(task/rel)==_reviewed_migration_helper_bytes(peer/rel)
 
 
 @pytest.mark.parametrize('statement,allowed',[
@@ -7635,3 +8194,2056 @@ def test_a8w8_production_baseline_uses_one_consistent_reduction_policy():
     assert seen=={'run_correctness':1,'run_benchmark':1,'arena_benchmark':1}
     cfg=load_task_spec(task/'config.yaml',task_id='torch2flydsl/gemm_a8w8_kernel')
     assert cfg.baseline.correctness_policy=='required'
+
+
+# Only these source-reviewed task runtimes gained a normal local-import closure.
+# Pin the entire upgraded file, undo only that exact delta, then keep the old
+# full-byte peer comparisons below. Other task/runtime differences stay visible.
+_REVIEWED_IMPORT_CLOSURE_TRITON = (
+    'triton2flydsl/sglang/fused_dual_residual_rmsnorm',
+    'triton2flydsl/sglang/gdn_l2norm_fwd',
+    'triton2flydsl/sglang/fused_gdn_gating',
+    'triton2flydsl/sglang/fused_norm_gate',
+    'triton2flydsl/sglang/merge_state',
+    'triton2flydsl/sglang/experts_combine',
+    'triton2flydsl/aiter/fused_clamp_act_mul',
+)
+_REVIEWED_IMPORT_CLOSURE_TORCH = (
+    'torch2flydsl/smoothquant_kernel',
+    'torch2flydsl/rmsnorm2d_smoothquant_kernel',
+    'torch2flydsl/moe_topk_sigmoid_kernel',
+    'torch2flydsl/moe_topk_softplus_kernel',
+    'torch2flydsl/moe_biased_grouped_topk_kernel',
+    'torch2flydsl/rope_thd_fwd_kernel',
+    'torch2flydsl/per_1x128_fp8_quant_kernel',
+    'torch2flydsl/per_token_fp8_quant_kernel',
+    'torch2flydsl/rmsnorm2d_dynamicquant_kernel',
+    'torch2flydsl/silu_and_mul_quant_kernel',
+    'torch2flydsl/fused_add_rmsnorm_kernel',
+    'torch2flydsl/layernorm2d_kernel',
+    'torch2flydsl/layernorm2d_with_add_kernel',
+    'torch2flydsl/per_token_i8_quant_kernel',
+    'torch2flydsl/rmsnorm2d_kernel',
+    'torch2flydsl/rope_fwd_kernel',
+    'torch2flydsl/silu_and_mul_kernel',
+    'torch2flydsl/swiglu_and_mul_kernel',
+)
+
+
+# The exact 33 v12 packages plus 3 explicit joint-update packages gained auditing and
+# narrow control-plane checks. Reverse only those source-reviewed helper deltas
+# before the older complete-byte migration/closure comparisons. These are test
+# normalizations, not permission to change any task workload or operator body.
+# Full after AND full before hashes remain mandatory; unreviewed tasks return
+# their original bytes, including the untouched gdn_chunk_fwd_h helpers.
+_REVIEWED_V12_POLICY_TASKS = {'torch2flydsl/fused_add_rmsnorm_kernel': {'task_runtime.py': 'delta_0',
+                                           'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/layernorm2d_kernel': {'task_runtime.py': 'delta_0',
+                                     'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/layernorm2d_with_add_kernel': {'task_runtime.py': 'delta_0',
+                                              'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/per_token_i8_quant_kernel': {'task_runtime.py': 'delta_0',
+                                            'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/rmsnorm2d_kernel': {'task_runtime.py': 'delta_0',
+                                   'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/rope_fwd_kernel': {'task_runtime.py': 'delta_0',
+                                  'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/silu_and_mul_kernel': {'task_runtime.py': 'delta_0',
+                                      'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/swiglu_and_mul_kernel': {'task_runtime.py': 'delta_0',
+                                        'scripts/candidate_checks.py': 'delta_1'},
+ 'triton2flydsl/sglang/fused_dual_residual_rmsnorm': {'task_runtime.py': 'delta_2',
+                                                      'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/sglang/gdn_l2norm_fwd': {'task_runtime.py': 'delta_2',
+                                         'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/sglang/fused_gdn_gating': {'task_runtime.py': 'delta_2',
+                                           'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/sglang/fused_norm_gate': {'task_runtime.py': 'delta_2',
+                                          'scripts/candidate_checks.py': 'delta_3'},
+ 'torch2flydsl/smoothquant_kernel': {'task_runtime.py': 'delta_0',
+                                     'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/rmsnorm2d_smoothquant_kernel': {'task_runtime.py': 'delta_0',
+                                               'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/moe_topk_sigmoid_kernel': {'task_runtime.py': 'delta_0',
+                                          'scripts/candidate_checks.py': 'delta_1'},
+ 'triton2flydsl/sglang/merge_state': {'task_runtime.py': 'delta_2',
+                                      'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/sglang/experts_combine': {'task_runtime.py': 'delta_2',
+                                          'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/aiter/fused_clamp_act_mul': {'task_runtime.py': 'delta_2',
+                                             'scripts/candidate_checks.py': 'delta_4'},
+ 'torch2flydsl/moe_topk_softplus_kernel': {'task_runtime.py': 'delta_0',
+                                           'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/moe_biased_grouped_topk_kernel': {'task_runtime.py': 'delta_0',
+                                                 'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/rope_thd_fwd_kernel': {'task_runtime.py': 'delta_0',
+                                      'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/per_1x128_fp8_quant_kernel': {'task_runtime.py': 'delta_0',
+                                             'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/per_token_fp8_quant_kernel': {'task_runtime.py': 'delta_0',
+                                             'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/rmsnorm2d_dynamicquant_kernel': {'task_runtime.py': 'delta_0',
+                                                'scripts/candidate_checks.py': 'delta_1'},
+ 'torch2flydsl/silu_and_mul_quant_kernel': {'task_runtime.py': 'delta_0',
+                                            'scripts/candidate_checks.py': 'delta_1'},
+ 'triton2flydsl/sglang/gdn_fused_recurrent_decode': {'task_runtime.py': 'delta_5',
+                                                     'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/sglang/chunk_local_cumsum': {'task_runtime.py': 'delta_5',
+                                             'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/generative_recommenders/jagged_dense_broadcast_add': {'task_runtime.py': 'delta_5',
+                                                                      'scripts/candidate_checks.py': 'delta_3'},
+ 'torch2flydsl/gelu_and_mul_kernel': {'task_runtime.py': 'delta_6',
+                                      'scripts/candidate_checks.py': 'delta_1'},
+ 'triton2flydsl/sglang/dsv4_fp4_indexer': {'task_runtime.py': 'delta_5',
+                                           'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/sglang/lightning_attn': {'task_runtime.py': 'delta_5',
+                                         'scripts/candidate_checks.py': 'delta_3'},
+ 'triton2flydsl/sglang/triton_mrope_fused': {'task_runtime.py': 'delta_5',
+                                             'scripts/candidate_checks.py': 'delta_3'},
+ 'torch2flydsl/per_tensor_fp8_quant_kernel': {'task_runtime.py': 'delta_6',
+                                              'scripts/candidate_checks.py': 'delta_1'},
+ 'triton2flydsl/aiter/rope_fwd': {'task_runtime.py': 'delta_7',
+                                  'scripts/candidate_checks.py': 'delta_4'},
+ 'triton2flydsl/generative_recommenders/layer_norm': {'task_runtime.py': 'delta_7',
+                                                      'scripts/candidate_checks.py': 'delta_3'},
+ 'torch2flydsl/rope_2d_fwd_kernel': {'task_runtime.py': 'delta_7',
+                                     'scripts/candidate_checks.py': 'delta_1'}}
+
+_REVIEWED_V12_POLICY_DELTAS = {'delta_0': {'after_sha256': '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2',
+             'before_sha256': '467993f4995d7069a8e0224b12f639e2d0b49a9f9a3ef4d6b2a6ed0a449173c9',
+             'replacements': [('    return sources\n'
+                               '\n'
+                               '\n'
+                               'def check_candidate_control_plane(tree):\n'
+                               '    """Reject direct module-registry/control-frame access in '
+                               'candidate sources.\n'
+                               '\n'
+                               '    This applies to the normal task-local source closure, not '
+                               'installed FlyDSL\n'
+                               '    internals. Ordinary sys metadata stays available. These '
+                               'structural checks\n'
+                               '    supplement protected imports; they are not a Python security '
+                               'sandbox.\n'
+                               '    """\n'
+                               '    blocked = {"modules", "_getframe", "_current_frames", '
+                               '"getprofile", "setprofile",\n'
+                               '               "gettrace", "settrace", "exc_info", "exception", '
+                               '"_current_exceptions",\n'
+                               '               "monitoring", "__dict__", "__getattribute__"}\n'
+                               '    aliases = {}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        if isinstance(node, ast.Import):\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "sys":\n'
+                               '                    aliases[item.asname or "sys"] = "sys"\n'
+                               '        elif isinstance(node, ast.ImportFrom) and node.module == '
+                               '"sys":\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "*" or item.name in blocked:\n'
+                               '                    raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '                aliases[item.asname or item.name] = "sys." + '
+                               'item.name\n'
+                               '    def name(node):\n'
+                               '        if isinstance(node, ast.Name):\n'
+                               '            return aliases.get(node.id, node.id)\n'
+                               '        if isinstance(node, ast.Attribute):\n'
+                               '            return name(node.value) + "." + node.attr\n'
+                               '        return ""\n'
+                               '    # Follow ordinary object aliases without importing candidate '
+                               'code.\n'
+                               '    for _ in range(len(list(ast.walk(tree)))):\n'
+                               '        changed = False\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, (ast.Assign, ast.AnnAssign)):\n'
+                               '                value = name(node.value)\n'
+                               '                targets = node.targets if isinstance(node, '
+                               'ast.Assign) else [node.target]\n'
+                               '                if value == "sys" or value.startswith("sys."):\n'
+                               '                    for target in targets:\n'
+                               '                        if isinstance(target, ast.Name) and '
+                               'aliases.get(target.id) != value:\n'
+                               '                            aliases[target.id] = value\n'
+                               '                            changed = True\n'
+                               '        if not changed:\n'
+                               '            break\n'
+                               '    parents = {child: parent for parent in ast.walk(tree) for '
+                               'child in ast.iter_child_nodes(parent)}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        # A sys object cannot be passed to a helper/container that '
+                               'would hide a\n'
+                               '        # later registry lookup. Ordinary name aliases remain '
+                               'statically tracked.\n'
+                               '        if isinstance(node, ast.Name) and isinstance(node.ctx, '
+                               'ast.Load) and name(node) == "sys":\n'
+                               '            parent = parents.get(node)\n'
+                               '            attribute = isinstance(parent, ast.Attribute) and '
+                               'parent.value is node\n'
+                               '            alias = ((isinstance(parent, ast.Assign) and '
+                               'parent.value is node and\n'
+                               '                      all(isinstance(t, ast.Name) for t in '
+                               'parent.targets)) or\n'
+                               '                     (isinstance(parent, ast.AnnAssign) and '
+                               'parent.value is node and\n'
+                               '                      isinstance(parent.target, ast.Name)))\n'
+                               '            if not (attribute or alias):\n'
+                               '                raise ValueError("Candidate cannot pass the '
+                               'evaluator module registry/control frames through a sys object")\n'
+                               '        value = name(node)\n'
+                               '        if value.startswith("sys.") and value.split(".")[1] in '
+                               'blocked:\n'
+                               '            raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '        if isinstance(node, ast.Call) and isinstance(node.func, '
+                               'ast.Name):\n'
+                               '            if node.func.id in {"getattr", "vars"} and node.args '
+                               'and name(node.args[0]) == "sys":\n'
+                               '                raise ValueError("Dynamic sys attribute lookup is '
+                               'not a candidate implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Review the complete normal local-import closure, including '
+                               'helpers."""\n'
+                               '    paths = candidate_source_closure(paths)\n',
+                               '    return sources\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Review the complete normal local-import closure, including '
+                               'helpers."""\n'
+                               '    paths = candidate_source_closure(paths)\n'),
+                              ('    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        if final_language:\n'
+                               '            check_candidate_control_plane(tree)\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n',
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n')]},
+ 'delta_1': {'after_sha256': 'e35bda906ca4da803c507889cfab46adb194bb814e8073b439809220db72e974',
+             'before_sha256': '253b1951e41a168a10c0c795d1792fb23ea2712c68a4298de4004307a35227ee',
+             'replacements': [('"""Candidate-only execution audit with a per-call performance '
+                               'dispatch policy.\n'
+                               '\n'
+                               'Static dependency checks reject AITER and alternative kernel '
+                               'backends. This\n'
+                               'runtime check also catches PyTorch tensor-method/operator '
+                               'decompositions that\n',
+                               '"""Candidate-only execution audit, outside all benchmark timing '
+                               'windows.\n'
+                               '\n'
+                               'Static dependency checks reject AITER and alternative kernel '
+                               'backends. This\n'
+                               'runtime check also catches PyTorch tensor-method/operator '
+                               'decompositions that\n'),
+                              ('})\n'
+                               '\n'
+                               '\n'
+                               'class CandidateDependencyViolation(RuntimeError):\n'
+                               '    """A forbidden candidate computation, even if a capture '
+                               'fallback catches it."""\n'
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def candidate_preparation_only(violations=None):\n'
+                               '    from torch.utils._python_dispatch import TorchDispatchMode\n'
+                               '\n'
+                               '    class PreparationOnly(TorchDispatchMode):\n'
+                               '        def __torch_dispatch__(self, func, types, args=(), '
+                               'kwargs=None):\n'
+                               '            name = func._schema.name\n'
+                               '            if name not in PREPARATION_OPS:\n'
+                               '                reason = (f"Candidate issued non-preparation '
+                               'PyTorch operation {name}; "\n'
+                               '                          "operator computation must use FlyDSL '
+                               'kernels")\n'
+                               '                if violations is not None:\n'
+                               '                    violations.append(reason)\n'
+                               '                raise CandidateDependencyViolation(reason)\n'
+                               '            return func(*args, **(kwargs or {}))\n'
+                               '\n'
+                               '    with PreparationOnly():\n'
+                               '        yield\n'
+                               '\n'
+                               '\n'
+                               'def checked_candidate_invocation(fn, observed, *args, '
+                               '_policy_violations=None, **kwargs):\n'
+                               '    """Require FlyDSL launch evidence from this candidate call, '
+                               'not the oracle."""\n'
+                               '    seen = set()\n'
+                               '    previous = sys.getprofile()\n',
+                               '})\n'
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def candidate_preparation_only():\n'
+                               '    from torch.utils._python_dispatch import TorchDispatchMode\n'
+                               '\n'
+                               '    class PreparationOnly(TorchDispatchMode):\n'
+                               '        def __torch_dispatch__(self, func, types, args=(), '
+                               'kwargs=None):\n'
+                               '            name = func._schema.name\n'
+                               '            if name not in PREPARATION_OPS:\n'
+                               '                raise RuntimeError(\n'
+                               '                    f"Candidate issued non-preparation PyTorch '
+                               'operation {name}; "\n'
+                               '                    "operator computation must use FlyDSL '
+                               'kernels"\n'
+                               '                )\n'
+                               '            return func(*args, **(kwargs or {}))\n'
+                               '\n'
+                               '    with PreparationOnly():\n'
+                               '        yield\n'
+                               '\n'
+                               '\n'
+                               'def checked_candidate_invocation(fn, observed, *args, **kwargs):\n'
+                               '    """Require FlyDSL launch evidence from this candidate call, '
+                               'not the oracle."""\n'
+                               '    seen = set()\n'
+                               '    previous = sys.getprofile()\n'),
+                              ('            seen.add(frame.f_globals["__name__"] + "." + owner)\n'
+                               '    try:\n'
+                               '        sys.setprofile(profile)\n'
+                               '        with candidate_preparation_only(_policy_violations):\n'
+                               '            result = fn(*args, **kwargs)\n'
+                               '    finally:\n'
+                               '        sys.setprofile(previous)\n',
+                               '            seen.add(frame.f_globals["__name__"] + "." + owner)\n'
+                               '    try:\n'
+                               '        sys.setprofile(profile)\n'
+                               '        with candidate_preparation_only():\n'
+                               '            result = fn(*args, **kwargs)\n'
+                               '    finally:\n'
+                               '        sys.setprofile(previous)\n'),
+                              ('\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def audit_candidate_calls(h, *, performance=False):\n'
+                               '    """Audit candidate calls; suppress only Python profiling '
+                               'inside the timer.\n'
+                               '\n'
+                               '    The preparation-only dispatch mode remains on the candidate '
+                               'callback during\n'
+                               '    all canonical capture/warmup/event calls. Baseline/reference '
+                               'calls are outside\n'
+                               '    candidate wrappers; the loader and benchmark binding are '
+                               'always restored.\n'
+                               '    """\n'
+                               '    observed = set()\n'
+                               '    if h.ARENA_PROVIDED_BASELINE:\n'
+                               '        yield observed\n'
+                               '        return\n'
+                               '    original_benchmark = getattr(h, '
+                               '"benchmark_cuda_graph_or_events", None)\n'
+                               '    benchmark_active = False\n'
+                               '    probe_active = False\n'
+                               '    violations = []\n'
+                               '    if performance and original_benchmark is None:\n'
+                               '        raise RuntimeError("Performance audit requires the '
+                               'protected canonical benchmark binding")\n'
+                               '\n'
+                               '    def candidate_call(target, *args, **kwargs):\n'
+                               '        if performance and not probe_active:\n'
+                               '            # This is the actual callback used by canonical '
+                               'warmup/capture/event\n'
+                               '            # timing. Only host-side dispatch policy runs here: no '
+                               'profiling,\n'
+                               '            # synchronization or additional device operations are '
+                               'inserted.\n'
+                               '            with candidate_preparation_only(violations):\n'
+                               '                return target(*args, **kwargs)\n'
+                               '        return checked_candidate_invocation(target, observed, '
+                               '*args, _policy_violations=violations, **kwargs)\n'
+                               '\n'
+                               '    def audited_benchmark(fn, *args, **kwargs):\n'
+                               '        nonlocal benchmark_active, probe_active\n'
+                               '        if benchmark_active:\n'
+                               '            raise RuntimeError("Nested candidate benchmark audit '
+                               'is not supported")\n'
+                               '        prepare = kwargs.get("prepare_fn")\n'
+                               '        if prepare is not None:\n'
+                               '            prepare()\n'
+                               '        try:\n'
+                               '            probe_active = True\n'
+                               '            # Probe this actual performance closure outside every '
+                               'clock/capture.\n'
+                               '            # Candidate wrappers observe FlyDSL calls; oracle '
+                               'calls are untouched.\n'
+                               '            fn()\n'
+                               '        finally:\n'
+                               '            probe_active = False\n'
+                               '            if prepare is not None:\n'
+                               '                prepare()\n'
+                               '        benchmark_active = True\n'
+                               '        try:\n'
+                               '            result = original_benchmark(fn, *args, **kwargs)\n'
+                               '            if violations:\n'
+                               '                raise CandidateDependencyViolation(violations[0])\n'
+                               '            return result\n'
+                               '        finally:\n'
+                               '            benchmark_active = False\n'
+                               '\n'
+                               '    original = h._load_module\n'
+                               '\n'
+                               '    def audited_loader(kernel_dir, filename, alias):\n'
+                               '        if filename != h.KERNEL_FILE:\n'
+                               '            return original(kernel_dir, filename, alias)\n'
+                               '        with candidate_preparation_only(violations):\n'
+                               '            mod = original(kernel_dir, filename, alias)\n'
+                               '        if mod is not None:\n'
+                               '            for name, target in tuple(vars(mod).items()):\n',
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def audit_candidate_calls(h):\n'
+                               '    """Audit imported candidate and its operator calls during '
+                               'correctness only.\n'
+                               '\n'
+                               '    Baseline/reference calls run outside this scope. The loader is '
+                               'restored\n'
+                               '    before the harness reloads the candidate for ordinary device '
+                               'timing; no\n'
+                               '    dispatcher audit is added to a measured call or its captured '
+                               'graph.\n'
+                               '    """\n'
+                               '    observed = set()\n'
+                               '    if h.ARENA_PROVIDED_BASELINE:\n'
+                               '        yield observed\n'
+                               '        return\n'
+                               '    original = h._load_module\n'
+                               '\n'
+                               '    def audited_loader(kernel_dir, filename, alias):\n'
+                               '        if filename != h.KERNEL_FILE:\n'
+                               '            return original(kernel_dir, filename, alias)\n'
+                               '        with candidate_preparation_only():\n'
+                               '            mod = original(kernel_dir, filename, alias)\n'
+                               '        if mod is not None:\n'
+                               '            for name, target in tuple(vars(mod).items()):\n'),
+                              ('                    continue\n'
+                               '                @wraps(target)\n'
+                               '                def checked(*args, __target=target, **kwargs):\n'
+                               '                    return candidate_call(__target, *args, '
+                               '**kwargs)\n'
+                               '                setattr(mod, name, checked)\n'
+                               '        return mod\n'
+                               '\n'
+                               '    h._load_module = audited_loader\n'
+                               '    if performance:\n'
+                               '        h.benchmark_cuda_graph_or_events = audited_benchmark\n'
+                               '    try:\n'
+                               '        yield observed\n'
+                               '    finally:\n'
+                               '        if performance:\n'
+                               '            h.benchmark_cuda_graph_or_events = original_benchmark\n'
+                               '        h._load_module = original\n'
+                               '    if violations:\n'
+                               '        raise CandidateDependencyViolation(violations[0])\n',
+                               '                    continue\n'
+                               '                @wraps(target)\n'
+                               '                def checked(*args, __target=target, **kwargs):\n'
+                               '                    return checked_candidate_invocation(__target, '
+                               'observed, *args, **kwargs)\n'
+                               '                setattr(mod, name, checked)\n'
+                               '        return mod\n'
+                               '\n'
+                               '    h._load_module = audited_loader\n'
+                               '    try:\n'
+                               '        yield observed\n'
+                               '    finally:\n'
+                               '        h._load_module = original\n')]},
+ 'delta_2': {'after_sha256': 'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4',
+             'before_sha256': '1956075168833134174de5aa8db9a34aa2ae655feb1f910c7f8a31096c366674',
+             'replacements': [('    return sources\n'
+                               '\n'
+                               '\n'
+                               'def check_candidate_control_plane(tree):\n'
+                               '    """Reject direct module-registry/control-frame access in '
+                               'candidate sources.\n'
+                               '\n'
+                               '    This applies to the normal task-local source closure, not '
+                               'installed FlyDSL\n'
+                               '    internals. Ordinary sys metadata stays available. These '
+                               'structural checks\n'
+                               '    supplement protected imports; they are not a Python security '
+                               'sandbox.\n'
+                               '    """\n'
+                               '    blocked = {"modules", "_getframe", "_current_frames", '
+                               '"getprofile", "setprofile",\n'
+                               '               "gettrace", "settrace", "exc_info", "exception", '
+                               '"_current_exceptions",\n'
+                               '               "monitoring", "__dict__", "__getattribute__"}\n'
+                               '    aliases = {}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        if isinstance(node, ast.Import):\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "sys":\n'
+                               '                    aliases[item.asname or "sys"] = "sys"\n'
+                               '        elif isinstance(node, ast.ImportFrom) and node.module == '
+                               '"sys":\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "*" or item.name in blocked:\n'
+                               '                    raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '                aliases[item.asname or item.name] = "sys." + '
+                               'item.name\n'
+                               '    def name(node):\n'
+                               '        if isinstance(node, ast.Name):\n'
+                               '            return aliases.get(node.id, node.id)\n'
+                               '        if isinstance(node, ast.Attribute):\n'
+                               '            return name(node.value) + "." + node.attr\n'
+                               '        return ""\n'
+                               '    # Follow ordinary object aliases without importing candidate '
+                               'code.\n'
+                               '    for _ in range(len(list(ast.walk(tree)))):\n'
+                               '        changed = False\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, (ast.Assign, ast.AnnAssign)):\n'
+                               '                value = name(node.value)\n'
+                               '                targets = node.targets if isinstance(node, '
+                               'ast.Assign) else [node.target]\n'
+                               '                if value == "sys" or value.startswith("sys."):\n'
+                               '                    for target in targets:\n'
+                               '                        if isinstance(target, ast.Name) and '
+                               'aliases.get(target.id) != value:\n'
+                               '                            aliases[target.id] = value\n'
+                               '                            changed = True\n'
+                               '        if not changed:\n'
+                               '            break\n'
+                               '    parents = {child: parent for parent in ast.walk(tree) for '
+                               'child in ast.iter_child_nodes(parent)}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        # A sys object cannot be passed to a helper/container that '
+                               'would hide a\n'
+                               '        # later registry lookup. Ordinary name aliases remain '
+                               'statically tracked.\n'
+                               '        if isinstance(node, ast.Name) and isinstance(node.ctx, '
+                               'ast.Load) and name(node) == "sys":\n'
+                               '            parent = parents.get(node)\n'
+                               '            attribute = isinstance(parent, ast.Attribute) and '
+                               'parent.value is node\n'
+                               '            alias = ((isinstance(parent, ast.Assign) and '
+                               'parent.value is node and\n'
+                               '                      all(isinstance(t, ast.Name) for t in '
+                               'parent.targets)) or\n'
+                               '                     (isinstance(parent, ast.AnnAssign) and '
+                               'parent.value is node and\n'
+                               '                      isinstance(parent.target, ast.Name)))\n'
+                               '            if not (attribute or alias):\n'
+                               '                raise ValueError("Candidate cannot pass the '
+                               'evaluator module registry/control frames through a sys object")\n'
+                               '        value = name(node)\n'
+                               '        if value.startswith("sys.") and value.split(".")[1] in '
+                               'blocked:\n'
+                               '            raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '        if isinstance(node, ast.Call) and isinstance(node.func, '
+                               'ast.Name):\n'
+                               '            if node.func.id in {"getattr", "vars"} and node.args '
+                               'and name(node.args[0]) == "sys":\n'
+                               '                raise ValueError("Dynamic sys attribute lookup is '
+                               'not a candidate implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Review the complete normal local-import closure, including '
+                               'helpers."""\n'
+                               '    paths = candidate_source_closure(paths)\n',
+                               '    return sources\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Review the complete normal local-import closure, including '
+                               'helpers."""\n'
+                               '    paths = candidate_source_closure(paths)\n'),
+                              ('    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        if final_language:\n'
+                               '            check_candidate_control_plane(tree)\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n',
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n')]},
+ 'delta_3': {'after_sha256': '69ac30476259d255af1605656dca60c7c9f85efb850c9c73f94d5970cbaf8e45',
+             'before_sha256': '69a9d3046677682de0213bb582c543552b08ecde9a16c2bb018e55c1eb625a49',
+             'replacements': [('"""Candidate-only execution audit with a per-call performance '
+                               'dispatch policy.\n'
+                               '\n'
+                               'Static dependency checks reject AITER and alternative kernel '
+                               'backends. This\n'
+                               'runtime check also catches PyTorch tensor-method/operator '
+                               'decompositions that\n',
+                               '"""Candidate-only execution audit, outside all benchmark timing '
+                               'windows.\n'
+                               '\n'
+                               'Static dependency checks reject AITER and alternative kernel '
+                               'backends. This\n'
+                               'runtime check also catches PyTorch tensor-method/operator '
+                               'decompositions that\n'),
+                              ('})\n'
+                               '\n'
+                               '\n'
+                               'class CandidateDependencyViolation(RuntimeError):\n'
+                               '    """A forbidden candidate computation, even if a capture '
+                               'fallback catches it."""\n'
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def candidate_preparation_only(violations=None):\n'
+                               '    from torch.utils._python_dispatch import TorchDispatchMode\n'
+                               '\n'
+                               '    class PreparationOnly(TorchDispatchMode):\n'
+                               '        def __torch_dispatch__(self, func, types, args=(), '
+                               'kwargs=None):\n'
+                               '            name = func._schema.name\n'
+                               '            if name not in PREPARATION_OPS:\n'
+                               '                reason = (f"Candidate issued non-preparation '
+                               'PyTorch operation {name}; "\n'
+                               '                          "operator computation must use FlyDSL '
+                               'kernels")\n'
+                               '                if violations is not None:\n'
+                               '                    violations.append(reason)\n'
+                               '                raise CandidateDependencyViolation(reason)\n'
+                               '            return func(*args, **(kwargs or {}))\n'
+                               '\n'
+                               '    with PreparationOnly():\n'
+                               '        yield\n'
+                               '\n'
+                               '\n'
+                               'def checked_candidate_invocation(fn, observed, *args, '
+                               '_policy_violations=None, **kwargs):\n'
+                               '    """Require FlyDSL launch evidence from this candidate call, '
+                               'not the oracle."""\n'
+                               '    seen = set()\n'
+                               '    previous = sys.getprofile()\n',
+                               '})\n'
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def candidate_preparation_only():\n'
+                               '    from torch.utils._python_dispatch import TorchDispatchMode\n'
+                               '\n'
+                               '    class PreparationOnly(TorchDispatchMode):\n'
+                               '        def __torch_dispatch__(self, func, types, args=(), '
+                               'kwargs=None):\n'
+                               '            name = func._schema.name\n'
+                               '            if name not in PREPARATION_OPS:\n'
+                               '                raise RuntimeError(\n'
+                               '                    f"Candidate issued non-preparation PyTorch '
+                               'operation {name}; "\n'
+                               '                    "operator computation must use FlyDSL '
+                               'kernels"\n'
+                               '                )\n'
+                               '            return func(*args, **(kwargs or {}))\n'
+                               '\n'
+                               '    with PreparationOnly():\n'
+                               '        yield\n'
+                               '\n'
+                               '\n'
+                               'def checked_candidate_invocation(fn, observed, *args, **kwargs):\n'
+                               '    """Require FlyDSL launch evidence from this candidate call, '
+                               'not the oracle."""\n'
+                               '    seen = set()\n'
+                               '    previous = sys.getprofile()\n'),
+                              ('            seen.add(frame.f_globals["__name__"] + "." + owner)\n'
+                               '    try:\n'
+                               '        sys.setprofile(profile)\n'
+                               '        with candidate_preparation_only(_policy_violations):\n'
+                               '            result = fn(*args, **kwargs)\n'
+                               '    finally:\n'
+                               '        sys.setprofile(previous)\n',
+                               '            seen.add(frame.f_globals["__name__"] + "." + owner)\n'
+                               '    try:\n'
+                               '        sys.setprofile(profile)\n'
+                               '        with candidate_preparation_only():\n'
+                               '            result = fn(*args, **kwargs)\n'
+                               '    finally:\n'
+                               '        sys.setprofile(previous)\n'),
+                              ('\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def audit_candidate_calls(h, *, performance=False):\n'
+                               '    observed = set()\n'
+                               '    if not getattr(h, "ARENA_FINAL_CANDIDATE", False):\n'
+                               '        yield observed\n'
+                               '        return\n'
+                               '    original_benchmark = getattr(h, '
+                               '"benchmark_cuda_graph_or_events", None)\n'
+                               '    benchmark_active = False\n'
+                               '    probe_active = False\n'
+                               '    violations = []\n'
+                               '    if performance and original_benchmark is None:\n'
+                               '        raise RuntimeError("Performance audit requires the '
+                               'protected canonical benchmark binding")\n'
+                               '\n'
+                               '    def candidate_call(target, *args, **kwargs):\n'
+                               '        if performance and not probe_active:\n'
+                               '            # This is the actual callback used by canonical '
+                               'warmup/capture/event\n'
+                               '            # timing. Only host-side dispatch policy runs here: no '
+                               'profiling,\n'
+                               '            # synchronization or additional device operations are '
+                               'inserted.\n'
+                               '            with candidate_preparation_only(violations):\n'
+                               '                return target(*args, **kwargs)\n'
+                               '        return checked_candidate_invocation(target, observed, '
+                               '*args, _policy_violations=violations, **kwargs)\n'
+                               '\n'
+                               '    def audited_benchmark(fn, *args, **kwargs):\n'
+                               '        nonlocal benchmark_active, probe_active\n'
+                               '        if benchmark_active:\n'
+                               '            raise RuntimeError("Nested candidate benchmark audit '
+                               'is not supported")\n'
+                               '        prepare = kwargs.get("prepare_fn")\n'
+                               '        if prepare is not None:\n'
+                               '            prepare()\n'
+                               '        try:\n'
+                               '            probe_active = True\n'
+                               '            # Probe this actual performance closure outside every '
+                               'clock/capture.\n'
+                               '            # Candidate wrappers observe FlyDSL calls; oracle '
+                               'calls are untouched.\n'
+                               '            fn()\n'
+                               '        finally:\n'
+                               '            probe_active = False\n'
+                               '            if prepare is not None:\n'
+                               '                prepare()\n'
+                               '        benchmark_active = True\n'
+                               '        try:\n'
+                               '            result = original_benchmark(fn, *args, **kwargs)\n'
+                               '            if violations:\n'
+                               '                raise CandidateDependencyViolation(violations[0])\n'
+                               '            return result\n'
+                               '        finally:\n'
+                               '            benchmark_active = False\n'
+                               '\n'
+                               '    original = h.load_module\n'
+                               '    def audited_loader():\n'
+                               '        with candidate_preparation_only(violations):\n'
+                               '            mod = original()\n'
+                               '        from types import SimpleNamespace\n'
+                               '        proxy = SimpleNamespace(**vars(mod))\n',
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def audit_candidate_calls(h):\n'
+                               '    observed = set()\n'
+                               '    if not getattr(h, "ARENA_FINAL_CANDIDATE", False):\n'
+                               '        yield observed\n'
+                               '        return\n'
+                               '    original = h.load_module\n'
+                               '    def audited_loader():\n'
+                               '        with candidate_preparation_only():\n'
+                               '            mod = original()\n'
+                               '        from types import SimpleNamespace\n'
+                               '        proxy = SimpleNamespace(**vars(mod))\n'),
+                              ('            target = getattr(mod, entry)\n'
+                               '            @wraps(target)\n'
+                               '            def checked(*args, __target=target, **kwargs):\n'
+                               '                return candidate_call(__target, *args, **kwargs)\n'
+                               '            setattr(proxy, entry, checked)\n'
+                               '        return proxy\n'
+                               '    h.load_module = audited_loader\n'
+                               '    if performance:\n'
+                               '        h.benchmark_cuda_graph_or_events = audited_benchmark\n'
+                               '    try:\n'
+                               '        yield observed\n'
+                               '    finally:\n'
+                               '        if performance:\n'
+                               '            h.benchmark_cuda_graph_or_events = original_benchmark\n'
+                               '        h.load_module = original\n'
+                               '    if violations:\n'
+                               '        raise CandidateDependencyViolation(violations[0])\n',
+                               '            target = getattr(mod, entry)\n'
+                               '            @wraps(target)\n'
+                               '            def checked(*args, __target=target, **kwargs):\n'
+                               '                return checked_candidate_invocation(__target, '
+                               'observed, *args, **kwargs)\n'
+                               '            setattr(proxy, entry, checked)\n'
+                               '        return proxy\n'
+                               '    h.load_module = audited_loader\n'
+                               '    try:\n'
+                               '        yield observed\n'
+                               '    finally:\n'
+                               '        h.load_module = original\n')]},
+ 'delta_4': {'after_sha256': '798f4313a8d8b57d4218899d1857e8ef81d4455aadd58d222228dfd3da6a0ab3',
+             'before_sha256': '0d3444ec0479011e40778813483c4e41898706af19f25a897b011d1116968355',
+             'replacements': [('"""Candidate-only execution audit with a per-call performance '
+                               'dispatch policy.\n'
+                               '\n'
+                               'Static dependency checks reject AITER and alternative kernel '
+                               'backends. This\n'
+                               'runtime check also catches PyTorch tensor-method/operator '
+                               'decompositions that\n',
+                               '"""Candidate-only execution audit, outside all benchmark timing '
+                               'windows.\n'
+                               '\n'
+                               'Static dependency checks reject AITER and alternative kernel '
+                               'backends. This\n'
+                               'runtime check also catches PyTorch tensor-method/operator '
+                               'decompositions that\n'),
+                              ('})\n'
+                               '\n'
+                               '\n'
+                               'class CandidateDependencyViolation(RuntimeError):\n'
+                               '    """A forbidden candidate computation, even if a capture '
+                               'fallback catches it."""\n'
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def candidate_preparation_only(violations=None):\n'
+                               '    from torch.utils._python_dispatch import TorchDispatchMode\n'
+                               '\n'
+                               '    class PreparationOnly(TorchDispatchMode):\n'
+                               '        def __torch_dispatch__(self, func, types, args=(), '
+                               'kwargs=None):\n'
+                               '            name = func._schema.name\n'
+                               '            if name not in PREPARATION_OPS:\n'
+                               '                reason = (f"Candidate issued non-preparation '
+                               'PyTorch operation {name}; "\n'
+                               '                          "operator computation must use FlyDSL '
+                               'kernels")\n'
+                               '                if violations is not None:\n'
+                               '                    violations.append(reason)\n'
+                               '                raise CandidateDependencyViolation(reason)\n'
+                               '            return func(*args, **(kwargs or {}))\n'
+                               '\n'
+                               '    with PreparationOnly():\n'
+                               '        yield\n'
+                               '\n'
+                               '\n'
+                               'def checked_candidate_invocation(fn, observed, *args, '
+                               '_policy_violations=None, **kwargs):\n'
+                               '    """Require FlyDSL launch evidence from this candidate call, '
+                               'not the oracle."""\n'
+                               '    seen = set()\n'
+                               '    previous = sys.getprofile()\n',
+                               '})\n'
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def candidate_preparation_only():\n'
+                               '    from torch.utils._python_dispatch import TorchDispatchMode\n'
+                               '\n'
+                               '    class PreparationOnly(TorchDispatchMode):\n'
+                               '        def __torch_dispatch__(self, func, types, args=(), '
+                               'kwargs=None):\n'
+                               '            name = func._schema.name\n'
+                               '            if name not in PREPARATION_OPS:\n'
+                               '                raise RuntimeError(\n'
+                               '                    f"Candidate issued non-preparation PyTorch '
+                               'operation {name}; "\n'
+                               '                    "operator computation must use FlyDSL '
+                               'kernels"\n'
+                               '                )\n'
+                               '            return func(*args, **(kwargs or {}))\n'
+                               '\n'
+                               '    with PreparationOnly():\n'
+                               '        yield\n'
+                               '\n'
+                               '\n'
+                               'def checked_candidate_invocation(fn, observed, *args, **kwargs):\n'
+                               '    """Require FlyDSL launch evidence from this candidate call, '
+                               'not the oracle."""\n'
+                               '    seen = set()\n'
+                               '    previous = sys.getprofile()\n'),
+                              ('            seen.add(frame.f_globals["__name__"] + "." + owner)\n'
+                               '    try:\n'
+                               '        sys.setprofile(profile)\n'
+                               '        with candidate_preparation_only(_policy_violations):\n'
+                               '            result = fn(*args, **kwargs)\n'
+                               '    finally:\n'
+                               '        sys.setprofile(previous)\n',
+                               '            seen.add(frame.f_globals["__name__"] + "." + owner)\n'
+                               '    try:\n'
+                               '        sys.setprofile(profile)\n'
+                               '        with candidate_preparation_only():\n'
+                               '            result = fn(*args, **kwargs)\n'
+                               '    finally:\n'
+                               '        sys.setprofile(previous)\n'),
+                              ('\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def audit_candidate_calls(h, *, performance=False):\n'
+                               '    observed = set()\n'
+                               '    if not getattr(h, "ARENA_FINAL_CANDIDATE", False):\n'
+                               '        yield observed\n'
+                               '        return\n'
+                               '    original_benchmark = getattr(h, '
+                               '"benchmark_cuda_graph_or_events", None)\n'
+                               '    benchmark_active = False\n'
+                               '    probe_active = False\n'
+                               '    violations = []\n'
+                               '    if performance and original_benchmark is None:\n'
+                               '        raise RuntimeError("Performance audit requires the '
+                               'protected canonical benchmark binding")\n'
+                               '\n'
+                               '    def candidate_call(target, *args, **kwargs):\n'
+                               '        if performance and not probe_active:\n'
+                               '            # This is the actual callback used by canonical '
+                               'warmup/capture/event\n'
+                               '            # timing. Only host-side dispatch policy runs here: no '
+                               'profiling,\n'
+                               '            # synchronization or additional device operations are '
+                               'inserted.\n'
+                               '            with candidate_preparation_only(violations):\n'
+                               '                return target(*args, **kwargs)\n'
+                               '        return checked_candidate_invocation(target, observed, '
+                               '*args, _policy_violations=violations, **kwargs)\n'
+                               '\n'
+                               '    def audited_benchmark(fn, *args, **kwargs):\n'
+                               '        nonlocal benchmark_active, probe_active\n'
+                               '        if benchmark_active:\n'
+                               '            raise RuntimeError("Nested candidate benchmark audit '
+                               'is not supported")\n'
+                               '        prepare = kwargs.get("prepare_fn")\n'
+                               '        if prepare is not None:\n'
+                               '            prepare()\n'
+                               '        try:\n'
+                               '            probe_active = True\n'
+                               '            # Probe this actual performance closure outside every '
+                               'clock/capture.\n'
+                               '            # Candidate wrappers observe FlyDSL calls; oracle '
+                               'calls are untouched.\n'
+                               '            fn()\n'
+                               '        finally:\n'
+                               '            probe_active = False\n'
+                               '            if prepare is not None:\n'
+                               '                prepare()\n'
+                               '        benchmark_active = True\n'
+                               '        try:\n'
+                               '            result = original_benchmark(fn, *args, **kwargs)\n'
+                               '            if violations:\n'
+                               '                raise CandidateDependencyViolation(violations[0])\n'
+                               '            return result\n'
+                               '        finally:\n'
+                               '            benchmark_active = False\n'
+                               '\n'
+                               '    original = h._load_source\n'
+                               '    def audited_loader():\n'
+                               '        with candidate_preparation_only(violations):\n'
+                               '            mod = original()\n'
+                               '        from types import SimpleNamespace\n'
+                               '        proxy = SimpleNamespace(**vars(mod))\n',
+                               '\n'
+                               '\n'
+                               '@contextmanager\n'
+                               'def audit_candidate_calls(h):\n'
+                               '    observed = set()\n'
+                               '    if not getattr(h, "ARENA_FINAL_CANDIDATE", False):\n'
+                               '        yield observed\n'
+                               '        return\n'
+                               '    original = h._load_source\n'
+                               '    def audited_loader():\n'
+                               '        with candidate_preparation_only():\n'
+                               '            mod = original()\n'
+                               '        from types import SimpleNamespace\n'
+                               '        proxy = SimpleNamespace(**vars(mod))\n'),
+                              ('            target = getattr(mod, entry)\n'
+                               '            @wraps(target)\n'
+                               '            def checked(*args, __target=target, **kwargs):\n'
+                               '                return candidate_call(__target, *args, **kwargs)\n'
+                               '            setattr(proxy, entry, checked)\n'
+                               '        return proxy\n'
+                               '    h._load_source = audited_loader\n'
+                               '    if performance:\n'
+                               '        h.benchmark_cuda_graph_or_events = audited_benchmark\n'
+                               '    try:\n'
+                               '        yield observed\n'
+                               '    finally:\n'
+                               '        if performance:\n'
+                               '            h.benchmark_cuda_graph_or_events = original_benchmark\n'
+                               '        h._load_source = original\n'
+                               '    if violations:\n'
+                               '        raise CandidateDependencyViolation(violations[0])\n',
+                               '            target = getattr(mod, entry)\n'
+                               '            @wraps(target)\n'
+                               '            def checked(*args, __target=target, **kwargs):\n'
+                               '                return checked_candidate_invocation(__target, '
+                               'observed, *args, **kwargs)\n'
+                               '            setattr(proxy, entry, checked)\n'
+                               '        return proxy\n'
+                               '    h._load_source = audited_loader\n'
+                               '    try:\n'
+                               '        yield observed\n'
+                               '    finally:\n'
+                               '        h._load_source = original\n')]},
+ 'delta_5': {'after_sha256': 'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731',
+             'before_sha256': '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675',
+             'replacements': [('    return "implemented" if any(states) else "unimplemented", '
+                               'states\n'
+                               '\n'
+                               '\n'
+                               'def candidate_source_closure(paths):\n'
+                               '    """Collect normal task-local Python imports without importing '
+                               'candidate code.\n'
+                               '\n'
+                               '    Installed libraries are not traversed. This supplements the '
+                               'existing static\n'
+                               '    dependency and runtime-call checks; it is not a Python '
+                               'security sandbox.\n'
+                               '    """\n'
+                               '    root = ROOT.resolve(strict=True)\n'
+                               '    sources, queued = [], set()\n'
+                               '    protected = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime",\n'
+                               '                 "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    reserved = (set(sys.builtin_module_names) | '
+                               'set(sys.stdlib_module_names) |\n'
+                               '                {"torch", "flydsl", "triton", "aiter", "numpy", '
+                               '"typing_extensions"})\n'
+                               '\n'
+                               '    def checked(path, directory=False):\n'
+                               '        path = Path(path).absolute()\n'
+                               '        if not path.is_relative_to(root):\n'
+                               '            raise ValueError(f"Candidate source escapes task '
+                               'workspace: {path}")\n'
+                               '        current = root\n'
+                               '        for part in path.relative_to(root).parts:\n'
+                               '            if part in {".", ".."}:\n'
+                               '                raise ValueError("Candidate source has '
+                               'non-normalized components")\n'
+                               '            current = current / part\n'
+                               '            if current.is_symlink():\n'
+                               '                raise ValueError(f"Candidate source symlink is not '
+                               'allowed: {current}")\n'
+                               '        if not path.resolve(strict=True).is_relative_to(root):\n'
+                               '            raise ValueError("Candidate source escapes task '
+                               'workspace")\n'
+                               '        if not (path.is_dir() if directory else path.is_file() and '
+                               'path.suffix == ".py"):\n'
+                               '            raise ValueError(f"Candidate Python source is missing '
+                               'or invalid: {path}")\n'
+                               '        return path\n'
+                               '\n'
+                               '    def add(path):\n'
+                               '        path = checked(path)\n'
+                               '        if path not in queued:\n'
+                               '            queued.add(path)\n'
+                               '            sources.append(path)\n'
+                               '\n'
+                               '    def resolve(parts, *, optional=False):\n'
+                               '        if not parts:\n'
+                               '            return\n'
+                               '        if set(parts) & protected:\n'
+                               '            raise ValueError(f"Protected dependency in candidate: '
+                               '{\'.\'.join(parts)}")\n'
+                               '        current, local = root, False\n'
+                               '        for index, name in enumerate(parts):\n'
+                               '            directory, module = current / name, current / (name + '
+                               '".py")\n'
+                               '            if directory.exists() or directory.is_symlink():\n'
+                               '                checked(directory, directory=True)\n'
+                               '                if index == 0 and name in reserved:\n'
+                               '                    raise ValueError(f"Candidate shadows library '
+                               'module: {name}")\n'
+                               '                local = True\n'
+                               '                initializer = directory / "__init__.py"\n'
+                               '                if initializer.exists() or '
+                               'initializer.is_symlink():\n'
+                               '                    add(initializer)\n'
+                               '                current = directory\n'
+                               '            elif module.exists() or module.is_symlink():\n'
+                               '                if index == 0 and name in reserved:\n'
+                               '                    raise ValueError(f"Candidate shadows library '
+                               'module: {name}")\n'
+                               '                add(module)\n'
+                               '                if index != len(parts) - 1 and not optional:\n'
+                               '                    raise ValueError(f"Local module is not a '
+                               'package: {\'.\'.join(parts)}")\n'
+                               '                return\n'
+                               '            else:\n'
+                               '                if local and not optional:\n'
+                               '                    raise ValueError(f"Missing task-local import: '
+                               '{\'.\'.join(parts)}")\n'
+                               '                return  # External installed dependency, or a '
+                               'from-import value.\n'
+                               '\n'
+                               '    for path in paths:\n'
+                               '        add(path)\n'
+                               '    index = 0\n'
+                               '    while index < len(sources):\n'
+                               '        path = sources[index]\n'
+                               '        index += 1\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        package = list(path.relative_to(root).parent.parts)\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, ast.Import):\n'
+                               '                for alias in node.names:\n'
+                               '                    resolve(alias.name.split("."))\n'
+                               '            elif isinstance(node, ast.ImportFrom):\n'
+                               '                if node.level:\n'
+                               '                    if node.level > len(package):\n'
+                               '                        raise ValueError("Relative candidate '
+                               'import escapes its task package")\n'
+                               '                    base = package[:len(package) - node.level + '
+                               '1]\n'
+                               '                else:\n'
+                               '                    base = []\n'
+                               '                parts = base + (node.module.split(".") if '
+                               'node.module else [])\n'
+                               '                resolve(parts, optional=not node.level)\n'
+                               '                for alias in node.names:\n'
+                               '                    if alias.name != "*":\n'
+                               '                        resolve(parts + alias.name.split("."), '
+                               'optional=True)\n'
+                               '    return sources\n'
+                               '\n'
+                               'def check_candidate_control_plane(tree):\n'
+                               '    """Reject direct module-registry/control-frame access in '
+                               'candidate sources.\n'
+                               '\n'
+                               '    This applies to the normal task-local source closure, not '
+                               'installed FlyDSL\n'
+                               '    internals. Ordinary sys metadata stays available. These '
+                               'structural checks\n'
+                               '    supplement protected imports; they are not a Python security '
+                               'sandbox.\n'
+                               '    """\n'
+                               '    blocked = {"modules", "_getframe", "_current_frames", '
+                               '"getprofile", "setprofile",\n'
+                               '               "gettrace", "settrace", "exc_info", "exception", '
+                               '"_current_exceptions",\n'
+                               '               "monitoring", "__dict__", "__getattribute__"}\n'
+                               '    aliases = {}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        if isinstance(node, ast.Import):\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "sys":\n'
+                               '                    aliases[item.asname or "sys"] = "sys"\n'
+                               '        elif isinstance(node, ast.ImportFrom) and node.module == '
+                               '"sys":\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "*" or item.name in blocked:\n'
+                               '                    raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '                aliases[item.asname or item.name] = "sys." + '
+                               'item.name\n'
+                               '    def name(node):\n'
+                               '        if isinstance(node, ast.Name):\n'
+                               '            return aliases.get(node.id, node.id)\n'
+                               '        if isinstance(node, ast.Attribute):\n'
+                               '            return name(node.value) + "." + node.attr\n'
+                               '        return ""\n'
+                               '    # Follow ordinary object aliases without importing candidate '
+                               'code.\n'
+                               '    for _ in range(len(list(ast.walk(tree)))):\n'
+                               '        changed = False\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, (ast.Assign, ast.AnnAssign)):\n'
+                               '                value = name(node.value)\n'
+                               '                targets = node.targets if isinstance(node, '
+                               'ast.Assign) else [node.target]\n'
+                               '                if value == "sys" or value.startswith("sys."):\n'
+                               '                    for target in targets:\n'
+                               '                        if isinstance(target, ast.Name) and '
+                               'aliases.get(target.id) != value:\n'
+                               '                            aliases[target.id] = value\n'
+                               '                            changed = True\n'
+                               '        if not changed:\n'
+                               '            break\n'
+                               '    parents = {child: parent for parent in ast.walk(tree) for '
+                               'child in ast.iter_child_nodes(parent)}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        # A sys object cannot be passed to a helper/container that '
+                               'would hide a\n'
+                               '        # later registry lookup. Ordinary name aliases remain '
+                               'statically tracked.\n'
+                               '        if isinstance(node, ast.Name) and isinstance(node.ctx, '
+                               'ast.Load) and name(node) == "sys":\n'
+                               '            parent = parents.get(node)\n'
+                               '            attribute = isinstance(parent, ast.Attribute) and '
+                               'parent.value is node\n'
+                               '            alias = ((isinstance(parent, ast.Assign) and '
+                               'parent.value is node and\n'
+                               '                      all(isinstance(t, ast.Name) for t in '
+                               'parent.targets)) or\n'
+                               '                     (isinstance(parent, ast.AnnAssign) and '
+                               'parent.value is node and\n'
+                               '                      isinstance(parent.target, ast.Name)))\n'
+                               '            if not (attribute or alias):\n'
+                               '                raise ValueError("Candidate cannot pass the '
+                               'evaluator module registry/control frames through a sys object")\n'
+                               '        value = name(node)\n'
+                               '        if value.startswith("sys.") and value.split(".")[1] in '
+                               'blocked:\n'
+                               '            raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '        if isinstance(node, ast.Call) and isinstance(node.func, '
+                               'ast.Name):\n'
+                               '            if node.func.id in {"getattr", "vars"} and node.args '
+                               'and name(node.args[0]) == "sys":\n'
+                               '                raise ValueError("Dynamic sys attribute lookup is '
+                               'not a candidate implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Review final-language local helpers without changing the '
+                               'initial baseline policy."""\n'
+                               '    if final_language:\n'
+                               '        paths = candidate_source_closure(paths)\n'
+                               '    forbidden = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime", "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        if final_language:\n'
+                               '            check_candidate_control_plane(tree)\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n',
+                               '    return "implemented" if any(states) else "unimplemented", '
+                               'states\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Enforce declared implementation dependencies, including '
+                               'from X import Y."""\n'
+                               '    forbidden = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime", "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n'),
+                              ('                raise ValueError(f"Dynamic implementation loading '
+                               'is not allowed: {name}")\n'
+                               '    if final_language and not backend_seen:\n'
+                               '        raise ValueError("Candidate does not declare a FlyDSL '
+                               'implementation dependency")\n'
+                               '\n'
+                               '    return paths\n'
+                               '\n'
+                               '\n'
+                               'def load_module(name, path):\n',
+                               '                raise ValueError(f"Dynamic implementation loading '
+                               'is not allowed: {name}")\n'
+                               '    if final_language and not backend_seen:\n'
+                               '        raise ValueError("Candidate does not declare a FlyDSL '
+                               'implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def load_module(name, path):\n'),
+                              ('            initial_phase = '
+                               '__import__("os").environ.get("ARENA_EVAL_PHASE") == '
+                               '"task_validation"\n'
+                               '            final_language = role == "candidate" and not '
+                               'initial_phase or cfg["candidate"].get("initial_language") == '
+                               '"flydsl"\n'
+                               '            paths = [local_path(p) for p in '
+                               'cfg["baseline"].get("source_files", [])] if provided else '
+                               'candidate_files(cfg)\n'
+                               '            if not provided: paths = check_dependencies(paths, '
+                               'final_language)\n'
+                               '            if action == "compile":\n'
+                               '                for path in paths:\n'
+                               '                    if path.suffix == ".py": '
+                               'compile(path.read_text(), str(path), "exec")\n',
+                               '            initial_phase = '
+                               '__import__("os").environ.get("ARENA_EVAL_PHASE") == '
+                               '"task_validation"\n'
+                               '            final_language = role == "candidate" and not '
+                               'initial_phase or cfg["candidate"].get("initial_language") == '
+                               '"flydsl"\n'
+                               '            paths = [local_path(p) for p in '
+                               'cfg["baseline"].get("source_files", [])] if provided else '
+                               'candidate_files(cfg)\n'
+                               '            if not provided: check_dependencies(paths, '
+                               'final_language)\n'
+                               '            if action == "compile":\n'
+                               '                for path in paths:\n'
+                               '                    if path.suffix == ".py": '
+                               'compile(path.read_text(), str(path), "exec")\n')]},
+ 'delta_6': {'after_sha256': 'bd4b1f9c4ccab6918be40d6427f0f32665deb58e7310f79f40c8ea3f3b794a7d',
+             'before_sha256': '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c',
+             'replacements': [('    return "implemented" if any(states) else "unimplemented", '
+                               'states\n'
+                               '\n'
+                               '\n'
+                               'def candidate_source_closure(paths):\n'
+                               '    """Collect normal task-local Python imports without importing '
+                               'candidate code.\n'
+                               '\n'
+                               '    Installed libraries are not traversed. This supplements the '
+                               'existing static\n'
+                               '    dependency and runtime-call checks; it is not a Python '
+                               'security sandbox.\n'
+                               '    """\n'
+                               '    root = ROOT.resolve(strict=True)\n'
+                               '    sources, queued = [], set()\n'
+                               '    protected = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime",\n'
+                               '                 "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    reserved = (set(sys.builtin_module_names) | '
+                               'set(sys.stdlib_module_names) |\n'
+                               '                {"torch", "flydsl", "triton", "aiter", "numpy", '
+                               '"typing_extensions"})\n'
+                               '\n'
+                               '    def checked(path, directory=False):\n'
+                               '        path = Path(path).absolute()\n'
+                               '        if not path.is_relative_to(root):\n'
+                               '            raise ValueError(f"Candidate source escapes task '
+                               'workspace: {path}")\n'
+                               '        current = root\n'
+                               '        for part in path.relative_to(root).parts:\n'
+                               '            if part in {".", ".."}:\n'
+                               '                raise ValueError("Candidate source has '
+                               'non-normalized components")\n'
+                               '            current = current / part\n'
+                               '            if current.is_symlink():\n'
+                               '                raise ValueError(f"Candidate source symlink is not '
+                               'allowed: {current}")\n'
+                               '        if not path.resolve(strict=True).is_relative_to(root):\n'
+                               '            raise ValueError("Candidate source escapes task '
+                               'workspace")\n'
+                               '        if not (path.is_dir() if directory else path.is_file() and '
+                               'path.suffix == ".py"):\n'
+                               '            raise ValueError(f"Candidate Python source is missing '
+                               'or invalid: {path}")\n'
+                               '        return path\n'
+                               '\n'
+                               '    def add(path):\n'
+                               '        path = checked(path)\n'
+                               '        if path not in queued:\n'
+                               '            queued.add(path)\n'
+                               '            sources.append(path)\n'
+                               '\n'
+                               '    def resolve(parts, *, optional=False):\n'
+                               '        if not parts:\n'
+                               '            return\n'
+                               '        if set(parts) & protected:\n'
+                               '            raise ValueError(f"Protected dependency in candidate: '
+                               '{\'.\'.join(parts)}")\n'
+                               '        current, local = root, False\n'
+                               '        for index, name in enumerate(parts):\n'
+                               '            directory, module = current / name, current / (name + '
+                               '".py")\n'
+                               '            if directory.exists() or directory.is_symlink():\n'
+                               '                checked(directory, directory=True)\n'
+                               '                if index == 0 and name in reserved:\n'
+                               '                    raise ValueError(f"Candidate shadows library '
+                               'module: {name}")\n'
+                               '                local = True\n'
+                               '                initializer = directory / "__init__.py"\n'
+                               '                if initializer.exists() or '
+                               'initializer.is_symlink():\n'
+                               '                    add(initializer)\n'
+                               '                current = directory\n'
+                               '            elif module.exists() or module.is_symlink():\n'
+                               '                if index == 0 and name in reserved:\n'
+                               '                    raise ValueError(f"Candidate shadows library '
+                               'module: {name}")\n'
+                               '                add(module)\n'
+                               '                if index != len(parts) - 1 and not optional:\n'
+                               '                    raise ValueError(f"Local module is not a '
+                               'package: {\'.\'.join(parts)}")\n'
+                               '                return\n'
+                               '            else:\n'
+                               '                if local and not optional:\n'
+                               '                    raise ValueError(f"Missing task-local import: '
+                               '{\'.\'.join(parts)}")\n'
+                               '                return  # External installed dependency, or a '
+                               'from-import value.\n'
+                               '\n'
+                               '    for path in paths:\n'
+                               '        add(path)\n'
+                               '    index = 0\n'
+                               '    while index < len(sources):\n'
+                               '        path = sources[index]\n'
+                               '        index += 1\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        package = list(path.relative_to(root).parent.parts)\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, ast.Import):\n'
+                               '                for alias in node.names:\n'
+                               '                    resolve(alias.name.split("."))\n'
+                               '            elif isinstance(node, ast.ImportFrom):\n'
+                               '                if node.level:\n'
+                               '                    if node.level > len(package):\n'
+                               '                        raise ValueError("Relative candidate '
+                               'import escapes its task package")\n'
+                               '                    base = package[:len(package) - node.level + '
+                               '1]\n'
+                               '                else:\n'
+                               '                    base = []\n'
+                               '                parts = base + (node.module.split(".") if '
+                               'node.module else [])\n'
+                               '                resolve(parts, optional=not node.level)\n'
+                               '                for alias in node.names:\n'
+                               '                    if alias.name != "*":\n'
+                               '                        resolve(parts + alias.name.split("."), '
+                               'optional=True)\n'
+                               '    return sources\n'
+                               '\n'
+                               'def check_candidate_control_plane(tree):\n'
+                               '    """Reject direct module-registry/control-frame access in '
+                               'candidate sources.\n'
+                               '\n'
+                               '    This applies to the normal task-local source closure, not '
+                               'installed FlyDSL\n'
+                               '    internals. Ordinary sys metadata stays available. These '
+                               'structural checks\n'
+                               '    supplement protected imports; they are not a Python security '
+                               'sandbox.\n'
+                               '    """\n'
+                               '    blocked = {"modules", "_getframe", "_current_frames", '
+                               '"getprofile", "setprofile",\n'
+                               '               "gettrace", "settrace", "exc_info", "exception", '
+                               '"_current_exceptions",\n'
+                               '               "monitoring", "__dict__", "__getattribute__"}\n'
+                               '    aliases = {}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        if isinstance(node, ast.Import):\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "sys":\n'
+                               '                    aliases[item.asname or "sys"] = "sys"\n'
+                               '        elif isinstance(node, ast.ImportFrom) and node.module == '
+                               '"sys":\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "*" or item.name in blocked:\n'
+                               '                    raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '                aliases[item.asname or item.name] = "sys." + '
+                               'item.name\n'
+                               '    def name(node):\n'
+                               '        if isinstance(node, ast.Name):\n'
+                               '            return aliases.get(node.id, node.id)\n'
+                               '        if isinstance(node, ast.Attribute):\n'
+                               '            return name(node.value) + "." + node.attr\n'
+                               '        return ""\n'
+                               '    # Follow ordinary object aliases without importing candidate '
+                               'code.\n'
+                               '    for _ in range(len(list(ast.walk(tree)))):\n'
+                               '        changed = False\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, (ast.Assign, ast.AnnAssign)):\n'
+                               '                value = name(node.value)\n'
+                               '                targets = node.targets if isinstance(node, '
+                               'ast.Assign) else [node.target]\n'
+                               '                if value == "sys" or value.startswith("sys."):\n'
+                               '                    for target in targets:\n'
+                               '                        if isinstance(target, ast.Name) and '
+                               'aliases.get(target.id) != value:\n'
+                               '                            aliases[target.id] = value\n'
+                               '                            changed = True\n'
+                               '        if not changed:\n'
+                               '            break\n'
+                               '    parents = {child: parent for parent in ast.walk(tree) for '
+                               'child in ast.iter_child_nodes(parent)}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        # A sys object cannot be passed to a helper/container that '
+                               'would hide a\n'
+                               '        # later registry lookup. Ordinary name aliases remain '
+                               'statically tracked.\n'
+                               '        if isinstance(node, ast.Name) and isinstance(node.ctx, '
+                               'ast.Load) and name(node) == "sys":\n'
+                               '            parent = parents.get(node)\n'
+                               '            attribute = isinstance(parent, ast.Attribute) and '
+                               'parent.value is node\n'
+                               '            alias = ((isinstance(parent, ast.Assign) and '
+                               'parent.value is node and\n'
+                               '                      all(isinstance(t, ast.Name) for t in '
+                               'parent.targets)) or\n'
+                               '                     (isinstance(parent, ast.AnnAssign) and '
+                               'parent.value is node and\n'
+                               '                      isinstance(parent.target, ast.Name)))\n'
+                               '            if not (attribute or alias):\n'
+                               '                raise ValueError("Candidate cannot pass the '
+                               'evaluator module registry/control frames through a sys object")\n'
+                               '        value = name(node)\n'
+                               '        if value.startswith("sys.") and value.split(".")[1] in '
+                               'blocked:\n'
+                               '            raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '        if isinstance(node, ast.Call) and isinstance(node.func, '
+                               'ast.Name):\n'
+                               '            if node.func.id in {"getattr", "vars"} and node.args '
+                               'and name(node.args[0]) == "sys":\n'
+                               '                raise ValueError("Dynamic sys attribute lookup is '
+                               'not a candidate implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Review final-language local helpers without changing the '
+                               'initial baseline policy."""\n'
+                               '    if final_language:\n'
+                               '        paths = candidate_source_closure(paths)\n'
+                               '    forbidden = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime", "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        if final_language:\n'
+                               '            check_candidate_control_plane(tree)\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n',
+                               '    return "implemented" if any(states) else "unimplemented", '
+                               'states\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Enforce declared implementation dependencies, including '
+                               'from X import Y."""\n'
+                               '    forbidden = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime", "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n'),
+                              ('                raise ValueError(f"Dynamic implementation loading '
+                               'is not allowed: {name}")\n'
+                               '    if final_language and not backend_seen:\n'
+                               '        raise ValueError("Candidate does not declare a FlyDSL '
+                               'implementation dependency")\n'
+                               '\n'
+                               '    return paths\n'
+                               '\n'
+                               '\n'
+                               'def load_module(name, path):\n',
+                               '                raise ValueError(f"Dynamic implementation loading '
+                               'is not allowed: {name}")\n'
+                               '    if final_language and not backend_seen:\n'
+                               '        raise ValueError("Candidate does not declare a FlyDSL '
+                               'implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def load_module(name, path):\n'),
+                              ('            initial_phase = '
+                               '__import__("os").environ.get("ARENA_EVAL_PHASE") == '
+                               '"task_validation"\n'
+                               '            final_language = role == "candidate" and not '
+                               'initial_phase or cfg["candidate"].get("initial_language") == '
+                               '"flydsl"\n'
+                               '            paths = [local_path(p) for p in '
+                               'cfg["baseline"].get("source_files", [])] if provided else '
+                               'candidate_files(cfg)\n'
+                               '            if not provided: paths = check_dependencies(paths, '
+                               'final_language)\n'
+                               '            if action == "compile":\n'
+                               '                for path in paths:\n'
+                               '                    if path.suffix == ".py": '
+                               'compile(path.read_text(), str(path), "exec")\n',
+                               '            initial_phase = '
+                               '__import__("os").environ.get("ARENA_EVAL_PHASE") == '
+                               '"task_validation"\n'
+                               '            final_language = role == "candidate" and not '
+                               'initial_phase or cfg["candidate"].get("initial_language") == '
+                               '"flydsl"\n'
+                               '            paths = [local_path(p) for p in '
+                               'cfg["baseline"].get("source_files", [])] if provided else '
+                               'candidate_files(cfg)\n'
+                               '            if not provided: check_dependencies(paths, '
+                               'final_language)\n'
+                               '            if action == "compile":\n'
+                               '                for path in paths:\n'
+                               '                    if path.suffix == ".py": '
+                               'compile(path.read_text(), str(path), "exec")\n')]},
+ 'delta_7': {'after_sha256': '83d47bbbcec40bf6a97fdbaee147bd6bbebb9c408aa2bf04cb4092439263ef13',
+             'before_sha256': '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675',
+             'replacements': [('    cfg = config() if cfg is None else cfg\n'
+                               '    files = []\n'
+                               '    for item in cfg["candidate"]["editable"]:\n'
+                               '        relative = item if isinstance(item, str) else '
+                               'item["path"]\n'
+                               '        local_path(relative)  # Validate containment without '
+                               'hiding source symlinks.\n'
+                               '        path = ROOT / relative\n'
+                               '        if isinstance(item, dict) and item.get("scope") == '
+                               '"tree":\n'
+                               '            files.extend(sorted(path.rglob("*.py")))\n'
+                               '        else:\n',
+                               '    cfg = config() if cfg is None else cfg\n'
+                               '    files = []\n'
+                               '    for item in cfg["candidate"]["editable"]:\n'
+                               '        path = local_path(item if isinstance(item, str) else '
+                               'item["path"])\n'
+                               '        if isinstance(item, dict) and item.get("scope") == '
+                               '"tree":\n'
+                               '            files.extend(sorted(path.rglob("*.py")))\n'
+                               '        else:\n'),
+                              ('    return "implemented" if any(states) else "unimplemented", '
+                               'states\n'
+                               '\n'
+                               '\n'
+                               'def candidate_source_closure(paths):\n'
+                               '    """Collect normal task-local Python imports without importing '
+                               'candidate code.\n'
+                               '\n'
+                               '    Installed libraries are not traversed. This supplements the '
+                               'existing static\n'
+                               '    dependency and runtime-call checks; it is not a Python '
+                               'security sandbox.\n'
+                               '    """\n'
+                               '    root = ROOT.resolve(strict=True)\n'
+                               '    sources, queued = [], set()\n'
+                               '    protected = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime",\n'
+                               '                 "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    reserved = (set(sys.builtin_module_names) | '
+                               'set(sys.stdlib_module_names) |\n'
+                               '                {"torch", "flydsl", "triton", "aiter", "numpy", '
+                               '"typing_extensions"})\n'
+                               '\n'
+                               '    def checked(path, directory=False):\n'
+                               '        path = Path(path).absolute()\n'
+                               '        if not path.is_relative_to(root):\n'
+                               '            raise ValueError(f"Candidate source escapes task '
+                               'workspace: {path}")\n'
+                               '        current = root\n'
+                               '        for part in path.relative_to(root).parts:\n'
+                               '            if part in {".", ".."}:\n'
+                               '                raise ValueError("Candidate source has '
+                               'non-normalized components")\n'
+                               '            current = current / part\n'
+                               '            if current.is_symlink():\n'
+                               '                raise ValueError(f"Candidate source symlink is not '
+                               'allowed: {current}")\n'
+                               '        if not path.resolve(strict=True).is_relative_to(root):\n'
+                               '            raise ValueError("Candidate source escapes task '
+                               'workspace")\n'
+                               '        if not (path.is_dir() if directory else path.is_file() and '
+                               'path.suffix == ".py"):\n'
+                               '            raise ValueError(f"Candidate Python source is missing '
+                               'or invalid: {path}")\n'
+                               '        return path\n'
+                               '\n'
+                               '    def add(path):\n'
+                               '        path = checked(path)\n'
+                               '        if path not in queued:\n'
+                               '            queued.add(path)\n'
+                               '            sources.append(path)\n'
+                               '\n'
+                               '    def resolve(parts, *, optional=False):\n'
+                               '        if not parts:\n'
+                               '            return\n'
+                               '        if set(parts) & protected:\n'
+                               '            raise ValueError(f"Protected dependency in candidate: '
+                               '{\'.\'.join(parts)}")\n'
+                               '        current, local = root, False\n'
+                               '        for index, name in enumerate(parts):\n'
+                               '            directory, module = current / name, current / (name + '
+                               '".py")\n'
+                               '            if directory.exists() or directory.is_symlink():\n'
+                               '                checked(directory, directory=True)\n'
+                               '                if index == 0 and name in reserved:\n'
+                               '                    raise ValueError(f"Candidate shadows library '
+                               'module: {name}")\n'
+                               '                local = True\n'
+                               '                initializer = directory / "__init__.py"\n'
+                               '                if initializer.exists() or '
+                               'initializer.is_symlink():\n'
+                               '                    add(initializer)\n'
+                               '                current = directory\n'
+                               '            elif module.exists() or module.is_symlink():\n'
+                               '                if index == 0 and name in reserved:\n'
+                               '                    raise ValueError(f"Candidate shadows library '
+                               'module: {name}")\n'
+                               '                add(module)\n'
+                               '                if index != len(parts) - 1 and not optional:\n'
+                               '                    raise ValueError(f"Local module is not a '
+                               'package: {\'.\'.join(parts)}")\n'
+                               '                return\n'
+                               '            else:\n'
+                               '                if local and not optional:\n'
+                               '                    raise ValueError(f"Missing task-local import: '
+                               '{\'.\'.join(parts)}")\n'
+                               '                return  # External installed dependency, or a '
+                               'from-import value.\n'
+                               '\n'
+                               '    for path in paths:\n'
+                               '        add(path)\n'
+                               '    index = 0\n'
+                               '    while index < len(sources):\n'
+                               '        path = sources[index]\n'
+                               '        index += 1\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        package = list(path.relative_to(root).parent.parts)\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, ast.Import):\n'
+                               '                for alias in node.names:\n'
+                               '                    resolve(alias.name.split("."))\n'
+                               '            elif isinstance(node, ast.ImportFrom):\n'
+                               '                if node.level:\n'
+                               '                    if node.level > len(package):\n'
+                               '                        raise ValueError("Relative candidate '
+                               'import escapes its task package")\n'
+                               '                    base = package[:len(package) - node.level + '
+                               '1]\n'
+                               '                else:\n'
+                               '                    base = []\n'
+                               '                parts = base + (node.module.split(".") if '
+                               'node.module else [])\n'
+                               '                resolve(parts, optional=not node.level)\n'
+                               '                for alias in node.names:\n'
+                               '                    if alias.name != "*":\n'
+                               '                        resolve(parts + alias.name.split("."), '
+                               'optional=True)\n'
+                               '    return sources\n'
+                               '\n'
+                               '\n'
+                               'def check_candidate_control_plane(tree):\n'
+                               '    """Reject direct module-registry/control-frame access in '
+                               'candidate sources.\n'
+                               '\n'
+                               '    This applies to the normal task-local source closure, not '
+                               'installed FlyDSL\n'
+                               '    internals. Ordinary sys metadata stays available. These '
+                               'structural checks\n'
+                               '    supplement protected imports; they are not a Python security '
+                               'sandbox.\n'
+                               '    """\n'
+                               '    blocked = {"modules", "_getframe", "_current_frames", '
+                               '"getprofile", "setprofile",\n'
+                               '               "gettrace", "settrace", "exc_info", "exception", '
+                               '"_current_exceptions",\n'
+                               '               "monitoring", "__dict__", "__getattribute__"}\n'
+                               '    aliases = {}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        if isinstance(node, ast.Import):\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "sys":\n'
+                               '                    aliases[item.asname or "sys"] = "sys"\n'
+                               '        elif isinstance(node, ast.ImportFrom) and node.module == '
+                               '"sys":\n'
+                               '            for item in node.names:\n'
+                               '                if item.name == "*" or item.name in blocked:\n'
+                               '                    raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '                aliases[item.asname or item.name] = "sys." + '
+                               'item.name\n'
+                               '    def name(node):\n'
+                               '        if isinstance(node, ast.Name):\n'
+                               '            return aliases.get(node.id, node.id)\n'
+                               '        if isinstance(node, ast.Attribute):\n'
+                               '            return name(node.value) + "." + node.attr\n'
+                               '        return ""\n'
+                               '    # Follow ordinary object aliases without importing candidate '
+                               'code.\n'
+                               '    for _ in range(len(list(ast.walk(tree)))):\n'
+                               '        changed = False\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            if isinstance(node, (ast.Assign, ast.AnnAssign)):\n'
+                               '                value = name(node.value)\n'
+                               '                targets = node.targets if isinstance(node, '
+                               'ast.Assign) else [node.target]\n'
+                               '                if value == "sys" or value.startswith("sys."):\n'
+                               '                    for target in targets:\n'
+                               '                        if isinstance(target, ast.Name) and '
+                               'aliases.get(target.id) != value:\n'
+                               '                            aliases[target.id] = value\n'
+                               '                            changed = True\n'
+                               '        if not changed:\n'
+                               '            break\n'
+                               '    parents = {child: parent for parent in ast.walk(tree) for '
+                               'child in ast.iter_child_nodes(parent)}\n'
+                               '    for node in ast.walk(tree):\n'
+                               '        # A sys object cannot be passed to a helper/container that '
+                               'would hide a\n'
+                               '        # later registry lookup. Ordinary name aliases remain '
+                               'statically tracked.\n'
+                               '        if isinstance(node, ast.Name) and isinstance(node.ctx, '
+                               'ast.Load) and name(node) == "sys":\n'
+                               '            parent = parents.get(node)\n'
+                               '            attribute = isinstance(parent, ast.Attribute) and '
+                               'parent.value is node\n'
+                               '            alias = ((isinstance(parent, ast.Assign) and '
+                               'parent.value is node and\n'
+                               '                      all(isinstance(t, ast.Name) for t in '
+                               'parent.targets)) or\n'
+                               '                     (isinstance(parent, ast.AnnAssign) and '
+                               'parent.value is node and\n'
+                               '                      isinstance(parent.target, ast.Name)))\n'
+                               '            if not (attribute or alias):\n'
+                               '                raise ValueError("Candidate cannot pass the '
+                               'evaluator module registry/control frames through a sys object")\n'
+                               '        value = name(node)\n'
+                               '        if value.startswith("sys.") and value.split(".")[1] in '
+                               'blocked:\n'
+                               '            raise ValueError("Candidate cannot access the '
+                               'evaluator module registry/control frames")\n'
+                               '        if isinstance(node, ast.Call) and isinstance(node.func, '
+                               'ast.Name):\n'
+                               '            if node.func.id in {"getattr", "vars"} and node.args '
+                               'and name(node.args[0]) == "sys":\n'
+                               '                raise ValueError("Dynamic sys attribute lookup is '
+                               'not a candidate implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Enforce declared implementation dependencies, including '
+                               'from X import Y."""\n'
+                               '    if final_language:\n'
+                               '        paths = candidate_source_closure(paths)\n'
+                               '    forbidden = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime", "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        if final_language:\n'
+                               '            check_candidate_control_plane(tree)\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n',
+                               '    return "implemented" if any(states) else "unimplemented", '
+                               'states\n'
+                               '\n'
+                               '\n'
+                               'def check_dependencies(paths, final_language=True):\n'
+                               '    """Enforce declared implementation dependencies, including '
+                               'from X import Y."""\n'
+                               '    forbidden = {"src", "agents", "model", "test_kernel_harness", '
+                               '"task_runtime", "task_reference", "task_baseline", '
+                               '"reference_controls", "scripts"}\n'
+                               '    backend_seen = False\n'
+                               '    for path in paths:\n'
+                               '        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                               '        aliases = {}\n'
+                               '        for node in ast.walk(tree):\n'
+                               '            imported = []\n'),
+                              ('                raise ValueError(f"Dynamic implementation loading '
+                               'is not allowed: {name}")\n'
+                               '    if final_language and not backend_seen:\n'
+                               '        raise ValueError("Candidate does not declare a FlyDSL '
+                               'implementation dependency")\n'
+                               '    return paths\n'
+                               '\n'
+                               '\n'
+                               '\n'
+                               'def load_module(name, path):\n',
+                               '                raise ValueError(f"Dynamic implementation loading '
+                               'is not allowed: {name}")\n'
+                               '    if final_language and not backend_seen:\n'
+                               '        raise ValueError("Candidate does not declare a FlyDSL '
+                               'implementation dependency")\n'
+                               '\n'
+                               '\n'
+                               'def load_module(name, path):\n'),
+                              ('            initial_phase = '
+                               '__import__("os").environ.get("ARENA_EVAL_PHASE") == '
+                               '"task_validation"\n'
+                               '            final_language = role == "candidate" and not '
+                               'initial_phase or cfg["candidate"].get("initial_language") == '
+                               '"flydsl"\n'
+                               '            paths = [local_path(p) for p in '
+                               'cfg["baseline"].get("source_files", [])] if provided else '
+                               'candidate_files(cfg)\n'
+                               '            if not provided: paths = check_dependencies(paths, '
+                               'final_language)\n'
+                               '            if action == "compile":\n'
+                               '                for path in paths:\n'
+                               '                    if path.suffix == ".py": '
+                               'compile(path.read_text(), str(path), "exec")\n',
+                               '            initial_phase = '
+                               '__import__("os").environ.get("ARENA_EVAL_PHASE") == '
+                               '"task_validation"\n'
+                               '            final_language = role == "candidate" and not '
+                               'initial_phase or cfg["candidate"].get("initial_language") == '
+                               '"flydsl"\n'
+                               '            paths = [local_path(p) for p in '
+                               'cfg["baseline"].get("source_files", [])] if provided else '
+                               'candidate_files(cfg)\n'
+                               '            if not provided: check_dependencies(paths, '
+                               'final_language)\n'
+                               '            if action == "compile":\n'
+                               '                for path in paths:\n'
+                               '                    if path.suffix == ".py": '
+                               'compile(path.read_text(), str(path), "exec")\n')]}}
+
+def _reviewed_v12_policy_bytes(path):
+    raw = path.read_bytes()
+    relative = path.relative_to(ROOT / 'tasks').as_posix()
+    task = path.parent.parent.relative_to(ROOT / 'tasks').as_posix() if path.parent.name == 'scripts' else path.parent.relative_to(ROOT / 'tasks').as_posix()
+    helper = 'scripts/' + path.name if path.parent.name == 'scripts' else path.name
+    identity = _REVIEWED_V12_POLICY_TASKS.get(task, {}).get(helper)
+    if identity is None:
+        return raw
+    delta = _REVIEWED_V12_POLICY_DELTAS[identity]
+    assert hashlib.sha256(raw).hexdigest() == delta['after_sha256'], relative
+    text = raw.decode()
+    for reviewed, previous in delta['replacements']:
+        assert text.count(reviewed) == 1, (relative, reviewed)
+        text = text.replace(reviewed, previous, 1)
+    normalized = text.encode()
+    assert hashlib.sha256(normalized).hexdigest() == delta['before_sha256'], relative
+    return normalized
+
+
+def _reviewed_migration_helper_bytes(path):
+    raw = _reviewed_v12_policy_bytes(path)
+    if path.name != 'task_runtime.py':
+        return raw
+    task = path.parent.relative_to(ROOT / 'tasks').as_posix()
+    if task in _REVIEWED_IMPORT_CLOSURE_TRITON:
+        upgraded = '1956075168833134174de5aa8db9a34aa2ae655feb1f910c7f8a31096c366674'
+        original = '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'
+    elif task in _REVIEWED_IMPORT_CLOSURE_TORCH:
+        upgraded = '467993f4995d7069a8e0224b12f639e2d0b49a9f9a3ef4d6b2a6ed0a449173c9'
+        original = '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'
+    else:
+        return raw
+    assert hashlib.sha256(raw).hexdigest() == upgraded, task
+    text = raw.decode()
+    start = text.index('def candidate_source_closure(')
+    end = text.index('def check_dependencies(', start)
+    text = text[:start] + text[end:]
+    replacements = [
+        ('        relative = item if isinstance(item, str) else item["path"]\n'
+         '        local_path(relative)  # Validate containment without hiding source symlinks.\n'
+         '        path = ROOT / relative',
+         '        path = local_path(item if isinstance(item, str) else item["path"])'),
+        ('    """Review the complete normal local-import closure, including helpers."""\n'
+         '    paths = candidate_source_closure(paths)',
+         '    """Enforce declared implementation dependencies, including from X import Y."""'),
+        ('\n    return paths\n\n\ndef load_module', '\n\ndef load_module'),
+        ('if not provided: paths = check_dependencies(paths, final_language)',
+         'if not provided: check_dependencies(paths, final_language)'),
+    ]
+    for added, previous in replacements:
+        assert text.count(added) == 1, (task, added)
+        text = text.replace(added, previous)
+    normalized = text.encode()
+    assert hashlib.sha256(normalized).hexdigest() == original, task
+    return normalized
+
+
+def test_reviewed_import_closure_delta_preserves_all_other_runtime_bytes():
+    for task in _REVIEWED_IMPORT_CLOSURE_TRITON + _REVIEWED_IMPORT_CLOSURE_TORCH:
+        _reviewed_migration_helper_bytes(ROOT / 'tasks' / task / 'task_runtime.py')
+
+
+def test_exact_reviewed_v12_policy_delta_preserves_all_prior_helper_bytes():
+    for task, helpers in _REVIEWED_V12_POLICY_TASKS.items():
+        for helper in helpers:
+            _reviewed_v12_policy_bytes(ROOT / 'tasks' / task / helper)
+    # This unmodified task is intentionally outside the explicitly enumerated policy upgrade.
+    task = ROOT / 'tasks/triton2flydsl/sglang/gdn_chunk_fwd_h'
+    for rel, expected in {
+        'task_runtime.py': '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675',
+        'scripts/candidate_checks.py': '69a9d3046677682de0213bb582c543552b08ecde9a16c2bb018e55c1eb625a49',
+    }.items():
+        raw = (task / rel).read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == expected
+        assert _reviewed_v12_policy_bytes(task / rel) == raw
+
+
+@pytest.mark.parametrize('task,helper', [
+    (task, helper) for task, helpers in _REVIEWED_V12_POLICY_TASKS.items()
+    for helper in helpers
+])
+def test_reviewed_v12_helper_normalization_rejects_policy_weakening(task, helper, tmp_path, monkeypatch):
+    source = ROOT / 'tasks' / task / helper
+    path = tmp_path / 'tasks' / task / helper
+    path.parent.mkdir(parents=True)
+    raw = source.read_text()
+    if helper == 'task_runtime.py':
+        assert raw.count('"modules", "_getframe"') == 1
+        changed = raw.replace('"modules", "_getframe"', '"metadata_only", "_getframe"', 1)
+    else:
+        assert raw.count('"aten::empty", "aten::empty_like"') == 1
+        changed = raw.replace('"aten::empty", "aten::empty_like"', '"aten::mul", "aten::empty_like"', 1)
+    path.write_text(changed)
+    monkeypatch.setattr(sys.modules[__name__], 'ROOT', tmp_path)
+    with pytest.raises(AssertionError):
+        _reviewed_v12_policy_bytes(path)
+
+
+@pytest.mark.parametrize('task', tuple(_REVIEWED_MODULE_LIFETIME_LOADERS))
+def test_module_lifetime_delta_preserves_whole_original_harness_and_rejects_cache_weakening(task):
+    source = (ROOT / 'tasks' / task / 'test_kernel_harness.py').read_text()
+    record = _REVIEWED_MODULE_LIFETIME_LOADERS[task]
+    assert hashlib.sha256(source.encode()).hexdigest() == record['after_sha256']
+    original = _module_lifetime_legacy_harness_source(source)
+    assert hashlib.sha256(original.encode()).hexdigest() == record['before_sha256']
+    # Removing source-content identity could reuse stale compiled owners after
+    # a candidate edit; this unreviewed change must never be normalized away.
+    call = 'hashlib.sha256(source.read()).hexdigest()'
+    assert source.count(call) == 1
+    with pytest.raises(AssertionError, match='Unreviewed module-lifetime'):
+        _module_lifetime_legacy_harness_source(source.replace(call, "'same-source'", 1))
+
+
+@pytest.mark.parametrize('delta', ['cache_key', 'semantic_math', 'timing_samples'])
+def test_gdn_gating_cache_and_semantic_normalization_composes_without_weakening(delta):
+    task = 'triton2flydsl/sglang/fused_gdn_gating'
+    source = (ROOT / 'tasks' / task / 'test_kernel_harness.py').read_text()
+    cache = _REVIEWED_MODULE_LIFETIME_LOADERS[task]
+    semantic = _REVIEWED_SEMANTIC_BOUNDARIES[task]
+    assert hashlib.sha256(source.encode()).hexdigest() == cache['after_sha256']
+    semantic_source = _module_lifetime_legacy_harness_source(source)
+    assert hashlib.sha256(semantic_source.encode()).hexdigest() == cache['before_sha256'] == semantic['after_sha256']
+    legacy = _semantic_boundary_legacy_harness_source(source)
+    assert hashlib.sha256(legacy.encode()).hexdigest() == semantic['before_sha256']
+    assert legacy == _semantic_boundary_legacy_harness_source(semantic_source)
+    replacements = {
+        'cache_key': ('hashlib.sha256(source.read()).hexdigest()', "'same-source'"),
+        'semantic_math': ('bx <= threshold', 'bx < threshold'),
+        'timing_samples': ('BENCHMARK_ITERATIONS = 100', 'BENCHMARK_ITERATIONS = 99'),
+    }
+    before, after = replacements[delta]
+    assert source.count(before) == 1
+    with pytest.raises(AssertionError, match='Unreviewed module-lifetime'):
+        _semantic_boundary_legacy_harness_source(source.replace(before, after, 1))
+
+
+@pytest.mark.parametrize('delta', ['oracle_role', 'code_gate', 'timing_samples', 'model_math'])
+def test_smoothquant_canonical_zero_role_normalization_preserves_original_contract(delta):
+    task = ROOT / 'tasks/torch2flydsl/smoothquant_kernel'
+    is_model = delta == 'model_math'
+    source = (task / ('model.py' if is_model else 'test_kernel_harness.py')).read_text()
+    recipe = _REVIEWED_SMOOTHQUANT_CANONICAL_ZERO_ROLE
+    legacy = _smoothquant_canonical_zero_legacy_source(source, model=is_model)
+    assert hashlib.sha256(legacy.encode()).hexdigest() == recipe['before_' + ('model' if is_model else 'harness') + '_sha256']
+    if not is_model:
+        semantic = _REVIEWED_SEMANTIC_BOUNDARIES['torch2flydsl/smoothquant_kernel']
+        assert hashlib.sha256(_semantic_boundary_legacy_harness_source(source).encode()).hexdigest() == semantic['before_sha256']
+    changes = {
+        'oracle_role': ('run_controls(canonical_model,', 'run_controls(_aiter_op,'),
+        'code_gate': ('CODE_TOL = 1', 'CODE_TOL = 2'),
+        'timing_samples': ('def arena_benchmark(warmup=10, iters=100, verbose=True):', 'def arena_benchmark(warmup=10, iters=99, verbose=True):'),
+        'model_math': ('scale = amax / _I8_MAX', 'scale = amax / 126.0'),
+    }
+    old, new = changes[delta]
+    assert source.count(old) == 1
+    with pytest.raises(AssertionError, match='Unreviewed SmoothQuant canonical-zero'):
+        _smoothquant_canonical_zero_legacy_source(source.replace(old, new, 1), model=is_model)
+
+
+def test_gemm_a8w8_optional_api_inverse_is_exact_and_rejects_unreviewed_delta():
+    task = ROOT/'tasks/triton2flydsl/aiter/gemm_a8w8'
+    source = (task/'test_kernel_harness.py').read_text()
+    assert hashlib.sha256(source.encode()).hexdigest() == 'a9e15add52091c40ed69728c1d92f3a0caad66eb52cc3a048aed5f7949a89b94'
+    restored = _gemm_a8w8_optional_api_legacy_source(source)
+    assert hashlib.sha256(restored.encode()).hexdigest() == '337e11faebf476a73ceb695787c22e56f9892ec24d2a49c9a8af9a497bbfd369'
+    assert hashlib.sha256((task/'scripts/api_controls.py').read_bytes()).hexdigest() == 'cb531a20edfd6516e0bb7b3c3290ecb2be1d59c5eda02e8dec85848184952915'
+    with pytest.raises(AssertionError):
+        _gemm_a8w8_optional_api_legacy_source(source + '\n# unreviewed delta\n')
+    with pytest.raises(AssertionError):
+        _gemm_a8w8_optional_api_legacy_source(source.replace('verbose=verbose))','verbose=False))',1))
+    # No original timing or numeric function is exempted by the inverse.
+    before = {node.name:ast.dump(node,include_attributes=False) for node in ast.parse(restored).body if isinstance(node,ast.FunctionDef)}
+    after = {node.name:ast.dump(node,include_attributes=False) for node in ast.parse(source).body if isinstance(node,ast.FunctionDef)}
+    assert {name:body for name,body in after.items() if name!='run_correctness'} == {name:body for name,body in before.items() if name!='run_correctness'}

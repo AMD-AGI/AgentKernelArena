@@ -110,3 +110,12 @@ The previous multi-call graph timings are not directly comparable with this
 protocol. Input/oracle preparation and validation can affect cache state and wall
 time, even though they are outside device timing. These changes establish no
 kernel speedup; baseline and candidate use the same protected measurement path.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_fwd_kernel_alibi`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

@@ -18,7 +18,7 @@ The original numerical rule remains `atol=0.3, rtol=0.01`.
 `workloads.json` retains all 54 original collected cases (36 functional and
 18 scored performance cases), their identities and parameters. Three additional unscored controls cover odd
 M/N/K tails, partial GROUP_M, stride-two inputs, output prefix/padding and
-noncontiguous output strides, yielding 57 total correctness cases. The original
+noncontiguous output strides, together with two additional public-branch controls, yielding 59 total correctness cases. The original
 same-input-dtype skips were a test selection preference, not an invalid kernel
 argument: conversion is defined when operands share a dtype too. Those 24 rows
 now execute real kernels and original numerical checks; none is a skipped pass.

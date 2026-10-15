@@ -7,28 +7,35 @@
           {
             "shape": [
               1,
-              4
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           },
           {
             "shape": [
-              1,
-              4
+              3,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1337
+        "correctness_seed": 1337,
+        "model_init": [
+          [],
+          {
+            "input_size": 128,
+            "hidden_size": 2048
+          }
+        ]
       }
     },
     {
@@ -37,29 +44,36 @@
         "inputs": [
           {
             "shape": [
-              2,
-              4
+              7,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           },
           {
             "shape": [
-              2,
-              4
+              9,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1338
+        "correctness_seed": 1338,
+        "model_init": [
+          [],
+          {
+            "input_size": 128,
+            "hidden_size": 2048
+          }
+        ]
       }
     },
     {
@@ -68,29 +82,36 @@
         "inputs": [
           {
             "shape": [
-              4,
-              4
+              31,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           },
           {
             "shape": [
-              4,
-              4
+              33,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1339
+        "correctness_seed": 1339,
+        "model_init": [
+          [],
+          {
+            "input_size": 128,
+            "hidden_size": 2048
+          }
+        ]
       }
     },
     {
@@ -99,29 +120,36 @@
         "inputs": [
           {
             "shape": [
-              8,
-              4
+              128,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           },
           {
             "shape": [
-              8,
-              4
+              129,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1340
+        "correctness_seed": 1340,
+        "model_init": [
+          [],
+          {
+            "input_size": 128,
+            "hidden_size": 2048
+          }
+        ]
       }
     },
     {
@@ -130,29 +158,36 @@
         "inputs": [
           {
             "shape": [
-              16,
-              4
+              257,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           },
           {
             "shape": [
-              16,
-              4
+              255,
+              128
             ],
             "dtype": "torch.float32",
             "stride": [
-              4,
+              128,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1341
+        "correctness_seed": 1341,
+        "model_init": [
+          [],
+          {
+            "input_size": 128,
+            "hidden_size": 2048
+          }
+        ]
       }
     }
   ]

@@ -189,6 +189,69 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-layout-strided_logits",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 20000,
+        "configuration": {
+          "name": "strided_logits",
+          "shape": [
+            2,
+            1033,
+            7
+          ],
+          "strided_logits": true,
+          "strided_ids": false
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-layout-strided_int64_ids",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 20001,
+        "configuration": {
+          "name": "strided_int64_ids",
+          "shape": [
+            2,
+            1033,
+            7
+          ],
+          "strided_logits": false,
+          "strided_ids": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-layout-strided_logits_and_ids",
+      "dtype": "float32,int64",
+      "params": {
+        "case_index": 20002,
+        "configuration": {
+          "name": "strided_logits_and_ids",
+          "shape": [
+            2,
+            1033,
+            7
+          ],
+          "strided_logits": true,
+          "strided_ids": true
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
@@ -225,6 +288,38 @@
       ],
       "dtype": "float16",
       "values": "numerical_edges"
+    }
+  ],
+  "layout_controls": [
+    {
+      "name": "strided_logits",
+      "shape": [
+        2,
+        1033,
+        7
+      ],
+      "strided_logits": true,
+      "strided_ids": false
+    },
+    {
+      "name": "strided_int64_ids",
+      "shape": [
+        2,
+        1033,
+        7
+      ],
+      "strided_logits": false,
+      "strided_ids": true
+    },
+    {
+      "name": "strided_logits_and_ids",
+      "shape": [
+        2,
+        1033,
+        7
+      ],
+      "strided_logits": true,
+      "strided_ids": true
     }
   ]
 }

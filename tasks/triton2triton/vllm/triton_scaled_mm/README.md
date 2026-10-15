@@ -44,3 +44,12 @@ scales and bias; every caller-owned input is checked and restored even on failur
 Additional unscored public-branch controls from PR105: INT8 and heuristic threshold/tile tails, retaining original FP16 timing.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `scaled_mm_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

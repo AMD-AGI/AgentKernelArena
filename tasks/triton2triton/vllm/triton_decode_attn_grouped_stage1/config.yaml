@@ -4,7 +4,12 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/_fwd_grouped_kernel_stage1.py
+  - path: source/_fwd_grouped_kernel_stage1.py
+    scope: symbols
+    symbols:
+    - tanh
+    - _fwd_grouped_kernel_stage1
+    allow_new_helpers: true
   entrypoints:
   - file: source/_fwd_grouped_kernel_stage1.py
     kind: function

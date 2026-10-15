@@ -51,12 +51,13 @@ def _fwd_grouped_kernel_stage1(
 ):
     cur_batch = tl.program_id(0)
     cur_head_id = tl.program_id(1)
-    cur_kv_head = cur_head_id // tl.cdiv(kv_group_num, BLOCK_H)
+    head_blocks_per_kv: tl.constexpr = tl.cdiv(kv_group_num, BLOCK_H)
+    cur_kv_head = cur_head_id // head_blocks_per_kv
+    head_block_in_group = cur_head_id % head_blocks_per_kv
     split_kv_id = tl.program_id(2)
 
-    VALID_BLOCK_H: tl.constexpr = BLOCK_H if kv_group_num > BLOCK_H else kv_group_num
-    cur_head = cur_head_id * VALID_BLOCK_H + tl.arange(0, BLOCK_H)
-    mask_h = cur_head < (cur_head_id + 1) * VALID_BLOCK_H
+    cur_head = cur_kv_head * kv_group_num + head_block_in_group * BLOCK_H + tl.arange(0, BLOCK_H)
+    mask_h = cur_head < (cur_kv_head + 1) * kv_group_num
     mask_h = mask_h & (cur_head < q_head_num)
 
     offs_d = tl.arange(0, BLOCK_DMODEL)
@@ -219,7 +220,7 @@ def decode_grouped_att_m_fwd(
     NUM_KV_SPLITS = num_kv_splits
     grid = (
         batch,
-        triton.cdiv(head_num, min(BLOCK_H, kv_group_num)),
+        k_buffer.shape[-2] * triton.cdiv(kv_group_num, BLOCK_H),
         NUM_KV_SPLITS,
     )
 

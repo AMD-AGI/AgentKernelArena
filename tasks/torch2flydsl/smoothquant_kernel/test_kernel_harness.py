@@ -3,20 +3,21 @@
 # SPDX-License-Identifier: MIT
 """Build / correctness / performance harness for the smoothquant task.
 
-Model-only task: there is no shipped FlyDSL ``kernel.py`` (FlyDSL is the agent's
-target). Correctness validates the pure-torch reference in ``model.py`` against
-AMD's real runtime op (``aiter.smoothquant_fwd``) as ground truth. ``model.py``
-imports no ``aiter``/``flydsl``; only this harness may.
+The provided baseline is the pure-torch Model in ``model.py``. Its six original
+random workloads are independently cross-checked against AMD's runtime op
+(``aiter.smoothquant_fwd``). The final FlyDSL candidate is checked against that
+same op on those workloads. ``model.py`` imports no ``aiter``/``flydsl``.
 
 Gate (tight, quantized op): the fp32 per-token scale must match within
 SCALE_RTOL and the INT8 codes must match within CODE_TOL ULP; the exact-match
-percentage is reported (the device kernel truncates toward zero, matching the
-reference). Once an agent drops a ``kernel.py`` exposing
-``flydsl_smoothquant``, the harness also checks it against the same op.
+percentage is reported. Additional untimed zero-row controls check the provided
+Model and candidate against independent analytic answers. The task's zero-row
+convention is zero codes with scale 1; the runtime cross-oracle is not required
+to share that zero-row convention.
 
 Modes:
   --compile         import the reference, build the Model, run a CPU smoke pass
-  --correctness     compare the reference (and kernel.py if present) vs the op
+  --correctness     run the original cross-checks and the zero-row controls
   --full-benchmark  time the op + reference (+ kernel.py if present), write report
 """
 import argparse
@@ -266,6 +267,16 @@ def run_correctness(verbose=True):
 
         del inp, model
         torch.cuda.empty_cache()
+
+    from scripts.semantic_controls import run_controls
+    def compare_control(actual, expected, inputs):
+        _compare_quant_outputs(actual, expected, inputs, mmod)
+    # The provided Model owns the task's zero-row convention. The six original
+    # random workloads retain their independent AITER cross-checks above.
+    canonical_model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
+    run_controls(canonical_model, compare_control, require_unchanged)
+    if has_kernel:
+        run_controls(kmod.flydsl_smoothquant, compare_control, require_unchanged)
 
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(SHAPES)})"
     print(f"Status: {status}")

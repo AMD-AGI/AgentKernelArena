@@ -10,6 +10,7 @@ import types
 import pytest
 import torch
 import yaml
+from triton_signal_migration_helpers import historical_generator, historical_manifest, SCALES
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = {'triton_fla_fused_recurrent': {'allclose': ["Call(func=Attribute(value=Name(id='torch', "
@@ -137,10 +138,30 @@ def test_actual_timed_output_replay_and_readonly_guards(task,fault):
 def test_original_state_contract_preserved(task):
     root,h,_,_=task;saved=BASELINE[root.name]
     digest=lambda s:hashlib.sha256(s.encode()).hexdigest()
-    for f,expected in saved['files'].items():assert digest((root/f).read_text())==expected
+    for f,expected in saved['files'].items():
+        text = (root/f).read_text()
+        if f == 'workloads.json' and root.name in SCALES:
+            text = json.dumps(historical_manifest(json.loads(text), root.name), indent=2)+'\n'
+        if f == 'workloads.json' and root.name == 'triton_linear_attn_decode':
+            # Additive one-step/unique-slot preconditions leave all old cases intact.
+            data = json.loads(text)
+            assert data.pop('input_contract') == h.INPUT_CONTRACT
+            text = json.dumps(data, indent=2)+'\n'
+        assert digest(text)==expected
     text=(root/'scripts/task_runner.py').read_text();tree=ast.parse(text)
     functions={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
-    for name,expected in saved['protected']:assert digest(ast.dump(functions[name],include_attributes=False))==expected
+    for name,expected in saved['protected']:
+        node = functions[name]
+        if root.name in SCALES and name == 'gen_inputs':
+            node = historical_generator(node, SCALES[root.name])
+        if root.name == 'triton_linear_attn_decode' and name == 'reference_linear_attn_decode':
+            # Remove only the new protected precondition; preserve every old math node.
+            node = ast.parse(ast.unparse(node)).body[0]
+            guards = [n for n in node.body if isinstance(n, ast.Expr) and
+                      ast.unparse(n.value) == 'validate_inputs(q, k, v, kv_caches, slope_rate, slot_idx)']
+            assert len(guards) == 1
+            node.body.remove(guards[0])
+        assert digest(ast.dump(node,include_attributes=False))==expected
     for text_ast in saved['allclose']:
         assert text_ast in [ast.dump(n,include_attributes=False) for n in ast.walk(tree)]
     assert digest(text.split('# >>> AKA-GENERATED:')[1].split('# <<< AKA-GENERATED <<<')[0])==saved['generated']

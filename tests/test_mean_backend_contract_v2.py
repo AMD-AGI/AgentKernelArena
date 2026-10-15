@@ -312,4 +312,9 @@ def test_original_kernel_cases_sampling_and_timing_helpers_are_unchanged():
         'scripts/task_runner.py': '6b7b6b52db74bed6ecbdd49bda605b4f6a416e24d40df3586ba1559aedb1a632',
     }
     for name, digest in originals.items():
-        assert hashlib.sha256((TASK / name).read_bytes()).hexdigest() == digest
+        from reviewed_contract_history import historical_triton_device_boundary_file
+        source = (TASK / name).read_bytes()
+        if name == 'config.yaml':
+            source = historical_triton_device_boundary_file(
+                'tasks/triton2triton/vllm/triton_mean/config.yaml', source.decode()).encode()
+        assert hashlib.sha256(source).hexdigest() == digest

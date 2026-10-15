@@ -6,6 +6,7 @@ HIPCC = hipcc
 # Source and target
 SRC = mla_decode.hip scripts/native/candidate_driver.hip
 TARGET = applications_mla_decode
+NATIVE_HEADERS = scripts/native/output_validation.hpp scripts/native/routing_controls.hpp
 
 # Compiler flags. Targets gfx950 primary; gfx942 also covered.
 # OpenMP parallelizes only the host fp32 reference (correctness check).
@@ -14,7 +15,7 @@ CFLAGS = -O3 -ffast-math --offload-arch=gfx950 --offload-arch=gfx942 -munsafe-fp
 # Default target
 all: $(TARGET)
 
-$(TARGET): $(SRC) source/kernel.hpp
+$(TARGET): $(SRC) source/kernel.hpp $(NATIVE_HEADERS)
 	$(HIPCC) $(CFLAGS) -o $@ $(SRC)
 
 clean:

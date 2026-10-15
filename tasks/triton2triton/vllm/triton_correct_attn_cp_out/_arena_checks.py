@@ -315,3 +315,76 @@ def install(harness):
 
     harness.run_correctness = correctness
     harness.run_performance = performance
+    install_controls(harness)
+
+
+CONTRACT_CASES = {'base2_nonzero_rank': {'contract_case': 'base2_nonzero_rank',
+                        'B': 2,
+                        'H': 3,
+                        'D': 64,
+                        'N': 4,
+                        'lse_idx': 2,
+                        'is_base_e': False,
+                        'out_layout': 'BHD',
+                        'lse_layout': 'NBH',
+                        'seed': 1901,
+                        'input_shapes': {'out': [2, 3, 64], 'lses': [4, 2, 3]},
+                        'output_shapes': {'corrected': [2, 3, 64], 'final_lse': [2, 3]}},
+ 'basee_4d_trailing_lse': {'contract_case': 'basee_4d_trailing_lse',
+                           'B': 2,
+                           'H': 3,
+                           'D': 64,
+                           'N': 4,
+                           'lse_idx': 3,
+                           'is_base_e': True,
+                           'out_layout': 'B1HD',
+                           'lse_layout': 'NBH1',
+                           'seed': 1902,
+                           'input_shapes': {'out': [2, 1, 3, 64], 'lses': [4, 2, 3, 1]},
+                           'output_shapes': {'corrected': [2, 3, 64], 'final_lse': [2, 3]}},
+ 'base2_4d_middle_lse': {'contract_case': 'base2_4d_middle_lse',
+                         'B': 2,
+                         'H': 3,
+                         'D': 64,
+                         'N': 2,
+                         'lse_idx': 1,
+                         'is_base_e': False,
+                         'out_layout': 'B1HD',
+                         'lse_layout': 'N1BH',
+                         'seed': 1903,
+                         'input_shapes': {'out': [2, 1, 3, 64], 'lses': [2, 1, 2, 3]},
+                         'output_shapes': {'corrected': [2, 3, 64], 'final_lse': [2, 3]}}}
+
+
+def control_inputs(harness, case, device='cuda'):
+    import torch
+    config = CONTRACT_CASES[case]
+    generator = torch.Generator(device='cpu').manual_seed(config['seed'])
+    out = torch.randn(config['B'], config['H'], config['D'], generator=generator,
+                      dtype=torch.float32).to(dtype=torch.float16, device=device)
+    lses = (torch.randn(config['N'], config['B'], config['H'], generator=generator) * .25
+            + torch.arange(config['N'])[:, None, None] * .75).to(device=device)
+    if config['out_layout'] == 'B1HD':
+        out = out.unsqueeze(1)
+    if config['lse_layout'] == 'NBH1':
+        lses = lses.unsqueeze(-1)
+    elif config['lse_layout'] == 'N1BH':
+        lses = lses.unsqueeze(1)
+    return (out, lses, config['lse_idx']), {'is_base_e': config['is_base_e']}
+
+
+def install_controls(harness):
+    harness.CONTRACT_CASES = CONTRACT_CASES
+
+    def correctness(case):
+        args, kwargs = control_inputs(harness, case)
+        # Reuse the full pristine reference, immutable-input/output contract and
+        # genuine Triton dispatch checks for this actual public-wrapper call.
+        with checked_modules(harness):
+            module = harness.load_module()
+            getattr(module, SYMBOL)(*args, **kwargs)
+        return True, {'unscored_control': True, 'base': 'e' if kwargs['is_base_e'] else '2',
+                      'lse_idx': args[2], 'input_shapes': [list(v.shape) for v in args[:2]],
+                      'full_outputs_checked': True, 'readonly_inputs_checked': True}
+
+    harness.run_contract_correctness = correctness

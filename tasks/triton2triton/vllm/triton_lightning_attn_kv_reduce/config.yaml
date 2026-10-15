@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_lightning_attn_kv_reduce.py
+  - path: source/triton_lightning_attn_kv_reduce.py
+    scope: symbols
+    symbols:
+    - _fwd_kv_reduce
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_lightning_attn_kv_reduce.py
     kind: function

@@ -23,6 +23,11 @@ syntax and import/interface checks. Missing candidates, incomplete measurements 
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
 
+Only `_layer_norm_fwd_1pass_kernel` and permitted new implementation helpers in
+`source/triton_layernorm_gated.py` are editable. Triton compiler decorators remain
+available under the shared definition policy. The public `layer_norm_fwd` wrapper,
+imports, module-level execution, allocations and launch boundary are protected,
+along with the reference, checks, workload manifest and benchmark runner.
 
 
 Protected checks validate the full `(out, mean, rstd)` tuple, including shape,

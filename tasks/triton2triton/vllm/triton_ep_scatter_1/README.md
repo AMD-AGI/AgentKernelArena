@@ -42,3 +42,12 @@ invocation. Counts and caller-owned outputs are restored in `finally`, including
 failure paths. Original five scored cases, correctness seeds 42+i, performance
 seed 0, initial output allocation/fill, 10 warmups and 100 samples are unchanged.
 No additional output reset is inserted into the measured workload.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `round_up_128`, `_fwd_kernel_ep_scatter_1`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

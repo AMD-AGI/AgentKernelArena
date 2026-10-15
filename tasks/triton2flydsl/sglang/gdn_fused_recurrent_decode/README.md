@@ -70,3 +70,43 @@ uses the canonical collector's existing prepare_fn to restore the requested
 initial state outside the measured invocation. The original preparation,
 seed42+i, ten externalwarmups and100samples are unchanged for both roles.
 Final candidate FlyDSL calls are audited independently of reference execution.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy remains active on every actual
+operator call made by canonical benchmark warmup, graph capture and eager event
+timing. Tensor arithmetic, reductions and library operators must execute as
+FlyDSL kernels even when candidate behavior changes after earlier calls. A
+probe of the actual performance closure observes FlyDSL invocation outside
+clocks and capture; Python profiling is disabled inside canonical measurement.
+Allocation and view preparation retain the existing allowlist. Baseline and
+reference operators keep their original policy and all original device timing
+parameters. One additional untimed audit probe of each performance closure runs
+before canonical benchmarking; stateful closures use the existing prepare
+callback before and after that probe. This probe is separate from the retained
+benchmark warmup/sample counts. A forbidden operation remains a failure even if
+a capture fallback or candidate code catches its exception. These checks are
+implementation-contract evidence, not a Python
+security sandbox.
+
+Candidate sources and their normal local-import helpers must not access the
+evaluator's module registry, stack frames or profiling controls through `sys`,
+including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
+available, and installed FlyDSL library internals are not scanned as candidate
+code. Protected reference imports remain prohibited.
+
+
+## Normalization option coverage
+
+The public `use_qk_l2norm_in_kernel` option defaults to `False`: raw q/k are
+used in the recurrence. The original ten scored cases explicitly use `True`;
+their shapes, seeds, input draws, BF16 gates, state reset, 10 warmups, 100 samples
+and canonical timing path are retained. Two extra correctness-only cases call
+the explicit `False` option and omit it to exercise the public default. Both use
+K128/V128, non-unit dyadic q/k, grouped value heads and unique nonsequential
+state slots, with independent closed forms for the output and full state pool.
+They check readonly inputs, caller-owned output/state aliases and unused slots.
+The internal oracle's True default preserves historical scored call sites; its
+explicit False branch is independently checked against these closed forms.
+These finite controls cover the exposed mode without promising other shapes,
+layouts or dtypes beyond the declared suite. No extra case is scored.

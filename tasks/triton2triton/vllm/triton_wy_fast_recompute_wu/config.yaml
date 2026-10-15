@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_wy_fast_recompute_wu.py
+  - path: source/triton_wy_fast_recompute_wu.py
+    scope: symbols
+    symbols:
+    - recompute_w_u_fwd_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_wy_fast_recompute_wu.py
     kind: function

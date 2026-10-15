@@ -1,11 +1,11 @@
 """Unscored independent known answers for the public SSD operator contract.
 
-The five historical performance cases remain unchanged. These small, structured
+The historical performance/correctness draws remain as unscored cases. Structured
 inputs make omitted state, boundary, grouping or optional-output work observable.
 """
 import math
 import torch
-from scripts.ssd_checks import InputSnapshot, check_outputs, comparator_control, ContractFailure
+from scripts.ssd_checks import InputSnapshot, check_outputs, comparator_control, ContractFailure, NumericalMismatch
 
 
 def _check(got, expected, atol, rtol):
@@ -75,3 +75,83 @@ def reference_controls(h):
     got=h.reference_chunk_scan(k['cb'],k['x'],k['dt'],k['dA_cumsum'],k['C'],k['states'],k['seq_idx'],4)
     _check(got,c['expected'],5e-2,5e-2)
     return [{'control':'closed_form_causal_prefix_and_boundary_state','status':'PASS','negative_control':'rejected'}]
+
+
+def inter_chunk_reference(x, dA_cumsum, C, states, seq_idx, chunk_size):
+    """Independent inter-chunk term for the five regular scored shapes."""
+    length, heads, width = x.shape
+    groups = C.shape[1]
+    C_cpu, state_cpu, decay = (value.detach().float().cpu()
+                                for value in (C, states, dA_cumsum))
+    sequence = seq_idx.detach().cpu()
+    result = torch.zeros(length, heads, width)
+    for chunk in range(length // chunk_size):
+        if chunk == 0 or sequence[chunk] != sequence[chunk - 1]:
+            continue
+        start = chunk * chunk_size
+        end = start + chunk_size
+        for head in range(heads):
+            group = head // (heads // groups)
+            result[start:end, head] = (
+                C_cpu[start:end, group] @ state_cpu[chunk - 1, head].T
+            ) * decay[head, chunk].exp()[:, None]
+    return result.to(x.device)
+
+
+def require_intra_signal(expected, without_intra):
+    try:
+        check_outputs(without_intra, expected, atol=5e-2, rtol=5e-2)
+    except NumericalMismatch:
+        return
+    raise ContractFailure('SSD control accepts omission of the intra-chunk term')
+
+
+def scored_shape_inputs(shape, seed, device, *, historical=False):
+    length, heads, width, groups, dstate, chunk_size = shape
+    chunks = length // chunk_size
+    torch.manual_seed(seed)
+    # Preserve the original rounded FP16 draw before power-of-two scaling.
+    # cb enters only the intra-chunk term, linearly.
+    cb = torch.randn(chunks, groups, chunk_size, chunk_size,
+                     device=device, dtype=torch.float16) * .01
+    if not historical:
+        cb.mul_(32)
+    x = torch.randn(length, heads, width, device=device, dtype=torch.float16)
+    C = torch.randn(length, groups, dstate, device=device, dtype=torch.float16)
+    dt = torch.rand(heads, chunks, chunk_size, device=device, dtype=torch.float32) * .1
+    decay = torch.cumsum(dt * -.1, dim=-1)
+    states = torch.randn(chunks, heads, width, dstate, device=device, dtype=torch.float32) * .01
+    sequence = torch.zeros(chunks, device=device, dtype=torch.int32)
+    boundaries = torch.arange(chunks + 1, device=device, dtype=torch.int32) * chunk_size
+    return dict(cb=cb, x=x, dt=dt, dA_cumsum=decay, C=C, states=states,
+                cu_chunk_seqlens=boundaries, seq_idx=sequence,
+                out=torch.zeros(length, heads, width, device=device, dtype=torch.float32))
+
+
+def run_scored_shape_control(mod, reference, shape, seed, device='cuda'):
+    kwargs = scored_shape_inputs(shape, seed, device)
+    kwargs['out'].fill_(float('nan'))
+    readonly = InputSnapshot({name: value for name, value in kwargs.items() if name != 'out'})
+    chunk_size = shape[-1]
+    args = [kwargs[name] for name in ('cb', 'x', 'dt', 'dA_cumsum', 'C', 'states', 'seq_idx')]
+    expected = reference(*args, chunk_size).to(device)
+    without_intra = inter_chunk_reference(
+        kwargs['x'], kwargs['dA_cumsum'], kwargs['C'], kwargs['states'],
+        kwargs['seq_idx'], chunk_size)
+    require_intra_signal(expected, without_intra)
+    mod.chunk_scan_fwd(**kwargs)
+    readonly.check()
+    check_outputs(kwargs['out'], expected, atol=5e-2, rtol=5e-2,
+                  inputs=[entry[1] for entry in readonly.entries])
+    return {'control': 'scored_shape_nonzero_intra_chunk_term', 'status': 'PASS',
+            'scored': False, 'omitted_intra_chunk_rejected': True}
+
+
+def run_signal_controls(harness, *, case_index, device='cuda'):
+    if case_index >= 20000:
+        return {'control': 'historical_weak_draw', 'status': 'PASS', 'scored': False}
+    if case_index >= 10000:
+        return {'control': 'upstream_public_branch', 'status': 'PASS', 'scored': False}
+    return run_scored_shape_control(
+        harness.load_module(), harness.reference_chunk_scan,
+        harness.TEST_SHAPES[case_index], 42 + case_index, device)

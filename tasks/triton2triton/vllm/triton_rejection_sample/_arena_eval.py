@@ -72,6 +72,9 @@ def evaluate(role, action):
         actual = json.loads(json.dumps(getattr(harness, data['case_table'])))
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
+        declared = {r['params']['case_index']:r['params'] for r in data['cases'] if 'ragged_case' in r['params']}
+        if declared != getattr(harness, 'RAGGED_CONTROLS', {}):
+            raise ValueError('Ragged manifest differs from protected input generation')
         if action == 'validate-task':
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
@@ -87,7 +90,8 @@ def evaluate(role, action):
                     ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
                     if not ok:
                         raise RuntimeError(error or 'Original numerical/output contract rejected candidate')
-                    row['metrics']={'original_case_checks_passed':True}
+                    row['metrics'] = ({'unscored_ragged_control': error} if 'ragged_case' in row['params']
+                                      else {'original_case_checks_passed': True})
                 except BaseException as exc:
                     row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='correctness_failure')
         elif action == 'performance':

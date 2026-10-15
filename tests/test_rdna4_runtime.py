@@ -81,7 +81,8 @@ class RuntimeLayoutTests(unittest.TestCase):
 
 
 class SmokeProfilerTests(unittest.TestCase):
-    def run_smoke(self, selected, commands, actual=None, required="", gpu_available=True):
+    def run_smoke(self, selected, commands, actual=None, required="", gpu_available=True,
+                  bad_arithmetic=False, launch_error=False):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             bin_dir = root / "bin"
@@ -97,14 +98,38 @@ class SmokeProfilerTests(unittest.TestCase):
                 (root / f"{name}.py").write_text("__version__ = 'mock'\n")
             (root / "torch.py").write_text(
                 "from types import SimpleNamespace\nimport os\n"
+                "float32 = 'float32'\n"
+                "class Tensor:\n"
+                "    def __init__(self, values, device='cpu'):\n"
+                "        self.values, self.device = list(values), device\n"
+                "    def to(self, device):\n"
+                "        assert device in ('cpu', 'cuda:0')\n"
+                "        return Tensor(self.values, device)\n"
+                "    def cpu(self):\n"
+                "        return self.to('cpu')\n"
+                "    def __add__(self, scalar):\n"
+                "        assert isinstance(scalar, (int, float))\n"
+                "        if self.device == 'cuda:0' and os.environ['MOCK_LAUNCH_ERROR'] == '1':\n"
+                "            raise RuntimeError('mock device launch failed')\n"
+                "        error = int(self.device == 'cuda:0' and os.environ['MOCK_BAD_ARITHMETIC'] == '1')\n"
+                "        return Tensor([x + scalar + error for x in self.values], self.device)\n"
+                "def arange(n, *, dtype):\n"
+                "    assert dtype == float32\n"
+                "    return Tensor(range(n))\n"
+                "def equal(left, right):\n"
+                "    assert left.device == right.device == 'cpu'\n"
+                "    return left.values == right.values\n"
                 f"cuda = SimpleNamespace(is_available=lambda: {gpu_available!r}, "
                 "get_device_name=lambda i: 'mock GPU', "
+                "synchronize=lambda: None, "
                 "get_device_properties=lambda i: SimpleNamespace("
                 "gcnArchName=os.environ['MOCK_GPU_ARCH']))\n"
             )
             env = {**os.environ, "PATH": str(bin_dir), "PYTHONPATH": str(root),
                    "HOME": str(root), "AGENT_KERNEL_ARENA_GPU_ARCH": selected,
                    "AKA_REQUIRED_PROFILERS": required,
+                   "MOCK_BAD_ARITHMETIC": str(int(bad_arithmetic)),
+                   "MOCK_LAUNCH_ERROR": str(int(launch_error)),
                    "MOCK_GPU_ARCH": actual or selected}
             return subprocess.run(
                 [shutil.which("bash"), str(ROOT / "src/scripts/docker_benchmark.sh"),
@@ -115,6 +140,19 @@ class SmokeProfilerTests(unittest.TestCase):
         result = self.run_smoke("gfx1201", ("hipcc", "rocprofv3"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("rocprofv3=", result.stdout)
+        self.assertIn("torch_gpu_numerical_smoke=PASS", result.stdout)
+
+    def test_discovery_does_not_hide_incorrect_device_arithmetic(self):
+        result = self.run_smoke("gfx950", ("hipcc",), bad_arithmetic=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("GPU arithmetic smoke produced incorrect values", result.stderr)
+        self.assertNotIn("torch_gpu_numerical_smoke=PASS", result.stdout)
+
+    def test_discovery_does_not_hide_device_launch_error(self):
+        result = self.run_smoke("gfx950", ("hipcc",), launch_error=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mock device launch failed", result.stderr)
+        self.assertNotIn("torch_gpu_numerical_smoke=PASS", result.stdout)
 
     def test_explicit_rdna4_profiler_requirement_is_enforced(self):
         result = self.run_smoke("gfx1201", ("hipcc", "rocprof-compute"), required="rocprofv3")

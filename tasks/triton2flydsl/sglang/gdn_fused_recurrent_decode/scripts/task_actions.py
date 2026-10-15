@@ -1,7 +1,7 @@
 """Task-owned initial Triton and final FlyDSL action bindings."""
 EXPECTED_SHAPES = [(1, 8, 16, 128, 128, 32), (2, 8, 16, 128, 128, 32), (4, 8, 16, 128, 128, 32), (8, 8, 16, 128, 128, 64), (16, 8, 16, 128, 128, 64), (32, 8, 16, 128, 128, 128), (64, 8, 16, 128, 128, 128), (128, 8, 16, 128, 128, 256), (1, 16, 32, 128, 128, 32), (32, 16, 32, 128, 128, 128)]
 PERFORMANCE_IDS = {'perf1': 'case_0000', 'perf2': 'case_0001', 'perf3': 'case_0002', 'perf4': 'case_0003', 'perf5': 'case_0004', 'perf6': 'case_0005', 'perf7': 'case_0006', 'perf8': 'case_0007', 'perf9': 'case_0008', 'perf10': 'case_0009'}
-CORRECTNESS_COUNT = 10
+CORRECTNESS_COUNT = 12
 
 def select_role(h, role, provided):
     import os
@@ -10,6 +10,12 @@ def select_role(h, role, provided):
         raise ValueError("This task uses a frozen initial candidate baseline")
     if h.TEST_SHAPES != EXPECTED_SHAPES:
         raise ValueError("Protected case manifest disagrees with harness")
+    from pathlib import Path
+    import json
+    from scripts.normalization_controls import manifest_cases
+    rows = json.loads((Path(h.TASK_DIR) / "cases.json").read_text())["cases"]
+    if rows[10:] != manifest_cases():
+        raise ValueError("Protected default-False control declarations disagree with manifest")
 
 def check(h):
     from scripts.candidate_checks import audit_candidate_calls
@@ -26,4 +32,6 @@ def check(h):
 
 
 def performance(h):
-    return h.run_performance()
+    from scripts.candidate_checks import audit_candidate_calls
+    with audit_candidate_calls(h, performance=True):
+        return h.run_performance()

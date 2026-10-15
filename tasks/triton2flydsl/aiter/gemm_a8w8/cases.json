@@ -242,6 +242,82 @@
       "checks": [
         "correctness"
       ]
+    },
+    {
+      "test_case_id": "api_fp16_matrix_scales",
+      "params": {
+        "name": "api_fp16_matrix_scales",
+        "M": 3,
+        "N": 5,
+        "K": 2,
+        "output_dtype": "float16",
+        "vector_scales": false,
+        "with_bias": false,
+        "preallocated_output": false,
+        "strided_output": false,
+        "config_override": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "api_fp16_vector_preallocated",
+      "params": {
+        "name": "api_fp16_vector_preallocated",
+        "M": 17,
+        "N": 33,
+        "K": 65,
+        "output_dtype": "float16",
+        "vector_scales": true,
+        "with_bias": true,
+        "preallocated_output": true,
+        "strided_output": false,
+        "config_override": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "api_bf16_vector_preallocated",
+      "params": {
+        "name": "api_bf16_vector_preallocated",
+        "M": 7,
+        "N": 19,
+        "K": 33,
+        "output_dtype": "bfloat16",
+        "vector_scales": true,
+        "with_bias": false,
+        "preallocated_output": true,
+        "strided_output": false,
+        "config_override": true,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "api_bf16_strided_output",
+      "params": {
+        "name": "api_bf16_strided_output",
+        "M": 3,
+        "N": 5,
+        "K": 65,
+        "output_dtype": "bfloat16",
+        "vector_scales": false,
+        "with_bias": true,
+        "preallocated_output": true,
+        "strided_output": true,
+        "config_override": false,
+        "seed": 0
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ]
 }

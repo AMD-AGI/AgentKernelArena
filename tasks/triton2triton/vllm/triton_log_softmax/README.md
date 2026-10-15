@@ -1,6 +1,6 @@
 # triton_log_softmax
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve the declared device kernel in place;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -11,7 +11,7 @@ The kernel computes log_softmax along the last dimension using a numerically sta
 three-pass algorithm: find max, compute log-sum-exp, then compute output.
 
 Key optimization opportunities:
-- Block size tuning for different column counts
+- Device-side tiling within the protected launch configuration
 - Reducing number of global memory passes
 - Online softmax techniques
 - Memory access pattern optimization
@@ -20,6 +20,16 @@ Constraints:
 - Must maintain the same function signature for `log_softmax`
 - Output must match reference within atol=1e-2, rtol=1e-2 for float16
 
+
+## Candidate edit boundary
+
+Only `_log_softmax_kernel` and new implementation helpers in
+`source/triton_log_softmax.py` are editable. Keep the public
+`log_softmax` wrapper, existing imports, module constants and
+launch configuration unchanged. New helpers must follow the framework definition
+policy. The task configuration, references, workload manifest, runners and benchmark
+helpers remain protected. This preserves the same wrapper and evaluation path for
+the frozen baseline and candidate.
 
 ## Evaluation contract
 

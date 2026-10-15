@@ -80,6 +80,9 @@ def run_compile():
 
 
 def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 20000:
+        from _width_controls import run_control
+        return run_control(case_index - 20000, load_module)
     import torch
     try:
         mod = load_module()

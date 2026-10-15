@@ -9,7 +9,11 @@ candidate:
   initial_state: implemented
   initial_language: flydsl
   editable:
-  - kernel.py
+  - path: kernel.py
+    scope: symbols
+    symbols:
+    - build_softmax_module
+    allow_new_helpers: true
   entrypoints:
   - file: kernel.py
     kind: builder

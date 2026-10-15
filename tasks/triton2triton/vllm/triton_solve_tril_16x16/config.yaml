@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_solve_tril_16x16.py
+  - path: source/triton_solve_tril_16x16.py
+    scope: symbols
+    symbols:
+    - solve_tril_16x16_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_solve_tril_16x16.py
     kind: function

@@ -62,6 +62,7 @@ def load_harness():
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
+    module.run_signal_controls = lambda **kwargs: module.semantic_controls.run_signal_controls(module, **kwargs)
     return module
 
 
@@ -77,6 +78,18 @@ def evaluate(role, action):
         actual = json.loads(json.dumps(getattr(harness, data['case_table'])))
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
+        if harness.INPUT_DISTRIBUTION != data['input_distribution'] or harness.HISTORICAL_CASES != data['historical_cases']:
+            raise ValueError('Harness input distribution/history disagrees with protected workload manifest')
+        by_id = {row['test_case_id']: row for row in data['cases']}
+        for historical in harness.HISTORICAL_CASES:
+            row = by_id.get(historical['test_case_id'], {})
+            if (row.get('checks') != ['correctness'] or
+                    row.get('params', {}).get('input_distribution') != 'historical_v1' or
+                    any(row.get('params', {}).get(key) != value for key, value in historical.items() if key != 'test_case_id')):
+                raise ValueError('Historical correctness row disagrees with its protected input definition')
+        if any(row['params'].get('input_distribution') != harness.INPUT_DISTRIBUTION['name']
+               for row in data['cases'] if 'performance' in row['checks']):
+            raise ValueError('Scored case uses an undeclared input distribution')
         if action == 'validate-task':
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
@@ -94,7 +107,9 @@ def evaluate(role, action):
                     ok, error = harness.run_correctness(case_index=row['params'].get('case_index', index))
                     if not ok:
                         raise RuntimeError(error or 'Original numerical/output contract rejected candidate')
-                    row['metrics']={'original_case_checks_passed':True}
+                    signal = harness.run_signal_controls(case_index=row['params'].get('case_index', index))
+                    row['metrics']={'original_case_checks_passed':True,
+                                    'unscored_signal_control':signal}
                 except BaseException as exc:
                     row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='correctness_failure')
         elif action == 'performance':

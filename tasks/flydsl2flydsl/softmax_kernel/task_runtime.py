@@ -108,6 +108,160 @@ def _allowed_aiter_helpers():
     return allowed
 
 
+def check_candidate_control_plane(tree):
+    """Reject direct module-registry/control-frame access in candidate sources.
+
+    This applies to the normal task-local source closure, not installed FlyDSL
+    internals. Ordinary sys metadata stays available. These structural checks
+    supplement protected imports; they are not a Python security sandbox.
+    """
+    blocked = {"modules", "_getframe", "_current_frames", "getprofile", "setprofile",
+               "gettrace", "settrace", "exc_info", "exception", "_current_exceptions",
+               "monitoring", "__dict__", "__getattribute__"}
+    aliases = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                if item.name == "sys":
+                    aliases[item.asname or "sys"] = "sys"
+        elif isinstance(node, ast.ImportFrom) and node.module == "sys":
+            for item in node.names:
+                if item.name == "*" or item.name in blocked:
+                    raise ValueError("Candidate cannot access the evaluator module registry/control frames")
+                aliases[item.asname or item.name] = "sys." + item.name
+    def name(node):
+        if isinstance(node, ast.Name):
+            return aliases.get(node.id, node.id)
+        if isinstance(node, ast.Attribute):
+            return name(node.value) + "." + node.attr
+        return ""
+    # Follow ordinary object aliases without importing candidate code.
+    for _ in range(len(list(ast.walk(tree)))):
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                value = name(node.value)
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                if value == "sys" or value.startswith("sys."):
+                    for target in targets:
+                        if isinstance(target, ast.Name) and aliases.get(target.id) != value:
+                            aliases[target.id] = value
+                            changed = True
+        if not changed:
+            break
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    for node in ast.walk(tree):
+        # A sys object cannot be passed to a helper/container that would hide a
+        # later registry lookup. Ordinary name aliases remain statically tracked.
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and name(node) == "sys":
+            parent = parents.get(node)
+            attribute = isinstance(parent, ast.Attribute) and parent.value is node
+            alias = ((isinstance(parent, ast.Assign) and parent.value is node and
+                      all(isinstance(t, ast.Name) for t in parent.targets)) or
+                     (isinstance(parent, ast.AnnAssign) and parent.value is node and
+                      isinstance(parent.target, ast.Name)))
+            if not (attribute or alias):
+                raise ValueError("Candidate cannot pass the evaluator module registry/control frames through a sys object")
+        value = name(node)
+        if value.startswith("sys.") and value.split(".")[1] in blocked:
+            raise ValueError("Candidate cannot access the evaluator module registry/control frames")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in {"getattr", "vars"} and node.args and name(node.args[0]) == "sys":
+                raise ValueError("Dynamic sys attribute lookup is not a candidate implementation dependency")
+
+
+def candidate_source_closure(paths):
+    """Collect normal task-local Python imports without importing candidate code.
+
+    Installed libraries are not traversed. This supplements the existing static
+    dependency and runtime-call checks; it is not a Python security sandbox.
+    """
+    root = ROOT.resolve(strict=True)
+    sources, queued = [], set()
+    protected = {"src", "agents", "model", "test_kernel_harness", "task_runtime",
+                 "task_reference", "task_baseline", "reference_controls", "scripts"}
+    reserved = (set(sys.builtin_module_names) | set(sys.stdlib_module_names) |
+                {"torch", "flydsl", "triton", "aiter", "numpy", "typing_extensions"})
+
+    def checked(path, directory=False):
+        path = Path(path).absolute()
+        if not path.is_relative_to(root):
+            raise ValueError(f"Candidate source escapes task workspace: {path}")
+        current = root
+        for part in path.relative_to(root).parts:
+            if part in {".", ".."}:
+                raise ValueError("Candidate source has non-normalized components")
+            current = current / part
+            if current.is_symlink():
+                raise ValueError(f"Candidate source symlink is not allowed: {current}")
+        if not path.resolve(strict=True).is_relative_to(root):
+            raise ValueError("Candidate source escapes task workspace")
+        if not (path.is_dir() if directory else path.is_file() and path.suffix == ".py"):
+            raise ValueError(f"Candidate Python source is missing or invalid: {path}")
+        return path
+
+    def add(path):
+        path = checked(path)
+        if path not in queued:
+            queued.add(path)
+            sources.append(path)
+
+    def resolve(parts, *, optional=False):
+        if not parts:
+            return
+        if set(parts) & protected:
+            raise ValueError(f"Protected dependency in candidate: {'.'.join(parts)}")
+        current, local = root, False
+        for index, name in enumerate(parts):
+            directory, module = current / name, current / (name + ".py")
+            if directory.exists() or directory.is_symlink():
+                checked(directory, directory=True)
+                if index == 0 and name in reserved:
+                    raise ValueError(f"Candidate shadows library module: {name}")
+                local = True
+                initializer = directory / "__init__.py"
+                if initializer.exists() or initializer.is_symlink():
+                    add(initializer)
+                current = directory
+            elif module.exists() or module.is_symlink():
+                if index == 0 and name in reserved:
+                    raise ValueError(f"Candidate shadows library module: {name}")
+                add(module)
+                if index != len(parts) - 1 and not optional:
+                    raise ValueError(f"Local module is not a package: {'.'.join(parts)}")
+                return
+            else:
+                if local and not optional:
+                    raise ValueError(f"Missing task-local import: {'.'.join(parts)}")
+                return  # External installed dependency, or a from-import value.
+
+    for path in paths:
+        add(path)
+    index = 0
+    while index < len(sources):
+        path = sources[index]
+        index += 1
+        tree = ast.parse(path.read_text(), filename=str(path))
+        package = list(path.relative_to(root).parent.parts)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    resolve(alias.name.split("."))
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    if node.level > len(package):
+                        raise ValueError("Relative candidate import escapes its task package")
+                    base = package[:len(package) - node.level + 1]
+                else:
+                    base = []
+                parts = base + (node.module.split(".") if node.module else [])
+                resolve(parts, optional=not node.level)
+                for alias in node.names:
+                    if alias.name != "*":
+                        resolve(parts + alias.name.split("."), optional=True)
+    return sources
+
+
 def check_dependencies(paths, final_language=True):
     """Reject external operator delegation before importing candidate code.
 
@@ -117,6 +271,7 @@ def check_dependencies(paths, final_language=True):
     calls in the declared function; it never exposes an AITER module object.
     Initial Triton / provided baseline evaluation keeps its original backend.
     """
+    paths = candidate_source_closure(paths)
     forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts"}
     external = {"triton", "cupy", "numba", "aiter", "ctypes", "subprocess"}
     loaders = {"eval", "exec", "__import__", "builtins.eval", "builtins.exec", "builtins.__import__",
@@ -127,6 +282,8 @@ def check_dependencies(paths, final_language=True):
     for path in paths:
         path = Path(path)
         tree = ast.parse(path.read_text(), filename=str(path))
+        if final_language:
+            check_candidate_control_plane(tree)
         aliases = {}
         helper_bindings = []
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}

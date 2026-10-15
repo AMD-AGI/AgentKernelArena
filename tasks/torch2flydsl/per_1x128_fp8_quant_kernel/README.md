@@ -10,7 +10,8 @@ the task-local PyTorch model or installed AITER operator specified there, with i
 original graph/event policy. `model.py` is protected reference/source material;
 its presence alone does not select the performance baseline.
 
-There are 6 declared cases in `cases.json`. All original dimensions,
+There are 10 declared cases in `cases.json`: the six original scored cases and
+four correctness-only group-geometry controls. All original dimensions,
 parameter variants, seeds, tolerances, numerical metrics, output checks, warmups
 and repetition counts remain in the protected harness. It validates the PyTorch
 reference against the original independent AITER comparison wherever that check
@@ -61,3 +62,51 @@ AITER. All original cases, seeds, rounding/quantization algorithms, tolerances,
 graph timing and sample counts are unchanged. The provided PyTorch model remains
 the primary baseline. Candidate computation must use actual FlyDSL launches;
 allocation, layout/casts and launch preparation are allowed host operations.
+
+## Local implementation helpers
+
+Declared editable candidate sources may import additional task-local Python
+device/compiler helpers, including packages. Dependency review and syntax
+compilation follow the complete normal local-import closure. The same declared
+implementation restrictions apply to every helper: protected references,
+alternative final-language backends and dynamic implementation loading remain
+disallowed. Source symlinks, imports escaping the task and local modules shadowing
+the supported runtime libraries are rejected. Installed library source is not
+traversed. Existing candidate-only PyTorch preparation and per-call FlyDSL launch
+audits remain active outside timing. These checks enforce the task contract;
+they are not a Python security sandbox.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy remains active on every actual
+operator call made by canonical benchmark warmup, graph capture and eager event
+timing. Tensor arithmetic, reductions and library operators must execute as
+FlyDSL kernels even when candidate behavior changes after earlier calls. A
+probe of the actual performance closure observes FlyDSL invocation outside
+clocks and capture; Python profiling is disabled inside canonical measurement.
+Allocation and view preparation retain the existing allowlist. Baseline and
+reference operators keep their original policy and all original device timing
+parameters. One additional untimed audit probe of each performance closure runs
+before canonical benchmarking; stateful closures use the existing prepare
+callback before and after that probe. This probe is separate from the retained
+benchmark warmup/sample counts. A forbidden operation remains a failure even if
+a capture fallback or candidate code catches its exception. These checks are
+implementation-contract evidence, not a Python
+security sandbox.
+
+Candidate sources and their normal local-import helpers must not access the
+evaluator's module registry, stack frames or profiling controls through `sys`,
+including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
+available, and installed FlyDSL library internals are not scanned as candidate
+code. Protected reference imports remain prohibited.
+
+## Per-group correctness coverage
+
+The public input domain remains two-dimensional BF16 activations with
+`n` divisible by 128. No partial 128-element group is implied. Correctness adds
+`(m, n) = (1, 128), (3, 384), (5, 1152), (2, 4224)`, exercising one, three, nine
+and 33 groups per row, row boundaries and a final group beyond a 4096-element
+tile. The original six scored shapes, random generator/seed, FP8 formats,
+per-group scale rule, code-distance/scale tolerances and 100-sample/10-warmup
+timing are unchanged. Finite coverage supplements the general interface; it
+does not prove correctness for every possible width or input distribution.

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ep_gather.py
+  - path: source/triton_ep_gather.py
+    scope: symbols
+    symbols:
+    - _fwd_kernel_ep_gather
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ep_gather.py
     kind: function

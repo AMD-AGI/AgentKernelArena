@@ -39,3 +39,12 @@ Actual captured outputs are checked; a poisoned replay with changed input,
 weight, bias and optional gate must also satisfy the original numerical gate.
 Read-only inputs are checked against pristine copies and restored after timing,
 even if validation or replay raises. All added checks run outside timing.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `layer_norm_fwd_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

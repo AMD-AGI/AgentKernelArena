@@ -54,3 +54,12 @@ unchanged; masked negative infinity is expected rather than a nonfinite error.
 Additional unscored public-branch controls from PR105: Masked vocab tails below/above 8192 with nonidentity selected rows.
 They have independent `control-upstream-*` manifest rows; existing scored
 inputs, numerical gates and timing remain unchanged.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_apply_grammar_bitmask_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

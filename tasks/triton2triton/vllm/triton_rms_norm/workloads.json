@@ -29,6 +29,18 @@
     [
       512,
       4096
+    ],
+    [
+      1,
+      4096
+    ],
+    [
+      32,
+      576
+    ],
+    [
+      32,
+      1536
     ]
   ],
   "cases": [
@@ -116,10 +128,183 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "perf6",
+      "dtype": "float16",
+      "params": {
+        "case_index": 5,
+        "configuration": [
+          1,
+          4096
+        ],
+        "configuration_names": "(rows, hidden)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf7",
+      "dtype": "float16",
+      "params": {
+        "case_index": 6,
+        "configuration": [
+          32,
+          576
+        ],
+        "configuration_names": "(rows, hidden)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "perf8",
+      "dtype": "float16",
+      "params": {
+        "case_index": 7,
+        "configuration": [
+          32,
+          1536
+        ],
+        "configuration_names": "(rows, hidden)"
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_bf16",
+      "dtype": "bfloat16",
+      "params": {
+        "case_index": 10000,
+        "shape": [
+          8,
+          1536
+        ],
+        "eps": 1e-06,
+        "input_scale": 1.0,
+        "seed": 1001
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_rank3",
+      "dtype": "float16",
+      "params": {
+        "case_index": 10001,
+        "shape": [
+          2,
+          3,
+          576
+        ],
+        "eps": 1e-06,
+        "input_scale": 1.0,
+        "seed": 1002
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_rank3_bf16_eps",
+      "dtype": "bfloat16",
+      "params": {
+        "case_index": 10002,
+        "shape": [
+          2,
+          3,
+          1536
+        ],
+        "eps": 1e-05,
+        "input_scale": 0.001,
+        "seed": 1003
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_eps",
+      "dtype": "float16",
+      "params": {
+        "case_index": 10003,
+        "shape": [
+          4,
+          1536
+        ],
+        "eps": 0.001,
+        "input_scale": 0.001,
+        "seed": 1004
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "63019a379a5b02112fa65d61f5c4dc9a72e6e02be209f6bdd53b055a7a6ca70c",
     "original_correctness_sha256": "d6b48368c1f733aa0962de2bdd55be956a6c638bbccaabc39c8fb8b253f8653e"
-  }
+  },
+  "correctness_controls": [
+    {
+      "test_case_id": "control_bf16",
+      "shape": [
+        8,
+        1536
+      ],
+      "dtype": "bfloat16",
+      "eps": 1e-06,
+      "input_scale": 1.0,
+      "seed": 1001
+    },
+    {
+      "test_case_id": "control_rank3",
+      "shape": [
+        2,
+        3,
+        576
+      ],
+      "dtype": "float16",
+      "eps": 1e-06,
+      "input_scale": 1.0,
+      "seed": 1002
+    },
+    {
+      "test_case_id": "control_rank3_bf16_eps",
+      "shape": [
+        2,
+        3,
+        1536
+      ],
+      "dtype": "bfloat16",
+      "eps": 1e-05,
+      "input_scale": 0.001,
+      "seed": 1003
+    },
+    {
+      "test_case_id": "control_eps",
+      "shape": [
+        4,
+        1536
+      ],
+      "dtype": "float16",
+      "eps": 0.001,
+      "input_scale": 0.001,
+      "seed": 1004
+    }
+  ]
 }

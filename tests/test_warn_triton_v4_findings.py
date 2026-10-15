@@ -6,9 +6,16 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from task_import_isolation import isolated_task_imports
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
+
+@pytest.fixture(autouse=True)
+def _isolated_task_local_imports():
+    with isolated_task_imports(ROOT / 'tasks'):
+        yield
+
 TASKS = ROOT / 'tasks/triton2triton/vllm'
 
 

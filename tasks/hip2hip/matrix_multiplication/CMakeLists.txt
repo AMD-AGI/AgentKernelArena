@@ -57,7 +57,7 @@ endif()
 
 list(APPEND CMAKE_PREFIX_PATH "${ROCM_ROOT}")
 
-add_executable(${example_name} main.hip)
+add_executable(${example_name} main.hip source/kernel_launch.hip)
 # Make example runnable using ctest
 add_test(NAME ${example_name} COMMAND ${example_name})
 set(include_dirs "../../Common")
@@ -66,6 +66,6 @@ if(GPU_RUNTIME STREQUAL "CUDA")
 endif()
 
 target_include_directories(${example_name} PRIVATE ${include_dirs})
-set_source_files_properties(main.hip PROPERTIES LANGUAGE ${GPU_RUNTIME})
+set_source_files_properties(main.hip source/kernel_launch.hip PROPERTIES LANGUAGE ${GPU_RUNTIME})
 
 install(TARGETS ${example_name})

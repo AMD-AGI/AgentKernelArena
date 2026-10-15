@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_mean.py
+  - path: source/triton_mean.py
+    scope: symbols
+    symbols:
+    - mean_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_mean.py
     kind: function

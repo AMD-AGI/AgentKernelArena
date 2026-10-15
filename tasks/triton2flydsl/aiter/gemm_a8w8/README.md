@@ -19,9 +19,11 @@ module loading, external native kernels, subprocess dispatch or launch bypasses.
 The protected harness's existing glue operations and allocation/reset boundaries
 remain identical for baseline and candidate.
 
-`cases.json` contains 18 independent correctness identities and 9
-performance identities, including every original dtype, bias, activation, routing
-and shape variant. Performance variants have correctness coverage. Input generators,
+`cases.json` contains the 18 original correctness identities, four additional
+correctness-only optional-argument cases, and the nine original performance
+identities. The new cases exercise FP16 output, vector row/column scales,
+preallocated output (including a strided view), and a valid non-split-K config
+override. Performance variants retain their original correctness coverage. Input generators,
 explicit seeds, numerical gates, output-contract checks, warmups, sample counts,
 state reset and graph/event benchmark calls remain in `test_kernel_harness.py`.
 Where the original suite allowed an environment dtype override, the manifest now
@@ -54,12 +56,37 @@ checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
 
 
-All 18 original correctness and 9 performance cases remain: FP8 per-row/per-column scaling with both bias states. The output is exactly [M,N] BF16 on the input device. The original allclose gate remains atol=0.02, rtol=0.01, with finite outputs. Inputs, weights, scales and optional bias are read-only.
+All 18 original correctness and 9 performance cases remain: FP8 per-row/per-column scaling with both bias states. The original cases return [M,N] BF16 on the input device; API controls also check FP16 and supplied output storage. The original allclose gate remains atol=0.02, rtol=0.01, with finite outputs. Inputs, weights, scales and optional bias are read-only.
 
-The actual measured output and the same captured graph replay must meet that
-same reference and numerical rule. Replay changes activation values or scales
-within the operand domain. This perturbation, output poisoning, reference work and restoration
-are outside timing. Original seeds, input generation, 10 external warmups and
-100 graph samples are unchanged. Capture failure cannot bypass replay validation.
-The frozen original Triton source is unchanged; final FlyDSL candidate calls are
-audited separately and cannot use protected references or another operator backend.
+Every one of the 100 measured outputs must meet the same FP32 reference and
+numerical rule. The ten external warmups retain the original seeded inputs. Every prepared
+invocation, including capture/calibration and all 100 scored samples, independently
+redraws and quantizes both X and W, preserving their shapes, FP8 format and
+per-row/per-column scale semantics. Actual preparation indices, operand seeds
+and full input-byte hashes are recorded for the scored draws. Preparation, oracle computation,
+output checking and input-immutability checks stay outside device timing for
+both baseline and candidate. Output storage is checked before a later invocation
+can reuse it.
+
+Timing remains graph-first with 10 external warmups and 100 reported samples.
+The input-preparation callback makes each captured replay contain one logical
+GEMM invocation (`benchmark_effective_repeats: 1`), replacing the previous
+adaptive repetition of unchanged operands within a replay. This is a timing
+protocol change: historical latencies are not directly comparable. Any graph
+capture fallback must preserve the same per-sample input and output checks.
+
+After timing, the exact measured invocation is replayed on three unseen draws:
+X only, W only, and both operands changed, with their corresponding scales.
+Outputs are poisoned before each replay; all operand values are restored after
+validation. These checks reject a cached accumulator that only reapplies scales.
+The original nine performance shapes, input generator, default output dtype,
+tolerances and frozen Triton implementation are unchanged. Final FlyDSL calls retain their separate
+execution audit and cannot substitute protected references or another backend.
+The changed harness requires fresh full GPU validation; CPU regression checks
+alone do not qualify it.
+
+The four API controls use the same independent FP32 scaled-dot-product oracle,
+finite-value checks and atol=0.02/rtol=0.01 rule. They check caller input/config
+immutability, the identity of supplied output storage, and untouched padding in
+strided output. They do not add timed workloads or change the original nine
+performance shapes, warmups, samples, or aggregation.
