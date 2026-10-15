@@ -651,7 +651,8 @@ def _benchmark_method_mismatches(
     """
 
     mismatches: List[Dict[str, Any]] = []
-    comparable_methods = {'cuda_graph', 'cuda_event_fallback'}
+    from .measurement import DEVICE_METHODS, SERVING_METHOD
+    comparable_methods = DEVICE_METHODS | {SERVING_METHOD}
     for base_case, opt_case in matched_cases:
         base_metadata = base_case.metadata or {}
         opt_metadata = opt_case.metadata or {}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "patches": [
+    {
+      "module": "sglang.srt.layers.attention.fla.fused_recurrent",
+      "symbol": "fused_recurrent_gated_delta_rule_packed_decode",
+      "file": "gdn.py",
+      "callable": "fused_recurrent_gated_delta_rule_packed_decode"
+    }
+  ]
+}

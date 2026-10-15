@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from agents.task_validator.report_v2 import _replay_validation_applicability
+from src.task_spec import load_task_spec
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,9 +26,9 @@ def _adapter(name):
     return module
 
 
-def _applicability(cases):
-    spec = SimpleNamespace(candidate=SimpleNamespace(initial_state='unimplemented'),
-                           baseline=SimpleNamespace(kind='provided'))
+def _applicability(name, cases):
+    task_id = f'triton2triton/vllm/{name}'
+    spec = load_task_spec(ROOT / 'tasks' / task_id / 'config.yaml', task_id=task_id)
     return _replay_validation_applicability({
         'evidence_valid': True, 'accepted': True, 'spec': spec,
         'results': {('baseline', 'performance'): SimpleNamespace(passed=True, cases=cases)},
@@ -63,4 +64,4 @@ def test_event_row_binds_actual_timing_and_checked_output(monkeypatch, name, che
         assert row['metadata']['device_timing']['benchmark_method'] == row['benchmark_method']
         assert row['metadata']['device_timing']['benchmark_samples'] == 100
         assert row['metadata']['timed_output_checked'] is checked
-    assert _applicability(rows)['status'] == ('not_applicable' if checked else 'undetermined')
+    assert _applicability(name, rows)['status'] == ('not_applicable' if checked else 'undetermined')

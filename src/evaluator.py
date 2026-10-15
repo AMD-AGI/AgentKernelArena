@@ -144,6 +144,8 @@ def evaluate_kernel(
     tool_artifact_root: Optional[Path] = None,
     gpu_arch: Optional[str] = None,
     task_session: Optional["TaskSession"] = None,
+    final_evaluation_pairs: Optional[int] = None,
+    performance_block_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Standardized evaluation of optimized kernel.
@@ -284,6 +286,10 @@ def evaluate_kernel(
 
     # 4. Performance measurement (only after compilation, correctness, and any
     # required tool policy have passed).
+    if performance_block_reason:
+        results['speedup_calculation_error_message'] = performance_block_reason
+        log.warning("Skipping invalid performance measurement: %s", performance_block_reason)
+        return results
     log.info("Step 4: Measuring performance...")
     if task_session is None:
         optimized_cases = measure_performance(workspace, task_config, logger)
@@ -291,10 +297,47 @@ def evaluate_kernel(
         from .task_protocol import performance_cases
 
         try:
-            performance = task_session.candidate_action("performance").result
-            if not performance.passed:
-                raise ValueError(performance.reason or "Candidate performance failed")
-            optimized_cases = performance_cases(performance)
+            from .measurement import measurement_kind, paired_throughput
+            if measurement_kind(task_config) == "serving":
+                pairs = []
+                from .measurement import serving_pair_count
+                declared_pairs = task_config["evaluation"]["measurement"]["pairs"]
+                count = serving_pair_count(task_config, final_evaluation_pairs)
+                for index in range(count):
+                    measured = {}
+                    for role in (("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")):
+                        if role == "candidate":
+                            performance = task_session.candidate_action("performance").result
+                        else:
+                            performance = task_session.baseline_action("performance").result
+                        if not performance.passed:
+                            raise ValueError(performance.reason or "Serving performance failed")
+                        measured[role] = performance_cases(performance)
+                    pairs.append((measured["baseline"], measured["candidate"]))
+                results["serving_measurement"] = paired_throughput(pairs,
+                    minimum_speedup_ratio=task_config["evaluation"]["measurement"].get("minimum_speedup_ratio", 1.0))
+                results["serving_measurement"].update(
+                    declared_pairs=declared_pairs,
+                    pair_count_override=final_evaluation_pairs,
+                    statistical_significance="not_assessed")
+                save_performance_results(pairs[-1][0], workspace, "baseline_perf.yaml", logger)
+                results["serving_measurement"]["raw_pairs"] = [
+                    {"baseline": [vars(c) for c in b], "candidate": [vars(c) for c in cnd]}
+                    for b, cnd in pairs]
+                baseline_cases[:] = pairs[-1][0]
+                optimized_cases = pairs[-1][1]
+                limit = (task_config.get("evaluation", {}).get("measurement", {})).get("max_p99_tpot_ms")
+                if limit is not None:
+                    latencies = [c.metadata.get("metrics", {}).get("p99_tpot_ms") for _, rows in pairs for c in rows]
+                    if any(value is None for value in latencies):
+                        raise ValueError("Serving latency limit declared but a measurement omitted p99_tpot_ms")
+                    if any(value > limit for value in latencies):
+                        raise ValueError("Serving latency limit exceeded")
+            else:
+                performance = task_session.candidate_action("performance").result
+                if not performance.passed:
+                    raise ValueError(performance.reason or "Candidate performance failed")
+                optimized_cases = performance_cases(performance)
         except (ValueError, RuntimeError, OSError) as exc:
             results['speedup_calculation_error_message'] = str(exc)
             log.warning("V2 candidate performance failed: %s", exc)
@@ -398,12 +441,13 @@ def evaluate_kernel(
                     results['speedup_calculation_error_message'] = error_msg
                     log.warning(error_msg)
                 else:
-                    avg_speedup = calculate_average_speedup(
-                        valid_baseline_cases,
-                        valid_optimized_cases,
-                        logger,
-                        require_complete_match=True,
-                    )
+                    if "serving_measurement" in results:
+                        avg_speedup = results["serving_measurement"]["speedup_ratio"]
+                    else:
+                        avg_speedup = calculate_average_speedup(
+                            valid_baseline_cases, valid_optimized_cases, logger,
+                            require_complete_match=True,
+                        )
                     if avg_speedup > 0:
                         results['average_speedup'] = avg_speedup
                         log.info(f"Average speedup: {avg_speedup:.2f}x")
@@ -461,6 +505,12 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
     from .task_runtime import bind_session_runtime
 
     log = logger or session.logger
+    if result_metadata and set(result_metadata) - {"agent_execution", "process_sweep"}:
+        raise ValueError("Unsupported supplemental evaluation metadata")
+    sweep = (result_metadata or {}).get("process_sweep") or {}
+    performance_block_reason = None
+    if sweep.get("status") == "leftovers" or (sweep.get("required") and sweep.get("status") != "clean"):
+        performance_block_reason = "Process sweep did not establish a clean measurement: " + str(sweep.get("status"))
     config = session.spec.to_mapping()
     tools = merge_task_tool_config(EvalToolsConfig.from_mapping(eval_config), config)
     baseline = session.results.get(("task_validation", "baseline", "performance"))
@@ -498,10 +548,14 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
                 metadata={"manifest": str(original.storage_dir / "manifest.json")})
             manager = create_default_manager()
             artifact_root = task_artifact_root(session.workspace)
+        from .run_budget import budget_policy
+        policy = budget_policy(eval_config) or {}
         result = evaluate_kernel(
             session.workspace, config, baseline_cases, log, tool_manager=manager,
             eval_tools_config=tools, tool_source_evidence=source, tool_artifact_root=artifact_root,
-            gpu_arch=runtime["gpu_arch"], task_session=session)
+            gpu_arch=runtime["gpu_arch"], task_session=session,
+            final_evaluation_pairs=policy.get("final_evaluation_pairs"),
+            performance_block_reason=performance_block_reason)
         session.verify_candidate_harness()
         session.verify_baseline_sources()
     except (ValueError, RuntimeError, OSError) as exc:
@@ -509,7 +563,8 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
         result.update(pass_compilation=False, pass_correctness=False, average_speedup=0.0,
                       best_optimized_execution_time=0.0, framework_error=f"{type(exc).__name__}: {exc}",
                       compilation_error_message=str(exc), benchmark_method_consistent=False)
-    result.update(task_schema_version=2, runtime_identity=runtime,
+    from .measurement import measurement_kind
+    result.update(measurement_kind=measurement_kind(config), task_schema_version=2, runtime_identity=runtime,
                   initial_task_validation=asdict(initial) if initial is not None else None)
     source_evidence = session.candidate_source_evidence()
     result["evaluated_candidate_sources"] = source_evidence["sources"]
@@ -523,9 +578,9 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
     if result_metadata:
         # Only supplemental agent evidence is accepted; callers cannot replace
         # acceptance, timings, framework errors, or task/runtime identity.
-        if set(result_metadata) - {"agent_execution"}:
-            raise ValueError("Unsupported supplemental evaluation metadata")
         result.update(result_metadata)
+    from .candidate_verification import verify_candidate, apply_review
+    apply_review(result, verify_candidate(session, result, eval_config, log))
     agent_name = eval_config.get("agent", {}).get("template", "unknown")
     write_task_result(session.workspace, result, baseline_cases, session.spec.task_id, agent_name, log)
     task_result_scoring(str(session.workspace))
@@ -578,17 +633,6 @@ def write_task_result(
     if not workload_consistent:
         avg_speedup = 0.0
     
-    # Use average speedup if available, otherwise calculate from average times
-    if (
-        avg_speedup == 0.0
-        and not speedup_error
-        and benchmark_method_consistent
-        and workload_consistent
-        and avg_baseline_time > 0
-        and optimized_time > 0
-    ):
-        avg_speedup = avg_baseline_time / optimized_time
-
     # Surface task-wide method sets for diagnostics, but enforce consistency on
     # matched cases.  One shape may use graph while another falls back to events;
     # that is fair as long as each baseline/optimized pair uses the same method.
@@ -631,7 +675,8 @@ def write_task_result(
     for field in (
         'task_schema_version', 'runtime_identity', 'initial_task_validation',
         'baseline_correctness', 'agent_execution', 'framework_error',
-        'evaluated_candidate_sources', 'candidate_source_error',
+        'evaluated_candidate_sources', 'candidate_source_error', 'serving_measurement', 'measurement_kind',
+        'process_sweep', 'candidate_verification', 'pass_verification',
     ):
         if field in evaluation_results:
             task_result[field] = evaluation_results[field]
@@ -643,7 +688,7 @@ def write_task_result(
     log.info(f"Written task_result.yaml to {result_file}")
     
     # Create performance plots if requested and both baseline and optimized data exist
-    if create_plots:
+    if create_plots and evaluation_results.get("measurement_kind", "kernel") == "kernel":
         try:
             from .plotting import plot_performance_comparison
             

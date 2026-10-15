@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from agents.task_validator.report_v2 import _replay_validation_applicability
+from src.task_spec import load_task_spec
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,11 +32,9 @@ def _load_runtime(name):
     return module
 
 
-def _applicability(row):
-    spec = SimpleNamespace(
-        candidate=SimpleNamespace(initial_state="unimplemented"),
-        baseline=SimpleNamespace(kind="provided"),
-    )
+def _applicability(name, row):
+    task_id = f"torch2flydsl/{name}"
+    spec = load_task_spec(ROOT / "tasks" / task_id / "config.yaml", task_id=task_id)
     result = SimpleNamespace(passed=True, cases=[row])
     return _replay_validation_applicability({
         "evidence_valid": True, "accepted": True, "spec": spec,
@@ -66,10 +65,10 @@ def test_event_case_keeps_original_fields_and_binds_real_device_timing(name):
     assert metadata["timed_output_checked"] is True
     assert metadata["device_timing"]["benchmark_method"] == row["benchmark_method"]
     assert metadata["device_timing"]["benchmark_fallback_reason"] == metadata["benchmark_fallback_reason"]
-    assert _applicability(row)["status"] == "not_applicable"
+    assert _applicability(name, row)["status"] == "not_applicable"
 
     for damaged in (
         {**row, "metadata": {**metadata, "timed_output_checked": False}},
         {**row, "metadata": {**metadata, "device_timing": {}}},
     ):
-        assert _applicability(damaged)["status"] == "undetermined"
+        assert _applicability(name, damaged)["status"] == "undetermined"

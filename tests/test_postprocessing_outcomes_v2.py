@@ -105,3 +105,24 @@ def test_execution_comparison_keeps_absent_historical_counts_unknown():
     compared = compare_overall(new, {"overall": {"agent_failed_count": 1}})
     failure = next(line for line in compared if line.startswith("Agent failed"))
     assert failure.split() == ["Agent", "failed", "2", "1", "-1"]
+
+
+def test_mixed_measurements_have_separate_performance_statistics(tmp_path):
+    run = tmp_path / "workspace_MI355X_codex" / "run_20260930_120000"
+    workspaces = []
+    for kind, ratio in [('kernel', 2.0), ('serving', 1.05)]:
+        workspace = run / kind
+        workspace.mkdir(parents=True)
+        (workspace/'task_result.yaml').write_text(yaml.safe_dump(dict(
+            task_name=kind+'/sample',measurement_kind=kind,pass_compilation=True,
+            pass_correctness=True,base_execution_time=100,best_optimized_execution_time=80,
+            benchmark_method_consistent=True,speedup_ratio=ratio)))
+        workspaces.append(str(workspace))
+    general_post_processing(workspaces, logger=None)
+    data=json.loads((run/'reports/task_type_breakdown.json').read_text())
+    assert data['mixed_measurements'] is True
+    assert 'average_speedup' not in data['overall']
+    assert 'average_score' not in data['overall']
+    assert data['measurement_groups']['kernel']['average_speedup'] == 2.0
+    assert data['measurement_groups']['serving']['average_speedup'] == 1.05
+    assert 'no combined average' in (run/'reports/overall_report.txt').read_text()

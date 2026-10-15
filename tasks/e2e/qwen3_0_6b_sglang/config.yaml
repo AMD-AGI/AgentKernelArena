@@ -1,0 +1,31 @@
+schema_version: 2
+description: Improve fixed-workload end-to-end model throughput through GPU kernel
+  implementations and fusion across compute operations. Preserve model semantics,
+  precision, workload and serving settings.
+candidate:
+  language: gpu
+  initial_state: implemented
+  editable:
+  - path: source
+    scope: tree
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+platform_support:
+  required_arch: gfx950
+workspace:
+  timeout_s: 600
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: benchmark.yaml
+  timeout_s: 1200
+  measurement:
+    kind: serving
+    runtime_lock: runtime.lock.json
+    pairs: 3
+    minimum_speedup_ratio: 1.05
+    max_p99_tpot_ms: 10
+instructions:
+- README.md

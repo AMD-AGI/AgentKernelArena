@@ -135,6 +135,8 @@ def task_result_scoring(workspace_path: str) -> float:
         'benchmark_method_consistent'
     )
 
+    if result_data.get('pass_verification') is False:
+        speedup_ratio = 0.0
     # Calculate score
     calculated_score = score(
         pass_compilation=pass_compilation,

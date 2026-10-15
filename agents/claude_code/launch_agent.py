@@ -6,7 +6,6 @@ import math
 import threading
 import os
 import shlex
-import signal
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +14,7 @@ from agents import register_agent
 from agents.prompt_input import prompt_input
 from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
+from src.process_control import stop_process_group as _stop_process
 from src.runtime_env import PYTHON_ENV_VAR, build_subprocess_env
 
 
@@ -63,21 +63,6 @@ def _build_command(agent_bin: str, prompt: str | None, config: dict[str, Any]) -
             cmd.extend([option, str(config[key])])
     cmd.extend(["--input-format", "text"] if prompt is None else ["--", prompt])
     return cmd
-
-
-def _stop_process(process: subprocess.Popen) -> None:
-    """Terminate only this invocation and its tool children."""
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(process.pid, sig)
-        except ProcessLookupError:
-            break
-        if sig == signal.SIGTERM:
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-    process.wait()
 
 
 def _get_cli_version(agent_cmd: str) -> str:

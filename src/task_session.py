@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import shutil
 
+from .measurement import measurement_kind
 from .evaluator_utils import _is_unimplemented_target_stub
 from .task_execution import ExecutedAction, TaskExecutionError, run_action
 from .task_protocol import (
@@ -163,6 +164,7 @@ class TaskSession:
                              for item in raw["commands"])
             parsed = merge_command_results(parse_command_result(
                 command.stdout, role=result["role"], action=result["action"], returncode=command.returncode,
+                measurement=measurement_kind(spec.to_mapping()),
             ) for command in commands)
             if parsed.to_mapping() != result:
                 raise TaskExecutionError(f"Saved result contradicts its command evidence: {path.name}")
@@ -371,6 +373,14 @@ class TaskSession:
             if _is_unimplemented_target_stub(target):
                 raise TaskExecutionError(f"Unimplemented candidate entrypoint: {entry.file}:{entry.symbol}")
 
+    def baseline_action(self, action: str) -> ExecutedAction:
+        """Fresh final measurement from the verified original source package."""
+        if self.initial_validation is None or not self.initial_validation.accepted:
+            raise TaskExecutionError("Baseline remeasurement requires accepted initial task validation")
+        if action != "performance":
+            raise TaskExecutionError(f"Unsupported baseline remeasurement: {action}")
+        return self._execute("baseline", action, "candidate_evaluation")
+
     def candidate_action(self, action: str) -> ExecutedAction:
         if self.initial_validation is None or not self.initial_validation.accepted:
             raise TaskExecutionError("Candidate evaluation requires accepted initial task validation")
@@ -400,20 +410,21 @@ class TaskSession:
             raise TaskExecutionError("Evaluation command modified candidate source")
         return executed
 
-    def _candidate_sources(self, *, allow_missing: bool = False) -> dict[str, str]:
+    def _candidate_sources(self, *, allow_missing: bool = False, root: Path | None = None) -> dict[str, str]:
+        root = self.workspace if root is None else root
         sources = {}
         runtime_dirs = {"__pycache__", ".pytest_cache", ".git", "build"}
         for edit in self.spec.candidate.editable:
-            path = resolve_task_path(self.workspace, edit.path, must_exist=not allow_missing)
+            path = resolve_task_path(root, edit.path, must_exist=not allow_missing)
             if not path.exists():
                 sources[edit.path] = "missing"
                 continue
             paths = path.rglob("*") if edit.scope == "tree" else [path]
             for source in paths:
-                relative = source.relative_to(self.workspace)
+                relative = source.relative_to(root)
                 # A tree declaration does not exempt nested symlinks from the
                 # same containment rule as an individually declared file.
-                resolve_task_path(self.workspace, relative.as_posix())
+                resolve_task_path(root, relative.as_posix())
                 if not source.is_file():
                     continue
                 if set(relative.parts[:-1]) & runtime_dirs:
@@ -421,13 +432,14 @@ class TaskSession:
                 sources[relative.as_posix()] = _source_digest(source)
         return sources
 
-    def candidate_source_evidence(self) -> dict:
+    def candidate_source_evidence(self, *, initial: bool = False) -> dict:
         """Retain a failed submission report even when its paths are invalid.
 
         An error is explicit and cannot identify an accepted candidate. Never
         follow an escaping path merely to produce report/completion metadata.
         """
         try:
-            return {"sources": self._candidate_sources(allow_missing=True), "error": None}
+            root = self.baseline_workspace if initial else self.workspace
+            return {"sources": self._candidate_sources(allow_missing=True, root=root), "error": None}
         except (OSError, ValueError, RuntimeError) as exc:
             return {"sources": None, "error": f"{type(exc).__name__}: {exc}"}

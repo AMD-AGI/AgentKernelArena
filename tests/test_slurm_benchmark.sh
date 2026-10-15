@@ -108,6 +108,16 @@ assert_has "ROCR_VISIBLE_DEVICES=3" "${args[@]}"
 assert_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
 assert_not_has "/dev/mem" "${args[@]}"
 
+# Explicit persistent home/auth routing survives the scheduler wrapper.
+mapfile -t args < <(
+    env PATH="$TEST_BIN:$PATH" HOME="$TEST_ROOT/home" SPUR_JOB_ID=42 \
+        SPUR_JOB_GPUS=3 ROCR_VISIBLE_DEVICES=3 AKA_SLURM_EXPECTED_GPUS=1 \
+        AKA_CONTAINER_HOME=/workspace/agent-home AGENT_HOME_ISOLATION=0 \
+        bash "$RUNNER" _inside smoke 2>/dev/null
+)
+assert_has "HOME=/workspace/agent-home" "${args[@]}"
+assert_not_has "AGENT_KERNEL_ARENA_ISOLATED_HOME=1" "${args[@]}"
+
 # The wrapper fails before Docker when the scheduler exposes a different number
 # of GPUs than requested.
 if env \

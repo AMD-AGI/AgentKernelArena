@@ -5,7 +5,6 @@ import logging
 import threading
 import os
 import shlex
-import signal
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +12,7 @@ import yaml
 from agents import register_agent
 from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
+from src.process_control import stop_process_group as _stop_process
 from src.runtime_env import PYTHON_ENV_VAR, build_subprocess_env
 
 
@@ -52,21 +52,6 @@ def _build_command(
         cmd.extend(["--model", config["model"]])
     cmd.extend(["--", prompt])
     return cmd
-
-
-def _stop_process(process: subprocess.Popen) -> None:
-    """Terminate only this invocation and its tool children."""
-    for sig in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(process.pid, sig)
-        except ProcessLookupError:
-            break
-        if sig == signal.SIGTERM:
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-    process.wait()
 
 
 def _get_cli_version(agent_cmd: str) -> str:
