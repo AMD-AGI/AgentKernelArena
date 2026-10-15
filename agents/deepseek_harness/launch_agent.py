@@ -21,6 +21,7 @@ from agents import register_agent
 from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
 from src.runtime_env import build_subprocess_env
+from src.tools.agent_cost import report_agent_usage
 
 
 def _load_config(eval_config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -136,10 +137,28 @@ def _stop_process_group(process: subprocess.Popen[str]) -> None:
     process.wait(timeout=5)
 
 
+def _final_usage(lines: list[str]) -> dict[str, Any] | None:
+    """Token usage from the --json final event, if this CLI version emits one.
+
+    The pinned CLI does not document usage or dollars; absence is reported as
+    unknown rather than estimated.
+    """
+    usage = None
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "final" and isinstance(event.get("usage"), dict):
+            usage = event["usage"]
+    return usage
+
+
 def _run(
     command: list[str], workspace: Path, state: Path,
-    env: dict[str, str], timeout: int, logger: logging.Logger,
+    env: dict[str, str], timeout: int, logger: logging.Logger, model: str | None = None,
 ) -> str:
+    started = time.monotonic()
     outputs: dict[str, list[str]] = {"stdout": [], "stderr": []}
     secret = env.get("DEEPSEEK_API_KEY", "")
 
@@ -175,6 +194,11 @@ def _run(
         _stop_process_group(process)
         for thread in threads:
             thread.join(timeout=5)
+        report_agent_usage(
+            usage=_final_usage(outputs["stdout"]), usage_scope="invocation",
+            source="deepseek_harness --json final", model=model, timed_out=timed_out,
+            seconds=time.monotonic() - started,
+        )
     if timed_out:
         raise TimeoutError(f"DeepSeek Harness exceeded {timeout}s; see {state}")
     if process.returncode != 0:
@@ -212,5 +236,5 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
     logger.info("DeepSeek Harness version=%s model=%s state=%s", version, config["model"], state)
     return _run(
         [binary, "--profile", "headless", "--patch", str(patch_path), "--json"],
-        root, state, env, config["timeout_seconds"], logger,
+        root, state, env, config["timeout_seconds"], logger, model=config["model"],
     )

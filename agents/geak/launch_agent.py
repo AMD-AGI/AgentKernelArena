@@ -20,13 +20,46 @@ from agents.geak.workflow_runner import _read_json
 from src.harness_guard import snapshot_workspace_harness
 from src.task_execution import _run_process
 from src.task_spec import load_task_spec
+from src.tools.agent_cost import report_agent_usage
 from .bridge import (Bridge, TaskContext, candidate_files, copy_task, digests,
                      remaining_budget, snapshot_mapping, write_json)
 from .compatibility import prepare_engine
 
 
 _RUNTIME_FIELDS = ("requested_model", "sdk_version", "cli_version", "init_model",
-                   "assistant_models", "workflow_models", "workflow_agent_errors", "runtime_error_codes", "rate_limit")
+                   "assistant_models", "workflow_models", "workflow_agent_errors", "runtime_error_codes", "rate_limit",
+                   "sdk_cost")
+
+
+def report_sdk_cost(runtime: dict | None, *, workflow_completed: bool, seconds: float, model) -> None:
+    """Expose the SDK's own cost evidence from runtime_identity.json.
+
+    total_cost_usd is a running total within an SDK session, so each session's
+    largest value is its spend; result usage parts are summed. Values are a
+    lower bound when the Workflow did not complete or a background task
+    finished after the last result.
+    """
+    record = runtime.get("sdk_cost") if isinstance(runtime, dict) else None
+    source = "geak claude-agent-sdk ResultMessage"
+    if not isinstance(record, dict) or not isinstance(record.get("results"), list):
+        report_agent_usage(source=source, model=model, seconds=seconds, complete=False)
+        return
+    complete = (workflow_completed and record.get("background_after_result") is not True
+                and record.get("truncated") is not True)
+    sessions: dict[str, list[dict]] = {}
+    for row in record["results"]:
+        if isinstance(row, dict):
+            sessions.setdefault(str(row.get("session_id") or "sdk-session"), []).append(row)
+    if not sessions:
+        report_agent_usage(source=source, model=model, seconds=seconds, complete=False)
+        return
+    for index, (session_id, rows) in enumerate(sessions.items()):
+        priced = [row["total_cost_usd"] for row in rows if isinstance(row.get("total_cost_usd"), (int, float))]
+        usage = [row["usage"] for row in rows if isinstance(row.get("usage"), dict)]
+        report_agent_usage(cost_usd=max(priced) if priced else None, cost_scope="invocation",
+                           usage=usage or None, usage_scope="invocation", session_id=session_id,
+                           source=source, model=model, seconds=seconds if index == 0 else None,
+                           complete=complete)
 
 
 def load_options(eval_config: dict) -> dict:
@@ -210,6 +243,8 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
                 if "runtime" not in engine:
                     engine["runtime"] = {key: runtime[key] for key in _RUNTIME_FIELDS if key in runtime}
             status["elapsed_s"] = time.monotonic() - started
+            report_sdk_cost(runtime, seconds=status["elapsed_s"], model=options.get("model"),
+                            workflow_completed=status.get("engine", {}).get("workflow_completed") is True)
             try:
                 status["retained_workspace_sources"] = digests(candidate_files(context.spec, context.workspace))
             except Exception as exc:
