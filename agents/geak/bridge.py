@@ -66,8 +66,8 @@ class TaskContext:
         if not isinstance(raw, dict) or type(raw.get("version")) is not int or raw["version"] != 1:
             raise ValueError("GEAK requires ARENA_TASK_CONTEXT version 1")
         spec = TaskSpec.from_mapping(raw["task_config"], task_id=raw["task_id"])
-        if spec.candidate.language not in {"hip", "triton", "flydsl"}:
-            raise ValueError("GEAK supports declared hip, triton, and flydsl candidates")
+        if spec.candidate.language not in {"hip", "triton", "flydsl", "gpu"}:
+            raise ValueError("GEAK supports hip, triton, flydsl, and backend-neutral gpu candidates")
         workspace = Path(raw["workspace"]).resolve(strict=True)
         baseline = Path(raw["baseline_workspace"]).resolve(strict=True)
         if (not workspace.is_dir() or not baseline.is_dir() or
@@ -104,6 +104,8 @@ def candidate_files(spec: TaskSpec, root: Path, *, complete: bool = False) -> di
             if any(part.is_symlink() for part in (item, *item.parents)
                    if part != root and part.is_relative_to(root)):
                 raise ValueError("Candidate artifacts must be regular files, not symlinks")
+            if set(item.relative_to(root).parts[:-1]) & {"__pycache__", ".pytest_cache", ".git", "build"}:
+                continue
             files[relative] = item
             found = found or item.stat().st_size > 0
         if complete and not found:
@@ -256,6 +258,20 @@ class Bridge:
         self.baseline_unchanged()
         root = self.context.baseline if role == "baseline" else self.candidate_root(candidate or Path.cwd())
         before = digests(candidate_files(self.spec, root))
+        cache_key = None
+        if self.serving and role == 'candidate' and action in {'compile', 'correctness'}:
+            cache_key = hashlib.sha256(json.dumps(dict(action=action, sources=before,
+                task=self.context.raw['task_config'], harness=self.job['harness']), sort_keys=True).encode()).hexdigest()
+            cached = self.root / 'search_checks' / (cache_key + '.json')
+            if cached.is_file():
+                self.remaining()
+                result = parse_command_result(RESULT_PREFIX + json.dumps(json.loads(cached.read_text())), role=role,
+                    action=action, returncode=0, measurement='serving')
+                if result.passed:
+                    write_json(self.root / 'checks' / (uuid.uuid4().hex + '.json'), dict(
+                        role=role, action=action, status='PASS', sources=before,
+                        reused_search_check=cache_key, final_validation=False))
+                    return result
         selected = self.spec.action(role, action)
         # All commands, actions, GEAK calls, and final delivery consume ONE budget.
         bounded = replace(self.spec, actions=tuple(
@@ -288,7 +304,13 @@ class Bridge:
         write_json(self.root / "checks" / (executed.invocation_id + ".json"), record)
         if not result.passed:
             raise _ActionFailure(record["diagnostic"])
+        if cache_key:
+            write_json(self.root / 'search_checks' / (cache_key + '.json'), result.to_mapping())
         return result
+
+    @property
+    def serving(self) -> bool:
+        return self.context.raw['task_config'].get('evaluation', {}).get('measurement', {}).get('kind') == 'serving'
 
     def materialize(self, source: Path, destination: Path) -> dict:
         source = self.candidate_root(source)
@@ -314,6 +336,12 @@ class Bridge:
         candidate_files(self.spec, root, complete=True)
         self.action("candidate", "compile", root)
         self.action("candidate", "correctness", root)
+        if self.serving:
+            checkpoint = self.eval_dir / ('checkpoint-' + uuid.uuid4().hex)
+            copy_task(root, checkpoint, remaining=self.remaining)
+            self._guard(checkpoint)
+            write_json(self.root / 'last_checked_candidate.json', dict(path=str(checkpoint),
+                sources=digests(candidate_files(self.spec, checkpoint)), final_acceptance='PENDING'))
         if not performance:
             return {"correctness": "pass"}
         baseline = self.job["baseline_performance"]["cases"]
@@ -331,9 +359,10 @@ class Bridge:
         return {"correctness": "pass", "per_case": rows, "speedup_geomean": geomean,
                 "speedup_arithmetic": sum(row["speedup"] for row in rows) / len(rows)}
 
-    def deliver(self, candidate: Path) -> dict:
+    def deliver(self, candidate: Path, *, validate: bool = True) -> dict:
         root = self.candidate_root(candidate)
-        measured = self.check(root, performance=True)
+        self.baseline_unchanged()
+        measured = self.check(root, performance=True) if validate else None
         self.remaining()
         self._guard(self.context.workspace)
         before = candidate_files(self.spec, self.context.workspace)
@@ -356,7 +385,8 @@ class Bridge:
         self._guard(self.context.workspace)
         return {"status": "DELIVERED", "files": sorted(payload),
                 "sources": digests(candidate_files(self.spec, self.context.workspace)),
-                "agent_measurement": measured, "arena_acceptance": "PENDING"}
+                "agent_measurement": measured, "validation_deferred": not validate,
+                "arena_acceptance": "PENDING"}
 
 
 def main(argv: list[str] | None = None) -> int:
