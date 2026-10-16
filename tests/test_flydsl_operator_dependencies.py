@@ -119,8 +119,11 @@ def test_all_dependency_variants_reject_three_real_delegations(path, tmp_path):
 def test_equivalent_alias_and_native_routes_rejected(source, tmp_path):
     path = tmp_path / "candidate.py"
     path.write_text("import flydsl\n" + source + "\n")
+    checker = runtime(AFFECTED[0] / "task_runtime.py")
+    # Containment-aware runtimes only follow imports inside the task root.
+    checker.ROOT = tmp_path
     with pytest.raises(ValueError):
-        runtime(AFFECTED[0] / "task_runtime.py").check_dependencies([path])
+        checker.check_dependencies([path])
 
 
 def test_multifile_candidate_cannot_hide_delegation_in_helper(tmp_path):
@@ -128,8 +131,13 @@ def test_multifile_candidate_cannot_hide_delegation_in_helper(tmp_path):
     helper = tmp_path / "launch_helpers.py"
     main.write_text("import flydsl\nfrom launch_helpers import launch\n")
     helper.write_text("from aiter.ops.flydsl.gemm_kernels import flydsl_hgemm as launch\n")
+    checker = runtime(AFFECTED[0] / "task_runtime.py")
+    checker.ROOT = tmp_path
     with pytest.raises(ValueError, match="not aiter"):
-        runtime(AFFECTED[0] / "task_runtime.py").check_dependencies([main, helper])
+        checker.check_dependencies([main, helper])
+    # The local import closure reaches the helper without listing it.
+    with pytest.raises(ValueError, match="not aiter"):
+        checker.check_dependencies([main])
 
 
 @pytest.mark.parametrize("task", AFFECTED, ids=lambda p: str(p.relative_to(TASKS)))
@@ -287,6 +295,7 @@ def test_existing_separate_dtype_constant_exception_unchanged(tmp_path, statemen
     path = tmp_path / "kernel.py"
     path.write_text("import flydsl\n" + statement + "\n")
     checker = runtime(DTYPE)
+    checker.ROOT = tmp_path
     if accepted:
         checker.check_dependencies([path])
     else:

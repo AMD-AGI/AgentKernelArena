@@ -80,3 +80,20 @@ actual measured outputs, negates/halves input, poisons code/scale outputs, and
 numerically checks the same graph replay using the original reference/gates.
 Checks and restoration stay outside timing; no capture failure is accepted as
 an unchecked fallback or a clean pass.
+
+## Protected evaluator state
+
+Before candidate import, dependency review follows the candidate's normal
+task-local import closure, including new helper modules and packages. Protected
+harness, reference and script imports, symlinked or escaping helper imports, and
+local modules that shadow the supported runtime libraries are rejected; installed
+library source is not traversed. Final FlyDSL candidate sources and their local
+helpers also may not reach the evaluator's module registry, stack frames or
+profiling controls through `sys`, including `os.sys`, aliases and dynamic
+attribute lookup. Ordinary `sys` metadata remains available.
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.
