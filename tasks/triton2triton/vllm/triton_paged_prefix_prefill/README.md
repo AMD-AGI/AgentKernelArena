@@ -31,7 +31,7 @@ Key optimization opportunities:
 Constraints:
 - Must maintain the same function signature for `context_attention_fwd`
 - Output must match reference within atol=1e-2, rtol=1e-2 for float16
-- Must handle arbitrary context lengths, query lengths, and head dimensions
+- Must handle the wrapper's full "Supported input domain" below, not only the scored shapes
 
 
 ## Evaluation contract
@@ -104,3 +104,57 @@ The protected wrapper also fixes the launch configuration: the grid and the tile
 sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes above
 that mention tuning those values refer to the original whole-file contract; under
 this boundary, optimize the kernel bodies and implementation helpers instead.
+
+
+### Supported input domain
+
+The protected `context_attention_fwd` launch defines the inputs the kernel must
+handle. The scored rows sample only part of this domain:
+
+- Data: float16 `q`, `k`, `v`, caches and output in the harness's contiguous
+  layouts; int32 page table, start locations and sequence lengths. The 5D K
+  cache uses vector width x = 8 (16 bytes).
+- Head dimension: a multiple of 8 from 16 through 128. The wrapper pads it to
+  the next power of two (`BLOCK_DMODEL_PADDED`) and the kernel masks the padded
+  lanes, so non-power-of-two sizes such as 24, 80, 96 and 112 are included.
+  Head dimensions below 16 or above 128 are outside the evaluated contract; the
+  fixed launch configuration has not been qualified for them.
+- Heads: `num_heads` is a multiple of `num_kv_heads` (MHA, GQA with any integer
+  group size, or MQA).
+- Physical page size: any positive size. Power-of-two pages launch
+  `BLOCK_M=128, BLOCK_N=64`; other sizes launch `BLOCK_M=BLOCK_N=32`. Context is
+  read in 32-token tiles, so a page may be smaller or larger than a tile. The
+  page table may map logical pages to any physical pages and needs at least
+  `ceil(context_length / page_size)` entries per sequence.
+- Lengths: per sequence, a context length >= 0 and a query length >= 0 (empty
+  query segments and single-token queries included), with
+  `b_seq_len = context + query` and `max_input_len` at least the largest query
+  length. Lengths need not be multiples of the context tile, the query tiles or
+  the page size.
+- Scale and window: `sm_scale` omitted (`1/sqrt(head_dim)`) or any explicit
+  value; `sliding_window` omitted or <= 0 (disabled), or any positive width,
+  including widths longer than the sequence.
+
+Seven further correctness-only rows sample this domain beyond the original
+cases and controls. Their declarations live in the protected
+`_domain_controls.py`, which `_arena_checks.py` merges into the same control
+table. They therefore use the same manifest binding and public-wrapper checks
+described above: the FP32 oracle computed from pristine inputs, which rebuilds
+context from the actual cache bytes through the page table; read-only input and
+metadata checks; full-output 0.01 gates; and the unscored captured-replay
+diagnostic. Each row uses a non-identity page table, finite data in unused pages
+and page tails, and an explicit nondefault scale. No row is scored or timed in
+the performance action.
+
+| Control | head_dim | Page | Tiles M/N | Heads q/kv | Context lengths | Query lengths | Scale | Window |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `domain_hd80_page8_two_m_tiles` | 80 | 8 | 128/64 | 8/2 | 0, 33, 130 | 129, 1, 17 | 0.07 | none |
+| `domain_hd96_page64_mqa_window` | 96 | 64 | 128/64 | 4/1 | 95, 64, 1 | 70, 64, 2 | 0.25 | 40 |
+| `domain_hd112_page12_gqa3_window` | 112 | 12 | 32/32 | 6/2 | 47, 0, 25 | 33, 31, 1 | 0.06 | 3 |
+| `domain_hd24_page40_wide_window` | 24 | 40 | 32/32 | 8/8 | 300, 81 | 65, 96 | 0.3 | 4096 |
+| `domain_hd16_page16_empty_query` | 16 | 16 | 128/64 | 2/1 | 5, 200, 31 | 0, 3, 40 | 0.5 | none |
+| `domain_hd128_page32_long_ragged` | 128 | 32 | 128/64 | 8/4 | 257, 0, 513 | 255, 7, 1 | 0.05 | none |
+| `domain_hd32_page128_window` | 32 | 128 | 128/64 | 4/4 | 1, 129 | 128, 63 | 0.1 | 16 |
+
+The default scale remains covered by the scored rows with head dimensions 64
+and 128. These rows sample the domain; they do not enumerate it.
