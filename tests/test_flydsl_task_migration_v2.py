@@ -5460,7 +5460,14 @@ def test_triton_scaled_gemm_audit_helper_and_static_dependencies(name, tmp_path)
     with pytest.raises(ValueError, match='Final operator must execute FlyDSL'):
         runtime.check_dependencies([candidate], True)
     for helper in ['candidate_checks.py', 'replay_checks.py']:
-        assert (task / 'scripts' / helper).read_bytes() == (ROOT / 'tasks/triton2flydsl/aiter/rmsnorm/scripts' / helper).read_bytes()
+        actual = (task / 'scripts' / helper).read_bytes()
+        if name == 'gemm_a8w8' and helper == 'candidate_checks.py':
+            # gemm_a8w8 audits its actual performance calls: the sibling
+            # performance-policy audit bound to this harness's _load_source.
+            reviewed = (ROOT / 'tasks/triton2flydsl/sglang/lightning_attn/scripts' / helper).read_text()
+            assert actual.decode() == reviewed.replace('h.load_module', 'h._load_source')
+            continue
+        assert actual == (ROOT / 'tasks/triton2flydsl/aiter/rmsnorm/scripts' / helper).read_bytes()
 
 
 def test_triton_scaled_gemm_original_refs_inputs_gates_bias_and_timing():
@@ -10258,8 +10265,338 @@ _REVIEWED_V12_POLICY_DELTAS = {'delta_0': {'after_sha256': '29252a9b7ff93b744ada
                                '                    if path.suffix == ".py": '
                                'compile(path.read_text(), str(path), "exec")\n')]}}
 
-def _reviewed_v12_policy_bytes(path):
+# PR 127 review hardening: closure precedence, protected timing helper, linear
+# sys-alias tracking and evaluator-state checks. These exact inverses restore the
+# previously reviewed runtime bytes before the earlier v12 policy inverse applies.
+_REVIEW_HARDENING_RUNTIME_EDITS = [('def check_candidate_control_plane(tree):\n'
+  '    """Reject direct module-registry/control-frame access in candidate sources.\n'
+  '\n'
+  '    This applies to the normal task-local source closure, not installed FlyDSL\n'
+  '    internals. Ordinary sys metadata stays available. These structural checks\n'
+  '    supplement protected imports; they are not a Python security sandbox.\n'
+  '    """\n'
+  '    blocked = {"modules", "_getframe", "_current_frames", "getprofile", "setprofile",\n'
+  '               "gettrace", "settrace", "exc_info", "exception", "_current_exceptions",\n'
+  '               "monitoring", "__dict__", "__getattribute__"}\n'
+  '    frames = {"f_globals", "f_locals", "f_back", "f_builtins", "gi_frame", "cr_frame",\n'
+  '              "ag_frame", "tb_frame", "__globals__", "__builtins__"}\n'
+  '    dispatch = {"_python_dispatch", "_disable_current_modes", "_DisableTorchDispatch",\n'
+  '                "_DisablePythonDispatcher", "_pop_mode", "_pop_mode_temporarily",\n'
+  '                "_unset_dispatch_mode"}\n'
+  '    # Each name maps to every sys-derived value it may hold, so reassignment\n'
+  '    # cannot hide a registry alias and the fixed point is reached monotonically.\n'
+  '    aliases, modules = {}, set()\n'
+  '    for node in ast.walk(tree):\n'
+  '        if isinstance(node, ast.Import):\n'
+  '            for item in node.names:\n'
+  '                root = item.name.split(".")[0]\n'
+  '                if item.name in {"sys", "os"}:\n'
+  '                    aliases.setdefault(item.asname or item.name, set()).add(item.name)\n'
+  '                if any(part in dispatch for part in item.name.split(".")):\n'
+  '                    raise ValueError("Candidate cannot disable the evaluator dispatch audit")\n'
+  '                modules.add(item.asname or root)\n'
+  '        elif isinstance(node, ast.ImportFrom) and node.module in {"sys", "os"}:\n'
+  '            for item in node.names:\n'
+  '                if item.name == "*" or (node.module == "sys" and item.name in blocked):\n'
+  '                    raise ValueError("Candidate cannot access the evaluator module '
+  'registry/control frames")\n'
+  '                value = "sys" if node.module == "os" and item.name == "sys" else node.module + '
+  '"." + item.name\n'
+  '                aliases.setdefault(item.asname or item.name, set()).add(value)\n'
+  '        elif isinstance(node, ast.ImportFrom) and node.module:\n'
+  '            if any(part in dispatch for part in node.module.split(".")) or \\\n'
+  '                    any(item.name in dispatch for item in node.names):\n'
+  '                raise ValueError("Candidate cannot disable the evaluator dispatch audit")\n'
+  '    def names(node):\n'
+  '        if isinstance(node, ast.Name):\n'
+  '            return aliases.get(node.id) or {node.id}\n'
+  '        if isinstance(node, ast.Attribute):\n'
+  '            values = {base + "." + node.attr for base in names(node.value)}\n'
+  '            return {"sys" if value == "os.sys" else value for value in values}\n'
+  '        return {""}\n'
+  '    def tracked(value):\n'
+  '        return value in {"sys", "os"} or value.startswith(("sys.", "os."))\n'
+  '    for _ in range(len(list(ast.walk(tree)))):\n'
+  '        changed = False\n'
+  '        for node in ast.walk(tree):\n'
+  '            if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:\n'
+  '                values = {value for value in names(node.value) if tracked(value)}\n'
+  '                targets = node.targets if isinstance(node, ast.Assign) else [node.target]\n'
+  '                for target in targets:\n'
+  '                    if isinstance(target, ast.Name) and values - aliases.get(target.id, '
+  'set()):\n'
+  '                        aliases.setdefault(target.id, set()).update(values)\n'
+  '                        changed = True\n'
+  '        if not changed:\n'
+  '            break\n'
+  '    parents = {child: parent for parent in ast.walk(tree) for child in '
+  'ast.iter_child_nodes(parent)}\n'
+  '    for node in ast.walk(tree):\n'
+  '        # A sys object cannot be passed to a helper/container that would hide a\n'
+  '        # later registry lookup. Ordinary name aliases remain statically tracked.\n'
+  '        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and "sys" in '
+  'names(node):\n'
+  '            parent = parents.get(node)\n'
+  '            attribute = isinstance(parent, ast.Attribute) and parent.value is node\n'
+  '            alias = ((isinstance(parent, ast.Assign) and parent.value is node and\n'
+  '                      all(isinstance(t, ast.Name) for t in parent.targets)) or\n'
+  '                     (isinstance(parent, ast.AnnAssign) and parent.value is node and\n'
+  '                      isinstance(parent.target, ast.Name)))\n'
+  '            if not (attribute or alias):\n'
+  '                raise ValueError("Candidate cannot pass the evaluator module registry/control '
+  'frames through a sys object")\n'
+  '        if any(value.startswith("sys.") and value.split(".")[1] in blocked for value in '
+  'names(node)):\n'
+  '            raise ValueError("Candidate cannot access the evaluator module registry/control '
+  'frames")\n'
+  '        if isinstance(node, ast.Attribute) and node.attr in frames:\n'
+  '            raise ValueError("Candidate cannot access evaluator frames or function globals")\n'
+  '        if isinstance(node, ast.Attribute) and node.attr in dispatch:\n'
+  '            raise ValueError("Candidate cannot disable the evaluator dispatch audit")\n'
+  '        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):\n'
+  '            targets = (node.targets if isinstance(node, (ast.Assign, ast.Delete)) else '
+  '[node.target])\n'
+  '            for target in targets:\n'
+  '                base = target\n'
+  '                while isinstance(base, (ast.Attribute, ast.Subscript)):\n'
+  '                    base = base.value\n'
+  '                if base is not target and isinstance(base, ast.Name) and base.id in modules:\n'
+  '                    raise ValueError("Candidate cannot mutate an imported module\'s state")\n'
+  '        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):\n'
+  '            if node.func.id in {"getattr", "vars"} and node.args and "sys" in '
+  'names(node.args[0]):\n'
+  '                raise ValueError("Dynamic sys attribute lookup is not a candidate '
+  'implementation dependency")\n'
+  '            if node.func.id in {"getattr", "setattr", "delattr"} and len(node.args) >= 2 and '
+  '\\\n'
+  '                    isinstance(node.args[1], ast.Constant) and node.args[1].value in frames | '
+  'dispatch:\n'
+  '                raise ValueError("Candidate cannot access evaluator frames or function '
+  'globals")\n'
+  '            if node.func.id in {"setattr", "delattr"} and node.args:\n'
+  '                base = node.args[0]\n'
+  '                while isinstance(base, (ast.Attribute, ast.Subscript)):\n'
+  '                    base = base.value\n'
+  '                if isinstance(base, ast.Name) and base.id in modules:\n'
+  '                    raise ValueError("Candidate cannot mutate an imported module\'s state")\n',
+  'def check_candidate_control_plane(tree):\n'
+  '    """Reject direct module-registry/control-frame access in candidate sources.\n'
+  '\n'
+  '    This applies to the normal task-local source closure, not installed FlyDSL\n'
+  '    internals. Ordinary sys metadata stays available. These structural checks\n'
+  '    supplement protected imports; they are not a Python security sandbox.\n'
+  '    """\n'
+  '    blocked = {"modules", "_getframe", "_current_frames", "getprofile", "setprofile",\n'
+  '               "gettrace", "settrace", "exc_info", "exception", "_current_exceptions",\n'
+  '               "monitoring", "__dict__", "__getattribute__"}\n'
+  '    aliases = {}\n'
+  '    for node in ast.walk(tree):\n'
+  '        if isinstance(node, ast.Import):\n'
+  '            for item in node.names:\n'
+  '                if item.name == "sys":\n'
+  '                    aliases[item.asname or "sys"] = "sys"\n'
+  '        elif isinstance(node, ast.ImportFrom) and node.module == "sys":\n'
+  '            for item in node.names:\n'
+  '                if item.name == "*" or item.name in blocked:\n'
+  '                    raise ValueError("Candidate cannot access the evaluator module '
+  'registry/control frames")\n'
+  '                aliases[item.asname or item.name] = "sys." + item.name\n'
+  '    def name(node):\n'
+  '        if isinstance(node, ast.Name):\n'
+  '            return aliases.get(node.id, node.id)\n'
+  '        if isinstance(node, ast.Attribute):\n'
+  '            return name(node.value) + "." + node.attr\n'
+  '        return ""\n'
+  '    # Follow ordinary object aliases without importing candidate code.\n'
+  '    for _ in range(len(list(ast.walk(tree)))):\n'
+  '        changed = False\n'
+  '        for node in ast.walk(tree):\n'
+  '            if isinstance(node, (ast.Assign, ast.AnnAssign)):\n'
+  '                value = name(node.value)\n'
+  '                targets = node.targets if isinstance(node, ast.Assign) else [node.target]\n'
+  '                if value == "sys" or value.startswith("sys."):\n'
+  '                    for target in targets:\n'
+  '                        if isinstance(target, ast.Name) and aliases.get(target.id) != value:\n'
+  '                            aliases[target.id] = value\n'
+  '                            changed = True\n'
+  '        if not changed:\n'
+  '            break\n'
+  '    parents = {child: parent for parent in ast.walk(tree) for child in '
+  'ast.iter_child_nodes(parent)}\n'
+  '    for node in ast.walk(tree):\n'
+  '        # A sys object cannot be passed to a helper/container that would hide a\n'
+  '        # later registry lookup. Ordinary name aliases remain statically tracked.\n'
+  '        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and name(node) == '
+  '"sys":\n'
+  '            parent = parents.get(node)\n'
+  '            attribute = isinstance(parent, ast.Attribute) and parent.value is node\n'
+  '            alias = ((isinstance(parent, ast.Assign) and parent.value is node and\n'
+  '                      all(isinstance(t, ast.Name) for t in parent.targets)) or\n'
+  '                     (isinstance(parent, ast.AnnAssign) and parent.value is node and\n'
+  '                      isinstance(parent.target, ast.Name)))\n'
+  '            if not (attribute or alias):\n'
+  '                raise ValueError("Candidate cannot pass the evaluator module registry/control '
+  'frames through a sys object")\n'
+  '        value = name(node)\n'
+  '        if value.startswith("sys.") and value.split(".")[1] in blocked:\n'
+  '            raise ValueError("Candidate cannot access the evaluator module registry/control '
+  'frames")\n'
+  '        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):\n'
+  '            if node.func.id in {"getattr", "vars"} and node.args and name(node.args[0]) == '
+  '"sys":\n'
+  '                raise ValueError("Dynamic sys attribute lookup is not a candidate '
+  'implementation dependency")\n'),
+ ('    protected = {"src", "agents", "model", "test_kernel_harness", "task_runtime",\n'
+  '                 "task_reference", "task_baseline", "reference_controls", "scripts",\n'
+  '                 "_aka_benchmark"}',
+  '    protected = {"src", "agents", "model", "test_kernel_harness", "task_runtime",\n'
+  '                 "task_reference", "task_baseline", "reference_controls", "scripts"}'),
+ ('            directory, module = current / name, current / (name + ".py")\n'
+  '            initializer = directory / "__init__.py"\n'
+  '            package = initializer.exists() or initializer.is_symlink()\n'
+  "            # Python's path finder prefers a regular package, then a same-name\n"
+  '            # module, and only then a namespace-package directory.\n'
+  '            if not package and (module.exists() or module.is_symlink()):\n'
+  '                if index == 0 and name in reserved:\n'
+  '                    raise ValueError(f"Candidate shadows library module: {name}")\n'
+  '                add(module)\n'
+  '                if index != len(parts) - 1 and not optional:\n'
+  '                    raise ValueError(f"Local module is not a package: {\'.\'.join(parts)}")\n'
+  '                return\n'
+  '            elif directory.exists() or directory.is_symlink():\n'
+  '                checked(directory, directory=True)\n'
+  '                if index == 0 and name in reserved:\n'
+  '                    raise ValueError(f"Candidate shadows library module: {name}")\n'
+  '                local = True\n'
+  '                if package:\n'
+  '                    add(initializer)\n'
+  '                current = directory\n'
+  '            else:',
+  '            directory, module = current / name, current / (name + ".py")\n'
+  '            if directory.exists() or directory.is_symlink():\n'
+  '                checked(directory, directory=True)\n'
+  '                if index == 0 and name in reserved:\n'
+  '                    raise ValueError(f"Candidate shadows library module: {name}")\n'
+  '                local = True\n'
+  '                initializer = directory / "__init__.py"\n'
+  '                if initializer.exists() or initializer.is_symlink():\n'
+  '                    add(initializer)\n'
+  '                current = directory\n'
+  '            elif module.exists() or module.is_symlink():\n'
+  '                if index == 0 and name in reserved:\n'
+  '                    raise ValueError(f"Candidate shadows library module: {name}")\n'
+  '                add(module)\n'
+  '                if index != len(parts) - 1 and not optional:\n'
+  '                    raise ValueError(f"Local module is not a package: {\'.\'.join(parts)}")\n'
+  '                return\n'
+  '            else:'),
+ ('    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", '
+  '"task_reference", "task_baseline", "reference_controls", "scripts", "_aka_benchmark"}',
+  '    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", '
+  '"task_reference", "task_baseline", "reference_controls", "scripts"}'),
+ ('if name in {"eval", "exec", "__import__", "builtins.eval", "builtins.exec", '
+  '"builtins.__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:',
+  'if name in {"eval", "exec", "__import__", "importlib.import_module", '
+  '"importlib.util.spec_from_file_location"}:')]
+_REVIEW_HARDENING_RUNTIME_SHA256 = {'flydsl2flydsl/softmax_kernel': ('d801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                  '43fb85c3df3eeb3da28730de5c8ef9e3fe7a9c969cd4a3be8cc55fafc7cf9ff5'),
+ 'torch2flydsl/fused_add_rmsnorm_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                           '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/gelu_and_mul_kernel': ('8ce93035f11954228c9f2f8ebd2071cf004e07f6c2b483cee4a8a3724ed5b0f0',
+                                      'bd4b1f9c4ccab6918be40d6427f0f32665deb58e7310f79f40c8ea3f3b794a7d'),
+ 'torch2flydsl/layernorm2d_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                     '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/layernorm2d_with_add_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                              '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/moe_biased_grouped_topk_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                                 '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/moe_topk_sigmoid_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                          '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/moe_topk_softplus_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                           '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/per_1x128_fp8_quant_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                             '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/per_tensor_fp8_quant_kernel': ('8ce93035f11954228c9f2f8ebd2071cf004e07f6c2b483cee4a8a3724ed5b0f0',
+                                              'bd4b1f9c4ccab6918be40d6427f0f32665deb58e7310f79f40c8ea3f3b794a7d'),
+ 'torch2flydsl/per_token_fp8_quant_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                             '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/per_token_i8_quant_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                            '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/rmsnorm2d_dynamicquant_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                                '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/rmsnorm2d_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                   '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/rmsnorm2d_smoothquant_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                               '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/rope_2d_fwd_kernel': ('687ee2766782a37193ac44c96cf7112261ceb2aa0bb46506093b8c5643bfce2e',
+                                     '83d47bbbcec40bf6a97fdbaee147bd6bbebb9c408aa2bf04cb4092439263ef13'),
+ 'torch2flydsl/rope_fwd_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                  '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/rope_thd_fwd_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                      '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/silu_and_mul_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                      '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/silu_and_mul_quant_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                            '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/smoothquant_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                     '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'torch2flydsl/swiglu_and_mul_kernel': ('2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                        '29252a9b7ff93b744adaa678874d17a5c02dcea3ea7ae5883494f379e6fa15c2'),
+ 'triton2flydsl/aiter/fused_clamp_act_mul': ('07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                             'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4'),
+ 'triton2flydsl/aiter/rope_fwd': ('687ee2766782a37193ac44c96cf7112261ceb2aa0bb46506093b8c5643bfce2e',
+                                  '83d47bbbcec40bf6a97fdbaee147bd6bbebb9c408aa2bf04cb4092439263ef13'),
+ 'triton2flydsl/generative_recommenders/jagged_dense_broadcast_add': ('e2529b199625714ca9a136bbb48bc662b79b4ff2ce11cd87dfbb3de423103634',
+                                                                      'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731'),
+ 'triton2flydsl/generative_recommenders/layer_norm': ('687ee2766782a37193ac44c96cf7112261ceb2aa0bb46506093b8c5643bfce2e',
+                                                      '83d47bbbcec40bf6a97fdbaee147bd6bbebb9c408aa2bf04cb4092439263ef13'),
+ 'triton2flydsl/sglang/chunk_local_cumsum': ('e2529b199625714ca9a136bbb48bc662b79b4ff2ce11cd87dfbb3de423103634',
+                                             'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731'),
+ 'triton2flydsl/sglang/dsv4_fp4_indexer': ('e2529b199625714ca9a136bbb48bc662b79b4ff2ce11cd87dfbb3de423103634',
+                                           'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731'),
+ 'triton2flydsl/sglang/experts_combine': ('07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                          'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4'),
+ 'triton2flydsl/sglang/fused_dual_residual_rmsnorm': ('07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                                      'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4'),
+ 'triton2flydsl/sglang/fused_gdn_gating': ('07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4'),
+ 'triton2flydsl/sglang/fused_norm_gate': ('07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                          'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4'),
+ 'triton2flydsl/sglang/gdn_fused_recurrent_decode': ('e2529b199625714ca9a136bbb48bc662b79b4ff2ce11cd87dfbb3de423103634',
+                                                     'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731'),
+ 'triton2flydsl/sglang/gdn_l2norm_fwd': ('07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                         'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4'),
+ 'triton2flydsl/sglang/lightning_attn': ('e2529b199625714ca9a136bbb48bc662b79b4ff2ce11cd87dfbb3de423103634',
+                                         'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731'),
+ 'triton2flydsl/sglang/merge_state': ('07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                      'f3aeff2b32bf82f52e542432ce8b05cbf684f06bd068e343c224a3a0b0ae5ec4'),
+ 'triton2flydsl/sglang/triton_mrope_fused': ('e2529b199625714ca9a136bbb48bc662b79b4ff2ce11cd87dfbb3de423103634',
+                                             'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731')}
+
+def _review_hardening_bytes(path):
     raw = path.read_bytes()
+    if path.name != 'task_runtime.py':
+        return raw
+    task = path.parent.relative_to(ROOT / 'tasks').as_posix()
+    shas = _REVIEW_HARDENING_RUNTIME_SHA256.get(task)
+    if shas is None:
+        return raw
+    after, before = shas
+    assert hashlib.sha256(raw).hexdigest() == after, task
+    text = raw.decode()
+    last = len(_REVIEW_HARDENING_RUNTIME_EDITS) - 1
+    for index, (reviewed, previous) in enumerate(_REVIEW_HARDENING_RUNTIME_EDITS):
+        count = text.count(reviewed)
+        # The loader-set edit is absent where builtins loaders were already listed.
+        assert count == 1 or (index == last and count == 0), (task, index)
+        text = text.replace(reviewed, previous, 1)
+    normalized = text.encode()
+    assert hashlib.sha256(normalized).hexdigest() == before, task
+    return normalized
+
+
+def _reviewed_v12_policy_bytes(path):
+    raw = _review_hardening_bytes(path)
     relative = path.relative_to(ROOT / 'tasks').as_posix()
     task = path.parent.parent.relative_to(ROOT / 'tasks').as_posix() if path.parent.name == 'scripts' else path.parent.relative_to(ROOT / 'tasks').as_posix()
     helper = 'scripts/' + path.name if path.parent.name == 'scripts' else path.name

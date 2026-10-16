@@ -86,11 +86,9 @@ def validate_timed(timed, readonly, reference, perturb, *, atol, rtol):
         require_intra_signal(expected, without_intra)
     check_outputs(timed.outputs, expected, atol=atol, rtol=rtol, inputs=inputs)
     try:
+        # The timed draw already carries the strong-signal cb amplification, so
+        # the replay keeps it and only applies the declared perturbation.
         perturb()
-        if scored_scan:
-            # Preserve the historical measured input, then make the intra term
-            # observable when checking the exact same graph outside timing.
-            named['cb'].mul_(32.0)
         if not any(not torch.equal(x, saved) for _, x, saved, *_ in readonly.entries):
             raise ContractFailure('Replay perturbation did not change input values')
         changed = InputSnapshot({name: x for name, x, *_ in readonly.entries})

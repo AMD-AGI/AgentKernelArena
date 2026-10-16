@@ -103,6 +103,19 @@ def _top_level_names(path: Path) -> frozenset[str]:
 
 
 _COMPILER_DECORATORS = frozenset({"triton.jit", "triton.autotune", "triton.heuristics"})
+# Triton runs these callbacks as host Python on every launch or tuning pass.
+# Editable kernels would otherwise reach protected tensors through them.
+_DECORATOR_HOST_CALLBACKS = frozenset({
+    "pre_hook", "post_hook", "prune_configs_by", "early_config_prune", "perf_model",
+    "do_bench", "launch_metadata",
+})
+_LAUNCH_LAMBDA_CALLS = frozenset({"triton.cdiv", "triton.next_power_of_2"})
+_LAUNCH_LAMBDA_BUILTINS = frozenset({"min", "max", "abs", "int", "bool"})
+_LAUNCH_LAMBDA_NODES = (
+    ast.Name, ast.Constant, ast.Attribute, ast.Subscript, ast.Slice, ast.BinOp,
+    ast.UnaryOp, ast.BoolOp, ast.Compare, ast.IfExp, ast.Tuple, ast.List, ast.Call,
+    ast.keyword, ast.operator, ast.unaryop, ast.boolop, ast.cmpop, ast.expr_context,
+)
 _TEST_LIFECYCLE_NAMES = frozenset({
     "setup_module", "teardown_module", "setup_function", "teardown_function",
     "setup_class", "teardown_class", "setup_method", "teardown_method",
@@ -156,6 +169,30 @@ def _definition_calls(node: ast.AST):
         yield from _definition_calls(child)
 
 
+def _validate_launch_lambda(node: ast.Lambda, bindings: dict[str, str], shadowed: set[str],
+                            owner: str) -> None:
+    """Keep decorator lambdas to launch-metadata arithmetic, not host compute."""
+    args = node.args
+    params = {arg.arg for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs,
+                                  *([args.vararg] if args.vararg else []),
+                                  *([args.kwarg] if args.kwarg else [])]}
+    unshadowed = {key: value for key, value in bindings.items() if key not in params}
+    for item in ast.walk(node.body):
+        if not isinstance(item, _LAUNCH_LAMBDA_NODES):
+            raise ValueError(f"Decorator lambda on {owner!r} contains {type(item).__name__}; "
+                             "only launch-metadata expressions are allowed")
+        if isinstance(item, ast.Call):
+            imported = _qualified_import(item.func, unshadowed)
+            builtin = (isinstance(item.func, ast.Name) and item.func.id in _LAUNCH_LAMBDA_BUILTINS
+                       and item.func.id not in shadowed | params | set(bindings))
+            # Reading a launch-argument mapping, e.g. args.get("N", 0), is metadata.
+            argument_read = (isinstance(item.func, ast.Attribute) and item.func.attr == "get"
+                             and isinstance(item.func.value, ast.Name) and item.func.value.id in params)
+            if imported not in _LAUNCH_LAMBDA_CALLS and not (builtin or argument_read):
+                raise ValueError(f"Decorator lambda on {owner!r} calls {ast.unparse(item.func)}; "
+                                 "launch-time host computation is not allowed")
+
+
 def _config_factory_body_allowed(node: ast.FunctionDef, bindings: dict[str, str],
                                  protected_functions: set[str], bound_names: set[str]) -> bool:
     """Allow editable configuration constructors, not arbitrary import-time code.
@@ -182,6 +219,13 @@ def _config_factory_body_allowed(node: ast.FunctionDef, bindings: dict[str, str]
                 return False
             if isinstance(item, (ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom)):
                 return False
+            if isinstance(item, ast.keyword) and item.arg in _DECORATOR_HOST_CALLBACKS:
+                return False
+            if isinstance(item, ast.Lambda):
+                try:
+                    _validate_launch_lambda(item, bindings, bound_names | locals_, node.name)
+                except ValueError:
+                    return False
         for call in _definition_calls(statement):
             unshadowed = {key: value for key, value in bindings.items() if key not in locals_}
             imported = _qualified_import(call.func, unshadowed)
@@ -236,6 +280,22 @@ def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
                             or config_factory or builtin_range):
                         raise ValueError(f"Unapproved definition-time factory in decorator on {name!r}: "
                                          f"{ast.unparse(call.func)}")
+            for keyword in (item for item in ast.walk(decorator) if isinstance(item, ast.keyword)):
+                if keyword.arg in _DECORATOR_HOST_CALLBACKS:
+                    raise ValueError(f"Host callback {keyword.arg!r} in decorator on {name!r}; "
+                                     "editable kernels cannot run launch-time Python")
+            if qualified == "triton.heuristics":
+                for value in [*decorator.args, *[kw.value for kw in decorator.keywords]]:
+                    # Approved factories have their own lambda/body policy.
+                    factory = (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                               and value.func.id in configuration_factories)
+                    literal = isinstance(value, ast.Dict) and all(
+                        isinstance(item, ast.Lambda) for item in value.values)
+                    if not (factory or literal):
+                        raise ValueError(f"Heuristics on {name!r} must map names to literal lambdas")
+            for item in ast.walk(decorator):
+                if isinstance(item, ast.Lambda):
+                    _validate_launch_lambda(item, bindings, initial_names | definition_names, name)
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         args = node.args
         expressions = [*args.defaults, *args.kw_defaults, node.returns]

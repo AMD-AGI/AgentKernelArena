@@ -89,3 +89,11 @@ such as `version_info` and `platform` remain available. This closes the
 demonstrated module-map mutation route while preserving the existing external
 backend and dynamic-loader checks. It is a bounded static policy, not a Python
 security sandbox; installed FlyDSL runtime internals are not traversed.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

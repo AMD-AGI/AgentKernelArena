@@ -11,7 +11,7 @@ numerical correctness.
 The kernel implements the first stage of split-KV decode attention for
 grouped-query attention (GQA/MQA). Multiple Q heads that share the same KV
 head are processed together using BLOCK_H:
-- Uses a grid of (batch, ceil(num_heads / BLOCK_H), num_kv_splits)
+- Uses a grid of (batch, num_kv_heads * ceil(kv_group_num / BLOCK_H), num_kv_splits)
 - Each program loads BLOCK_H Q vectors and computes attention against
   the shared KV head
 - Reads K/V from a paged KV cache via Req_to_tokens mapping
@@ -96,6 +96,11 @@ Their bodies and additional implementation helpers may be optimized. Module
 imports, initialization, host dispatch and pointer preparation remain protected,
 along with the existing numerical checks and benchmark protocol. The structural
 guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+The protected wrapper also fixes the launch configuration: the grid and the tile
+sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes above
+that mention tuning those values refer to the original whole-file contract; under
+this boundary, optimize the kernel bodies and implementation helpers instead.
 
 ### Group boundaries crossing a 16-head tile
 

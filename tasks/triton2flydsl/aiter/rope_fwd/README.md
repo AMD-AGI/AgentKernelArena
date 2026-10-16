@@ -96,3 +96,11 @@ outside device timing and graph capture. The module owns any compiled kernels
 through the action; per-call candidate policy proxies are still created by the
 existing audit. This does not change any RoPE input, rotation, comparison,
 scored shape, warmup or sample.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.
