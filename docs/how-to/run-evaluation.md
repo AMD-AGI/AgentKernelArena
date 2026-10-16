@@ -259,8 +259,10 @@ successful executions or unchanged submissions. In particular, a failed agent th
 leaves the original kernel can still have a valid candidate and approximately 1x
 timing; that measurement does not establish a successful agent optimization.
 
-The `score` combines compilation, correctness, and speedup and can be consumed
-as a reward by an external policy-search or RL system. See
+The `score` applies a bounded power curve to valid speedup measurements after
+compilation and correctness pass. It can be consumed as a reward by an external
+policy-search or RL system. A zero score can also mean a correct candidate did
+not exceed the speedup cutoff. See
 [Configuration and API reference](../reference/api-reference.md#scoring) for the
 scoring formula, and [Visualize and compare runs](visualization.md) to render and
 compare reports across agents.
