@@ -334,6 +334,613 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_hd80_page8_two_m_tiles",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 3,
+        "query_heads": 8,
+        "kv_heads": 2,
+        "head_dim": 80,
+        "seed": 1301,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "domain_hd80_page8_two_m_tiles",
+        "context_lengths": [
+          0,
+          33,
+          130
+        ],
+        "query_lengths": [
+          129,
+          1,
+          17
+        ],
+        "sequence_lengths": [
+          129,
+          34,
+          147
+        ],
+        "sm_scale": 0.07,
+        "block_size": 8,
+        "kv_vector_width": 8,
+        "input_shapes": {
+          "q": [
+            147,
+            8,
+            80
+          ],
+          "k": [
+            147,
+            2,
+            80
+          ],
+          "v": [
+            147,
+            2,
+            80
+          ],
+          "k_cache": [
+            45,
+            2,
+            10,
+            8,
+            8
+          ],
+          "v_cache": [
+            45,
+            2,
+            80,
+            8
+          ],
+          "b_loc": [
+            3,
+            17
+          ],
+          "b_start_loc": [
+            4
+          ],
+          "b_seq_len": [
+            3
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            147,
+            8,
+            80
+          ]
+        },
+        "page_mapping": "logical page g, counted row-major over mapped pages, uses physical page 2*(mapped_pages-g); unused table entries use page 1; every page holds finite random data"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_hd96_page64_mqa_window",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 3,
+        "query_heads": 4,
+        "kv_heads": 1,
+        "head_dim": 96,
+        "seed": 1302,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "domain_hd96_page64_mqa_window",
+        "context_lengths": [
+          95,
+          64,
+          1
+        ],
+        "query_lengths": [
+          70,
+          64,
+          2
+        ],
+        "sequence_lengths": [
+          165,
+          128,
+          3
+        ],
+        "sm_scale": 0.25,
+        "block_size": 64,
+        "sliding_window": 40,
+        "kv_vector_width": 8,
+        "input_shapes": {
+          "q": [
+            136,
+            4,
+            96
+          ],
+          "k": [
+            136,
+            1,
+            96
+          ],
+          "v": [
+            136,
+            1,
+            96
+          ],
+          "k_cache": [
+            9,
+            1,
+            12,
+            64,
+            8
+          ],
+          "v_cache": [
+            9,
+            1,
+            96,
+            64
+          ],
+          "b_loc": [
+            3,
+            2
+          ],
+          "b_start_loc": [
+            4
+          ],
+          "b_seq_len": [
+            3
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            136,
+            4,
+            96
+          ]
+        },
+        "page_mapping": "logical page g, counted row-major over mapped pages, uses physical page 2*(mapped_pages-g); unused table entries use page 1; every page holds finite random data"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_hd112_page12_gqa3_window",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 3,
+        "query_heads": 6,
+        "kv_heads": 2,
+        "head_dim": 112,
+        "seed": 1303,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "domain_hd112_page12_gqa3_window",
+        "context_lengths": [
+          47,
+          0,
+          25
+        ],
+        "query_lengths": [
+          33,
+          31,
+          1
+        ],
+        "sequence_lengths": [
+          80,
+          31,
+          26
+        ],
+        "sm_scale": 0.06,
+        "block_size": 12,
+        "sliding_window": 3,
+        "kv_vector_width": 8,
+        "input_shapes": {
+          "q": [
+            65,
+            6,
+            112
+          ],
+          "k": [
+            65,
+            2,
+            112
+          ],
+          "v": [
+            65,
+            2,
+            112
+          ],
+          "k_cache": [
+            15,
+            2,
+            14,
+            12,
+            8
+          ],
+          "v_cache": [
+            15,
+            2,
+            112,
+            12
+          ],
+          "b_loc": [
+            3,
+            4
+          ],
+          "b_start_loc": [
+            4
+          ],
+          "b_seq_len": [
+            3
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            65,
+            6,
+            112
+          ]
+        },
+        "page_mapping": "logical page g, counted row-major over mapped pages, uses physical page 2*(mapped_pages-g); unused table entries use page 1; every page holds finite random data"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_hd24_page40_wide_window",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 8,
+        "kv_heads": 8,
+        "head_dim": 24,
+        "seed": 1304,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "domain_hd24_page40_wide_window",
+        "context_lengths": [
+          300,
+          81
+        ],
+        "query_lengths": [
+          65,
+          96
+        ],
+        "sequence_lengths": [
+          365,
+          177
+        ],
+        "sm_scale": 0.3,
+        "block_size": 40,
+        "sliding_window": 4096,
+        "kv_vector_width": 8,
+        "input_shapes": {
+          "q": [
+            161,
+            8,
+            24
+          ],
+          "k": [
+            161,
+            8,
+            24
+          ],
+          "v": [
+            161,
+            8,
+            24
+          ],
+          "k_cache": [
+            23,
+            8,
+            3,
+            40,
+            8
+          ],
+          "v_cache": [
+            23,
+            8,
+            24,
+            40
+          ],
+          "b_loc": [
+            2,
+            8
+          ],
+          "b_start_loc": [
+            3
+          ],
+          "b_seq_len": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            161,
+            8,
+            24
+          ]
+        },
+        "page_mapping": "logical page g, counted row-major over mapped pages, uses physical page 2*(mapped_pages-g); unused table entries use page 1; every page holds finite random data"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_hd16_page16_empty_query",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 3,
+        "query_heads": 2,
+        "kv_heads": 1,
+        "head_dim": 16,
+        "seed": 1305,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "domain_hd16_page16_empty_query",
+        "context_lengths": [
+          5,
+          200,
+          31
+        ],
+        "query_lengths": [
+          0,
+          3,
+          40
+        ],
+        "sequence_lengths": [
+          5,
+          203,
+          71
+        ],
+        "sm_scale": 0.5,
+        "block_size": 16,
+        "kv_vector_width": 8,
+        "input_shapes": {
+          "q": [
+            43,
+            2,
+            16
+          ],
+          "k": [
+            43,
+            1,
+            16
+          ],
+          "v": [
+            43,
+            1,
+            16
+          ],
+          "k_cache": [
+            33,
+            1,
+            2,
+            16,
+            8
+          ],
+          "v_cache": [
+            33,
+            1,
+            16,
+            16
+          ],
+          "b_loc": [
+            3,
+            13
+          ],
+          "b_start_loc": [
+            4
+          ],
+          "b_seq_len": [
+            3
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            43,
+            2,
+            16
+          ]
+        },
+        "page_mapping": "logical page g, counted row-major over mapped pages, uses physical page 2*(mapped_pages-g); unused table entries use page 1; every page holds finite random data"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_hd128_page32_long_ragged",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 3,
+        "query_heads": 8,
+        "kv_heads": 4,
+        "head_dim": 128,
+        "seed": 1306,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "domain_hd128_page32_long_ragged",
+        "context_lengths": [
+          257,
+          0,
+          513
+        ],
+        "query_lengths": [
+          255,
+          7,
+          1
+        ],
+        "sequence_lengths": [
+          512,
+          7,
+          514
+        ],
+        "sm_scale": 0.05,
+        "block_size": 32,
+        "kv_vector_width": 8,
+        "input_shapes": {
+          "q": [
+            263,
+            8,
+            128
+          ],
+          "k": [
+            263,
+            4,
+            128
+          ],
+          "v": [
+            263,
+            4,
+            128
+          ],
+          "k_cache": [
+            53,
+            4,
+            16,
+            32,
+            8
+          ],
+          "v_cache": [
+            53,
+            4,
+            128,
+            32
+          ],
+          "b_loc": [
+            3,
+            17
+          ],
+          "b_start_loc": [
+            4
+          ],
+          "b_seq_len": [
+            3
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            263,
+            8,
+            128
+          ]
+        },
+        "page_mapping": "logical page g, counted row-major over mapped pages, uses physical page 2*(mapped_pages-g); unused table entries use page 1; every page holds finite random data"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_hd32_page128_window",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "batch": 2,
+        "query_heads": 4,
+        "kv_heads": 4,
+        "head_dim": 32,
+        "seed": 1307,
+        "dtypes": {
+          "data": "float16",
+          "statistics": "float32",
+          "routing": "int32"
+        },
+        "contract_case": "domain_hd32_page128_window",
+        "context_lengths": [
+          1,
+          129
+        ],
+        "query_lengths": [
+          128,
+          63
+        ],
+        "sequence_lengths": [
+          129,
+          192
+        ],
+        "sm_scale": 0.1,
+        "block_size": 128,
+        "sliding_window": 16,
+        "kv_vector_width": 8,
+        "input_shapes": {
+          "q": [
+            191,
+            4,
+            32
+          ],
+          "k": [
+            191,
+            4,
+            32
+          ],
+          "v": [
+            191,
+            4,
+            32
+          ],
+          "k_cache": [
+            7,
+            4,
+            4,
+            128,
+            8
+          ],
+          "v_cache": [
+            7,
+            4,
+            32,
+            128
+          ],
+          "b_loc": [
+            2,
+            2
+          ],
+          "b_start_loc": [
+            3
+          ],
+          "b_seq_len": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "o": [
+            191,
+            4,
+            32
+          ]
+        },
+        "page_mapping": "logical page g, counted row-major over mapped pages, uses physical page 2*(mapped_pages-g); unused table entries use page 1; every page holds finite random data"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

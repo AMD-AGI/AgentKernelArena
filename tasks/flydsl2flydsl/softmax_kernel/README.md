@@ -78,3 +78,22 @@ also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
 and the task's bundled `kernels/` helpers remain available under the existing
 numerical and timing contract. Baseline checks retain their declared initial
 backend; the final candidate must use FlyDSL.
+
+
+The editable boundary is `build_softmax_module` and permitted new implementation
+helpers. Existing imports, constants and module execution stay protected. The
+candidate's normal task-local import closure is checked before import, including
+new helpers. Protected harness/reference imports and direct evaluator module
+registry, control-frame or tracing access are rejected; ordinary `sys` metadata
+such as `version_info` and `platform` remain available. This closes the
+demonstrated module-map mutation route while preserving the existing external
+backend and dynamic-loader checks. It is a bounded static policy, not a Python
+security sandbox; installed FlyDSL runtime internals are not traversed.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

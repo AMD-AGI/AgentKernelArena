@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_merge_attn_states.py
+  - path: source/triton_merge_attn_states.py
+    scope: symbols
+    symbols:
+    - merge_attn_states_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_merge_attn_states.py
     kind: function

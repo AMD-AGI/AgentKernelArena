@@ -412,6 +412,513 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-page1_hd16_short_inactive",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 20000,
+        "configuration": {
+          "name": "page1_hd16_short_inactive",
+          "batch": 4,
+          "query_heads": 4,
+          "kv_heads": 4,
+          "k_head_dim": 16,
+          "v_head_dim": 16,
+          "page_size": 1,
+          "num_splits": 4,
+          "sequence_lengths": [
+            1,
+            2,
+            5,
+            70
+          ],
+          "active_splits": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "table_pages": 72,
+          "physical_pages": 81,
+          "dtype": "float16",
+          "logit_cap": 0.0,
+          "seeds": [
+            2101,
+            2102
+          ],
+          "initial_partial_value": 23.5,
+          "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+          "input_shapes": {
+            "q": [
+              4,
+              4,
+              16
+            ],
+            "k_buffer": [
+              81,
+              4,
+              16
+            ],
+            "v_buffer": [
+              81,
+              4,
+              16
+            ],
+            "req_to_tokens": [
+              4,
+              72
+            ],
+            "b_seqlen": [
+              4
+            ]
+          },
+          "output_shapes": {
+            "att_out": [
+              4,
+              4,
+              4,
+              17
+            ]
+          }
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-page3_hd96_group3",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 20001,
+        "configuration": {
+          "name": "page3_hd96_group3",
+          "batch": 3,
+          "query_heads": 6,
+          "kv_heads": 2,
+          "k_head_dim": 96,
+          "v_head_dim": 96,
+          "page_size": 3,
+          "num_splits": 3,
+          "sequence_lengths": [
+            100,
+            7,
+            64
+          ],
+          "active_splits": [
+            3,
+            3,
+            3
+          ],
+          "table_pages": 36,
+          "physical_pages": 62,
+          "dtype": "float16",
+          "logit_cap": 0.0,
+          "seeds": [
+            2201,
+            2202
+          ],
+          "initial_partial_value": 23.5,
+          "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+          "input_shapes": {
+            "q": [
+              3,
+              6,
+              96
+            ],
+            "k_buffer": [
+              186,
+              2,
+              96
+            ],
+            "v_buffer": [
+              186,
+              2,
+              96
+            ],
+            "req_to_tokens": [
+              3,
+              36
+            ],
+            "b_seqlen": [
+              3
+            ]
+          },
+          "output_shapes": {
+            "att_out": [
+              3,
+              6,
+              3,
+              97
+            ]
+          }
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-page48_hd32_mqa_one_split_capped",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 20002,
+        "configuration": {
+          "name": "page48_hd32_mqa_one_split_capped",
+          "batch": 3,
+          "query_heads": 8,
+          "kv_heads": 1,
+          "k_head_dim": 32,
+          "v_head_dim": 32,
+          "page_size": 48,
+          "num_splits": 1,
+          "sequence_lengths": [
+            129,
+            47,
+            48
+          ],
+          "active_splits": [
+            1,
+            1,
+            1
+          ],
+          "table_pages": 5,
+          "physical_pages": 8,
+          "dtype": "float16",
+          "logit_cap": 1.0,
+          "seeds": [
+            2301,
+            2302
+          ],
+          "initial_partial_value": 23.5,
+          "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+          "input_shapes": {
+            "q": [
+              3,
+              8,
+              32
+            ],
+            "k_buffer": [
+              384,
+              1,
+              32
+            ],
+            "v_buffer": [
+              384,
+              1,
+              32
+            ],
+            "req_to_tokens": [
+              3,
+              5
+            ],
+            "b_seqlen": [
+              3
+            ]
+          },
+          "output_shapes": {
+            "att_out": [
+              3,
+              8,
+              1,
+              33
+            ]
+          }
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-page128_k192_v128",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 20003,
+        "configuration": {
+          "name": "page128_k192_v128",
+          "batch": 2,
+          "query_heads": 4,
+          "kv_heads": 2,
+          "k_head_dim": 192,
+          "v_head_dim": 128,
+          "page_size": 128,
+          "num_splits": 2,
+          "sequence_lengths": [
+            300,
+            129
+          ],
+          "active_splits": [
+            2,
+            2
+          ],
+          "table_pages": 5,
+          "physical_pages": 8,
+          "dtype": "float16",
+          "logit_cap": 0.0,
+          "seeds": [
+            2401,
+            2402
+          ],
+          "initial_partial_value": 23.5,
+          "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+          "input_shapes": {
+            "q": [
+              2,
+              4,
+              192
+            ],
+            "k_buffer": [
+              1024,
+              2,
+              192
+            ],
+            "v_buffer": [
+              1024,
+              2,
+              128
+            ],
+            "req_to_tokens": [
+              2,
+              5
+            ],
+            "b_seqlen": [
+              2
+            ]
+          },
+          "output_shapes": {
+            "att_out": [
+              2,
+              4,
+              2,
+              129
+            ]
+          }
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-page64_k80_v256",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 20004,
+        "configuration": {
+          "name": "page64_k80_v256",
+          "batch": 2,
+          "query_heads": 2,
+          "kv_heads": 1,
+          "k_head_dim": 80,
+          "v_head_dim": 256,
+          "page_size": 64,
+          "num_splits": 4,
+          "sequence_lengths": [
+            65,
+            191
+          ],
+          "active_splits": [
+            4,
+            4
+          ],
+          "table_pages": 5,
+          "physical_pages": 8,
+          "dtype": "float16",
+          "logit_cap": 0.0,
+          "seeds": [
+            2501,
+            2502
+          ],
+          "initial_partial_value": 23.5,
+          "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+          "input_shapes": {
+            "q": [
+              2,
+              2,
+              80
+            ],
+            "k_buffer": [
+              512,
+              1,
+              80
+            ],
+            "v_buffer": [
+              512,
+              1,
+              256
+            ],
+            "req_to_tokens": [
+              2,
+              5
+            ],
+            "b_seqlen": [
+              2
+            ]
+          },
+          "output_shapes": {
+            "att_out": [
+              2,
+              2,
+              4,
+              257
+            ]
+          }
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-long_page16_splits16",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "case_index": 20005,
+        "configuration": {
+          "name": "long_page16_splits16",
+          "batch": 2,
+          "query_heads": 8,
+          "kv_heads": 2,
+          "k_head_dim": 128,
+          "v_head_dim": 128,
+          "page_size": 16,
+          "num_splits": 16,
+          "sequence_lengths": [
+            7999,
+            4099
+          ],
+          "active_splits": [
+            16,
+            16
+          ],
+          "table_pages": 502,
+          "physical_pages": 760,
+          "dtype": "float16",
+          "logit_cap": 0.0,
+          "seeds": [
+            2601,
+            2602
+          ],
+          "initial_partial_value": 23.5,
+          "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+          "input_shapes": {
+            "q": [
+              2,
+              8,
+              128
+            ],
+            "k_buffer": [
+              12160,
+              2,
+              128
+            ],
+            "v_buffer": [
+              12160,
+              2,
+              128
+            ],
+            "req_to_tokens": [
+              2,
+              502
+            ],
+            "b_seqlen": [
+              2
+            ]
+          },
+          "output_shapes": {
+            "att_out": [
+              2,
+              8,
+              16,
+              129
+            ]
+          }
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-bf16_page5_hd112_splits7_capped",
+      "dtype": "bfloat16,float32,int32",
+      "params": {
+        "case_index": 20006,
+        "configuration": {
+          "name": "bf16_page5_hd112_splits7_capped",
+          "batch": 3,
+          "query_heads": 4,
+          "kv_heads": 1,
+          "k_head_dim": 112,
+          "v_head_dim": 112,
+          "page_size": 5,
+          "num_splits": 7,
+          "sequence_lengths": [
+            1,
+            33,
+            257
+          ],
+          "active_splits": [
+            1,
+            7,
+            7
+          ],
+          "table_pages": 54,
+          "physical_pages": 63,
+          "dtype": "bfloat16",
+          "logit_cap": 2.5,
+          "seeds": [
+            2701,
+            2702
+          ],
+          "initial_partial_value": 23.5,
+          "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+          "input_shapes": {
+            "q": [
+              3,
+              4,
+              112
+            ],
+            "k_buffer": [
+              315,
+              1,
+              112
+            ],
+            "v_buffer": [
+              315,
+              1,
+              112
+            ],
+            "req_to_tokens": [
+              3,
+              54
+            ],
+            "b_seqlen": [
+              3
+            ]
+          },
+          "output_shapes": {
+            "att_out": [
+              3,
+              4,
+              7,
+              113
+            ]
+          }
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
@@ -455,6 +962,438 @@
       ],
       "dtype": "bfloat16",
       "logit_cap": 1.5
+    }
+  ],
+  "domain_controls": [
+    {
+      "name": "page1_hd16_short_inactive",
+      "batch": 4,
+      "query_heads": 4,
+      "kv_heads": 4,
+      "k_head_dim": 16,
+      "v_head_dim": 16,
+      "page_size": 1,
+      "num_splits": 4,
+      "sequence_lengths": [
+        1,
+        2,
+        5,
+        70
+      ],
+      "active_splits": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "table_pages": 72,
+      "physical_pages": 81,
+      "dtype": "float16",
+      "logit_cap": 0.0,
+      "seeds": [
+        2101,
+        2102
+      ],
+      "initial_partial_value": 23.5,
+      "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+      "input_shapes": {
+        "q": [
+          4,
+          4,
+          16
+        ],
+        "k_buffer": [
+          81,
+          4,
+          16
+        ],
+        "v_buffer": [
+          81,
+          4,
+          16
+        ],
+        "req_to_tokens": [
+          4,
+          72
+        ],
+        "b_seqlen": [
+          4
+        ]
+      },
+      "output_shapes": {
+        "att_out": [
+          4,
+          4,
+          4,
+          17
+        ]
+      }
+    },
+    {
+      "name": "page3_hd96_group3",
+      "batch": 3,
+      "query_heads": 6,
+      "kv_heads": 2,
+      "k_head_dim": 96,
+      "v_head_dim": 96,
+      "page_size": 3,
+      "num_splits": 3,
+      "sequence_lengths": [
+        100,
+        7,
+        64
+      ],
+      "active_splits": [
+        3,
+        3,
+        3
+      ],
+      "table_pages": 36,
+      "physical_pages": 62,
+      "dtype": "float16",
+      "logit_cap": 0.0,
+      "seeds": [
+        2201,
+        2202
+      ],
+      "initial_partial_value": 23.5,
+      "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+      "input_shapes": {
+        "q": [
+          3,
+          6,
+          96
+        ],
+        "k_buffer": [
+          186,
+          2,
+          96
+        ],
+        "v_buffer": [
+          186,
+          2,
+          96
+        ],
+        "req_to_tokens": [
+          3,
+          36
+        ],
+        "b_seqlen": [
+          3
+        ]
+      },
+      "output_shapes": {
+        "att_out": [
+          3,
+          6,
+          3,
+          97
+        ]
+      }
+    },
+    {
+      "name": "page48_hd32_mqa_one_split_capped",
+      "batch": 3,
+      "query_heads": 8,
+      "kv_heads": 1,
+      "k_head_dim": 32,
+      "v_head_dim": 32,
+      "page_size": 48,
+      "num_splits": 1,
+      "sequence_lengths": [
+        129,
+        47,
+        48
+      ],
+      "active_splits": [
+        1,
+        1,
+        1
+      ],
+      "table_pages": 5,
+      "physical_pages": 8,
+      "dtype": "float16",
+      "logit_cap": 1.0,
+      "seeds": [
+        2301,
+        2302
+      ],
+      "initial_partial_value": 23.5,
+      "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+      "input_shapes": {
+        "q": [
+          3,
+          8,
+          32
+        ],
+        "k_buffer": [
+          384,
+          1,
+          32
+        ],
+        "v_buffer": [
+          384,
+          1,
+          32
+        ],
+        "req_to_tokens": [
+          3,
+          5
+        ],
+        "b_seqlen": [
+          3
+        ]
+      },
+      "output_shapes": {
+        "att_out": [
+          3,
+          8,
+          1,
+          33
+        ]
+      }
+    },
+    {
+      "name": "page128_k192_v128",
+      "batch": 2,
+      "query_heads": 4,
+      "kv_heads": 2,
+      "k_head_dim": 192,
+      "v_head_dim": 128,
+      "page_size": 128,
+      "num_splits": 2,
+      "sequence_lengths": [
+        300,
+        129
+      ],
+      "active_splits": [
+        2,
+        2
+      ],
+      "table_pages": 5,
+      "physical_pages": 8,
+      "dtype": "float16",
+      "logit_cap": 0.0,
+      "seeds": [
+        2401,
+        2402
+      ],
+      "initial_partial_value": 23.5,
+      "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+      "input_shapes": {
+        "q": [
+          2,
+          4,
+          192
+        ],
+        "k_buffer": [
+          1024,
+          2,
+          192
+        ],
+        "v_buffer": [
+          1024,
+          2,
+          128
+        ],
+        "req_to_tokens": [
+          2,
+          5
+        ],
+        "b_seqlen": [
+          2
+        ]
+      },
+      "output_shapes": {
+        "att_out": [
+          2,
+          4,
+          2,
+          129
+        ]
+      }
+    },
+    {
+      "name": "page64_k80_v256",
+      "batch": 2,
+      "query_heads": 2,
+      "kv_heads": 1,
+      "k_head_dim": 80,
+      "v_head_dim": 256,
+      "page_size": 64,
+      "num_splits": 4,
+      "sequence_lengths": [
+        65,
+        191
+      ],
+      "active_splits": [
+        4,
+        4
+      ],
+      "table_pages": 5,
+      "physical_pages": 8,
+      "dtype": "float16",
+      "logit_cap": 0.0,
+      "seeds": [
+        2501,
+        2502
+      ],
+      "initial_partial_value": 23.5,
+      "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+      "input_shapes": {
+        "q": [
+          2,
+          2,
+          80
+        ],
+        "k_buffer": [
+          512,
+          1,
+          80
+        ],
+        "v_buffer": [
+          512,
+          1,
+          256
+        ],
+        "req_to_tokens": [
+          2,
+          5
+        ],
+        "b_seqlen": [
+          2
+        ]
+      },
+      "output_shapes": {
+        "att_out": [
+          2,
+          2,
+          4,
+          257
+        ]
+      }
+    },
+    {
+      "name": "long_page16_splits16",
+      "batch": 2,
+      "query_heads": 8,
+      "kv_heads": 2,
+      "k_head_dim": 128,
+      "v_head_dim": 128,
+      "page_size": 16,
+      "num_splits": 16,
+      "sequence_lengths": [
+        7999,
+        4099
+      ],
+      "active_splits": [
+        16,
+        16
+      ],
+      "table_pages": 502,
+      "physical_pages": 760,
+      "dtype": "float16",
+      "logit_cap": 0.0,
+      "seeds": [
+        2601,
+        2602
+      ],
+      "initial_partial_value": 23.5,
+      "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+      "input_shapes": {
+        "q": [
+          2,
+          8,
+          128
+        ],
+        "k_buffer": [
+          12160,
+          2,
+          128
+        ],
+        "v_buffer": [
+          12160,
+          2,
+          128
+        ],
+        "req_to_tokens": [
+          2,
+          502
+        ],
+        "b_seqlen": [
+          2
+        ]
+      },
+      "output_shapes": {
+        "att_out": [
+          2,
+          8,
+          16,
+          129
+        ]
+      }
+    },
+    {
+      "name": "bf16_page5_hd112_splits7_capped",
+      "batch": 3,
+      "query_heads": 4,
+      "kv_heads": 1,
+      "k_head_dim": 112,
+      "v_head_dim": 112,
+      "page_size": 5,
+      "num_splits": 7,
+      "sequence_lengths": [
+        1,
+        33,
+        257
+      ],
+      "active_splits": [
+        1,
+        7,
+        7
+      ],
+      "table_pages": 54,
+      "physical_pages": 63,
+      "dtype": "bfloat16",
+      "logit_cap": 2.5,
+      "seeds": [
+        2701,
+        2702
+      ],
+      "initial_partial_value": 23.5,
+      "page_mapping": "seeded permutation; decoy padding, pages and tail slots",
+      "input_shapes": {
+        "q": [
+          3,
+          4,
+          112
+        ],
+        "k_buffer": [
+          315,
+          1,
+          112
+        ],
+        "v_buffer": [
+          315,
+          1,
+          112
+        ],
+        "req_to_tokens": [
+          3,
+          54
+        ],
+        "b_seqlen": [
+          3
+        ]
+      },
+      "output_shapes": {
+        "att_out": [
+          3,
+          4,
+          7,
+          113
+        ]
+      }
     }
   ]
 }

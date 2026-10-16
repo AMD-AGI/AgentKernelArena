@@ -43,7 +43,7 @@ def run_compile():
                 os.environ.get("HIPCXX", "/opt/rocm/bin/hipcc"),
                 "-std=c++17", "-Wall", "-Wextra",
                 "-I", os.path.join(TASK_DIR, "Common"),
-                BENCH_SOURCE, "-o", BENCH_BINARY,
+                BENCH_SOURCE, os.path.join(TASK_DIR, "source", "kernel_launch.hip"), "-o", BENCH_BINARY,
             ],
             cwd=TASK_DIR, capture_output=True, text=True, timeout=300,
         )
@@ -89,6 +89,8 @@ def _parse_native_result(output):
         elapsed = float(result["execution_time_ms"])
         if elapsed <= 0:
             raise ValueError("native benchmark returned a non-positive execution time")
+        from reference_checks import parse_validation
+        result["input_validation"] = parse_validation(output, mode="performance")
         return result
     raise ValueError("native benchmark did not emit AKA_BENCHMARK_RESULT")
 

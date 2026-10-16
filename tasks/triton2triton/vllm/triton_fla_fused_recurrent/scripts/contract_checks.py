@@ -74,14 +74,28 @@ def validate_timed(timed, readonly, reference, perturb, *, atol, rtol):
     if not timed.bound:
         raise ContractFailure('No observable measured invocation')
     inputs = [entry[1] for entry in readonly.entries]
+    named = {name: value for name, value, *_ in readonly.entries}
+    scored_recurrence = set(named) == {'0', '1', '2', '3', '4', '6'}
     readonly.check()
-    check_outputs(timed.outputs, reference(), atol=atol, rtol=rtol, inputs=inputs)
+    expected = reference()
+    if scored_recurrence:
+        from scripts.semantic_controls import require_signal
+        require_signal(expected)
+    check_outputs(timed.outputs, expected, atol=atol, rtol=rtol, inputs=inputs)
     try:
         perturb()
+        if scored_recurrence:
+            # The historical perturbation scales v and initial state by 8.
+            # Amplify q too, making the output 64x on this same captured graph.
+            # This runs after timing and is restored with the other operands.
+            named['0'].mul_(8.0)
         if not any(not torch.equal(x, saved) for _, x, saved, *_ in readonly.entries):
             raise ContractFailure('Replay perturbation did not change input values')
         changed = InputSnapshot({name: x for name, x, *_ in readonly.entries})
         expected = reference()
+        if scored_recurrence:
+            from scripts.semantic_controls import require_signal
+            require_signal(expected)
         for output in tensors(timed.outputs):
             output.fill_(float('nan'))
         replayed = timed.rerun()
@@ -91,4 +105,5 @@ def validate_timed(timed, readonly, reference, perturb, *, atol, rtol):
         readonly.restore()
     return {'timed_output_correctness': 'PASS', 'replay_correctness': 'PASS',
             'readonly_inputs': 'PASS', 'replay_inputs_changed': True,
+            'strong_signal_replay_checked': scored_recurrence,
             'output_coverage': 'all_output_tensors_and_elements'}

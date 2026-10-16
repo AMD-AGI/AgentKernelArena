@@ -12,7 +12,14 @@ def check(h):
     with audit_candidate_calls(h) as observed:
         if h.run_correctness(verbose=True) is not True:
             raise RuntimeError("Correctness/output-contract check failed")
+        control = h._load_module(h._KERNEL_DIR, "scripts/int8_zero_controls.py",
+                                 "arena_int8_zero_controls")
+        if control is None:
+            raise RuntimeError("Missing protected zero-row correctness control")
+        control.run(h)
     return sorted(observed)
 
 def performance(h):
-    return h.arena_benchmark(warmup=10, iters=100, verbose=True)
+    from scripts.candidate_checks import audit_candidate_calls
+    with audit_candidate_calls(h, performance=True):
+        return h.arena_benchmark(warmup=10, iters=100, verbose=True)

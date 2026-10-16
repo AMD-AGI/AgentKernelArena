@@ -2,11 +2,14 @@
 import math
 import torch
 from scripts.contract_checks import InputSnapshot, check_outputs, comparator_control, ContractFailure
+from scripts.input_contract import validate_inputs
 
 
 def control_cases(device):
-    for padded in (False,True):
-        slots=[2,-1,0] if padded else [2,0]
+    for name, slots in (
+            ('remapped_slots_and_unused_cache', [2,0]),
+            ('padded_and_remapped_slots', [2,-1,0]),
+            ('repeated_padding_and_remapped_slots', [2,-1,-1,0])):
         batch=len(slots)
         q=torch.zeros(batch,2,1,32,device=device,dtype=torch.float16);q[...,0]=2.
         k=torch.zeros_like(q);k[...,0]=1.
@@ -21,7 +24,7 @@ def control_cases(device):
                 expected_cache[sid,head].mul_(ratio)
                 expected_cache[sid,head,0]+=torch.arange(1,33,device=device)
                 expected_out[i,head,0]=2*expected_cache[sid,head,0]
-        yield dict(name='padded_and_remapped_slots' if padded else 'remapped_slots_and_unused_cache',
+        yield dict(name=name,
                    entrypoint='linear_attn_decode_forward',
                    kwargs=dict(q=q,k=k,v=v,kv_caches=cache,
                                slope_rate=torch.tensor([math.log(2.),math.log(4.)],device=device),
@@ -34,6 +37,7 @@ def run_controls(mod,device='cuda'):
     rows=[]
     for c in control_cases(device):
         kw=c['kwargs'];readonly=InputSnapshot({k:v for k,v in kw.items() if k!='kv_caches'})
+        validate_inputs(**kw)
         output=mod.linear_attn_decode_forward(**kw)
         readonly.check()
         if (not isinstance(output,torch.Tensor) or output.shape!=c['expected'][0].shape

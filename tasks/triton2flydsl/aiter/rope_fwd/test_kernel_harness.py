@@ -19,6 +19,7 @@ Modes:
 import argparse
 import ast
 import importlib.util
+import hashlib
 import json
 import math
 import os
@@ -48,12 +49,22 @@ WARMUP, ITERS = 10, 100
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+# Retain compiled-module owners for this isolated task action. Loading occurs
+# before correctness/performance work, outside every benchmark clock/capture.
+_SOURCE_MODULE_CACHE = {}
+
+
 def _load_source():
-    entry = os.path.join(_HERE, SOURCE_FILE)
+    entry = os.path.realpath(os.path.join(_HERE, SOURCE_FILE))
+    with open(entry, "rb") as source:
+        source_identity = (entry, hashlib.sha256(source.read()).hexdigest())
+    if source_identity in _SOURCE_MODULE_CACHE:
+        return _SOURCE_MODULE_CACHE[source_identity]
     spec = importlib.util.spec_from_file_location("rope_fwd_src", entry)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
+    _SOURCE_MODULE_CACHE[source_identity] = mod
     return mod
 
 

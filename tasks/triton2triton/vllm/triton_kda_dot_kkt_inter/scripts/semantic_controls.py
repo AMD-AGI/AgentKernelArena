@@ -60,6 +60,51 @@ def control_cases(device):
     yield dict(name='two_outputs_feature_decay_subblocks_and_partial_chunk',entrypoint='kda_dot_kkt_inter',
                kwargs=dict(q=q,k=k,gk=gk,beta=beta,scale=.25,chunk_size=BT),expected=(A,Aqk),atol=1e-2,rtol=1e-2)
 
+    yield from dimension_control_cases(device)
+
+
+def control_declarations():
+    return [
+        {'name':'batch_heads_feature_tail_chunk64','B':2,'T':67,'H':3,'K':37,'chunk_size':64},
+        {'name':'batch_heads_feature_tail_chunk32','B':2,'T':35,'H':1,'K':17,'chunk_size':32},
+    ]
+
+
+def dimension_control_cases(device):
+    # Construct pristine inputs and independent closed forms on CPU, then copy
+    # once. Three sparse coordinates include K-1, with distinct feature decay.
+    # No BLAS/contraction or candidate/reference call supplies expected values.
+    for declaration in control_declarations():
+        B,T,H,K,BT=(declaration[key] for key in ('B','T','H','K','chunk_size'))
+        q=torch.zeros(B,T,H,K);k=torch.zeros_like(q);gk=torch.zeros_like(q)
+        beta=torch.empty(B,T,H);A=torch.zeros(B,T,H,BT);Aqk=torch.zeros_like(A)
+        features=(0,1,K-1);denominators=(16.,32.,64.)
+        for batch in range(B):
+            for head in range(H):
+                qc=(1.+batch,2.+head,.5*(batch+head+1))
+                kc=(2.+batch,.5+head,1.5)
+                for row in range(T):
+                    qtime=1.+(row%3)/4.;ktime=1.+(row%5)/8.
+                    beta[batch,row,head]=.5 if (row+batch)%2==0 else .75
+                    for position,feature in enumerate(features):
+                        q[batch,row,head,feature]=qc[position]*qtime
+                        k[batch,row,head,feature]=kc[position]*ktime
+                        gk[batch,row,head,feature]=-row*math.log(2.)/denominators[position]
+                    start=(row//BT)*BT
+                    for column in range(start,min(start+BT,T)):
+                        same_subblock=(row-start)//16==(column-start)//16
+                        earlier_subblock=(row-start)//16>(column-start)//16
+                        valid_a=earlier_subblock if 'inter'=='inter' else (same_subblock and row>column)
+                        valid_qk=earlier_subblock if 'inter'=='inter' else (same_subblock and row>=column)
+                        other_time=1.+(column%5)/8.
+                        kk=sum((kc[f]*ktime)*(kc[f]*other_time)*2.**(-(row-column)/denominators[f]) for f in range(3))
+                        qk=sum((qc[f]*qtime)*(kc[f]*other_time)*2.**(-(row-column)/denominators[f]) for f in range(3))
+                        if valid_a:A[batch,row,head,column-start]=kk*float(beta[batch,row,head])
+                        if valid_qk:Aqk[batch,row,head,column-start]=qk*.25
+        yield dict(name=declaration['name'],entrypoint='kda_dot_kkt_inter',
+            kwargs=dict(q=q.to(device),k=k.to(device),gk=gk.to(device),beta=beta.to(device),scale=.25,chunk_size=BT),
+            expected=(A.to(device),Aqk.to(device)),atol=1e-2,rtol=1e-2)
+
 
 def reference_controls(h):
     rows=[]

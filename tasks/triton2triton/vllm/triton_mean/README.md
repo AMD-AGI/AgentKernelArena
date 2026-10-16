@@ -58,3 +58,17 @@ graph replays retain their original GPU work; the existing output and perturbed
 input replay checks still establish numerical correctness. The same audit applies
 to the frozen initial baseline and candidate. This is a backend execution
 contract, not a Python security sandbox.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `mean_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+The protected wrapper also fixes the launch configuration: the grid and the tile
+sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes above
+that mention tuning those values refer to the original whole-file contract; under
+this boundary, optimize the kernel bodies and implementation helpers instead.

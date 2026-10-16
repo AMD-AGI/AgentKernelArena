@@ -86,10 +86,60 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control_batch_heads_feature_tail_chunk64",
+      "dtype": "float32",
+      "params": {
+        "semantic_control": "batch_heads_feature_tail_chunk64",
+        "B": 2,
+        "T": 67,
+        "H": 3,
+        "K": 37,
+        "chunk_size": 64
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_batch_heads_feature_tail_chunk32",
+      "dtype": "float32",
+      "params": {
+        "semantic_control": "batch_heads_feature_tail_chunk32",
+        "B": 2,
+        "T": 35,
+        "H": 1,
+        "K": 17,
+        "chunk_size": 32
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "a6bc1845ddf62263bb74c15d8873b07a71cff3b07eb42b0a9b2593cc12a17661",
     "original_correctness_sha256": "b126751072c27b7b36a2837b9a52b7ac8b56b548b2510c41d14ad168bd365c8c"
-  }
+  },
+  "semantic_control_cases": [
+    {
+      "name": "batch_heads_feature_tail_chunk64",
+      "B": 2,
+      "T": 67,
+      "H": 3,
+      "K": 37,
+      "chunk_size": 64
+    },
+    {
+      "name": "batch_heads_feature_tail_chunk32",
+      "B": 2,
+      "T": 35,
+      "H": 1,
+      "K": 17,
+      "chunk_size": 32
+    }
+  ]
 }

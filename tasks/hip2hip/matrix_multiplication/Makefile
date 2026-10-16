@@ -51,8 +51,8 @@ ICPPFLAGS += $(CPPFLAGS)
 ILDFLAGS  += $(LDFLAGS)
 ILDLIBS   += $(LDLIBS)
 
-$(EXAMPLE): main.hip source/kernel.hpp $(COMMON_INCLUDE_DIR)/example_utils.hpp
-	$(HIPCXX) $(ICXXFLAGS) $(ICPPFLAGS) $(ILDFLAGS) -o $@ $< $(ILDLIBS)
+$(EXAMPLE): main.hip source/kernel.hpp source/kernel_launch.hip scripts/native/matrix_launch.hpp $(COMMON_INCLUDE_DIR)/example_utils.hpp
+	$(HIPCXX) $(ICXXFLAGS) $(ICPPFLAGS) $(ILDFLAGS) -o $@ main.hip source/kernel_launch.hip $(ILDLIBS)
 
 clean:
 	$(RM) $(EXAMPLE)

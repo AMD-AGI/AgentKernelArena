@@ -150,6 +150,7 @@ class Recorder:
 
 def install(harness, contract):
     recorder = Recorder(harness, contract)
+    harness.RAGGED_CONTROLS = getattr(contract, 'RAGGED_CONTROLS', {})
     loader, correctness, performance = harness.load_module, harness.run_correctness, harness.run_performance
     def load():
         module = loader()
@@ -159,12 +160,17 @@ def install(harness, contract):
     def checked_correctness(*, case_index=None):
         recorder.mode = 'correctness'
         try:
+            if case_index in getattr(contract, 'RAGGED_CONTROLS', {}):
+                evidence = contract.run_ragged_control(harness, getattr(load(), contract.FUNCTION), 'cuda', case_index)
+                return True, evidence
             if case_index == contract.CONTROL_INDEX:
                 contract.controls(harness, getattr(load(), contract.FUNCTION), 'cuda')
                 return True, None
             result = correctness(case_index=case_index)
             if case_index is None and result[0]:
                 contract.controls(harness, getattr(load(), contract.FUNCTION), 'cuda')
+                for index in getattr(contract, 'RAGGED_CONTROLS', {}):
+                    contract.run_ragged_control(harness, getattr(load(), contract.FUNCTION), 'cuda', index)
             return result
         except Exception as exc:
             return False, f'{type(exc).__name__}: {exc}'

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_penalties.py
+  - path: source/triton_penalties.py
+    scope: symbols
+    symbols:
+    - _penalties_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_penalties.py
     kind: function

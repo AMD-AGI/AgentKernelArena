@@ -20,7 +20,7 @@ a baseline fallback. Baseline correctness compares against the protected PyTorch
 module; the PyTorch baseline is cross-checked against the independent functional form.
 
 All **5 cases** in `workload.json` are mandatory. The manifest was enumerated
-from the unchanged module `get_inputs()`; it is not inferred from candidate output.
+from the protected module `get_inputs()`; it is not inferred from candidate output.
 The original correctness tolerance and RNG schedule remain in
 `eval_tools/correctness_check.py` (model seed 0; comparison seed 1337 + case index).
 At each declared input geometry, an unscored correctness control changes each
@@ -29,7 +29,7 @@ against the same changed PyTorch module.
 It restores the original aligned state before the action ends.
 The declared two-dimensional `vstack` operator also accepts different row
 counts for `x` and `y`. Unscored correctness controls now check `(3, 1)` and
-`(1, 5)` row splits, plus a `(3, 5)` pair of noncontiguous four-feature views.
+`(1, 5)` row splits, plus a `(3, 5)` pair of noncontiguous 128-feature views.
 The protected module and selected forward receive separate equal-valued inputs;
 the control checks the full output, caller input bytes/layout, and model state,
 then restores state even if a check fails. These controls do not add score rows
@@ -82,3 +82,24 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+## Workload geometry
+
+Decode and prefill row counts, including unequal x/y batches and tile tails.
+
+Both protected models use `get_init_inputs()` = `[[], {'input_size': 128, 'hidden_size': 2048}]`.
+Each manifest row records this constructor in `params.model_init`; task
+validation checks it against both implementations. Inputs remain FP32, and
+the exact input shapes and strides are listed in `workload.json`.
+The flattened output-row counts are `4, 16, 64, 257, 512`.
+
+The largest declared input tuple contains 0.250 MiB; model
+parameters contain 1.016 MiB and the largest output contains
+0.002 MiB. The largest single operator intermediate is at most
+4.000 MiB. These are FP32 tensor sizes, excluding
+the evaluator's reference copies, snapshots, allocator and graph/compiler memory.
+
+These enlarged workloads change the task contract and require fresh GPU
+`task_validator` qualification plus a correct HIP candidate on every declared
+case. An initial generation-stub validation does not establish candidate
+feasibility, and earlier small-workload results do not qualify this contract.

@@ -39,3 +39,12 @@ The frozen baseline and candidate use identical inputs, untimed state restoratio
 warmups, sample counts, allocation boundaries and actual graph replay checks. The
 new workloads expand the case set; aggregate scores must be evaluated against a
 fresh baseline, not compared directly with the historical five-case aggregate.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_topk_topp_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

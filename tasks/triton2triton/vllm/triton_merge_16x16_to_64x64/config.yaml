@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_merge_16x16_to_64x64.py
+  - path: source/triton_merge_16x16_to_64x64.py
+    scope: symbols
+    symbols:
+    - merge_16x16_to_64x64_inverse_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_merge_16x16_to_64x64.py
     kind: function

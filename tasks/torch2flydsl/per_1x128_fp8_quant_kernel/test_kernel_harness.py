@@ -73,6 +73,11 @@ SHAPES = [
     {"name": "m4096_n4096", "m": 4096, "n": 4096},
 ]
 
+# Correctness-only legal small/non-power-of-two group counts. The original
+# six SHAPES remain the complete performance workload, unchanged.
+CORRECTNESS_CONTROLS = [{'name': 'control_single_group', 'm': 1, 'n': 128}, {'name': 'control_three_groups', 'm': 3, 'n': 384}, {'name': 'control_nine_groups', 'm': 5, 'n': 1152}, {'name': 'control_33_groups', 'm': 2, 'n': 4224}]
+CORRECTNESS_SHAPES = SHAPES + CORRECTNESS_CONTROLS
+
 # Tight quantized gate: near-exact scale + FP8 codes within CODE_TOL ULP.
 SCALE_RTOL = 1e-3
 CODE_TOL = 1
@@ -210,7 +215,7 @@ def run_correctness(verbose=True):
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
 
     failures = []
-    for shape in SHAPES:
+    for shape in CORRECTNESS_SHAPES:
         inp = _make_inputs(shape)
         originals = tuple(x.clone() for x in inp)
         model = mmod.Model(*mmod.get_init_inputs()).to("cuda")
@@ -264,7 +269,7 @@ def run_correctness(verbose=True):
         del inp, model
         torch.cuda.empty_cache()
 
-    status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(SHAPES)})"
+    status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(CORRECTNESS_SHAPES)})"
     print(f"Status: {status}")
     print(f"correctness: {'pass' if not failures else 'fail'}")
     assert not failures, f"correctness FAILED for: {failures}"

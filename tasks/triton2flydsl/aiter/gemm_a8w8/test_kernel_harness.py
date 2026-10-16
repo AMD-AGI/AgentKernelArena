@@ -30,7 +30,8 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
+from scripts.replay_checks import require_unchanged
+from scripts.sample_controls import MeasuredScaledGemmInputs
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -134,24 +135,6 @@ def _checked_scaled_gemm_output(out, x, w, out_dtype):
         raise AssertionError("Scaled GEMM output shape/dtype/device contract mismatch")
 
 
-def _scaled_gemm_replay_validator(x, w, x_scale, w_scale, bias, out_dtype):
-    inputs = tuple(v for v in (x, w, x_scale, w_scale, bias,) if v is not None)
-    originals = tuple(v.clone() for v in inputs)
-    expected = _torch_ref(x, w, x_scale, w_scale, bias, out_dtype)
-    def perturb():
-        x_scale.mul_(0.5)
-    def reference():
-        return _torch_ref(x, w, x_scale, w_scale, bias, out_dtype)
-    def compare(actual, expected):
-        _checked_scaled_gemm_output(actual, x, w, out_dtype)
-        allclose_output(actual, expected, atol=0.02, rtol=0.01)
-    def validate(timed):
-        return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=reference, compare=compare)
-    return validate
-
-
 def run_correctness(verbose=True):
     import torch
 
@@ -191,7 +174,10 @@ def run_correctness(verbose=True):
                 if verbose:
                     print(f"  FAIL: {tag} - {str(e)[:160]}")
 
-    total = len(TEST_SHAPES) * 2
+    from scripts.api_controls import API_CASES, run_api_controls
+    failures.extend(run_api_controls(mod, _make_inputs, _torch_ref,
+                                     _checked_scaled_gemm_output, in_dtype, verbose=verbose))
+    total = len(TEST_SHAPES) * 2 + len(API_CASES)
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{total})"
     print(f"Status: {status}")
     print(f"correctness: {'pass' if not failures else 'fail'}")
@@ -209,18 +195,32 @@ def run_benchmark(verbose=True):
         x, w, x_scale, w_scale, bias = _make_inputs(
             shape["M"], shape["N"], shape["K"], in_dtype, False
         )
-        replay_validate = _scaled_gemm_replay_validator(x, w, x_scale, w_scale, bias, out_dtype)
-        fn = lambda: mod.gemm_a8w8(x, w, x_scale, w_scale, None, out_dtype)  # noqa: E731
-        fn()
-        torch.cuda.synchronize()
-        for _ in range(WARMUP):
-            fn()
-        torch.cuda.synchronize()
-        timed = TimedRun()
-        ms, bench_meta = benchmark_cuda_graph_or_events(
-            fn, warmup=0, repetition=ITERS, timed_run=timed
+        def reference():
+            return _torch_ref(x, w, x_scale, w_scale, bias, out_dtype)
+        stream = MeasuredScaledGemmInputs(
+            x, w, x_scale, w_scale, bias, seed=SEED, case_index=idx,
+            samples=ITERS, output_dtype=out_dtype, reference=reference,
         )
-        bench_meta.update(replay_validate(timed))
+        fn = lambda: mod.gemm_a8w8(x, w, x_scale, w_scale, None, out_dtype)  # noqa: E731
+        try:
+            fn()
+            require_unchanged(stream.inputs, stream.originals)
+            torch.cuda.synchronize()
+            for _ in range(WARMUP):
+                fn()
+                require_unchanged(stream.inputs, stream.originals)
+            torch.cuda.synchronize()
+            timed = TimedRun()
+            timed.before_sample = stream.before_sample
+            timed.after_sample = stream.observe
+            ms, bench_meta = benchmark_cuda_graph_or_events(
+                fn, warmup=0, repetition=ITERS, timed_run=timed,
+                prepare_fn=stream.prepare,
+            )
+            stream.finish()
+            bench_meta.update(stream.validate_replays(timed))
+        finally:
+            stream.restore()
         latencies.append(ms)
         flops = 2.0 * shape["M"] * shape["N"] * shape["K"]
         report.append(

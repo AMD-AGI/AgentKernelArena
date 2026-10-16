@@ -6,37 +6,45 @@
         "inputs": [
           {
             "shape": [
-              4,
-              4,
-              4,
-              4
+              1,
+              1,
+              1,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              512,
+              512,
+              512,
               1
             ]
           },
           {
             "shape": [
-              4,
-              4,
-              4,
-              4
+              1,
+              1,
+              1,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              512,
+              512,
+              512,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1337
+        "correctness_seed": 1337,
+        "model_init": [
+          [],
+          {
+            "dim_model": 512,
+            "dim_ff": 2048,
+            "prob_dropout": 0.5
+          }
+        ]
       }
     },
     {
@@ -45,37 +53,45 @@
         "inputs": [
           {
             "shape": [
-              8,
-              4,
-              4,
-              4
+              1,
+              1,
+              17,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              8704,
+              8704,
+              512,
               1
             ]
           },
           {
             "shape": [
-              8,
-              4,
-              4,
-              4
+              1,
+              1,
+              17,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              8704,
+              8704,
+              512,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1338
+        "correctness_seed": 1338,
+        "model_init": [
+          [],
+          {
+            "dim_model": 512,
+            "dim_ff": 2048,
+            "prob_dropout": 0.5
+          }
+        ]
       }
     },
     {
@@ -84,37 +100,45 @@
         "inputs": [
           {
             "shape": [
-              16,
-              4,
-              4,
-              4
+              3,
+              1,
+              21,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              10752,
+              10752,
+              512,
               1
             ]
           },
           {
             "shape": [
-              16,
-              4,
-              4,
-              4
+              3,
+              1,
+              21,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              10752,
+              10752,
+              512,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1339
+        "correctness_seed": 1339,
+        "model_init": [
+          [],
+          {
+            "dim_model": 512,
+            "dim_ff": 2048,
+            "prob_dropout": 0.5
+          }
+        ]
       }
     },
     {
@@ -123,37 +147,45 @@
         "inputs": [
           {
             "shape": [
-              32,
-              4,
-              4,
-              4
+              2,
+              3,
+              43,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              66048,
+              22016,
+              512,
               1
             ]
           },
           {
             "shape": [
-              32,
-              4,
-              4,
-              4
+              2,
+              3,
+              43,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              66048,
+              22016,
+              512,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1340
+        "correctness_seed": 1340,
+        "model_init": [
+          [],
+          {
+            "dim_model": 512,
+            "dim_ff": 2048,
+            "prob_dropout": 0.5
+          }
+        ]
       }
     },
     {
@@ -162,37 +194,45 @@
         "inputs": [
           {
             "shape": [
-              64,
+              8,
               4,
-              4,
-              4
+              32,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              65536,
+              16384,
+              512,
               1
             ]
           },
           {
             "shape": [
-              64,
+              8,
               4,
-              4,
-              4
+              32,
+              512
             ],
             "dtype": "torch.float32",
             "stride": [
-              64,
-              16,
-              4,
+              65536,
+              16384,
+              512,
               1
             ]
           }
         ],
         "model_init_seed": 0,
-        "correctness_seed": 1341
+        "correctness_seed": 1341,
+        "model_init": [
+          [],
+          {
+            "dim_model": 512,
+            "dim_ff": 2048,
+            "prob_dropout": 0.5
+          }
+        ]
       }
     }
   ]

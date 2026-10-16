@@ -403,8 +403,29 @@ CONTRACT_CASES = {'ragged_permuted_window_scale': {'batch': 2,
                                    'page_mapping': 'reversed physical page order'}}
 
 
+def _load_domain_controls():
+    # The protected supported-domain table lives beside this module; load it by
+    # path so the copied task package needs no import from the repository.
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().with_name('_domain_controls.py')
+    spec = importlib.util.spec_from_file_location('_paged_prefix_domain_controls', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+DOMAIN_CONTROLS = _load_domain_controls()
+if set(CONTRACT_CASES) & set(DOMAIN_CONTROLS.DOMAIN_CASES):
+    raise ValueError('Duplicate paged-prefix contract control name')
+# Correctness-only rows; the scored domain remains TEST_SHAPES.
+CONTRACT_CASES.update(DOMAIN_CONTROLS.DOMAIN_CASES)
+
+
 def control_inputs(h,case,device="cuda"):
     import torch
+    if case in DOMAIN_CONTROLS.DOMAIN_CASES:
+        return DOMAIN_CONTROLS.control_inputs(case, device)
     c=CONTRACT_CASES[case]
     torch.manual_seed(c["seed"])
     kc,vc,pages,_,_=h.setup_paged_kv_cache(2,19,2,64,c['block_size'],device,torch.float16)

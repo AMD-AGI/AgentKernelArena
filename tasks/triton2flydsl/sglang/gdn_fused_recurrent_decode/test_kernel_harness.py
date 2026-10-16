@@ -102,10 +102,12 @@ def make_test_data(B, H, HV, K, V, pool_size, device="cuda", dtype=None):
     }
 
 
-def reference_decode(inp):
+def reference_decode(inp, *, use_qk_l2norm_in_kernel=True):
     """Pure-torch fp32 golden, mirroring the Triton kernel exactly.
 
     Returns (out[B,1,HV,V], updated_state[pool,HV,V,K]) in the input dtype.
+    The internal default True preserves the ten historical scored calls. The
+    public operator defaults to False, exercised explicitly by extra controls.
     """
     import torch
     B, H, HV, K, V = inp["B"], inp["H"], inp["HV"], inp["K"], inp["V"]
@@ -131,8 +133,9 @@ def reference_decode(inp):
             q = mq[n, i_h * K: i_h * K + K]
             k = mq[n, H * K + i_h * K: H * K + i_h * K + K]
             v = mq[n, 2 * H * K + hv * V: 2 * H * K + hv * V + V].clone()
-            q = q / torch.sqrt((q * q).sum() + 1e-6)
-            k = k / torch.sqrt((k * k).sum() + 1e-6)
+            if use_qk_l2norm_in_kernel:
+                q = q / torch.sqrt((q * q).sum() + 1e-6)
+                k = k / torch.sqrt((k * k).sum() + 1e-6)
             q = q * scale
             x = a[n, hv] + dt_bias[hv]
             softplus_x = torch.where(x <= 20.0, torch.log1p(torch.exp(x)), x)
@@ -283,6 +286,11 @@ def run_correctness():
             details.append({"shape_id": i + 1, "shape": [B, H, HV, K, V, pool], "error": str(e)})
             return False, f"Shape {i+1} {TEST_SHAPES[i]}: exception: {e}", details
 
+    from scripts.normalization_controls import run_cases
+    extra = run_cases(mod, _compare_recurrent_output, require_unchanged)
+    details.extend(extra)
+    if any(row.get("passed") is not True for row in extra):
+        return False, "Default/explicit non-normalized decode controls failed", details
     return True, None, details
 
 

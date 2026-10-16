@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_topk_log_softmax.py
+  - path: source/triton_topk_log_softmax.py
+    scope: symbols
+    symbols:
+    - _topk_log_softmax_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_topk_log_softmax.py
     kind: function

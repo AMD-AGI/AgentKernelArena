@@ -86,12 +86,17 @@ def test_exact_archived_delegations_fail_before_import(fixture, task_id, digest,
 
 
 @pytest.mark.parametrize("path", ALL_RUNTIMES, ids=lambda p: str(p.parent.relative_to(TASKS)))
-def test_all_dependency_variants_reject_three_real_delegations(path):
-    # Includes the 89 already-strict runtimes, which this change does not edit.
+def test_all_dependency_variants_reject_three_real_delegations(path, tmp_path):
+    # Submit the exact archived bytes inside a disposable task workspace so
+    # containment-aware runtimes reach the same forbidden-backend check.
     checker = runtime(path)
-    for fixture, _, _ in ARCHIVED:
+    checker.ROOT = tmp_path
+    for fixture, _, digest in ARCHIVED:
+        source = tmp_path / "candidate.py"
+        source.write_bytes((FIXTURES / fixture).read_bytes())
+        assert hashlib.sha256(source.read_bytes()).hexdigest() == digest
         with pytest.raises(ValueError, match="Final operator must execute FlyDSL, not aiter"):
-            checker.check_dependencies([FIXTURES / fixture], final_language=True)
+            checker.check_dependencies([source], final_language=True)
 
 
 @pytest.mark.parametrize("source", [
@@ -159,8 +164,16 @@ def launch(x):
     temporary = torch.empty((32,), device=x.device, dtype=x.dtype)
     return out.view(x.shape), temporary, math.ceil(x.numel() / 32)
 """)
+    helpers = tmp_path / "kernels"
+    helpers.mkdir()
+    (helpers / "__init__.py").write_text("")
+    (helpers / "dpp_utils.py").write_text("def tile_count(n): return (n + 31) // 32\n")
     for task in AFFECTED:
-        runtime(task / "task_runtime.py").check_dependencies([path])
+        checker = runtime(task / "task_runtime.py")
+        checker.ROOT = tmp_path
+        reviewed = checker.check_dependencies([path])
+        if reviewed is not None:
+            assert helpers / "dpp_utils.py" in reviewed
 
 
 @pytest.fixture

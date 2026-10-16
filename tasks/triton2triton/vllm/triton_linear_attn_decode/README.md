@@ -22,6 +22,11 @@ Constraints:
 - Must maintain the same function signature for `linear_attn_decode_forward`
 - Output must match reference within atol=1e-2, rtol=1e-2 for float16
 - The kernel must handle slot_idx=-1 for padding
+- Each active batch lane owns a distinct cache slot for this single decode step.
+  Active indices must be unique and in `[0, num_slots)`; repeated `-1` padding is
+  allowed. Duplicate active slots would race in the parallel kernel while a
+  sequential reference would apply two ordered updates, so they are outside this
+  task's contract.
 
 
 ## Evaluation contract
@@ -57,3 +62,15 @@ The retained public wrapper requires the value dimension to be divisible by
 lane leaves the cache untouched and does not initialize its newly allocated output
 lane. Unscored padding controls therefore verify all active output lanes and every
 cache slot. All scored cases have active slots and retain complete output checks.
+
+The protected input contract requires `q/k` shaped `[B, H, 1, D]`, `v` shaped
+`[B, H, 1, D_v]`, cache shaped `[num_slots, H, D, D_v]`, slope shaped `[H]`, and
+int32/int64 slots shaped `[B]`, all on one device. `D` and `BLOCK_SIZE` must be
+positive powers of two; `D_v` must be divisible by `BLOCK_SIZE` (default 32).
+`scripts/input_contract.py` checks these preconditions before correctness launches,
+reference updates, and performance capture. Slot inspection stays outside the
+candidate wrapper and device timing. `workloads.json` binds the same preconditions.
+The five scored cases retain their original unique `arange(B)` slots, random
+draws and timing; unscored controls additionally cover remapping, unused cache
+slots, padding and repeated padding. These finite cases do not claim arbitrary
+sequence length, duplicate-slot serialization or unsupported geometry coverage.

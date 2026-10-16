@@ -4,7 +4,12 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_chunked_prefill_paged_decode.py
+  - path: source/triton_chunked_prefill_paged_decode.py
+    scope: symbols
+    symbols:
+    - cdiv_fn
+    - kernel_paged_attention_2d
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_chunked_prefill_paged_decode.py
     kind: function

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_paged_prefix_prefill_alibi.py
+  - path: source/triton_paged_prefix_prefill_alibi.py
+    scope: symbols
+    symbols:
+    - _fwd_kernel_alibi
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_paged_prefix_prefill_alibi.py
     kind: function

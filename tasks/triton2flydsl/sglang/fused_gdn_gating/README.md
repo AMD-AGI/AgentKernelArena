@@ -19,7 +19,7 @@ module loading, external native kernels, subprocess dispatch or launch bypasses.
 The protected harness's existing glue operations and allocation/reset boundaries
 remain identical for baseline and candidate.
 
-`cases.json` contains 9 independent correctness identities and 9
+`cases.json` contains 11 independent correctness identities and 9
 performance identities, including every original dtype, bias, activation, routing
 and shape variant. Performance variants have correctness coverage. Input generators,
 explicit seeds, numerical gates, output-contract checks, warmups, sample counts,
@@ -59,7 +59,7 @@ shape [1,batch,heads], FP32 dtype and its input device. The existing baseline
 stores beta_output in an FP32 tensor after rounding sigmoid values to b.dtype;
 returning a BF16 container changes the interface. Both results must be finite.
 The original FP32 comparisons remain: g atol=rtol=0.001; beta_output atol=0.02,
-rtol=0.01 for the declared BF16 input. BETA=1 and THRESHOLD=20 are unchanged.
+rtol=0.01 for the declared BF16 input. The nine timed cases retain BETA=1 and THRESHOLD=20.
 All four inputs are read-only. Replay adds one to a and negates b, preserves
 A_log/dt_bias, and checks both new outputs with these same rules.
 
@@ -69,3 +69,71 @@ are outside timing. Original seed42+i, ten external warmups and100samples are
 unchanged. An unavailable measured-output collector fails evaluation. Final
 candidate calls are audited separately for FlyDSL arithmetic; the original
 Triton implementation remains the frozen performance baseline.
+
+## Local implementation helpers
+
+Declared editable candidate sources may import additional task-local Python
+device/compiler helpers, including packages. Dependency review and syntax
+compilation follow the complete normal local-import closure. The same declared
+implementation restrictions apply to every helper: protected references,
+alternative final-language backends and dynamic implementation loading remain
+disallowed. Source symlinks, imports escaping the task and local modules shadowing
+the supported runtime libraries are rejected. Installed library source is not
+traversed. The candidate-only PyTorch preparation and FlyDSL launch audits apply
+to these helpers too; the performance policy states how timed calls are checked. These checks enforce the task contract;
+they are not a Python security sandbox.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy remains active on every actual
+operator call made by canonical benchmark warmup, graph capture and eager event
+timing. Tensor arithmetic, reductions and library operators must execute as
+FlyDSL kernels even when candidate behavior changes after earlier calls. A
+probe of the actual performance closure observes FlyDSL invocation outside
+clocks and capture; Python profiling is disabled inside canonical measurement.
+Allocation and view preparation retain the existing allowlist. Baseline and
+reference operators keep their original policy and all original device timing
+parameters. One additional untimed audit probe of each performance closure runs
+before canonical benchmarking; stateful closures use the existing prepare
+callback before and after that probe. This probe is separate from the retained
+benchmark warmup/sample counts. A forbidden operation remains a failure even if
+a capture fallback or candidate code catches its exception. These checks are
+implementation-contract evidence, not a Python
+security sandbox.
+
+Candidate sources and their normal local-import helpers must not access the
+evaluator's module registry, stack frames or profiling controls through `sys`,
+including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
+available, and installed FlyDSL library internals are not scanned as candidate
+code. Protected reference imports remain prohibited.
+
+## Softplus correctness controls
+
+Two additional correctness-only identities call the actual operator. One uses
+the public beta=1/threshold=20 defaults with inputs at and above the threshold,
+including a value where an unused naive FP32 exponential would overflow. The
+other uses the public beta=2/threshold=1 parameters so ignoring the threshold
+produces an observable error under the unchanged gate. The finite controls
+return both outputs, compare against an independent scalar piecewise formula,
+check read-only inputs and reuse the same allocations for base, changed and
+base-again draws. All nine original scored shapes, seeds, warmups and samples
+remain unchanged; these six calls are outside timing.
+
+## Source module lifetime
+
+The protected loader retains each successfully imported raw module for the
+current isolated action, keyed by resolved source path and SHA256 of its bytes.
+Correctness and performance reuse that module; a changed source gets a distinct
+entry. Failed imports are not retained. This keeps compiled-owner globals alive
+through graph capture without changing the operator, the nine timed cases or
+their original timing parameters. Loading and hashing remain outside timing.
+Candidate policy wrappers are created afresh for each audit context and remain
+active on the cached raw module's actual calls.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

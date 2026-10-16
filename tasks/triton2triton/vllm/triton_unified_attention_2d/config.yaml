@@ -4,7 +4,14 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_unified_attention_2d.py
+  - path: source/triton_unified_attention_2d.py
+    scope: symbols
+    symbols:
+    - cdiv_fn
+    - apply_softcap
+    - find_seq_idx
+    - kernel_unified_attention_2d
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_unified_attention_2d.py
     kind: function

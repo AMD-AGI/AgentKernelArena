@@ -15,6 +15,21 @@
 namespace
 {
 
+// Preserve the former scored inputs as an additional untimed numerical case.
+void fill_periodic_regression_inputs(std::vector<bf16>& q, std::vector<uint8_t>& kv)
+{
+    for(std::size_t i = 0; i < q.size(); ++i)
+    {
+        const int value = static_cast<int>((i * 17U) % 31U) - 15;
+        q[i] = __float2bfloat16(static_cast<float>(value) * 0.015625f);
+    }
+    for(std::size_t i = 0; i < kv.size(); ++i)
+    {
+        const int value = static_cast<int>((i * 13U + 5U) % 29U) - 14;
+        kv[i] = f32_to_fp8_e4m3fn(static_cast<float>(value) * 0.03125f);
+    }
+}
+
 int parse_int(int argc, char** argv, const char* name, int fallback)
 {
     for(int i = 1; i + 1 < argc; ++i)
@@ -64,16 +79,10 @@ int main(int argc, char** argv)
         std::vector<bf16> h_golden(o_e);
         std::vector<bf16> h_actual(o_e);
         std::vector<bf16> h_reference(o_e);
-        for(std::size_t i = 0; i < q_e; ++i)
-        {
-            const int value = static_cast<int>((i * 17U) % 31U) - 15;
-            h_q[i] = __float2bfloat16(static_cast<float>(value) * 0.015625f);
-        }
-        for(std::size_t i = 0; i < kv_e; ++i)
-        {
-            const int value = static_cast<int>((i * 13U + 5U) % 29U) - 14;
-            h_kv[i] = f32_to_fp8_e4m3fn(static_cast<float>(value) * 0.03125f);
-        }
+        // Reuse the original correctness distributions, encoder and seed schedule
+        // for both timed roles. All input preparation remains outside timing.
+        fill_random_bf16(h_q, -1.0f, 1.0f, /*seed=*/42 + batch * 31 + ctx);
+        fill_kv_fp8(h_kv, /*seed=*/123 + batch * 17 + ctx);
         mla_routing_inputs(h_r2t, h_bsl, batch, ctx, kv_tokens);
 
         aka_native_perf::throw_on_hip_error(
@@ -136,6 +145,11 @@ int main(int argc, char** argv)
         };
 
         host_reference(h_reference, h_q, h_kv, h_r2t, h_bsl, batch, ctx, sm_scale);
+        std::vector<bf16> periodic_q(q_e), periodic_reference(o_e);
+        std::vector<uint8_t> periodic_kv(kv_e);
+        fill_periodic_regression_inputs(periodic_q, periodic_kv);
+        host_reference(periodic_reference, periodic_q, periodic_kv, h_r2t, h_bsl,
+                       batch, ctx, sm_scale);
 
         std::vector<bf16> checked_q(q_e);
         std::vector<uint8_t> checked_kv(kv_e);
@@ -240,6 +254,19 @@ int main(int argc, char** argv)
                     failure = validate_mla_outputs(h_actual, h_actual, expected, decode);
                 }
                 if(failure.empty()) failure = check_inputs(zero_q, control_kv, validation_stream);
+                if(!failure.empty()) return failure;
+
+                // Keep the old low-amplitude periodic workload as extra coverage,
+                // without using it for the reported performance samples.
+                error = hipMemcpyAsync(d_q, periodic_q.data(), q_e * sizeof(bf16), hipMemcpyHostToDevice, validation_stream);
+                if(error == hipSuccess) error = hipMemcpyAsync(d_kv, periodic_kv.data(), kv_e, hipMemcpyHostToDevice, validation_stream);
+                if(error == hipSuccess) error = hipMemsetAsync(d_o, 0xFF, o_e * sizeof(bf16), validation_stream);
+                if(error == hipSuccess) error = graph_exec != nullptr ? hipGraphLaunch(graph_exec, validation_stream) : launch(validation_stream);
+                if(error == hipSuccess) error = hipMemcpyAsync(h_actual.data(), d_o, o_e * sizeof(bf16), hipMemcpyDeviceToHost, validation_stream);
+                if(error == hipSuccess) error = hipStreamSynchronize(validation_stream);
+                if(error != hipSuccess) failure = aka_native_perf::hip_failure("MLA periodic regression", error);
+                else failure = validate_mla_outputs(h_actual, h_actual, periodic_reference, decode);
+                if(failure.empty()) failure = check_inputs(periodic_q, periodic_kv, validation_stream);
                 return failure;
             }, restore_inputs);
         };

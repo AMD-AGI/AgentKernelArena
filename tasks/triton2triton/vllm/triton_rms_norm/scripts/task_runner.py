@@ -19,9 +19,25 @@ TEST_SHAPES = [
     (128, 1024),
     (256, 2048),
     (512, 4096),
+    (1, 4096),
+    (32, 576),
+    (32, 1536),
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
+
+# Additional finite correctness coverage, excluded from performance timing.
+# Small inputs make the epsilon variants distinguishable from eps=0/default.
+CORRECTNESS_CONTROLS = [
+    {"test_case_id": "control_bf16", "shape": [8, 1536], "dtype": "bfloat16",
+     "eps": 1e-6, "input_scale": 1.0, "seed": 1001},
+    {"test_case_id": "control_rank3", "shape": [2, 3, 576], "dtype": "float16",
+     "eps": 1e-6, "input_scale": 1.0, "seed": 1002},
+    {"test_case_id": "control_rank3_bf16_eps", "shape": [2, 3, 1536], "dtype": "bfloat16",
+     "eps": 1e-5, "input_scale": 1e-3, "seed": 1003},
+    {"test_case_id": "control_eps", "shape": [4, 1536], "dtype": "float16",
+     "eps": 1e-3, "input_scale": 1e-3, "seed": 1004},
+]
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
@@ -71,7 +87,31 @@ def run_compile():
         return False, str(e)
 
 
+def run_control_correctness(control_index):
+    import torch
+
+    try:
+        case = CORRECTNESS_CONTROLS[control_index]
+        if control_index < 0:
+            raise IndexError("Invalid correctness control index")
+        mod = load_module()
+        torch.manual_seed(case["seed"])
+        dtype = getattr(torch, case["dtype"])
+        x = torch.randn(*case["shape"], device="cuda", dtype=dtype) * case["input_scale"]
+        weight = torch.randn(case["shape"][-1], device="cuda", dtype=dtype)
+        result = mod.rms_norm(x, weight, eps=case["eps"])
+        torch.cuda.synchronize()
+        ref = reference_rms_norm(x, weight, case["eps"])
+        if not torch.allclose(result, ref, atol=1e-2, rtol=1e-2):
+            return False, f"{case['test_case_id']}: output differs from RMS reference"
+        return True, None
+    except Exception as exc:
+        return False, f"Correctness control {control_index}: {type(exc).__name__}: {exc}"
+
+
 def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 10000:
+        return run_control_correctness(case_index - 10000)
     import torch
     try:
         mod = load_module()

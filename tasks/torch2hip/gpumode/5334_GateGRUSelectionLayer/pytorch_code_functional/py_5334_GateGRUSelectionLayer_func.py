@@ -70,25 +70,19 @@ class GateGRUSelectionLayer(nn.Module):
 
 def get_inputs():
     """
-    Generate multiple test cases with varying sizes
-    GateGRUSelectionLayer expects 4D tensors [B0, B1, B2, D]
-    All test cases must use D=4 to match dim_model=4 in get_init_inputs()
+    Three 1024-to-512 gated projections, with 1/17/63/258/1024 flattened rows
+    and distinct input tensors.
     """
-    configs = [
-        # 4D tensors: (B0, B1, B2, D) where D must be 4
-        ([4, 4, 4, 4],),  # (4, 4, 4, 4)
-        ([8, 4, 4, 4],),  # (8, 4, 4, 4) - keep D=4
-        ([16, 4, 4, 4],),  # (16, 4, 4, 4) - keep D=4
-        ([32, 4, 4, 4],),  # (32, 4, 4, 4) - keep D=4
-        ([64, 4, 4, 4],),  # (64, 4, 4, 4) - keep D=4
+    shapes = [
+        [(1, 1, 1, 512), (1, 1, 1, 512)],
+        [(1, 1, 17, 512), (1, 1, 17, 512)],
+        [(3, 1, 21, 512), (3, 1, 21, 512)],
+        [(2, 3, 43, 512), (2, 3, 43, 512)],
+        [(8, 4, 32, 512), (8, 4, 32, 512)],
     ]
-    
-    for shape in configs:
-        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
-        x_1 = torch.randn(shape_list, dtype=torch.float32)
-        x_2 = torch.randn(shape_list, dtype=torch.float32)
-        yield [x_1, x_2]
+    for case_shapes in shapes:
+        yield [torch.randn(shape, dtype=torch.float32) for shape in case_shapes]
 
 
 def get_init_inputs():
-    return [[], {'dim_model': 4, 'dim_ff': 4, 'prob_dropout': 0.5}]
+    return [[], {'dim_model': 512, 'dim_ff': 2048, 'prob_dropout': 0.5}]

@@ -74,14 +74,31 @@ def validate_timed(timed, readonly, reference, perturb, *, atol, rtol):
     if not timed.bound:
         raise ContractFailure('No observable measured invocation')
     inputs = [entry[1] for entry in readonly.entries]
+    named = {name: value for name, value, *_ in readonly.entries}
+    scored_scan = {'cb', 'x', 'dt', 'dA_cumsum', 'C', 'states', 'seq_idx'} <= set(named)
     readonly.check()
-    check_outputs(timed.outputs, reference(), atol=atol, rtol=rtol, inputs=inputs)
+    expected = reference()
+    if scored_scan:
+        from scripts.semantic_controls import inter_chunk_reference, require_intra_signal
+        without_intra = inter_chunk_reference(
+            named['x'], named['dA_cumsum'], named['C'], named['states'],
+            named['seq_idx'], named['dt'].shape[-1])
+        require_intra_signal(expected, without_intra)
+    check_outputs(timed.outputs, expected, atol=atol, rtol=rtol, inputs=inputs)
     try:
+        # The timed draw already carries the strong-signal cb amplification, so
+        # the replay keeps it and only applies the declared perturbation.
         perturb()
         if not any(not torch.equal(x, saved) for _, x, saved, *_ in readonly.entries):
             raise ContractFailure('Replay perturbation did not change input values')
         changed = InputSnapshot({name: x for name, x, *_ in readonly.entries})
         expected = reference()
+        if scored_scan:
+            from scripts.semantic_controls import inter_chunk_reference, require_intra_signal
+            without_intra = inter_chunk_reference(
+                named['x'], named['dA_cumsum'], named['C'], named['states'],
+                named['seq_idx'], named['dt'].shape[-1])
+            require_intra_signal(expected, without_intra)
         for output in tensors(timed.outputs):
             output.fill_(float('nan'))
         replayed = timed.rerun()
@@ -91,4 +108,5 @@ def validate_timed(timed, readonly, reference, perturb, *, atol, rtol):
         readonly.restore()
     return {'timed_output_correctness': 'PASS', 'replay_correctness': 'PASS',
             'readonly_inputs': 'PASS', 'replay_inputs_changed': True,
+            'strong_signal_replay_checked': scored_scan,
             'output_coverage': 'all_output_tensors_and_elements'}

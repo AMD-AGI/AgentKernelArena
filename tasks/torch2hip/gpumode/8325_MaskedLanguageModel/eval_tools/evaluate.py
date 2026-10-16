@@ -123,10 +123,20 @@ def check_case_identity(row, inputs):
         raise ValueError(f"Input generator no longer matches manifest: {row['test_case_id']}")
 
 
+def check_model_init_identity(rows, module, functional):
+    """Bind manifest constructor metadata to both protected implementations."""
+    declared = module.get_init_inputs()
+    if functional.get_init_inputs() != declared:
+        raise ValueError("Module and functional model initializers differ")
+    if any(row["params"].get("model_init") != declared for row in rows):
+        raise ValueError("Model initializer no longer matches the workload manifest")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
     functional = load_module(local_path(args.functional), "arena_functional")
+    check_model_init_identity(rows, module, functional)
     forward = getattr(functional, args.model_class).forward
     default = inspect.signature(forward).parameters["fn"].default
     if not callable(default):

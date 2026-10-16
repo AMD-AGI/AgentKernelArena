@@ -36,3 +36,12 @@ All five scored cases and seeds remain unchanged and time the original default
 quantization mode. The exact timed invocation is observed and replayed with changed
 input and poisoned outputs. Input and hooks are restored even on failure; 10 warmups,
 100 samples, full-wrapper timing and original source/harness are preserved.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_per_token_group_quant_fp8_colmajor`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

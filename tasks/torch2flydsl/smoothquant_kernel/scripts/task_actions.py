@@ -3,6 +3,13 @@ PERFORMANCE_IDS = {'test_case_0': 'case_0000', 'test_case_1': 'case_0001', 'test
 EXPECTED_CASES = [{'name': 'm1_n5120', 'm': 1, 'n': 5120}, {'name': 'm16_n5120', 'm': 16, 'n': 5120}, {'name': 'm48_n8192', 'm': 48, 'n': 8192}, {'name': 'm128_n5120', 'm': 128, 'n': 5120}, {'name': 'm256_n8192', 'm': 256, 'n': 8192}, {'name': 'm1024_n5120', 'm': 1024, 'n': 5120}]
 
 def select_role(h, role, provided):
+    import json
+    from pathlib import Path
+    from scripts.semantic_controls import CONTROL_CASES
+    declared = json.loads(Path(h.__file__).with_name("cases.json").read_text())["cases"]
+    controls = [case for case in declared if case["test_case_id"].startswith("control_")]
+    if controls != CONTROL_CASES:
+        raise ValueError("Semantic controls disagree with protected manifest")
     h.ARENA_PROVIDED_BASELINE = provided
     if h.SHAPES != EXPECTED_CASES:
         raise ValueError("Harness case definitions disagree with protected manifest")
@@ -15,4 +22,6 @@ def check(h):
     return sorted(observed)
 
 def performance(h):
-    return h.arena_benchmark(warmup=10, iters=100, verbose=True)
+    from scripts.candidate_checks import audit_candidate_calls
+    with audit_candidate_calls(h, performance=True):
+        return h.arena_benchmark(warmup=10, iters=100, verbose=True)

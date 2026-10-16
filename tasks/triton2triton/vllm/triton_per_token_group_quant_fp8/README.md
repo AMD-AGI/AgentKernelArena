@@ -34,7 +34,13 @@ References read pristine input. Unscored diagnostics cover padded rows, group-si
 All five scored cases and seeds remain unchanged and time the original default
 quantization mode. The exact timed invocation is observed and replayed with changed
 input and poisoned outputs. Input and hooks are restored even on failure; 10 warmups,
-100 samples, full-wrapper timing and original source/harness are preserved.
+100 samples and the original device work launched by the protected wrapper are
+preserved. The `cuda_graph` metric measures GPU work replayed from the captured
+wrapper launches. Python wrapper execution, allocation calls and launch
+preparation occur during capture, before those replay samples. A reported
+`cuda_event_fallback` uses the canonical helper's eager-call GPU event boundary.
+Per-invocation CPU wrapper latency is outside this GPU timing metric. Baseline
+and candidate use the same protected wrapper, cases and benchmark path.
 
 Additional unscored public-branch controls from PR105: Explicit wider FP8 output, BF16 3D input and FP32/UE8M0 edge values.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
@@ -46,3 +52,13 @@ and scale divisor still come from the platform's FP8 format (240 for fnuz),
 even when another output storage dtype is requested. Original 2-D/default-dtype
 cases retain their original reference. Shape/dtype/device, positive finite
 scales, read-only input checks and both original numerical gates remain active.
+
+
+## Editable device implementation
+
+The declared device kernels `_per_token_group_quant_fp8` and permitted new compiler helpers are editable. Existing imports, module-level
+execution, the public host wrapper, launch preparation, numerical checks and
+timing remain protected. Kernel arithmetic, tiling and memory operations can
+be optimized within that boundary. The implementation, workload values,
+correctness tolerances and scored samples are unchanged by this boundary.
+This is a reproducibility boundary, not an isolation guarantee for arbitrary code.

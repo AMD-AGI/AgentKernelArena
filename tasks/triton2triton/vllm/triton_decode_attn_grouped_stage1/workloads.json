@@ -353,6 +353,600 @@
         "correctness"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "kv_group_17_two_heads",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "kv_group_17_two_heads",
+        "batch": 2,
+        "query_heads": 34,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          63,
+          37
+        ],
+        "page_mapping": "reversed physical page order",
+        "logit_cap": 0.0,
+        "input_shapes": {
+          "q": [
+            2,
+            34,
+            64
+          ],
+          "k_buffer": [
+            128,
+            2,
+            64
+          ],
+          "v_buffer": [
+            128,
+            2,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            34,
+            4,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 815
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "kv_group_24_two_heads",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "kv_group_24_two_heads",
+        "batch": 2,
+        "query_heads": 48,
+        "kv_heads": 2,
+        "head_dim": 64,
+        "max_seq": 63,
+        "num_splits": 4,
+        "page_size": 16,
+        "sequence_lengths": [
+          63,
+          37
+        ],
+        "page_mapping": "reversed physical page order",
+        "logit_cap": 1.5,
+        "input_shapes": {
+          "q": [
+            2,
+            48,
+            64
+          ],
+          "k_buffer": [
+            128,
+            2,
+            64
+          ],
+          "v_buffer": [
+            128,
+            2,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            64
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            48,
+            4,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 816
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_group1_page1",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "domain_group1_page1",
+        "batch": 2,
+        "query_heads": 3,
+        "kv_heads": 3,
+        "kv_group_num": 1,
+        "head_dim": 64,
+        "value_head_dim": 64,
+        "max_seq": 45,
+        "num_splits": 3,
+        "page_size": 1,
+        "table_pages_per_request": 46,
+        "physical_pages": 93,
+        "sequence_lengths": [
+          45,
+          7
+        ],
+        "page_mapping": "seeded permutation of physical pages",
+        "logit_cap": 0.0,
+        "input_shapes": {
+          "q": [
+            2,
+            3,
+            64
+          ],
+          "k_buffer": [
+            93,
+            3,
+            64
+          ],
+          "v_buffer": [
+            93,
+            3,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            46
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            3,
+            3,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 901,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_group3_page5_dim80",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "domain_group3_page5_dim80",
+        "batch": 2,
+        "query_heads": 6,
+        "kv_heads": 2,
+        "kv_group_num": 3,
+        "head_dim": 80,
+        "value_head_dim": 80,
+        "max_seq": 53,
+        "num_splits": 2,
+        "page_size": 5,
+        "table_pages_per_request": 12,
+        "physical_pages": 25,
+        "sequence_lengths": [
+          53,
+          21
+        ],
+        "page_mapping": "seeded permutation of physical pages",
+        "logit_cap": 1.5,
+        "input_shapes": {
+          "q": [
+            2,
+            6,
+            80
+          ],
+          "k_buffer": [
+            125,
+            2,
+            80
+          ],
+          "v_buffer": [
+            125,
+            2,
+            80
+          ],
+          "req_to_tokens": [
+            2,
+            12
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            6,
+            2,
+            81
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 902,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_group5_page3_k96_v64",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "domain_group5_page3_k96_v64",
+        "batch": 2,
+        "query_heads": 15,
+        "kv_heads": 3,
+        "kv_group_num": 5,
+        "head_dim": 96,
+        "value_head_dim": 64,
+        "max_seq": 70,
+        "num_splits": 5,
+        "page_size": 3,
+        "table_pages_per_request": 25,
+        "physical_pages": 51,
+        "sequence_lengths": [
+          70,
+          3
+        ],
+        "page_mapping": "seeded permutation of physical pages",
+        "logit_cap": 0.0,
+        "input_shapes": {
+          "q": [
+            2,
+            15,
+            96
+          ],
+          "k_buffer": [
+            153,
+            3,
+            96
+          ],
+          "v_buffer": [
+            153,
+            3,
+            64
+          ],
+          "req_to_tokens": [
+            2,
+            25
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            15,
+            5,
+            65
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 903,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_group7_page64_dim256",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "domain_group7_page64_dim256",
+        "batch": 2,
+        "query_heads": 14,
+        "kv_heads": 2,
+        "kv_group_num": 7,
+        "head_dim": 256,
+        "value_head_dim": 256,
+        "max_seq": 100,
+        "num_splits": 1,
+        "page_size": 64,
+        "table_pages_per_request": 3,
+        "physical_pages": 7,
+        "sequence_lengths": [
+          100,
+          33
+        ],
+        "page_mapping": "seeded permutation of physical pages",
+        "logit_cap": 0.0,
+        "input_shapes": {
+          "q": [
+            2,
+            14,
+            256
+          ],
+          "k_buffer": [
+            448,
+            2,
+            256
+          ],
+          "v_buffer": [
+            448,
+            2,
+            256
+          ],
+          "req_to_tokens": [
+            2,
+            3
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            14,
+            1,
+            257
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 904,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_group33_page12_k40_v72",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "domain_group33_page12_k40_v72",
+        "batch": 2,
+        "query_heads": 66,
+        "kv_heads": 2,
+        "kv_group_num": 33,
+        "head_dim": 40,
+        "value_head_dim": 72,
+        "max_seq": 77,
+        "num_splits": 6,
+        "page_size": 12,
+        "table_pages_per_request": 8,
+        "physical_pages": 17,
+        "sequence_lengths": [
+          77,
+          1
+        ],
+        "page_mapping": "seeded permutation of physical pages",
+        "logit_cap": 2.5,
+        "input_shapes": {
+          "q": [
+            2,
+            66,
+            40
+          ],
+          "k_buffer": [
+            204,
+            2,
+            40
+          ],
+          "v_buffer": [
+            204,
+            2,
+            72
+          ],
+          "req_to_tokens": [
+            2,
+            8
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            66,
+            6,
+            73
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 905,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_mqa_group12_page2_dim16",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "domain_mqa_group12_page2_dim16",
+        "batch": 3,
+        "query_heads": 12,
+        "kv_heads": 1,
+        "kv_group_num": 12,
+        "head_dim": 16,
+        "value_head_dim": 16,
+        "max_seq": 64,
+        "num_splits": 4,
+        "page_size": 2,
+        "table_pages_per_request": 33,
+        "physical_pages": 100,
+        "sequence_lengths": [
+          31,
+          64,
+          2
+        ],
+        "page_mapping": "seeded permutation of physical pages",
+        "logit_cap": 0.0,
+        "input_shapes": {
+          "q": [
+            3,
+            12,
+            16
+          ],
+          "k_buffer": [
+            200,
+            1,
+            16
+          ],
+          "v_buffer": [
+            200,
+            1,
+            16
+          ],
+          "req_to_tokens": [
+            3,
+            33
+          ],
+          "b_seqlen": [
+            3
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            3,
+            12,
+            4,
+            17
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 906,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "domain_group16_page16_dim128",
+      "dtype": "float16,float32,int32",
+      "params": {
+        "contract_case": "domain_group16_page16_dim128",
+        "batch": 2,
+        "query_heads": 32,
+        "kv_heads": 2,
+        "kv_group_num": 16,
+        "head_dim": 128,
+        "value_head_dim": 128,
+        "max_seq": 130,
+        "num_splits": 7,
+        "page_size": 16,
+        "table_pages_per_request": 10,
+        "physical_pages": 21,
+        "sequence_lengths": [
+          130,
+          40
+        ],
+        "page_mapping": "seeded permutation of physical pages",
+        "logit_cap": 1.5,
+        "input_shapes": {
+          "q": [
+            2,
+            32,
+            128
+          ],
+          "k_buffer": [
+            336,
+            2,
+            128
+          ],
+          "v_buffer": [
+            336,
+            2,
+            128
+          ],
+          "req_to_tokens": [
+            2,
+            10
+          ],
+          "b_seqlen": [
+            2
+          ]
+        },
+        "output_shapes": {
+          "att_out": [
+            2,
+            32,
+            7,
+            129
+          ]
+        },
+        "dtypes": {
+          "data": "float16",
+          "partial_or_statistics": "float32",
+          "routing": "int32"
+        },
+        "seed": 907,
+        "initial_partial_value": 23.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

@@ -21,6 +21,7 @@ import json
 import time
 import argparse
 import importlib.util
+import hashlib
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_pair
 
@@ -54,11 +55,22 @@ MAX_OOM_RETRIES = 5
 DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
+# Retain compiled-module owners for this isolated task action. Loading occurs
+# before correctness/performance work, outside every benchmark clock/capture.
+_SOURCE_MODULE_CACHE = {}
+
+
 def load_module():
-    spec = importlib.util.spec_from_file_location("fused_gdn_gating_src", SOURCE_FILE)
+    source_path = os.path.realpath(SOURCE_FILE)
+    with open(source_path, "rb") as source:
+        source_identity = (source_path, hashlib.sha256(source.read()).hexdigest())
+    if source_identity in _SOURCE_MODULE_CACHE:
+        return _SOURCE_MODULE_CACHE[source_identity]
+    spec = importlib.util.spec_from_file_location("fused_gdn_gating_src", source_path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
+    _SOURCE_MODULE_CACHE[source_identity] = mod
     return mod
 
 
@@ -204,6 +216,12 @@ def run_correctness():
         except Exception as e:
             details.append({"shape_id": i + 1, "shape": [batch, num_heads], "error": str(e)})
             return False, f"Shape {i+1} {TEST_SHAPES[i]}: exception: {e}", details
+    from scripts.semantic_controls import run_controls
+    try:
+        details.extend(run_controls(mod.fused_gdn_gating, _compare_router_output,
+                                    require_unchanged, start_shape_id=len(details) + 1))
+    except Exception as error:
+        return False, f"Softplus semantic control: {error}", details
     return True, None, details
 
 

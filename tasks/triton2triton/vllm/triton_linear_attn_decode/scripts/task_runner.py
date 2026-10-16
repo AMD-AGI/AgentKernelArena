@@ -11,6 +11,7 @@ os.chdir(TASK_DIR)
 if TASK_DIR not in sys.path:
     sys.path.insert(0, TASK_DIR)
 from scripts.contract_checks import InputSnapshot, check_outputs, validate_timed
+from scripts.input_contract import INPUT_CONTRACT, validate_inputs
 from scripts import semantic_controls
 
 TASK_NAME = "triton2triton/triton_linear_attn_decode"
@@ -67,6 +68,7 @@ def reference_linear_attn_decode(q, k, v, kv_caches, slope_rate, slot_idx):
     Returns: output [B, H, 1, D_v], updated kv_caches
     """
     import torch
+    validate_inputs(q, k, v, kv_caches, slope_rate, slot_idx)
     B, H, _, D = q.shape
     D_v = v.shape[-1]
 
@@ -138,6 +140,8 @@ def run_correctness(*, case_index=None):
             kv_caches_triton = torch.randn(num_slots, H, D, E, device=device, dtype=dtype) * 0.1
             kv_caches_ref = kv_caches_triton.clone().float()
 
+            validate_inputs(q, k, v, kv_caches_triton, slope_rate, slot_idx)
+
             # Reference
             ref_out = reference_linear_attn_decode(q, k, v, kv_caches_ref, slope_rate, slot_idx)
 
@@ -196,6 +200,9 @@ def run_performance():
             k = torch.randn(B, H, 1, D, device=device, dtype=dtype)
             v = torch.randn(B, H, 1, E, device=device, dtype=dtype)
             kv_caches = torch.randn(B, H, D, E, device=device, dtype=dtype) * 0.1
+
+            # Slot inspection is protected setup, outside capture and timing.
+            validate_inputs(q, k, v, kv_caches, slope_rate, slot_idx)
 
             kv_work = kv_caches.clone()
 

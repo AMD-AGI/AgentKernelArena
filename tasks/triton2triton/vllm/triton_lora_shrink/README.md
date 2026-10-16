@@ -77,3 +77,17 @@ initial output to check the public wrapper's reset.
 Additional unscored public-branch controls from PR105: Split-K first/last partial blocks, BF16 4D weights and inactive LoRA.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `mm_k`, `do_shrink_kernel`, `_lora_shrink_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+The protected wrapper also fixes the launch configuration: the grid and the tile
+sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes above
+that mention tuning those values refer to the original whole-file contract; under
+this boundary, optimize the kernel bodies and implementation helpers instead.

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_awq_gemm.py
+  - path: source/triton_awq_gemm.py
+    scope: symbols
+    symbols:
+    - awq_gemm_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_awq_gemm.py
     kind: function
