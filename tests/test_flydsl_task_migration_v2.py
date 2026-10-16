@@ -116,7 +116,7 @@ def test_nested_target_and_path_containment(tmp_path):
     'def build(*a): return None\n',
 ])
 def test_candidate_dependency_and_backend_policy(source,tmp_path):
-    runtime=module(TASKS[0]/"task_runtime.py")
+    runtime=module(TASKS[0]/"task_runtime.py");runtime.ROOT=tmp_path
     p=tmp_path/"kernel.py";p.write_text(source)
     with pytest.raises(ValueError):runtime.check_dependencies([p],True)
 
@@ -5622,6 +5622,8 @@ def test_triton_scaled_gemm_real_original_rules_and_measured_replay(name, phase,
 def test_triton_scaled_gemm_audit_helper_and_static_dependencies(name, tmp_path):
     task = ROOT / 'tasks/triton2flydsl/aiter' / name
     runtime = module(task / 'task_runtime.py')
+    # Containment-aware runtimes only follow imports inside the task root.
+    runtime.ROOT = tmp_path
     candidate = tmp_path / 'candidate.py'
     candidate.write_text('import flydsl\nfrom aiter import gemm_a8w8\n')
     with pytest.raises(ValueError, match='Final operator must execute FlyDSL'):
@@ -5898,7 +5900,8 @@ def test_attention_two_candidate_audit_and_complete_cpu_manifest(name, monkeypat
     for helper in ['candidate_checks.py', 'replay_checks.py']:
         assert (task / 'scripts' / helper).read_bytes() == (ROOT / 'tasks/triton2flydsl/aiter/fp8_mqa_logits/scripts' / helper).read_bytes()
     bad = tmp_path / 'candidate.py'; bad.write_text('import flydsl\nfrom aiter import flash_attn_func\n')
-    with pytest.raises(ValueError): runtime.check_dependencies([bad], True)
+    runtime.ROOT = tmp_path
+    with pytest.raises(ValueError, match='not aiter'): runtime.check_dependencies([bad], True)
     result = invoke(task, 'validate-task')
     assert result.passed, result.reason
     assert len(result.cases) == (6 if name.endswith('/mha') else 7)
@@ -8345,7 +8348,7 @@ def test_jagged_original_group_model_metadata_allocation_and_timing_unchanged():
     ('from scripts import task_reference',False),
 ])
 def test_qk_dependency_allowance_is_only_hardware_dtype_constants(statement,allowed,tmp_path):
-    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel';runtime=module(task/'task_runtime.py');source=tmp_path/'kernel.py';source.write_text('import flydsl\n'+statement+'\ndef compute(): return None\n')
+    task=ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel';runtime=module(task/'task_runtime.py');runtime.ROOT=tmp_path;source=tmp_path/'kernel.py';source.write_text('import flydsl\n'+statement+'\ndef compute(): return None\n')
     if allowed:runtime.check_dependencies([source],True)
     else:
         with pytest.raises(ValueError):runtime.check_dependencies([source],True)
@@ -8443,7 +8446,7 @@ def test_jagged_proxy_supplies_only_actual_protected_offset_argument(entry, posi
     'from aiter.utility import gemm_a8w8 as dtypes',
 ])
 def test_qk_dtype_exception_rejects_alternate_package_imports(statement,tmp_path):
-    runtime=module(ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel/task_runtime.py')
+    runtime=module(ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel/task_runtime.py');runtime.ROOT=tmp_path
     source=tmp_path/'kernel.py';source.write_text('import flydsl\n'+statement+'\n')
     with pytest.raises(ValueError): runtime.check_dependencies([source],True)
 
@@ -8458,7 +8461,7 @@ def test_qk_dtype_exception_rejects_alternate_package_imports(statement,tmp_path
     ('def leaking(): return constants',False),
 ])
 def test_qk_dtype_exception_exposes_only_scalar_fp8_attribute(use,allowed,tmp_path):
-    runtime=module(ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel/task_runtime.py')
+    runtime=module(ROOT/'tasks/torch2flydsl/qk_norm_rope_quant_kernel/task_runtime.py');runtime.ROOT=tmp_path
     source=tmp_path/'kernel.py';source.write_text('import flydsl\nfrom aiter.utility import dtypes as constants\n'+use+'\n')
     if allowed:runtime.check_dependencies([source],True)
     else:
@@ -10740,11 +10743,300 @@ _REVIEW_HARDENING_RUNTIME_SHA256 = {'flydsl2flydsl/softmax_kernel': ('d801dcf2b2
  'triton2flydsl/sglang/triton_mrope_fused': ('e2529b199625714ca9a136bbb48bc662b79b4ff2ce11cd87dfbb3de423103634',
                                              'e3f3a5fe2e0cbb033c53649cb25a9f9bbb2e7123b3767ab45c07bdd6b34f4731')}
 
+# Follow-up port of the same evaluator-state protections into the remaining
+# FlyDSL runtimes, which had no import closure before. Full ported AND original
+# hashes are mandatory: removing only the two reviewed functions and reversing
+# these exact edits must restore every original byte.
+_PORTED_FORBIDDEN = ('    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", '
+                     '"task_reference", "task_baseline", "reference_controls", "scripts"')
+_PORTED_CONTROL_PLANE_CALL = ('        tree = ast.parse(path.read_text(), filename=str(path))\n'
+                              '        if final_language:\n'
+                              '            check_candidate_control_plane(tree)\n',
+                              '        tree = ast.parse(path.read_text(), filename=str(path))\n', False)
+_PORTED_EVALUATOR_STATE_EDITS = {
+    # Same edits as flydsl2flydsl/softmax_kernel.
+    'flydsl': [('    paths = candidate_source_closure(paths)\n' + _PORTED_FORBIDDEN + ', "_aka_benchmark"}\n',
+                _PORTED_FORBIDDEN + '}\n', False),
+               _PORTED_CONTROL_PLANE_CALL],
+    # Same edits as the reviewed import-closure runtimes, e.g. sglang/merge_state.
+    # Policy edits (third field) predate this port in gemm_a8w8.
+    'closure': [('        relative = item if isinstance(item, str) else item["path"]\n'
+                 '        local_path(relative)  # Validate containment without hiding source symlinks.\n'
+                 '        path = ROOT / relative\n',
+                 '        path = local_path(item if isinstance(item, str) else item["path"])\n', False),
+                ('    """Review the complete normal local-import closure, including helpers."""\n'
+                 '    paths = candidate_source_closure(paths)\n',
+                 '    """Enforce declared implementation dependencies, including from X import Y."""\n', False),
+                (_PORTED_FORBIDDEN + ', "_aka_benchmark"}\n', _PORTED_FORBIDDEN + '}\n', True),
+                _PORTED_CONTROL_PLANE_CALL,
+                ('{"eval", "exec", "__import__", "builtins.eval", "builtins.exec", "builtins.__import__", '
+                 '"importlib.import_module", "importlib.util.spec_from_file_location"}',
+                 '{"eval", "exec", "__import__", "importlib.import_module", '
+                 '"importlib.util.spec_from_file_location"}', True),
+                ('implementation dependency")\n\n    return paths\n\n\ndef load_module',
+                 'implementation dependency")\n\n\ndef load_module', False),
+                ('if not provided: paths = check_dependencies(paths, final_language)',
+                 'if not provided: check_dependencies(paths, final_language)', False)],
+}
+_PORTED_EVALUATOR_STATE_ADDED = {'flydsl': ['check_candidate_control_plane', 'candidate_source_closure'],
+                                 'closure': ['candidate_source_closure', 'check_candidate_control_plane']}
+# The added functions are the reviewed PR 127 bodies; only their order differs.
+_PORTED_EVALUATOR_STATE_ADDED_SHA256 = {
+    'flydsl': 'f01cc1a8af34cbe16adf73fa2b22c526ea49db6aa5785ee095acc56b9a16f278',
+    'closure': 'e8d7662da6d422dddad55064bb8c69f5bec3aae23d7f15a6cc41ae31fadc1951',
+}
+_PORTED_EVALUATOR_STATE_PRIOR_POLICY = {'triton2flydsl/aiter/gemm_a8w8'}
+_PORTED_EVALUATOR_STATE_RUNTIME_SHA256 = {'flydsl2flydsl/blockscale_preshuffle_gemm_kernel': ('flydsl',
+                                                     'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                                     '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/flash_attn_func_kernel': ('flydsl',
+                                          'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                          '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/fp8_gemm_4wave_kernel': ('flydsl',
+                                         'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                         '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/fp8_gemm_8wave_kernel': ('flydsl',
+                                         'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                         '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/fused_rope_cache_kernel': ('flydsl',
+                                           'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                           '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/hgemm_splitk_kernel': ('flydsl',
+                                       'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                       '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/layernorm_kernel': ('flydsl',
+                                    'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                    '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/moe_sorting_kernel': ('flydsl',
+                                      'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                      '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/pa_decode_fp8_kernel': ('flydsl',
+                                        'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                        '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/pa_decode_swa_kernel': ('flydsl',
+                                        'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                        '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/preshuffle_gemm_v2_kernel': ('flydsl',
+                                             'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                             '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/rmsnorm_kernel': ('flydsl',
+                                  'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                  '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/silu_and_mul_fq_kernel': ('flydsl',
+                                          'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                          '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'flydsl2flydsl/topk_gating_softmax_kernel': ('flydsl',
+                                              'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                              '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'torch2flydsl/batched_gemm_a8w8_kernel': ('closure',
+                                           'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                           '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/batched_gemm_bf16_kernel': ('flydsl',
+                                           'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                           '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'torch2flydsl/dynamic_mxfp8_quant_kernel': ('closure',
+                                             '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                             '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/fmoe_fp8_blockscale_g1u1_kernel': ('closure',
+                                                  'c18644f8667cccb49a0a0b524641ce1de3f4053a90b45ecd111f4a084f95c694',
+                                                  '31930069e1bb22ac7acfed593588bab2c4a1c2ea3036a8dab368a6e256bb076a'),
+ 'torch2flydsl/fmoe_g1u1_tkw1_kernel': ('closure',
+                                        'c18644f8667cccb49a0a0b524641ce1de3f4053a90b45ecd111f4a084f95c694',
+                                        '31930069e1bb22ac7acfed593588bab2c4a1c2ea3036a8dab368a6e256bb076a'),
+ 'torch2flydsl/gelu_fast_kernel': ('closure',
+                                   '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                   '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/gelu_tanh_and_mul_kernel': ('closure',
+                                           '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                           '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/gemm_a16w8_blockscale_kernel': ('closure',
+                                               'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                               '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/gemm_a16wfp4_kernel': ('closure',
+                                      'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                      '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/gemm_a4w4_kernel': ('closure',
+                                   'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                   '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/gemm_a8w8_blockscale_kernel': ('closure',
+                                              '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                              '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/gemm_a8w8_bpreshuffle_kernel': ('closure',
+                                               'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                               '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/gemm_a8w8_kernel': ('closure',
+                                   'c18644f8667cccb49a0a0b524641ce1de3f4053a90b45ecd111f4a084f95c694',
+                                   '31930069e1bb22ac7acfed593588bab2c4a1c2ea3036a8dab368a6e256bb076a'),
+ 'torch2flydsl/gemm_a8w8_per_token_scale_kernel': ('closure',
+                                                   'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                                   '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/gemm_a8wfp4_kernel': ('closure',
+                                     '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                     '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/gemm_afp4wfp4_kernel': ('closure',
+                                       'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                       '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/gemm_afp8wfp8_kernel': ('closure',
+                                       'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
+                                       '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+ 'torch2flydsl/hgemm_kernel': ('flydsl',
+                               '86896d50d3437cb10c1f49e6550ba5539f98a01a38cb89912d5e9361ece44745',
+                               '56689b728c28ab228390fce6ad1b475c37bbdd0c94f359a44227c6078191e5a6'),
+ 'torch2flydsl/jagged_dense_bmm_kernel': ('closure',
+                                          '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                          '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/moe_2stage_generic_kernel': ('closure',
+                                            '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                            '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/moe_sorting_kernel': ('closure',
+                                     '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                     '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/moe_topk_softmax_kernel': ('closure',
+                                          '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                          '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'torch2flydsl/qk_norm_rope_quant_kernel': ('closure',
+                                            'b9cfc18f85ac7a059f3c269e782fcbc530ce3ed7eaac7790b7f5cc4a033147e9',
+                                            'd84921ec7820ad7d2426f0be2b8ffad65ab97971bc2840897072f4bc24efed2b'),
+ 'torch2flydsl/quant_mxfp4_kernel': ('closure',
+                                     '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
+                                     '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
+ 'triton2flydsl/aiter/batched_gemm_a8w8': ('closure',
+                                           '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/batched_gemm_bf16': ('closure',
+                                           '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/dynamic_mxfp8_quant': ('closure',
+                                             '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                             '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/dynamic_quant_fp8': ('closure',
+                                           '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/fav3_sage': ('closure',
+                                   '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                   '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/fav3_sage_mxfp4': ('closure',
+                                         '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                         '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/ff_a16w16': ('closure',
+                                   '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                   '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/fp8_mqa_logits': ('closure',
+                                        '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                        '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/fused_add_rmsnorm': ('closure',
+                                           '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/fused_silu_mul': ('closure',
+                                        '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                        '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/gemm_a16w16': ('flydsl',
+                                     'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                     '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'triton2flydsl/aiter/gemm_a16w8_blockscale': ('closure',
+                                               '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                               '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/gemm_a8w8': ('closure',
+                                   '00ef96ced7a970df9d04dc258e30a5e25ab65fb23af559faade1a19b4d2b071f',
+                                   'ff64eae8ed2473c4d6adffda2a8f507a92aaaf67bb644ce5c9ffd48732bdf433'),
+ 'triton2flydsl/aiter/gemm_a8w8_blockscale': ('closure',
+                                              '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                              '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/gemm_afp8wfp8': ('closure',
+                                       '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                       '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/layernorm': ('flydsl',
+                                   'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                   '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'triton2flydsl/aiter/mha': ('closure',
+                             '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                             '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/mla': ('closure',
+                             '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                             '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/moe_fused_gemm': ('closure',
+                                        '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                        '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/moe_routing_sigmoid_top1': ('closure',
+                                                  '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                                  '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/rmsnorm': ('closure',
+                                 '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                 '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/softmax': ('flydsl',
+                                 'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                 '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'triton2flydsl/aiter/unified_attention': ('closure',
+                                           '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/aiter/unified_attention_sparse_mla': ('closure',
+                                                      '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                                      '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/generative_recommenders/jagged_dense_bmm_broadcast_add': ('closure',
+                                                                          '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                                                          '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/generative_recommenders/swiglu': ('closure',
+                                                  '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                                  '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/chunk_scaled_dot_kkt_fwd': ('closure',
+                                                   '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                                   '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/decode_attention': ('flydsl',
+                                           'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                           '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'triton2flydsl/sglang/extend_attention': ('closure',
+                                           '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/fused_moe_router': ('closure',
+                                           '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                           '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/gdn_chunk_fwd_h': ('closure',
+                                          '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                          '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/gdn_chunk_fwd_o': ('closure',
+                                          '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                          '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/prefill_attention': ('closure',
+                                            '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                            '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/sglang_fused_moe': ('flydsl',
+                                           'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
+                                           '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
+ 'triton2flydsl/sglang/ssd_chunk_state': ('closure',
+                                          '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                          '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'),
+ 'triton2flydsl/sglang/wy_fast': ('closure',
+                                  '07ca13b56cf2739b04e9dae498c8efb7f60a34fc34287065e7da47fa95b03e3a',
+                                  '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675')}
+
+
+def _ported_evaluator_state_bytes(task, raw):
+    family, after, before = _PORTED_EVALUATOR_STATE_RUNTIME_SHA256[task]
+    assert hashlib.sha256(raw).hexdigest() == after, task
+    text = raw.decode()
+    start = text.index('def ' + _PORTED_EVALUATOR_STATE_ADDED[family][0] + '(')
+    end = text.index('def check_dependencies(', start)
+    assert hashlib.sha256(text[start:end].encode()).hexdigest() == _PORTED_EVALUATOR_STATE_ADDED_SHA256[family], task
+    added = ast.parse(text[start:end]).body
+    assert [(type(node), node.name) for node in added] == [
+        (ast.FunctionDef, name) for name in _PORTED_EVALUATOR_STATE_ADDED[family]], task
+    text = text[:start] + text[end:]
+    for reviewed, previous, policy in _PORTED_EVALUATOR_STATE_EDITS[family]:
+        assert text.count(reviewed) == 1, (task, reviewed)
+        if not (policy and task in _PORTED_EVALUATOR_STATE_PRIOR_POLICY):
+            text = text.replace(reviewed, previous, 1)
+    normalized = text.encode()
+    assert hashlib.sha256(normalized).hexdigest() == before, task
+    return normalized
+
+
 def _review_hardening_bytes(path):
     raw = path.read_bytes()
     if path.name != 'task_runtime.py':
         return raw
     task = path.parent.relative_to(ROOT / 'tasks').as_posix()
+    if task in _PORTED_EVALUATOR_STATE_RUNTIME_SHA256:
+        return _ported_evaluator_state_bytes(task, raw)
     shas = _REVIEW_HARDENING_RUNTIME_SHA256.get(task)
     if shas is None:
         return raw
@@ -10828,15 +11120,51 @@ def test_exact_reviewed_v12_policy_delta_preserves_all_prior_helper_bytes():
     for task, helpers in _REVIEWED_V12_POLICY_TASKS.items():
         for helper in helpers:
             _reviewed_v12_policy_bytes(ROOT / 'tasks' / task / helper)
-    # This unmodified task is intentionally outside the explicitly enumerated policy upgrade.
+    # This task is intentionally outside the explicitly enumerated policy upgrade.
     task = ROOT / 'tasks/triton2flydsl/sglang/gdn_chunk_fwd_h'
-    for rel, expected in {
-        'task_runtime.py': '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675',
-        'scripts/candidate_checks.py': '69a9d3046677682de0213bb582c543552b08ecde9a16c2bb018e55c1eb625a49',
-    }.items():
-        raw = (task / rel).read_bytes()
-        assert hashlib.sha256(raw).hexdigest() == expected
-        assert _reviewed_v12_policy_bytes(task / rel) == raw
+    raw = (task / 'scripts/candidate_checks.py').read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == '69a9d3046677682de0213bb582c543552b08ecde9a16c2bb018e55c1eb625a49'
+    assert _reviewed_v12_policy_bytes(task / 'scripts/candidate_checks.py') == raw
+    # Its runtime received only the later evaluator-state port, whose exact
+    # inverse restores the same original bytes.
+    restored = _reviewed_v12_policy_bytes(task / 'task_runtime.py')
+    assert hashlib.sha256(restored).hexdigest() == '79400cf087e73e9b0db8da6aa2d81fdc7b11e9fbf124547d085a92c5824f4675'
+
+
+def test_every_flydsl_runtime_has_one_reviewed_evaluator_state_inverse():
+    runtimes = {path.parent.relative_to(ROOT / 'tasks').as_posix()
+                for family in FAMILIES for path in (ROOT / 'tasks' / family).rglob('task_runtime.py')}
+    assert not set(_PORTED_EVALUATOR_STATE_RUNTIME_SHA256) & set(_REVIEW_HARDENING_RUNTIME_SHA256)
+    assert runtimes == set(_PORTED_EVALUATOR_STATE_RUNTIME_SHA256) | set(_REVIEW_HARDENING_RUNTIME_SHA256)
+    for task in _PORTED_EVALUATOR_STATE_RUNTIME_SHA256:
+        source = (ROOT / 'tasks' / task / 'task_runtime.py').read_text()
+        assert 'check_candidate_control_plane(tree)' in source and '"_aka_benchmark"' in source, task
+        _review_hardening_bytes(ROOT / 'tasks' / task / 'task_runtime.py')
+
+
+@pytest.mark.parametrize('task', ['flydsl2flydsl/rmsnorm_kernel', 'triton2flydsl/aiter/mha',
+                                  'torch2flydsl/gelu_fast_kernel', 'triton2flydsl/aiter/gemm_a8w8'])
+@pytest.mark.parametrize('weakening', [
+    ('        if final_language:\n            check_candidate_control_plane(tree)\n', ''),
+    (', "scripts", "_aka_benchmark"}\n', ', "scripts"}\n'),
+    ('"f_globals", ', ''),
+    ('                    raise ValueError("Candidate cannot mutate an imported module\'s state")\n',
+     '                    pass\n'),
+])
+def test_ported_evaluator_state_inverse_rejects_unreviewed_runtime_delta(task, weakening, monkeypatch):
+    source = (ROOT / 'tasks' / task / 'task_runtime.py').read_text()
+    old, new = weakening
+    assert old in source
+    weakened = source.replace(old, new, 1).encode()
+    with pytest.raises(AssertionError):
+        _ported_evaluator_state_bytes(task, weakened)
+    # Even with a matching full hash, the added functions and every other
+    # restored byte must still equal the reviewed port.
+    family, _, before = _PORTED_EVALUATOR_STATE_RUNTIME_SHA256[task]
+    monkeypatch.setitem(_PORTED_EVALUATOR_STATE_RUNTIME_SHA256, task,
+                        (family, hashlib.sha256(weakened).hexdigest(), before))
+    with pytest.raises(AssertionError):
+        _ported_evaluator_state_bytes(task, weakened)
 
 
 @pytest.mark.parametrize('task,helper', [

@@ -2,6 +2,8 @@
 # Copyright (c) 2025 FlyDSL Project Contributors
 
 import inspect
+import itertools
+import traceback
 from functools import wraps
 
 from flydsl._mlir import ir
@@ -33,9 +35,9 @@ def _flatten_args(args, kwargs):
 def _caller_location(depth=1):
     """Build an MLIR Location from the Python call-site *depth* frames up."""
     frame = inspect.currentframe()
-    for _ in range(depth + 1):
-        if frame is not None:
-            frame = frame.f_back
+    if frame is not None:
+        # Select the same frame as following the caller link depth + 1 times.
+        frame = next(itertools.islice(traceback.walk_stack(frame), depth + 1, None), (None,))[0]
     if frame is None:
         return ir.Location.unknown()
 

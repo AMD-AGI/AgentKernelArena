@@ -39,7 +39,9 @@ def candidate_files(cfg=None):
     cfg = config() if cfg is None else cfg
     files = []
     for item in cfg["candidate"]["editable"]:
-        path = local_path(item if isinstance(item, str) else item["path"])
+        relative = item if isinstance(item, str) else item["path"]
+        local_path(relative)  # Validate containment without hiding source symlinks.
+        path = ROOT / relative
         if isinstance(item, dict) and item.get("scope") == "tree":
             files.extend(sorted(path.rglob("*.py")))
         else:
@@ -84,12 +86,210 @@ def source_state(cfg):
     return "implemented" if any(states) else "unimplemented", states
 
 
+def candidate_source_closure(paths):
+    """Collect normal task-local Python imports without importing candidate code.
+
+    Installed libraries are not traversed. This supplements the existing static
+    dependency and runtime-call checks; it is not a Python security sandbox.
+    """
+    root = ROOT.resolve(strict=True)
+    sources, queued = [], set()
+    protected = {"src", "agents", "model", "test_kernel_harness", "task_runtime",
+                 "task_reference", "task_baseline", "reference_controls", "scripts",
+                 "_aka_benchmark"}
+    reserved = (set(sys.builtin_module_names) | set(sys.stdlib_module_names) |
+                {"torch", "flydsl", "triton", "aiter", "numpy", "typing_extensions"})
+
+    def checked(path, directory=False):
+        path = Path(path).absolute()
+        if not path.is_relative_to(root):
+            raise ValueError(f"Candidate source escapes task workspace: {path}")
+        current = root
+        for part in path.relative_to(root).parts:
+            if part in {".", ".."}:
+                raise ValueError("Candidate source has non-normalized components")
+            current = current / part
+            if current.is_symlink():
+                raise ValueError(f"Candidate source symlink is not allowed: {current}")
+        if not path.resolve(strict=True).is_relative_to(root):
+            raise ValueError("Candidate source escapes task workspace")
+        if not (path.is_dir() if directory else path.is_file() and path.suffix == ".py"):
+            raise ValueError(f"Candidate Python source is missing or invalid: {path}")
+        return path
+
+    def add(path):
+        path = checked(path)
+        if path not in queued:
+            queued.add(path)
+            sources.append(path)
+
+    def resolve(parts, *, optional=False):
+        if not parts:
+            return
+        if set(parts) & protected:
+            raise ValueError(f"Protected dependency in candidate: {'.'.join(parts)}")
+        current, local = root, False
+        for index, name in enumerate(parts):
+            directory, module = current / name, current / (name + ".py")
+            initializer = directory / "__init__.py"
+            package = initializer.exists() or initializer.is_symlink()
+            # Python's path finder prefers a regular package, then a same-name
+            # module, and only then a namespace-package directory.
+            if not package and (module.exists() or module.is_symlink()):
+                if index == 0 and name in reserved:
+                    raise ValueError(f"Candidate shadows library module: {name}")
+                add(module)
+                if index != len(parts) - 1 and not optional:
+                    raise ValueError(f"Local module is not a package: {'.'.join(parts)}")
+                return
+            elif directory.exists() or directory.is_symlink():
+                checked(directory, directory=True)
+                if index == 0 and name in reserved:
+                    raise ValueError(f"Candidate shadows library module: {name}")
+                local = True
+                if package:
+                    add(initializer)
+                current = directory
+            else:
+                if local and not optional:
+                    raise ValueError(f"Missing task-local import: {'.'.join(parts)}")
+                return  # External installed dependency, or a from-import value.
+
+    for path in paths:
+        add(path)
+    index = 0
+    while index < len(sources):
+        path = sources[index]
+        index += 1
+        tree = ast.parse(path.read_text(), filename=str(path))
+        package = list(path.relative_to(root).parent.parts)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    resolve(alias.name.split("."))
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    if node.level > len(package):
+                        raise ValueError("Relative candidate import escapes its task package")
+                    base = package[:len(package) - node.level + 1]
+                else:
+                    base = []
+                parts = base + (node.module.split(".") if node.module else [])
+                resolve(parts, optional=not node.level)
+                for alias in node.names:
+                    if alias.name != "*":
+                        resolve(parts + alias.name.split("."), optional=True)
+    return sources
+
+
+def check_candidate_control_plane(tree):
+    """Reject direct module-registry/control-frame access in candidate sources.
+
+    This applies to the normal task-local source closure, not installed FlyDSL
+    internals. Ordinary sys metadata stays available. These structural checks
+    supplement protected imports; they are not a Python security sandbox.
+    """
+    blocked = {"modules", "_getframe", "_current_frames", "getprofile", "setprofile",
+               "gettrace", "settrace", "exc_info", "exception", "_current_exceptions",
+               "monitoring", "__dict__", "__getattribute__"}
+    frames = {"f_globals", "f_locals", "f_back", "f_builtins", "gi_frame", "cr_frame",
+              "ag_frame", "tb_frame", "__globals__", "__builtins__"}
+    dispatch = {"_python_dispatch", "_disable_current_modes", "_DisableTorchDispatch",
+                "_DisablePythonDispatcher", "_pop_mode", "_pop_mode_temporarily",
+                "_unset_dispatch_mode"}
+    # Each name maps to every sys-derived value it may hold, so reassignment
+    # cannot hide a registry alias and the fixed point is reached monotonically.
+    aliases, modules = {}, set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                root = item.name.split(".")[0]
+                if item.name in {"sys", "os"}:
+                    aliases.setdefault(item.asname or item.name, set()).add(item.name)
+                if any(part in dispatch for part in item.name.split(".")):
+                    raise ValueError("Candidate cannot disable the evaluator dispatch audit")
+                modules.add(item.asname or root)
+        elif isinstance(node, ast.ImportFrom) and node.module in {"sys", "os"}:
+            for item in node.names:
+                if item.name == "*" or (node.module == "sys" and item.name in blocked):
+                    raise ValueError("Candidate cannot access the evaluator module registry/control frames")
+                value = "sys" if node.module == "os" and item.name == "sys" else node.module + "." + item.name
+                aliases.setdefault(item.asname or item.name, set()).add(value)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if any(part in dispatch for part in node.module.split(".")) or \
+                    any(item.name in dispatch for item in node.names):
+                raise ValueError("Candidate cannot disable the evaluator dispatch audit")
+    def names(node):
+        if isinstance(node, ast.Name):
+            return aliases.get(node.id) or {node.id}
+        if isinstance(node, ast.Attribute):
+            values = {base + "." + node.attr for base in names(node.value)}
+            return {"sys" if value == "os.sys" else value for value in values}
+        return {""}
+    def tracked(value):
+        return value in {"sys", "os"} or value.startswith(("sys.", "os."))
+    for _ in range(len(list(ast.walk(tree)))):
+        changed = False
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+                values = {value for value in names(node.value) if tracked(value)}
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Name) and values - aliases.get(target.id, set()):
+                        aliases.setdefault(target.id, set()).update(values)
+                        changed = True
+        if not changed:
+            break
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    for node in ast.walk(tree):
+        # A sys object cannot be passed to a helper/container that would hide a
+        # later registry lookup. Ordinary name aliases remain statically tracked.
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and "sys" in names(node):
+            parent = parents.get(node)
+            attribute = isinstance(parent, ast.Attribute) and parent.value is node
+            alias = ((isinstance(parent, ast.Assign) and parent.value is node and
+                      all(isinstance(t, ast.Name) for t in parent.targets)) or
+                     (isinstance(parent, ast.AnnAssign) and parent.value is node and
+                      isinstance(parent.target, ast.Name)))
+            if not (attribute or alias):
+                raise ValueError("Candidate cannot pass the evaluator module registry/control frames through a sys object")
+        if any(value.startswith("sys.") and value.split(".")[1] in blocked for value in names(node)):
+            raise ValueError("Candidate cannot access the evaluator module registry/control frames")
+        if isinstance(node, ast.Attribute) and node.attr in frames:
+            raise ValueError("Candidate cannot access evaluator frames or function globals")
+        if isinstance(node, ast.Attribute) and node.attr in dispatch:
+            raise ValueError("Candidate cannot disable the evaluator dispatch audit")
+        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
+            targets = (node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target])
+            for target in targets:
+                base = target
+                while isinstance(base, (ast.Attribute, ast.Subscript)):
+                    base = base.value
+                if base is not target and isinstance(base, ast.Name) and base.id in modules:
+                    raise ValueError("Candidate cannot mutate an imported module's state")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in {"getattr", "vars"} and node.args and "sys" in names(node.args[0]):
+                raise ValueError("Dynamic sys attribute lookup is not a candidate implementation dependency")
+            if node.func.id in {"getattr", "setattr", "delattr"} and len(node.args) >= 2 and \
+                    isinstance(node.args[1], ast.Constant) and node.args[1].value in frames | dispatch:
+                raise ValueError("Candidate cannot access evaluator frames or function globals")
+            if node.func.id in {"setattr", "delattr"} and node.args:
+                base = node.args[0]
+                while isinstance(base, (ast.Attribute, ast.Subscript)):
+                    base = base.value
+                if isinstance(base, ast.Name) and base.id in modules:
+                    raise ValueError("Candidate cannot mutate an imported module's state")
+
+
 def check_dependencies(paths, final_language=True):
-    """Enforce declared implementation dependencies, including from X import Y."""
-    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts"}
+    """Review the complete normal local-import closure, including helpers."""
+    paths = candidate_source_closure(paths)
+    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts", "_aka_benchmark"}
     backend_seen = False
     for path in paths:
         tree = ast.parse(path.read_text(), filename=str(path))
+        if final_language:
+            check_candidate_control_plane(tree)
         aliases = {}
         dtype_aliases = set()
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
@@ -136,10 +336,12 @@ def check_dependencies(paths, final_language=True):
             name = dotted(node.func)
             if final_language and (name in {"torch.mm", "torch.bmm", "torch.matmul", "torch.einsum", "torch.softmax", "torch.log_softmax", "torch.layer_norm", "torch.rms_norm"} or name.startswith("torch.nn.functional.")):
                 raise ValueError(f"Library operator shortcut in candidate: {name}")
-            if name in {"eval", "exec", "__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:
+            if name in {"eval", "exec", "__import__", "builtins.eval", "builtins.exec", "builtins.__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:
                 raise ValueError(f"Dynamic implementation loading is not allowed: {name}")
     if final_language and not backend_seen:
         raise ValueError("Candidate does not declare a FlyDSL implementation dependency")
+
+    return paths
 
 
 def load_module(name, path):
@@ -236,7 +438,7 @@ def run(argv):
             initial_phase = __import__("os").environ.get("ARENA_EVAL_PHASE") == "task_validation"
             final_language = role == "candidate" and not initial_phase or cfg["candidate"].get("initial_language") == "flydsl"
             paths = [local_path(p) for p in cfg["baseline"].get("source_files", [])] if provided else candidate_files(cfg)
-            if not provided: check_dependencies(paths, final_language)
+            if not provided: paths = check_dependencies(paths, final_language)
             if action == "compile":
                 for path in paths:
                     if path.suffix == ".py": compile(path.read_text(), str(path), "exec")

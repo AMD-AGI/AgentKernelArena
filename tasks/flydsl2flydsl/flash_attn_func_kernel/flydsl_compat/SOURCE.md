@@ -11,3 +11,8 @@ monkeypatching, external repository imports or downloads are performed.
 Current ROCDL load/store operations receive the same cache-policy bits through
 their `aux` attribute instead of a removed SSA operand. Vector unwrapping uses
 the current signature while retaining the surrounding MLIR location context.
+
+The bundled `meta.py` selects caller frames for MLIR locations with
+`traceback.walk_stack` instead of reading frame-link attributes, so the helper
+passes the candidate evaluator-state checks. It selects the same frame and
+builds the same locations as the original loop.
