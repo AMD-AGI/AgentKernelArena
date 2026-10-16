@@ -6,6 +6,7 @@ import shlex
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,12 @@ from agents.run_budget import append_run_budget
 from agents.stream_log import StreamLog
 from src.module_registration import AgentType, load_prompt_builder
 from src.process_control import stop_process_group as _stop_process
+from src.prompts.agent_budget import iteration_budget_guidance, time_budget_guidance
 from src.runtime_env import build_subprocess_env
+from src.tools.agent_cost import report_agent_usage
+from src.tools.agent_time_budget import (
+    SessionOutcome, raise_for_sessions, resolve_budget_mode, run_sessions,
+)
 
 
 def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
@@ -29,7 +35,7 @@ def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
         overrides = {}
     if not isinstance(overrides, dict):
         raise ValueError("agent must be a mapping")
-    for key in ("model", "effort", "timeout_seconds", "max_iterations", "python_path"):
+    for key in ("model", "effort", "timeout_seconds", "max_iterations", "python_path", "budget_mode"):
         if key in overrides:
             config[key] = overrides[key]
     timeout = config.get("timeout_seconds")
@@ -39,22 +45,29 @@ def _load_agent_config(eval_config: dict[str, Any]) -> dict[str, Any]:
         value = config.get(key)
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise ValueError(f"agent.{key} must be a nonempty string or null")
+    config["budget_mode"] = resolve_budget_mode(config)
     return config
 
 
 def _build_command(
-    agent_bin: str, workspace: str, prompt: str | None, config: dict[str, Any]
+    agent_bin: str, workspace: str, prompt: str | None, config: dict[str, Any],
+    resume_id: str | None = None,
 ) -> list[str]:
     """Build literal argv; None selects stdin prompt transport without a shell."""
     cmd = [
         agent_bin, "exec", "--json",
         "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
-        "--ephemeral", "-c", "features.memories=false", "--cd", workspace,
     ]
+    # Only time budgets resume a thread, so only they persist one.
+    if resolve_budget_mode(config) != "time":
+        cmd.append("--ephemeral")
+    cmd.extend(["-c", "features.memories=false", "--cd", workspace])
     if config.get("model"):
         cmd.extend(["--model", config["model"]])
     if config.get("effort"):
         cmd.extend(["-c", f'model_reasoning_effort={json.dumps(config["effort"])}'])
+    if resume_id:
+        cmd.extend(["resume", resume_id])
     cmd.extend(["--", "-" if prompt is None else prompt])
     return cmd
 
@@ -65,9 +78,12 @@ def integrate_agent_config(
     python_path: str | None,
 ) -> str:
     """Append agent-specific guidance to the prompt."""
-    max_iters = agent_config.get("max_iterations")
-    if max_iters is not None:
-        prompt = prompt.rstrip() + f"\n\nFor this optimization, you must iterate up to {max_iters} versions."
+    if resolve_budget_mode(agent_config) == "time":
+        prompt = prompt.rstrip() + time_budget_guidance()
+    else:
+        guidance = iteration_budget_guidance(agent_config.get("max_iterations"))
+        if guidance:
+            prompt = prompt.rstrip() + guidance
     prompt = append_run_budget(prompt, agent_config.get("timeout_seconds"))
     if python_path:
         prompt = prompt.rstrip() + (
@@ -240,84 +256,129 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     else:
         logger.info("  model: <codex CLI default/config> (not explicitly set)")
     logger.info(f"  effort: {configured_effort if configured_effort else '<codex config default>'} (model_reasoning_effort)")
+    budget_mode = agent_config["budget_mode"]
+    logger.info(f"  budget: {budget_mode} (timeout {agent_config.get('timeout_seconds')}s)")
     logger.info("Running command: %s <stdin prompt>", shlex.join(cmd))
     logger.info("=" * 80)
     logger.info("Agent Output (streaming):")
     logger.info("=" * 80)
 
     timeout_seconds = int(agent_config.get("timeout_seconds", 600))
-    event_log = StreamLog(workspace, "codex", logger, env=process_env)
-
-    with prompt_input(prompt) as stream:
-        process = subprocess.Popen(
-            cmd, stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, cwd=workspace, bufsize=1, env=process_env, start_new_session=True,
-        )
-
     stdout_lines: list[str] = []
     stderr_lines: list[str] = []
-    failed_turn = threading.Event()
+    # One private event log per session: StreamLog creates each stream file once.
+    event_logs: list[StreamLog] = []
 
-    def read_stream(stream, output_list, prefix, log_func):
+    def invoke(prompt_text: str, resume_id: str | None, invoke_timeout: float) -> SessionOutcome:
+        started = time.monotonic()
+        # Continuations use the same stdin prompt transport as the first session.
+        run_cmd = cmd if resume_id is None else _build_command(
+            codex_bin, workspace, None, agent_config, resume_id)
+        if resume_id is not None:
+            logger.info("Resuming command: %s <stdin prompt>", shlex.join(run_cmd))
+        event_log = StreamLog(workspace, "codex", logger, env=process_env)
+        event_logs.append(event_log)
+        with prompt_input(prompt_text) as stream:
+            process = subprocess.Popen(
+                run_cmd, stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, cwd=workspace, bufsize=1, env=process_env, start_new_session=True,
+            )
+
+        failed_turn = threading.Event()
+        run_info: dict[str, Any] = {}
+
+        def record_event(raw_line: str) -> None:
+            """Thread id for resume, and the latest turn.completed usage.
+
+            Codex reports no dollars. turn.completed.usage is the thread's
+            running token total (seeded from the rollout on resume), so only the
+            latest value is kept; the cost tool reads it as a session meter.
+            """
+            try:
+                data = json.loads(raw_line)
+            except json.JSONDecodeError:
+                return
+            if not isinstance(data, dict):
+                return
+            if data.get("type") == "thread.started" and isinstance(data.get("thread_id"), str):
+                run_info["session_id"] = data["thread_id"]
+            elif data.get("type") == "turn.completed" and isinstance(data.get("usage"), dict):
+                run_info["usage"] = data["usage"]
+
+        def read_stream(stream, output_list, prefix, log_func):
+            try:
+                with event_log.open("stdout" if output_list is stdout_lines else "stderr") as record:
+                    for line in iter(stream.readline, ""):
+                        raw_line = record(line).rstrip()
+                        if not raw_line.strip():
+                            continue
+                        if prefix == "[AGENT]":
+                            record_event(raw_line)
+                        formatted = _format_codex_event(raw_line)
+                        if formatted.startswith("turn.failed:"):
+                            failed_turn.set()
+                        output_list.append(formatted)
+                        log_func(f"{prefix} {formatted[:240]}")
+            finally:
+                stream.close()
+
+        stdout_thread = threading.Thread(
+            target=read_stream,
+            args=(process.stdout, stdout_lines, "[AGENT]", logger.info),
+            daemon=True,
+        )
+        stderr_thread = threading.Thread(
+            target=read_stream,
+            args=(process.stderr, stderr_lines, "[AGENT STDERR]", logger.warning),
+            daemon=True,
+        )
+        stdout_thread.start()
+        stderr_thread.start()
+
+        timed_out = False
         try:
-            with event_log.open("stdout" if output_list is stdout_lines else "stderr") as record:
-                for line in iter(stream.readline, ""):
-                    raw_line = record(line).rstrip()
-                    if not raw_line.strip():
-                        continue
-                    formatted = _format_codex_event(raw_line)
-                    if formatted.startswith("turn.failed:"):
-                        failed_turn.set()
-                    output_list.append(formatted)
-                    log_func(f"{prefix} {formatted[:240]}")
-        finally:
-            stream.close()
+            process.wait(timeout=invoke_timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            logger.warning(f"Codex agent timed out after {invoke_timeout:.0f}s; terminating process")
+            _stop_process(process)
+        except BaseException:
+            _stop_process(process)
+            raise
 
-    stdout_thread = threading.Thread(
-        target=read_stream,
-        args=(process.stdout, stdout_lines, "[AGENT]", logger.info),
-        daemon=True,
+        stdout_thread.join(timeout=5)
+        stderr_thread.join(timeout=5)
+
+        if stderr_lines:
+            logger.warning("=" * 80)
+            logger.warning(f"Agent STDERR captured {len(stderr_lines)} lines")
+            logger.warning("=" * 80)
+
+        logger.info("=" * 80)
+        logger.info(f"Agent completed with exit code: {process.returncode}")
+        logger.info("=" * 80)
+        seconds = time.monotonic() - started
+        session_id = run_info.get("session_id") or resume_id
+        report_agent_usage(
+            cost_usd=None, usage=run_info.get("usage"), usage_scope="session",
+            session_id=session_id, source="codex exec --json turn.completed",
+            model=configured_model, timed_out=timed_out, seconds=seconds,
+        )
+        return SessionOutcome(
+            timed_out=timed_out, returncode=process.returncode, failed=failed_turn.is_set(),
+            session_id=session_id, seconds=seconds,
+        )
+
+    runs = run_sessions(
+        invoke, mode=budget_mode, prompt=prompt, timeout_seconds=timeout_seconds, logger=logger,
     )
-    stderr_thread = threading.Thread(
-        target=read_stream,
-        args=(process.stderr, stderr_lines, "[AGENT STDERR]", logger.warning),
-        daemon=True,
-    )
-    stdout_thread.start()
-    stderr_thread.start()
-
-    timed_out = False
-    try:
-        process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        logger.warning(f"Codex agent timed out after {timeout_seconds}s; terminating process")
-        _stop_process(process)
-    except BaseException:
-        _stop_process(process)
-        raise
-
-    stdout_thread.join(timeout=5)
-    stderr_thread.join(timeout=5)
-
-    if stderr_lines:
-        logger.warning("=" * 80)
-        logger.warning(f"Agent STDERR captured {len(stderr_lines)} lines")
-        logger.warning("=" * 80)
-
-    logger.info("=" * 80)
-    logger.info(f"Agent completed with exit code: {process.returncode}")
-    logger.info("=" * 80)
 
     output = "\n".join(stdout_lines)
     if stderr_lines:
         output += "\n=== STDERR ===\n" + "\n".join(stderr_lines)
-    if timed_out:
-        raise TimeoutError(f"Codex timed out after {timeout_seconds}s; see agent logs")
-    if event_log.error:
-        raise RuntimeError(event_log.error)
-    if process.returncode != 0:
-        raise RuntimeError(f"Codex exited with code {process.returncode}; see agent logs")
-    if failed_turn.is_set():
-        raise RuntimeError("Codex reported a failed turn; see agent logs")
+    raise_for_sessions(runs, mode=budget_mode, agent_label="Codex",
+                       timeout_seconds=timeout_seconds, failed_event="turn")
+    for event_log in event_logs:
+        if event_log.error:
+            raise RuntimeError(event_log.error)
     return output

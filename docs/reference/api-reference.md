@@ -34,6 +34,15 @@ Supported fields in the run config's `agent` mapping override those defaults;
 see [agent settings](../how-to/agents.md#models-providers-and-agent-settings)
 and the selected integration's directory for supported fields and precedence.
 
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `agent.budget_mode` | `iterations` or `time` | `iterations` | Cursor, Claude Code, and Codex only. `time` resumes the agent session with the remaining `timeout_seconds` instead of asking for `max_iterations` versions. Any other value, or `time` with another agent, fails when the run starts. See [Iteration and time budgets](../how-to/agents.md#iteration-and-time-budgets). |
+
+Each launched task also gets an agent cost record at
+`<run_dir>/agent_costs/<task_workspace>.json`. Unreported dollars and tokens
+are `null`. See [Agent cost records](../how-to/agents.md#agent-cost-records)
+for the fields and per-agent sources.
+
 Example:
 
 ```yaml
