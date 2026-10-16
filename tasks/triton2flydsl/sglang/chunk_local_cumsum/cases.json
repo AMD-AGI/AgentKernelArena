@@ -162,6 +162,206 @@
         "correctness",
         "performance"
       ]
+    },
+    {
+      "test_case_id": "control_head_first_scalar",
+      "params": {
+        "ndim": 3,
+        "B": 2,
+        "T": 200,
+        "H": 3,
+        "head_first": true,
+        "seq_lens": null,
+        "cu_seqlens_dtype": null,
+        "chunk_indices": null,
+        "reverse": false,
+        "scale": null,
+        "seed": 1001
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_head_first_scalar_reverse_scale",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 129,
+        "H": 5,
+        "head_first": true,
+        "seq_lens": null,
+        "cu_seqlens_dtype": null,
+        "chunk_indices": null,
+        "reverse": true,
+        "scale": 0.5,
+        "seed": 1002
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_head_first_vector",
+      "params": {
+        "ndim": 4,
+        "B": 2,
+        "T": 100,
+        "H": 2,
+        "S": 24,
+        "head_first": true,
+        "seq_lens": null,
+        "cu_seqlens_dtype": null,
+        "chunk_indices": null,
+        "reverse": true,
+        "scale": null,
+        "seed": 1003
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_varlen_scalar",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 301,
+        "H": 4,
+        "head_first": false,
+        "seq_lens": [
+          1,
+          64,
+          100,
+          129,
+          7
+        ],
+        "cu_seqlens_dtype": "int32",
+        "chunk_indices": "omitted",
+        "reverse": false,
+        "scale": null,
+        "seed": 1004
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_varlen_scalar_chunk_indices",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 269,
+        "H": 3,
+        "head_first": false,
+        "seq_lens": [
+          65,
+          1,
+          200,
+          3
+        ],
+        "cu_seqlens_dtype": "int32",
+        "chunk_indices": "supplied",
+        "reverse": true,
+        "scale": 0.5,
+        "seed": 1005
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_varlen_vector",
+      "params": {
+        "ndim": 4,
+        "B": 1,
+        "T": 232,
+        "H": 2,
+        "S": 40,
+        "head_first": false,
+        "seq_lens": [
+          70,
+          1,
+          128,
+          33
+        ],
+        "cu_seqlens_dtype": "int64",
+        "chunk_indices": "omitted",
+        "reverse": false,
+        "scale": 0.5,
+        "seed": 1006
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_varlen_vector_chunk_indices",
+      "params": {
+        "ndim": 4,
+        "B": 1,
+        "T": 193,
+        "H": 3,
+        "S": 16,
+        "head_first": false,
+        "seq_lens": [
+          1,
+          63,
+          64,
+          65
+        ],
+        "cu_seqlens_dtype": "int64",
+        "chunk_indices": "supplied",
+        "reverse": true,
+        "scale": null,
+        "seed": 1007
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_head_first_varlen_scalar",
+      "params": {
+        "ndim": 3,
+        "B": 1,
+        "T": 150,
+        "H": 4,
+        "head_first": true,
+        "seq_lens": [
+          150
+        ],
+        "cu_seqlens_dtype": "int32",
+        "chunk_indices": "omitted",
+        "reverse": false,
+        "scale": null,
+        "seed": 1008
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_head_first_varlen_vector",
+      "params": {
+        "ndim": 4,
+        "B": 1,
+        "T": 97,
+        "H": 2,
+        "S": 8,
+        "head_first": true,
+        "seq_lens": [
+          97
+        ],
+        "cu_seqlens_dtype": "int64",
+        "chunk_indices": "supplied",
+        "reverse": true,
+        "scale": 0.5,
+        "seed": 1009
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ]
 }
