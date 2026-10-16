@@ -11,6 +11,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST = ROOT / 'workloads.json'
+# Correctness-only input-domain controls; see _domain_controls.py.
+DOMAIN_CONTROLS = '_domain_controls.py'
+DOMAIN_INDEX = 20000
 
 
 def load_manifest():
@@ -22,6 +25,23 @@ def load_manifest():
                         for target in node.targets))
     if json.loads(json.dumps(ast.literal_eval(controls))) != data['upstream_controls']:
         raise ValueError('Upstream control cases disagree with protected workload manifest')
+    domain_tree = ast.parse((ROOT / DOMAIN_CONTROLS).read_text())
+    domain = next(node.value for node in domain_tree.body
+                  if isinstance(node, ast.Assign) and any(
+                      isinstance(target, ast.Name) and target.id == 'CASES'
+                      for target in node.targets))
+    domain = json.loads(json.dumps(ast.literal_eval(domain)))
+    if domain != data['domain_controls']:
+        raise ValueError('Domain control cases disagree with protected workload manifest')
+    expected_domain = [{'test_case_id': 'control-domain-' + case['name'],
+                        'dtype': case['dtype'] + ',float32,int32',
+                        'params': {'case_index': DOMAIN_INDEX + index, 'configuration': case},
+                        'checks': ['correctness'], 'status': 'PASS'}
+                       for index, case in enumerate(domain)]
+    actual_domain = [r for r in data['cases'] if r['test_case_id'].startswith('control-domain-')
+                     or r['params'].get('case_index', -1) >= DOMAIN_INDEX]
+    if actual_domain != expected_domain:
+        raise ValueError('Domain correctness rows differ from protected workload manifest')
     rows = data['cases']
     if not rows or len({r['test_case_id'] for r in rows}) != len(rows):
         raise ValueError('Empty or duplicate case manifest')
@@ -88,7 +108,12 @@ def evaluate(role, action):
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:
                     raise RuntimeError(f'Required runtime dependency unavailable: {dependency}')
-            result['metadata']={'candidate_state':state,'input_table_verified':True}
+            domain_spec = importlib.util.spec_from_file_location('_stage1_domain_controls', ROOT / DOMAIN_CONTROLS)
+            domain = importlib.util.module_from_spec(domain_spec)
+            domain_spec.loader.exec_module(domain)
+            domain.validate_reference(harness)
+            result['metadata']={'candidate_state':state,'input_table_verified':True,
+                                'domain_reference_validated':True}
         elif action == 'compile':
             ok, error = harness.run_compile()
             if not ok:
@@ -104,6 +129,8 @@ def evaluate(role, action):
                         raise RuntimeError(error or 'Original numerical/output contract rejected candidate')
                     row['metrics'] = ({'unscored_contract_control_passed': True, 'replay': error}
                                       if 'contract_case' in row['params']
+                                      else {'unscored_domain_control_passed': True, 'evidence': error}
+                                      if row['params'].get('case_index', -1) >= DOMAIN_INDEX
                                       else {'original_case_checks_passed': True})
                 except BaseException as exc:
                     row.update(status='FAIL', reason=f'{type(exc).__name__}: {exc}', failure_kind='correctness_failure')
