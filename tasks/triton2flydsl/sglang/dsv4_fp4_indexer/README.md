@@ -5,7 +5,11 @@ Arena freezes it in a separate baseline workspace. The required final backend
 is **FlyDSL**. Finishing with the original Triton implementation is not accepted,
 even when it passes the numerical tests. No agent-specific driver is required.
 
-Edit only `candidate.editable` paths in `config.yaml`. Keep the declared callable
+Edit only `candidate.editable` paths in `config.yaml`; every shipped task file
+outside them is protected. You may add new task-local helper modules imported by
+the editable source. They become part of the candidate and pass the same local
+import-closure, dependency and control-plane checks. New files with protected
+harness or test names are discarded before evaluation. Keep the declared callable
 interfaces and all outputs/state changes exercised by the protected harness.
 Names containing `triton` are historical public API names; preserve those names
 while replacing their implementation with FlyDSL. Private GPU function names can
