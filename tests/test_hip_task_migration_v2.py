@@ -636,10 +636,9 @@ def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_pat
         if method == 'cuda_event_fallback':
             from agents.task_validator.report_v2 import _replay_validation_applicability
             fake_result = types.SimpleNamespace(passed=True, cases=measured)
-            fake_spec = types.SimpleNamespace(candidate=types.SimpleNamespace(initial_state='implemented'),
-                                              baseline=types.SimpleNamespace(kind='provided'))
+            spec = load_task_spec(path, task_id=path.parent.relative_to(ROOT / 'tasks').as_posix())
             applicability = _replay_validation_applicability({
-                'evidence_valid': True, 'accepted': True, 'spec': fake_spec,
+                'evidence_valid': True, 'accepted': True, 'spec': spec,
                 'results': {('baseline', 'performance'): fake_result,
                             ('candidate', 'performance'): fake_result}})
             assert applicability['status'] == 'not_applicable'

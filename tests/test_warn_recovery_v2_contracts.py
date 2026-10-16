@@ -34,7 +34,8 @@ class FakeTimedRun:
 
 
 
-def test_wide_l2_control_rejects_missing_upper_features(monkeypatch):
+@pytest.mark.parametrize("invalid_width", [16385, 32768, 32769])
+def test_wide_l2_control_rejects_missing_upper_features(monkeypatch, invalid_width):
     task = TASKS / "triton2triton/vllm/triton_fla_l2norm"
     checks = load(task / "_arena_checks.py", "wide_l2_checks")
     calls = []
@@ -46,7 +47,9 @@ def test_wide_l2_control_rejects_missing_upper_features(monkeypatch):
     def candidate(x, eps=1e-6):
         calls.append(x.shape[-1])
         expected = reference(x, eps)
-        if x.shape[-1] > 16384:
+        # Corrupt one boundary at a time so an earlier failing width cannot
+        # prevent the full-tile and final-tail controls from being exercised.
+        if x.shape[-1] == invalid_width:
             expected[:, 16384:] = 0
         return expected
 
@@ -96,16 +99,16 @@ def test_wide_l2_control_rejects_missing_upper_features(monkeypatch):
         checked = valid_harness.load_module()
         checked.l2norm_fwd(torch.randn(512, 128))
         checked.l2norm_fwd(torch.randn(512, 128))
-    assert calls.count(32768) == 1 and calls.count(32769) == 1
+    assert all(calls.count(width) == 1 for width in (16385, 32768, 32769))
     calls.clear()
     module = launched_module(candidate)
     original_wrapper = module.l2norm_fwd
     harness = types.SimpleNamespace(load_module=lambda: module, reference=reference)
     with checks.checked_modules(harness):
         checked = harness.load_module()
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match="Tensor-likes are not close"):
             checked.l2norm_fwd(torch.randn(512, 128))
-    assert 32768 in calls
+    assert calls[-1] == invalid_width
     assert module.l2norm_fwd is original_wrapper
 
 

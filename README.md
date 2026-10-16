@@ -13,6 +13,7 @@ The platform provides:
 - **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, DeepSeek Harness, GEAK-based agents, or custom agents through a shared interface.
 - **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
+- **Fixed-workload serving tasks**: Evaluate kernel changes through model throughput with pinned settings and fresh paired measurements; see [the e2e guide](docs/how-to/e2e-kernel-tasks.md).
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
 - **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.

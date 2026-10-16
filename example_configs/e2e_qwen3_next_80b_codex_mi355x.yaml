@@ -1,0 +1,20 @@
+# Run on four scheduler-assigned MI355X devices. Other supported agents can use
+# the same task: cursor, deepseek_harness, or claude_code. Use each agent's config
+# for its model and authentication settings; do not change task runtime flags.
+agent:
+  template: codex
+  max_iterations: 3
+tasks:
+  - e2e/qwen3_next_80b_sglang
+resources:
+  gpu_groups: [[0, 1, 2, 3]]
+budget:
+  task_wall_time_s: 86400
+  final_evaluation_reserve_s: 21600
+  final_evaluation_pairs: 3
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
+candidate_verification:
+  backend: claude_code
+  timeout_seconds: 600

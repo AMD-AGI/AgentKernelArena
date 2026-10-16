@@ -124,3 +124,19 @@ def test_validator_description_uses_v2_scope(tmp_path):
     info = describe_workspace_harness(root)
     assert info["editable_entrypoint_targets"] == {"source/kernel.py": ["compute"]}
     assert "evaluate.py" in info["protected_paths"]
+
+
+@pytest.mark.parametrize("name", ["yaml.py", "usercustomize.py"])
+def test_new_import_shadow_files_follow_described_guard_policy(tmp_path, name):
+    root, _ = workspace(tmp_path, symbols=True)
+    before = snapshot_workspace_harness(root)
+    info = describe_workspace_harness(root, snapshot=before)
+    assert "scripts" in info["new_file_policy"]["protected_directories"]
+    extra = root / "scripts" / name
+    extra.parent.mkdir()
+    extra.write_text("raise RuntimeError('unexpected import')\n")
+    with pytest.raises(RuntimeError, match="Added protected harness files"):
+        verify_workspace_harness(before, discard_added=False)
+    assert extra.exists()
+    verify_workspace_harness(before)
+    assert not extra.exists()

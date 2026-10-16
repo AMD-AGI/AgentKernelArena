@@ -14,7 +14,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from src.task_protocol import RESULT_PREFIX, parse_command_result, performance_cases
+from src.task_protocol import (
+    RESULT_PREFIX, TaskProtocolError, parse_command_result, performance_cases,
+)
 from src.testcases import (
     TestCaseResult as CaseResult,
     analyze_benchmark_method_consistency,
@@ -217,16 +219,20 @@ def _case(method, time_ms):
                       {"benchmark_method": method, "benchmark_samples": 100})
 
 
-def test_cold_method_is_a_valid_protocol_timing():
+@pytest.mark.parametrize("role", ["baseline", "candidate"])
+def test_cold_method_is_a_valid_protocol_timing(role):
     row = dict(test_case_id="m_1", shape=[1, 2048, 2048], dtype="bfloat16", status="PASS",
                execution_time_ms=0.004, benchmark_method=METHOD)
-    report = {"protocol": "arena-eval-v1", "role": "candidate", "action": "performance",
+    report = {"protocol": "arena-eval-v1", "role": role, "action": "performance",
               "status": "PASS", "cases": [row]}
-    result = parse_command_result(RESULT_PREFIX + json.dumps(report), role="candidate",
+    result = parse_command_result(RESULT_PREFIX + json.dumps(report), role=role,
                                   action="performance", returncode=0)
     (case,) = performance_cases(result)
     assert case.execution_time_ms == 0.004
     assert case.metadata["benchmark_method"] == METHOD
+    with pytest.raises(TaskProtocolError, match="unsupported device benchmark_method"):
+        parse_command_result(RESULT_PREFIX + json.dumps(report), role=role,
+                             action="performance", returncode=0, measurement="serving")
 
 
 def test_cold_against_cold_is_scored():
@@ -236,10 +242,12 @@ def test_cold_against_cold_is_scored():
 
 
 @pytest.mark.parametrize("pair", [(METHOD, "cuda_graph"), ("cuda_graph", METHOD),
-                                  (METHOD, "cuda_event_fallback")])
+                                  (METHOD, "cuda_event_fallback"), ("cuda_event_fallback", METHOD),
+                                  (METHOD, "serving_wall_clock"), ("serving_wall_clock", METHOD)])
 def test_cold_never_compares_with_another_method(pair):
     consistent, mismatches = analyze_benchmark_method_consistency(
         [_case(pair[0], 0.006)], [_case(pair[1], 0.003)])
     assert not consistent
     assert mismatches[0]["baseline_benchmark_method"] == pair[0]
     assert mismatches[0]["optimized_benchmark_method"] == pair[1]
+    assert calculate_average_speedup([_case(pair[0], 0.006)], [_case(pair[1], 0.003)]) == 0.0

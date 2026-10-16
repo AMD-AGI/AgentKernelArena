@@ -14,7 +14,8 @@ def build_task_prompt(spec: TaskSpec, workspace: Path, *, target_gpu: str,
         config.get("description", "Implement and optimize the declared operator while preserving its task contract."),
         f"Workspace: {workspace}",
         f"Target GPU: {target_gpu}",
-        f"Required final implementation backend: {candidate.language}",
+        ("Implementation backend: choose any GPU backend available in the pinned task runtime"
+         if candidate.language == 'gpu' else f"Required final implementation backend: {candidate.language}"),
         f"Initial candidate state: {candidate.initial_state}",
     ]
     if candidate.initial_language:
@@ -80,6 +81,14 @@ def build_task_prompt(spec: TaskSpec, workspace: Path, *, target_gpu: str,
         "Arena independently compiles, validates, runs enabled evaluation tools, measures ordinary-build performance, and generates final results/exports.",
         "Do not write task_result.yaml or validation_report.yaml. Agent logs are supplementary, not scores or correctness evidence.",
     ])
+    measurement = config.get('evaluation', {}).get('measurement', {})
+    if measurement.get('kind') == 'serving':
+        threshold = measurement.get('minimum_speedup_ratio', 1.0)
+        lines.extend([
+            f"Serving gain-credit threshold: {threshold:g}x median paired throughput. Raw measurements are retained; smaller positive changes do not earn gain credit.",
+            "A fresh independent verification agent reviews your final source changes and evaluation evidence before acceptance. It cannot waive numerical checks or change the scoring policy.",
+            "Profile hotspots and inspect actual shapes, dtypes, call frequency, and kernel time shares when useful. These are suggestions to guide optimization, not mandatory tools or report formats.",
+        ])
     if hardware_context:
         lines.extend(["\nHardware and implementation reference:", hardware_context])
     return "\n".join(lines) + "\n"

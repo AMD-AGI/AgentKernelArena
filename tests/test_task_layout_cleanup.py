@@ -34,7 +34,8 @@ def test_rocmbench_has_one_registered_flip_and_no_old_classification():
     assert (TASKS / "triton2triton/rocmbench/easy/test_triton_flip/test_triton_flip.py").is_file()
     assert not (TASKS / "triton2triton/rocmbench/easy/test_triton_flip/config.yaml").exists()
     assert not get_task_config(str(TASKS), "instruction2triton")
-    assert len(get_task_config(str(TASKS))) == 436
+    serving = get_task_config(str(TASKS), "e2e")
+    assert len(get_task_config(str(TASKS))) == 436 + len(serving)
 
 
 @pytest.mark.parametrize("name", [

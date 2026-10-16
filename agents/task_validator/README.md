@@ -54,6 +54,13 @@ and learned memory, and terminate their own process group on timeout. A nonzero
 exit, terminal failure event, or missing successful terminal event fails validation,
 even if the backend wrote a plausible draft first.
 
+Backend stdout and stderr are saved line by line in a unique private directory
+beside the task workspace; the framework log records its location. These files
+retain terminal error details even when review fails or times out. They redact
+known environment secrets and structured credential fields, but arbitrary tool
+output still needs review before sharing. They are diagnostic artifacts, not
+evidence that a task passed validation.
+
 ## Framework integration
 
 For schema-v2 tasks, orchestration must attempt `TaskSession.validate_initial()`
