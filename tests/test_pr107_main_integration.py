@@ -11,6 +11,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 from reviewed_contract_history import historical_ssd_runner
+from pr107_integration_helpers import DOMAIN_DISPATCH
 
 torch = pytest.importorskip('torch')
 ROOT = Path(__file__).resolve().parents[1]
@@ -295,6 +296,11 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
                            b'        return run_control(case_index - 20000, load_module)\n')
         assert after.count(layout_dispatch) == 1
         after = after.replace(layout_dispatch, b'', 1)
+    if name == 'decode_attn_stage1':
+        # Additive protected domain-control dispatch; its rows are tested separately.
+        domain_dispatch = DOMAIN_DISPATCH.encode()
+        assert after.count(domain_dispatch) == 1
+        after = after.replace(domain_dispatch, b'', 1)
     if name == 'paged_prefix_prefill_alibi':
         after = original_paged_alibi_reference(after)
     if name == 'prepare_eagle_docode':
