@@ -19,7 +19,7 @@ module loading, external native kernels, subprocess dispatch or launch bypasses.
 The protected harness's existing glue operations and allocation/reset boundaries
 remain identical for baseline and candidate.
 
-`cases.json` contains 10 independent correctness identities and 10
+`cases.json` contains 19 independent correctness identities and 10
 performance identities, including every original dtype, bias, activation, routing
 and shape variant. Performance variants have correctness coverage. Input generators,
 explicit seeds, numerical gates, output-contract checks, warmups, sample counts,
@@ -54,7 +54,7 @@ checks do not qualify these GPU kernels. Existing legacy reports are historical;
 the parent integration schedules new GPU validation.
 
 
-All ten original FP32 scalar/vector, prefix/suffix and scaled variants remain, including the partial final chunk. The declared regular non-varlen workload uses chunk size 64 and atol=rtol=0.001. Output has the input shape and FP32 dtype. Inputs are read-only.
+All ten original FP32 scalar/vector, prefix/suffix and scaled variants remain, including the partial final chunk. These ten scored workloads use the regular layout (`[B,T,H]` or `[B,T,H,S]`, `head_first=False`, no `cu_seqlens`), chunk size 64 and atol=rtol=0.001. Output has the input shape and FP32 dtype. Inputs are read-only. The `head_first` and variable-length (`cu_seqlens`/`chunk_indices`) branches are also part of the evaluated contract through nine correctness-only controls; see [Head-first and variable-length controls](#head-first-and-variable-length-controls).
 
 The actual measured output and the same captured graph replay on changed inputs
 must satisfy that same numerical rule. Negative log-gates stay negative during
@@ -64,6 +64,63 @@ outside timing. Both roles retain seed 42+case index, 10 external warmups and
 The frozen original Triton source is unchanged; final candidate operator calls
 are audited separately for FlyDSL computation and cannot call protected references
 or AITER/Triton/PyTorch operator implementations.
+
+## Head-first and variable-length controls
+
+The public operator is `chunk_local_cumsum(g, chunk_size, reverse=False,
+scale=None, cu_seqlens=None, head_first=False, output_dtype=torch.float,
+chunk_indices=None)`. These evaluated semantics apply to both roles:
+
+- `head_first=True` takes `[B,H,T]` or `[B,H,T,S]` input and returns that layout;
+  each chunk still runs along the time axis.
+- `cu_seqlens` holds N+1 int32 or int64 offsets for `B=1`. Chunks restart at each
+  sequence start, so a sequence can end with a partial chunk, including a
+  one-token sequence. No sum crosses a sequence boundary.
+- `chunk_indices`, when supplied, has one `(sequence, local chunk)` row per chunk
+  in order and the dtype of `cu_seqlens`. When it is omitted, the operator derives
+  the same chunks from `cu_seqlens`.
+- `reverse` and `scale` behave as in the scored cases.
+
+Nine untimed identities in `scripts/semantic_controls.py` call the actual
+operator. They become correctness records 11-19:
+
+| Control | Layout | Shape | Sequence lengths | `cu_seqlens` / `chunk_indices` | reverse, scale |
+| --- | --- | --- | --- | --- | --- |
+| `control_head_first_scalar` | head-first 3D | B2 H3 T200 | - | - | no, none |
+| `control_head_first_scalar_reverse_scale` | head-first 3D | B1 H5 T129 | - | - | yes, 0.5 |
+| `control_head_first_vector` | head-first 4D | B2 H2 T100 S24 | - | - | yes, none |
+| `control_varlen_scalar` | varlen 3D | B1 T301 H4 | 1, 64, 100, 129, 7 | int32 / omitted | no, none |
+| `control_varlen_scalar_chunk_indices` | varlen 3D | B1 T269 H3 | 65, 1, 200, 3 | int32 / supplied | yes, 0.5 |
+| `control_varlen_vector` | varlen 4D | B1 T232 H2 S40 | 70, 1, 128, 33 | int64 / omitted | no, 0.5 |
+| `control_varlen_vector_chunk_indices` | varlen 4D | B1 T193 H3 S16 | 1, 63, 64, 65 | int64 / supplied | yes, none |
+| `control_head_first_varlen_scalar` | head-first varlen 3D | B1 H4 T150 | 150 | int32 / omitted | no, none |
+| `control_head_first_varlen_vector` | head-first varlen 4D | B1 H2 T97 S8 | 97 | int64 / supplied | yes, 0.5 |
+
+Inputs are seeded FP32 negative log-gates. Controls use chunk size 64 and the
+default FP32 `output_dtype`, as the scored cases do. Before each call, the
+expected output is computed on CPU in FP64 with plain PyTorch from pristine input
+clones. Each identity reuses one input allocation for a base, a changed and a
+second base draw. After every call, `g`, `cu_seqlens` and `chunk_indices` must be
+unchanged. The output must match the input shape, FP32 dtype and device, contain
+only finite values and pass the existing atol=rtol=0.001 comparator. The final
+candidate's control calls pass the same per-call FlyDSL launch and PyTorch
+preparation audit as its scored correctness calls. None of the 27 calls is timed
+or scored. The ten scored cases, seeds, gates, warmups, samples and timing
+method are unchanged.
+
+`head_first=True` with `cu_seqlens` is evaluated for one sequence only. The
+retained kernels address sequence n as its own `[H,T_n]` block at
+`bos*H + h*T_n`, which matches the logical `[1,H,T]` layout only when N=1.
+Upstream FLA v0.2.0 `chunk_gated_delta_rule` rejects variable-length
+head-first inputs, and SGLang's `chunk_gated_delta_rule` rejects `head_first`.
+Multi-sequence head-first varlen input is therefore outside this contract. The initial source
+docstring says the harness exercises only the regular path; that note predates
+these controls.
+
+On CPU, `validate-task` checks the control oracle against hand-computed answers.
+It also checks every control draw against the protected FP32 harness oracle,
+applied per sequence after a head-first transpose. These CPU checks do not
+qualify any GPU kernel.
 
 ## Candidate execution policy during performance
 
