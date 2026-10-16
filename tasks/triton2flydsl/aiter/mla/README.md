@@ -73,3 +73,22 @@ a newer Triton runtime; the original pinned runtime passed all six diagnostic
 cases. Diagnostics alone do not qualify the task. Use a full validator report
 for the selected runtime; do not waive that case, alter its tolerance, or select
 a different baseline implementation after a session has frozen it.
+
+## Protected evaluator state
+
+Declared editable candidate sources may import new task-local Python helper
+modules or packages. Those helpers are part of the candidate implementation:
+before candidate import, dependency review follows the normal task-local import
+closure and applies the same restrictions to every helper. Protected harness,
+reference and script imports, symlinked or escaping helper imports, and local
+modules that shadow the supported runtime libraries are rejected; installed
+library source is not traversed. Final FlyDSL candidate sources and their local
+helpers also may not reach the evaluator's module registry, stack frames or
+profiling controls through `sys`, including `os.sys`, aliases and dynamic
+attribute lookup. Ordinary `sys` metadata remains available.
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.
