@@ -10,14 +10,16 @@ numerical correctness.
 
 The kernel implements the first stage of split-KV decode attention for
 grouped-query attention (GQA/MQA). Multiple Q heads that share the same KV
-head are processed together using BLOCK_H:
+head are processed together in tiles of BLOCK_H=16 heads:
 - Uses a grid of (batch, num_kv_heads * ceil(kv_group_num / BLOCK_H), num_kv_splits)
-- Each program loads BLOCK_H Q vectors and computes attention against
-  the shared KV head
-- Reads K/V from a paged KV cache via Req_to_tokens mapping
+- Each program loads up to BLOCK_H Q vectors of one KV group and computes
+  attention against that shared KV head; a group's last tile is masked at the
+  group boundary
+- Reads K/V from a paged KV cache through the Req_to_tokens logical-page table
 - Uses tl.dot for batched Q @ K^T computation
-- Supports optional positional encoding (BLOCK_DPE) for architectures like
-  DeepSeek MLA
+- The kernel body keeps the upstream optional positional-encoding split
+  (BLOCK_DPE, used upstream for DeepSeek MLA), but the protected wrapper always
+  launches with BLOCK_DPE=0, so that branch is unreachable through this contract
 - Outputs partial attention output and logsumexp for later reduction
 
 Key optimization opportunities:
@@ -30,8 +32,8 @@ Key optimization opportunities:
 Constraints:
 - Must maintain the same function signature for `decode_grouped_att_m_fwd`
 - Output must match reference within atol=1e-2, rtol=1e-2 for float16
-- Must handle arbitrary sequence lengths, head dimensions, page sizes,
-  and group sizes
+- Must be correct over the input domain listed under "Supported input domain"
+  below
 
 
 ## Evaluation contract
@@ -116,3 +118,57 @@ head assignments as before. All original five scored cases and the three earlier
 controls remain, along with seeds, inputs, tolerances, ten warmups and 100 samples.
 No score weight or timing boundary changes. Kernel source changes require fresh
 baseline/candidate measurements; historical GPU qualification does not transfer.
+
+### Supported input domain
+
+The protected wrapper fixes BLOCK_N=32, BLOCK_H=16, BLOCK_DPE=0, `num_warps=4`
+and `num_stages=2`, and derives every other launch value from its arguments.
+The kernel must be correct over this domain:
+
+| Input | Contract in the protected wrapper and kernel | Checked values (scored cases and controls) |
+| --- | --- | --- |
+| Head widths | Lk is `k_buffer.shape[-1]` (and q's last dimension), Lv is `v_buffer.shape[-1]`, and they may differ. `att_out` has Lv + 1 entries per slot. Each width is padded to one next-power-of-two tile and masked; there is no positional-encoding split. | Lk/Lv 16/16, 40/72, 64/64, 80/80, 96/64, 128/128, 256/256 |
+| Query and KV heads | `num_heads` must be a multiple of `num_kv_heads`. `kv_group_num = num_heads // num_kv_heads`, and query head h reads KV head `h // kv_group_num`. Each KV head gets `ceil(kv_group_num / 16)` head tiles. With an indivisible head count the trailing query heads are never written. | groups 1, 3, 4, 5, 7, 8, 12, 16, 17, 24, 33; KV heads 1, 2, 3, 4, 8 |
+| Page size | Any positive integer. Position p of request b reads physical page `Req_to_tokens[b, p // page_size]` at offset `p % page_size`. | 1, 2, 3, 5, 12, 16, 32, 64 |
+| KV splits | Any positive integer. With length L and S splits, split s covers `[s*ceil(L/S), min((s+1)*ceil(L/S), L))`. Splits starting at or after L are inactive and their slots are left untouched. | 1 through 8 |
+| Sequence lengths | Per request, `1 <= b_seqlen[b] <= page_size * table columns`. Lengths need not be multiples of the page size or of BLOCK_N. | 1 to 512, including 1, 2, 3, 7, 21, 31, 33, 37, 45, 53, 63, 70, 77, 100 and 130 |
+| Data types and layout | The task uses float16 q, `k_buffer` and `v_buffer`, float32 `att_out`, and int32 `Req_to_tokens` and `B_Seqlen`. The kernel addresses the last dimension of every tensor with unit stride and receives the other strides from the wrapper. | contiguous generator layouts |
+
+Outside the checked domain: widths whose padded tile is narrower than 16 or
+wider than 256 (for example MLA's 576/512 widths, which upstream splits with
+BLOCK_DPE), other data types, and zero-length requests (the kernel writes none
+of that request's slots).
+
+### Domain controls
+
+Seven further correctness-only controls cover that domain beyond the cases
+above:
+
+| Control | Batch | Q/KV heads (group) | Lk/Lv | Page | Splits | Lengths | Cap | Covers |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `domain_group1_page1` | 2 | 3/3 (1) | 64/64 | 1 | 3 | 45, 7 | 0 | MHA with an odd head count, one-token pages, partial tile |
+| `domain_group3_page5_dim80` | 2 | 6/2 (3) | 80/80 | 5 | 2 | 53, 21 | 1.5 | non-power-of-two width, odd page size, capping |
+| `domain_group5_page3_k96_v64` | 2 | 15/3 (5) | 96/64 | 3 | 5 | 70, 3 | 0 | Lk > Lv, three KV heads, inactive splits |
+| `domain_group7_page64_dim256` | 2 | 14/2 (7) | 256/256 | 64 | 1 | 100, 33 | 0 | widest tile, page larger than BLOCK_N, one split |
+| `domain_group33_page12_k40_v72` | 2 | 66/2 (33) | 40/72 | 12 | 6 | 77, 1 | 2.5 | three head tiles per group, Lk < Lv, length 1 |
+| `domain_mqa_group12_page2_dim16` | 3 | 12/1 (12) | 16/16 | 2 | 4 | 31, 64, 2 | 0 | MQA, narrowest tile, three requests |
+| `domain_group16_page16_dim128` | 2 | 32/2 (16) | 128/128 | 16 | 7 | 130, 40 | 1.5 | group exactly filling one tile, seven splits |
+
+Each control draws q, K and V from a seeded CPU generator, so every device sees
+the same bytes. Each request routes through a seeded permutation of physical
+pages; the table has one spare column, and one physical page is never
+referenced. `att_out` starts at the finite sentinel 23.5. The protected
+`_arena_domain_controls.py` declares the table, the generator and the oracle,
+and the adapter checks the manifest rows against that table.
+
+The oracle is an independent float64 evaluation of the pristine input clones
+taken before the candidate call. Per request it gathers tokens through the page
+table, maps query head h to KV head `h // kv_group_num`, and computes each
+split's logsumexp and softmax-weighted values, applying `cap * tanh(x / cap)`
+before softmax when the cap is positive. The controls reuse every check of the
+earlier controls: the launch audit; NaN poisoning of every active output
+element; read-only input, metadata and alias checks; byte-exact inactive slots;
+finite outputs within atol = rtol = 0.01; and the unscored 10-warmup/100-sample
+graph replay with perturbed inputs. Each control declares only `correctness`. The performance action, the five
+scored cases and their inputs, tolerances, warmups, samples and timing are
+unchanged.
