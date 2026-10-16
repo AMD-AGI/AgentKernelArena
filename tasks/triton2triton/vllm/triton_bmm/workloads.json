@@ -136,10 +136,397 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-bf16_contiguous_tails",
+      "dtype": "bfloat16",
+      "params": {
+        "case_index": 20000,
+        "configuration": {
+          "name": "bf16_contiguous_tails",
+          "dtype": "bfloat16",
+          "shape_bmnk": [
+            3,
+            129,
+            130,
+            33
+          ],
+          "a_layout": "contiguous",
+          "b_layout": "contiguous"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp32_contiguous_tails",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20001,
+        "configuration": {
+          "name": "fp32_contiguous_tails",
+          "dtype": "float32",
+          "shape_bmnk": [
+            1,
+            65,
+            67,
+            37
+          ],
+          "a_layout": "contiguous",
+          "b_layout": "contiguous"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp16_small_odd",
+      "dtype": "float16",
+      "params": {
+        "case_index": 20002,
+        "configuration": {
+          "name": "fp16_small_odd",
+          "dtype": "float16",
+          "shape_bmnk": [
+            7,
+            3,
+            5,
+            9
+          ],
+          "a_layout": "contiguous",
+          "b_layout": "contiguous"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp16_single_row_unit_k",
+      "dtype": "float16",
+      "params": {
+        "case_index": 20003,
+        "configuration": {
+          "name": "fp16_single_row_unit_k",
+          "dtype": "float16",
+          "shape_bmnk": [
+            5,
+            1,
+            129,
+            1
+          ],
+          "a_layout": "contiguous",
+          "b_layout": "contiguous"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp16_a_transposed",
+      "dtype": "float16",
+      "params": {
+        "case_index": 20004,
+        "configuration": {
+          "name": "fp16_a_transposed",
+          "dtype": "float16",
+          "shape_bmnk": [
+            3,
+            77,
+            45,
+            50
+          ],
+          "a_layout": "transposed",
+          "b_layout": "contiguous"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-bf16_b_transposed",
+      "dtype": "bfloat16",
+      "params": {
+        "case_index": 20005,
+        "configuration": {
+          "name": "bf16_b_transposed",
+          "dtype": "bfloat16",
+          "shape_bmnk": [
+            4,
+            33,
+            70,
+            129
+          ],
+          "a_layout": "contiguous",
+          "b_layout": "transposed"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp32_both_transposed",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20006,
+        "configuration": {
+          "name": "fp32_both_transposed",
+          "dtype": "float32",
+          "shape_bmnk": [
+            2,
+            70,
+            33,
+            65
+          ],
+          "a_layout": "transposed",
+          "b_layout": "transposed"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-bf16_a_batch_inner",
+      "dtype": "bfloat16",
+      "params": {
+        "case_index": 20007,
+        "configuration": {
+          "name": "bf16_a_batch_inner",
+          "dtype": "bfloat16",
+          "shape_bmnk": [
+            6,
+            17,
+            72,
+            40
+          ],
+          "a_layout": "batch_inner",
+          "b_layout": "contiguous"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp16_padded_offset_views",
+      "dtype": "float16",
+      "params": {
+        "case_index": 20008,
+        "configuration": {
+          "name": "fp16_padded_offset_views",
+          "dtype": "float16",
+          "shape_bmnk": [
+            3,
+            45,
+            67,
+            35
+          ],
+          "a_layout": "padded",
+          "b_layout": "padded"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp32_inner_step2_views",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20009,
+        "configuration": {
+          "name": "fp32_inner_step2_views",
+          "dtype": "float32",
+          "shape_bmnk": [
+            2,
+            31,
+            29,
+            19
+          ],
+          "a_layout": "inner_step2",
+          "b_layout": "inner_step2"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control-domain-fp16_batch_step2_broadcast_b",
+      "dtype": "float16",
+      "params": {
+        "case_index": 20010,
+        "configuration": {
+          "name": "fp16_batch_step2_broadcast_b",
+          "dtype": "float16",
+          "shape_bmnk": [
+            4,
+            40,
+            48,
+            24
+          ],
+          "a_layout": "batch_step2",
+          "b_layout": "broadcast_batch"
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {
     "original_harness_sha256": "9c8f9e0dd25cac572a669d7c3e646fb723ec55d3ec2ccc3c18943a0c2e4ad044",
     "original_correctness_sha256": "9b5bc05cac788f2cccd6f306de05e522a3edfdd35f75bf7e9f2c7e1186d119d8"
-  }
+  },
+  "domain_controls": [
+    {
+      "name": "bf16_contiguous_tails",
+      "dtype": "bfloat16",
+      "shape_bmnk": [
+        3,
+        129,
+        130,
+        33
+      ],
+      "a_layout": "contiguous",
+      "b_layout": "contiguous"
+    },
+    {
+      "name": "fp32_contiguous_tails",
+      "dtype": "float32",
+      "shape_bmnk": [
+        1,
+        65,
+        67,
+        37
+      ],
+      "a_layout": "contiguous",
+      "b_layout": "contiguous"
+    },
+    {
+      "name": "fp16_small_odd",
+      "dtype": "float16",
+      "shape_bmnk": [
+        7,
+        3,
+        5,
+        9
+      ],
+      "a_layout": "contiguous",
+      "b_layout": "contiguous"
+    },
+    {
+      "name": "fp16_single_row_unit_k",
+      "dtype": "float16",
+      "shape_bmnk": [
+        5,
+        1,
+        129,
+        1
+      ],
+      "a_layout": "contiguous",
+      "b_layout": "contiguous"
+    },
+    {
+      "name": "fp16_a_transposed",
+      "dtype": "float16",
+      "shape_bmnk": [
+        3,
+        77,
+        45,
+        50
+      ],
+      "a_layout": "transposed",
+      "b_layout": "contiguous"
+    },
+    {
+      "name": "bf16_b_transposed",
+      "dtype": "bfloat16",
+      "shape_bmnk": [
+        4,
+        33,
+        70,
+        129
+      ],
+      "a_layout": "contiguous",
+      "b_layout": "transposed"
+    },
+    {
+      "name": "fp32_both_transposed",
+      "dtype": "float32",
+      "shape_bmnk": [
+        2,
+        70,
+        33,
+        65
+      ],
+      "a_layout": "transposed",
+      "b_layout": "transposed"
+    },
+    {
+      "name": "bf16_a_batch_inner",
+      "dtype": "bfloat16",
+      "shape_bmnk": [
+        6,
+        17,
+        72,
+        40
+      ],
+      "a_layout": "batch_inner",
+      "b_layout": "contiguous"
+    },
+    {
+      "name": "fp16_padded_offset_views",
+      "dtype": "float16",
+      "shape_bmnk": [
+        3,
+        45,
+        67,
+        35
+      ],
+      "a_layout": "padded",
+      "b_layout": "padded"
+    },
+    {
+      "name": "fp32_inner_step2_views",
+      "dtype": "float32",
+      "shape_bmnk": [
+        2,
+        31,
+        29,
+        19
+      ],
+      "a_layout": "inner_step2",
+      "b_layout": "inner_step2"
+    },
+    {
+      "name": "fp16_batch_step2_broadcast_b",
+      "dtype": "float16",
+      "shape_bmnk": [
+        4,
+        40,
+        48,
+        24
+      ],
+      "a_layout": "batch_step2",
+      "b_layout": "broadcast_batch"
+    }
+  ]
 }
