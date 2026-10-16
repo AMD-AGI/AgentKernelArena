@@ -95,7 +95,8 @@ def candidate_source_closure(paths):
     root = ROOT.resolve(strict=True)
     sources, queued = [], set()
     protected = {"src", "agents", "model", "test_kernel_harness", "task_runtime",
-                 "task_reference", "task_baseline", "reference_controls", "scripts"}
+                 "task_reference", "task_baseline", "reference_controls", "scripts",
+                 "_aka_benchmark"}
     reserved = (set(sys.builtin_module_names) | set(sys.stdlib_module_names) |
                 {"torch", "flydsl", "triton", "aiter", "numpy", "typing_extensions"})
 
@@ -130,22 +131,25 @@ def candidate_source_closure(paths):
         current, local = root, False
         for index, name in enumerate(parts):
             directory, module = current / name, current / (name + ".py")
-            if directory.exists() or directory.is_symlink():
-                checked(directory, directory=True)
-                if index == 0 and name in reserved:
-                    raise ValueError(f"Candidate shadows library module: {name}")
-                local = True
-                initializer = directory / "__init__.py"
-                if initializer.exists() or initializer.is_symlink():
-                    add(initializer)
-                current = directory
-            elif module.exists() or module.is_symlink():
+            initializer = directory / "__init__.py"
+            package = initializer.exists() or initializer.is_symlink()
+            # Python's path finder prefers a regular package, then a same-name
+            # module, and only then a namespace-package directory.
+            if not package and (module.exists() or module.is_symlink()):
                 if index == 0 and name in reserved:
                     raise ValueError(f"Candidate shadows library module: {name}")
                 add(module)
                 if index != len(parts) - 1 and not optional:
                     raise ValueError(f"Local module is not a package: {'.'.join(parts)}")
                 return
+            elif directory.exists() or directory.is_symlink():
+                checked(directory, directory=True)
+                if index == 0 and name in reserved:
+                    raise ValueError(f"Candidate shadows library module: {name}")
+                local = True
+                if package:
+                    add(initializer)
+                current = directory
             else:
                 if local and not optional:
                     raise ValueError(f"Missing task-local import: {'.'.join(parts)}")
@@ -188,42 +192,59 @@ def check_candidate_control_plane(tree):
     blocked = {"modules", "_getframe", "_current_frames", "getprofile", "setprofile",
                "gettrace", "settrace", "exc_info", "exception", "_current_exceptions",
                "monitoring", "__dict__", "__getattribute__"}
-    aliases = {}
+    frames = {"f_globals", "f_locals", "f_back", "f_builtins", "gi_frame", "cr_frame",
+              "ag_frame", "tb_frame", "__globals__", "__builtins__"}
+    dispatch = {"_python_dispatch", "_disable_current_modes", "_DisableTorchDispatch",
+                "_DisablePythonDispatcher", "_pop_mode", "_pop_mode_temporarily",
+                "_unset_dispatch_mode"}
+    # Each name maps to every sys-derived value it may hold, so reassignment
+    # cannot hide a registry alias and the fixed point is reached monotonically.
+    aliases, modules = {}, set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for item in node.names:
-                if item.name == "sys":
-                    aliases[item.asname or "sys"] = "sys"
-        elif isinstance(node, ast.ImportFrom) and node.module == "sys":
+                root = item.name.split(".")[0]
+                if item.name in {"sys", "os"}:
+                    aliases.setdefault(item.asname or item.name, set()).add(item.name)
+                if any(part in dispatch for part in item.name.split(".")):
+                    raise ValueError("Candidate cannot disable the evaluator dispatch audit")
+                modules.add(item.asname or root)
+        elif isinstance(node, ast.ImportFrom) and node.module in {"sys", "os"}:
             for item in node.names:
-                if item.name == "*" or item.name in blocked:
+                if item.name == "*" or (node.module == "sys" and item.name in blocked):
                     raise ValueError("Candidate cannot access the evaluator module registry/control frames")
-                aliases[item.asname or item.name] = "sys." + item.name
-    def name(node):
+                value = "sys" if node.module == "os" and item.name == "sys" else node.module + "." + item.name
+                aliases.setdefault(item.asname or item.name, set()).add(value)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if any(part in dispatch for part in node.module.split(".")) or \
+                    any(item.name in dispatch for item in node.names):
+                raise ValueError("Candidate cannot disable the evaluator dispatch audit")
+    def names(node):
         if isinstance(node, ast.Name):
-            return aliases.get(node.id, node.id)
+            return aliases.get(node.id) or {node.id}
         if isinstance(node, ast.Attribute):
-            return name(node.value) + "." + node.attr
-        return ""
-    # Follow ordinary object aliases without importing candidate code.
+            values = {base + "." + node.attr for base in names(node.value)}
+            return {"sys" if value == "os.sys" else value for value in values}
+        return {""}
+    def tracked(value):
+        return value in {"sys", "os"} or value.startswith(("sys.", "os."))
     for _ in range(len(list(ast.walk(tree)))):
         changed = False
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Assign, ast.AnnAssign)):
-                value = name(node.value)
+            if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+                values = {value for value in names(node.value) if tracked(value)}
                 targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                if value == "sys" or value.startswith("sys."):
-                    for target in targets:
-                        if isinstance(target, ast.Name) and aliases.get(target.id) != value:
-                            aliases[target.id] = value
-                            changed = True
+                for target in targets:
+                    if isinstance(target, ast.Name) and values - aliases.get(target.id, set()):
+                        aliases.setdefault(target.id, set()).update(values)
+                        changed = True
         if not changed:
             break
     parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
     for node in ast.walk(tree):
         # A sys object cannot be passed to a helper/container that would hide a
         # later registry lookup. Ordinary name aliases remain statically tracked.
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and name(node) == "sys":
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and "sys" in names(node):
             parent = parents.get(node)
             attribute = isinstance(parent, ast.Attribute) and parent.value is node
             alias = ((isinstance(parent, ast.Assign) and parent.value is node and
@@ -232,18 +253,38 @@ def check_candidate_control_plane(tree):
                       isinstance(parent.target, ast.Name)))
             if not (attribute or alias):
                 raise ValueError("Candidate cannot pass the evaluator module registry/control frames through a sys object")
-        value = name(node)
-        if value.startswith("sys.") and value.split(".")[1] in blocked:
+        if any(value.startswith("sys.") and value.split(".")[1] in blocked for value in names(node)):
             raise ValueError("Candidate cannot access the evaluator module registry/control frames")
+        if isinstance(node, ast.Attribute) and node.attr in frames:
+            raise ValueError("Candidate cannot access evaluator frames or function globals")
+        if isinstance(node, ast.Attribute) and node.attr in dispatch:
+            raise ValueError("Candidate cannot disable the evaluator dispatch audit")
+        if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
+            targets = (node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target])
+            for target in targets:
+                base = target
+                while isinstance(base, (ast.Attribute, ast.Subscript)):
+                    base = base.value
+                if base is not target and isinstance(base, ast.Name) and base.id in modules:
+                    raise ValueError("Candidate cannot mutate an imported module's state")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in {"getattr", "vars"} and node.args and name(node.args[0]) == "sys":
+            if node.func.id in {"getattr", "vars"} and node.args and "sys" in names(node.args[0]):
                 raise ValueError("Dynamic sys attribute lookup is not a candidate implementation dependency")
+            if node.func.id in {"getattr", "setattr", "delattr"} and len(node.args) >= 2 and \
+                    isinstance(node.args[1], ast.Constant) and node.args[1].value in frames | dispatch:
+                raise ValueError("Candidate cannot access evaluator frames or function globals")
+            if node.func.id in {"setattr", "delattr"} and node.args:
+                base = node.args[0]
+                while isinstance(base, (ast.Attribute, ast.Subscript)):
+                    base = base.value
+                if isinstance(base, ast.Name) and base.id in modules:
+                    raise ValueError("Candidate cannot mutate an imported module's state")
 
 
 def check_dependencies(paths, final_language=True):
     """Review the complete normal local-import closure, including helpers."""
     paths = candidate_source_closure(paths)
-    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts"}
+    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts", "_aka_benchmark"}
     backend_seen = False
     for path in paths:
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -277,7 +318,7 @@ def check_dependencies(paths, final_language=True):
             name = dotted(node.func)
             if final_language and (name in {"torch.mm", "torch.bmm", "torch.matmul", "torch.einsum", "torch.softmax", "torch.log_softmax", "torch.layer_norm", "torch.rms_norm"} or name.startswith("torch.nn.functional.")):
                 raise ValueError(f"Library operator shortcut in candidate: {name}")
-            if name in {"eval", "exec", "__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:
+            if name in {"eval", "exec", "__import__", "builtins.eval", "builtins.exec", "builtins.__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:
                 raise ValueError(f"Dynamic implementation loading is not allowed: {name}")
     if final_language and not backend_seen:
         raise ValueError("Candidate does not declare a FlyDSL implementation dependency")

@@ -112,45 +112,33 @@ def known_feedforward_geometry(source):
 
 # Scope-20 device boundaries are approved contract changes, not permission to
 # alter task math or guards. Full current/before bytes bound every inverse.
-TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_bitmask/README.md': {'after_sha256': '9f3170437d3dbd923e46a35aa16a893ccb411b279ed48304d2c7d65f175f1391',
-                                                                     'before_sha256': '38dfc5fb94d122c45228aa5803cb1953e7b1dff899a21c1cf94d4df8cb638218',
-                                                                     'reverse_edits': [(56,
-                                                                                        65,
-                                                                                        ['\n',
-                                                                                         '\n',
-                                                                                         '### Editable '
-                                                                                         'device '
-                                                                                         'implementation '
-                                                                                         'boundary\n',
-                                                                                         '\n',
-                                                                                         'The editable '
-                                                                                         'device functions '
-                                                                                         'are '
-                                                                                         '`_apply_grammar_bitmask_kernel`.\n',
-                                                                                         'Their bodies and '
-                                                                                         'additional '
-                                                                                         'implementation '
-                                                                                         'helpers may be '
-                                                                                         'optimized. '
-                                                                                         'Module\n',
-                                                                                         'imports, '
-                                                                                         'initialization, '
-                                                                                         'host dispatch and '
-                                                                                         'pointer '
-                                                                                         'preparation remain '
-                                                                                         'protected,\n',
-                                                                                         'along with the '
-                                                                                         'existing numerical '
-                                                                                         'checks and '
-                                                                                         'benchmark '
-                                                                                         'protocol. The '
-                                                                                         'structural\n',
-                                                                                         'guard enforces '
-                                                                                         'this boundary; it '
-                                                                                         'does not isolate '
-                                                                                         'arbitrary Python '
-                                                                                         'execution.\n'],
-                                                                                        [])]},
+TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_bitmask/README.md': {'after_sha256': '802aec8ebf39be022fded4abf8b88815b251ff2374dd12eec071deb2e9f7df4b',
+                                                                                                    'before_sha256': '38dfc5fb94d122c45228aa5803cb1953e7b1dff899a21c1cf94d4df8cb638218',
+                                                                                                    'reverse_edits': [(56,
+                                                                                                                       70,
+                                                                                                                       ['\n',
+                                                                                                                        '\n',
+                                                                                                                        '### Editable device implementation boundary\n',
+                                                                                                                        '\n',
+                                                                                                                        'The editable device functions are `_apply_grammar_bitmask_kernel`.\n',
+                                                                                                                        'Their bodies and additional implementation helpers may be optimized. '
+                                                                                                                        'Module\n',
+                                                                                                                        'imports, initialization, host dispatch and pointer preparation remain '
+                                                                                                                        'protected,\n',
+                                                                                                                        'along with the existing numerical checks and benchmark protocol. The '
+                                                                                                                        'structural\n',
+                                                                                                                        'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                                                        'execution.\n',
+                                                                                                                        '\n',
+                                                                                                                        'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                                                        'tile\n',
+                                                                                                                        'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                                                        'above\n',
+                                                                                                                        'that mention tuning those values refer to the original whole-file contract; '
+                                                                                                                        'under\n',
+                                                                                                                        'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                                                        'instead.\n'],
+                                                                                                                       [])]},
  'tasks/triton2triton/vllm/triton_apply_grammar_bitmask/config.yaml': {'after_sha256': 'fb54d74399b7e25da2e50e4ad8a7f6a95d0cbc8f0ea76d61b7b6b10567d5028e',
                                                                        'before_sha256': '6b72732ff602cbe75aeb064f4979a3fc7f0c13fa0bdbe7acb8fd04d9d2a85a26',
                                                                        'reverse_edits': [(6,
@@ -167,29 +155,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                            'true\n'],
                                                                                           ['  - '
                                                                                            'source/triton_apply_grammar_bitmask.py\n'])]},
- 'tasks/triton2triton/vllm/triton_awq_gemm/README.md': {'after_sha256': '32f98d3128642eec65ccb01422054f8f64d04de733d7f5500dc0fa35fbf17ae4',
+ 'tasks/triton2triton/vllm/triton_awq_gemm/README.md': {'after_sha256': '0be43d97152f9a3dacb1808b2033f852277cae1d6c528488e76736d6ec15d5f7',
                                                         'before_sha256': '9522b039a0b59837f313888ef7470015eef03c6aca0a5b8ddf2ad94b86d1cc7e',
                                                         'reverse_edits': [(51,
-                                                                           60,
+                                                                           65,
                                                                            ['\n',
                                                                             '\n',
-                                                                            '### Editable device '
-                                                                            'implementation boundary\n',
+                                                                            '### Editable device implementation boundary\n',
                                                                             '\n',
-                                                                            'The editable device functions '
-                                                                            'are `awq_gemm_kernel`.\n',
-                                                                            'Their bodies and additional '
-                                                                            'implementation helpers may be '
-                                                                            'optimized. Module\n',
-                                                                            'imports, initialization, host '
-                                                                            'dispatch and pointer '
-                                                                            'preparation remain protected,\n',
-                                                                            'along with the existing '
-                                                                            'numerical checks and benchmark '
-                                                                            'protocol. The structural\n',
-                                                                            'guard enforces this boundary; '
-                                                                            'it does not isolate arbitrary '
-                                                                            'Python execution.\n'],
+                                                                            'The editable device functions are `awq_gemm_kernel`.\n',
+                                                                            'Their bodies and additional implementation helpers may be optimized. '
+                                                                            'Module\n',
+                                                                            'imports, initialization, host dispatch and pointer preparation remain '
+                                                                            'protected,\n',
+                                                                            'along with the existing numerical checks and benchmark protocol. The '
+                                                                            'structural\n',
+                                                                            'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                            'execution.\n',
+                                                                            '\n',
+                                                                            'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                            'tile\n',
+                                                                            'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                            'above\n',
+                                                                            'that mention tuning those values refer to the original whole-file contract; '
+                                                                            'under\n',
+                                                                            'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                            'instead.\n'],
                                                                            [])]},
  'tasks/triton2triton/vllm/triton_awq_gemm/config.yaml': {'after_sha256': '0de7eb1b20549c759c057d3cf3d34b664afd9337036cf3224dc0f4f58ad1819f',
                                                           'before_sha256': 'cdba9bac6e646921796eb59af68d9668af0447d58d0f8dc76a9c133331098fce',
@@ -204,29 +195,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                               'true\n'],
                                                                              ['  - '
                                                                               'source/triton_awq_gemm.py\n'])]},
- 'tasks/triton2triton/vllm/triton_bmm/README.md': {'after_sha256': '37b3cf8062b43ad958556ab4ed039ac8c679271b3830365922e72a3d81383178',
+ 'tasks/triton2triton/vllm/triton_bmm/README.md': {'after_sha256': 'c399129e5d8e76858ef276814664cf3133829b4eb47ff8f470e5eb73faccc1c1',
                                                    'before_sha256': '688c9a2650e4e2ec1b3cf9a2e1a72c79c65ed8fe870e5e1cea5de9d4b5dceaa2',
                                                    'reverse_edits': [(41,
-                                                                      50,
+                                                                      55,
                                                                       ['\n',
                                                                        '\n',
-                                                                       '### Editable device implementation '
-                                                                       'boundary\n',
+                                                                       '### Editable device implementation boundary\n',
                                                                        '\n',
-                                                                       'The editable device functions are '
-                                                                       '`bmm_kernel`.\n',
-                                                                       'Their bodies and additional '
-                                                                       'implementation helpers may be '
-                                                                       'optimized. Module\n',
-                                                                       'imports, initialization, host '
-                                                                       'dispatch and pointer preparation '
-                                                                       'remain protected,\n',
-                                                                       'along with the existing numerical '
-                                                                       'checks and benchmark protocol. The '
+                                                                       'The editable device functions are `bmm_kernel`.\n',
+                                                                       'Their bodies and additional implementation helpers may be optimized. '
+                                                                       'Module\n',
+                                                                       'imports, initialization, host dispatch and pointer preparation remain '
+                                                                       'protected,\n',
+                                                                       'along with the existing numerical checks and benchmark protocol. The '
                                                                        'structural\n',
-                                                                       'guard enforces this boundary; it '
-                                                                       'does not isolate arbitrary Python '
-                                                                       'execution.\n'],
+                                                                       'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                       'execution.\n',
+                                                                       '\n',
+                                                                       'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                       'tile\n',
+                                                                       'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                       'above\n',
+                                                                       'that mention tuning those values refer to the original whole-file contract; '
+                                                                       'under\n',
+                                                                       'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                       'instead.\n'],
                                                                       [])]},
  'tasks/triton2triton/vllm/triton_bmm/config.yaml': {'after_sha256': '6e04236bbc34f35a60c1dcaaa47f218ac2e42d75a4cf85778240feaa8088462e',
                                                      'before_sha256': 'c7315e3dbb45c3e4e40f2d713e67b8071a14fd1c77d1f600bc047174b21d48c2',
@@ -477,38 +471,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                                 'true\n'],
                                                                                                ['  - '
                                                                                                 'source/_fwd_grouped_kernel_stage1.py\n'])]},
- 'tasks/triton2triton/vllm/triton_decode_attn_stage1/README.md': {'after_sha256': 'd9f166fa5bb3c0b8373ded99c03069135faacd3410b89ccfa9de91f0dd69c792',
+ 'tasks/triton2triton/vllm/triton_decode_attn_stage1/README.md': {'after_sha256': 'd8a6fa2fc3432053aa28a229a3700bdb96bee9bd26b63c167316cfadc05d8d0d',
                                                                   'before_sha256': '9e164b707e474647d6d64bd32612a5961b9cd4a405982c671cb320e6195f7578',
                                                                   'reverse_edits': [(88,
-                                                                                     97,
+                                                                                     102,
                                                                                      ['\n',
                                                                                       '\n',
-                                                                                      '### Editable device '
-                                                                                      'implementation '
-                                                                                      'boundary\n',
+                                                                                      '### Editable device implementation boundary\n',
                                                                                       '\n',
-                                                                                      'The editable device '
-                                                                                      'functions are `tanh`, '
-                                                                                      '`_fwd_kernel_stage1`.\n',
-                                                                                      'Their bodies and '
-                                                                                      'additional '
-                                                                                      'implementation '
-                                                                                      'helpers may be '
-                                                                                      'optimized. Module\n',
-                                                                                      'imports, '
-                                                                                      'initialization, host '
-                                                                                      'dispatch and pointer '
-                                                                                      'preparation remain '
+                                                                                      'The editable device functions are `tanh`, `_fwd_kernel_stage1`.\n',
+                                                                                      'Their bodies and additional implementation helpers may be optimized. '
+                                                                                      'Module\n',
+                                                                                      'imports, initialization, host dispatch and pointer preparation remain '
                                                                                       'protected,\n',
-                                                                                      'along with the '
-                                                                                      'existing numerical '
-                                                                                      'checks and benchmark '
-                                                                                      'protocol. The '
+                                                                                      'along with the existing numerical checks and benchmark protocol. The '
                                                                                       'structural\n',
-                                                                                      'guard enforces this '
-                                                                                      'boundary; it does not '
-                                                                                      'isolate arbitrary '
-                                                                                      'Python execution.\n'],
+                                                                                      'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                      'execution.\n',
+                                                                                      '\n',
+                                                                                      'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                      'tile\n',
+                                                                                      'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                      'above\n',
+                                                                                      'that mention tuning those values refer to the original whole-file contract; '
+                                                                                      'under\n',
+                                                                                      'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                      'instead.\n'],
                                                                                      [])]},
  'tasks/triton2triton/vllm/triton_decode_attn_stage1/config.yaml': {'after_sha256': 'c69bd6c3c573230c1358f6fb000a3ea82a56510fd921d5b5209e454fee63f684',
                                                                     'before_sha256': '793e6e10b6227e67ce8d50ca18f88ca87deb888631af904c5a4998bfea6768ba',
@@ -527,38 +515,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                         'true\n'],
                                                                                        ['  - '
                                                                                         'source/_fwd_kernel_stage1.py\n'])]},
- 'tasks/triton2triton/vllm/triton_decode_attn_stage2/README.md': {'after_sha256': 'ec94272c221580401c332d01eefd616789bc972d7cb42e0be7dc72c1aa13309e',
+ 'tasks/triton2triton/vllm/triton_decode_attn_stage2/README.md': {'after_sha256': 'b2ffabd5f50a3f17b8b427c4e2735f3f18de113e22f724ecf85c38ddb8265f1e',
                                                                   'before_sha256': '02b7883d55eaffb47865a326df31a2420408a8e395ad35cd4c43da20ea9ef6fc',
                                                                   'reverse_edits': [(79,
-                                                                                     88,
+                                                                                     93,
                                                                                      ['\n',
                                                                                       '\n',
-                                                                                      '### Editable device '
-                                                                                      'implementation '
-                                                                                      'boundary\n',
+                                                                                      '### Editable device implementation boundary\n',
                                                                                       '\n',
-                                                                                      'The editable device '
-                                                                                      'functions are '
-                                                                                      '`_fwd_kernel_stage2`.\n',
-                                                                                      'Their bodies and '
-                                                                                      'additional '
-                                                                                      'implementation '
-                                                                                      'helpers may be '
-                                                                                      'optimized. Module\n',
-                                                                                      'imports, '
-                                                                                      'initialization, host '
-                                                                                      'dispatch and pointer '
-                                                                                      'preparation remain '
+                                                                                      'The editable device functions are `_fwd_kernel_stage2`.\n',
+                                                                                      'Their bodies and additional implementation helpers may be optimized. '
+                                                                                      'Module\n',
+                                                                                      'imports, initialization, host dispatch and pointer preparation remain '
                                                                                       'protected,\n',
-                                                                                      'along with the '
-                                                                                      'existing numerical '
-                                                                                      'checks and benchmark '
-                                                                                      'protocol. The '
+                                                                                      'along with the existing numerical checks and benchmark protocol. The '
                                                                                       'structural\n',
-                                                                                      'guard enforces this '
-                                                                                      'boundary; it does not '
-                                                                                      'isolate arbitrary '
-                                                                                      'Python execution.\n'],
+                                                                                      'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                      'execution.\n',
+                                                                                      '\n',
+                                                                                      'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                      'tile\n',
+                                                                                      'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                      'above\n',
+                                                                                      'that mention tuning those values refer to the original whole-file contract; '
+                                                                                      'under\n',
+                                                                                      'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                      'instead.\n'],
                                                                                      [])]},
  'tasks/triton2triton/vllm/triton_decode_attn_stage2/config.yaml': {'after_sha256': 'b3810ddb5da0e7632f526c54399db2023ac6ae54a25801ff3d13dfa7fd5047c9',
                                                                     'before_sha256': '7e1e7018cd00382729b75e71be8f2c211c146e957381472ddcae0d61ae7e6866',
@@ -576,30 +558,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                         'true\n'],
                                                                                        ['  - '
                                                                                         'source/_fwd_kernel_stage2.py\n'])]},
- 'tasks/triton2triton/vllm/triton_ep_gather/README.md': {'after_sha256': '95e35778905788a75c2f1fc286138133de24a4fb7c9daf764bf3fcbc4cce721d',
+ 'tasks/triton2triton/vllm/triton_ep_gather/README.md': {'after_sha256': 'dc45435441bf951eb8eb501fc6145aef50ecaab21c42a40c896b89b6a7e696da',
                                                          'before_sha256': '7fa777a1203ec1836570002443f93c14973a2362ee0f16652dc24dbf466b6cf7',
                                                          'reverse_edits': [(44,
-                                                                            53,
+                                                                            58,
                                                                             ['\n',
                                                                              '\n',
-                                                                             '### Editable device '
-                                                                             'implementation boundary\n',
+                                                                             '### Editable device implementation boundary\n',
                                                                              '\n',
-                                                                             'The editable device functions '
-                                                                             'are `_fwd_kernel_ep_gather`.\n',
-                                                                             'Their bodies and additional '
-                                                                             'implementation helpers may be '
-                                                                             'optimized. Module\n',
-                                                                             'imports, initialization, host '
-                                                                             'dispatch and pointer '
-                                                                             'preparation remain '
+                                                                             'The editable device functions are `_fwd_kernel_ep_gather`.\n',
+                                                                             'Their bodies and additional implementation helpers may be optimized. '
+                                                                             'Module\n',
+                                                                             'imports, initialization, host dispatch and pointer preparation remain '
                                                                              'protected,\n',
-                                                                             'along with the existing '
-                                                                             'numerical checks and benchmark '
-                                                                             'protocol. The structural\n',
-                                                                             'guard enforces this boundary; '
-                                                                             'it does not isolate arbitrary '
-                                                                             'Python execution.\n'],
+                                                                             'along with the existing numerical checks and benchmark protocol. The '
+                                                                             'structural\n',
+                                                                             'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                             'execution.\n',
+                                                                             '\n',
+                                                                             'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                             'tile\n',
+                                                                             'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                             'above\n',
+                                                                             'that mention tuning those values refer to the original whole-file contract; '
+                                                                             'under\n',
+                                                                             'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                             'instead.\n'],
                                                                             [])]},
  'tasks/triton2triton/vllm/triton_ep_gather/config.yaml': {'after_sha256': 'a0d64d529fd939f9367280f7b714b1f7710286a3042b7e5aec6ab55f98c72bab',
                                                            'before_sha256': '1c3a174ddf8be7fe280178935745ad80ae0eb4b97c1cc8fe62ceadce6738e771',
@@ -659,34 +643,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                   'true\n'],
                                                                                  ['  - '
                                                                                   'source/triton_ep_scatter_1.py\n'])]},
- 'tasks/triton2triton/vllm/triton_expert_kernel/README.md': {'after_sha256': '363d3769876fa84773b205e3f5ff7bc7f1f0d823fcb6c3a894f72a99c623536a',
+ 'tasks/triton2triton/vllm/triton_expert_kernel/README.md': {'after_sha256': '830635586e7bf1a59134b851eb8034395175cd4113d3d52097e540c1275368da',
                                                              'before_sha256': '14d610a41846b32393589aa59acd137fa83854c884c626e99af86802736ef7ea',
                                                              'reverse_edits': [(47,
-                                                                                56,
+                                                                                61,
                                                                                 ['\n',
                                                                                  '\n',
-                                                                                 '### Editable device '
-                                                                                 'implementation boundary\n',
+                                                                                 '### Editable device implementation boundary\n',
                                                                                  '\n',
-                                                                                 'The editable device '
-                                                                                 'functions are '
-                                                                                 '`expert_triton_kernel`.\n',
-                                                                                 'Their bodies and '
-                                                                                 'additional implementation '
-                                                                                 'helpers may be optimized. '
+                                                                                 'The editable device functions are `expert_triton_kernel`.\n',
+                                                                                 'Their bodies and additional implementation helpers may be optimized. '
                                                                                  'Module\n',
-                                                                                 'imports, initialization, '
-                                                                                 'host dispatch and pointer '
-                                                                                 'preparation remain '
+                                                                                 'imports, initialization, host dispatch and pointer preparation remain '
                                                                                  'protected,\n',
-                                                                                 'along with the existing '
-                                                                                 'numerical checks and '
-                                                                                 'benchmark protocol. The '
+                                                                                 'along with the existing numerical checks and benchmark protocol. The '
                                                                                  'structural\n',
-                                                                                 'guard enforces this '
-                                                                                 'boundary; it does not '
-                                                                                 'isolate arbitrary Python '
-                                                                                 'execution.\n'],
+                                                                                 'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                 'execution.\n',
+                                                                                 '\n',
+                                                                                 'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                 'tile\n',
+                                                                                 'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                 'above\n',
+                                                                                 'that mention tuning those values refer to the original whole-file contract; '
+                                                                                 'under\n',
+                                                                                 'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                 'instead.\n'],
                                                                                 [])]},
  'tasks/triton2triton/vllm/triton_expert_kernel/config.yaml': {'after_sha256': 'c65abb1bc437b26f4a62e68d6aa19b430f4bea874db35ecfc9f2e7aa84ac4ea7',
                                                                'before_sha256': '713b77fabbe6bd2775f79b76fc497f06d20093988ddc5438d52aa452c8efee4f',
@@ -841,46 +823,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                    'true\n'],
                                                                                   ['  - '
                                                                                    'source/triton_fla_layernorm.py\n'])]},
- 'tasks/triton2triton/vllm/triton_flash_prefill_attention/README.md': {'after_sha256': '5ddab47c3790ee699a4f8f03660702dde34826123a0cfec769398b44f0a5dd06',
+ 'tasks/triton2triton/vllm/triton_flash_prefill_attention/README.md': {'after_sha256': '34cd567a7af6a77398f08b7fa1f288498d3a504ae9fe3f134f1e79e53d8b334d',
                                                                        'before_sha256': 'cca8c62515eb874e93a9e50f5371a5a50c5edf78f8aff2f14e37bf1b5490ca32',
                                                                        'reverse_edits': [(76,
-                                                                                          85,
+                                                                                          90,
                                                                                           ['\n',
                                                                                            '\n',
-                                                                                           '### Editable '
-                                                                                           'device '
-                                                                                           'implementation '
-                                                                                           'boundary\n',
+                                                                                           '### Editable device implementation boundary\n',
                                                                                            '\n',
-                                                                                           'The editable '
-                                                                                           'device functions '
-                                                                                           'are '
-                                                                                           '`_fwd_kernel`.\n',
-                                                                                           'Their bodies and '
-                                                                                           'additional '
-                                                                                           'implementation '
-                                                                                           'helpers may be '
-                                                                                           'optimized. '
+                                                                                           'The editable device functions are `_fwd_kernel`.\n',
+                                                                                           'Their bodies and additional implementation helpers may be optimized. '
                                                                                            'Module\n',
-                                                                                           'imports, '
-                                                                                           'initialization, '
-                                                                                           'host dispatch '
-                                                                                           'and pointer '
-                                                                                           'preparation '
-                                                                                           'remain '
+                                                                                           'imports, initialization, host dispatch and pointer preparation remain '
                                                                                            'protected,\n',
-                                                                                           'along with the '
-                                                                                           'existing '
-                                                                                           'numerical checks '
-                                                                                           'and benchmark '
-                                                                                           'protocol. The '
+                                                                                           'along with the existing numerical checks and benchmark protocol. The '
                                                                                            'structural\n',
-                                                                                           'guard enforces '
-                                                                                           'this boundary; '
-                                                                                           'it does not '
-                                                                                           'isolate '
-                                                                                           'arbitrary Python '
-                                                                                           'execution.\n'],
+                                                                                           'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                           'execution.\n',
+                                                                                           '\n',
+                                                                                           'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                           'tile\n',
+                                                                                           'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                           'above\n',
+                                                                                           'that mention tuning those values refer to the original whole-file contract; '
+                                                                                           'under\n',
+                                                                                           'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                           'instead.\n'],
                                                                                           [])]},
  'tasks/triton2triton/vllm/triton_flash_prefill_attention/config.yaml': {'after_sha256': 'dca4c1e0037ce58f17d85d6fd5159ef850130e2c74b79afc42d57d88803995b6',
                                                                          'before_sha256': '2fbb4c96d9705a85dd42753c9a1638b67212d87639dbc53e36a072b9bee90fff',
@@ -898,37 +866,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                              'true\n'],
                                                                                             ['  - '
                                                                                              'source/triton_flash_prefill_attention.py\n'])]},
- 'tasks/triton2triton/vllm/triton_fused_gdn_gating/README.md': {'after_sha256': 'b5eefca1312024bcfa4a97c533b6db43ca3a4c1ebb0d76b6b5705cce6a67147d',
+ 'tasks/triton2triton/vllm/triton_fused_gdn_gating/README.md': {'after_sha256': '07ed66c5642f9bfe2943e38f8826a2d408897dab377713d1774c812ba49ef3bd',
                                                                 'before_sha256': '224db382310fe35792d0afcbb60d2c37e32888f7bdb1af02799693a61ed4d4b3',
                                                                 'reverse_edits': [(62,
-                                                                                   71,
+                                                                                   76,
                                                                                    ['\n',
                                                                                     '\n',
-                                                                                    '### Editable device '
-                                                                                    'implementation '
-                                                                                    'boundary\n',
+                                                                                    '### Editable device implementation boundary\n',
                                                                                     '\n',
-                                                                                    'The editable device '
-                                                                                    'functions are '
-                                                                                    '`fused_gdn_gating_kernel`.\n',
-                                                                                    'Their bodies and '
-                                                                                    'additional '
-                                                                                    'implementation helpers '
-                                                                                    'may be optimized. '
+                                                                                    'The editable device functions are `fused_gdn_gating_kernel`.\n',
+                                                                                    'Their bodies and additional implementation helpers may be optimized. '
                                                                                     'Module\n',
-                                                                                    'imports, '
-                                                                                    'initialization, host '
-                                                                                    'dispatch and pointer '
-                                                                                    'preparation remain '
+                                                                                    'imports, initialization, host dispatch and pointer preparation remain '
                                                                                     'protected,\n',
-                                                                                    'along with the existing '
-                                                                                    'numerical checks and '
-                                                                                    'benchmark protocol. The '
+                                                                                    'along with the existing numerical checks and benchmark protocol. The '
                                                                                     'structural\n',
-                                                                                    'guard enforces this '
-                                                                                    'boundary; it does not '
-                                                                                    'isolate arbitrary '
-                                                                                    'Python execution.\n'],
+                                                                                    'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                    'execution.\n',
+                                                                                    '\n',
+                                                                                    'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                    'tile\n',
+                                                                                    'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                    'above\n',
+                                                                                    'that mention tuning those values refer to the original whole-file contract; '
+                                                                                    'under\n',
+                                                                                    'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                    'instead.\n'],
                                                                                    [])]},
  'tasks/triton2triton/vllm/triton_fused_gdn_gating/config.yaml': {'after_sha256': '00e08420c025b289d4059a9fb1cd65920dbd0122b017c3f8e9b490d5feb10245',
                                                                   'before_sha256': '171a150edf22833e18a3e6956e9e403743bff25fb2762cba3d067a244f7641db',
@@ -945,37 +908,33 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                       'true\n'],
                                                                                      ['  - '
                                                                                       'source/triton_fused_gdn_gating.py\n'])]},
- 'tasks/triton2triton/vllm/triton_fused_moe_lora/README.md': {'after_sha256': '783e1749a0c1f394b87b311b94789f655a9251199431fdd31e45175355a9070d',
+ 'tasks/triton2triton/vllm/triton_fused_moe_lora/README.md': {'after_sha256': '77eafcbed9378290dcda73308b2ece126f0d4a67584e671f27ec2fd144931273',
                                                               'before_sha256': '8fec6fffc0da84e702baaa4e258f746a7b796d60749c18a7b19d8515189d1ed2',
                                                               'reverse_edits': [(84,
-                                                                                 93,
+                                                                                 98,
                                                                                  ['\n',
                                                                                   '\n',
-                                                                                  '### Editable device '
-                                                                                  'implementation boundary\n',
+                                                                                  '### Editable device implementation boundary\n',
                                                                                   '\n',
-                                                                                  'The editable device '
-                                                                                  'functions are '
-                                                                                  '`_get_lora_id`, '
-                                                                                  '`_get_expert_id`, '
-                                                                                  '`_get_token_offs`, '
-                                                                                  '`fused_moe_lora_kernel`.\n',
-                                                                                  'Their bodies and '
-                                                                                  'additional implementation '
-                                                                                  'helpers may be optimized. '
+                                                                                  'The editable device functions are `_get_lora_id`, `_get_expert_id`, '
+                                                                                  '`_get_token_offs`, `fused_moe_lora_kernel`.\n',
+                                                                                  'Their bodies and additional implementation helpers may be optimized. '
                                                                                   'Module\n',
-                                                                                  'imports, initialization, '
-                                                                                  'host dispatch and pointer '
-                                                                                  'preparation remain '
+                                                                                  'imports, initialization, host dispatch and pointer preparation remain '
                                                                                   'protected,\n',
-                                                                                  'along with the existing '
-                                                                                  'numerical checks and '
-                                                                                  'benchmark protocol. The '
+                                                                                  'along with the existing numerical checks and benchmark protocol. The '
                                                                                   'structural\n',
-                                                                                  'guard enforces this '
-                                                                                  'boundary; it does not '
-                                                                                  'isolate arbitrary Python '
-                                                                                  'execution.\n'],
+                                                                                  'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                  'execution.\n',
+                                                                                  '\n',
+                                                                                  'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                  'tile\n',
+                                                                                  'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                  'above\n',
+                                                                                  'that mention tuning those values refer to the original whole-file contract; '
+                                                                                  'under\n',
+                                                                                  'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                  'instead.\n'],
                                                                                  [])]},
  'tasks/triton2triton/vllm/triton_fused_moe_lora/config.yaml': {'after_sha256': '579e981824b47adb3e515709798ec2f419dd79f543f477e15001969911ddbc48',
                                                                 'before_sha256': 'd55709edbab279c8bfa2e8d2b1de6d34df4ab10d1a717c1b3b23e8d87314349b',
@@ -1097,34 +1056,33 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                               'true\n'],
                                                                                              ['  - '
                                                                                               'source/triton_lightning_attn_kv_reduce.py\n'])]},
- 'tasks/triton2triton/vllm/triton_lora_expand/README.md': {'after_sha256': 'c6ea829ed8c704eedef85db31ccf6bdd153d080dfdfbc792c06d018412c4c8f1',
+ 'tasks/triton2triton/vllm/triton_lora_expand/README.md': {'after_sha256': '710f51d0aa63746a19d8f7316e0ffea67ccdb7ce4d9ed129aa990296cf2701de',
                                                            'before_sha256': 'e1de456de9737753bf5059cdbe746b06bce0fd10672d628e1113792d4e258f3a',
                                                            'reverse_edits': [(57,
-                                                                              66,
+                                                                              71,
                                                                               ['\n',
                                                                                '\n',
-                                                                               '### Editable device '
-                                                                               'implementation boundary\n',
+                                                                               '### Editable device implementation boundary\n',
                                                                                '\n',
-                                                                               'The editable device '
-                                                                               'functions are `mm_k`, '
-                                                                               '`do_expand_kernel`, '
+                                                                               'The editable device functions are `mm_k`, `do_expand_kernel`, '
                                                                                '`_lora_expand_kernel`.\n',
-                                                                               'Their bodies and additional '
-                                                                               'implementation helpers may '
-                                                                               'be optimized. Module\n',
-                                                                               'imports, initialization, '
-                                                                               'host dispatch and pointer '
-                                                                               'preparation remain '
+                                                                               'Their bodies and additional implementation helpers may be optimized. '
+                                                                               'Module\n',
+                                                                               'imports, initialization, host dispatch and pointer preparation remain '
                                                                                'protected,\n',
-                                                                               'along with the existing '
-                                                                               'numerical checks and '
-                                                                               'benchmark protocol. The '
+                                                                               'along with the existing numerical checks and benchmark protocol. The '
                                                                                'structural\n',
-                                                                               'guard enforces this '
-                                                                               'boundary; it does not '
-                                                                               'isolate arbitrary Python '
-                                                                               'execution.\n'],
+                                                                               'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                               'execution.\n',
+                                                                               '\n',
+                                                                               'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                               'tile\n',
+                                                                               'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                               'above\n',
+                                                                               'that mention tuning those values refer to the original whole-file contract; '
+                                                                               'under\n',
+                                                                               'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                               'instead.\n'],
                                                                               [])]},
  'tasks/triton2triton/vllm/triton_lora_expand/config.yaml': {'after_sha256': '5599d6b8efcdc61ac58b8738c781bc8692527b25fa26ff62f6cb67d104d14ec1',
                                                              'before_sha256': '440ee2bc0389a8f18b1b9082fb00fe104a869619819309b0431e126178602131',
@@ -1142,34 +1100,33 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                  'true\n'],
                                                                                 ['  - '
                                                                                  'source/triton_lora_expand.py\n'])]},
- 'tasks/triton2triton/vllm/triton_lora_shrink/README.md': {'after_sha256': '337dfc337a34cacf1fa6427dd6a0388b08ef53841a3b0df72cf0dff5a4993a19',
+ 'tasks/triton2triton/vllm/triton_lora_shrink/README.md': {'after_sha256': 'a6a8373539b88204bf41f89598476d9c67c4f9a9d520b8887dafa9129776ccec',
                                                            'before_sha256': 'a11e56f3f3f7fc809aa99f322b9d1afb4a6d00252f568fd24c37ade7d02f0dd1',
                                                            'reverse_edits': [(79,
-                                                                              88,
+                                                                              93,
                                                                               ['\n',
                                                                                '\n',
-                                                                               '### Editable device '
-                                                                               'implementation boundary\n',
+                                                                               '### Editable device implementation boundary\n',
                                                                                '\n',
-                                                                               'The editable device '
-                                                                               'functions are `mm_k`, '
-                                                                               '`do_shrink_kernel`, '
+                                                                               'The editable device functions are `mm_k`, `do_shrink_kernel`, '
                                                                                '`_lora_shrink_kernel`.\n',
-                                                                               'Their bodies and additional '
-                                                                               'implementation helpers may '
-                                                                               'be optimized. Module\n',
-                                                                               'imports, initialization, '
-                                                                               'host dispatch and pointer '
-                                                                               'preparation remain '
+                                                                               'Their bodies and additional implementation helpers may be optimized. '
+                                                                               'Module\n',
+                                                                               'imports, initialization, host dispatch and pointer preparation remain '
                                                                                'protected,\n',
-                                                                               'along with the existing '
-                                                                               'numerical checks and '
-                                                                               'benchmark protocol. The '
+                                                                               'along with the existing numerical checks and benchmark protocol. The '
                                                                                'structural\n',
-                                                                               'guard enforces this '
-                                                                               'boundary; it does not '
-                                                                               'isolate arbitrary Python '
-                                                                               'execution.\n'],
+                                                                               'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                               'execution.\n',
+                                                                               '\n',
+                                                                               'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                               'tile\n',
+                                                                               'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                               'above\n',
+                                                                               'that mention tuning those values refer to the original whole-file contract; '
+                                                                               'under\n',
+                                                                               'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                               'instead.\n'],
                                                                               [])]},
  'tasks/triton2triton/vllm/triton_lora_shrink/config.yaml': {'after_sha256': 'bfdb6bb0a29cb205f22647f5176caf55c31ed3db818248f0868448d6c8a8fdf0',
                                                              'before_sha256': '313c1c2ccb404c3f9ca3045735eaa78d7224d5189ad221a89633e1830c29dbb5',
@@ -1187,39 +1144,33 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                  'true\n'],
                                                                                 ['  - '
                                                                                  'source/triton_lora_shrink.py\n'])]},
- 'tasks/triton2triton/vllm/triton_matmul_persistent/README.md': {'after_sha256': '785b8ccd17474e0d4a077b2a5b10883e5799280cdaa46f36acc7adaee1abe316',
+ 'tasks/triton2triton/vllm/triton_matmul_persistent/README.md': {'after_sha256': '5ea2244d9b6a75857fb1c9ded4b724056ed4c02b21cbf1e9d4e64c165e179140',
                                                                  'before_sha256': '0e46ab7d08ae6b77aa256fa89b5fcbad1a8659af32cf5f344fd76911b638995e',
                                                                  'reverse_edits': [(63,
-                                                                                    72,
+                                                                                    77,
                                                                                     ['\n',
                                                                                      '\n',
-                                                                                     '### Editable device '
-                                                                                     'implementation '
-                                                                                     'boundary\n',
+                                                                                     '### Editable device implementation boundary\n',
                                                                                      '\n',
-                                                                                     'The editable device '
-                                                                                     'functions are '
-                                                                                     '`_compute_pid`, '
+                                                                                     'The editable device functions are `_compute_pid`, '
                                                                                      '`matmul_kernel_persistent`.\n',
-                                                                                     'Their bodies and '
-                                                                                     'additional '
-                                                                                     'implementation helpers '
-                                                                                     'may be optimized. '
+                                                                                     'Their bodies and additional implementation helpers may be optimized. '
                                                                                      'Module\n',
-                                                                                     'imports, '
-                                                                                     'initialization, host '
-                                                                                     'dispatch and pointer '
-                                                                                     'preparation remain '
+                                                                                     'imports, initialization, host dispatch and pointer preparation remain '
                                                                                      'protected,\n',
-                                                                                     'along with the '
-                                                                                     'existing numerical '
-                                                                                     'checks and benchmark '
-                                                                                     'protocol. The '
+                                                                                     'along with the existing numerical checks and benchmark protocol. The '
                                                                                      'structural\n',
-                                                                                     'guard enforces this '
-                                                                                     'boundary; it does not '
-                                                                                     'isolate arbitrary '
-                                                                                     'Python execution.\n'],
+                                                                                     'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                     'execution.\n',
+                                                                                     '\n',
+                                                                                     'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                     'tile\n',
+                                                                                     'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                     'above\n',
+                                                                                     'that mention tuning those values refer to the original whole-file contract; '
+                                                                                     'under\n',
+                                                                                     'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                     'instead.\n'],
                                                                                     [])]},
  'tasks/triton2triton/vllm/triton_matmul_persistent/config.yaml': {'after_sha256': '173346b0733047ebc9be30b5b2af7c6f20dda5127fc9051890c5c270767821cf',
                                                                    'before_sha256': '902b575005ab4bb8a563ea1ed7bf68e4f3239473fbf64eb8c282dec59aaa8d72',
@@ -1237,29 +1188,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                        'true\n'],
                                                                                       ['  - '
                                                                                        'source/triton_matmul_persistent.py\n'])]},
- 'tasks/triton2triton/vllm/triton_mean/README.md': {'after_sha256': 'b5d0cd154e6eff6928a423005ac45881a9bb8cde32a95afd6f312c4b62d9c7f0',
+ 'tasks/triton2triton/vllm/triton_mean/README.md': {'after_sha256': '339016b7be69cb6a98e98b3cbff6f5f15fa8432b823a0b1cde79ade62b9b815f',
                                                     'before_sha256': '8bd9e87ca515a8e2caadbd1828d2ded335f531f22308ed16f5a22c9e9f99672e',
                                                     'reverse_edits': [(60,
-                                                                       69,
+                                                                       74,
                                                                        ['\n',
                                                                         '\n',
-                                                                        '### Editable device implementation '
-                                                                        'boundary\n',
+                                                                        '### Editable device implementation boundary\n',
                                                                         '\n',
-                                                                        'The editable device functions are '
-                                                                        '`mean_kernel`.\n',
-                                                                        'Their bodies and additional '
-                                                                        'implementation helpers may be '
-                                                                        'optimized. Module\n',
-                                                                        'imports, initialization, host '
-                                                                        'dispatch and pointer preparation '
-                                                                        'remain protected,\n',
-                                                                        'along with the existing numerical '
-                                                                        'checks and benchmark protocol. The '
+                                                                        'The editable device functions are `mean_kernel`.\n',
+                                                                        'Their bodies and additional implementation helpers may be optimized. '
+                                                                        'Module\n',
+                                                                        'imports, initialization, host dispatch and pointer preparation remain '
+                                                                        'protected,\n',
+                                                                        'along with the existing numerical checks and benchmark protocol. The '
                                                                         'structural\n',
-                                                                        'guard enforces this boundary; it '
-                                                                        'does not isolate arbitrary Python '
-                                                                        'execution.\n'],
+                                                                        'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                        'execution.\n',
+                                                                        '\n',
+                                                                        'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                        'tile\n',
+                                                                        'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                        'above\n',
+                                                                        'that mention tuning those values refer to the original whole-file contract; '
+                                                                        'under\n',
+                                                                        'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                        'instead.\n'],
                                                                        [])]},
  'tasks/triton2triton/vllm/triton_mean/config.yaml': {'after_sha256': 'ee104296178d1ccf897e4e50770c1348e5c63b9979b91a02ce1691335429299b',
                                                       'before_sha256': 'c3f57fb29709e2fb9c7f5c6dce970f8ac0d474ac143be383dc21b74e5dbb26a4',
@@ -1321,38 +1275,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                           'true\n'],
                                                                                          ['  - '
                                                                                           'source/triton_merge_16x16_to_32x32.py\n'])]},
- 'tasks/triton2triton/vllm/triton_merge_attn_states/README.md': {'after_sha256': '9bdf3cd1221a83f3a9a61580a3c630f96141756321fe28c425afafcd5304ede8',
+ 'tasks/triton2triton/vllm/triton_merge_attn_states/README.md': {'after_sha256': 'dc4ed0f79ef07c837098149f12b9db7b31f05428546c2a678782c0902f440787',
                                                                  'before_sha256': '6f11a6d78252446ffe1f4bebe1d235d29e8bfce8155601bbbe71535e6e13259f',
                                                                  'reverse_edits': [(44,
-                                                                                    53,
+                                                                                    58,
                                                                                     ['\n',
                                                                                      '\n',
-                                                                                     '### Editable device '
-                                                                                     'implementation '
-                                                                                     'boundary\n',
+                                                                                     '### Editable device implementation boundary\n',
                                                                                      '\n',
-                                                                                     'The editable device '
-                                                                                     'functions are '
-                                                                                     '`merge_attn_states_kernel`.\n',
-                                                                                     'Their bodies and '
-                                                                                     'additional '
-                                                                                     'implementation helpers '
-                                                                                     'may be optimized. '
+                                                                                     'The editable device functions are `merge_attn_states_kernel`.\n',
+                                                                                     'Their bodies and additional implementation helpers may be optimized. '
                                                                                      'Module\n',
-                                                                                     'imports, '
-                                                                                     'initialization, host '
-                                                                                     'dispatch and pointer '
-                                                                                     'preparation remain '
+                                                                                     'imports, initialization, host dispatch and pointer preparation remain '
                                                                                      'protected,\n',
-                                                                                     'along with the '
-                                                                                     'existing numerical '
-                                                                                     'checks and benchmark '
-                                                                                     'protocol. The '
+                                                                                     'along with the existing numerical checks and benchmark protocol. The '
                                                                                      'structural\n',
-                                                                                     'guard enforces this '
-                                                                                     'boundary; it does not '
-                                                                                     'isolate arbitrary '
-                                                                                     'Python execution.\n'],
+                                                                                     'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                     'execution.\n',
+                                                                                     '\n',
+                                                                                     'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                     'tile\n',
+                                                                                     'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                     'above\n',
+                                                                                     'that mention tuning those values refer to the original whole-file contract; '
+                                                                                     'under\n',
+                                                                                     'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                     'instead.\n'],
                                                                                     [])]},
  'tasks/triton2triton/vllm/triton_merge_attn_states/config.yaml': {'after_sha256': 'b81487fe1dcc58b1a79a6f71c1dd8d78f86adf98b09824541fccd0d204a07982',
                                                                    'before_sha256': 'e7d6291904f5a87e3b14a561e60a781b7074391c863c3568e74dca4709e43d9b',
@@ -1439,39 +1387,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                            '    - _triton_mrope_forward\n',
                                                                            '    allow_new_helpers: true\n'],
                                                                           ['  - source/triton_mrope.py\n'])]},
- 'tasks/triton2triton/vllm/triton_paged_prefix_prefill/README.md': {'after_sha256': '22b77cd2cb40f5ffcc1e8a103237adf667bcb27d0f0952c0286fcdea96198143',
+ 'tasks/triton2triton/vllm/triton_paged_prefix_prefill/README.md': {'after_sha256': '04c7381cb64d20732487b04e819459190725d21c538a337a476eb7390eb9437d',
                                                                     'before_sha256': '9b9f0668b7673c7acf3d85d6cb9724a850e6da0da039499e88a45960b62e1adb',
                                                                     'reverse_edits': [(92,
-                                                                                       101,
+                                                                                       106,
                                                                                        ['\n',
                                                                                         '\n',
-                                                                                        '### Editable device '
-                                                                                        'implementation '
-                                                                                        'boundary\n',
+                                                                                        '### Editable device implementation boundary\n',
                                                                                         '\n',
-                                                                                        'The editable device '
-                                                                                        'functions are '
-                                                                                        '`_fwd_kernel`.\n',
-                                                                                        'Their bodies and '
-                                                                                        'additional '
-                                                                                        'implementation '
-                                                                                        'helpers may be '
-                                                                                        'optimized. Module\n',
-                                                                                        'imports, '
-                                                                                        'initialization, '
-                                                                                        'host dispatch and '
-                                                                                        'pointer preparation '
-                                                                                        'remain protected,\n',
-                                                                                        'along with the '
-                                                                                        'existing numerical '
-                                                                                        'checks and '
-                                                                                        'benchmark protocol. '
-                                                                                        'The structural\n',
-                                                                                        'guard enforces this '
-                                                                                        'boundary; it does '
-                                                                                        'not isolate '
-                                                                                        'arbitrary Python '
-                                                                                        'execution.\n'],
+                                                                                        'The editable device functions are `_fwd_kernel`.\n',
+                                                                                        'Their bodies and additional implementation helpers may be optimized. '
+                                                                                        'Module\n',
+                                                                                        'imports, initialization, host dispatch and pointer preparation remain '
+                                                                                        'protected,\n',
+                                                                                        'along with the existing numerical checks and benchmark protocol. The '
+                                                                                        'structural\n',
+                                                                                        'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                        'execution.\n',
+                                                                                        '\n',
+                                                                                        'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                        'tile\n',
+                                                                                        'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                        'above\n',
+                                                                                        'that mention tuning those values refer to the original whole-file contract; '
+                                                                                        'under\n',
+                                                                                        'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                        'instead.\n'],
                                                                                        [])]},
  'tasks/triton2triton/vllm/triton_paged_prefix_prefill/config.yaml': {'after_sha256': '7cc272bea549b0eca3fdf675b9a0654e6870167a0bfedc966fd518518d8b097a',
                                                                       'before_sha256': '6140359155f3f66e00bb28378ae9675f04b48a3c51a1ab21ff546d5b963a8269',
@@ -1489,50 +1430,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                           'true\n'],
                                                                                          ['  - '
                                                                                           'source/triton_paged_prefix_prefill.py\n'])]},
- 'tasks/triton2triton/vllm/triton_paged_prefix_prefill_alibi/README.md': {'after_sha256': 'af9f0bead07356e26418cbffaa96fe8faf708987a742f8520320225684f43825',
+ 'tasks/triton2triton/vllm/triton_paged_prefix_prefill_alibi/README.md': {'after_sha256': '7df4e123e68e24b850a0e091f2614516829d4967fd65dc1a8ce4185d03e429ec',
                                                                           'before_sha256': '765fb8a7564c72024f9595a0aedc69bcc82bf96bb6cf59db0709003dc29699a2',
                                                                           'reverse_edits': [(112,
-                                                                                             121,
+                                                                                             126,
                                                                                              ['\n',
                                                                                               '\n',
-                                                                                              '### Editable '
-                                                                                              'device '
-                                                                                              'implementation '
-                                                                                              'boundary\n',
+                                                                                              '### Editable device implementation boundary\n',
                                                                                               '\n',
-                                                                                              'The editable '
-                                                                                              'device '
-                                                                                              'functions are '
-                                                                                              '`_fwd_kernel_alibi`.\n',
-                                                                                              'Their bodies '
-                                                                                              'and '
-                                                                                              'additional '
-                                                                                              'implementation '
-                                                                                              'helpers may '
-                                                                                              'be optimized. '
+                                                                                              'The editable device functions are `_fwd_kernel_alibi`.\n',
+                                                                                              'Their bodies and additional implementation helpers may be optimized. '
                                                                                               'Module\n',
-                                                                                              'imports, '
-                                                                                              'initialization, '
-                                                                                              'host dispatch '
-                                                                                              'and pointer '
-                                                                                              'preparation '
-                                                                                              'remain '
+                                                                                              'imports, initialization, host dispatch and pointer preparation remain '
                                                                                               'protected,\n',
-                                                                                              'along with '
-                                                                                              'the existing '
-                                                                                              'numerical '
-                                                                                              'checks and '
-                                                                                              'benchmark '
-                                                                                              'protocol. The '
+                                                                                              'along with the existing numerical checks and benchmark protocol. The '
                                                                                               'structural\n',
-                                                                                              'guard '
-                                                                                              'enforces this '
-                                                                                              'boundary; it '
-                                                                                              'does not '
-                                                                                              'isolate '
-                                                                                              'arbitrary '
-                                                                                              'Python '
-                                                                                              'execution.\n'],
+                                                                                              'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                                              'execution.\n',
+                                                                                              '\n',
+                                                                                              'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                                              'tile\n',
+                                                                                              'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                              'above\n',
+                                                                                              'that mention tuning those values refer to the original whole-file contract; '
+                                                                                              'under\n',
+                                                                                              'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                              'instead.\n'],
                                                                                              [])]},
  'tasks/triton2triton/vllm/triton_paged_prefix_prefill_alibi/config.yaml': {'after_sha256': '1459ef42022d411b6c358cd1ce4697b2c12c1c53d400c74b94f7e20d71f855cb',
                                                                             'before_sha256': 'b6b06a0041f97d27c626a5c477ae7751cdaa29683130ebe9be687c91e888eb40',
@@ -1885,30 +1808,32 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                              'true\n'],
                                                                                             ['  - '
                                                                                              'source/triton_sample_recovered_tokens.py\n'])]},
- 'tasks/triton2triton/vllm/triton_scaled_mm/README.md': {'after_sha256': '64c385dcfa5b2c81dc49073f205cdf84efdd920dfe561335cac66a0e5548293a',
+ 'tasks/triton2triton/vllm/triton_scaled_mm/README.md': {'after_sha256': '2f723d1eea6493bae0e6016f0cfa2a1198165e9801923f4f2c5b4e94d2b4bc3b',
                                                          'before_sha256': '34668c3f22b9ef5977f6211907001f507699d04557808afd8fcf16d0e7e35c75',
                                                          'reverse_edits': [(46,
-                                                                            55,
+                                                                            60,
                                                                             ['\n',
                                                                              '\n',
-                                                                             '### Editable device '
-                                                                             'implementation boundary\n',
+                                                                             '### Editable device implementation boundary\n',
                                                                              '\n',
-                                                                             'The editable device functions '
-                                                                             'are `scaled_mm_kernel`.\n',
-                                                                             'Their bodies and additional '
-                                                                             'implementation helpers may be '
-                                                                             'optimized. Module\n',
-                                                                             'imports, initialization, host '
-                                                                             'dispatch and pointer '
-                                                                             'preparation remain '
+                                                                             'The editable device functions are `scaled_mm_kernel`.\n',
+                                                                             'Their bodies and additional implementation helpers may be optimized. '
+                                                                             'Module\n',
+                                                                             'imports, initialization, host dispatch and pointer preparation remain '
                                                                              'protected,\n',
-                                                                             'along with the existing '
-                                                                             'numerical checks and benchmark '
-                                                                             'protocol. The structural\n',
-                                                                             'guard enforces this boundary; '
-                                                                             'it does not isolate arbitrary '
-                                                                             'Python execution.\n'],
+                                                                             'along with the existing numerical checks and benchmark protocol. The '
+                                                                             'structural\n',
+                                                                             'guard enforces this boundary; it does not isolate arbitrary Python '
+                                                                             'execution.\n',
+                                                                             '\n',
+                                                                             'The protected wrapper also fixes the launch configuration: the grid and the '
+                                                                             'tile\n',
+                                                                             'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                             'above\n',
+                                                                             'that mention tuning those values refer to the original whole-file contract; '
+                                                                             'under\n',
+                                                                             'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                             'instead.\n'],
                                                                             [])]},
  'tasks/triton2triton/vllm/triton_scaled_mm/config.yaml': {'after_sha256': 'ac99a1b5b0cea20678b3fed86404b5fd0943e80cd6b9fed86562068156840f51',
                                                            'before_sha256': '0bd6449f5a1ca2e4f282e97a453f9ff7cf1f2f9137a621991943a66590a8e23f',
@@ -2653,105 +2578,50 @@ ATTENTION_SAMPLING_COVERAGE_FILES = {'tasks/triton2triton/vllm/triton_correct_at
                                                                                             '      "status": '
                                                                                             '"PASS"\n'],
                                                                                            [])]},
- 'tasks/triton2triton/vllm/triton_decode_attn_grouped_stage1/README.md': {'after_sha256': '90d757c895f403e857760fc4bd129ac04bf90dd30444ac359d959bffb0dcd9af',
+ 'tasks/triton2triton/vllm/triton_decode_attn_grouped_stage1/README.md': {'after_sha256': '590224708e13cad8fd5151373a4190332f02eec3b9286cf1ad8c31343e851ca8',
                                                                           'before_sha256': '0f2a551ce51340a3709600bc78d91b0acc2d2205c10756e4dfe45d5b6d380d7d',
-                                                                          'reverse_edits': [(98,
-                                                                                             113,
+                                                                          'reverse_edits': [(13,
+                                                                                             14,
+                                                                                             ['- Uses a grid of (batch, num_kv_heads * ceil(kv_group_num / BLOCK_H), '
+                                                                                              'num_kv_splits)\n'],
+                                                                                             ['- Uses a grid of (batch, ceil(num_heads / BLOCK_H), num_kv_splits)\n']),
+                                                                                            (98,
+                                                                                             118,
                                                                                              ['\n',
-                                                                                              '### Group '
-                                                                                              'boundaries '
-                                                                                              'crossing a '
-                                                                                              '16-head '
+                                                                                              'The protected wrapper also fixes the launch configuration: the grid and the '
                                                                                               'tile\n',
+                                                                                              'sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes '
+                                                                                              'above\n',
+                                                                                              'that mention tuning those values refer to the original whole-file contract; '
+                                                                                              'under\n',
+                                                                                              'this boundary, optimize the kernel bodies and implementation helpers '
+                                                                                              'instead.\n',
                                                                                               '\n',
-                                                                                              'Two '
-                                                                                              'additional '
-                                                                                              'correctness-only '
-                                                                                              'controls use '
-                                                                                              '2 KV heads '
-                                                                                              'with 34 or 48 '
-                                                                                              'query heads\n',
-                                                                                              '(group sizes '
-                                                                                              '17 and 24), '
-                                                                                              'ragged '
-                                                                                              'lengths 63/37 '
-                                                                                              'and '
-                                                                                              'nonidentity '
-                                                                                              'page routing. '
+                                                                                              '### Group boundaries crossing a 16-head tile\n',
+                                                                                              '\n',
+                                                                                              'Two additional correctness-only controls use 2 KV heads with 34 or 48 query '
+                                                                                              'heads\n',
+                                                                                              '(group sizes 17 and 24), ragged lengths 63/37 and nonidentity page routing. '
                                                                                               'The\n',
-                                                                                              'second also '
-                                                                                              'uses logit '
-                                                                                              'capping. They '
-                                                                                              'reuse the '
-                                                                                              'existing '
-                                                                                              'independent '
-                                                                                              'FP32 '
+                                                                                              'second also uses logit capping. They reuse the existing independent FP32 '
                                                                                               'reference,\n',
-                                                                                              'full '
-                                                                                              'active-output/unchanged '
-                                                                                              'inactive-slot '
-                                                                                              'checks and '
-                                                                                              'unscored '
-                                                                                              'graph '
+                                                                                              'full active-output/unchanged inactive-slot checks and unscored graph '
                                                                                               'replay.\n',
-                                                                                              'The launch '
-                                                                                              'grid assigns '
-                                                                                              '`ceil(group_size/16)` '
-                                                                                              'blocks to '
-                                                                                              'each KV head '
+                                                                                              'The launch grid assigns `ceil(group_size/16)` blocks to each KV head '
                                                                                               'independently;\n',
-                                                                                              'query-head '
-                                                                                              'offsets start '
-                                                                                              'at that KV '
-                                                                                              "group's base "
-                                                                                              'and the final '
-                                                                                              'block is '
+                                                                                              "query-head offsets start at that KV group's base and the final block is "
                                                                                               'masked at\n',
-                                                                                              'the group '
-                                                                                              'boundary. '
-                                                                                              'This prevents '
-                                                                                              'cross-group '
-                                                                                              'routing when '
-                                                                                              'a group needs '
-                                                                                              'a partial\n',
-                                                                                              'second block. '
-                                                                                              'The original '
-                                                                                              'group sizes '
-                                                                                              '1/4/8 have '
-                                                                                              'exactly the '
-                                                                                              'same launch '
+                                                                                              'the group boundary. This prevents cross-group routing when a group needs a '
+                                                                                              'partial\n',
+                                                                                              'second block. The original group sizes 1/4/8 have exactly the same launch '
                                                                                               'grid and\n',
-                                                                                              'head '
-                                                                                              'assignments '
-                                                                                              'as before. '
-                                                                                              'All original '
-                                                                                              'five scored '
-                                                                                              'cases and the '
-                                                                                              'three '
+                                                                                              'head assignments as before. All original five scored cases and the three '
                                                                                               'earlier\n',
-                                                                                              'controls '
-                                                                                              'remain, along '
-                                                                                              'with seeds, '
-                                                                                              'inputs, '
-                                                                                              'tolerances, '
-                                                                                              'ten warmups '
-                                                                                              'and 100 '
+                                                                                              'controls remain, along with seeds, inputs, tolerances, ten warmups and 100 '
                                                                                               'samples.\n',
-                                                                                              'No score '
-                                                                                              'weight or '
-                                                                                              'timing '
-                                                                                              'boundary '
-                                                                                              'changes. '
-                                                                                              'Kernel source '
-                                                                                              'changes '
-                                                                                              'require '
+                                                                                              'No score weight or timing boundary changes. Kernel source changes require '
                                                                                               'fresh\n',
-                                                                                              'baseline/candidate '
-                                                                                              'measurements; '
-                                                                                              'historical '
-                                                                                              'GPU '
-                                                                                              'qualification '
-                                                                                              'does not '
+                                                                                              'baseline/candidate measurements; historical GPU qualification does not '
                                                                                               'transfer.\n'],
                                                                                              [])]},
  'tasks/triton2triton/vllm/triton_decode_attn_grouped_stage1/source/_fwd_grouped_kernel_stage1.py': {'after_sha256': 'edd7803c83a25802b72386b774651218aedb6bdd6880d45f270ac4d49527ae12',

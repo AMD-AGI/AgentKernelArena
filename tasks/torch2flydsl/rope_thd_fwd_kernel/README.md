@@ -80,8 +80,8 @@ implementation restrictions apply to every helper: protected references,
 alternative final-language backends and dynamic implementation loading remain
 disallowed. Source symlinks, imports escaping the task and local modules shadowing
 the supported runtime libraries are rejected. Installed library source is not
-traversed. Existing candidate-only PyTorch preparation and per-call FlyDSL launch
-audits remain active outside timing. These checks enforce the task contract;
+traversed. The candidate-only PyTorch preparation and FlyDSL launch audits apply
+to these helpers too; the performance policy states how timed calls are checked. These checks enforce the task contract;
 they are not a Python security sandbox.
 
 ## Candidate execution policy during performance
@@ -107,3 +107,11 @@ evaluator's module registry, stack frames or profiling controls through `sys`,
 including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
 available, and installed FlyDSL library internals are not scanned as candidate
 code. Protected reference imports remain prohibited.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

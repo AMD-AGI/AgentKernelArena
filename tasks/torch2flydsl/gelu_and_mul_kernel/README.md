@@ -102,3 +102,11 @@ evaluator's module registry, stack frames or profiling controls through `sys`,
 including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
 available, and installed FlyDSL library internals are not scanned as candidate
 code. Protected reference imports remain prohibited.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

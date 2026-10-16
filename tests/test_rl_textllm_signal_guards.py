@@ -169,3 +169,28 @@ def test_real_performance_runner_rejects_omitted_work_on_current_draw_or_replay(
         assert all(row['execution_time_ms'] < 0 and 'mismatch' in row['error'] for row in rows)
     else:
         assert all(row['execution_time_ms'] == .125 and row['strong_signal_replay_checked'] for row in rows)
+
+
+@pytest.mark.parametrize('task', ['triton_ssd_chunk_scan'], indirect=True)
+def test_ssd_replay_keeps_the_timed_cb_amplitude(task, monkeypatch):
+    root, h, _ = task
+    from src.tools.perf.aka_benchmark import TimedRun
+    _cpu_cuda(monkeypatch)
+    seen = []
+    def candidate(cb, x, dt, dA_cumsum, C, states, cu, out, seq_idx):
+        seen.append(cb.clone())
+        out.copy_(h.reference_chunk_scan(cb, x, dt, dA_cumsum, C, states, seq_idx, dt.shape[-1]))
+    monkeypatch.setattr(h, 'load_module', lambda: SimpleNamespace(chunk_scan_fwd=candidate))
+    monkeypatch.setitem(sys.modules, '_aka_benchmark', SimpleNamespace(TimedRun=TimedRun))
+    def fake_timing(fn, *, warmup, repetition, timed_run):
+        output = fn()
+        timed_run._bind(fn, output)
+        return .125, {'benchmark_method': 'cuda_graph', 'cpu_fixture': True}
+    monkeypatch.setattr(h, '_benchmark_cuda_graph_or_events', fake_timing)
+    rows = h.run_performance()
+    assert all(row['strong_signal_replay_checked'] for row in rows)
+    # One timed call and one replay per scored shape; the replay perturbs x and
+    # states only, so cb keeps the single timed strong-signal amplification.
+    assert len(seen) == 2 * len(rows)
+    for timed_cb, replay_cb in zip(seen[::2], seen[1::2]):
+        assert torch.equal(timed_cb, replay_cb)

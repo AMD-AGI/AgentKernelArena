@@ -92,3 +92,11 @@ or profiling controls through sys, aliases or dynamic lookup. Ordinary sys
 metadata and installed FlyDSL library internals are unaffected. Existing
 backend/native-dispatch restrictions and any exact protected helper exceptions
 remain. These checks enforce the task contract, not a Python security sandbox.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

@@ -17,10 +17,12 @@ from triton_signal_migration_helpers import historical_manifest, original_ssd_dr
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = tuple(SCALES)
+# Pre-change revision of these runners; HEAD already contains the reviewed change.
+BASELINE = '099e44cf6deb74131d2cfc96a3a055949a2edbdc'
 
 
 def original_source(path):
-    return subprocess.check_output(['git', 'show', 'HEAD:' + path.relative_to(ROOT).as_posix()], cwd=ROOT, text=True)
+    return subprocess.check_output(['git', 'show', f'{BASELINE}:' + path.relative_to(ROOT).as_posix()], cwd=ROOT, text=True)
 
 
 @pytest.fixture(params=NAMES)

@@ -90,3 +90,12 @@ finite-value checks and atol=0.02/rtol=0.01 rule. They check caller input/config
 immutability, the identity of supplied output storage, and untouched padding in
 strided output. They do not add timed workloads or change the original nine
 performance shapes, warmups, samples, or aggregation.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy also applies to every candidate
+operator call made by canonical warmup, graph capture and event timing. A probe
+of the actual performance closure, outside clocks and capture, must observe a
+FlyDSL launch. `torch._scaled_mm`, the materialized timing helper and other
+protected modules are rejected statically. Baseline and reference calls keep
+their original policy, and device timing settings are unchanged.
