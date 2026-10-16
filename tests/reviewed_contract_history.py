@@ -195,10 +195,10 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                               'true\n'],
                                                                              ['  - '
                                                                               'source/triton_awq_gemm.py\n'])]},
- 'tasks/triton2triton/vllm/triton_bmm/README.md': {'after_sha256': 'c399129e5d8e76858ef276814664cf3133829b4eb47ff8f470e5eb73faccc1c1',
+ 'tasks/triton2triton/vllm/triton_bmm/README.md': {'after_sha256': 'c375293e91620c08c65ba24362db407cd12df59a11f7aa2db4d82c74048cb742',
                                                    'before_sha256': '688c9a2650e4e2ec1b3cf9a2e1a72c79c65ed8fe870e5e1cea5de9d4b5dceaa2',
                                                    'reverse_edits': [(41,
-                                                                      55,
+                                                                      90,
                                                                       ['\n',
                                                                        '\n',
                                                                        '### Editable device implementation boundary\n',
@@ -220,7 +220,60 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                        'that mention tuning those values refer to the original whole-file contract; '
                                                                        'under\n',
                                                                        'this boundary, optimize the kernel bodies and implementation helpers '
-                                                                       'instead.\n'],
+                                                                       'instead.\n',
+                                                                       '\n',
+                                                                       '\n',
+                                                                       '### Correctness-only domain controls\n',
+                                                                       '\n',
+                                                                       'The protected `bmm_triton` wrapper defines the public domain. It accepts '
+                                                                       'two\n',
+                                                                       '3-D tensors with matching batch and inner dimensions and one shared dtype:\n',
+                                                                       'float16, bfloat16 or float32, the only keys of its launch-configuration '
+                                                                       'table.\n',
+                                                                       'It forwards all six operand strides to the kernel without copying, so\n',
+                                                                       'transposed, offset, padded, element-strided and batch-broadcast (stride-0)\n',
+                                                                       'views are valid inputs. It always allocates a new contiguous `(B, M, N)` '
+                                                                       'output\n',
+                                                                       'of the input dtype on `a.device`; both operands must be on that GPU. '
+                                                                       'Zero-sized\n',
+                                                                       'dimensions and the int64 path for tensors over 2**31 elements are not '
+                                                                       'exercised.\n',
+                                                                       '\n',
+                                                                       'Eleven unscored `control-domain-*` rows (`case_index` 20000-20010, checks\n',
+                                                                       '`[correctness]`) come from the protected `_domain_controls.py` table; the\n',
+                                                                       'adapter verifies that table and these rows against `workloads.json`. They '
+                                                                       'cover\n',
+                                                                       'bfloat16 and float32 as well as float16, and B, M, N and K values that are '
+                                                                       'not\n',
+                                                                       'multiples of the wrapper tiles (128/128/32 for 16-bit dtypes, 64/64/32 for\n',
+                                                                       'float32), including `M = K = 1` and other small odd shapes. Operand '
+                                                                       'layouts\n',
+                                                                       'include transposed A, B or both, a batch-inner `(M, B, K).transpose(0, 1)` '
+                                                                       'view,\n',
+                                                                       'offset views of padded storage, element stride 2, batch stride 2 and a\n',
+                                                                       'batch-broadcast B. Padding and stride gaps hold a sentinel value, so a '
+                                                                       'read\n',
+                                                                       'outside a view changes the result.\n',
+                                                                       '\n',
+                                                                       'Each control draws seeded N(0, 1) inputs on the CPU. It computes an FP64 '
+                                                                       'CPU\n',
+                                                                       '`torch.bmm` reference from pristine clones before calling the candidate. '
+                                                                       'The\n',
+                                                                       'input views and their complete backing storage must be unchanged. The '
+                                                                       'output\n',
+                                                                       'must have the exact shape, dtype and device, contiguous `(M*N, N, 1)` '
+                                                                       'strides\n',
+                                                                       'and finite values, and match within `atol=rtol=1e-2` for every dtype. For\n',
+                                                                       'float16 this is the original gate. One bfloat16 ulp is at most 0.78% of a\n',
+                                                                       'value. Float32 keeps the bound that protected `_arena_checks.py` already '
+                                                                       'applies\n',
+                                                                       'to every call, including these controls; layout, tail and dtype defects '
+                                                                       'give\n',
+                                                                       'much larger errors at these magnitudes. The five scored float16 cases, '
+                                                                       'their\n',
+                                                                       'seeds, tolerances, warmups, samples and timing are unchanged, and no '
+                                                                       'control\n',
+                                                                       'is timed.\n'],
                                                                       [])]},
  'tasks/triton2triton/vllm/triton_bmm/config.yaml': {'after_sha256': '6e04236bbc34f35a60c1dcaaa47f218ac2e42d75a4cf85778240feaa8088462e',
                                                      'before_sha256': 'c7315e3dbb45c3e4e40f2d713e67b8071a14fd1c77d1f600bc047174b21d48c2',
@@ -471,10 +524,22 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                                 'true\n'],
                                                                                                ['  - '
                                                                                                 'source/_fwd_grouped_kernel_stage1.py\n'])]},
- 'tasks/triton2triton/vllm/triton_decode_attn_stage1/README.md': {'after_sha256': 'd8a6fa2fc3432053aa28a229a3700bdb96bee9bd26b63c167316cfadc05d8d0d',
+ 'tasks/triton2triton/vllm/triton_decode_attn_stage1/README.md': {'after_sha256': 'bf9984dd87ef182778e4063ee626cb1d740a41654593909bd2d8ba74b0428792',
                                                                   'before_sha256': '9e164b707e474647d6d64bd32612a5961b9cd4a405982c671cb320e6195f7578',
-                                                                  'reverse_edits': [(88,
-                                                                                     102,
+                                                                  'reverse_edits': [(28,
+                                                                                     29,
+                                                                                     ['- Must handle the input domain stated under "Supported input domain" '
+                                                                                      'below\n'],
+                                                                                     ['- Must handle arbitrary sequence lengths, head dimensions, and page '
+                                                                                      'sizes\n']),
+                                                                                    (62,
+                                                                                     63,
+                                                                                     ['The five original scored cases remain unchanged. The three '
+                                                                                      '`contract_case`\n'],
+                                                                                     ['The five original scored cases remain unchanged. Additional '
+                                                                                      'correctness-only\n']),
+                                                                                    (88,
+                                                                                     187,
                                                                                      ['\n',
                                                                                       '\n',
                                                                                       '### Editable device implementation boundary\n',
@@ -496,7 +561,140 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                       'that mention tuning those values refer to the original whole-file contract; '
                                                                                       'under\n',
                                                                                       'this boundary, optimize the kernel bodies and implementation helpers '
-                                                                                      'instead.\n'],
+                                                                                      'instead.\n',
+                                                                                      '\n',
+                                                                                      '### Supported input domain\n',
+                                                                                      '\n',
+                                                                                      'The protected wrapper launches one program per (request, query head, split), '
+                                                                                      'uses a\n',
+                                                                                      'fixed `BLOCK_N = 64` token tile, and pads the K and V head dimensions to the '
+                                                                                      'next\n',
+                                                                                      'power of two with masking. Within the limits below, a candidate must produce '
+                                                                                      'the\n',
+                                                                                      'correct partial output and log-sum-exp for every active split:\n',
+                                                                                      '\n',
+                                                                                      '- Sequence lengths: at least 1 token per request, chosen independently per '
+                                                                                      'request.\n',
+                                                                                      '  Lengths need not be multiples of the page size or of `BLOCK_N`. Request '
+                                                                                      '`b` uses\n',
+                                                                                      '  row `b` of `Req_to_tokens` and `B_Seqlen[b]`.\n',
+                                                                                      "- Page size: any positive integer. Entry `p` of a request's `Req_to_tokens` "
+                                                                                      'row is\n',
+                                                                                      "  the physical page that holds that request's tokens `p * page_size` "
+                                                                                      'through\n',
+                                                                                      '  `(p + 1) * page_size - 1`. The row needs at least `ceil(L / page_size)` '
+                                                                                      'entries,\n',
+                                                                                      '  and each referenced entry must be a valid page of `k_buffer`/`v_buffer`. '
+                                                                                      'Entries\n',
+                                                                                      "  after a request's last logical page, unreferenced pages, and slots past "
+                                                                                      'a\n',
+                                                                                      "  request's length in its final page must not affect the result.\n",
+                                                                                      '- Splits: any `num_kv_splits >= 1`. With `C = ceil(L / num_kv_splits)`, '
+                                                                                      'split `s`\n',
+                                                                                      '  covers tokens `[s * C, min(L, (s + 1) * C))`. A split with no tokens is '
+                                                                                      'inactive:\n',
+                                                                                      "  the kernel does not write its `att_out` slot, and the caller's bytes there "
+                                                                                      'must\n',
+                                                                                      '  remain unchanged.\n',
+                                                                                      '- Head dimensions: the Q/K head dimension `Lk` and the V head dimension `Lv` '
+                                                                                      'are\n',
+                                                                                      '  independent integers from 16 through 256. They need not be powers of two '
+                                                                                      'or\n',
+                                                                                      '  equal. `att_out` has shape `[batch, num_heads, num_kv_splits, Lv + 1]`. '
+                                                                                      'Head\n',
+                                                                                      '  dimensions outside 16-256 are outside this contract.\n',
+                                                                                      '- Heads: `num_heads` must be a multiple of `num_kv_heads`. Query head `h` '
+                                                                                      'reads KV\n',
+                                                                                      '  head `h // (num_heads // num_kv_heads)`.\n',
+                                                                                      '- Data: `q`, `k_buffer` and `v_buffer` share one dtype, float16 or '
+                                                                                      'bfloat16.\n',
+                                                                                      '  `att_out` is float32, and `Req_to_tokens` and `B_Seqlen` are int32. A\n',
+                                                                                      '  `logit_cap` of 0 disables capping; a positive value applies\n',
+                                                                                      '  `logit_cap * tanh(logits / logit_cap)` before softmax.\n',
+                                                                                      '- Layout: the last dimension of `q`, `k_buffer`, `v_buffer`, `att_out` and\n',
+                                                                                      '  `Req_to_tokens` has stride 1, and `B_Seqlen` is contiguous. Each tensor '
+                                                                                      'must\n',
+                                                                                      '  hold fewer than 2^31 elements, because the kernel computes element offsets '
+                                                                                      'in\n',
+                                                                                      '  32-bit integers.\n',
+                                                                                      '\n',
+                                                                                      '### Domain controls\n',
+                                                                                      '\n',
+                                                                                      'Seven correctness-only `control-domain-*` rows (case indices 20000-20006) '
+                                                                                      'sample\n',
+                                                                                      'this domain beyond the scored cases and earlier controls. The protected\n',
+                                                                                      '`_domain_controls.py` holds their generator and oracle. `_arena_eval.py` '
+                                                                                      'checks its\n',
+                                                                                      "`CASES` table against the manifest's `domain_controls` list and the exact "
+                                                                                      'rows,\n',
+                                                                                      'and `scripts/task_runner.py` dispatches case indices of 20000 and above to '
+                                                                                      'it.\n',
+                                                                                      '\n',
+                                                                                      '| Control | Lk / Lv | Page size | Splits | Lengths | Q / KV heads | Dtype, '
+                                                                                      'cap |\n',
+                                                                                      '|---|---|---|---|---|---|---|\n',
+                                                                                      '| `page1_hd16_short_inactive` | 16 / 16 | 1 | 4 | 1, 2, 5, 70 | 4 / 4 | '
+                                                                                      'fp16, 0 |\n',
+                                                                                      '| `page3_hd96_group3` | 96 / 96 | 3 | 3 | 100, 7, 64 | 6 / 2 | fp16, 0 |\n',
+                                                                                      '| `page48_hd32_mqa_one_split_capped` | 32 / 32 | 48 | 1 | 129, 47, 48 | 8 / '
+                                                                                      '1 | fp16, 1.0 |\n',
+                                                                                      '| `page128_k192_v128` | 192 / 128 | 128 | 2 | 300, 129 | 4 / 2 | fp16, 0 |\n',
+                                                                                      '| `page64_k80_v256` | 80 / 256 | 64 | 4 | 65, 191 | 2 / 1 | fp16, 0 |\n',
+                                                                                      '| `long_page16_splits16` | 128 / 128 | 16 | 16 | 7999, 4099 | 8 / 2 | fp16, '
+                                                                                      '0 |\n',
+                                                                                      '| `bf16_page5_hd112_splits7_capped` | 112 / 112 | 5 | 7 | 1, 33, 257 | 4 / 1 '
+                                                                                      '| bf16, 2.5 |\n',
+                                                                                      '\n',
+                                                                                      'Together with the scored cases and earlier controls, the checked points are '
+                                                                                      'head\n',
+                                                                                      'dimensions 16, 32, 64, 80, 96, 112, 128, 192 and 256 (with `Lk` both larger '
+                                                                                      'and\n',
+                                                                                      'smaller than `Lv`), page sizes 1, 3, 5, 8, 16, 32, 48, 64 and 128, split '
+                                                                                      'counts 1,\n',
+                                                                                      '2, 3, 4, 5, 7, 8 and 16, and lengths from 1 to 7999 tokens.\n',
+                                                                                      '\n',
+                                                                                      'Each domain control works as follows:\n',
+                                                                                      '\n',
+                                                                                      '- Pages: a seeded random permutation assigns physical pages. Table padding '
+                                                                                      'entries\n',
+                                                                                      '  point to unused decoy pages. Every K/V slot that no active position '
+                                                                                      'references\n',
+                                                                                      '  holds V = 32, so attending to such a slot changes the result.\n',
+                                                                                      '- Oracle: before each call, an independent FP64 CPU oracle is computed '
+                                                                                      'from\n',
+                                                                                      '  pristine clones. The call also goes through the installed correctness '
+                                                                                      'guard\n',
+                                                                                      '  used by the other controls: the Triton dispatch audit and its FP32 '
+                                                                                      'reference\n',
+                                                                                      "  (the original harness reference without a cap, the guard's capped "
+                                                                                      'reference\n',
+                                                                                      '  otherwise).\n',
+                                                                                      '- Outputs: every active output element is poisoned with NaN and every '
+                                                                                      'inactive\n',
+                                                                                      '  split slot is filled with 23.5. After the call, active elements must be '
+                                                                                      'finite\n',
+                                                                                      '  and match the oracle within atol = rtol = 0.01, and inactive slots must '
+                                                                                      'be\n',
+                                                                                      '  byte-identical.\n',
+                                                                                      '- Inputs: any change to the bytes or metadata of `q`, `k_buffer`, '
+                                                                                      '`v_buffer`,\n',
+                                                                                      '  `Req_to_tokens` or `B_Seqlen` is rejected, as is any change to the '
+                                                                                      'shape,\n',
+                                                                                      '  stride, dtype, device or storage of `att_out`.\n',
+                                                                                      '- Second call: the wrapper runs again on the same tensors, with lengths '
+                                                                                      'rotated\n',
+                                                                                      '  across requests and all data and the page permutation redrawn from the '
+                                                                                      'second\n',
+                                                                                      '  declared seed.\n',
+                                                                                      '\n',
+                                                                                      'On CPU, `validate-task` also checks that the FP64 oracle matches the '
+                                                                                      'original\n',
+                                                                                      'harness reference for uncapped controls, and that it rejects zero output,\n',
+                                                                                      'uncapped logits and shifted page routing. These rows have no graph replay '
+                                                                                      'or\n',
+                                                                                      'timing. The performance action still runs only `perf1`-`perf5`, and no '
+                                                                                      'score\n',
+                                                                                      'weight, tolerance, warmup, sample count or timing boundary changes.\n'],
                                                                                      [])]},
  'tasks/triton2triton/vllm/triton_decode_attn_stage1/config.yaml': {'after_sha256': 'c69bd6c3c573230c1358f6fb000a3ea82a56510fd921d5b5209e454fee63f684',
                                                                     'before_sha256': '793e6e10b6227e67ce8d50ca18f88ca87deb888631af904c5a4998bfea6768ba',
@@ -1387,10 +1585,16 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                            '    - _triton_mrope_forward\n',
                                                                            '    allow_new_helpers: true\n'],
                                                                           ['  - source/triton_mrope.py\n'])]},
- 'tasks/triton2triton/vllm/triton_paged_prefix_prefill/README.md': {'after_sha256': '04c7381cb64d20732487b04e819459190725d21c538a337a476eb7390eb9437d',
+ 'tasks/triton2triton/vllm/triton_paged_prefix_prefill/README.md': {'after_sha256': '91f48bc2f53f36373d1b66a21a1ba325d8bd702c0e790a496d27638736d801f5',
                                                                     'before_sha256': '9b9f0668b7673c7acf3d85d6cb9724a850e6da0da039499e88a45960b62e1adb',
-                                                                    'reverse_edits': [(92,
-                                                                                       106,
+                                                                    'reverse_edits': [(33,
+                                                                                       34,
+                                                                                       ['- Must handle the wrapper\'s full "Supported input domain" below, not only '
+                                                                                        'the scored shapes\n'],
+                                                                                       ['- Must handle arbitrary context lengths, query lengths, and head '
+                                                                                        'dimensions\n']),
+                                                                                      (92,
+                                                                                       160,
                                                                                        ['\n',
                                                                                         '\n',
                                                                                         '### Editable device implementation boundary\n',
@@ -1412,7 +1616,92 @@ TRITON_DEVICE_BOUNDARY_FILES = {'tasks/triton2triton/vllm/triton_apply_grammar_b
                                                                                         'that mention tuning those values refer to the original whole-file contract; '
                                                                                         'under\n',
                                                                                         'this boundary, optimize the kernel bodies and implementation helpers '
-                                                                                        'instead.\n'],
+                                                                                        'instead.\n',
+                                                                                        '\n',
+                                                                                        '\n',
+                                                                                        '### Supported input domain\n',
+                                                                                        '\n',
+                                                                                        'The protected `context_attention_fwd` launch defines the inputs the kernel '
+                                                                                        'must\n',
+                                                                                        'handle. The scored rows sample only part of this domain:\n',
+                                                                                        '\n',
+                                                                                        "- Data: float16 `q`, `k`, `v`, caches and output in the harness's "
+                                                                                        'contiguous\n',
+                                                                                        '  layouts; int32 page table, start locations and sequence lengths. The 5D '
+                                                                                        'K\n',
+                                                                                        '  cache uses vector width x = 8 (16 bytes).\n',
+                                                                                        '- Head dimension: a multiple of 8 from 16 through 128. The wrapper pads it '
+                                                                                        'to\n',
+                                                                                        '  the next power of two (`BLOCK_DMODEL_PADDED`) and the kernel masks the '
+                                                                                        'padded\n',
+                                                                                        '  lanes, so non-power-of-two sizes such as 24, 80, 96 and 112 are '
+                                                                                        'included.\n',
+                                                                                        '  Head dimensions below 16 or above 128 are outside the evaluated contract; '
+                                                                                        'the\n',
+                                                                                        '  fixed launch configuration has not been qualified for them.\n',
+                                                                                        '- Heads: `num_heads` is a multiple of `num_kv_heads` (MHA, GQA with any '
+                                                                                        'integer\n',
+                                                                                        '  group size, or MQA).\n',
+                                                                                        '- Physical page size: any positive size. Power-of-two pages launch\n',
+                                                                                        '  `BLOCK_M=128, BLOCK_N=64`; other sizes launch `BLOCK_M=BLOCK_N=32`. '
+                                                                                        'Context is\n',
+                                                                                        '  read in 32-token tiles, so a page may be smaller or larger than a tile. '
+                                                                                        'The\n',
+                                                                                        '  page table may map logical pages to any physical pages and needs at '
+                                                                                        'least\n',
+                                                                                        '  `ceil(context_length / page_size)` entries per sequence.\n',
+                                                                                        '- Lengths: per sequence, a context length >= 0 and a query length >= 0 '
+                                                                                        '(empty\n',
+                                                                                        '  query segments and single-token queries included), with\n',
+                                                                                        '  `b_seq_len = context + query` and `max_input_len` at least the largest '
+                                                                                        'query\n',
+                                                                                        '  length. Lengths need not be multiples of the context tile, the query tiles '
+                                                                                        'or\n',
+                                                                                        '  the page size.\n',
+                                                                                        '- Scale and window: `sm_scale` omitted (`1/sqrt(head_dim)`) or any '
+                                                                                        'explicit\n',
+                                                                                        '  value; `sliding_window` omitted or <= 0 (disabled), or any positive '
+                                                                                        'width,\n',
+                                                                                        '  including widths longer than the sequence.\n',
+                                                                                        '\n',
+                                                                                        'Seven further correctness-only rows sample this domain beyond the original\n',
+                                                                                        'cases and controls. Their declarations live in the protected\n',
+                                                                                        '`_domain_controls.py`, which `_arena_checks.py` merges into the same '
+                                                                                        'control\n',
+                                                                                        'table. They therefore use the same manifest binding and public-wrapper '
+                                                                                        'checks\n',
+                                                                                        'described above: the FP32 oracle computed from pristine inputs, which '
+                                                                                        'rebuilds\n',
+                                                                                        'context from the actual cache bytes through the page table; read-only input '
+                                                                                        'and\n',
+                                                                                        'metadata checks; full-output 0.01 gates; and the unscored captured-replay\n',
+                                                                                        'diagnostic. Each row uses a non-identity page table, finite data in unused '
+                                                                                        'pages\n',
+                                                                                        'and page tails, and an explicit nondefault scale. No row is scored or timed '
+                                                                                        'in\n',
+                                                                                        'the performance action.\n',
+                                                                                        '\n',
+                                                                                        '| Control | head_dim | Page | Tiles M/N | Heads q/kv | Context lengths | '
+                                                                                        'Query lengths | Scale | Window |\n',
+                                                                                        '| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n',
+                                                                                        '| `domain_hd80_page8_two_m_tiles` | 80 | 8 | 128/64 | 8/2 | 0, 33, 130 | '
+                                                                                        '129, 1, 17 | 0.07 | none |\n',
+                                                                                        '| `domain_hd96_page64_mqa_window` | 96 | 64 | 128/64 | 4/1 | 95, 64, 1 | 70, '
+                                                                                        '64, 2 | 0.25 | 40 |\n',
+                                                                                        '| `domain_hd112_page12_gqa3_window` | 112 | 12 | 32/32 | 6/2 | 47, 0, 25 | '
+                                                                                        '33, 31, 1 | 0.06 | 3 |\n',
+                                                                                        '| `domain_hd24_page40_wide_window` | 24 | 40 | 32/32 | 8/8 | 300, 81 | 65, '
+                                                                                        '96 | 0.3 | 4096 |\n',
+                                                                                        '| `domain_hd16_page16_empty_query` | 16 | 16 | 128/64 | 2/1 | 5, 200, 31 | '
+                                                                                        '0, 3, 40 | 0.5 | none |\n',
+                                                                                        '| `domain_hd128_page32_long_ragged` | 128 | 32 | 128/64 | 8/4 | 257, 0, 513 '
+                                                                                        '| 255, 7, 1 | 0.05 | none |\n',
+                                                                                        '| `domain_hd32_page128_window` | 32 | 128 | 128/64 | 4/4 | 1, 129 | 128, 63 '
+                                                                                        '| 0.1 | 16 |\n',
+                                                                                        '\n',
+                                                                                        'The default scale remains covered by the scored rows with head dimensions '
+                                                                                        '64\n',
+                                                                                        'and 128. These rows sample the domain; they do not enumerate it.\n'],
                                                                                        [])]},
  'tasks/triton2triton/vllm/triton_paged_prefix_prefill/config.yaml': {'after_sha256': '7cc272bea549b0eca3fdf675b9a0654e6870167a0bfedc966fd518518d8b097a',
                                                                       'before_sha256': '6140359155f3f66e00bb28378ae9675f04b48a3c51a1ab21ff546d5b963a8269',
@@ -2578,15 +2867,42 @@ ATTENTION_SAMPLING_COVERAGE_FILES = {'tasks/triton2triton/vllm/triton_correct_at
                                                                                             '      "status": '
                                                                                             '"PASS"\n'],
                                                                                            [])]},
- 'tasks/triton2triton/vllm/triton_decode_attn_grouped_stage1/README.md': {'after_sha256': '590224708e13cad8fd5151373a4190332f02eec3b9286cf1ad8c31343e851ca8',
+ 'tasks/triton2triton/vllm/triton_decode_attn_grouped_stage1/README.md': {'after_sha256': '2cf4c9422ca383f9a7a89bb781ddc897f299d2c389bd3308b177845beb367a7e',
                                                                           'before_sha256': '0f2a551ce51340a3709600bc78d91b0acc2d2205c10756e4dfe45d5b6d380d7d',
-                                                                          'reverse_edits': [(13,
-                                                                                             14,
-                                                                                             ['- Uses a grid of (batch, num_kv_heads * ceil(kv_group_num / BLOCK_H), '
-                                                                                              'num_kv_splits)\n'],
-                                                                                             ['- Uses a grid of (batch, ceil(num_heads / BLOCK_H), num_kv_splits)\n']),
-                                                                                            (98,
-                                                                                             118,
+                                                                          'reverse_edits': [(12,
+                                                                                             18,
+                                                                                             ['head are processed together in tiles of BLOCK_H=16 heads:\n',
+                                                                                              '- Uses a grid of (batch, num_kv_heads * ceil(kv_group_num / BLOCK_H), '
+                                                                                              'num_kv_splits)\n',
+                                                                                              '- Each program loads up to BLOCK_H Q vectors of one KV group and computes\n',
+                                                                                              "  attention against that shared KV head; a group's last tile is masked at "
+                                                                                              'the\n',
+                                                                                              '  group boundary\n',
+                                                                                              '- Reads K/V from a paged KV cache through the Req_to_tokens logical-page '
+                                                                                              'table\n'],
+                                                                                             ['head are processed together using BLOCK_H:\n',
+                                                                                              '- Uses a grid of (batch, ceil(num_heads / BLOCK_H), num_kv_splits)\n',
+                                                                                              '- Each program loads BLOCK_H Q vectors and computes attention against\n',
+                                                                                              '  the shared KV head\n',
+                                                                                              '- Reads K/V from a paged KV cache via Req_to_tokens mapping\n']),
+                                                                                            (19,
+                                                                                             22,
+                                                                                             ['- The kernel body keeps the upstream optional positional-encoding split\n',
+                                                                                              '  (BLOCK_DPE, used upstream for DeepSeek MLA), but the protected wrapper '
+                                                                                              'always\n',
+                                                                                              '  launches with BLOCK_DPE=0, so that branch is unreachable through this '
+                                                                                              'contract\n'],
+                                                                                             ['- Supports optional positional encoding (BLOCK_DPE) for architectures like\n',
+                                                                                              '  DeepSeek MLA\n']),
+                                                                                            (34,
+                                                                                             36,
+                                                                                             ['- Must be correct over the input domain listed under "Supported input '
+                                                                                              'domain"\n',
+                                                                                              '  below\n'],
+                                                                                             ['- Must handle arbitrary sequence lengths, head dimensions, page sizes,\n',
+                                                                                              '  and group sizes\n']),
+                                                                                            (100,
+                                                                                             174,
                                                                                              ['\n',
                                                                                               'The protected wrapper also fixes the launch configuration: the grid and the '
                                                                                               'tile\n',
@@ -2622,7 +2938,104 @@ ATTENTION_SAMPLING_COVERAGE_FILES = {'tasks/triton2triton/vllm/triton_correct_at
                                                                                               'No score weight or timing boundary changes. Kernel source changes require '
                                                                                               'fresh\n',
                                                                                               'baseline/candidate measurements; historical GPU qualification does not '
-                                                                                              'transfer.\n'],
+                                                                                              'transfer.\n',
+                                                                                              '\n',
+                                                                                              '### Supported input domain\n',
+                                                                                              '\n',
+                                                                                              'The protected wrapper fixes BLOCK_N=32, BLOCK_H=16, BLOCK_DPE=0, '
+                                                                                              '`num_warps=4`\n',
+                                                                                              'and `num_stages=2`, and derives every other launch value from its '
+                                                                                              'arguments.\n',
+                                                                                              'The kernel must be correct over this domain:\n',
+                                                                                              '\n',
+                                                                                              '| Input | Contract in the protected wrapper and kernel | Checked values '
+                                                                                              '(scored cases and controls) |\n',
+                                                                                              '| --- | --- | --- |\n',
+                                                                                              "| Head widths | Lk is `k_buffer.shape[-1]` (and q's last dimension), Lv is "
+                                                                                              '`v_buffer.shape[-1]`, and they may differ. `att_out` has Lv + 1 entries per '
+                                                                                              'slot. Each width is padded to one next-power-of-two tile and masked; there '
+                                                                                              'is no positional-encoding split. | Lk/Lv 16/16, 40/72, 64/64, 80/80, 96/64, '
+                                                                                              '128/128, 256/256 |\n',
+                                                                                              '| Query and KV heads | `num_heads` must be a multiple of `num_kv_heads`. '
+                                                                                              '`kv_group_num = num_heads // num_kv_heads`, and query head h reads KV head '
+                                                                                              '`h // kv_group_num`. Each KV head gets `ceil(kv_group_num / 16)` head tiles. '
+                                                                                              'With an indivisible head count the trailing query heads are never written. | '
+                                                                                              'groups 1, 3, 4, 5, 7, 8, 12, 16, 17, 24, 33; KV heads 1, 2, 3, 4, 8 |\n',
+                                                                                              '| Page size | Any positive integer. Position p of request b reads physical '
+                                                                                              'page `Req_to_tokens[b, p // page_size]` at offset `p % page_size`. | 1, 2, '
+                                                                                              '3, 5, 12, 16, 32, 64 |\n',
+                                                                                              '| KV splits | Any positive integer. With length L and S splits, split s '
+                                                                                              'covers `[s*ceil(L/S), min((s+1)*ceil(L/S), L))`. Splits starting at or after '
+                                                                                              'L are inactive and their slots are left untouched. | 1 through 8 |\n',
+                                                                                              '| Sequence lengths | Per request, `1 <= b_seqlen[b] <= page_size * table '
+                                                                                              'columns`. Lengths need not be multiples of the page size or of BLOCK_N. | 1 '
+                                                                                              'to 512, including 1, 2, 3, 7, 21, 31, 33, 37, 45, 53, 63, 70, 77, 100 and '
+                                                                                              '130 |\n',
+                                                                                              '| Data types and layout | The task uses float16 q, `k_buffer` and '
+                                                                                              '`v_buffer`, float32 `att_out`, and int32 `Req_to_tokens` and `B_Seqlen`. The '
+                                                                                              'kernel addresses the last dimension of every tensor with unit stride and '
+                                                                                              'receives the other strides from the wrapper. | contiguous generator layouts '
+                                                                                              '|\n',
+                                                                                              '\n',
+                                                                                              'Outside the checked domain: widths whose padded tile is narrower than 16 '
+                                                                                              'or\n',
+                                                                                              "wider than 256 (for example MLA's 576/512 widths, which upstream splits "
+                                                                                              'with\n',
+                                                                                              'BLOCK_DPE), other data types, and zero-length requests (the kernel writes '
+                                                                                              'none\n',
+                                                                                              "of that request's slots).\n",
+                                                                                              '\n',
+                                                                                              '### Domain controls\n',
+                                                                                              '\n',
+                                                                                              'Seven further correctness-only controls cover that domain beyond the cases\n',
+                                                                                              'above:\n',
+                                                                                              '\n',
+                                                                                              '| Control | Batch | Q/KV heads (group) | Lk/Lv | Page | Splits | Lengths | '
+                                                                                              'Cap | Covers |\n',
+                                                                                              '| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n',
+                                                                                              '| `domain_group1_page1` | 2 | 3/3 (1) | 64/64 | 1 | 3 | 45, 7 | 0 | MHA with '
+                                                                                              'an odd head count, one-token pages, partial tile |\n',
+                                                                                              '| `domain_group3_page5_dim80` | 2 | 6/2 (3) | 80/80 | 5 | 2 | 53, 21 | 1.5 | '
+                                                                                              'non-power-of-two width, odd page size, capping |\n',
+                                                                                              '| `domain_group5_page3_k96_v64` | 2 | 15/3 (5) | 96/64 | 3 | 5 | 70, 3 | 0 | '
+                                                                                              'Lk > Lv, three KV heads, inactive splits |\n',
+                                                                                              '| `domain_group7_page64_dim256` | 2 | 14/2 (7) | 256/256 | 64 | 1 | 100, 33 '
+                                                                                              '| 0 | widest tile, page larger than BLOCK_N, one split |\n',
+                                                                                              '| `domain_group33_page12_k40_v72` | 2 | 66/2 (33) | 40/72 | 12 | 6 | 77, 1 | '
+                                                                                              '2.5 | three head tiles per group, Lk < Lv, length 1 |\n',
+                                                                                              '| `domain_mqa_group12_page2_dim16` | 3 | 12/1 (12) | 16/16 | 2 | 4 | 31, 64, '
+                                                                                              '2 | 0 | MQA, narrowest tile, three requests |\n',
+                                                                                              '| `domain_group16_page16_dim128` | 2 | 32/2 (16) | 128/128 | 16 | 7 | 130, '
+                                                                                              '40 | 1.5 | group exactly filling one tile, seven splits |\n',
+                                                                                              '\n',
+                                                                                              'Each control draws q, K and V from a seeded CPU generator, so every device '
+                                                                                              'sees\n',
+                                                                                              'the same bytes. Each request routes through a seeded permutation of '
+                                                                                              'physical\n',
+                                                                                              'pages; the table has one spare column, and one physical page is never\n',
+                                                                                              'referenced. `att_out` starts at the finite sentinel 23.5. The protected\n',
+                                                                                              '`_arena_domain_controls.py` declares the table, the generator and the '
+                                                                                              'oracle,\n',
+                                                                                              'and the adapter checks the manifest rows against that table.\n',
+                                                                                              '\n',
+                                                                                              'The oracle is an independent float64 evaluation of the pristine input '
+                                                                                              'clones\n',
+                                                                                              'taken before the candidate call. Per request it gathers tokens through the '
+                                                                                              'page\n',
+                                                                                              'table, maps query head h to KV head `h // kv_group_num`, and computes each\n',
+                                                                                              "split's logsumexp and softmax-weighted values, applying `cap * tanh(x / "
+                                                                                              'cap)`\n',
+                                                                                              'before softmax when the cap is positive. The controls reuse every check of '
+                                                                                              'the\n',
+                                                                                              'earlier controls: the launch audit; NaN poisoning of every active output\n',
+                                                                                              'element; read-only input, metadata and alias checks; byte-exact inactive '
+                                                                                              'slots;\n',
+                                                                                              'finite outputs within atol = rtol = 0.01; and the unscored '
+                                                                                              '10-warmup/100-sample\n',
+                                                                                              'graph replay with perturbed inputs. Each control declares only '
+                                                                                              '`correctness`. The performance action, the five\n',
+                                                                                              'scored cases and their inputs, tolerances, warmups, samples and timing are\n',
+                                                                                              'unchanged.\n'],
                                                                                              [])]},
  'tasks/triton2triton/vllm/triton_decode_attn_grouped_stage1/source/_fwd_grouped_kernel_stage1.py': {'after_sha256': 'edd7803c83a25802b72386b774651218aedb6bdd6880d45f270ac4d49527ae12',
                                                                                                      'before_sha256': '3f0d728ac011a7b9bd5eee1ae9d3eb69ef1ad91367918c4660c05a743cac7e4f',

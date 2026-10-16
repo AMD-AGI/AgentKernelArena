@@ -644,6 +644,149 @@ _REVIEWED_SEMANTIC_BOUNDARIES = {'torch2flydsl/smoothquant_kernel': {'before_sha
                                                                          'activation': 'gelu_tanh',
                                                                          'provided_out': True},
                                                               'checks': ['correctness']}]}}
+# Reviewed head_first/varlen correctness-only controls (unscored).
+_REVIEWED_SEMANTIC_BOUNDARIES['triton2flydsl/sglang/chunk_local_cumsum'] = {'added_cases': [{'checks': ['correctness'],
+                  'params': {'B': 2,
+                             'H': 3,
+                             'T': 200,
+                             'chunk_indices': None,
+                             'cu_seqlens_dtype': None,
+                             'head_first': True,
+                             'ndim': 3,
+                             'reverse': False,
+                             'scale': None,
+                             'seed': 1001,
+                             'seq_lens': None},
+                  'test_case_id': 'control_head_first_scalar'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 1,
+                             'H': 5,
+                             'T': 129,
+                             'chunk_indices': None,
+                             'cu_seqlens_dtype': None,
+                             'head_first': True,
+                             'ndim': 3,
+                             'reverse': True,
+                             'scale': 0.5,
+                             'seed': 1002,
+                             'seq_lens': None},
+                  'test_case_id': 'control_head_first_scalar_reverse_scale'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 2,
+                             'H': 2,
+                             'S': 24,
+                             'T': 100,
+                             'chunk_indices': None,
+                             'cu_seqlens_dtype': None,
+                             'head_first': True,
+                             'ndim': 4,
+                             'reverse': True,
+                             'scale': None,
+                             'seed': 1003,
+                             'seq_lens': None},
+                  'test_case_id': 'control_head_first_vector'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 1,
+                             'H': 4,
+                             'T': 301,
+                             'chunk_indices': 'omitted',
+                             'cu_seqlens_dtype': 'int32',
+                             'head_first': False,
+                             'ndim': 3,
+                             'reverse': False,
+                             'scale': None,
+                             'seed': 1004,
+                             'seq_lens': [1, 64, 100, 129, 7]},
+                  'test_case_id': 'control_varlen_scalar'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 1,
+                             'H': 3,
+                             'T': 269,
+                             'chunk_indices': 'supplied',
+                             'cu_seqlens_dtype': 'int32',
+                             'head_first': False,
+                             'ndim': 3,
+                             'reverse': True,
+                             'scale': 0.5,
+                             'seed': 1005,
+                             'seq_lens': [65, 1, 200, 3]},
+                  'test_case_id': 'control_varlen_scalar_chunk_indices'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 1,
+                             'H': 2,
+                             'S': 40,
+                             'T': 232,
+                             'chunk_indices': 'omitted',
+                             'cu_seqlens_dtype': 'int64',
+                             'head_first': False,
+                             'ndim': 4,
+                             'reverse': False,
+                             'scale': 0.5,
+                             'seed': 1006,
+                             'seq_lens': [70, 1, 128, 33]},
+                  'test_case_id': 'control_varlen_vector'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 1,
+                             'H': 3,
+                             'S': 16,
+                             'T': 193,
+                             'chunk_indices': 'supplied',
+                             'cu_seqlens_dtype': 'int64',
+                             'head_first': False,
+                             'ndim': 4,
+                             'reverse': True,
+                             'scale': None,
+                             'seed': 1007,
+                             'seq_lens': [1, 63, 64, 65]},
+                  'test_case_id': 'control_varlen_vector_chunk_indices'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 1,
+                             'H': 4,
+                             'T': 150,
+                             'chunk_indices': 'omitted',
+                             'cu_seqlens_dtype': 'int32',
+                             'head_first': True,
+                             'ndim': 3,
+                             'reverse': False,
+                             'scale': None,
+                             'seed': 1008,
+                             'seq_lens': [150]},
+                  'test_case_id': 'control_head_first_varlen_scalar'},
+                 {'checks': ['correctness'],
+                  'params': {'B': 1,
+                             'H': 2,
+                             'S': 8,
+                             'T': 97,
+                             'chunk_indices': 'supplied',
+                             'cu_seqlens_dtype': 'int64',
+                             'head_first': True,
+                             'ndim': 4,
+                             'reverse': True,
+                             'scale': 0.5,
+                             'seed': 1009,
+                             'seq_lens': [97]},
+                  'test_case_id': 'control_head_first_varlen_vector'}],
+ 'after_sha256': '1c575afc55009d0d704870fd5bb2844454e21c4c75c128f82ad777c1e8b57bb0',
+ 'before_sha256': '04781b26d152fdda0e3681210b3aab70e038ddbeeff96005801d1fa9fe2f4c48',
+ 'helper_sha256': '0a9c63b395943460bffdc9a633a03797e77dba3112970cc7f62798a6fde3721d',
+ 'old_case_count': 10,
+ 'old_cases_sha256': 'f06d826f4ed0066f3b481d8218e2b81532ca7ca82b35fa7645987894bcc63f59',
+ 'reverse_edits': [('(scalar 3D path + vector 4D path). The ten scored cases use the regular\n'
+                    '[B,T,H(,S)] layout without cu_seqlens. Untimed correctness-only controls in\n'
+                    'scripts/semantic_controls.py also call head_first=True and varlen\n'
+                    'cu_seqlens/chunk_indices variants against an independent FP64 reference.\n',
+                    '(scalar 3D path + vector 4D path). Exercises the regular (non-varlen) path;\n'
+                    'the per-chunk math is identical to the varlen branch, only offsets differ.\n'),
+                   ('    from scripts.semantic_controls import run_controls\n'
+                    '    try:\n'
+                    '        details.extend(run_controls(mod.chunk_local_cumsum, '
+                    '_compare_sglang_output,\n'
+                    '                                    require_unchanged, '
+                    'start_shape_id=len(details) + 1))\n'
+                    '    except Exception as error:\n'
+                    '        return False, f"Head-first/varlen semantic control: {error}", '
+                    'details\n',
+                    '')]}
 
 
 # The canonical Model's zero-row rule predates the semantic controls. This
@@ -1180,8 +1323,9 @@ def test_triton_manifest_covers_every_original_variant():
         counts[0]+=len(historical_rows);counts[1]+=len(actions.PERFORMANCE_IDS)
         for row in rows:
             assert "correctness" in row["checks"]
-    assert counts==[601,363]  # +2 GDN/+4 activation controls; scored identities unchanged
-    assert current_counts==[605,363]  # Four new Gemm API controls are correctness-only.
+    # +2 GDN/+4 activation/+9 cumsum head_first/varlen controls; scored identities unchanged.
+    assert counts==[610,363]
+    assert current_counts==[614,363]  # Four new Gemm API controls are correctness-only.
     def variants(name,key):
         rows=json.loads((ROOT/"tasks/triton2flydsl/aiter"/name/"cases.json").read_text())["cases"]
         return {r["params"][key] for r in rows}
@@ -5196,7 +5340,8 @@ def test_sglang_elementwise_original_inputs_seeds_references_gates_and_timing():
     hashes = {'gdn_l2norm_fwd': {'load_module': 'c36c53e82ca1a8838919c427b1a370d2ef0438789a451e3a3df7c2e0f5c6df0a', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_x': '43a8c24b405e3c222c5d716f8a4c7d8fd8a736f98935914f8b66c2f497be37c8', 'reference_l2norm': 'e84d9abe9ec04b64a76502104c61db81b66aa1a2c972fe14dd759b28ba0dbb01', 'run_compile': '0b48af5b7f311fb4f4219c09fee8175b1becb7715f1ba47e0ada836dfc6969d0', 'run_correctness': '67db83bf8dc83a9cff2faad8dba9d710e575dc6bd973e7e558bcd6ab0093ba97', 'run_performance': 'b2f5193d24a348ef8517fdbaaf6f8d1c6a4ed689daec1f508b6972e77b2fa886', 'main': 'f71a0eca447c73e79099d35ccf944d04173587ec5c41a316b6245efb0b6fca4f'}, 'fused_norm_gate': {'load_module': '6c0eaa337759666cb08631be7de786cad7efd062fa04f0e064d89fdc985fc30a', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_test_data': '69948fb1e87722247812dc5068f0cbbf694ed31ac703e8a4c831e637b7b97d9b', 'reference_norm_gate': '41640fb658ce94671a055326711c46a6f642f62bf1b638f8d0a4ccbad06cb53c', 'run_compile': '1db90d55271c579ee45aec9eda512006a49b31b88e77f044af0994324903ca5c', 'run_correctness': '6b7d95841f019489e89caa957fe7ae21746a228c1889da759763f529cc955769', 'run_performance': '6de4d4747db4e2da5d1a2364ec88fe3f9825e50763dfb18075654abaa9c8033f', 'main': '4cd9b931b1bb38cc5868ed2f101b083f973cd9663e4429f8870faead285981f6'}, 'chunk_local_cumsum': {'load_module': '4ca849e18c8b68f3a230283dd813b8085f55b7863e18cc025b00370a714397e7', '_is_oom': '9b550282f3f34c68d3d9934df68176f5cf533a34ff50825c814de4dc90f3294e', '_retry_oom': '5b0f6dc7bbb2b6e687ae64a186e2c883d9c7db2bbdc01ef6764de12f4e8c1dbc', 'make_g': 'f60c65683f65c46600f3cc871ec82c15a616d3f58aae311158b32fbbdcc5608c', 'reference_cumsum': 'ef53138ec4c7abfc028b8096edad2e4d3fcf0edb706a16890860c5fbf9d85e67', '_shape_of': 'c111669b72d1d44501e511a2873860b9be4827e8b6de9e20bad6eca53c4548d8', 'run_compile': 'f567feb9581378fd43f738b902c3dc860aae0f55197336d9bbe3622e4919d4cc', 'run_correctness': 'ef65af08b9b5aff5ab8a58e4842d3d1cde2e13c851b248f13904740a43f9a2a6', 'run_performance': 'e0f378044e5ece6aeac90876a689387d636e5a9ea7dfec307282b3ef69199ae7', 'main': '619e83159bd006e04c6f20f5a206688e1f05896109808711979b45aa6427e8e3'}}
     for name, functions in hashes.items():
         task = ROOT / 'tasks/triton2flydsl/sglang' / name
-        original_source = _module_lifetime_legacy_harness_source((task / 'test_kernel_harness.py').read_text())
+        # Exact reviewed inverses: module lifetime, then any semantic-control addition.
+        original_source = _semantic_boundary_legacy_harness_source((task / 'test_kernel_harness.py').read_text())
         for fn in ast.parse(original_source).body:
             if isinstance(fn, ast.FunctionDef) and fn.name in functions:
                 normalized = _RemoveSglangElementwiseChecks().visit(fn)

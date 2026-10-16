@@ -76,8 +76,13 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     if (task / '_upstream_controls.py').is_file():
         assert after.count(added_dispatch) == 1
         after = after.replace(added_dispatch, '', 1)
-    if task.name in {'triton_causal_conv1d_update', 'triton_topk_log_softmax'}:
-        module = '_width_controls' if task.name == 'triton_causal_conv1d_update' else '_layout_controls'
+    # Additive correctness-only control dispatches; each module is protected.
+    control_modules = {'triton_causal_conv1d_update': '_width_controls',
+                       'triton_topk_log_softmax': '_layout_controls',
+                       'triton_bmm': '_domain_controls',
+                       'triton_decode_attn_stage1': '_domain_controls'}
+    if task.name in control_modules:
+        module = control_modules[task.name]
         dispatch = ('    if case_index is not None and case_index >= 20000:\n'
                     f'        from {module} import run_control\n'
                     '        return run_control(case_index - 20000, load_module)\n')

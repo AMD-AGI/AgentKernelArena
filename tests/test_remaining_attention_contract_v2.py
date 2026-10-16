@@ -478,7 +478,10 @@ def test_new_decode_control_execution_and_declared_shapes(name, monkeypatch):
             assert args[0][1,:,2:,-1].eq(80).all()
         else:
             assert kwargs['logit_cap'] == config['logit_cap']
-            assert args[4][0,:4].tolist() == [7,6,5,4]
+            domain = getattr(checks, 'DOMAIN', None)
+            if domain is None or case not in domain.DOMAIN_CASES:
+                # Original controls use reversed pages; domain controls use a seeded order.
+                assert args[4][0,:4].tolist() == [7,6,5,4]
             if case == 'inactive_ragged_pages':
                 assert args[3][~checks.output_write_mask(dict(enumerate(args)))].eq(23.5).all()
 
