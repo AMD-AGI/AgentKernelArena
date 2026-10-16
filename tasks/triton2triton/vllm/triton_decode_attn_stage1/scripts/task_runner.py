@@ -159,6 +159,9 @@ def run_compile():
 
 
 def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 20000:
+        from _domain_controls import run_control
+        return run_control(case_index - 20000, load_module)
     if case_index is not None and case_index >= 10000:
         from _upstream_controls import run_control
         return run_control(case_index - 10000, load_module)
