@@ -13,6 +13,7 @@ RUN chmod -R a+rX,go-w /opt/sikl \
  && python3 -m pip install --no-deps --force-reinstall \
       "$(grep -oE -- "--force-reinstall 'triton==[0-9.]+'" /opt/sikl/.github/workflows/ci.yaml | grep -oE 'triton==[0-9.]+')" \
  && python3 -m pip install "$(sed -nE 's/^FLYDSL_VERSION = "(flydsl==[^"]+)"$/\1/p' /opt/sikl/setup.py)" \
- && mkdir -p /tmp/aiter_configs && chmod 1777 /tmp/aiter_configs
-# aiter writes its merged tuned configs to the fixed /tmp/aiter_configs; tasks run as a non-root user.
+ && rm -rf /tmp/aiter_configs && mkdir -m 1777 /tmp/aiter_configs
+# aiter merges its tuned configs into the fixed /tmp/aiter_configs; tasks run as a non-root user, and the
+# base image's root-owned merges come from its own aiter, not from the pinned checkout's.
 ENV AKA_SIKL_ROOT=/opt/sikl PREBUILD_KERNELS=0 AITER_USE_SYSTEM_TRITON=1
