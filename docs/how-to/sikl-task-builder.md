@@ -1,19 +1,148 @@
-# Build Arena tasks from a SIKL bundle
+# Build Arena tasks from SIKL
 
-`sikl_task_builder` turns a local SIKL dataset folder into standard, self-contained
-Arena tasks under `tasks/SIKL-task/`. It combines deterministic import tools, a
-Codex agent that reviews generation (and repairs legacy input adapters), and an independent `task_validator`.
-Only accepted tasks reach the output directory. Future bundles using the supported
-schema can use the same workflow without a new handwritten task adapter per JSONL.
+`sikl_task_builder` turns SIKL kernels into standard Arena tasks. It is a workflow
+**before task discovery**, invoked with its own Make command, not an `agent.template`
+for `main.py`. The resulting tasks use the shared [`schema_version: 2` task contract](add-task.md)
+with an explicit candidate, provided baseline and `arena-eval-v1` runner, and can be selected by
+ordinary optimization runs.
 
-This is an agent workflow **before task discovery**, invoked with its own Make
-command. It is not an `agent.template` for `main.py`: its input is a dataset
-folder and its output is multiple tasks. The resulting tasks use the shared
-[`schema_version: 2` task contract](add-task.md), with an explicit candidate,
-provided baseline, and `arena-eval-v1` runner. They can be selected by ordinary optimization runs.
-It does not require KernelForge or a task-specific SIKL integration.
+It reads two inputs, chosen by the shape of `--input-dir`:
 
-## Input and task boundaries
+- **A SIKL checkout** (a directory with `sikl/ops/`): SIKL `main` since AMD-AGI/SIKL#52, whose
+  kernels are committed v5 schema files. See [SIKL v5 checkouts](#sikl-v5-checkouts).
+- **A legacy bundle** (`definitions/`, `workloads/`, `solutions/`), exported by SIKL before #52.
+  See [Legacy bundles](#legacy-bundles-sikl-before-52).
+
+## SIKL v5 checkouts
+
+SIKL `main` keeps one kernel per file, `sikl/ops/<op>/impls/<language>/<name>/<uuid>.json`
+([kernel schema](https://github.com/AMD-AGI/SIKL/blob/main/sikl/ops/README.md)). The reference,
+input distributions, error bounds and source rules live in the SIKL package, not in the file, so a
+task cannot carry its own semantics: every action is judged by SIKL's own `python -m sikl validate`.
+
+### Input, selection and output
+
+```bash
+python3 -m agents.sikl_task_builder inspect \
+  --config agents/sikl_task_builder/sikl_v5_config.yaml --input-dir /path/to/SIKL
+```
+
+`inspect` runs on the host, reads only committed git objects at `HEAD` (no torch, no SIKL import, no
+code execution) and lists one task per schema file with its workloads and whether its
+`kernel.targets` match `target_gpu_model`. Errors print one JSON line
+`{"ok": false, "code": ..., "message": ...}` and exit 1; codes: `not_a_sikl_checkout`, `bad_mode`,
+`schema_too_large`, `invalid_schema`, `unsupported_schema_version`, `no_schemas`,
+`checkout_not_mountable`, `config_not_v5`, `installed_changed`.
+
+The v5 input takes only the keys of
+[`sikl_v5_config.yaml`](../../agents/sikl_task_builder/sikl_v5_config.yaml): `input_dir`,
+`output_dir` (default `tasks/SIKL-v5`), `artifact_root`, `target_gpu_model`, `tasks`,
+`command_timeout`, `max_task_seconds`. Legacy keys (`policy`, `generator`, `validator`,
+`selections`, `target_language`, ...) are rejected with `config_not_v5`. A `tasks` entry is a
+schema name (all its files) or `<name>/<uuid>`.
+
+Each schema becomes `tasks/SIKL-v5/<name>/<uuid>/`:
+
+```text
+├── config.yaml
+├── start.json              # the committed schema bytes, protected
+├── source/<kernel files>   # the only editable files, starting from the committed kernel
+└── scripts/
+    ├── task_runner.py      # arena-eval-v1 actions -> sikl validate
+    ├── export_schema.py    # sikl-schema export
+    └── provenance.json     # builder version, SIKL commit, schema path, blob oid, arch
+```
+
+Generated tasks are not committed (`/tasks/SIKL-v5/` is ignored): they follow SIKL commits and
+are rebuilt deterministically. Their timing comes from SIKL's bench, which the perf-helper audit
+does not recognize, so `make check-perf-helpers` fails in a checkout where they are installed.
+
+### Runtime image
+
+The tasks need SIKL CI's runtime and a read-only SIKL checkout. Build it from a clean SIKL clone
+(full `.git`, no alternates, `git submodule update --init --recursive`):
+
+```bash
+docker build --network host -f agents/sikl_task_builder/sikl_runtime.Dockerfile \
+  --build-arg BASE="$(sed -nE 's/^ +SIKL_CI_IMAGE: +&ci_image +//p' /path/to/SIKL/.github/workflows/ci.yaml)" \
+  --build-arg SIKL_COMMIT="$(git -C /path/to/SIKL rev-parse HEAD)" --iidfile sikl-runtime.id /path/to/SIKL
+export AKA_DOCKER_IMAGE="$(cat sikl-runtime.id)"
+```
+
+The image copies the clone to `/opt/sikl` owned by root, installs `ci.yaml`'s Triton pin and
+`setup.py`'s FlyDSL pin, and sets `AKA_SIKL_ROOT=/opt/sikl`. It adds a copy of SIKL (with its
+`.git` and submodules) to the base image. Ordinary runs of these tasks must use it, through
+`AKA_DOCKER_IMAGE` or the run config's `docker_image`. The `forge` agent additionally needs
+Hyperloom installed on top of it.
+
+### Build
+
+```bash
+AKA_DOCKER_IMAGE="$(cat sikl-runtime.id)" AKA_DOCKER_PRIVILEGED=0 AKA_SKIP_DEV_MEM=1 \
+  make docker-sikl-task-builder INPUT=/path/to/SIKL CONFIG=agents/sikl_task_builder/sikl_v5_config.yaml
+```
+
+Materialization is deterministic: no generator agent and no repair loop, because nothing in the task
+is authored. The gate copies each draft to a fresh workspace and runs the framework's seven initial
+actions (`validate-task`, then baseline and candidate compile, correctness and performance) in one
+subprocess bounded by `max_task_seconds`; the task is installed only if all of them pass. No agent CLI
+or credential is mounted. Run states, in `sikl_task_builder_runs/<run-id>/summary.json`:
+
+| State | Meaning | On `resume` |
+| --- | --- | --- |
+| `installed` | gate passed, or an identical task is already installed | skipped |
+| `platform_deferred` | `kernel.targets` does not include the runtime GPU | skipped |
+| `output_conflict` | a different task already exists at the destination, or it would nest in another task | skipped; remove it and start a new run |
+| `baseline_rejected` | the committed kernel itself fails in this runtime | skipped |
+| `failed` | `gate_timeout`, `execution_error`, `validate_task_failed`, `candidate_rejected` or `stale_validation` | retried |
+
+Evidence for every attempt is under `evidence/<name>/<uuid>/<attempt>/` (`evidence.json`, the gate
+log, the session and its SIKL reports). Resume refuses a changed configuration, input commit,
+builder or runtime. Upgrading the builder package also refuses to resume legacy runs started
+before the upgrade.
+
+### Judging
+
+- **Candidate**: `source/` is rebuilt into a schema (SIKL's `json_file_text`, `speedup` and
+  `accuracy` dropped), `sikl export check` names its `<uuid>.json`, and
+  `sikl validate <path> --base <sikl_commit> --stages audit,bench --devices 0` runs in a private
+  checkout of the pinned commit: a SIKL PR that adds this one file.
+- **Baseline**: the committed file, validated with an untracked marker in the private checkout so it
+  is benched as a PR that also changes code would be.
+- Differences from SIKL CI: one path instead of the change set, `--devices 0`, base = the pinned commit,
+  no `--allow-measured-edits`, no e2e stage.
+- `compile` fails on `build_failed`, `schema_invalid`, `kernel_missing` or an SA0 (parse) rejection;
+  `correctness` fails on any finding but `not_faster`/`regressed`, located to a workload when the
+  finding has axes; `performance` re-measures every time, fails if correctness would, and reports the
+  median versus-baseline time of every workload. Baseline time is taken from the initial validation.
+- A committed kernel is exempt from SIKL's source rules (SA0–SA9) only while its bytes are unchanged.
+  Committed kernels rarely pass them as new files, so an agent's first change must make the whole
+  file comply.
+- `validate-task` checks, in order, that the pinned commit is in `AKA_SIKL_ROOT`, that `start.json`
+  is the committed blob, that Triton and FlyDSL match that commit's pins, that the CK submodule is at
+  its gitlink, and that `AKA_SIKL_ROOT` is not writable by the current user.
+
+The `sikl-schema` export writes `{"path", "text"}` only for a candidate that passed `validate`, is
+new at the pinned commit and is faster (`retain` lower bound above 1.0) than the kernel it would
+displace on every workload; the path is a second kernel file under the same name.
+
+### Trust model
+
+The SIKL checkout is trusted code: the gate and the runner execute it. The task protects what the
+judge reads: the pinned commit, a root-owned `/opt/sikl`, protected `start.json` and `scripts/`, git
+without global configuration or hooks, SIKL subprocesses without user site-packages or the agent's
+`HOME`, and re-measured performance. It is not a sandbox: the agent runs as the same user, and the
+AITER JIT cache is shared across validations as in SIKL CI. SIKL CI, which re-validates an exported
+schema in a clean environment, remains the authority.
+
+## Legacy bundles (SIKL before #52)
+
+The legacy path turns a SIKL dataset folder into self-contained tasks under `tasks/SIKL-task/`. It
+combines deterministic import tools, a Codex agent that reviews generation (and repairs legacy input
+adapters), and an independent `task_validator`. Only accepted tasks reach the output directory.
+It does not require KernelForge.
+
+### Input and task boundaries
 
 Pass an extracted directory, not a tar file:
 
@@ -94,7 +223,7 @@ top-k routing. Other policies need an input adapter supported by the definition
 and original code. An unresolved baseline/reference disagreement cannot be
 repaired by rewriting the reference or relaxing tolerances.
 
-## Run
+### Run
 
 Inspect metadata on the host; this does not execute solution code, import torch,
 create tensors, call an agent or use a GPU:
@@ -125,7 +254,7 @@ not get an automatic dependency-installation or source-rewriting escape hatch.
 `target_language` accepts `triton` (default) or `flydsl`. The seeded candidate is
 declared `implemented`, with the selected baseline's actual `initial_language`.
 
-## Workflow and tools
+### Workflow and tools
 
 1. Inspect and join source records; snapshot the bundle, configuration and runtime
    identity, and compute fingerprints.
@@ -183,7 +312,7 @@ inputs, reference self-comparison, and rejection
 of deliberately incorrect finite outputs for every case. Canonical performance
 helpers are materialized by the normal workspace machinery.
 
-## Outputs, repair limits and resume
+### Outputs, repair limits and resume
 
 ```text
 tasks/SIKL-task/<definition>/
