@@ -65,7 +65,8 @@ def git(cwd, *args: str) -> str:
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_SYSTEM=os.devnull, GIT_CONFIG_GLOBAL=os.devnull,
                GIT_TERMINAL_PROMPT="0")
-    trusted = [SIKL_ROOT, SIKL_ROOT / CK, Path(cwd).resolve()]
+    # A local clone checks the source's git dir, not its work tree, against safe.directory.
+    trusted = [SIKL_ROOT, SIKL_ROOT / ".git", SIKL_ROOT / CK, Path(cwd).resolve()]
     command = ["git", "-c", "core.hooksPath=/dev/null"]
     for path in trusted:
         command += ["-c", f"safe.directory={path}"]
