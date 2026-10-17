@@ -1319,7 +1319,8 @@ build_docker_args() {
         add_mount "$SIKL_BUILDER_CONFIG_HOST" /sikl-config.yaml ro
         add_mount "$HOST_ROOT/$SIKL_BUILDER_ARTIFACT_REL" "$CONTAINER_WORKDIR/$SIKL_BUILDER_ARTIFACT_REL"
         add_mount "$HOST_ROOT/$SIKL_BUILDER_OUTPUT_REL" "$CONTAINER_WORKDIR/$SIKL_BUILDER_OUTPUT_REL"
-        docker_args+=(-e "AGENT_KERNEL_ARENA_IMAGE=$SELECTED_IMAGE")
+        # SIKL v5 task runners judge against this checkout during the builder's gate.
+        docker_args+=(-e "AGENT_KERNEL_ARENA_IMAGE=$SELECTED_IMAGE" -e "AKA_SIKL_ROOT=/sikl-input")
     elif [[ -n "$QUALITY_LOOP_ARTIFACT_REL" || -n "$QUALITY_LOOP_WORKTREE_REL" ]]; then
         [[ -n "$QUALITY_LOOP_ARTIFACT_REL" && -n "$QUALITY_LOOP_WORKTREE_REL" ]] \
             || die "quality_loop requires both artifact and worktree mount paths"
@@ -2091,6 +2092,8 @@ case "${1:-}" in
         SIKL_BUILDER_ARTIFACT_REL="${sikl_mounts[2]}"
         SIKL_BUILDER_OUTPUT_REL="${sikl_mounts[3]}"
         REQUIRED_AGENTS="${sikl_mounts[4]}"
+        # SIKL v5 inputs need no agent CLI; mount-info prints a placeholder for the empty list.
+        [[ "$REQUIRED_AGENTS" != none ]] || REQUIRED_AGENTS=""
         AGENTS_STRICT=1
         AGENT_HOME_ISOLATION=1
         AKA_CONTAINER_HOME="/tmp/aka-sikl-builder-${BASHPID}"

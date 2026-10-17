@@ -1,0 +1,11 @@
+# Configuration for a SIKL v5 checkout input (sikl/ops/<op>/impls/<language>/<name>/<uuid>.json).
+# Legacy bundle keys (policy, generator, validator, selections, ...) are rejected for this input.
+input_dir: SIKL
+output_dir: tasks/SIKL-v5
+artifact_root: sikl_task_builder_runs
+# Read by the Docker runner with sed, so keep it in this file.
+target_gpu_model: MI355X
+# Empty selects every committed schema; entries are <name> or <name>/<uuid>.
+tasks: []
+command_timeout: 3600
+max_task_seconds: 14400

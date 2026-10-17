@@ -71,3 +71,5 @@ tasks/flydsl2flydsl/*/.rocprofv3/
 tasks/flydsl2flydsl/*/performance_report.json
 # SIKL generation drafts, source snapshots and validation evidence.
 sikl_task_builder_runs/
+# Tasks generated from a SIKL v5 checkout; they track SIKL commits and are rebuilt, not committed.
+/tasks/SIKL-v5/

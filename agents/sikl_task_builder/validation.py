@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -132,12 +134,92 @@ def validate_task(draft: Path, artifacts: Path, config: Config, timeout=None) ->
     return result
 
 
+GATE_ACTIONS = ("task/validate-task", "baseline/compile", "baseline/correctness", "baseline/performance",
+                "candidate/compile", "candidate/correctness", "candidate/performance")
+DEADLINE_ERROR = re.compile(r"exceeded its .*s action deadline")
+# Baseline findings that say nothing about the committed kernel itself.
+PLATFORM_CODES = {"platform_failure", "not_faster", "regressed"}
+
+
+def gate_outcome(process: dict, commands: dict, initial: dict | None, baseline_codes: list[str]) -> dict:
+    """Map one gate attempt to the run state of design 7.2; an ok gate maps to installable."""
+    errors = [c["execution_error"] or "" for c in commands.values() if c["execution_error"]]
+    if process["timed_out"] or any(DEADLINE_ERROR.search(e) for e in errors) or "TimeoutError" in process["tail"]:
+        return {"state": "failed", "code": "gate_timeout"}
+    failed = [key for key, c in commands.items() if c["result"] and not c["ok"]]
+    if errors or initial is None:
+        return {"state": "failed", "code": "execution_error"}
+    if any(key.startswith("baseline/") for key in failed):
+        if set(baseline_codes) - PLATFORM_CODES:
+            return {"state": "baseline_rejected", "code": "baseline_rejected"}
+        return {"state": "failed", "code": "execution_error"}
+    if "task/validate-task" in failed:
+        return {"state": "failed", "code": "validate_task_failed"}
+    if failed:
+        return {"state": "failed", "code": "candidate_rejected"}
+    if process["exit_code"] != 0 or not initial.get("accepted") or set(commands) != set(GATE_ACTIONS):
+        return {"state": "failed", "code": "execution_error"}
+    return {"state": "installable", "code": None}
+
+
+def run_gate(draft: Path, artifacts: Path, config, task_id: str) -> dict:
+    """The seven initial Arena actions of a SIKL v5 task in a fresh workspace, bounded by one subprocess."""
+    environment = runtime_identity(config)
+    artifacts.mkdir(parents=True, exist_ok=False)
+    workspace = artifacts / "workspace"
+    source_digest = task_digest(draft)
+    copy_task_files(draft, workspace)
+    request = artifacts / "gate_request.json"
+    request.write_text(json.dumps({"mode": "initial", "workspace": str(workspace),
+                                   "task_id": config.arena_task_id(task_id)}))
+    env = build_subprocess_env()
+    # Inner deadline first, so the action supervisor reaps its own process group cleanly.
+    env["ARENA_TASK_DEADLINE"] = str(time.time() + max(1, config.max_task_seconds - 60))
+    process = run_process([sys.executable, "-m", "agents.sikl_task_builder.validation", str(request)],
+                          Path(__file__).resolve().parents[2], artifacts / "gate.log", config.max_task_seconds, env)
+    session = artifacts / "session"
+    initial_path = session / "initial_validation.json"
+    initial = json.loads(initial_path.read_text()) if initial_path.is_file() else None
+    commands = {}
+    for path in sorted(session.glob("action-*.json")):
+        record = json.loads(path.read_text())
+        result = record.get("result")
+        key = f"{record.get('role') or (result or {}).get('role')}/{record.get('action') or (result or {}).get('action')}"
+        commands[key] = {"ok": bool(result) and result.get("status") == "PASS", "result": result,
+                         "execution_error": record.get("execution_error")}
+    baseline_codes = sorted({f["code"] for report in (session / "baseline" / "reports").glob("baseline-*/report.json")
+                             for s in json.loads(report.read_text()).get("stages", []) for f in s["findings"]})
+    outcome = gate_outcome(process, commands, initial, baseline_codes)
+    if outcome["state"] == "installable" and task_digest(draft) != source_digest:
+        outcome = {"state": "failed", "code": "stale_validation"}
+    evidence = {"validation_id": uuid.uuid4().hex, "task_digest": source_digest, "environment": environment,
+                "initial_validation": initial, "commands": commands, "baseline_codes": baseline_codes,
+                "gate_process": process, "outcome": outcome, "ok": outcome["state"] == "installable"}
+    (artifacts / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
+    return evidence
+
+
+def _initial(request: dict) -> int:
+    from src.task_runtime import bind_session_runtime
+    from src.task_session import TaskSession
+    from src.task_spec import load_task_spec
+    workspace = Path(request["workspace"])
+    spec = load_task_spec(workspace / "config.yaml", task_id=request["task_id"])
+    session = TaskSession.create(spec, workspace, workspace.parent / "session")
+    bind_session_runtime(session)
+    initial = session.validate_initial()
+    session.verify_baseline_sources()
+    return 0 if initial.accepted else 1
+
+
 def _main():
-    from agents.task_validator.launch_agent import launch_agent
     request = json.loads(Path(sys.argv[1]).read_text())
+    logging.basicConfig(level=logging.INFO)
+    if request.get("mode") == "initial":
+        return _initial(request)
+    from agents.task_validator.launch_agent import launch_agent
     config = Config(**request["config"])
     workspace = Path(request["workspace"])
-    logging.basicConfig(level=logging.INFO)
     from src.task_spec import load_task_spec
     from src.task_session import TaskSession
     from src.task_run import validate_task_session

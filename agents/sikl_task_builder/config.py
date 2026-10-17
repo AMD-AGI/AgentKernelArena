@@ -79,8 +79,45 @@ class Config:
         return (output.relative_to(repo / "tasks") / definition).as_posix()
 
 
-def load_config(path: Path) -> Config:
+@dataclass
+class RepoConfig:
+    """Configuration of a SIKL v5 checkout input; legacy bundle keys have no meaning here."""
+
+    input_dir: str
+    output_dir: str = "tasks/SIKL-v5"
+    artifact_root: str = "sikl_task_builder_runs"
+    target_gpu_model: str = "MI355X"
+    tasks: list[str] = field(default_factory=list)
+    command_timeout: int = 3600
+    max_task_seconds: int = 14400
+
+    def __post_init__(self):
+        for name in ("input_dir", "output_dir", "artifact_root", "target_gpu_model"):
+            if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
+                raise ValueError(f"{name} must be a nonempty string")
+        if not isinstance(self.tasks, list) or any(not isinstance(t, str) for t in self.tasks):
+            raise ValueError("tasks must be a list of <name> or <name>/<uuid> selectors")
+        for name in ("command_timeout", "max_task_seconds"):
+            if type(getattr(self, name)) is not int or getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+
+    mapping = Config.mapping
+    arena_task_id = Config.arena_task_id
+
+
+def load_config(path: Path, input_dir: str | None = None) -> Config | RepoConfig:
+    from .bundle import ImportProblem
+    from .sikl_repo import is_sikl_checkout
     raw = yaml.safe_load(path.read_text())
     if not isinstance(raw, dict):
         raise ValueError("Configuration must be a mapping")
+    if input_dir:
+        raw["input_dir"] = input_dir
+    repo = Path(__file__).resolve().parents[2]
+    if isinstance(raw.get("input_dir"), str) and is_sikl_checkout(repo / Path(raw["input_dir"]).expanduser()):
+        unused = sorted(set(raw) - set(RepoConfig.__dataclass_fields__))
+        if unused:
+            raise ImportProblem("config_not_v5", f"SIKL v5 input does not use: {unused}; "
+                                "use CONFIG=agents/sikl_task_builder/sikl_v5_config.yaml")
+        return RepoConfig(**raw)
     return Config(**raw)
