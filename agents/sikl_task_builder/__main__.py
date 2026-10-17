@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
 
 from .bundle import ImportProblem, inspect_bundle
@@ -24,17 +25,15 @@ def main(argv=None):
         parser.error("resume requires --run-id")
     if args.action == "run" and args.run_id:
         parser.error("use resume with --run-id")
+    # The Docker runner captures mount-info's stdout, so its errors go where the user sees them.
+    errors = sys.stderr if args.action == "mount-info" else sys.stdout
     try:
         config = load_config(args.config, args.input_dir)
-    except ImportProblem as exc:
-        print(json.dumps({"ok": False, "code": exc.code, "message": str(exc)}))
-        return 1
-    if isinstance(config, RepoConfig):
-        try:
+        if isinstance(config, RepoConfig):
             return repo_action(args, config)
-        except ImportProblem as exc:
-            print(json.dumps({"ok": False, "code": exc.code, "message": str(exc)}))
-            return 1
+    except ImportProblem as exc:
+        print(json.dumps({"ok": False, "code": exc.code, "message": str(exc)}), file=errors)
+        return 1
     if args.action == "inspect":
         tasks = inspect_bundle(Path(config.input_dir), config.selections)
         result = {"ok": True, "tasks": [t.summary() for t in tasks],
@@ -57,7 +56,7 @@ def repo_action(args, config: RepoConfig) -> int:
     if args.action == "inspect":
         from src.preprocessing import _resolve_gfx_arch
         arch = _resolve_gfx_arch(config.target_gpu_model)
-        sikl = SiklRepo.inspect(REPO / Path(config.input_dir).expanduser(), config.tasks)
+        sikl = SiklRepo.inspect(resolve_paths(config)[0], config.tasks)
         result = {"ok": True, "input": "sikl-v5", "commit": sikl.commit,
                   "tasks": [s.summary(arch, config.target_gpu_model) for s in sikl.schemas],
                   "task_count": len(sikl.schemas), "case_count": sum(len(s.cases) for s in sikl.schemas)}

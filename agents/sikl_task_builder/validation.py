@@ -137,6 +137,8 @@ def validate_task(draft: Path, artifacts: Path, config: Config, timeout=None) ->
 GATE_ACTIONS = ("task/validate-task", "baseline/compile", "baseline/correctness", "baseline/performance",
                 "candidate/compile", "candidate/correctness", "candidate/performance")
 DEADLINE_ERROR = re.compile(r"exceeded its .*s action deadline")
+# Exit code of the initial-mode subprocess when the task deadline passed before an action started.
+DEADLINE_EXIT = 3
 # Baseline findings that say nothing about the committed kernel itself.
 PLATFORM_CODES = {"platform_failure", "not_faster", "regressed"}
 
@@ -144,7 +146,7 @@ PLATFORM_CODES = {"platform_failure", "not_faster", "regressed"}
 def gate_outcome(process: dict, commands: dict, initial: dict | None, baseline_codes: list[str]) -> dict:
     """Map one gate attempt to the run state of design 7.2; an ok gate maps to installable."""
     errors = [c["execution_error"] or "" for c in commands.values() if c["execution_error"]]
-    if process["timed_out"] or any(DEADLINE_ERROR.search(e) for e in errors) or "TimeoutError" in process["tail"]:
+    if process["timed_out"] or process["exit_code"] == DEADLINE_EXIT or any(DEADLINE_ERROR.search(e) for e in errors):
         return {"state": "failed", "code": "gate_timeout"}
     failed = [key for key, c in commands.items() if c["result"] and not c["ok"]]
     if errors or initial is None:
@@ -187,13 +189,19 @@ def run_gate(draft: Path, artifacts: Path, config, task_id: str) -> dict:
         key = f"{record.get('role') or (result or {}).get('role')}/{record.get('action') or (result or {}).get('action')}"
         commands[key] = {"ok": bool(result) and result.get("status") == "PASS", "result": result,
                          "execution_error": record.get("execution_error")}
-    baseline_codes = sorted({f["code"] for report in (session / "baseline" / "reports").glob("baseline-*/report.json")
-                             for s in json.loads(report.read_text()).get("stages", []) for f in s["findings"]})
+    baseline_codes, unreadable = set(), []
+    for report in sorted((session / "baseline" / "reports").glob("baseline-*/report.json")):
+        try:
+            baseline_codes |= {f["code"] for s in json.loads(report.read_text())["stages"] for f in s["findings"]}
+        except (OSError, ValueError, KeyError, TypeError):
+            unreadable.append(str(report))
+    baseline_codes = sorted(baseline_codes)
     outcome = gate_outcome(process, commands, initial, baseline_codes)
     if outcome["state"] == "installable" and task_digest(draft) != source_digest:
         outcome = {"state": "failed", "code": "stale_validation"}
     evidence = {"validation_id": uuid.uuid4().hex, "task_digest": source_digest, "environment": environment,
                 "initial_validation": initial, "commands": commands, "baseline_codes": baseline_codes,
+                "unreadable_reports": unreadable,
                 "gate_process": process, "outcome": outcome, "ok": outcome["state"] == "installable"}
     (artifacts / "evidence.json").write_text(json.dumps(evidence, indent=2) + "\n")
     return evidence
@@ -207,7 +215,10 @@ def _initial(request: dict) -> int:
     spec = load_task_spec(workspace / "config.yaml", task_id=request["task_id"])
     session = TaskSession.create(spec, workspace, workspace.parent / "session")
     bind_session_runtime(session)
-    initial = session.validate_initial()
+    try:
+        initial = session.validate_initial()
+    except TimeoutError:
+        return DEADLINE_EXIT
     session.verify_baseline_sources()
     return 0 if initial.accepted else 1
 

@@ -71,7 +71,6 @@ def install_task(draft: Path, output: Path, task_id: str, evidence: dict) -> Pat
         if task_digest(destination) == evidence["task_digest"]:
             return destination
         raise ImportProblem("output_conflict", f"Existing task differs; refusing overwrite: {destination}")
-    # Same mount as output, so the final rename stays atomic.
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".sikl-install-", dir=output))
     try:
@@ -279,7 +278,10 @@ def run_repo(config: RepoConfig, run_id: str | None = None, *, repo: Path = REPO
                     record.update(state=outcome["state"], error={"code": outcome["code"],
                                                                 "message": f"see evidence attempt {record['attempts']}"})
             except Exception as exc:
-                record.update(state="failed", error={"code": getattr(exc, "code", "execution_error"), "message": str(exc)})
+                code = getattr(exc, "code", "execution_error")
+                # Another run installed a different task here after the pre-gate check.
+                record.update(state="output_conflict" if code == "output_conflict" else "failed",
+                              error={"code": code, "message": str(exc)})
                 LOG.exception("Task %s failed", task_id)
             atomic_json(root / "state.json", state)
         state["ok"] = not any(t["state"] in ("failed", "baseline_rejected", "output_conflict")

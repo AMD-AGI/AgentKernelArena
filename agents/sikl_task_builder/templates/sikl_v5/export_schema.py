@@ -13,6 +13,10 @@ def validated_candidate(workspace: Path) -> tuple[str, str]:
     reports = runner.report_dir(workspace, "candidate")
     if not (reports / "exit_code").is_file():
         raise runner.Failed(f"no report for source/ {reports.name}")
+    # The runner copies a schema only for a candidate new at the base; an unchanged kernel stops here.
+    files = sorted(reports.glob("sikl/ops/*/impls/*/*/*.json"))
+    if len(files) != 1:
+        raise runner.Failed(f"{len(files)} candidate files in {reports}")
     exit_code = int((reports / "exit_code").read_text())
     if exit_code:
         raise runner.Failed(f"validate exit code {exit_code}")
@@ -20,9 +24,6 @@ def validated_candidate(workspace: Path) -> tuple[str, str]:
     status = bench["status"] if bench else "missing"
     if status != "passed":
         raise runner.Failed(f"bench stage is {status}")
-    files = sorted(reports.glob("sikl/ops/*/impls/*/*/*.json"))
-    if len(files) != 1:
-        raise runner.Failed(f"{len(files)} candidate files in {reports}")
     path = files[0].relative_to(reports).as_posix()
     commit = runner.read_json(workspace, "scripts/provenance.json")["sikl_commit"]
     if runner.git(runner.SIKL_ROOT, "ls-tree", commit, "--", path).strip():

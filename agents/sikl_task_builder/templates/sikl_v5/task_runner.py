@@ -125,7 +125,7 @@ def private_checkout(commit: str):
 
 def sikl_env(checkout: Path, arch: str) -> dict:
     tmp = checkout.parent / "tmp"
-    env = {k: v for k, v in os.environ.items() if k != "AITER_ASM_DIR"}
+    env = {k: v for k, v in os.environ.items() if k != "AITER_ASM_DIR" and not k.startswith("GIT_")}
     env.update(
         PYTHONPATH=str(checkout),
         PYTHONNOUSERSITE="1",
@@ -147,16 +147,6 @@ def sikl_env(checkout: Path, arch: str) -> dict:
 def sikl(checkout: Path, env: dict, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run([sys.executable, "-s", "-m", "sikl", *args], cwd=checkout, env=env,
                           capture_output=True, text=True)
-
-
-def start_path(checkout: Path, workspace: Path, start: dict) -> str:
-    directory = schema_dir(start)
-    oid = git(checkout, "hash-object", str(workspace / "start.json")).strip()
-    for line in git(checkout, "ls-tree", "HEAD", "--", directory + "/").splitlines():
-        meta, path = line.split("\t", 1)
-        if meta.split()[2] == oid:
-            return path
-    raise Failed(f"start.json is not a committed schema under {directory}/ at the base")
 
 
 def build_candidate(checkout: Path, env: dict, workspace: Path, start: dict, reports: Path) -> tuple[str, bool]:
@@ -189,6 +179,8 @@ def build_candidate(checkout: Path, env: dict, workspace: Path, start: dict, rep
 
 def ensure_report(workspace: Path, role: str, start: dict, fresh: bool) -> Path:
     reports = report_dir(workspace, role)
+    if reports.is_symlink():
+        reports.unlink()
     if fresh:
         shutil.rmtree(reports, ignore_errors=True)
     elif (reports / "exit_code").exists():
@@ -199,7 +191,8 @@ def ensure_report(workspace: Path, role: str, start: dict, fresh: bool) -> Path:
         env = sikl_env(checkout, provenance["arch"])
         reports.mkdir(parents=True, exist_ok=True)
         if role == "baseline":
-            path, is_new = start_path(checkout, workspace, start), False
+            # validate-task checked that start.json is this committed blob.
+            path, is_new = provenance["schema_path"], False
         else:
             path, is_new = build_candidate(checkout, env, workspace, start, reports)
         if not is_new:
@@ -325,7 +318,7 @@ def validate_task(workspace: Path) -> tuple[str, list, str | None, dict | None]:
         raise Failed(f"sikl_commit {commit} not in {SIKL_ROOT}") from None
     listed = git(SIKL_ROOT, "ls-tree", commit, "--", provenance["schema_path"]).split()
     expected = listed[2] if len(listed) > 2 else "none"
-    actual = git(SIKL_ROOT, "hash-object", str(workspace / "start.json")).strip()
+    actual = git(SIKL_ROOT, "hash-object", "--no-filters", str(workspace / "start.json")).strip()
     if actual != expected:
         raise Failed(f"start.json oid {actual} != {expected} at {provenance['schema_path']}")
     for distribution, file, pattern in (("triton", ".github/workflows/ci.yaml", TRITON_PIN),

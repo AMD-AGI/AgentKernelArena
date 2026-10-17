@@ -47,27 +47,17 @@ def is_sikl_checkout(path: Path) -> bool:
     return (Path(path) / "sikl" / "ops").is_dir()
 
 
-def git_env() -> dict[str, str]:
+def git(root: Path, *args: str) -> bytes:
+    # Neither inherited GIT_* variables nor global/system configuration or hooks may steer these reads.
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_SYSTEM=os.devnull, GIT_CONFIG_GLOBAL=os.devnull,
                GIT_TERMINAL_PROMPT="0")
-    return env
-
-
-def git(root: Path, *args: str) -> bytes:
     command = ["git", "-c", "core.hooksPath=/dev/null", "-c", f"safe.directory={root}", "-C", str(root), *args]
-    result = subprocess.run(command, env=git_env(), capture_output=True)
+    result = subprocess.run(command, env=env, capture_output=True)
     if result.returncode:
         raise ImportProblem("not_a_sikl_checkout",
                             f"git {' '.join(args[:2])} in {root}: {result.stderr.decode(errors='replace').strip()}")
     return result.stdout
-
-
-def normalize_hardware(name: str) -> str:
-    name = name.strip()
-    if name.upper().startswith("AMD INSTINCT "):
-        name = name[len("AMD Instinct "):]
-    return name.upper()
 
 
 def _invalid(path: str, reason: str) -> ImportProblem:
@@ -144,8 +134,10 @@ class SiklSchema:
         return [",".join(f"{a}={v}" for a, v in w["axes"].items()) for w in self.data["workloads"]]
 
     def supports(self, arch: str | None, gpu_model: str) -> bool:
-        return any(t.get("arch") == arch or normalize_hardware(t.get("hardware", "")) == gpu_model.upper()
-                   for t in self.data["kernel"]["targets"])
+        # SIKL's DeviceTarget.normalize_hardware: drop the "AMD Instinct " prefix, compare upper case.
+        hardware = [t.get("hardware", "").strip().upper().removeprefix("AMD INSTINCT ")
+                    for t in self.data["kernel"]["targets"]]
+        return any(t.get("arch") == arch for t in self.data["kernel"]["targets"]) or gpu_model.upper() in hardware
 
     def summary(self, arch: str | None, gpu_model: str) -> dict:
         return {"task_id": self.task_id, "path": self.path, "op_type": self.op, "language": self.language,
