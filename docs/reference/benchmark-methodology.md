@@ -155,6 +155,29 @@ Automatic fallback from a failed/empty/invalid graph still rejects a requested
 collector; it does not silently switch the validation contract. Event timing
 must be selected explicitly when that is the task's declared methodology.
 
+## Cold-weight timing
+
+`benchmark_cuda_graph_cold_weights_samples()` is an opt-in method for operators whose cost in a decode step comes from reading a weight from HBM. Under the default timing every sample reads the same weight, so after the first sample the weight sits in the L2 and the MALL. When `prepare_fn` restores or rotates inputs, each replay also holds a single call, so a decode-size operator that runs for a few microseconds is charged the whole fixed cost of a graph replay.
+
+The task passes one zero-argument callable per weight copy. `cold_weight_copy_count(weight_bytes)` gives enough copies to pass 1 GiB in total, and at least 8:
+
+```python
+from _aka_benchmark import (
+    TimedRun, benchmark_cuda_graph_cold_weights_samples, cold_weight_copy_count,
+)
+
+copies = cold_weight_copy_count(weight_bytes, rotate_bytes=1 << 30, min_copies=8)
+calls = [make_call(weights[i]) for i in range(copies)]
+samples, metadata = benchmark_cuda_graph_cold_weights_samples(
+    calls, warmup=20, repetition=100, prepare_fn=rotation, timed_run=TimedRun())
+```
+
+One CUDA graph calls every callable once, in order. Each sample is the replay time divided by the number of calls, so every call reads its weight from HBM and the fixed replay cost is shared by all calls. `TimedRun.outputs` is the list of per-call outputs, `after_sample` receives that list, and `rerun_ms()` returns the per-call time of one more replay. The metadata reports `benchmark_method: cuda_graph_cold_weights`, `benchmark_calls_per_replay` and `benchmark_cold_weight_copies`. The method has no event fallback, and `AKA_BENCHMARK_FORCE_EVENT=1` makes it raise.
+
+Every call needs its own weight copy and its own input buffer. Each weight copy is a separate draw from the task's initializer and stays fixed. `prepare_fn` runs once before the start event of each replay and draws a fresh, independent input into every call's buffer. With identical copies an implementation could read one copy for every call, so the weight stays in the caches. With identical copies and one shared input it could also compute one result and copy it to the other outputs. Both shortcuts pass the output checks.
+
+A task that uses this method keeps the integrity checks of its default timing. It checks the output of every call against a reference for that call's input and weight copy, in the timed replays and in replays with fresh unseen inputs for every call. It also holds the reported time to the cost of the unseen inputs and checks that no weight copy changed.
+
 ## Independent task workspaces
 
 Task sources do not import AgentKernelArena's `src` package and do not carry
@@ -217,6 +240,7 @@ Benchmark methods are then compared **per matched case**:
 - event fallback versus event fallback is comparable;
 - graph versus event fallback is retained as timing data but produces no
   speedup;
+- cold-weight graph (`cuda_graph_cold_weights`) is comparable only with cold-weight graph;
 - different shapes may use different methods, provided each matched
   baseline/optimized pair uses the same exact method.
 
@@ -228,8 +252,8 @@ Event versus Event. The evaluator never collects or selects a candidate-driven
 alternate Event baseline.
 
 Missing or unknown method metadata is not comparable and produces no speedup;
-every scored case must explicitly identify `cuda_graph` or
-`cuda_event_fallback`.
+every scored case must explicitly identify `cuda_graph`,
+`cuda_event_fallback` or `cuda_graph_cold_weights`.
 
 An aggregate `mixed:...` method string is never scored, even when the baseline
 and optimized strings are identical. It records only a set of methods and loses

@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import statistics
 
-DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback"})
+DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback", "cuda_graph_cold_weights"})
 SERVING_METHOD = "serving_wall_clock"
 
 # Serving runtime limits a task may tighten or relax in its runtime lock. The
