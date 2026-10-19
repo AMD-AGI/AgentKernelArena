@@ -238,7 +238,8 @@ def aborted_reason(report: dict) -> str:
     deciding = next((s for status in ("failed", "aborted") for s in report["stages"] if s["status"] == status), None)
     if deciding is None:  # validate killed after writing a passed report.json
         return "validation aborted"
-    return f"validation {deciding['status']} ({deciding['stage_name']}): {deciding['detail']}"
+    findings = dict.fromkeys(f"{f['code']}: {f['detail']}" for s in report["stages"] for f in s["findings"])
+    return "\n".join([f"validation {deciding['status']} ({deciding['stage_name']}): {deciding['detail']}", *findings])
 
 
 def correctness(ids: list[str], findings: list, report: dict, exit_code: int) -> tuple[str, list, str | None]:

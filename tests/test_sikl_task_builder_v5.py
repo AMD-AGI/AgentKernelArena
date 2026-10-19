@@ -153,9 +153,11 @@ def test_finding_without_axes_fails_every_case(runner):
     assert status == "FAIL" and {c["status"] for c in cases} == {"FAIL"}
 
 
-def test_aborted_validation_fails_correctness(runner):
-    status, cases, reason = runner.judge("correctness", START, report(status="aborted"), 3)
+def test_aborted_validation_fails_correctness_and_names_its_findings(runner):
+    crash = [finding("platform_failure", {"m": m}, "RuntimeError: No CUDA GPUs are available") for m in (1, 8)]
+    status, cases, reason = runner.judge("correctness", START, report(crash, status="aborted"), 3)
     assert status == "FAIL" and {c["status"] for c in cases} == {"FAIL"} and "aborted" in reason
+    assert reason.count("No CUDA GPUs are available") == 1
 
 
 @pytest.mark.parametrize("code, detail, status", [
