@@ -80,8 +80,8 @@ class Config:
 
 
 @dataclass
-class RepoConfig:
-    """Configuration of a SIKL v5 checkout input; legacy bundle keys have no meaning here."""
+class CheckoutConfig:
+    """A SIKL v5 checkout input; legacy bundle keys have no meaning here."""
 
     input_dir: str
     output_dir: str = "tasks/SIKL-v5"
@@ -105,19 +105,19 @@ class RepoConfig:
     arena_task_id = Config.arena_task_id
 
 
-def load_config(path: Path, input_dir: str | None = None) -> Config | RepoConfig:
+def load_config(path: Path, input_dir: str | None = None) -> Config | CheckoutConfig:
     from .bundle import ImportProblem
-    from .sikl_repo import is_sikl_checkout
+    from .checkout import is_checkout
     raw = yaml.safe_load(path.read_text())
     if not isinstance(raw, dict):
         raise ValueError("Configuration must be a mapping")
     if input_dir:
         raw["input_dir"] = input_dir
     repo = Path(__file__).resolve().parents[2]
-    if isinstance(raw.get("input_dir"), str) and is_sikl_checkout(repo / Path(raw["input_dir"]).expanduser()):
-        unused = sorted(set(raw) - set(RepoConfig.__dataclass_fields__))
+    if isinstance(raw.get("input_dir"), str) and is_checkout(repo / Path(raw["input_dir"]).expanduser()):
+        unused = sorted(set(raw) - set(CheckoutConfig.__dataclass_fields__))
         if unused:
             raise ImportProblem("config_not_v5", f"SIKL v5 input does not use: {unused}; "
                                 "use CONFIG=agents/sikl_task_builder/sikl_v5_config.yaml")
-        return RepoConfig(**raw)
+        return CheckoutConfig(**raw)
     return Config(**raw)

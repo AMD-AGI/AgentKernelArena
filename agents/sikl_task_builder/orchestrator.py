@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import fcntl
 import json
 import logging
@@ -16,15 +15,13 @@ from pathlib import Path
 from . import BUILDER_VERSION
 from .backend import generate
 from .bundle import ImportProblem, fingerprint, inspect_bundle
-from .config import Config, RepoConfig
-from .materialize import check_contract, materialize_task, task_digest, task_tree
-from .sikl_repo import SiklRepo
-from .validation import run_gate, runtime_identity, validate_task
+from .checkout import inspect_checkout
+from .config import CheckoutConfig, Config
+from .materialize import check_contract, materialize_task, schema_task_files, task_digest, task_tree, write_files
+from .validation import runtime_identity, validate_schema_task, validate_task
 
 REPO = Path(__file__).resolve().parents[2]
 LOG = logging.getLogger(__name__)
-# v5 states a resume skips; `failed` is retried, since materialization is deterministic.
-TERMINAL = {"platform_deferred", "output_conflict", "baseline_rejected"}
 
 
 def atomic_json(path: Path, value):
@@ -94,9 +91,7 @@ def install_task(draft: Path, output: Path, task_id: str, evidence: dict) -> Pat
             shutil.rmtree(temporary)
 
 
-@contextlib.contextmanager
-def open_run(artifacts: Path, run_id: str | None, identity: str, on_create):
-    """Create or resume one campaign directory and hold its lock; the caller decides ok and the summary."""
+def run_root(artifacts: Path, run_id: str | None) -> tuple[Path, bool]:
     resuming = run_id is not None
     run_id = run_id or (time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8])
     if not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in run_id):
@@ -107,17 +102,7 @@ def open_run(artifacts: Path, run_id: str | None, identity: str, on_create):
             raise ValueError(f"Run does not exist: {run_id}")
     else:
         root.mkdir(parents=True, exist_ok=False)
-    with (root / ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        if resuming:
-            state = json.loads((root / "state.json").read_text())
-            if state["identity"] != identity:
-                raise ValueError("Resume refused: input, configuration, builder or runtime changed")
-        else:
-            state = {"run_id": run_id, "identity": identity, "tasks": {}}
-            on_create(root, state)
-            atomic_json(root / "state.json", state)
-        yield root, state
+    return root, resuming
 
 
 def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
@@ -135,11 +120,18 @@ def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
                             "implementation": implementation_digest(), "runtime": environment,
                             "tasks": {t.task_id: t.digest for t in tasks},
                             "bundle_files": bundle_files})
-    def snapshot(root, state):
-        shutil.copytree(source, root / "bundle")
-        state["environment"] = environment
-        atomic_json(root / "config.json", config.mapping())
-    with open_run(artifacts, run_id, identity, snapshot) as (root, state):
+    root, resuming = run_root(artifacts, run_id)
+    with (root / ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if resuming:
+            state = json.loads((root / "state.json").read_text())
+            if state["identity"] != identity:
+                raise ValueError("Resume refused: input, configuration, builder or runtime changed")
+        else:
+            shutil.copytree(source, root / "bundle")
+            state = {"run_id": root.name, "identity": identity, "environment": environment, "tasks": {}}
+            atomic_json(root / "config.json", config.mapping())
+            atomic_json(root / "state.json", state)
         frozen = task_digest(root / "bundle")
         if task_tree(root / "bundle") != bundle_files or json.loads((root / "config.json").read_text()) != config.mapping():
             raise ImportProblem("source_changed", "Run snapshot or saved config differs from source")
@@ -221,38 +213,45 @@ def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
         return state
 
 
-def run_repo(config: RepoConfig, run_id: str | None = None, *, repo: Path = REPO) -> dict:
+def run_checkout(config: CheckoutConfig, run_id: str | None = None, *, repo: Path = REPO) -> dict:
     """Build one task per committed SIKL v5 schema: deterministic files, the initial-action gate, install."""
     from src.preprocessing import _resolve_gfx_arch
     source, output, artifacts = resolve_paths(config, repo)
     environment = runtime_identity(config)
-    sikl = SiklRepo.inspect(source, config.tasks)
+    commit, tasks = inspect_checkout(source, config.tasks)
     arch = _resolve_gfx_arch(config.target_gpu_model)
     identity = fingerprint({"config": config.mapping(), "builder": BUILDER_VERSION,
                             "implementation": implementation_digest(), "runtime": environment,
-                            "commit": sikl.commit, "tasks": {s.task_id: s.oid for s in sikl.schemas}})
-
-    def record_run(root, state):
-        state.update(environment=environment, commit=sikl.commit)
-        atomic_json(root / "config.json", config.mapping())
-    with open_run(artifacts, run_id, identity, record_run) as (root, state):
-        for schema in sikl.schemas:
-            task_id = schema.task_id
-            record = state["tasks"].setdefault(task_id, {"state": "discovered", "attempts": 0})
-            destination = output / task_id
+                            "commit": commit, "tasks": {t.task_id: t.oid for t in tasks}})
+    root, resuming = run_root(artifacts, run_id)
+    with (root / ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if resuming:
+            state = json.loads((root / "state.json").read_text())
+            if state["identity"] != identity:
+                raise ValueError("Resume refused: input, configuration, builder or runtime changed")
+        else:
+            state = {"run_id": root.name, "identity": identity, "environment": environment,
+                     "commit": commit, "tasks": {}}
+            atomic_json(root / "config.json", config.mapping())
+            atomic_json(root / "state.json", state)
+        for task in tasks:
+            record = state["tasks"].setdefault(task.task_id, {"state": "discovered", "attempts": 0})
+            destination = output / task.task_id
             if record["state"] == "installed":
                 if not destination.is_dir() or task_digest(destination) != record["task_digest"]:
-                    raise ImportProblem("installed_changed", f"Installed task changed: {task_id}")
+                    raise ImportProblem("installed_changed", f"Installed task changed: {task.task_id}")
                 continue
-            if record["state"] in TERMINAL:
+            # Materialization is deterministic, so only a failed gate is worth retrying.
+            if record["state"] in {"platform_deferred", "output_conflict", "baseline_rejected"}:
                 continue
-            if not schema.supports(arch, config.target_gpu_model):
+            if not task.supports(arch, config.target_gpu_model):
                 record.update(state="platform_deferred")
                 atomic_json(root / "state.json", state)
                 continue
-            draft = root / "drafts" / task_id
+            draft = root / "drafts" / task.task_id
             shutil.rmtree(draft, ignore_errors=True)
-            schema.materialize(draft, sikl.commit, arch, config.arena_task_id(task_id), config.command_timeout)
+            write_files(draft, schema_task_files(task, config, commit))
             digest = task_digest(draft)
             if destination.exists() or enclosing_task(output, destination):
                 if destination.is_dir() and task_digest(destination) == digest:
@@ -265,12 +264,13 @@ def run_repo(config: RepoConfig, run_id: str | None = None, *, repo: Path = REPO
             record["attempts"] += 1
             record["state"] = "validating"
             atomic_json(root / "state.json", state)
-            LOG.info("Building %s (%d cases), attempt %d", task_id, len(schema.cases), record["attempts"])
+            LOG.info("Building %s (%d cases), attempt %d", task.task_id, len(task.cases), record["attempts"])
             try:
-                evidence = run_gate(draft, root / "evidence" / task_id / str(record["attempts"]), config, task_id)
+                evidence = validate_schema_task(draft, root / "evidence" / task.task_id / str(record["attempts"]),
+                                                config, task.task_id)
                 outcome = evidence["outcome"]
                 if evidence["ok"]:
-                    install_task(draft, output, task_id, evidence)
+                    install_task(draft, output, task.task_id, evidence)
                     record.update(state="installed", task_digest=evidence["task_digest"],
                                   destination=str(destination), validation_id=evidence["validation_id"])
                     record.pop("error", None)
@@ -282,7 +282,7 @@ def run_repo(config: RepoConfig, run_id: str | None = None, *, repo: Path = REPO
                 # Another run installed a different task here after the pre-gate check.
                 record.update(state="output_conflict" if code == "output_conflict" else "failed",
                               error={"code": code, "message": str(exc)})
-                LOG.exception("Task %s failed", task_id)
+                LOG.exception("Task %s failed", task.task_id)
             atomic_json(root / "state.json", state)
         state["ok"] = not any(t["state"] in ("failed", "baseline_rejected", "output_conflict")
                               for t in state["tasks"].values())

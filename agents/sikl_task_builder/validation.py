@@ -144,7 +144,7 @@ PLATFORM_CODES = {"platform_failure", "not_faster", "regressed"}
 
 
 def gate_outcome(process: dict, commands: dict, initial: dict | None, baseline_codes: list[str]) -> dict:
-    """Map one gate attempt to the run state of design 7.2; an ok gate maps to installable."""
+    """Map one gate attempt to a run state; only a complete, passing gate is installable."""
     errors = [c["execution_error"] or "" for c in commands.values() if c["execution_error"]]
     if process["timed_out"] or process["exit_code"] == DEADLINE_EXIT or any(DEADLINE_ERROR.search(e) for e in errors):
         return {"state": "failed", "code": "gate_timeout"}
@@ -164,7 +164,7 @@ def gate_outcome(process: dict, commands: dict, initial: dict | None, baseline_c
     return {"state": "installable", "code": None}
 
 
-def run_gate(draft: Path, artifacts: Path, config, task_id: str) -> dict:
+def validate_schema_task(draft: Path, artifacts: Path, config, task_id: str) -> dict:
     """The seven initial Arena actions of a SIKL v5 task in a fresh workspace, bounded by one subprocess."""
     environment = runtime_identity(config)
     artifacts.mkdir(parents=True, exist_ok=False)
@@ -207,7 +207,7 @@ def run_gate(draft: Path, artifacts: Path, config, task_id: str) -> dict:
     return evidence
 
 
-def _initial(request: dict) -> int:
+def _validate_initial(request: dict) -> int:
     from src.task_runtime import bind_session_runtime
     from src.task_session import TaskSession
     from src.task_spec import load_task_spec
@@ -227,7 +227,7 @@ def _main():
     request = json.loads(Path(sys.argv[1]).read_text())
     logging.basicConfig(level=logging.INFO)
     if request.get("mode") == "initial":
-        return _initial(request)
+        return _validate_initial(request)
     from agents.task_validator.launch_agent import launch_agent
     config = Config(**request["config"])
     workspace = Path(request["workspace"])

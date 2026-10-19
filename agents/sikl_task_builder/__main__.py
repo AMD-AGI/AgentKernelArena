@@ -9,9 +9,9 @@ import sys
 from pathlib import Path
 
 from .bundle import ImportProblem, inspect_bundle
-from .config import RepoConfig, load_config
-from .orchestrator import REPO, resolve_paths, run, run_repo
-from .sikl_repo import SiklRepo
+from .checkout import check_mountable, inspect_checkout
+from .config import CheckoutConfig, load_config
+from .orchestrator import REPO, resolve_paths, run, run_checkout
 
 
 def main(argv=None):
@@ -29,8 +29,8 @@ def main(argv=None):
     errors = sys.stderr if args.action == "mount-info" else sys.stdout
     try:
         config = load_config(args.config, args.input_dir)
-        if isinstance(config, RepoConfig):
-            return repo_action(args, config)
+        if isinstance(config, CheckoutConfig):
+            return checkout_action(args, config)
     except ImportProblem as exc:
         print(json.dumps({"ok": False, "code": exc.code, "message": str(exc)}), file=errors)
         return 1
@@ -52,23 +52,24 @@ def main(argv=None):
     return 0 if result["ok"] else 1
 
 
-def repo_action(args, config: RepoConfig) -> int:
+def checkout_action(args, config: CheckoutConfig) -> int:
+    from src.preprocessing import _resolve_gfx_arch
+    source, output, artifacts = resolve_paths(config)
     if args.action == "inspect":
-        from src.preprocessing import _resolve_gfx_arch
+        commit, tasks = inspect_checkout(source, config.tasks)
         arch = _resolve_gfx_arch(config.target_gpu_model)
-        sikl = SiklRepo.inspect(resolve_paths(config)[0], config.tasks)
-        result = {"ok": True, "input": "sikl-v5", "commit": sikl.commit,
-                  "tasks": [s.summary(arch, config.target_gpu_model) for s in sikl.schemas],
-                  "task_count": len(sikl.schemas), "case_count": sum(len(s.cases) for s in sikl.schemas)}
+        result = {"ok": True, "input": "sikl-v5", "commit": commit,
+                  "tasks": [t.summary(arch, config.target_gpu_model) for t in tasks],
+                  "task_count": len(tasks), "case_count": sum(len(t.cases) for t in tasks)}
     elif args.action == "mount-info":
-        source, output, artifacts = resolve_paths(config)
-        SiklRepo.inspect(source, config.tasks).check_mountable()
+        inspect_checkout(source, config.tasks)
+        check_mountable(source)
         # A placeholder, not an empty line: `$(...)` would drop a trailing empty line.
         print_mounts(args, config, source, output, artifacts, "none")
         return 0
     else:
         logging.basicConfig(level=logging.INFO)
-        result = run_repo(config, args.run_id)
+        result = run_checkout(config, args.run_id)
     print(json.dumps(result, indent=2))
     return 0 if result["ok"] else 1
 
