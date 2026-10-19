@@ -84,13 +84,16 @@ def test_cancel_kills_child_and_proves_container_absent_before_next_action(tmp_p
     template = tmp_path / 'template'
     template.mkdir()
     executor = CleanExecutor({}, checkout, tmp_path / 'trusted', '0', tmp_path / 'cache')
-    spec = SimpleNamespace(action=lambda *_: SimpleNamespace(commands=[['runner']], timeout_s=60))
+    spec = SimpleNamespace(action=lambda *_: SimpleNamespace(commands=[['runner', '--value', 'two words']], timeout_s=60))
     executor.tasks['test'] = (template, spec, dict(model={}, dependencies={}, gpu_count=1, image='fixture'))
     monkeypatch.setattr(executor.runtime_verifier, 'verify', lambda *args: None)
     monkeypatch.setattr(runtime, 'runtime_mounts', lambda *args: [])
     real_popen = subprocess.Popen
     children, calls = [], []
     def launch(argv, **kwargs):
+        # An image's serving CLI must not consume trusted task-action arguments.
+        assert argv[argv.index('--entrypoint')+1] == 'runner'
+        assert argv[argv.index('fixture')+1:] == ['--value', 'two words']
         calls.append('launch')
         child = real_popen([sys.executable, '-c', 'import time; time.sleep(60)'], **kwargs)
         children.append(child)

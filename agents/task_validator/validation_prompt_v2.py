@@ -139,7 +139,22 @@ When evaluation.measurement.kind is serving, the scored unit is complete request
 processing measured by the protected client with serving_wall_clock, not device
 kernel duration. Review fixed token/request counts, settings, pinned runtime and
 weights, clean candidate injection with per-rank actual-call evidence, independent
-operator and model correctness, and warmups outside the measurement window.
+model correctness, any task-declared operator checks, and warmups outside the
+measurement window. Model-wide tasks may use a replacement manifest with no
+initial patches: this is an implemented baseline backed by the pinned production
+image, not missing kernel source. Inspect the manifest loader, pinned dependencies,
+model-class observation and actual execution evidence. Later submissions may change
+any allowed compute boundary or fuse kernels; do not require an exhaustive operator
+inventory or a hand-written oracle for every possible fusion. Generic numerical
+checks must still detect wrong model computation. The independent candidate
+verifier separately reviews each submitted compute change for semantic validity,
+generality and reward hacking; it cannot waive a numerical failure.
+A declared production-model oracle is a fresh, uninjected pinned server. Initial
+baseline calibration intentionally compares original production runs to check
+normal numerical variation. It does not prove the production model mathematically
+correct or qualify a later candidate. For a submitted bundle, verify that the
+oracle remains independent of that bundle and checks the actual candidate's
+outputs/continuations; do not require enumerating every operator in the model.
 CUDA graph replay review is not applicable to this client timer; leave
 replay_validation_valid null. This does not waive model or operator correctness,
 workload symmetry, state, or timing-boundary checks. Declared read-only runtime

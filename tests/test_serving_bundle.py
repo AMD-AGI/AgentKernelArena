@@ -111,6 +111,35 @@ def test_audit_requires_actual_replacements_and_every_rank(tmp_path):
     save(records[1:])
     with pytest.raises(ValueError,match='not executed'):
         bundles.audit(tmp_path,b.lock)
+    traced=[dict(r,execution='compiled_trace' if not r['observer'] else 'direct_call') for r in records]
+    save(traced)
+    assert bundles.audit(tmp_path,b.lock)==traced
+    traced[1]['execution']='compiled_trace'
+    save(traced)
+    with pytest.raises(ValueError,match='not model execution'):
+        bundles.audit(tmp_path,b.lock)
+
+
+def test_original_sources_preserve_alias_and_defining_module_before_candidate_import(tmp_path,monkeypatch):
+    (tmp_path/'original_base_fixture.py').write_text('class Base:\n    def forward(self,x): return x+1\n')
+    (tmp_path/'original_alias_fixture.py').write_text('from original_base_fixture import Base\nclass Layer(Base):\n    pass\n')
+    source=tmp_path/'source';source.mkdir()
+    (source/'candidate.py').write_text('raise RuntimeError("candidate module must not run during source capture")\ndef compute(self,x): return x*x\n')
+    (source/'patches.json').write_text(json.dumps(dict(version=1,patches=[dict(
+        module='original_alias_fixture',symbol='Layer.forward',file='candidate.py',callable='compute')])))
+    lock=dict(limits=dict(max_candidate_source_bytes=4096),candidate_bundle=dict(root='source',manifest='patches.json',
+        module_prefixes=['original_alias_fixture'],scope='whole_model'))
+    monkeypatch.syspath_prepend(str(tmp_path))
+    try:
+        candidate=bundles.Bundle(tmp_path,lock)
+        row=bundles.original_sources(candidate)[0]
+        assert row['module']=='original_alias_fixture' and 'class Layer' in row['module_source']
+        assert row['defining_module']=='original_base_fixture' and 'class Base' in row['defining_module_source']
+        assert 'return x+1' in row['source']
+        with pytest.raises(RuntimeError,match='must not run'):
+            bundles.effective_function(tmp_path,lock,'original_alias_fixture','Layer.forward')
+    finally:
+        sys.modules.pop('original_base_fixture',None);sys.modules.pop('original_alias_fixture',None)
 
 
 @pytest.mark.parametrize('field,value', [('root','../escape'),('root','/tmp/escape'),('manifest','../patches.json')])

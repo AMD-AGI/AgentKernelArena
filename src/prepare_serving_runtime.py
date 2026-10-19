@@ -5,10 +5,12 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import tarfile
 import tempfile
 import urllib.request
+from urllib.parse import urlsplit
 
 from .serving_runtime import selected_serving_tasks
 
@@ -44,6 +46,13 @@ def verify(directory, identity):
     files = {str(p.relative_to(directory)): file_digest(p) for p in runtime_files(directory)}
     if files != manifest['files']:
         raise ValueError('Cached runtime content changed')
+
+
+def asset_identity(lock):
+    identity = {key: lock[key] for key in ('model', 'dependencies')}
+    if lock.get('assets'):
+        identity['assets'] = lock['assets']
+    return identity
 
 
 class VerifiedRuntime:
@@ -85,13 +94,38 @@ class VerifiedRuntime:
         self.verified[key] = record
 
 
-def prepare(lock, cache):
-    identity = {key: lock[key] for key in ('model', 'dependencies')}
+def validate_assets(assets):
+    """Content identity belongs in the task; offline host locations do not."""
+    for name, asset in assets.items():
+        path = Path(name)
+        if not name or path.is_absolute() or '..' in path.parts:
+            raise ValueError('Runtime asset escapes its declared root')
+        if not re.fullmatch(r'[0-9a-f]{64}', asset.get('sha256', '')):
+            raise ValueError('Runtime asset requires a fixed SHA-256')
+        if asset.get('source') == 'provided' and 'url' not in asset:
+            continue
+        url = urlsplit(asset.get('url', ''))
+        if asset.get('source') or url.scheme != 'https' or not url.netloc or url.username or url.password:
+            raise ValueError('Asset requires a public HTTPS URL or source: provided')
+
+
+def prepare(lock, cache, asset_files=None):
+    assets = lock.get('assets', {})
+    validate_assets(assets)
+    asset_files = asset_files or {}
+    if set(asset_files) - set(assets):
+        raise ValueError('Host asset file is not declared by the selected task')
+    identity = asset_identity(lock)
     key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     destination = cache / key
     if destination.exists():
         verify(destination, identity)
         return destination
+    for name, asset in assets.items():
+        if asset.get('source') == 'provided' and name not in asset_files:
+            raise ValueError('Provide the declared offline asset with --asset-file ' + name + '=PATH')
+        if name in asset_files and file_digest(Path(asset_files[name])) != asset['sha256']:
+            raise ValueError('Provided runtime asset differs from its fixed digest')
     cache.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='.prepare-', dir=cache) as tmp:
         directory = Path(tmp)
@@ -128,10 +162,25 @@ def prepare(lock, cache):
             target = model / name
             if not target.resolve().is_relative_to(model.resolve()):
                 raise ValueError('Unsafe model filename')
-            if target.suffix not in {'.json', '.safetensors', '.txt', '.model'} and target.name != 'LICENSE':
+            # Tokenizer templates, processor assets and pinned custom-model
+            # Python are part of model semantics too. The recipe/image decides
+            # whether remote model code is trusted; scoring stays offline.
+            if target.suffix not in {'.json', '.safetensors', '.bin', '.txt', '.model',
+                                      '.jinja', '.py', '.tiktoken', '.bpe', '.vocab'} and not target.name.startswith('LICENSE'):
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             acquire(base + '/resolve/' + lock['model']['revision'] + '/' + name, target)
+        for name, asset in lock.get('assets', {}).items():
+            target = directory/'assets'/name
+            if Path(name).is_absolute() or not target.resolve().is_relative_to((directory/'assets').resolve()):
+                raise ValueError('Runtime asset escapes its declared root')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if name in asset_files:
+                shutil.copyfile(asset_files[name], target)
+            else:
+                acquire(asset['url'], target)
+            if file_digest(target) != asset['sha256']:
+                raise ValueError('Downloaded runtime asset differs from its fixed digest')
         manifest = dict(identity=identity, files={str(p.relative_to(directory)): file_digest(p)
                                                 for p in directory.rglob('*') if p.is_file()})
         (directory / 'artifact_manifest.json').write_text(json.dumps(manifest, indent=2))
@@ -143,9 +192,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--cache', type=Path, default=Path.home() / '.cache/aka-serving')
+    parser.add_argument('--asset-file', action='append', default=[], metavar='NAME=PATH',
+                        help='Host-only file for a declared hash-pinned runtime asset')
     args = parser.parse_args()
-    for task_id, (_, _, lock) in selected_serving_tasks(args.config, Path.cwd()).items():
-        print(task_id, prepare(lock, args.cache))
+    asset_files = {}
+    for value in args.asset_file:
+        name, sep, path = value.partition('=')
+        if not sep or not name or not path or name in asset_files:
+            parser.error('--asset-file requires a unique NAME=PATH')
+        asset_files[name] = Path(path)
+    tasks = selected_serving_tasks(args.config, Path.cwd())
+    declared = {name for _, _, lock in tasks.values() for name in lock.get('assets', {})}
+    if set(asset_files) - declared:
+        parser.error('--asset-file name is not declared by any selected task')
+    for task_id, (_, _, lock) in tasks.items():
+        selected = {name: path for name, path in asset_files.items() if name in lock.get('assets', {})}
+        print(task_id, prepare(lock, args.cache, selected))
 
 
 if __name__ == '__main__':

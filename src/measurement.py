@@ -62,6 +62,13 @@ def validate_serving_case(row: dict) -> None:
     for key in ("completed_requests", "output_tokens"):
         if type(metrics.get(key)) is not int or metrics[key] <= 0:
             raise ValueError(f"Serving measurement requires positive integer {key}")
+    if params.get("workload_kind") == "trace_window":
+        _validate_trace_window(metrics, params)
+        if not math.isclose(row["execution_time_ms"], metrics["duration_s"] * 1000, rel_tol=1e-8):
+            raise ValueError("Serving duration contradicts execution_time_ms")
+        if not math.isclose(metrics["output_tokens_per_s"], metrics["output_tokens"] / metrics["duration_s"], rel_tol=1e-8):
+            raise ValueError("Serving throughput contradicts token count and elapsed time")
+        return
     requests = params.get("num_requests")
     if type(requests) is not int or requests <= 0:
         raise ValueError("Serving manifest must fix request and output token counts")
@@ -92,6 +99,38 @@ def validate_serving_case(row: dict) -> None:
         raise ValueError("Serving duration contradicts execution_time_ms")
     if not math.isclose(metrics["output_tokens_per_s"], metrics["output_tokens"] / metrics["duration_s"], rel_tol=1e-8):
         raise ValueError("Serving throughput contradicts token count and elapsed time")
+
+
+def _validate_trace_window(metrics: dict, params: dict) -> None:
+    """A fixed-duration trace admits more work when faster; requests are not fixed.
+
+    Preserve the duration, corpus, replay command and session concurrency while
+    requiring exact native per-request accounting. Fixed-count text/media tasks
+    retain the stricter original count contract above.
+    """
+    for key in ('dataset_sha256', 'recipe_fingerprint', 'client_sha256'):
+        value = params.get(key)
+        if not isinstance(value, str) or len(value) != 64 or any(c not in '0123456789abcdef' for c in value):
+            raise ValueError('Trace workload requires fixed corpus, recipe and client identities')
+    duration = params.get('duration_target_s')
+    if type(duration) is not int or duration <= 0 or metrics['duration_s'] < duration * .95:
+        raise ValueError('Trace replay did not cover the fixed measurement window')
+    if type(params.get('concurrency')) is not int or params['concurrency'] <= 0:
+        raise ValueError('Trace workload must fix session concurrency')
+    turns = params.get('trace_requests')
+    if not isinstance(turns, list) or not turns or len({t['id'] for t in turns}) != len(turns):
+        raise ValueError('Trace workload requires a complete turn manifest')
+    for turn in turns:
+        if not isinstance(turn.get('id'), str) or not turn['id'] or any(type(turn.get(k)) is not int or turn[k] <= 0 for k in ('input_tokens', 'output_tokens')):
+            raise ValueError('Trace turn has invalid work counts')
+    count = metrics['completed_requests']
+    ids = metrics.get('request_ids')
+    if not isinstance(ids, list) or len(ids) != count or len(set(ids)) != count or metrics.get('failed_requests') != 0:
+        raise ValueError('Trace request evidence is missing, duplicated or failed')
+    for key, total in (('input_lens', 'input_tokens'), ('output_lens', 'output_tokens')):
+        values = metrics.get(key)
+        if not isinstance(values, list) or len(values) != count or any(type(v) is not int or v <= 0 for v in values) or sum(values) != metrics.get(total):
+            raise ValueError('Trace token totals differ from per-request evidence')
 
 
 def paired_throughput(pairs: list[tuple[list, list]], *, minimum_speedup_ratio: float = 1.0) -> dict:
