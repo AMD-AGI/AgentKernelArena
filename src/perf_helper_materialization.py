@@ -495,6 +495,10 @@ def materialize_perf_helpers_in_workspace(
                           (root / "src/measurement.py").read_text(), materialized)
         _materialize_file(serving.parent / "_aka_serving_bundle.py",
                           (root / "src/tools/perf/serving_bundle.py").read_text(), materialized)
+        if '_aka_serving_backends' in serving.read_text():
+            for name in ('serving_backends', 'serving_scenarios', 'serving_request_plan'):
+                _materialize_file(serving.parent / ('_aka_' + name + '.py'),
+                                  (root / 'src/tools/perf' / (name + '.py')).read_text(), materialized)
 
     _materialize_native_helper(workspace, root, materialized)
 

@@ -5,9 +5,11 @@ The upstream workload recipe retained for the 80B task is copied unchanged from
 `upstream_manifest.json` records the source commit, original paths and SHA256
 digests. `MAGPIE_LICENSE` preserves the upstream license.
 
-The manifest links the retained recipe to its executable task. Unused upstream
-recipes are not vendored here. An imported recipe is provenance data, not an
-executable Arena task. Only a
+The legacy manifest links that retained recipe to its maintained executable task.
+The reusable [Magpie catalog](magpie/README.md) separately pins the complete newer
+recipe collection and binds/materializes selected recipes through shared backend
+and scenario adapters. An imported recipe alone is not a qualified executable
+Arena task. Only a
 directory with an Arena schema-v2 `config.yaml` is discovered as a task.
 Qualification requires a framework-finalized GPU task-validator PASS.
 
@@ -32,3 +34,8 @@ optimization scope. Imported workloads remain unchanged. See each task README
 for submission, fixed runtime settings and finite correctness coverage; adding
 the package does not establish GPU qualification. Profiling the actual workload
 is recommended, but agents choose their tools and no profiling report is required.
+
+New catalog workloads reuse high-level model numerical checks, fixed-work
+measurement and the independent `candidate_verifier`. They do not require an
+enumerated operator suite or a new oracle for every fusion. Import, materialization,
+GPU qualification and accepted optimization results remain separate outcomes.

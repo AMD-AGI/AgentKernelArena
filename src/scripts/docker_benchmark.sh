@@ -84,6 +84,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE        Absolute Docker image override.
   AKA_DOCKER_PRIVILEGED   1 (default) retains the existing privileged runtime;
                          0 uses Docker's default capabilities, seccomp, IPC and network.
+  AKA_DOCKER_NETWORK      Optional worker network: host, bridge or none, independently
+                         of privileged mode. Unset preserves the existing network.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -1165,11 +1167,16 @@ build_docker_args() {
 
     case "${AKA_DOCKER_PRIVILEGED:-1}" in
         1)
-            docker_args+=(--ipc=host --network=host --privileged
+            docker_args+=(--ipc=host --privileged
                 --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined)
             ;;
         0) ;;
         *) die "AKA_DOCKER_PRIVILEGED must be 0 or 1" ;;
+    esac
+    case "${AKA_DOCKER_NETWORK:-}" in
+        "") [[ "${AKA_DOCKER_PRIVILEGED:-1}" != 1 ]] || docker_args+=(--network=host) ;;
+        host|bridge|none) docker_args+=("--network=$AKA_DOCKER_NETWORK") ;;
+        *) die "AKA_DOCKER_NETWORK must be host, bridge or none" ;;
     esac
     docker_args+=(
         --user "${HOST_UID}:${HOST_GID}"
