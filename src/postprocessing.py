@@ -115,7 +115,7 @@ def _build_general_report_lines(
                  ("Total Score:", "Average Score:", "Speedup", "Valid Speedup"))]
         lines.append("Performance and score are grouped by measurement; no combined average:")
         for kind, group in aggregate_result["measurement_groups"].items():
-            lines.append(f"  {kind}: {group['count']} tasks; average speedup {group['average_speedup']:.3f}x; average score {group['average_score']:.2f}")
+            lines.append(f"  {kind}: {group['count']} tasks; average speedup {group['average_speedup']:.3f}x; average score {group['average_score']:.4f}")
     outcomes = _outcome_counts(aggregate_result.get("task_details", []))
     lines.extend([
         "Final acceptance (separate from numerical results):",

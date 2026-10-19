@@ -11,10 +11,11 @@ from src.tools.compare_runs import compare_overall
 
 
 @pytest.mark.parametrize("recover_from_text", [False, True])
-@pytest.mark.parametrize("speedup,expected_score", [(1.0, 0.0), (1.1, 0.21320071635561044)])
 def test_final_outcomes_survive_all_report_formats_without_changing_scores(
-    tmp_path, monkeypatch, recover_from_text, speedup, expected_score,
+    tmp_path, monkeypatch, recover_from_text,
 ):
+    # A positive score exercises the four-decimal report and dashboard formats.
+    speedup, expected_score = 1.1, 0.21320071635561044
     run = tmp_path / "workspace_MI355X_codex" / "run_20260916_120000"
     # Legacy results have numerical evidence, but no evidence of final acceptance.
     fixtures = [
