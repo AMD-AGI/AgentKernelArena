@@ -2477,9 +2477,14 @@ def test_mla_input_bytes_and_finally_restore_on_native_validation_failures(tmp_p
     source = tmp_path / 'restore.cpp'
     source.write_text('#include <vector>\n#include <cassert>\n#include <stdexcept>\n#include "' + str(header) + '"\n' + r'''
 int main() {
-    std::vector<float> original{1.f, -0.f}, values = original;
+    // -ffast-math may fold a floating -0/+0 assignment away. Construct the
+    // object representations explicitly so this remains a byte-mutation test.
+    const uint32_t negative_zero = 0x80000000U, positive_zero = 0U;
+    std::vector<float> original{1.f, 0.f};
+    std::memcpy(&original[1], &negative_zero, sizeof(negative_zero));
+    std::vector<float> values = original;
     assert(mla_same_buffer(values, original));
-    values[1] = 0.f;
+    std::memcpy(&values[1], &positive_zero, sizeof(positive_zero));
     assert(!mla_same_buffer(values, original)); // exact bytes, not FP tolerance
     values = original;
     int restored = 0;
