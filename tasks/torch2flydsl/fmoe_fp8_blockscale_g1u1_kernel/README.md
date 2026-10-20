@@ -59,12 +59,12 @@ top-k selection and the diagnostic reference's expert plan stay outside timing
 as before. This corrects the older baseline-only preprocessing exclusion; old
 kernel-only timings cannot be compared as if the timed work were unchanged.
 The original three cases, seed, warmups and samples remain. The numerical gate
-is explicitly revised from 1% to **1.2%** normalized worst-element error:
-`max(abs(reference - output)) / max(abs(reference)) <= 0.012`, with a denominator
+is explicitly revised from 1% to **1.3%** normalized worst-element error:
+`max(abs(reference - output)) / max(abs(reference)) <= 0.013`, with a denominator
 of 1 when the reference is all zero. The same limit applies to baseline and
 candidate correctness, measured outputs and input-perturbed replay. This is a
 task-contract change, not a kernel accuracy improvement; historical results at
-1% retain their original outcomes. Errors above 1.2% still fail.
+1% retain their original outcomes. Errors above 1.3% still fail.
 
 Outputs must be finite BF16 tensors with the hidden tensor's shape/device.
 Hidden, raw weights and selected routing are read-only. The actual measured

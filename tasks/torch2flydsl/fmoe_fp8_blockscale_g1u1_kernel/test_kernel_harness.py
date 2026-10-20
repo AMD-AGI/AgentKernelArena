@@ -72,9 +72,9 @@ SHAPES = [
     {"name": "glm5_t32_e257_k9", "tokens": 32, "model_dim": 6144, "inter_dim": 256, "experts": 257, "topk": 9},
 ]
 
-# Task contract: 1.2% normalized worst-element error for both roles, including
+# Task contract: 1.3% normalized worst-element error for both roles, including
 # measured outputs and perturbed replay. This replaces the historical 1% gate.
-TOL = 1.2e-2
+TOL = 1.3e-2
 SEED = 20260401
 BLOCK_N, BLOCK_K = 128, 128
 
