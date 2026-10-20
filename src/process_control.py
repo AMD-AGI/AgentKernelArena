@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import time
 
 CONTAINER_MARKER = "AGENT_KERNEL_ARENA_DEDICATED_CONTAINER"
@@ -21,6 +22,21 @@ def stop_process_group(process: subprocess.Popen, grace_s: float = 5) -> None:
         try:
             os.killpg(process.pid, sig)
         except ProcessLookupError:
+            break
+        except PermissionError:
+            # Darwin can return EPERM when the group disappeared between
+            # signals. Ignore it only after independently proving absence;
+            # a live group or a failed process-table query remains an error.
+            if sys.platform != "darwin":
+                raise
+            groups = subprocess.run(
+                ["/bin/ps", "-axo", "pgid="], capture_output=True, text=True,
+                timeout=1, check=False,
+            )
+            group_ids = groups.stdout.split()
+            if (groups.returncode or not group_ids or not all(value.isdigit() for value in group_ids)
+                    or str(process.pid) in group_ids):
+                raise
             break
         if sig == signal.SIGTERM:
             try:

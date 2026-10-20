@@ -66,6 +66,9 @@ An explicit `model: null` omits
 the model argument and delegates selection to the CLI; omitting the field uses
 Arena's checked-in default. Explicit `effort: null` similarly omits that flag.
 
+DeepSeek Harness also supports `budget_mode`, with its own model/provider
+settings described in the [DeepSeek guide](../../agents/deepseek_harness/README.md).
+
 All three CLI prompts also expose the resolved per-invocation time budget and
 ask the agent to retain its best implementation at the declared delivery paths,
 allow time for its required checks, and finish within that budget. This is

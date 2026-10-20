@@ -256,7 +256,8 @@ agent's `agent_config.yaml`. Cursor accepts the same overrides except a
 standalone `effort`. See [run-level overrides](docs/reference/agent-model-defaults.md#run-level-overrides)
 for exact semantics; other integrations define their own supported settings.
 
-These three CLIs also accept `budget_mode`. The default, `iterations`, runs one
+Cursor, Claude Code, Codex, and DeepSeek Harness accept `budget_mode`.
+The default, `iterations`, runs one
 session that asks for up to `max_iterations` versions. With `time`,
 `timeout_seconds` becomes the agent's wall-clock budget: if the agent stops
 early, Arena resumes the same session with the time remaining. Every run also

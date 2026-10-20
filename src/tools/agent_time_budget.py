@@ -25,7 +25,7 @@ from src.prompts.agent_budget import time_budget_continuation
 BUDGET_MODES = ("iterations", "time")
 DEFAULT_BUDGET_MODE = "iterations"
 # Agents whose launchers implement session resume. Other agents reject ``time``.
-TIME_BUDGET_AGENTS = frozenset({"claude_code", "codex", "cursor"})
+TIME_BUDGET_AGENTS = frozenset({"claude_code", "codex", "cursor", "deepseek_harness"})
 # Do not start a continuation too short for a measure/verify cycle.
 MIN_RESUME_SECONDS = 600
 # Bound on sessions per task, so an agent that returns immediately cannot spin.

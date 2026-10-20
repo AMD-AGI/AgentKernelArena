@@ -100,7 +100,7 @@ agent completion and independent candidate acceptance are reported separately.
 
 ## Iteration and time budgets
 
-Cursor, Claude Code, and Codex accept `agent.budget_mode`:
+Cursor, Claude Code, Codex, and DeepSeek Harness accept `agent.budget_mode`:
 
 | `budget_mode` | Behavior |
 | --- | --- |
@@ -124,12 +124,18 @@ declared paths either way.
 
 To resume, `time` mode keeps the provider's session state: Claude Code runs
 with `--session-id` instead of `--no-session-persistence`, and Codex runs
-without `--ephemeral`. That state is written to the CLI's own home directory.
+without `--ephemeral`. Those CLIs write state to their own home directories.
+DeepSeek Harness keeps one isolated `DSH_HOME` per task launch and passes the
+opening JSON event's session ID through `--session-id` on each continuation.
+Its continuations retain the same task directory and home, with separate
+prompt/stdout/stderr artifacts per invocation; a later task retry gets a fresh
+home. A missing session ID stops continuation, and a failed adoption never
+falls back to a new conversation.
 The shared loop is `src/tools/agent_time_budget.py`, the prompt text is
 `src/prompts/agent_budget.py`, and each CLI's resume arguments and output parsing
 stay in its `agents/<agent_name>/launch_agent.py`. Other agents reject
-`budget_mode: time` when the run starts; GEAK, Forge, and DeepSeek Harness use
-their own budget settings.
+`budget_mode: time` when the run starts; GEAK and Forge use their own budget
+settings.
 
 ## Agent cost records
 

@@ -251,7 +251,7 @@ class BudgetModeRunValidationTests(unittest.TestCase):
         return context, output.getvalue()
 
     def test_time_mode_rejected_for_agents_without_session_resume(self) -> None:
-        for template in ("geak", "forge", "deepseek_harness", "task_validator"):
+        for template in ("geak", "forge", "task_validator"):
             with self.subTest(template=template):
                 context, output = self.build({"template": template, "budget_mode": "time"})
                 self.assertIsNone(context)
@@ -266,6 +266,7 @@ class BudgetModeRunValidationTests(unittest.TestCase):
 
     def test_supported_modes_pass_validation(self) -> None:
         for settings in ({"template": "claude_code", "budget_mode": "time"},
+                         {"template": "deepseek_harness", "budget_mode": "time"},
                          {"template": "geak", "budget_mode": "iterations"},
                          {"template": "geak"}):
             with self.subTest(settings=settings):
