@@ -34,6 +34,9 @@ def build_task_prompt(spec: TaskSpec, workspace: Path, *, target_gpu: str,
         if edit.scope == "symbols":
             detail = "only symbols " + ", ".join(edit.symbols)
             detail += "; new implementation helpers allowed" if edit.allow_new_helpers else "; no new helpers"
+            if edit.configuration_symbols:
+                detail += ("; " + ", ".join(edit.configuration_symbols)
+                           + " may only build configuration data (validated by the protected caller)")
         elif edit.scope == "tree":
             detail = "implementation subtree; protected task/harness files remain protected"
         else:

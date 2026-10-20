@@ -8,7 +8,10 @@ candidate:
     scope: symbols
     symbols:
     - bmm_kernel
+    - _launch_config
     allow_new_helpers: true
+    configuration_symbols:
+    - _launch_config
   entrypoints:
   - file: source/triton_bmm.py
     kind: function

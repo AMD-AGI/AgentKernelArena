@@ -379,6 +379,16 @@ def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]
                     raise RuntimeError(f"Protected test/harness policy rejected {path.name}: {exc}") from exc
                 continue
         kept.append(node)
+    # Protected host code calls declared configuration symbols at launch time,
+    # so each must remain a configuration factory, never arbitrary host code.
+    for name in edit.configuration_symbols:
+        node = functions.get(name)
+        if (node is None or node.decorator_list
+                or not _config_factory_body_allowed(node, bindings, protected_functions,
+                                                    set(initial_names) | definition_names)):
+            raise RuntimeError(f"Protected test/harness policy rejected {path.name}: configuration "
+                               f"symbol {name!r} must be an undecorated function that only builds "
+                               "configuration data")
     tree.body = kept
     return hashlib.sha256(ast.dump(tree, include_attributes=False).encode("utf-8")).hexdigest()
 
@@ -690,6 +700,7 @@ def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
                             else "sha256_bytes"),
             "editable_symbols": list(edit.symbols) if edit else [],
             "allow_new_helpers": edit.allow_new_helpers if edit else False,
+            "configuration_symbols": list(edit.configuration_symbols) if edit else [],
             "initial_top_level_names": sorted(snapshot.initial_symbols.get(path, ())),
             "definition_policy": "compiler_decorators_no_test_hooks_v1" if edit else "byte_protected",
             "allowed_compiler_decorators": sorted(_COMPILER_DECORATORS) if edit else [],
