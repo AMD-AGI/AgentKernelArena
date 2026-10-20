@@ -861,7 +861,7 @@ TRITON_SOURCE_SHA256 = {'aiter/batched_gemm_a8w8/batched_gemm_a8w8.py': 'd10dcae
  'aiter/gemm_afp8wfp8/gemm_afp8wfp8.py': '63631b70d3cf97f3dc2c682f322a7f1e71272bbc78e6760693ad34465b737786',
  'aiter/layernorm/layernorm.py': '42035db0231238ef54943cc30dfb986c7994bf50cee40d2b4a7951680ec27136',
  'aiter/mha/mha.py': 'b567863379b1d0133c67035dcc238b4a837cb989c3687a110d28d3d505a26070',
- 'aiter/mla/mla.py': '5ccf8716fcb93bb8a25df3631fae1f18e41b173b3888ca322716f43c00ebdefc',
+ 'aiter/mla/mla.py': 'aef4972ad1a61da4ae6ad217e5fffcfb1a6dd428c470319bf0a85aea40f89be5',
  'aiter/moe_fused_gemm/moe_fused_gemm.py': '9762ceea15b969bcbfc482a25f581be621ca171807b479ff4eea4961c2aff379',
  'aiter/moe_routing_sigmoid_top1/moe_routing_sigmoid_top1.py': '882d4404d5e585ae98f9c0f7d2e3828eb4bf6b10d08ee280530ad95d8f5f83be',
  'aiter/rmsnorm/rmsnorm.py': '641e4b54a0be80e2d9b24c33f0006c9e16e8a4388941b80d6b17b6f9200ba725',
@@ -5202,7 +5202,14 @@ class _RemoveMlaChecks(_RemoveAttentionChecks):
             return None
         if ast.unparse(node) == "out.fill_(float('nan'))":
             return None
+        if isinstance(node.value, ast.Call) and getattr(node.value.func, 'id', None) == '_validate_mla_paged_variants':
+            return None
         return super().visit_Expr(node)
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == '_timed_mla_call':
+            node.func.id = '_call_kernel'
+        return super().visit_Call(node)
 
 
 @pytest.mark.parametrize('queries', [1, 2])
@@ -5215,7 +5222,7 @@ def test_mla_actual_paged_buffer_contract_original_gate_and_measured_replay(quer
     ns = dict(NORM_ERR_TOL=.01, ALLCLOSE_TOL=.01, WARMUP_ITERATIONS=10, BENCHMARK_ITERATIONS=100,
               require_tensor_contract=checks.require_tensor_contract, require_unchanged=checks.require_unchanged,
               verify_timed_run=checks.verify_timed_run)
-    _harness_functions(task, {'_ref_masked_attention', 'torch_mla_extend', '_compare', '_call_kernel', '_checked_mla_output', '_compare_mla_output', '_mla_replay_validator'}, ns)
+    _harness_functions(task, {'_ref_masked_attention', 'torch_mla_extend', '_compare', '_call_kernel', '_timed_mla_call', '_validate_mla_paged_variants', '_checked_mla_output', '_compare_mla_output', '_mla_replay_validator'}, ns)
     q = torch.zeros((queries, 2, 3), dtype=torch.bfloat16)
     kv = torch.tensor([[[[2.,4.,0.]], [[6.,8.,0.]]], [[[10.,12.,0.]], [[14.,16.,0.]]]], dtype=q.dtype)
     out = torch.empty((queries, 2, 2), dtype=q.dtype)
@@ -5225,7 +5232,9 @@ def test_mla_actual_paged_buffer_contract_original_gate_and_measured_replay(quer
     def oracle(): return ns['torch_mla_extend'](q, kv, cu, used, table, 2, 1., q.dtype)
     cached = oracle().clone(); state = {'phase': 'setup'}
     def compute(*args):
-        result = oracle()
+        active_q, active_kv, active_out, active_cu, active_used, _, active_table, active_scale, active_lora = args[:9]
+        result = ns['torch_mla_extend'](active_q, active_kv, active_cu, active_used,
+                                      active_table, active_lora, active_scale, active_q.dtype)
         if phase == 'correctness' or state['phase'] == 'measured':
             if behavior == 'wrong': result.zero_()
             if behavior == 'shape': result = result.reshape(-1)
@@ -5236,9 +5245,9 @@ def test_mla_actual_paged_buffer_contract_original_gate_and_measured_replay(quer
             if behavior == 'metadata_modified': table.zero_()
         if behavior == state['phase'] + '_wrong': result.zero_()
         if state['phase'] == 'replay' and behavior == 'cached': result = cached.clone()
-        if behavior == 'unwritten': return out
-        out.data = result
-        return result.clone() if behavior == 'separate_return' else out
+        if behavior == 'unwritten': return active_out
+        active_out.data = result
+        return result.clone() if behavior == 'separate_return' else active_out
     class Collector:
         bound = False
     calls = []
@@ -5286,9 +5295,9 @@ def test_mla_real_cpu_paged_known_answer_rejects_wrong_gather_and_comparator(fau
 
 def test_mla_original_reference_inputs_gate_source_and_sample_fingerprints():
     task = ROOT / 'tasks/triton2flydsl/aiter/mla'
-    # Pin the gfx950 single-stage compatibility repair; the reference, input,
+    # Pin the GPU-qualified gfx950 four-wave/two-stage repair; reference, input,
     # gate and benchmark fingerprints below remain the original task's.
-    assert hashlib.sha256((task / 'mla.py').read_bytes()).hexdigest() == '4dcccd231fc93c4cae88b5db2050bc17ef99a7f7fd237ba68eb0bafb35b5da98'
+    assert hashlib.sha256((task / 'mla.py').read_bytes()).hexdigest() == '60879bd2a8f94755b258e658c889e761aa1077f9c99dc2b3570e82fb7f56f4c0'
     hashes = {'load_module': 'f86cec48c13505a8571991aad880c0a25a0e06119b68730f57edd92e2757653f', '_is_transient_gpu_error': '5afa68828c130e63eef28cb95296055fe9a8ce93f9e0ff74d37824d5c545adb2', '_retry_gpu': '011da24c8f60af67764f9f5800d76e003e13ed1ace6a6eb6a579f9ca0bf8d2bf', 'make_test_data': '07680d0288f0496b9542c72764fe420592ebb582be2e57d08da7eef3adbeaab2', '_call_kernel': '21f919b5d8087d332e32c9177c52891349ce9fbb569021100e57b56ab4da23eb', '_ref_masked_attention': '1e6967be2b944fda854738ab6f84b3b041d78b75ab6f4e06f53bbbdd18e0bb5b', 'torch_mla_extend': '067ea108b35498b9b6703338c112c1db69335bf979cb76c1f712e66047433a45', '_compare': 'ff61bc86d21eebb74ffa14e426d5c4907aa35276e150280692314f0e27f5d034', 'run_compile': '555938e9c5b41aa7562d4b37d0ba6d90c8244137ef345acf02c2ed25e5d148f4', 'run_correctness': '9f482f5cd5213e6b12939ece6099288ccfcc52ab24adfb97d9c81ac5106abf19', 'run_performance': 'ab467bc1c4ffa77e7a6e83403d6c8527e8e08faf9de8561c3f8a08ba879b7038', 'main': '1a078382d740bf6949578767b767d05cc47c72a5ec777174ebadc2ffb2cbb0c0'}
     for fn in ast.parse((task / 'test_kernel_harness.py').read_text()).body:
         if isinstance(fn, ast.FunctionDef) and fn.name in hashes:

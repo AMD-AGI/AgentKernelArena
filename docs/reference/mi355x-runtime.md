@@ -44,11 +44,14 @@ extension modules in Python 3.12.
 
 FlyDSL tasks use task-local compatibility adapters for removed buffer/vector
 APIs and retain their existing cases, numerical gates and timing contracts.
-The gfx950 MLA decode path uses a single-stage schedule because its two-stage
-pipeline produced incorrect results with the new compiler. This fallback can
-increase latency. Numerical failures in the FP8 fused-MoE task have also been
-reproduced on the previous runtime and remain unresolved; they must not be
-counted as passing qualification or attributed to this upgrade without evidence.
+The gfx950 MLA decode path uses four waves per block to retain its two-stage
+pipeline. The two-wave pipelined configuration produced incorrect results on
+the new runtime; the four-wave configuration preserves asynchronous loads and
+double-buffered shared memory.
+
+The FP8 fused-MoE task exceeded its historical 1% numerical gate on both runtimes.
+It now uses the maintainer-approved 1.3% gate and has been requalified against
+that revised contract. This tolerance change is not a compiler accuracy fix.
 
 Triton AOT extraction resolves named signature keys against function argument
 names and rejects unrepresented global scratch. FlyDSL extraction accepts the

@@ -882,7 +882,7 @@ def select_3d_config(
     kv_dtype,
     shuffled_kv_cache,
 ):
-    attn_num_warps = 2
+    attn_num_warps = 4 if DEVICE_ARCH == "gfx950" else 2
     reduce_num_warps = 2
     attn_waves_per_eu = 1
     reduce_waves_per_eu = 2
@@ -924,9 +924,9 @@ def select_3d_config(
         "NUM_SEGMENTS_PER_SEQ": num_segments,
         "num_warps": attn_num_warps,
         "waves_per_eu": attn_waves_per_eu,
-        # The two-stage gfx950 pipeline produces incorrect values with Triton 3.8.
-        # Keep the single-stage schedule; workload and numerical gates are unchanged.
-        "num_stages": 2 if DEVICE_ARCH == "gfx1250" else 1,
+        # Four waves avoid the incorrect gfx950 two-wave async-copy schedule.
+        # Retain two pipeline stages; other architectures keep their settings.
+        "num_stages": 2 if DEVICE_ARCH in ("gfx1250", "gfx950") else 1,
     }
     reduce_config = {
         "TILE_SIZE": TILE_SIZE,

@@ -295,6 +295,42 @@ def _mla_replay_validator(q, kv_buffer, out, cu_seqlens_q, seqused_k, block_tabl
     return validate
 
 
+def _timed_mla_call(mod, q, kv_buffer, out, cu_seqlens_q, seqused_k, seq_len_k,
+                    block_table, scale, lora, rope):
+    # Reset every captured invocation, not just the output before warmups.
+    # Both roles include the same write in their measured graph.
+    out.fill_(float("nan"))
+    return _call_kernel(mod, q, kv_buffer, out, cu_seqlens_q, seqused_k,
+                        seq_len_k, block_table, scale, lora, rope)
+
+
+def _validate_mla_paged_variants(mod, q, kv_buffer, out, cu_seqlens_q,
+                                 seqused_k, seq_len_k, block_table, scale, lora, rope):
+    import torch
+
+    # Reverse physical pages and update their addresses without changing the
+    # logical cache. Then also shorten sequence lengths by distinct tail sizes.
+    order = torch.arange(kv_buffer.shape[0] - 1, -1, -1, device=q.device)
+    routed_kv = kv_buffer[order].contiguous()
+    routed_table = kv_buffer.shape[0] - 1 - block_table
+    query_lengths = cu_seqlens_q[1:] - cu_seqlens_q[:-1]
+    tail = kv_buffer.shape[1] // 2 + torch.arange(seqused_k.numel(), device=q.device)
+    varied_lengths = torch.maximum(seqused_k - tail, query_lengths).to(seqused_k.dtype)
+    for lengths in (seqused_k.clone(), varied_lengths):
+        result_buffer = torch.empty_like(out)
+        inputs = (q, routed_kv, routed_table, cu_seqlens_q, lengths)
+        originals = tuple(value.clone() for value in inputs)
+        expected = torch_mla_extend(q, routed_kv, cu_seqlens_q, lengths,
+                                    routed_table, lora, scale, o_dtype=q.dtype)
+        result_buffer.fill_(float("nan"))
+        actual = _call_kernel(mod, q, routed_kv, result_buffer, cu_seqlens_q,
+                              lengths, seq_len_k, routed_table, scale, lora, rope)
+        torch.cuda.synchronize()
+        require_unchanged(inputs, originals)
+        _checked_mla_output(actual, result_buffer, q, lora)
+        _compare_mla_output(actual, expected)
+
+
 def run_correctness():
     import torch
     try:
@@ -351,6 +387,8 @@ def run_correctness():
                     f"> tol={NORM_ERR_TOL:.1e} (max_abs={max_abs:.3e})",
                     details,
                 )
+            _validate_mla_paged_variants(mod, q, kv_buffer, out, cu_seqlens_q,
+                                        seqused_k, slk, block_table, scale, lora, rope)
         except Exception as e:
             details.append({
                 "shape_id": i + 1,
@@ -395,7 +433,7 @@ def run_performance():
 
             timed = TimedRun()
             elapsed_ms, bench_meta = benchmark_cuda_graph_or_events(
-                lambda: _call_kernel(mod, q, kv_buffer, out, cu_seqlens_q, seqused_k, slk, block_table, scale, lora, rope),
+                lambda: _timed_mla_call(mod, q, kv_buffer, out, cu_seqlens_q, seqused_k, slk, block_table, scale, lora, rope),
                 warmup=0,
                 repetition=BENCHMARK_ITERATIONS, timed_run=timed,
             )
