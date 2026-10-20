@@ -4,7 +4,13 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_lora_shrink.py
+  - path: source/triton_lora_shrink.py
+    scope: symbols
+    symbols:
+    - mm_k
+    - do_shrink_kernel
+    - _lora_shrink_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_lora_shrink.py
     kind: function

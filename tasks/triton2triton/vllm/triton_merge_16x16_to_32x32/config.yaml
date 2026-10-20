@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_merge_16x16_to_32x32.py
+  - path: source/triton_merge_16x16_to_32x32.py
+    scope: symbols
+    symbols:
+    - merge_16x16_to_32x32_inverse_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_merge_16x16_to_32x32.py
     kind: function

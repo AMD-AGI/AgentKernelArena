@@ -67,3 +67,40 @@ original numerical rule. Oracle work, perturbation, poisoning and restoration
 are outside timing. Originalseeds,tenwarmups and100samples are retained.
 Capture failure cannot bypass validation. The original frozen Triton source
 is unchanged; final candidate execution is audited outside measurement windows.
+
+## Candidate execution policy
+
+The candidate-only PyTorch preparation policy stays active on every actual
+performance call, including canonical warmup, graph capture, event timing and
+retained eager replay. Arithmetic and reductions belong in FlyDSL kernels. The
+actual performance closure receives one additional untimed FlyDSL invocation
+probe; existing prepare callbacks restore state around it. Python profiling
+runs outside capture/clocks, and the original benchmark parameters remain. A
+forbidden operation remains a failure even if candidate code or a capture
+fallback catches the error. Baseline/reference operators retain their policy.
+
+Normal task-local implementation imports are reviewed recursively and syntax
+checked. Candidate code must not access the evaluator module registry, frames
+or profiling controls through sys, aliases or dynamic lookup. Ordinary sys
+metadata and installed FlyDSL library internals are unaffected. Existing
+backend/native-dispatch restrictions and any exact protected helper exceptions
+remain. These checks enforce the task contract, not a Python security sandbox.
+
+## Module lifetime during an action
+
+The protected loader retains the successfully imported source module for the
+entire isolated action. A cache entry is keyed by resolved source path and the
+SHA256 of its exact bytes; changed source bytes or a different path cause a new
+import, and failed imports are not cached. Module loading and hashing remain
+outside device timing and graph capture. The module owns any compiled kernels
+through the action; per-call candidate policy proxies are still created by the
+existing audit. This does not change any RoPE input, rotation, comparison,
+scored shape, warmup or sample.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

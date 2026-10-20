@@ -6,10 +6,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from task_import_isolation import isolated_task_imports
 import torch
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+@pytest.fixture(autouse=True)
+def _isolated_task_local_imports():
+    with isolated_task_imports(ROOT / 'tasks'):
+        yield
+
 
 
 def _runner(name):
@@ -150,8 +157,10 @@ def test_moe_controls_reject_contiguous_stride_assumptions(name,control,operand)
     assert not torch.allclose(actual.float(), expected.float(), atol=5e-2, rtol=5e-2)
 
 
-def test_ssd_bmm_controls_cover_bfloat16_and_float32_storage():
+def test_ssd_bmm_controls_cover_bfloat16_and_float32_storage(monkeypatch):
     path = ROOT / 'tasks/triton2triton/vllm/triton_ssd_bmm/scripts/semantic_controls.py'
+    # The controls import their task-local `scripts` package.
+    monkeypatch.syspath_prepend(str(path.parents[1]))
     spec = importlib.util.spec_from_file_location('ssd_semantic_controls', path)
     controls = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(controls)

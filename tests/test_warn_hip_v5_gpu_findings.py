@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 import torch
+from reviewed_contract_history import known_feedforward_geometry
 
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks"
@@ -215,8 +216,10 @@ def test_feedforward_parameter_controls_reject_fixed_original_tensor(ignored):
     functional_source = load(task / "pytorch_code_functional/py_10024_Feedforward_func.py", "feedforward_functional")
     adapter = load(task / "eval_tools/evaluate.py", "feedforward_adapter")
     torch.manual_seed(0)
-    module = module_source.Feedforward(4).eval()
-    functional = functional_source.Feedforward(4).eval()
+    args, kwargs = module_source.get_init_inputs()
+    assert [args, kwargs] == functional_source.get_init_inputs()
+    module = module_source.Feedforward(*args, **kwargs).eval()
+    functional = functional_source.Feedforward(*args, **kwargs).eval()
     with torch.no_grad():
         for left, right in (("fc1.weight", "fc1_weight"), ("fc1.bias", "fc1_bias"),
                             ("fc2.weight", "fc2_weight"), ("fc2.bias", "fc2_bias")):
@@ -225,7 +228,7 @@ def test_feedforward_parameter_controls_reject_fixed_original_tensor(ignored):
     compare = lambda expected, actual, **bounds: torch.allclose(expected, actual, **bounds)
     original_module = {name: value.clone() for name, value in module.state_dict().items()}
     original_functional = {name: value.clone() for name, value in functional.state_dict().items()}
-    assert [case[0].shape[0] for case in inputs_by_case] == [1, 2, 4, 8, 16]
+    assert [(x.shape[0],y.shape[0],x.shape[1],y.shape[1]) for x,y in inputs_by_case] == known_feedforward_geometry(module_source.__file__)
     for inputs in inputs_by_case:
         adapter.check_parameter_variants(module, functional, functional_source.module_fn,
                                          inputs, compare, 1e-4, 1e-5)

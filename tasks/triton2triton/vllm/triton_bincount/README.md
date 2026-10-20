@@ -1,6 +1,7 @@
 # triton_bincount
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve only `_bincount_kernel` and
+permitted new implementation helpers;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -28,6 +29,8 @@ outside device timing, and the launch uses 10 warmups, 100 samples and the origi
 20 ms target. The public `bincount` wrapper remains subject to correctness checks;
 its advanced-index reset is not included in either baseline or candidate timing.
 This reports kernel latency rather than complete wrapper latency.
+The public wrapper, its buffer reset and launch configuration, imports and module
+execution are protected by the symbol-scoped edit boundary in `config.yaml`.
 
 Protected checks compare both exact integer outputs against CPU histograms and
 bit packing from pristine tokens. An unscored diagnostic covers partial/nonidentity

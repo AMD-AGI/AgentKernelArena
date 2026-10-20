@@ -5,7 +5,11 @@ Arena freezes it in a separate baseline workspace. The required final backend
 is **FlyDSL**. Finishing with the original Triton implementation is not accepted,
 even when it passes the numerical tests. No agent-specific driver is required.
 
-Edit only `candidate.editable` paths in `config.yaml`. Keep the declared callable
+Edit only `candidate.editable` paths in `config.yaml`; every shipped task file
+outside them is protected. You may add new task-local helper modules imported by
+the editable source. They become part of the candidate and pass the same local
+import-closure, dependency and control-plane checks. New files with protected
+harness or test names are discarded before evaluation. Keep the declared callable
 interfaces and all outputs/state changes exercised by the protected harness.
 Names containing `triton` are historical public API names; preserve those names
 while replacing their implementation with FlyDSL. Private GPU function names can
@@ -80,3 +84,35 @@ benchmark_warmup=0 with scope collector_only, and benchmark_total_warmup=10.
 The existing first successful setup/JIT invocation is separate from those
 warmup loops. These fields describe the unchanged execution; no warmup or
 sample was added, removed, moved or reclassified as scored work.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy remains active on every actual
+operator call made by canonical benchmark warmup, graph capture and eager event
+timing. Tensor arithmetic, reductions and library operators must execute as
+FlyDSL kernels even when candidate behavior changes after earlier calls. A
+probe of the actual performance closure observes FlyDSL invocation outside
+clocks and capture; Python profiling is disabled inside canonical measurement.
+Allocation and view preparation retain the existing allowlist. Baseline and
+reference operators keep their original policy and all original device timing
+parameters. One additional untimed audit probe of each performance closure runs
+before canonical benchmarking; stateful closures use the existing prepare
+callback before and after that probe. This probe is separate from the retained
+benchmark warmup/sample counts. A forbidden operation remains a failure even if
+a capture fallback or candidate code catches its exception. These checks are
+implementation-contract evidence, not a Python
+security sandbox.
+
+Candidate sources and their normal local-import helpers must not access the
+evaluator's module registry, stack frames or profiling controls through `sys`,
+including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
+available, and installed FlyDSL library internals are not scanned as candidate
+code. Protected reference imports remain prohibited.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

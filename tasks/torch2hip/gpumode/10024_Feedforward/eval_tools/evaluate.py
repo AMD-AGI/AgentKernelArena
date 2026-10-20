@@ -164,22 +164,26 @@ def check_input_geometry_controls(module, functional, hip_fn, compare, rtol, ato
     import torch
 
     device = next(module.parameters()).device
+    features = module.fc1.in_features
+    if functional.fc1_weight.shape[1] != features:
+        raise ValueError("Feedforward geometry controls need matching feature widths")
     module_state = {key: value.detach().clone() for key, value in module.state_dict().items()}
     functional_state = {key: value.detach().clone() for key, value in functional.state_dict().items()}
 
     def inputs(kind):
+        def dense(rows, offset):
+            values = torch.arange(rows * features, device=device, dtype=torch.float32)
+            return values.remainder(31).sub_(15).div_(8).view(rows, features).add_(offset)
         if kind == "x3_y1":
-            return (torch.tensor([[1., 2., 3., 4.], [-2., 1., 0., 3.],
-                                  [5., -4., 3., -2.]], device=device, dtype=torch.float32),
-                    torch.tensor([[-3., -2., 1., 4.]], device=device, dtype=torch.float32))
+            return dense(3, .125), dense(1, -.375)
         if kind == "x1_y5":
-            return (torch.tensor([[.5, -1., 2., -3.]], device=device, dtype=torch.float32),
-                    torch.tensor([[1., 0., 2., -1.], [-2., 1., 3., 4.],
-                                  [5., -3., .2, .4], [-4., 2., 1., 2.],
-                                  [2., -1., -2., 5.]], device=device, dtype=torch.float32))
-        x_base = torch.arange(24, dtype=torch.float32, device=device).mul_(.2).add_(-1)
-        y_base = torch.arange(60, dtype=torch.float32, device=device).mul_(-.15).add_(2)
-        return x_base.view(3, 8)[:, ::2], y_base.view(5, 12)[:, ::3]
+            return dense(1, .75), dense(5, -.5)
+        x_base = torch.arange(3 * 2 * features, dtype=torch.float32, device=device)
+        y_base = torch.arange(5 * 3 * features, dtype=torch.float32, device=device)
+        x_base = x_base.remainder(29).mul_(.125).sub_(1)
+        y_base = y_base.remainder(37).mul_(-.1).add_(2)
+        return (x_base.view(3, 2 * features)[:, ::2],
+                y_base.view(5, 3 * features)[:, ::3])
 
     def snapshot(value):
         return ((value.shape, value.stride(), value.dtype, value.device, value.data_ptr()),
@@ -196,7 +200,7 @@ def check_input_geometry_controls(module, functional, hip_fn, compare, rtol, ato
             reference_inputs = inputs(kind)
             candidate_inputs = inputs(kind)
             if not (reference_inputs[0].shape[0] != reference_inputs[1].shape[0]
-                    and reference_inputs[0].shape[1:] == reference_inputs[1].shape[1:] == (4,)):
+                    and reference_inputs[0].shape[1:] == reference_inputs[1].shape[1:] == (features,)):
                 raise ValueError("Feedforward geometry control lost unequal batches")
             for reference_value, candidate_value in zip(reference_inputs, candidate_inputs):
                 if ((reference_value.shape, reference_value.stride(), reference_value.dtype)
@@ -238,10 +242,20 @@ def require_graph_method(case, method):
         raise RuntimeError("Benchmark changed the declared graph timing method")
 
 
+def check_model_init_identity(rows, module, functional):
+    """Bind manifest constructor metadata to both protected implementations."""
+    declared = module.get_init_inputs()
+    if functional.get_init_inputs() != declared:
+        raise ValueError("Module and functional model initializers differ")
+    if any(row["params"].get("model_init") != declared for row in rows):
+        raise ValueError("Model initializer no longer matches the workload manifest")
+
+
 def validate_task(args, rows):
     import torch
     module = load_module(local_path(args.module), "arena_reference")
     functional = load_module(local_path(args.functional), "arena_functional")
+    check_model_init_identity(rows, module, functional)
     forward = getattr(functional, args.model_class).forward
     default = inspect.signature(forward).parameters["fn"].default
     if not callable(default):

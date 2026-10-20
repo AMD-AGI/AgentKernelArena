@@ -41,3 +41,12 @@ outputs poisoned. Read-only input is checked and restored even on replay failure
 Additional unscored public-branch controls from PR105: BF16 UE8M0 and FP32 finite/subnormal edges with provided output.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_silu_mul_per_token_group_quant_fp8_colmajor`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

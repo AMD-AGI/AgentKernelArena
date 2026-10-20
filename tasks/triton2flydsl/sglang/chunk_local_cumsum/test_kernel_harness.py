@@ -2,8 +2,10 @@
 """Task runner for triton2flydsl/sglang/chunk_local_cumsum.
 
 Standalone harness for the GDN chunk-local cumulative-sum Triton kernels
-(scalar 3D path + vector 4D path). Exercises the regular (non-varlen) path;
-the per-chunk math is identical to the varlen branch, only offsets differ.
+(scalar 3D path + vector 4D path). The ten scored cases use the regular
+[B,T,H(,S)] layout without cu_seqlens. Untimed correctness-only controls in
+scripts/semantic_controls.py also call head_first=True and varlen
+cu_seqlens/chunk_indices variants against an independent FP64 reference.
 
 Modes:
   --compile        : ast-parse + import source, assert symbols.
@@ -195,6 +197,12 @@ def run_correctness():
         except Exception as e:
             details.append({"shape_id": i + 1, "shape": shape, "error": str(e)})
             return False, f"Shape {i+1} {shape}: exception: {e}", details
+    from scripts.semantic_controls import run_controls
+    try:
+        details.extend(run_controls(mod.chunk_local_cumsum, _compare_sglang_output,
+                                    require_unchanged, start_shape_id=len(details) + 1))
+    except Exception as error:
+        return False, f"Head-first/varlen semantic control: {error}", details
     return True, None, details
 
 

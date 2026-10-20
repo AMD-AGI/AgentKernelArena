@@ -43,3 +43,12 @@ warmups, and 100 timing samples are unchanged. Both actual `TimedRun` outputs
 are checked, poisoned, and checked again after changing all five inputs and
 replaying that exact invocation. Verification and perturbation occur outside
 timing; all input buffers are restored even on a failed replay.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `recompute_w_u_fwd_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

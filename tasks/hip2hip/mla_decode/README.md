@@ -130,7 +130,12 @@ its exact deterministic timing inputs, outside measured calls. It validates the
 actual measured output before poisoning and the exact captured replay afterward:
 the original eager/replay `1e-2` absolute gate is retained, and both outputs also
 satisfy the original host-reference rule (`max_abs <= 5e-2` OR `max_rel <= 1e-1`).
-Finite-value checks use exponent bits so `-ffast-math` cannot remove them. Host
+Finite-value checks inspect the raw 16-bit BF16 output storage before any
+BF16-to-float promotion. With `-ffast-math`, that promotion can introduce finite-
+value assumptions and erase even bit tests performed on the promoted value.
+Correctness and measured-output/replay checks therefore reject NaN/Inf storage
+before decoding. Correctness uses byte-level `0xFF` output poisoning and a finite
+rejection sentinel; it does not depend on host NaN conversion or infinity math. Host
 reference work uses OpenMP outside GPU timing. No case, seed, launch, warmup,
 sample, graph-batching or numerical threshold is weakened. A further fresh-input control sets Q to zero with token-varying FP8 values
 at nontrivially mapped locations, whose analytical answer is the valid-token
@@ -173,3 +178,23 @@ within this launch and kernel signature; residency is not fixed at one WG/CU.
 Both correctness and benchmark binaries link the separate protected candidate
 translation unit. The editable kernel header bytes, original numerical gates,
 current routing/valid-length policy, input seeds and timed work are unchanged.
+
+The raw-storage guard changes only validation of nonfinite outputs. The editable
+kernel, host-reference arithmetic, five workload cases, original finite-value
+error thresholds and compilation/timing policy remain unchanged. This guard
+requires fresh GPU validation and an empty-kernel rejection check on the selected
+runtime; CPU compiler regressions alone do not qualify the task.
+
+Scored Q and KV inputs now use the original correctness generators directly:
+Q is BF16 uniform on `[-1,1]` with seed `42 + batch * 31 + ctx`; KV is
+standard-normal data encoded by the original E4M3FN converter with seed
+`123 + batch * 17 + ctx`. Both roles use the same protected functions and seed
+schedule. This replaces the former short-period, low-amplitude timing inputs,
+whose long-context outputs were smaller than the absolute reference threshold.
+The original periodic inputs remain an additional untimed graph/event replay
+regression with an independent host reference, poison, read-only input check and
+restoration of the scored random inputs. Host generation and both references
+remain outside device timing. The five shapes, layouts, routing, numerical
+thresholds, 10 warmups, 100 samples and graph/event timing policy are retained.
+This scored-input change needs fresh GPU validation and a new paired baseline;
+timings from the former input distribution are not comparable.

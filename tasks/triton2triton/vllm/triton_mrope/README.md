@@ -57,3 +57,12 @@ boundaries, 10 warmups and 100 samples remain unchanged.
 Additional unscored public-branch controls from PR105: BF16 and partial rotary dimensions; preserve full-head original timing.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_triton_mrope_forward`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

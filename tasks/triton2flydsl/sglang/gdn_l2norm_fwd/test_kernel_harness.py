@@ -16,6 +16,7 @@ import json
 import time
 import argparse
 import importlib.util
+import hashlib
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import require_unchanged, require_tensor_contract, verify_timed_run
 
@@ -47,11 +48,22 @@ EPS = 1e-6
 DTYPE_NAME = 'bfloat16'  # protected suite dtype
 
 
+# Retain compiled-module owners for this isolated task action. Loading occurs
+# before correctness/performance work, outside every benchmark clock/capture.
+_SOURCE_MODULE_CACHE = {}
+
+
 def load_module():
-    spec = importlib.util.spec_from_file_location("gdn_l2norm_src", SOURCE_FILE)
+    source_path = os.path.realpath(SOURCE_FILE)
+    with open(source_path, "rb") as source:
+        source_identity = (source_path, hashlib.sha256(source.read()).hexdigest())
+    if source_identity in _SOURCE_MODULE_CACHE:
+        return _SOURCE_MODULE_CACHE[source_identity]
+    spec = importlib.util.spec_from_file_location("gdn_l2norm_src", source_path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
+    _SOURCE_MODULE_CACHE[source_identity] = mod
     return mod
 
 

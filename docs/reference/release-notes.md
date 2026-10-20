@@ -25,6 +25,15 @@ This topic summarizes the features available in each AgentKernelArena release. F
 - Removed the retired integrations' `num_parallel` and `run_mode` settings
   from the configuration reference. GEAK v4 and Forge remain supported, and
   GEAK-derived task packages and saved experiment results are unchanged.
+- Repaired 114 GPU task packages for correctness and benchmark integrity:
+  narrower editable boundaries, independently drawn timed inputs with replay
+  checks, restored input state and wider correctness coverage. Some repaired
+  tasks change their timed input distributions or invocation preparation, so
+  recompute their baselines; scores from earlier revisions of these tasks are
+  not directly comparable with new scores. Each changed task's README
+  describes its revision. The protected wrappers of the symbol-scoped Triton
+  tasks now fix the launch configuration (tiles, `num_warps` and
+  `num_stages`).
 
 ## AgentKernelArena 0.2.0
 

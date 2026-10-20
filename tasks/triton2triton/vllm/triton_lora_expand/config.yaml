@@ -4,7 +4,13 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_lora_expand.py
+  - path: source/triton_lora_expand.py
+    scope: symbols
+    symbols:
+    - mm_k
+    - do_expand_kernel
+    - _lora_expand_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_lora_expand.py
     kind: function

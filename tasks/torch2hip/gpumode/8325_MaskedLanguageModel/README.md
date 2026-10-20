@@ -20,7 +20,7 @@ a baseline fallback. Baseline correctness compares against the protected PyTorch
 module; the PyTorch baseline is cross-checked against the independent functional form.
 
 All **5 cases** in `workload.json` are mandatory. The manifest was enumerated
-from the unchanged module `get_inputs()`; it is not inferred from candidate output.
+from the protected module `get_inputs()`; it is not inferred from candidate output.
 The original correctness tolerance and RNG schedule remain in
 `eval_tools/correctness_check.py` (model seed 0; comparison seed 1337 + case index).
 The performance path retains the original `eval_tools/cal_kernel_perf.py` case
@@ -58,3 +58,82 @@ values are restored in `finally`, including on exceptions, so a failed role
 cannot alter the next role's starting state. Snapshot, checks and final cleanup
 run outside the reported samples; existing per-invocation prepare callbacks
 and the baseline's graph/Event policy retain their timing boundaries.
+
+## Workload geometry
+
+A 512-to-4096 vocabulary projection and log-softmax with 1/17/63/246/256 token rows.
+
+Both protected models use `get_init_inputs()` = `[[], {'hidden': 512, 'vocab_size': 4096}]`.
+Each manifest row records this constructor in `params.model_init`; task
+validation checks it against both implementations. Inputs remain FP32, and
+the exact input shapes and strides are listed in `workload.json`.
+The flattened output-row counts are `1, 17, 63, 246, 256`.
+
+The largest declared input tuple contains 0.500 MiB; model
+parameters contain 8.016 MiB and the largest output contains
+4.000 MiB. The largest single operator intermediate is at most
+4.000 MiB. These are FP32 tensor sizes, excluding
+the evaluator's reference copies, snapshots, allocator and graph/compiler memory.
+The 4096-way vocabulary projection keeps full log-softmax reference and output
+checks bounded while exercising a substantial reduction dimension.
+
+These enlarged workloads change the task contract and require fresh GPU
+`task_validator` qualification plus a correct HIP candidate on every declared
+case. An initial generation-stub validation does not establish candidate
+feasibility, and earlier small-workload results do not qualify this contract.
+
+## Independent measured inputs and replay validation
+
+The original correctness inputs, shape/dtype/stride rows, constructors, model
+parameters, reference math, tolerances, 10 warmups and 100 reported samples are
+retained. Performance now uses an independent input draw before every prepared
+invocation, including warmup, capture/calibration and each measured call.
+Preparation 0 retains the original input; later preparations draw the same FP32
+CPU standard-normal distribution used by the protected `get_inputs()` generators,
+using local generators. It does not advance their global RNG. Persistent model
+weights remain fixed for the case. Both roles share the same seed plan.
+
+The seed base is derived from the model class and declared input shape/dtype/stride
+identity; operand seed = seed_base + 4 * preparation_index + operand_index.
+Both roles use this same generation policy. The actual scored seeds and bytes
+match when the roles use the same invocation kind and preparation schedule.
+Explicit Event timing and graph timing have different preparation prefixes;
+across those kinds, only the equivalent input distribution is claimed, and the
+actual scored draw IDs must be inspected rather than assumed to be paired.
+Every measured draw records its actual preparation index, seeds and SHA256 of
+all input tensor bytes. The raw metadata and qualified runtime/source identities
+are required to reproduce those draws; no equality across PyTorch versions is
+assumed. Each of the 100 observed samples must have a distinct input fingerprint.
+
+The existing canonical `prepare_fn` runs generation, input copies and protected
+reference computation before the start event. Its existing behavior captures one
+logical operator invocation per graph replay when preparation is present; this
+prevents amortizing a result cached across identical calls inside one graph.
+The timer implementation and sample count are unchanged. `before_sample` and
+`after_sample` only inspect tensors and update evidence counters, and require
+one observed invocation per sample. Every output and caller/model tensor state
+is checked with the original rule. The protected canonical schedule is verified
+(10 warmups plus five graph preparation steps before the measured stream; the
+explicit Event path has the warmups alone). Missing observations or a different
+preparation schedule fail instead of accepting partial evidence. With the actual
+`TimedRun` collector, an effectively empty graph estimate or a capture exception
+fails closed in the canonical helper; it does not produce a scored automatic
+Event fallback. Explicit `use_cuda_graph=False` and the protected forced-Event
+option use the observable eager path. CPU stub tests execute these actual
+canonical branches, without claiming native GPU timing or graph qualification.
+
+After timing, the exact measured graph or Event callable is checked again with
+poisoned output and independent per-operand input perturbations, using the
+protected reference to require a meaningful expected change. Original caller
+inputs are also restored and checked with that same measured unit. Final cleanup
+restores inputs and model tensor values even on rejection. Preparation and all
+validation stay outside the reported device-time intervals.
+
+These timed draws and single-invocation graph semantics materially change the
+old fixed-input reward workload. Old scores are not directly comparable and old
+GPU qualification does not transfer: fresh paired measurements and task-validator
+PASS are required. Finite controls reject stale-result copies; a valid cache that
+actually recomputes for every fresh draw can pass, but cannot skip that timed work.
+This is not a general native-code sandbox or a proof against every conditional
+cache strategy. NumPy, already required by the runtime smoke, supplies byte views
+for the FP32 input fingerprints.

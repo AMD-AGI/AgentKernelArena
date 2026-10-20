@@ -174,14 +174,17 @@ def _tensor_bytes(value):
 
 
 class CallPlan:
-    def __init__(self, harness, args, kwargs):
+    def __init__(self, harness, args, kwargs, oracle=None):
         import torch
         self.harness = harness
+        # Scored cases and the original controls use expected_outputs; domain
+        # controls pass their independent oracle. Both read pristine clones.
+        self.oracle = expected_outputs if oracle is None else oracle
         self.values = dict(enumerate(args)) | kwargs
         self.saved = {k: v.clone() for k, v in self.values.items() if isinstance(v, torch.Tensor)}
         self.metadata = {k: (v.shape, v.stride(), v.dtype, v.device, v.data_ptr())
                          for k, v in self.values.items() if isinstance(v, torch.Tensor)}
-        self.expected = expected_outputs(harness, self.values | self.saved)
+        self.expected = self.oracle(harness, self.values | self.saved)
 
     def outputs(self, result):
         if OUTPUT_KEYS:
@@ -233,7 +236,7 @@ class CallPlan:
         self.values[5].copy_(self.values[5].flip(0))
         # New source snapshot is the reference input and read-only replay guard.
         self.saved = {k: self.values[k].clone() for k in self.saved}
-        return expected_outputs(self.harness, self.values | self.saved)
+        return self.oracle(self.harness, self.values | self.saved)
 
     def restore(self, originals):
         for key, value in originals.items():
@@ -241,7 +244,7 @@ class CallPlan:
 
 
 @contextmanager
-def checked_modules(harness):
+def checked_modules(harness, oracle=None):
     load_original = harness.load_module
     patched = []
 
@@ -251,7 +254,7 @@ def checked_modules(harness):
         patched.append((module, original))
 
         def checked(*args, **kwargs):
-            plan = CallPlan(harness, args, kwargs)
+            plan = CallPlan(harness, args, kwargs, oracle)
             if OUTPUT_KEYS:
                 plan.poison(plan.outputs(None))
             result = checked_candidate_call(module, original, *args, **kwargs)
@@ -271,14 +274,14 @@ def checked_modules(harness):
             setattr(module, SYMBOL, original)
 
 
-def checked_benchmark(harness, benchmark, fn, **options):
+def checked_benchmark(harness, benchmark, fn, *, oracle=None, **options):
     module = inspect.getclosurevars(fn).nonlocals['mod']
     original = getattr(module, SYMBOL)
     plans = []
     captured = None
 
     def describe(*args, **kwargs):
-        plans.append(CallPlan(harness, args, kwargs))
+        plans.append(CallPlan(harness, args, kwargs, oracle))
 
     # Only collect the protected invocation's arguments; no candidate launch.
     setattr(module, SYMBOL, describe)
@@ -423,11 +426,73 @@ CONTRACT_CASES = {'ragged_permuted_pages': {'contract_case': 'ragged_permuted_pa
                                       'partial_or_statistics': 'float32',
                                       'routing': 'int32'},
                            'seed': 814,
-                           'initial_partial_value': 23.5}}
+                           'initial_partial_value': 23.5},
+ 'kv_group_17_two_heads': {'contract_case': 'kv_group_17_two_heads',
+                           'batch': 2,
+                           'query_heads': 34,
+                           'kv_heads': 2,
+                           'head_dim': 64,
+                           'max_seq': 63,
+                           'num_splits': 4,
+                           'page_size': 16,
+                           'sequence_lengths': [63, 37],
+                           'page_mapping': 'reversed physical page order',
+                           'logit_cap': 0.0,
+                           'input_shapes': {'q': [2, 34, 64],
+                                            'k_buffer': [128, 2, 64],
+                                            'v_buffer': [128, 2, 64],
+                                            'req_to_tokens': [2, 64],
+                                            'b_seqlen': [2]},
+                           'output_shapes': {'att_out': [2, 34, 4, 65]},
+                           'dtypes': {'data': 'float16',
+                                      'partial_or_statistics': 'float32',
+                                      'routing': 'int32'},
+                           'seed': 815},
+ 'kv_group_24_two_heads': {'contract_case': 'kv_group_24_two_heads',
+                           'batch': 2,
+                           'query_heads': 48,
+                           'kv_heads': 2,
+                           'head_dim': 64,
+                           'max_seq': 63,
+                           'num_splits': 4,
+                           'page_size': 16,
+                           'sequence_lengths': [63, 37],
+                           'page_mapping': 'reversed physical page order',
+                           'logit_cap': 1.5,
+                           'input_shapes': {'q': [2, 48, 64],
+                                            'k_buffer': [128, 2, 64],
+                                            'v_buffer': [128, 2, 64],
+                                            'req_to_tokens': [2, 64],
+                                            'b_seqlen': [2]},
+                           'output_shapes': {'att_out': [2, 48, 4, 65]},
+                           'dtypes': {'data': 'float16',
+                                      'partial_or_statistics': 'float32',
+                                      'routing': 'int32'},
+                           'seed': 816}}
+
+
+def _load_domain_controls():
+    # Protected task-local module, loaded by path like this module itself.
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().with_name('_arena_domain_controls.py')
+    spec = importlib.util.spec_from_file_location('_attention_domain_controls', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+DOMAIN = _load_domain_controls()
+if set(DOMAIN.DOMAIN_CASES) & set(CONTRACT_CASES):
+    raise ValueError('Domain control names collide with existing contract controls')
+# Appended after the original controls, matching the manifest row order.
+CONTRACT_CASES.update(DOMAIN.DOMAIN_CASES)
 
 
 def control_inputs(h, case, device='cuda'):
     import torch
+    if case in DOMAIN.DOMAIN_CASES:
+        return DOMAIN.control_inputs(case, device)
     c = CONTRACT_CASES[case]
     q, k, v, out, pages, lengths, scale = h.make_inputs(c['batch'], c['query_heads'],
              c['kv_heads'], c['head_dim'], c['max_seq'], c['num_splits'], c['page_size'], device, torch.float16)
@@ -448,7 +513,9 @@ def install_controls(harness):
     harness.CONTRACT_CASES = CONTRACT_CASES
 
     def correctness(case):
-        with checked_modules(harness):
+        domain = case in DOMAIN.DOMAIN_CASES
+        oracle = DOMAIN.expected_outputs if domain else None
+        with checked_modules(harness, oracle):
             module = harness.load_module()
             args, kwargs = control_inputs(harness, case)
             getattr(module, SYMBOL)(*args, **kwargs)
@@ -458,7 +525,11 @@ def install_controls(harness):
         def fn():
             getattr(mod, SYMBOL)(*args, **kwargs)
         ms, metadata = checked_benchmark(harness, harness._benchmark_cuda_graph_or_events, fn,
-                    warmup=harness.WARMUP_ITERATIONS, repetition=harness.BENCHMARK_ITERATIONS)
-        return True, {'unscored_control': True, 'unscored_diagnostic_time_ms': ms, **metadata}
+                    oracle=oracle, warmup=harness.WARMUP_ITERATIONS,
+                    repetition=harness.BENCHMARK_ITERATIONS)
+        evidence = {'unscored_control': True, 'unscored_diagnostic_time_ms': ms, **metadata}
+        if domain:
+            evidence['independent_float64_domain_oracle'] = True
+        return True, evidence
 
     harness.run_contract_correctness = correctness

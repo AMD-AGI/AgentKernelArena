@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_gumbel_sample.py
+  - path: source/triton_gumbel_sample.py
+    scope: symbols
+    symbols:
+    - _gumbel_sample_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_gumbel_sample.py
     kind: function

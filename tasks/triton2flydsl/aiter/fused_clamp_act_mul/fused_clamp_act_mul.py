@@ -206,7 +206,8 @@ def fused_clamp_act_mul(
             into ``act(gate) * up`` (same as reference ``weights * x``).
 
     Constraints:
-        ``N`` must be a power of two, ``N >= 128``, and ``N % 128 == 0``.
+        ``N >= 128`` and ``N % 128 == 0``. The column block is the next power of
+        two of ``N`` and masks the tail, so ``N`` itself need not be a power of two.
     """
     assert inp.dim() == 2
     M, D = inp.shape

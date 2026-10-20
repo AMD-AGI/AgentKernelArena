@@ -59,7 +59,7 @@ def run(argv=None):
         (ROOT / "build").mkdir(exist_ok=True)
         os.environ["TORCH_EXTENSIONS_DIR"] = str(ROOT / "build" / "torch_extensions")
         data = manifest()
-        cases = data["cases"]
+        cases = [row for row in data["cases"] if action == "validate-task" or action in row.get("checks", ["correctness", "performance"])]
         import task_runner as harness
         if [list(shape) for shape in harness.TEST_SHAPES] != data["test_shapes"]:
             raise ValueError("Protected harness cases no longer match workload manifest")
@@ -69,6 +69,13 @@ def run(argv=None):
             harness.HIP_GRAPH_ENABLED = data["graph_policy"]["enabled"]
             harness.HIP_GRAPH_FALLBACK_REASON = data["graph_policy"]["reason"]
         import reference_checks
+        if data.get("correctness_control_shapes") != [list(shape) for shape in reference_checks.CONTROL_SHAPES]:
+            raise ValueError("Protected dense control shapes disagree with manifest")
+        expected_controls = [
+            {"test_case_id": identity, "params": dict(zip(("A_rows", "A_cols", "B_cols"), shape)), "checks": ["correctness"]}
+            for identity, shape in zip(reference_checks.CONTROL_IDS, reference_checks.CONTROL_SHAPES)]
+        if data["cases"][5:] != expected_controls:
+            raise ValueError("Protected dense control declarations disagree with manifest")
         if action == "validate-task":
             reference_checks.self_test(harness)
             for relative in data["candidate_files"]:
@@ -76,7 +83,7 @@ def run(argv=None):
                 if not path.is_relative_to(ROOT) or not path.is_file() or not path.read_text().strip():
                     raise ValueError("Initial native candidate is missing, empty, or outside task")
             result["metadata"] = {"candidate_state": "implemented", "case_count": len(cases)}
-            result["cases"] = [{**row, "status": "PASS", "checks": ["correctness", "performance"]} for row in cases]
+            result["cases"] = [{**row, "status": "PASS", "checks": row.get("checks", ["correctness", "performance"])} for row in cases]
         elif action == "compile":
             # The original harness invokes hipcc or torch's native extension build.
             # A text match, Python syntax check, or old binary alone cannot pass.
@@ -87,7 +94,7 @@ def run(argv=None):
             ok, error = harness.run_correctness()
             if not ok:
                 raise RuntimeError(error or "Original native correctness check failed")
-            reference_checks.check_additional_paths(harness)
+            result["metadata"] = {"dense_input_checks": reference_checks.check_additional_paths(harness)}
             result["cases"] = [{**row, "status": "PASS"} for row in cases]
         else:
             result["cases"] = checked_performance(cases, harness.run_performance())

@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_topk_topp.py
+  - path: source/triton_topk_topp.py
+    scope: symbols
+    symbols:
+    - _topk_topp_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_topk_topp.py
     kind: function

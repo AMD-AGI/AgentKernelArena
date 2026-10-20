@@ -23,7 +23,8 @@
       "params": {
         "case_index": 0,
         "configuration": 42,
-        "configuration_names": "seed"
+        "configuration_names": "seed",
+        "input_distribution": "strong_signal_v2"
       },
       "checks": [
         "correctness",
@@ -37,7 +38,8 @@
       "params": {
         "case_index": 1,
         "configuration": 43,
-        "configuration_names": "seed"
+        "configuration_names": "seed",
+        "input_distribution": "strong_signal_v2"
       },
       "checks": [
         "correctness",
@@ -51,7 +53,8 @@
       "params": {
         "case_index": 2,
         "configuration": 44,
-        "configuration_names": "seed"
+        "configuration_names": "seed",
+        "input_distribution": "strong_signal_v2"
       },
       "checks": [
         "correctness",
@@ -65,7 +68,8 @@
       "params": {
         "case_index": 3,
         "configuration": 45,
-        "configuration_names": "seed"
+        "configuration_names": "seed",
+        "input_distribution": "strong_signal_v2"
       },
       "checks": [
         "correctness",
@@ -79,11 +83,150 @@
       "params": {
         "case_index": 4,
         "configuration": 46,
-        "configuration_names": "seed"
+        "configuration_names": "seed",
+        "input_distribution": "strong_signal_v2"
       },
       "checks": [
         "correctness",
         "performance"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "historical1",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20000,
+        "seed": 42,
+        "configuration": 42,
+        "configuration_names": "seed",
+        "input_distribution": "historical_v1"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "historical2",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20001,
+        "seed": 43,
+        "configuration": 43,
+        "configuration_names": "seed",
+        "input_distribution": "historical_v1"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "historical3",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20002,
+        "seed": 44,
+        "configuration": 44,
+        "configuration_names": "seed",
+        "input_distribution": "historical_v1"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "historical4",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20003,
+        "seed": 45,
+        "configuration": 45,
+        "configuration_names": "seed",
+        "input_distribution": "historical_v1"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "historical5",
+      "dtype": "float32",
+      "params": {
+        "case_index": 20004,
+        "seed": 46,
+        "configuration": 46,
+        "configuration_names": "seed",
+        "input_distribution": "historical_v1"
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_tail_no_initial_state",
+      "dtype": "float32",
+      "params": {
+        "case_index": 30000,
+        "configuration": [
+          2,
+          3,
+          3,
+          17,
+          35
+        ],
+        "configuration_names": "(B,T,H,K,V)",
+        "initial_state": false,
+        "scale": 0.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_tail_initial_state",
+      "dtype": "float32",
+      "params": {
+        "case_index": 30001,
+        "configuration": [
+          2,
+          3,
+          3,
+          17,
+          35
+        ],
+        "configuration_names": "(B,T,H,K,V)",
+        "initial_state": true,
+        "scale": 0.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "control_decode_multitile",
+      "dtype": "float32",
+      "params": {
+        "case_index": 30002,
+        "configuration": [
+          2,
+          1,
+          4,
+          64,
+          64
+        ],
+        "configuration_names": "(B,T,H,K,V)",
+        "initial_state": true,
+        "scale": 0.5
+      },
+      "checks": [
+        "correctness"
       ],
       "status": "PASS"
     }
@@ -91,5 +234,81 @@
   "migration": {
     "original_harness_sha256": "eca127521cd9e2ca3362cc35f8d9465a140c0c40a22f6eb167873c43bc1ad165",
     "original_correctness_sha256": "449933a7ded685f582844981a371fc6654780e186c261c02a9acc2e502e1458a"
-  }
+  },
+  "input_distribution": {
+    "name": "strong_signal_v2",
+    "operand_scales": {
+      "q": 8,
+      "v": 8,
+      "h0": 8
+    }
+  },
+  "historical_cases": [
+    {
+      "test_case_id": "historical1",
+      "case_index": 20000,
+      "seed": 42
+    },
+    {
+      "test_case_id": "historical2",
+      "case_index": 20001,
+      "seed": 43
+    },
+    {
+      "test_case_id": "historical3",
+      "case_index": 20002,
+      "seed": 44
+    },
+    {
+      "test_case_id": "historical4",
+      "case_index": 20003,
+      "seed": 45
+    },
+    {
+      "test_case_id": "historical5",
+      "case_index": 20004,
+      "seed": 46
+    }
+  ],
+  "geometry_controls": [
+    {
+      "test_case_id": "control_tail_no_initial_state",
+      "case_index": 30000,
+      "shape": [
+        2,
+        3,
+        3,
+        17,
+        35
+      ],
+      "initial_state": false,
+      "scale": 0.5
+    },
+    {
+      "test_case_id": "control_tail_initial_state",
+      "case_index": 30001,
+      "shape": [
+        2,
+        3,
+        3,
+        17,
+        35
+      ],
+      "initial_state": true,
+      "scale": 0.5
+    },
+    {
+      "test_case_id": "control_decode_multitile",
+      "case_index": 30002,
+      "shape": [
+        2,
+        1,
+        4,
+        64,
+        64
+      ],
+      "initial_state": true,
+      "scale": 0.5
+    }
+  ]
 }

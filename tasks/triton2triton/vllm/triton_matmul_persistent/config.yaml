@@ -4,7 +4,12 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_matmul_persistent.py
+  - path: source/triton_matmul_persistent.py
+    scope: symbols
+    symbols:
+    - _compute_pid
+    - matmul_kernel_persistent
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_matmul_persistent.py
     kind: function

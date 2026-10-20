@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 import torch
+from reviewed_contract_history import known_feedforward_geometry
 
 
 TASK = Path(__file__).resolve().parents[1] / "tasks/torch2hip/gpumode/10024_Feedforward"
@@ -23,8 +24,10 @@ def models():
     source = load(TASK / "pytorch_code_module/py_10024_Feedforward.py", "feedforward_geometry_source")
     functional = load(TASK / "pytorch_code_functional/py_10024_Feedforward_func.py", "feedforward_geometry_functional")
     torch.manual_seed(0)
-    module = source.Feedforward(4).eval()
-    candidate = functional.Feedforward(4).eval()
+    args, kwargs = source.get_init_inputs()
+    assert [args, kwargs] == functional.get_init_inputs()
+    module = source.Feedforward(*args, **kwargs).eval()
+    candidate = functional.Feedforward(*args, **kwargs).eval()
     with torch.no_grad():
         for left, right in (("fc1.weight", "fc1_weight"), ("fc1.bias", "fc1_bias"),
                             ("fc2.weight", "fc2_weight"), ("fc2.bias", "fc2_bias")):
@@ -55,8 +58,7 @@ def check(models, hip_fn):
 def test_original_five_scored_inputs_and_unscored_geometry(models):
     _, source, functional, _, _, _ = models
     cases = list(source.get_inputs())
-    assert [(x.shape[0], y.shape[0], x.shape[1], y.shape[1]) for x, y in cases] == [
-        (1, 1, 4, 4), (2, 2, 4, 4), (4, 4, 4, 4), (8, 8, 4, 4), (16, 16, 4, 4)]
+    assert [(x.shape[0], y.shape[0], x.shape[1], y.shape[1]) for x, y in cases] == known_feedforward_geometry(source.__file__)
     assert check(models, None) == ("x3_y1", "x1_y5", "strided_x3_y5")
     assert check(models, functional.module_fn) == ("x3_y1", "x1_y5", "strided_x3_y5")
     tree = ast.parse((TASK / "eval_tools/evaluate.py").read_text())
@@ -78,7 +80,17 @@ def test_equal_half_specialization_passes_old_cases_but_fails_new_control(models
         return output if x.shape[0] == y.shape[0] else output.roll(1, 0)
 
     for x, y in source.get_inputs():
-        torch.testing.assert_close(candidate(x, y, fn=equal_half_only), module(x, y))
+        actual, expected = candidate(x, y, fn=equal_half_only), module(x, y)
+        if x.shape[0] == y.shape[0]:
+            torch.testing.assert_close(actual, expected)
+        else:
+            assert not torch.allclose(actual, expected, rtol=1e-4, atol=1e-5)
+    # Original equal-half geometry remains a useful counterexample on either
+    # exact reviewed source contract; the upgraded scored rows reject it too.
+    width = module.input_size
+    for rows in (1,2,4,8,16):
+        x,y = torch.randn(rows,width),torch.randn(rows,width)
+        torch.testing.assert_close(candidate(x,y,fn=equal_half_only),module(x,y))
     with pytest.raises(ValueError, match="unequal/strided geometry"):
         check(models, equal_half_only)
 

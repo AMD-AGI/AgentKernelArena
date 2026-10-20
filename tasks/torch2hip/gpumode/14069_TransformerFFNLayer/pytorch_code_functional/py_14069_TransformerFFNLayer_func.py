@@ -124,23 +124,19 @@ class TransformerFFNLayer(nn.Module):
 
 def get_inputs():
     """
-    Generate multiple test cases with varying sizes
-    TransformerFFNLayer forward() expects x: (T, B, C) where C=hidden_size=4
+    The existing kernel_size=1 Conv1d, GELU and linear projection at 512/2048
+    widths; variable T/B and token tails.
     """
-    configs = [
-        # (T, B, C) where C must be 4 to match hidden_size=4 initialization
-        ([4, 4, 4],),  # T=4, B=4, C=4
-        ([8, 4, 4],),  # T=8, B=4, C=4
-        ([16, 4, 4],),  # T=16, B=4, C=4
-        ([32, 4, 4],),  # T=32, B=4, C=4
-        ([64, 4, 4],),  # T=64, B=4, C=4
+    shapes = [
+        [(1, 1, 512)],
+        [(17, 3, 512)],
+        [(63, 4, 512)],
+        [(128, 4, 512)],
+        [(257, 3, 512)],
     ]
-    
-    for shape in configs:
-        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
-        x = torch.randn(shape_list, dtype=torch.float32)
-        yield [x]
+    for case_shapes in shapes:
+        yield [torch.randn(shape, dtype=torch.float32) for shape in case_shapes]
 
 
 def get_init_inputs():
-    return [[], {'hidden_size': 4, 'filter_size': 4}]
+    return [[], {'hidden_size': 512, 'filter_size': 2048}]

@@ -69,6 +69,47 @@
         "A_cols": 1024,
         "B_cols": 2048
       }
+    },
+    {
+      "test_case_id": "control_dense_rectangular_16_32_48",
+      "params": {
+        "A_rows": 16,
+        "A_cols": 32,
+        "B_cols": 48
+      },
+      "checks": [
+        "correctness"
+      ]
+    },
+    {
+      "test_case_id": "control_dense_rectangular_32_64_16",
+      "params": {
+        "A_rows": 32,
+        "A_cols": 64,
+        "B_cols": 16
+      },
+      "checks": [
+        "correctness"
+      ]
     }
-  ]
+  ],
+  "correctness_control_shapes": [
+    [
+      16,
+      32,
+      48
+    ],
+    [
+      32,
+      64,
+      16
+    ]
+  ],
+  "input_distribution": {
+    "generator": "splitmix64_dyadic_dense_v1",
+    "seed_policy": "fresh independent uint64 per process draw; --input-seed/--replay-seed reproduce exact recorded values",
+    "fingerprint": "FNV-1a64 canonical LE FP32; noncryptographic",
+    "timed": "all five original shapes use fresh elementwise dense A and B; host generation/reference/copies outside timing",
+    "validation": "actual measured output plus independently changed A/B on the exact measured graph; readonly/full-output/restoration checks"
+  }
 }

@@ -127,6 +127,82 @@
         "case_index": 5,
         "coverage": "Controls cover full acceptance with bonus token, early/late rejection and zero speculative steps. Output metadata and accepted counts are strict; only each returned accepted prefix is defined by this operator, so unused output tail values are not invented as a new contract."
       }
+    },
+    {
+      "test_case_id": "ragged_bonus_full_early",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 6,
+        "ragged_case": "ragged_bonus_full_early",
+        "spans": [
+          1,
+          3,
+          5,
+          2
+        ],
+        "cu_num_logits": [
+          0,
+          1,
+          4,
+          9,
+          11
+        ],
+        "num_speculative_steps": 4,
+        "reject_positions": [
+          null,
+          null,
+          0,
+          null
+        ],
+        "expected_counts": [
+          1,
+          3,
+          1,
+          2
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "ragged_late_full_bonus",
+      "dtype": "int32,int64",
+      "params": {
+        "case_index": 7,
+        "ragged_case": "ragged_late_full_bonus",
+        "spans": [
+          4,
+          2,
+          6,
+          1
+        ],
+        "cu_num_logits": [
+          0,
+          4,
+          6,
+          12,
+          13
+        ],
+        "num_speculative_steps": 5,
+        "reject_positions": [
+          2,
+          null,
+          null,
+          null
+        ],
+        "expected_counts": [
+          3,
+          2,
+          6,
+          1
+        ]
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

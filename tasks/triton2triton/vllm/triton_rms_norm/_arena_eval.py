@@ -73,6 +73,8 @@ def evaluate(role, action):
         actual = json.loads(json.dumps(getattr(harness, data['case_table'])))
         if actual != data['input_table']:
             raise ValueError('Harness case table disagrees with protected workload manifest')
+        if harness.CORRECTNESS_CONTROLS != data['correctness_controls']:
+            raise ValueError('Harness correctness controls disagree with protected workload manifest')
         if action == 'validate-task':
             for dependency in ('torch','triton'):
                 if importlib.util.find_spec(dependency) is None:

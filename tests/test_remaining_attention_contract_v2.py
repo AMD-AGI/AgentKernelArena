@@ -386,6 +386,12 @@ ORIGINALS = {'triton_correct_attn_cp_out/source/triton_correct_attn_cp_out.py': 
 def test_original_kernels_cases_gates_and_timers_preserved():
     for relative, digest in ORIGINALS.items():
         source = (TASKS / relative).read_text()
+        from reviewed_contract_history import historical_attention_sampling_file, historical_triton_device_boundary_file
+        full_relative = 'tasks/triton2triton/vllm/' + relative
+        if relative.endswith(('source/_fwd_grouped_kernel_stage1.py', 'triton_correct_attn_cp_out/workloads.json')):
+            source = historical_attention_sampling_file(full_relative, source)
+        if relative.endswith('/config.yaml'):
+            source = historical_triton_device_boundary_file(full_relative, source)
         if relative.endswith('scripts/task_runner.py'):
             if relative == 'triton_paged_prefix_prefill_alibi/scripts/task_runner.py':
                 source = original_paged_alibi_reference(source)
@@ -472,7 +478,10 @@ def test_new_decode_control_execution_and_declared_shapes(name, monkeypatch):
             assert args[0][1,:,2:,-1].eq(80).all()
         else:
             assert kwargs['logit_cap'] == config['logit_cap']
-            assert args[4][0,:4].tolist() == [7,6,5,4]
+            domain = getattr(checks, 'DOMAIN', None)
+            if domain is None or case not in domain.DOMAIN_CASES:
+                # Original controls use reversed pages; domain controls use a seeded order.
+                assert args[4][0,:4].tolist() == [7,6,5,4]
             if case == 'inactive_ragged_pages':
                 assert args[3][~checks.output_write_mask(dict(enumerate(args)))].eq(23.5).all()
 

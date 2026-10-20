@@ -136,6 +136,139 @@
         "performance"
       ],
       "status": "PASS"
+    },
+    {
+      "test_case_id": "base2_nonzero_rank",
+      "dtype": "float16,float32",
+      "params": {
+        "contract_case": "base2_nonzero_rank",
+        "B": 2,
+        "H": 3,
+        "D": 64,
+        "N": 4,
+        "lse_idx": 2,
+        "is_base_e": false,
+        "out_layout": "BHD",
+        "lse_layout": "NBH",
+        "seed": 1901,
+        "input_shapes": {
+          "out": [
+            2,
+            3,
+            64
+          ],
+          "lses": [
+            4,
+            2,
+            3
+          ]
+        },
+        "output_shapes": {
+          "corrected": [
+            2,
+            3,
+            64
+          ],
+          "final_lse": [
+            2,
+            3
+          ]
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "basee_4d_trailing_lse",
+      "dtype": "float16,float32",
+      "params": {
+        "contract_case": "basee_4d_trailing_lse",
+        "B": 2,
+        "H": 3,
+        "D": 64,
+        "N": 4,
+        "lse_idx": 3,
+        "is_base_e": true,
+        "out_layout": "B1HD",
+        "lse_layout": "NBH1",
+        "seed": 1902,
+        "input_shapes": {
+          "out": [
+            2,
+            1,
+            3,
+            64
+          ],
+          "lses": [
+            4,
+            2,
+            3,
+            1
+          ]
+        },
+        "output_shapes": {
+          "corrected": [
+            2,
+            3,
+            64
+          ],
+          "final_lse": [
+            2,
+            3
+          ]
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
+    },
+    {
+      "test_case_id": "base2_4d_middle_lse",
+      "dtype": "float16,float32",
+      "params": {
+        "contract_case": "base2_4d_middle_lse",
+        "B": 2,
+        "H": 3,
+        "D": 64,
+        "N": 2,
+        "lse_idx": 1,
+        "is_base_e": false,
+        "out_layout": "B1HD",
+        "lse_layout": "N1BH",
+        "seed": 1903,
+        "input_shapes": {
+          "out": [
+            2,
+            1,
+            3,
+            64
+          ],
+          "lses": [
+            2,
+            1,
+            2,
+            3
+          ]
+        },
+        "output_shapes": {
+          "corrected": [
+            2,
+            3,
+            64
+          ],
+          "final_lse": [
+            2,
+            3
+          ]
+        }
+      },
+      "checks": [
+        "correctness"
+      ],
+      "status": "PASS"
     }
   ],
   "migration": {

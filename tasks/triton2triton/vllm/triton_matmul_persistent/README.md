@@ -61,3 +61,17 @@ repairs require a fresh baseline; previously recorded timings are not reused.
 The large-address checks run inside this task's protected `_arena_checks.py`
 through the standard correctness action, for both baseline and candidate. They
 remain available after the task is copied into an isolated workspace.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_compute_pid`, `matmul_kernel_persistent`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+The protected wrapper also fixes the launch configuration: the grid and the tile
+sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes above
+that mention tuning those values refer to the original whole-file contract; under
+this boundary, optimize the kernel bodies and implementation helpers instead.

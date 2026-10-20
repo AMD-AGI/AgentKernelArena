@@ -59,6 +59,18 @@
         "correctness",
         "performance"
       ]
+    },
+    {
+      "test_case_id": "control_all_zero_rows",
+      "params": {
+        "m": 3,
+        "n": 4096,
+        "input": "all_zero",
+        "dtype": "bfloat16"
+      },
+      "checks": [
+        "correctness"
+      ]
     }
   ]
 }

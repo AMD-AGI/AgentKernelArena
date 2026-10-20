@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_scaled_mm.py
+  - path: source/triton_scaled_mm.py
+    scope: symbols
+    symbols:
+    - scaled_mm_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_scaled_mm.py
     kind: function

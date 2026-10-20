@@ -84,32 +84,24 @@ class PositionWiseFeedForward(nn.Module):
 
 def get_inputs():
     """
-    Generate multiple test cases for PositionWiseFeedForward covering:
-    - Different batch sizes and sequence lengths
-    - Input shape: (batch_size, word_pad_len, d_model)
+    Residual ReLU FFN and LayerNorm at 512/2048 widths, from one token through
+    1024 tokens with row tails.
     """
-    configs = [
-        # Small
-        ([4, 4, 4],),
-        ([8, 8, 4],),
-        # Medium
-        ([16, 16, 4],),
-        ([32, 32, 4],),
-        # Large
-        ([64, 64, 4],),
-        ([128, 128, 4],),
-        # Different sequence lengths
-        ([4, 8, 4],),
-        ([8, 16, 4],),
-        ([16, 32, 4],),
-        ([32, 64, 4],),
+    shapes = [
+        [(1, 1, 512)],
+        [(1, 17, 512)],
+        [(2, 31, 512)],
+        [(3, 43, 512)],
+        [(4, 64, 512)],
+        [(1, 257, 512)],
+        [(5, 63, 512)],
+        [(8, 64, 512)],
+        [(4, 129, 512)],
+        [(8, 128, 512)],
     ]
-    
-    for shape in configs:
-        shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
-        x = torch.randn(shape_list, dtype=torch.float32)
-        yield [x]
+    for case_shapes in shapes:
+        yield [torch.randn(shape, dtype=torch.float32) for shape in case_shapes]
 
 
 def get_init_inputs():
-    return [[], {'d_model': 4, 'hidden_size': 4}]
+    return [[], {'d_model': 512, 'hidden_size': 2048}]

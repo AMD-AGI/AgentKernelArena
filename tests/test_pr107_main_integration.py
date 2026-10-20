@@ -10,6 +10,8 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import pytest
+from reviewed_contract_history import historical_ssd_runner
+from pr107_integration_helpers import DOMAIN_DISPATCH
 
 torch = pytest.importorskip('torch')
 ROOT = Path(__file__).resolve().parents[1]
@@ -238,9 +240,13 @@ def original_paged_alibi_reference(source):
 def test_every_new_manifest_case_actually_reaches_candidate(name, monkeypatch):
     """A missing branch/invalid input must not silently return success."""
     module = control_module(name, monkeypatch)
+    if name == 'ssd_chunk_scan':
+        # Exercise the HIP runtime branch even with a CPU-only torch build.
+        monkeypatch.setattr(torch.version, 'hip', torch.version.hip or 'cpu-test-fixture')
     # Only integer launch-shape arithmetic is needed before the CPU sentinel.
     import sys
     triton = ModuleType('triton')
+    triton.knobs = SimpleNamespace(amd=SimpleNamespace(use_buffer_ops=True))
     triton.cdiv = lambda a, b: (a+b-1)//b
     triton.next_power_of_2 = lambda x: 1 << (x-1).bit_length()
     monkeypatch.setitem(sys.modules, 'triton', triton)
@@ -252,6 +258,8 @@ def test_every_new_manifest_case_actually_reaches_candidate(name, monkeypatch):
 
         def __getattr__(self, symbol):
             def invoked(*args, **kwargs):
+                if name == 'ssd_chunk_scan' and module.EXTRA_CASES[index].get('disable_rocm_buffer_ops'):
+                    assert triton.knobs.amd.use_buffer_ops is False
                 calls.append(symbol)
                 raise RuntimeError('CONTROL_CANDIDATE_REACHED')
             return invoked
@@ -259,6 +267,7 @@ def test_every_new_manifest_case_actually_reaches_candidate(name, monkeypatch):
     for index in range(len(module.EXTRA_CASES)):
         before = len(calls)
         ok, reason = module.run_control(index, Candidate)
+        assert triton.knobs.amd.use_buffer_ops is True
         assert not ok and 'CONTROL_CANDIDATE_REACHED' in str(reason), (name, index, reason)
         assert len(calls) == before + 1
     for invalid in (-1, len(module.EXTRA_CASES), True):
@@ -278,6 +287,20 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
                   b'        return run_control(case_index - 10000, load_module)\n')
     after = (root / 'scripts/task_runner.py').read_bytes()
     assert after.count(dispatcher) == 1
+    if name == 'ssd_chunk_scan':
+        # Exact reviewed inverse retains the original whole-byte comparison.
+        after = historical_ssd_runner(after.decode()).encode()
+    if name == 'topk_log_softmax':
+        layout_dispatch = (b'    if case_index is not None and case_index >= 20000:\n'
+                           b'        from _layout_controls import run_control\n'
+                           b'        return run_control(case_index - 20000, load_module)\n')
+        assert after.count(layout_dispatch) == 1
+        after = after.replace(layout_dispatch, b'', 1)
+    if name == 'decode_attn_stage1':
+        # Additive protected domain-control dispatch; its rows are tested separately.
+        domain_dispatch = DOMAIN_DISPATCH.encode()
+        assert after.count(domain_dispatch) == 1
+        after = after.replace(domain_dispatch, b'', 1)
     if name == 'paged_prefix_prefill_alibi':
         after = original_paged_alibi_reference(after)
     if name == 'prepare_eagle_docode':
@@ -306,7 +329,17 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
     original = json.loads(subprocess.check_output(['git', 'show',
         'e8ec5d6b:' + str((root / 'workloads.json').relative_to(ROOT))], cwd=ROOT))
     manifest = json.loads((root / 'workloads.json').read_text())
-    assert manifest['cases'][:len(original['cases'])] == original['cases']
+    scored = json.loads(json.dumps(manifest['cases'][:len(original['cases'])]))
+    if name == 'ssd_chunk_scan':
+        # The reviewed signal upgrade intentionally changes timed cb amplitude.
+        # Remove only its exact declaration before the original row comparison;
+        # shapes, IDs, checks and every other original field remain pinned.
+        assert len(scored) == 5
+        assert manifest['input_distribution'] == {
+            'name': 'strong_signal_v2', 'operand_scales': {'cb': 32}}
+        for row in scored:
+            assert row['params'].pop('input_distribution') == 'strong_signal_v2'
+    assert scored == original['cases']
     added = manifest['cases'][len(original['cases']):]
     assert added and all(row['checks'] == ['correctness'] for row in added)
     spec = importlib.util.spec_from_file_location('integration_adapter', root / '_arena_eval.py')
@@ -328,12 +361,22 @@ def test_new_controls_have_public_failure_rows_and_leave_scored_bytes_unchanged(
         run_semantic_controls=lambda: [],
         CONTRACT_CASES={r['test_case_id']: r['params'] for r in manifest['cases']
                         if 'contract_case' in r['params']})
+    signal_visited = []
+    if name == 'ssd_chunk_scan':
+        # The current adapter validates these protected declarations before it
+        # dispatches any row. Model that contract instead of failing all rows
+        # on a missing fixture attribute.
+        harness.INPUT_DISTRIBUTION = manifest['input_distribution']
+        harness.HISTORICAL_CASES = manifest['historical_cases']
+        harness.run_signal_controls = lambda *, case_index: signal_visited.append(case_index)
     monkeypatch.setattr(adapter, 'load_harness', lambda: harness)
     monkeypatch.setattr(adapter, 'inspect_candidate', lambda *a, **kw: 'implemented')
     result = adapter.evaluate('candidate', 'correctness')
     assert result['status'] == 'FAIL', result
     failed = [row for row in result['cases'] if row['status'] == 'FAIL']
     assert [row['test_case_id'] for row in failed] == [row['test_case_id'] for row in added], result
+    if name == 'ssd_chunk_scan':
+        assert signal_visited == list(range(5))
     indexed = [row['params'].get('case_index', index)
                for index, row in enumerate(manifest['cases'])
                if 'contract_case' not in row['params']]

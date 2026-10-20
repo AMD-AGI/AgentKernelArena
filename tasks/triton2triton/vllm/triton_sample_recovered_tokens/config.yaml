@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_sample_recovered_tokens.py
+  - path: source/triton_sample_recovered_tokens.py
+    scope: symbols
+    symbols:
+    - sample_recovered_tokens_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_sample_recovered_tokens.py
     kind: function

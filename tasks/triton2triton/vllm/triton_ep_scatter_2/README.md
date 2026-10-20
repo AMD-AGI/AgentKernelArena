@@ -52,3 +52,13 @@ scored cases and correctness seeds 42+i remain unchanged.
 Additional unscored public-branch controls from PR105: FP32 singleton/topk1 and greater-than-program-cap multi-column dispatch.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+
+## Editable device implementation
+
+The declared device kernels `_fwd_kernel_ep_scatter_2` and permitted new compiler helpers are editable. Existing imports, module-level
+execution, the public host wrapper, launch preparation, numerical checks and
+timing remain protected. Kernel arithmetic, tiling and memory operations can
+be optimized within that boundary. The implementation, workload values,
+correctness tolerances and scored samples are unchanged by this boundary.
+This is a reproducibility boundary, not an isolation guarantee for arbitrary code.

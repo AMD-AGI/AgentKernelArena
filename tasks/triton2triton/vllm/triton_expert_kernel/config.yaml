@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_expert_kernel.py
+  - path: source/triton_expert_kernel.py
+    scope: symbols
+    symbols:
+    - expert_triton_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_expert_kernel.py
     kind: function

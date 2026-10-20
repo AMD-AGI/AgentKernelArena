@@ -48,3 +48,14 @@ the harness checks those outputs, changes an operand, poisons outputs, and repla
 same graph against the original numerical reference. All comparisons, snapshots,
 perturbations and restoration are outside the timed window. An unobservable graph
 fallback fails instead of validating a different untimed invocation.
+
+
+Two additional correctness-only identities in `workloads.json` use B2 with
+H3/K37/T67/chunk64 and H1/K17/T35/chunk32. Their independent sparse closed forms
+include the final feature, distinct feature decay, batch/head/time coefficients,
+both output masks and partial chunks. Expected values are prepared on CPU using
+scalar arithmetic; no GPU BLAS oracle is needed. The adapter binds dimensions
+and successful actual control dispatch to the manifest. All original five scored
+seed/shape rows, their input draws, references, tolerances, 10warmups,100samples,
+allocation boundaries and timing helper bytes are unchanged. These finite
+representative cases do not promise every possible wrapper dimension or layout.

@@ -7,10 +7,11 @@ written in HIP. Arena freezes that initial candidate in a separate workspace
 for every baseline action; final candidate actions always build and execute the
 submitted implementation, with no baseline fallback.
 
-The complete independent manifest in `workload.json` includes **5 cases**
-from the original 5 shapes, including every measured operation/layout.
-The original harness remains `scripts/task_runner.py`; its seed schedule,
-numerical tolerances and output-contract checks are retained. Its independent numerical reference is implemented in the protected C++ host
+The complete independent manifest in `workload.json` includes the original **5 scored cases**
+and **2 correctness-only dense rectangular controls**. Every measured operation/layout is retained.
+The original harness remains `scripts/task_runner.py`; its five scored shapes,
+numerical tolerances and output-contract checks are retained. Timed inputs now
+use the fresh dense seed policy described below. Its independent numerical reference is implemented in the protected C++ host
 program; the native benchmark also validates graph replay. The Python reference
 check module performs structural checks only. Do not reduce these
 cases or alter expected outputs to improve a score.
@@ -29,7 +30,8 @@ Call `python3 scripts/evaluate.py` followed by `validate-task`, or by
 and unavailable runtime dependencies are failures, never implicit skips.
 
 The GPU implementation was extracted verbatim into `source/kernel.hpp`. The
-original C++ host harness remains protected and includes that header. Its launch
+protected out-of-line launch adapter is the sole translation unit that includes
+that header. Its launch
 interface and constants are part of the fixed task contract; a Python symbol
 scope is not used to protect C++ code.
 
@@ -91,9 +93,54 @@ $$c_{ij}=\sum_{k=1}^{N}a_{ik}b_{kj}$$
 - `hipFree`
 
 The original constant-input correctness gate remains unchanged. Correctness also
-runs the benchmark's original nonuniform inputs against a full CPU product for
-all five shapes. The same full-output reference checks the timed replay after
-poisoning output storage. Its original scaled tolerance is unchanged (0.002 times
+runs fresh dense inputs against a full CPU product for all five scored shapes
+and both declared correctness-only rectangular controls. The same full-output reference checks the actual measured output and an independent
+changed-input replay after poisoning output storage. Its original scaled tolerance is unchanged (0.002 times
 max(1, abs(expected))); CPU reference construction and validation are outside the
 timed samples. Repeated CPU dot products are reused only after comparing actual
 rows/columns for equality. Warmups, sample counts and GPU timing are unchanged.
+
+
+Candidate header preprocessing is confined to `source/kernel_launch.hip`.
+The protected CLI and independent benchmark translation units include only
+`scripts/native/matrix_launch.hpp`; candidate macros cannot rewrite their later
+oracle or timing identifiers. The adapter preserves the BlockSize16 kernel,
+16x16 grid/block setup, current stream, allocations, all five shapes and the
+existing warmup/sample/replay contract. Candidate implementation helpers and
+preprocessor choices remain available inside its translation unit. This is a
+preprocessing boundary, not an isolation guarantee for arbitrary native code.
+
+
+## Independent dense workload and replay inputs
+
+The five scored shapes now receive independently generated FP32 values in every
+A/B element, using a fresh host uint64 seed and the protected SplitMix64 dyadic
+generator. A/B magnitudes remain similar to the historical index formulas.
+`AKA_MATRIX_INPUTS` records exact decimal seeds and canonical little-endian FP32
+FNV-1a64 fingerprints; these are reproducibility checks, not cryptographic hashes.
+`--input-seed` and `--replay-seed` reproduce an individual native invocation.
+Both roles use the same protected distribution and generation path; their fresh
+draws need not be identical. Shapes, contiguous row-major layout, BlockSize16,
+caller ABI, allocations, math, tolerances, warmup10, samples100 and canonical
+GPU timing remain unchanged. Host generation, independent CPU double products,
+all copies and validation occur outside device timing. The original constant
+CLI correctness gate is retained, followed by full dense checks on all five
+shapes and the two declared small rectangular controls. Coverage is finite;
+the public launch supports dimensions that are positive multiples of16.
+
+After measuring, the driver checks all elements of the actual measured C and
+bitwise readonly A/B against pristine host copies. It then installs independently
+changed A/B with a different fresh seed, poisons C, replays the exact measured
+graph executable (or the same callable on the event path), checks all output
+and readonly inputs, and restores/read-verifies the initial A/B outside timing.
+`AKA_MATRIX_VALIDATION` records these checks. Missing/malformed/duplicate evidence
+fails the protected parser. A stale or shape/formula-only result therefore fails.
+These checks are finite correctness defenses, not a native-code security sandbox
+or proof against every conditional/cache strategy.
+
+The old public index-formula timed distribution encouraged implementations that
+reconstructed known inputs from shape/index instead of reading supplied A/B.
+Changing timed draws is a task-quality correction. Historical v12 scores and
+fixed-formula evidence are retained externally; old and new aggregate scores
+must not be compared as equivalent workloads. Fresh baseline and candidate runs
+and fresh formal task validation are required for this distribution.

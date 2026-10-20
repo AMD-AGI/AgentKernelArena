@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_awq_dequantize.py
+  - path: source/triton_awq_dequantize.py
+    scope: symbols
+    symbols:
+    - awq_dequantize_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_awq_dequantize.py
     kind: function

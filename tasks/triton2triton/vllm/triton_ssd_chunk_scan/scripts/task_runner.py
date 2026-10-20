@@ -20,6 +20,13 @@ TEST_SHAPES = [
 ]
 WARMUP_ITERATIONS = 10
 BENCHMARK_ITERATIONS = 100
+INPUT_DISTRIBUTION = {"name": "strong_signal_v2", "operand_scales": {"cb": 32}}
+HISTORICAL_CASES = [
+    {"test_case_id": f"historical-{kind}{i + 1}", "case_index": 20000 + 2 * i + j,
+     "shape_index": i, "seed": seed}
+    for i in range(len(TEST_SHAPES))
+    for j, (kind, seed) in enumerate((("correctness", 42 + i), ("performance", 0)))
+]
 
 
 # >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>
@@ -88,6 +95,31 @@ def reference_chunk_scan(cb, x, dt, dA_cumsum, C, states, seq_idx, chunk_size):
     return out
 
 
+def gen_inputs(shape, seed, device, *, historical=False):
+    return semantic_controls.scored_shape_inputs(shape, seed, device, historical=historical)
+
+
+def run_historical_correctness(index):
+    import torch
+    try:
+        if not 0 <= index < len(HISTORICAL_CASES):
+            raise IndexError("Invalid historical case index")
+        case = HISTORICAL_CASES[index]
+        shape = TEST_SHAPES[case['shape_index']]
+        inputs = gen_inputs(shape, case['seed'], 'cuda', historical=True)
+        readonly = InputSnapshot({key: value for key, value in inputs.items() if key != 'out'})
+        load_module().chunk_scan_fwd(**inputs)
+        readonly.check()
+        torch.cuda.synchronize()
+        names = ('cb', 'x', 'dt', 'dA_cumsum', 'C', 'states', 'seq_idx')
+        expected = reference_chunk_scan(*(inputs[key] for key in names), shape[-1]).to('cuda')
+        check_outputs(inputs['out'], expected, atol=5e-2, rtol=5e-2,
+                      inputs=[entry[1] for entry in readonly.entries])
+        return True, None
+    except Exception as exc:
+        return False, f"Historical case {index}: {type(exc).__name__}: {exc}"
+
+
 def run_compile():
     try:
         import ast
@@ -102,6 +134,8 @@ def run_compile():
 
 
 def run_correctness(*, case_index=None):
+    if case_index is not None and case_index >= 20000:
+        return run_historical_correctness(case_index - 20000)
     if case_index is not None and case_index >= 10000:
         from _upstream_controls import run_control
         return run_control(case_index - 10000, load_module)
@@ -118,6 +152,7 @@ def run_correctness(*, case_index=None):
             torch.manual_seed(42 + i)
             nchunks = seqlen // chunk_size
             cb = torch.randn(nchunks, ngroups, chunk_size, chunk_size, device=device, dtype=torch.float16) * 0.01
+            cb.mul_(32)
             x = torch.randn(seqlen, nheads, headdim, device=device, dtype=torch.float16)
             C = torch.randn(seqlen, ngroups, dstate, device=device, dtype=torch.float16)
             dt = torch.rand(nheads, nchunks, chunk_size, device=device, dtype=torch.float32) * 0.1
@@ -131,6 +166,8 @@ def run_correctness(*, case_index=None):
             readonly.check()
             torch.cuda.synchronize()
             ref = reference_chunk_scan(cb, x, dt, dA_cumsum, C, states, seq_idx, chunk_size).to(device)
+            semantic_controls.require_intra_signal(ref, semantic_controls.inter_chunk_reference(
+                x, dA_cumsum, C, states, seq_idx, chunk_size))
             check_outputs(out, ref, atol=5e-2, rtol=5e-2,
                           inputs=[e[1] for e in readonly.entries])
             if not torch.allclose(out.float(), ref.float(), atol=5e-2, rtol=5e-2):
@@ -154,6 +191,7 @@ def run_performance():
             nchunks = seqlen // chunk_size
             torch.manual_seed(0)
             cb = torch.randn(nchunks, ngroups, chunk_size, chunk_size, device=device, dtype=torch.float16) * 0.01
+            cb.mul_(32)
             x = torch.randn(seqlen, nheads, headdim, device=device, dtype=torch.float16)
             C = torch.randn(seqlen, ngroups, dstate, device=device, dtype=torch.float16)
             dt = torch.rand(nheads, nchunks, chunk_size, device=device, dtype=torch.float32) * 0.1

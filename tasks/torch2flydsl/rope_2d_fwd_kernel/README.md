@@ -75,3 +75,29 @@ baseline/reference launch cannot count as candidate FlyDSL execution. The
 public submission interface is `flydsl_rope_2d_fwd`; the harness does not call a
 builder, so it no longer requires an otherwise unused builder definition.
 The stricter gate and added replay require fresh GPU task validation.
+
+## Candidate execution policy
+
+The candidate-only PyTorch preparation policy stays active on every actual
+performance call, including canonical warmup, graph capture, event timing and
+retained eager replay. Arithmetic and reductions belong in FlyDSL kernels. The
+actual performance closure receives one additional untimed FlyDSL invocation
+probe; existing prepare callbacks restore state around it. Python profiling
+runs outside capture/clocks, and the original benchmark parameters remain. A
+forbidden operation remains a failure even if candidate code or a capture
+fallback catches the error. Baseline/reference operators retain their policy.
+
+Normal task-local implementation imports are reviewed recursively and syntax
+checked. Candidate code must not access the evaluator module registry, frames
+or profiling controls through sys, aliases or dynamic lookup. Ordinary sys
+metadata and installed FlyDSL library internals are unaffected. Existing
+backend/native-dispatch restrictions and any exact protected helper exceptions
+remain. These checks enforce the task contract, not a Python security sandbox.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

@@ -10,7 +10,7 @@ the task-local PyTorch model or installed AITER operator specified there, with i
 original graph/event policy. `model.py` is protected reference/source material;
 its presence alone does not select the performance baseline.
 
-There are 6 declared cases in `cases.json`. All original dimensions,
+There are 8 declared cases in `cases.json`. All original dimensions,
 parameter variants, seeds, tolerances, numerical metrics, output checks, warmups
 and repetition counts remain in the protected harness. It validates the PyTorch
 reference against the original independent AITER comparison wherever that check
@@ -67,3 +67,60 @@ untimed perturbation changes signs/scales within the operand domain, then restor
 the originals. Both roles retain 10 warmups and 100 graph samples.
 All six cases retain INT8 truncation semantics, output shape [M,N] and scales
 shape [M,1]. Replay negates activations and halves per-channel smoothing scales.
+
+## Local implementation helpers
+
+Declared editable candidate sources may import additional task-local Python
+device/compiler helpers, including packages. Dependency review and syntax
+compilation follow the complete normal local-import closure. The same declared
+implementation restrictions apply to every helper: protected references,
+alternative final-language backends and dynamic implementation loading remain
+disallowed. Source symlinks, imports escaping the task and local modules shadowing
+the supported runtime libraries are rejected. Installed library source is not
+traversed. The candidate-only PyTorch preparation and FlyDSL launch audits apply
+to these helpers too; the performance policy states how timed calls are checked. These checks enforce the task contract;
+they are not a Python security sandbox.
+
+## Candidate execution policy during performance
+
+The candidate-only PyTorch preparation policy remains active on every actual
+operator call made by canonical benchmark warmup, graph capture and eager event
+timing. Tensor arithmetic, reductions and library operators must execute as
+FlyDSL kernels even when candidate behavior changes after earlier calls. A
+probe of the actual performance closure observes FlyDSL invocation outside
+clocks and capture; Python profiling is disabled inside canonical measurement.
+Allocation and view preparation retain the existing allowlist. Baseline and
+reference operators keep their original policy and all original device timing
+parameters. One additional untimed audit probe of each performance closure runs
+before canonical benchmarking; stateful closures use the existing prepare
+callback before and after that probe. This probe is separate from the retained
+benchmark warmup/sample counts. A forbidden operation remains a failure even if
+a capture fallback or candidate code catches its exception. These checks are
+implementation-contract evidence, not a Python
+security sandbox.
+
+Candidate sources and their normal local-import helpers must not access the
+evaluator's module registry, stack frames or profiling controls through `sys`,
+including aliases and dynamic attribute lookup. Ordinary `sys` metadata remains
+available, and installed FlyDSL library internals are not scanned as candidate
+code. Protected reference imports remain prohibited.
+
+## Zero-row correctness controls
+
+The six original timed workloads are unchanged. Two additional correctness-only
+identities exercise all-zero and mixed zero/nonzero rows at width 5120. The
+provided Model and final candidate must return zero INT8 codes and FP32 scale 1
+for a zero row. The six original random workloads retain the independent AITER
+cross-checks; the runtime operator may use a different zero-row convention and
+is not the oracle for these extra controls. Analytic nonzero codes/scales use
+the original one-code step and 0.001 scale gate. Each control uses the same input allocations for
+base, changed and base-again draws, checks both outputs and keeps all inputs
+read-only. These calls run outside timing and do not add scoreable workloads.
+
+## Protected evaluator state
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.

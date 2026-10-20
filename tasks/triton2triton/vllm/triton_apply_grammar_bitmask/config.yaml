@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_apply_grammar_bitmask.py
+  - path: source/triton_apply_grammar_bitmask.py
+    scope: symbols
+    symbols:
+    - _apply_grammar_bitmask_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_apply_grammar_bitmask.py
     kind: function

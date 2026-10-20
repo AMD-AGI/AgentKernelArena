@@ -81,9 +81,28 @@ def small_gate_replay_fixture(root):
     return model, inputs, functional.module_fn
 
 
-def report_fake_samples(kwargs, output):
-    """Model the helper's read-only callback after every reported sample."""
-    callback = kwargs['timed_run'].after_sample
+def report_fake_samples(kwargs, output, invoke=None):
+    """Model protected preparation and read-only observations around each sample."""
+    timed = kwargs['timed_run']
+    callback = timed.after_sample
+    controller = getattr(getattr(timed, 'before_sample', None), '__self__', None)
+    if controller is not None and type(controller).__name__ == 'MeasuredModelInputs':
+        assert callable(invoke) and callable(kwargs['prepare_fn'])
+        # The real canonical graph path performs warmups, estimate capture,
+        # two estimate replays, final capture and its prime before scoring.
+        for _ in range(kwargs['warmup'] + 5):
+            kwargs['prepare_fn']()
+            with torch.no_grad():
+                output.copy_(invoke())
+        for _ in range(kwargs['repetition']):
+            kwargs['prepare_fn']()
+            timed.before_sample(1)
+            with torch.no_grad():
+                output.copy_(invoke())
+            original = output.clone()
+            callback(output)
+            torch.testing.assert_close(output, original, rtol=0, atol=0)
+        return
     if callback is None:
         return
     original = copy.deepcopy(output)
@@ -124,7 +143,7 @@ def test_inventory():
     assert len(CONFIGS) == 89
     assert len(EXTENSIONS) == 79 and len(NATIVE) == 10
     assert len([p for p in CONFIGS if p.is_relative_to(ROOT / 'tasks/hip2hip')]) == 32
-    assert sum(len(json.loads(p.with_name('workload.json').read_text())['cases']) for p in CONFIGS) == 551
+    assert sum(len(json.loads(p.with_name('workload.json').read_text())['cases']) for p in CONFIGS) == 553
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: str(p.parent.relative_to(ROOT / 'tasks')))
@@ -175,6 +194,10 @@ def test_complete_manifest_from_protected_generator(path):
     assert len(manifest) == len(metadata)
     for i, (row, value) in enumerate(zip(manifest, metadata)):
         expected_params = {'inputs': value, 'model_init_seed': 0, 'correctness_seed': 1337 + i}
+        if str(path.parent.relative_to(ROOT / 'tasks')) in RL_GENERATION_WORKLOAD_SOURCE_DIGESTS:
+            expected_params['model_init'] = module.get_init_inputs()
+            assert functional.get_init_inputs() == module.get_init_inputs()
+            runner.check_model_init_identity(manifest, module, functional)
         if path.parent.name in {'FusedLeakyReLU', '10190_FusedLeakyReLU'}:
             expected_params['operator'] = {
                 'bias': {'pattern': 'alternating_channel', 'offset': .125, 'step': 1/128},
@@ -227,7 +250,14 @@ def test_native_case_manifest_from_original_performance(path):
                 assert len(assignments) == 1
                 params = eval(compile(ast.Expression(assignments[0]), '<protected case params>', 'eval'), {'__builtins__': {}}, env)
             expected.append({'test_case_id': f'shape_{i}', 'params': params})
-    assert manifest['cases'] == expected
+    if path.parent.name == 'matrix_multiplication':
+        assert [row for row in manifest['cases'] if 'performance' in row.get('checks',['correctness','performance'])] == expected
+        helper=import_path(path.parent/'scripts/reference_checks.py')
+        assert manifest['cases'][5:] == [
+            {'test_case_id':identity,'params':dict(zip(('A_rows','A_cols','B_cols'),shape)),'checks':['correctness']}
+            for identity,shape in zip(helper.CONTROL_IDS,helper.CONTROL_SHAPES)]
+    else:
+        assert manifest['cases'] == expected
 
 
 @pytest.mark.parametrize('path', [p for p in NATIVE if (p.parent / 'kernel_loader.py').exists()], ids=lambda p: p.parent.name)
@@ -281,6 +311,10 @@ def test_native_all_actions_and_errors_emit_envelopes(path, tmp_path, monkeypatc
                               run_correctness=lambda: (True, None), run_performance=lambda: measured,
                               HIP_GRAPH_ENABLED=True, HIP_GRAPH_FALLBACK_REASON=None)
     controls = types.SimpleNamespace(self_test=lambda h: None, check_additional_paths=lambda h: None)
+    if path.parent.name == 'matrix_multiplication':
+        measured[:] = [row for row in measured if 'performance' in row.get('checks',['correctness','performance'])]
+        controls.CONTROL_SHAPES = [tuple(shape) for shape in data['correctness_control_shapes']]
+        controls.CONTROL_IDS = [row['test_case_id'] for row in data['cases'][5:]]
     prior_cwd = Path.cwd()
     prior_extensions = os.environ.get('TORCH_EXTENSIONS_DIR')
     monkeypatch.setattr(runner, 'ROOT', workspace)
@@ -556,19 +590,522 @@ PR105_NATIVE_FILES = {
 }
 
 
+# Raw BF16 storage is checked before fast-math promotions. These exact repair
+# pins are CPU/compiler evidence; fresh GPU qualification remains required.
+MLA_STORAGE_GUARD_HOST_SHA256 = '3e14b22dd68677a6ba0bbdca1bd0bd50bfb356c3b7c3d51f88ba0f274b6ebfd3'
+# Timed inputs now reuse the original random generators; legacy periodic inputs
+# remain an additional untimed regression. The finite-value/timing gates persist.
+MLA_TASK_QUALITY_SOURCE_DIGEST = (5, 'fc510e3d8a2b94146570184042da0d3ffba8b5f342e8308b4ffe826ed3620793')
+
+
+# Five retained generation tasks intentionally replace four-wide toy geometry with bounded
+# 128/512/2048/4096-wide workloads. These are CPU contract pins, not GPU passes.
+# Dedicated RL regressions preserve all historical arithmetic nodes and exercise
+# complete geometries, every live parameter, zero outputs and initializer identity.
+RL_GENERATION_WORKLOAD_SOURCE_DIGESTS = {
+    'torch2hip/gpumode/10024_Feedforward': (10, '84da196cd5c793829557d79828ae27dcd06e1143fbbc30e9c102492659f30b16'),
+    'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, '544bed5ced33df967d1db9c056896b4abd1742862dd15b74f63b7f1589868d70'),
+    'torch2hip/gpumode/14069_TransformerFFNLayer': (10, 'b3d777591b39b9890776dcbff9582060e0d08fd6efe3a5dc22742d1c19a99b78'),
+    'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, 'e5ac05611ce488f637b5d6f187d21ab802882f7edf33ae1c83073f0bc6ddd374'),
+    'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '84b28ce0495dd24e1f61164a2dab7aceb01ac063351319836b8caaeb0182919c'),
+}
+
+
+
+# Intentional matrix input-distribution upgrade. Timed values changed; this
+# exact inverse preserves the historical aggregate as a separate record only.
+# Original score comparability is not implied by this migration proof.
+_MATRIX_DENSE_REPAIR = {'scripts/native/benchmark_driver.hip': {'after_sha256': '7c4dec6bcca996d7345106b9d546c25da033a974e36ae7a85ee6c592829db2e8',
+                                         'before_sha256': '688b4e1fa5adb838d4b648980aa72f5c23786a0d2be340ad12d9cdba1174ebce',
+                                         'reverse_blocks': [(b'            validation_record("performan'
+                                                             b'ce");\n',
+                                                             b''),
+                                                            (b'            validation_record("check_onl'
+                                                             b'y");\n',
+                                                             b''),
+                                                            (b'            aka_native_perf::throw_on_hi'
+                                                             b'p_error(launch(stream), "initial dense c'
+                                                             b'orrectness launch");\n',
+                                                             b''),
+                                                            (b'            validated = failure.empty();'
+                                                             b'\n            replay_path = graph_exec !='
+                                                             b' nullptr ? "captured_graph" : "eager_cal'
+                                                             b'lable";\n            return failure;\n'
+                                                             b'        };\n        auto validation_recor'
+                                                             b'd = [&](const char* mode) {\n            '
+                                                             b'if (!validated) throw std::runtime_error'
+                                                             b'("Matrix output/replay validation did no'
+                                                             b't complete");\n            std::cout << "'
+                                                             b'AKA_MATRIX_VALIDATION {\\"mode\\":\\"" '
+                                                             b'<< mode\n                << "\\",\\"inp'
+                                                             b'uts\\":" << inputs_record\n           '
+                                                             b'     << ",\\"initial_output_correctne'
+                                                             b'ss\\":\\"PASS\\",\\"changed_input_replay'
+                                                             b'_correctness\\":\\"PASS\\","\n          '
+                                                             b'      << "\\"readonly_initial\\":\\"PAS'
+                                                             b'S\\",\\"readonly_replay\\":\\"PASS\\"'
+                                                             b',\\"restored_initial_inputs\\":\\"PASS\\'
+                                                             b'","\n                << "\\"output_cov'
+                                                             b'erage\\":\\"all_output_elements\\",\\"re'
+                                                             b'play_path\\":\\"" << replay_path << "\\'
+                                                             b'"}" << std::endl;\n',
+                                                             b'            if(error == hipSuccess)\n    '
+                                                             b'        {\n                error = hipStr'
+                                                             b'eamSynchronize(validation_stream);\n     '
+                                                             b'       }\n            if(error != hipSucc'
+                                                             b'ess)\n            {\n                r'
+                                                             b'eturn aka_native_perf::hip_failure("matr'
+                                                             b'ix replay validation", error);\n         '
+                                                             b'   }\n\n            return matrix_refe'
+                                                             b'rence::validate(h_c, expected, b_cols);\n'),
+                                                            (b'            const auto restoration = res'
+                                                             b'tore(validation_stream);\n            if '
+                                                             b'(!restoration.empty()) failure += (failu'
+                                                             b're.empty() ? "" : "; ") + restoration;\n '
+                                                             b'           if (failure.empty()) {\n      '
+                                                             b'          // Read back the restored byte'
+                                                             b's; successful copy return codes alone\n  '
+                                                             b'              // do not establish that c'
+                                                             b'aller-owned initial inputs are intact.\n '
+                                                             b'               read_inputs_and_output();'
+                                                             b'\n                if (!matrix_inputs::unc'
+                                                             b'hanged(read_a, h_a) || !matrix_inputs::u'
+                                                             b'nchanged(read_b, h_b))\n                 '
+                                                             b'   failure = "Matrix initial-input resto'
+                                                             b'ration mismatch";\n',
+                                                             b'            if(error == hipSuccess)\n    '
+                                                             b'        {\n                error = hipMem'
+                                                             b'cpyAsync(h_c.data(), d_c, c_bytes,\n     '
+                                                             b'                                  hipMem'
+                                                             b'cpyDeviceToHost, validation_stream);\n'),
+                                                            (b'                            hipStream_t '
+                                                             b'validation_stream) -> std::string {\n    '
+                                                             b'        std::string failure;\n           '
+                                                             b' std::vector<float> read_a(h_a.size()), '
+                                                             b'read_b(h_b.size());\n            auto rea'
+                                                             b'd_inputs_and_output = [&]() {\n          '
+                                                             b'      aka_native_perf::throw_on_hip_erro'
+                                                             b'r(hipMemcpyAsync(read_a.data(), d_a, a_b'
+                                                             b'ytes, hipMemcpyDeviceToHost, validation_'
+                                                             b'stream), "readonly A snapshot");\n       '
+                                                             b'         aka_native_perf::throw_on_hip_e'
+                                                             b'rror(hipMemcpyAsync(read_b.data(), d_b, '
+                                                             b'b_bytes, hipMemcpyDeviceToHost, validati'
+                                                             b'on_stream), "readonly B snapshot");\n    '
+                                                             b'            aka_native_perf::throw_on_hi'
+                                                             b'p_error(hipMemcpyAsync(h_c.data(), d_c, '
+                                                             b'c_bytes, hipMemcpyDeviceToHost, validati'
+                                                             b'on_stream), "full C snapshot");\n        '
+                                                             b'        aka_native_perf::throw_on_hip_er'
+                                                             b'ror(hipStreamSynchronize(validation_stre'
+                                                             b'am), "matrix validation synchronize");\n '
+                                                             b'           };\n            try {\n    '
+                                                             b'            // Validate the actual last '
+                                                             b'measured output before any extra launch.'
+                                                             b'\n                read_inputs_and_output('
+                                                             b');\n                if (!matrix_inputs::u'
+                                                             b'nchanged(read_a, h_a) || !matrix_inputs:'
+                                                             b':unchanged(read_b, h_b))\n               '
+                                                             b'     throw std::runtime_error("Matrix re'
+                                                             b'adonly inputs changed during initial exe'
+                                                             b'cution");\n                failure = matr'
+                                                             b'ix_reference::validate(h_c, expected, b_'
+                                                             b'cols);\n                if (!failure.empt'
+                                                             b'y()) throw std::runtime_error(mismatch_d'
+                                                             b'etail("Initial matrix output mismatch", '
+                                                             b'expected) + "; " + failure);\n           '
+                                                             b'     aka_native_perf::throw_on_hip_error'
+                                                             b'(hipMemcpyAsync(d_a, replay_a.data(), a_'
+                                                             b'bytes, hipMemcpyHostToDevice, validation'
+                                                             b'_stream), "independent replay A");\n     '
+                                                             b'           aka_native_perf::throw_on_hip'
+                                                             b'_error(hipMemcpyAsync(d_b, replay_b.data'
+                                                             b'(), b_bytes, hipMemcpyHostToDevice, vali'
+                                                             b'dation_stream), "independent replay B");'
+                                                             b'\n                aka_native_perf::throw_'
+                                                             b'on_hip_error(hipMemsetAsync(d_c, 0xFF, c'
+                                                             b'_bytes, validation_stream), "poison repl'
+                                                             b'ay C");\n                aka_native_perf:'
+                                                             b':throw_on_hip_error(graph_exec != nullpt'
+                                                             b'r ? hipGraphLaunch(graph_exec, validatio'
+                                                             b'n_stream) : launch(validation_stream), "'
+                                                             b'changed-input exact replay");\n          '
+                                                             b'      read_inputs_and_output();\n        '
+                                                             b'        if (!matrix_inputs::unchanged(re'
+                                                             b'ad_a, replay_a) || !matrix_inputs::uncha'
+                                                             b'nged(read_b, replay_b))\n                '
+                                                             b'    throw std::runtime_error("Matrix rea'
+                                                             b'donly inputs changed during replay");\n  '
+                                                             b'              failure = matrix_reference'
+                                                             b'::validate(h_c, replay_expected, b_cols)'
+                                                             b';\n                if (!failure.empty()) '
+                                                             b'throw std::runtime_error(mismatch_detail'
+                                                             b'("Independent replay matrix output misma'
+                                                             b'tch", replay_expected) + "; " + failure)'
+                                                             b';\n            } catch (const std::except'
+                                                             b'ion& error) {\n                failure = '
+                                                             b'error.what();\n',
+                                                             b'                            hipStream_t '
+                                                             b'validation_stream) -> std::string\n      '
+                                                             b'  {\n            hipError_t error = hipMe'
+                                                             b'msetAsync(d_c, 0xFF, c_bytes, validation'
+                                                             b'_stream);\n            if(error == hipSuc'
+                                                             b'cess)\n            {\n                '
+                                                             b'error = graph_exec != nullptr\n          '
+                                                             b'          ? hipGraphLaunch(graph_exec, v'
+                                                             b'alidation_stream)\n                    : '
+                                                             b'launch(validation_stream);\n'),
+                                                            (b'        auto mismatch_detail = [&](const'
+                                                             b' char* phase, const std::vector<double>&'
+                                                             b' reference) {\n            double maximum'
+                                                             b' = 0.;\n            for (std::size_t inde'
+                                                             b'x = 0; index < reference.size(); ++index'
+                                                             b') {\n                if (!std::isfinite(h'
+                                                             b'_c[index]) || !std::isfinite(reference[i'
+                                                             b'ndex]))\n                    return std::'
+                                                             b'string(phase) + ": nonfinite output/refe'
+                                                             b'rence";\n                maximum = std::m'
+                                                             b'ax(maximum, std::fabs(static_cast<double'
+                                                             b'>(h_c[index]) - reference[index]));\n    '
+                                                             b'        }\n            std::ostringstream'
+                                                             b' out;\n            out << phase << ": max'
+                                                             b'_abs_error=" << std::setprecision(17) <<'
+                                                             b' maximum;\n            return out.str'
+                                                             b'();\n        };\n        bool validate'
+                                                             b'd = false;\n        std::string replay_pa'
+                                                             b'th;\n        auto restore = [&](hipStream'
+                                                             b'_t validation_stream) -> std::string {\n '
+                                                             b'           hipError_t error = hipMemcpyA'
+                                                             b'sync(d_a, h_a.data(), a_bytes, hipMemcpy'
+                                                             b'HostToDevice, validation_stream);\n      '
+                                                             b'      const auto b_error = hipMemcpyAsyn'
+                                                             b'c(d_b, h_b.data(), b_bytes, hipMemcpyHos'
+                                                             b'tToDevice, validation_stream);\n         '
+                                                             b'   if (error == hipSuccess) error = b_er'
+                                                             b'ror;\n            const auto sync_error ='
+                                                             b' hipStreamSynchronize(validation_stream)'
+                                                             b';\n            if (error == hipSuccess) e'
+                                                             b'rror = sync_error;\n            return er'
+                                                             b'ror == hipSuccess ? std::string{} : aka_'
+                                                             b'native_perf::hip_failure("matrix input r'
+                                                             b'estoration", error);\n        };\n',
+                                                             b''),
+                                                            (b'        const auto replay_expected = mat'
+                                                             b'rix_reference::product(replay_a, replay_'
+                                                             b'b, a_rows, a_cols, b_cols);\n        if ('
+                                                             b'matrix_reference::validate(std::vector<f'
+                                                             b'loat>(expected.begin(), expected.end()),'
+                                                             b' replay_expected, b_cols).empty())\n     '
+                                                             b'       throw std::runtime_error("Indepen'
+                                                             b'dent replay reference did not change at '
+                                                             b'the original tolerance");\n',
+                                                             b''),
+                                                            (b'        const auto input_seed = parse_se'
+                                                             b'ed(argc, argv, "--input-seed");\n        '
+                                                             b'const auto replay_seed = parse_seed(argc'
+                                                             b', argv, "--replay-seed");\n        matrix'
+                                                             b'_inputs::fill(h_a, h_b, input_seed);\n   '
+                                                             b'     std::vector<float> replay_a(h_a.siz'
+                                                             b'e()), replay_b(h_b.size());\n        matr'
+                                                             b'ix_inputs::fill(replay_a, replay_b, repl'
+                                                             b'ay_seed);\n        const auto inputs_reco'
+                                                             b'rd = matrix_inputs::record(input_seed, r'
+                                                             b'eplay_seed, h_a, h_b, replay_a, replay_b'
+                                                             b');\n        // Record reproducible draws '
+                                                             b'even if a later native numerical check f'
+                                                             b'ails.\n        std::cout << "AKA_MATRIX_I'
+                                                             b'NPUTS " << inputs_record << std::endl;\n',
+                                                             b'        for(unsigned int row = 0; row < '
+                                                             b'a_rows; ++row)\n        {\n           '
+                                                             b' for(unsigned int k = 0; k < a_cols; ++k'
+                                                             b')\n            {\n                cons'
+                                                             b't int value = static_cast<int>((row * 17'
+                                                             b'U + k * 13U) % 23U) - 11;\n              '
+                                                             b'  h_a[static_cast<std::size_t>(row) * a_'
+                                                             b'cols + k]\n                    = static_c'
+                                                             b'ast<float>(value) * 0.03125f;\n          '
+                                                             b'  }\n        }\n        for(unsigned i'
+                                                             b'nt k = 0; k < a_cols; ++k)\n        {'
+                                                             b'\n            for(unsigned int col = 0; c'
+                                                             b'ol < b_cols; ++col)\n            {\n  '
+                                                             b'              const int value = static_c'
+                                                             b'ast<int>((k * 19U + col * 7U) % 29U) - 1'
+                                                             b'4;\n                h_b[static_cast<std::'
+                                                             b'size_t>(k) * b_cols + col]\n             '
+                                                             b'       = static_cast<float>(value) * 0.0'
+                                                             b'15625f;\n            }\n        }\n\n'),
+                                                            (b'std::uint64_t parse_seed(int argc, char*'
+                                                             b'* argv, const char* name) {\n    for (int'
+                                                             b' i = 1; i + 1 < argc; ++i) if (std::stri'
+                                                             b'ng(argv[i]) == name) {\n        std::size'
+                                                             b'_t end = 0;\n        const std::string te'
+                                                             b'xt(argv[i + 1]);\n        if (text.empty('
+                                                             b') || text.find_first_not_of("0123456789"'
+                                                             b') != std::string::npos)\n            thro'
+                                                             b'w std::invalid_argument("Invalid unsigne'
+                                                             b'd input seed");\n        const auto seed '
+                                                             b'= std::stoull(text, &end);\n        if (e'
+                                                             b'nd != text.size()) throw std::invalid_ar'
+                                                             b'gument("Invalid unsigned input seed");\n '
+                                                             b'       return seed;\n    }\n    return'
+                                                             b' matrix_inputs::fresh_seed();\n}\n',
+                                                             b''),
+                                                            (b'#include "matrix_dense_inputs.hpp"\n',
+                                                             b'')]},
+ 'scripts/task_runner.py': {'after_sha256': 'afd21aa3f4ea579d2e876b717f2d08ece7506005a55a714b9fd7134e053be842',
+                            'before_sha256': 'ab3637d28cfeeeafc27bcd3227aba8a4b595d559d7defffaed4383aa900adb85',
+                            'reverse_blocks': [(b'        from reference_checks import parse_validatio'
+                                                b'n\n        result["input_validation"] = parse_validat'
+                                                b'ion(output, mode="performance")\n',
+                                                b'')]}}
+_MATRIX_DENSE_ADDED = {'scripts/native/matrix_dense_inputs.hpp': '8990bd4585f7a45adf997663b4f5d968a6cb28d5453ceb583c35e6ee89d3635d'}
+
+def _matrix_dense_historical_content(relative, content):
+    if relative not in _MATRIX_DENSE_REPAIR:
+        return content
+    revision = _MATRIX_DENSE_REPAIR[relative]
+    assert hashlib.sha256(content).hexdigest() == revision['after_sha256']
+    for new, old in revision['reverse_blocks']:
+        assert content.count(new) == 1
+        content = content.replace(new, old, 1)
+    assert hashlib.sha256(content).hexdigest() == revision['before_sha256']
+    return content
+
+# Exact isolated-translation-unit repair. Reverse only the reviewed launch wiring
+# and retain the complete previous source aggregate, cases and timer digests.
+_MATRIX_TU_REPAIR = {'main.hip': {'after_sha256': 'bcd7487569a824c316e1150fb791af9c6cd73a647b410e74baca0d0b95faed9b',
+              'before_sha256': '4388f8c1bcc6e28db47434f5427cf7bf19fe5c5d2f2f6914da4b5410143c9809',
+              'replacements': [(b'#include "scripts/native/matrix_launch.hpp"',
+                                b'#include "source/kernel.hpp"'),
+                               (b'    // The out-of-line adapter launches the same BlockSize16 candidate k'
+                                b'ernel.\n    HIP_CHECK(aka_matrix_launch(d_A, d_B, d_C, a_cols, grid_dim, '
+                                b'block_dim,\n                               hipStreamDefault));',
+                                b'    matrix_multiplication_kernel<block_size>\n        <<<grid_dim, block_'
+                                b'dim, 0, hipStreamDefault>>>(d_A, d_B, d_C, a_cols);\n    // Check if the '
+                                b'kernel launch was successful.\n    HIP_CHECK(hipGetLastError());')]},
+ 'scripts/native/benchmark_driver.hip': {'after_sha256': '688b4e1fa5adb838d4b648980aa72f5c23786a0d2be340ad12d9cdba1174ebce',
+                                         'before_sha256': '6ec6afd449c8240f60c82aaca56721546bf3dda96eca5e5461ca606ee31b6554',
+                                         'replacements': [(b'// Candidate preprocessor declarations stay in k'
+                                                           b'ernel_launch.hip. Neither the\n// independent'
+                                                           b' oracle nor benchmark identifiers share its prep'
+                                                           b'rocessing scope.\n#include "matrix_launch.hpp'
+                                                           b'"\n#include <iostream>\n#include <stdexcept>',
+                                                           b'// Compile the candidate kernel into this protec'
+                                                           b'ted benchmark translation unit.\n// Renaming '
+                                                           b'its CLI entry point keeps setup/validation code '
+                                                           b'out of timed work.\n#define main aka_matrix_c'
+                                                           b'andidate_main\n#include "../../main.hip"\n#und'
+                                                           b'ef main'),
+                                                          (b'            return aka_matrix_launch(d_a, d_b, d'
+                                                           b'_c, a_cols, grid, block,\n                   '
+                                                           b'                  launch_stream);',
+                                                           b'            matrix_multiplication_kernel<block_s'
+                                                           b'ize>\n                <<<grid, block, 0, laun'
+                                                           b'ch_stream>>>(d_a, d_b, d_c, a_cols);\n       '
+                                                           b'     return hipGetLastError();')]},
+ 'scripts/task_runner.py': {'after_sha256': 'ab3637d28cfeeeafc27bcd3227aba8a4b595d559d7defffaed4383aa900adb85',
+                            'before_sha256': 'eb1f590e8c0301a87a71bbd76f0781a95aa2f7e173b7c773eef5de342b79bc0c',
+                            'replacements': [(b'BENCH_SOURCE, os.path.join(TASK_DIR, "source", "kernel_launc'
+                                              b'h.hip"), "-o", BENCH_BINARY,',
+                                              b'BENCH_SOURCE, "-o", BENCH_BINARY,')]}}
+_MATRIX_TU_ADDED = {'scripts/native/matrix_launch.hpp': '85da784cc7be878f2d412298b286a1a0ca4780dcdd42d52472b183a9ba8ead42',
+ 'source/kernel_launch.hip': '4d22e11a7cddf574c04d004dec454fb9c050efc930f063384d1d3e53ed8c785a'}
+
+# Independent measured inputs intentionally change the reward workload.
+# Preserve source19 historical digests through this exact, pinned inverse only.
+_HIP5_MEASURED_DRAW_PINS = {
+ 'torch2hip/gpumode/14044_PositionWiseFeedForward/eval_tools/replay_validation.py': {'before_sha256': 'dffc733e513c3ca0a4131826a2bf4b5fff2700927b93276e5d2e6352812a40f0',
+                                                                                     'after_sha256': '0511d91e4dc0e3970d8bafedd49da8ba0c44d22d7a0725b2d7771c8f762f452b',
+                                                                                     'install_index': 0},
+ 'torch2hip/gpumode/14069_TransformerFFNLayer/eval_tools/replay_validation.py': {'before_sha256': 'dffc733e513c3ca0a4131826a2bf4b5fff2700927b93276e5d2e6352812a40f0',
+                                                                                 'after_sha256': '0511d91e4dc0e3970d8bafedd49da8ba0c44d22d7a0725b2d7771c8f762f452b',
+                                                                                 'install_index': 0},
+ 'torch2hip/gpumode/5334_GateGRUSelectionLayer/eval_tools/replay_validation.py': {'before_sha256': '50d28e8e81d6ad2e5be5eab9da5286f10f2de821727f913752206749e6d4d01f',
+                                                                                  'after_sha256': '895c1458b3a9c04242a240c91af746f3454f220d7e3a2272e7d6932cc3852a34',
+                                                                                  'install_index': 1},
+ 'torch2hip/gpumode/8325_MaskedLanguageModel/eval_tools/replay_validation.py': {'before_sha256': '50d28e8e81d6ad2e5be5eab9da5286f10f2de821727f913752206749e6d4d01f',
+                                                                                'after_sha256': '895c1458b3a9c04242a240c91af746f3454f220d7e3a2272e7d6932cc3852a34',
+                                                                                'install_index': 1}}
+_HIP5_HISTORICAL_INSTALLS = ['def install(perf, output_contract):\n'
+ '    from _aka_benchmark import TimedRun\n'
+ '    signature = inspect.signature(perf.cal_kernel_perf).parameters\n'
+ "    rtol, atol = signature['rtol'].default, signature['atol'].default\n"
+ '\n'
+ '    def latency(module, inputs, hip_fn=None, n_iter=100, n_warmup=10,\n'
+ '                use_cuda_graph=True, fallback_reason=None, prepare_fn=None):\n'
+ '        pristine = copy.deepcopy(inputs)\n'
+ '        state = {name: value.detach().clone() for name, value in module.state_dict().items()} if '
+ 'hasattr(module, "state_dict") else {}\n'
+ '        try:\n'
+ '            with torch.no_grad():\n'
+ "                # The functional module's default is the protected PyTorch operator,\n"
+ '                # never the supplied HIP function. The PyTorch baseline is checked\n'
+ '                # eagerly here and against the functional reference by correctness.\n'
+ '                expected = module(*copy.deepcopy(inputs))\n'
+ '            observed = TimedRun()\n'
+ '            invoke = (lambda: module(*inputs)) if hip_fn is None else (lambda: module(*inputs, '
+ 'fn=hip_fn))\n'
+ '            elapsed, metadata = perf.benchmark_cuda_graph_or_events(\n'
+ '                invoke, warmup=n_warmup, repetition=n_iter,\n'
+ '                use_cuda_graph=use_cuda_graph, fallback_reason=fallback_reason,\n'
+ '                prepare_fn=prepare_fn, timed_run=observed)\n'
+ "            kind = metadata.get('benchmark_timed_run_kind')\n"
+ "            expected_method = {'captured_graph': 'cuda_graph', 'eager_callable': "
+ "'cuda_event_fallback'}.get(kind)\n"
+ "            if expected_method is None or metadata.get('benchmark_method') != expected_method:\n"
+ "                raise ValueError('Benchmark did not identify its actual observed invocation')\n"
+ '            torch.cuda.synchronize()\n'
+ '            check_result(observed.outputs, expected, inputs, output_contract, perf._compare_results, '
+ 'rtol, atol)\n'
+ '            unchanged_inputs(pristine, inputs)\n'
+ '            unchanged_model_state(state, module)\n'
+ '            # Check the actual measured output first. Then poison it and re-invoke\n'
+ '            # the measured unit: the same graph, or the same eager callable for\n'
+ '            # explicit Event timing (which can allocate a new output).\n'
+ '            with torch.no_grad():\n'
+ "                observed.outputs.fill_(float('nan'))\n"
+ '            actual = observed.rerun()\n'
+ '            check_result(actual, expected, inputs, output_contract, perf._compare_results, rtol, '
+ 'atol)\n'
+ '            unchanged_inputs(pristine, inputs)\n'
+ '            unchanged_model_state(state, module)\n'
+ "            return elapsed, {**metadata, 'replay_validation_valid': True,\n"
+ "                             'input_state_restored': True,\n"
+ "                             'model_state_validation_valid': True,\n"
+ "                             'model_state_tensor_count': len(state),\n"
+ "                             'validated_invocation_kind': kind,\n"
+ "                             'replay_validation': 'full_reference_output_and_unchanged_inputs'}\n"
+ '        finally:\n'
+ '            with torch.no_grad():\n'
+ '                for original, value in zip(pristine, inputs):\n'
+ '                    if isinstance(value, torch.Tensor):\n'
+ '                        value.copy_(original)\n'
+ '                if state:\n'
+ '                    current = module.state_dict()\n'
+ '                    for name, original in state.items():\n'
+ '                        current[name].copy_(original)\n'
+ '            torch.cuda.synchronize()\n'
+ '\n'
+ '\n'
+ '    perf.cal_hip_latency = latency\n'
+ "    if hasattr(perf, 'cal_modu_latency'):\n"
+ '        perf.cal_modu_latency = lambda module, inputs, **kwargs: latency(module, inputs, **kwargs)\n',
+ 'def install(perf, output_contract):\n'
+ '    from _aka_benchmark import TimedRun\n'
+ '    signature = inspect.signature(perf.cal_kernel_perf).parameters\n'
+ "    rtol, atol = signature['rtol'].default, signature['atol'].default\n"
+ '\n'
+ '    def latency(module, inputs, hip_fn=None, n_iter=100, n_warmup=10,\n'
+ '                use_cuda_graph=True, fallback_reason=None, prepare_fn=None):\n'
+ '        pristine = copy.deepcopy(inputs)\n'
+ '        state = {name: value.detach().clone() for name, value in module.state_dict().items()} if '
+ 'hasattr(module, "state_dict") else {}\n'
+ '        try:\n'
+ '            with torch.no_grad():\n'
+ "                # The functional module's default is the protected PyTorch operator,\n"
+ '                # never the supplied HIP function. The PyTorch baseline is checked\n'
+ '                # eagerly here and against the functional reference by correctness.\n'
+ '                expected = module(*copy.deepcopy(inputs))\n'
+ '            observed = TimedRun()\n'
+ '            invoke = (lambda: module(*inputs)) if hip_fn is None else (lambda: module(*inputs, '
+ 'fn=hip_fn))\n'
+ '            elapsed, metadata = perf.benchmark_cuda_graph_or_events(\n'
+ '                invoke, warmup=n_warmup, repetition=n_iter,\n'
+ '                use_cuda_graph=use_cuda_graph, fallback_reason=fallback_reason,\n'
+ '                prepare_fn=prepare_fn, timed_run=observed)\n'
+ "            kind = metadata.get('benchmark_timed_run_kind')\n"
+ "            expected_method = {'captured_graph': 'cuda_graph', 'eager_callable': "
+ "'cuda_event_fallback'}.get(kind)\n"
+ "            if expected_method is None or metadata.get('benchmark_method') != expected_method:\n"
+ "                raise ValueError('Benchmark did not identify its actual observed invocation')\n"
+ '            torch.cuda.synchronize()\n'
+ '            check_result(observed.outputs, expected, inputs, output_contract, perf._compare_results, '
+ 'rtol, atol)\n'
+ '            unchanged_inputs(pristine, inputs)\n'
+ '            unchanged_model_state(state, module)\n'
+ '            # Poison the output and replay the very graph that was timed. A later\n'
+ '            # ordinary Python invocation is not evidence about that graph.\n'
+ '            with torch.no_grad():\n'
+ "                observed.outputs.fill_(float('nan'))\n"
+ '            actual = observed.rerun()\n'
+ '            check_result(actual, expected, inputs, output_contract, perf._compare_results, rtol, '
+ 'atol)\n'
+ '            unchanged_inputs(pristine, inputs)\n'
+ '            unchanged_model_state(state, module)\n'
+ "            return elapsed, {**metadata, 'replay_validation_valid': True,\n"
+ "                             'input_state_restored': True,\n"
+ "                             'model_state_validation_valid': True,\n"
+ "                             'model_state_tensor_count': len(state),\n"
+ "                             'replay_validation': 'full_reference_output_and_unchanged_inputs'}\n"
+ '        finally:\n'
+ '            with torch.no_grad():\n'
+ '                for original, value in zip(pristine, inputs):\n'
+ '                    if isinstance(value, torch.Tensor):\n'
+ '                        value.copy_(original)\n'
+ '                if state:\n'
+ '                    current = module.state_dict()\n'
+ '                    for name, original in state.items():\n'
+ '                        current[name].copy_(original)\n'
+ '            torch.cuda.synchronize()\n'
+ '\n'
+ '\n'
+ '    perf.cal_hip_latency = latency\n'
+ "    if hasattr(perf, 'cal_modu_latency'):\n"
+ '        perf.cal_modu_latency = lambda module, inputs, **kwargs: latency(module, inputs, **kwargs)\n']
+
+
+def _hip5_measured_draw_historical_content(relative, content):
+    change = _HIP5_MEASURED_DRAW_PINS.get(relative)
+    if change is None:
+        return content
+    assert hashlib.sha256(content).hexdigest() == change['after_sha256']
+    text = content.decode()
+    assert text.count('def changed_input_reference(') == 1
+    prefix = text[:text.index('def changed_input_reference(')]
+    assert prefix.count('import hashlib\nimport json\n') == 1
+    prefix = prefix.replace('import hashlib\nimport json\n', '', 1)
+    restored = (prefix + _HIP5_HISTORICAL_INSTALLS[change['install_index']]).encode()
+    assert hashlib.sha256(restored).hexdigest() == change['before_sha256']
+    return restored
+
+
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: p.parent.name)
 def test_original_code_case_seed_tolerance_and_timing_preserved(path):
     files = sorted(p for p in path.parent.rglob('*') if p.suffix in ('.py', '.hip', '.cpp', '.hpp', '.h')
                    and p.name not in ('evaluate.py', 'reference_checks.py') and p.relative_to(path.parent).as_posix() != 'source/kernel.hpp')
+    matrix_contents = {}
+    if path.parent.name == 'matrix_multiplication' and path.parent.parent.name == 'hip2hip':
+        for p in list(files):
+            relative = p.relative_to(path.parent).as_posix()
+            if relative in _MATRIX_DENSE_ADDED:
+                assert hashlib.sha256(p.read_bytes()).hexdigest() == _MATRIX_DENSE_ADDED[relative]
+                files.remove(p)
+                continue
+            if relative in _MATRIX_TU_ADDED:
+                assert hashlib.sha256(p.read_bytes()).hexdigest() == _MATRIX_TU_ADDED[relative]
+                files.remove(p)
+            elif relative in _MATRIX_TU_REPAIR:
+                change = _MATRIX_TU_REPAIR[relative]
+                content = _matrix_dense_historical_content(relative, p.read_bytes())
+                assert hashlib.sha256(content).hexdigest() == change['after_sha256']
+                for new, old in change['replacements']:
+                    assert content.count(new) == 1
+                    content = content.replace(new, old, 1)
+                assert hashlib.sha256(content).hexdigest() == change['before_sha256']
+                matrix_contents[relative] = content
     for p in list(files):
         relative = p.relative_to(ROOT/'tasks').as_posix()
         if relative in PR105_NATIVE_FILES:
-            assert hashlib.sha256(p.read_bytes()).hexdigest() == PR105_NATIVE_FILES[relative]
+            expected_file = (MLA_STORAGE_GUARD_HOST_SHA256
+                             if relative == 'hip2hip/mla_decode/mla_decode.hip'
+                             else PR105_NATIVE_FILES[relative])
+            assert hashlib.sha256(p.read_bytes()).hexdigest() == expected_file
             if relative.endswith('scripts/native/candidate_driver.hip'):
                 files.remove(p)
     digest = hashlib.sha256()
     for p in files:
-        content = p.read_bytes()
+        content = matrix_contents.get(p.relative_to(path.parent).as_posix(), p.read_bytes())
+        content = _hip5_measured_draw_historical_content(p.relative_to(ROOT/'tasks').as_posix(), content)
         if p.relative_to(ROOT/'tasks').as_posix() in PR105_NATIVE_FILES:
             content = subprocess.check_output(['git', 'show', 'e8ec5d6b:' + historical_hip_path(p)], cwd=ROOT)
         if p.parent == path.parent and p.name in ('main.hip', 'mla_decode.hip'):
@@ -580,8 +1117,11 @@ def test_original_code_case_seed_tolerance_and_timing_preserved(path):
             assert 'source/kernel.hpp' in path.with_name('Makefile').read_text()
         digest.update(str(p.relative_to(path.parent)).encode() + b'\0' + content + b'\0')
     relative = str(path.parent.relative_to(ROOT / 'tasks'))
-    assert (len(files), digest.hexdigest()) == GPU_VALIDATOR_REPAIR_DIGESTS.get(
-        relative, ORIGINAL_SOURCE_DIGESTS[relative])
+    expected_source = RL_GENERATION_WORKLOAD_SOURCE_DIGESTS.get(
+        relative, GPU_VALIDATOR_REPAIR_DIGESTS.get(relative, ORIGINAL_SOURCE_DIGESTS[relative]))
+    if relative == 'hip2hip/mla_decode':
+        expected_source = MLA_TASK_QUALITY_SOURCE_DIGEST
+    assert (len(files), digest.hexdigest()) == expected_source
 
 
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
@@ -711,6 +1251,8 @@ def test_mla_protected_host_reference_known_answers_on_cpu(tmp_path):
 #include <cstring>
 #include <algorithm>
 #include <cassert>
+#include <limits>
+#include "output_validation.hpp"
 #define __host__
 #define __device__
 #define __forceinline__ inline
@@ -737,11 +1279,11 @@ int main() {
     assert(!(absolute<=5e-2 || relative<=1e-1));
     wrong[0]=NAN;
     max_diff(wrong,out,absolute,relative);
-    assert(!std::isfinite(absolute) && !std::isfinite(relative));
+    assert(absolute>5e-2 && relative>1e-1); // finite rejection sentinel
 }
 '''
     source = tmp_path / 'host_reference.cpp'; source.write_text(preamble + decoder + reference + diff + control)
-    result = subprocess.run([compiler, '-std=c++17', str(source), '-o', str(tmp_path / 'check')], capture_output=True, text=True, timeout=60)
+    result = subprocess.run([compiler, '-std=c++17', '-I', str(ROOT / 'tasks/hip2hip/mla_decode/scripts/native'), str(source), '-o', str(tmp_path / 'check')], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
     subprocess.run([str(tmp_path / 'check')], check=True, timeout=10)
 
@@ -863,19 +1405,30 @@ int main() {
     subprocess.run([str(tmp_path / 'check')], check=True, timeout=10)
 
 
-def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
+def test_matrix_additional_checks_cover_all_original_shapes_and_dense_controls(monkeypatch):
     root = ROOT / 'tasks/hip2hip/matrix_multiplication'
     helper = import_path(root / 'scripts/reference_checks.py')
     shapes = json.loads((root / 'workload.json').read_text())['test_shapes']
     calls = []
+    inputs = {'schema_version':1,'generator':'splitmix64_dyadic_dense_v1',
+        'fingerprint_kind':'fnv1a64_le_fp32_noncryptographic','initial_seed':'42','replay_seed':'43',
+        'initial_A':'1111111111111111','initial_B':'2222222222222222',
+        'replay_A':'3333333333333333','replay_B':'4444444444444444'}
+    validation = {'inputs':inputs,'mode':'check_only','initial_output_correctness':'PASS',
+        'changed_input_replay_correctness':'PASS','readonly_initial':'PASS',
+        'readonly_replay':'PASS','restored_initial_inputs':'PASS',
+        'output_coverage':'all_output_elements','replay_path':'eager_callable'}
     def run(argv, **kwargs):
         calls.append((argv, kwargs))
-        return types.SimpleNamespace(returncode=0, stdout='Full reference validation passed', stderr='')
+        output = ('AKA_MATRIX_INPUTS '+json.dumps(inputs)+'\nAKA_MATRIX_VALIDATION '
+                  +json.dumps(validation)+'\nFull reference validation passed')
+        return types.SimpleNamespace(returncode=0, stdout=output, stderr='')
     monkeypatch.setattr(helper.subprocess, 'run', run)
     harness = types.SimpleNamespace(TEST_SHAPES=shapes, BENCH_BINARY='nested/build/benchmark')
-    helper.check_additional_paths(harness)
-    assert len(calls) == 5
-    for (argv, kwargs), shape in zip(calls, shapes):
+    evidence=helper.check_additional_paths(harness)
+    assert len(calls) == len(evidence) == 7
+    assert [row['test_case_id'] for row in evidence] == [*(f'shape_{i}' for i in range(5)),*helper.CONTROL_IDS]
+    for (argv, kwargs), shape in zip(calls, [*shapes,*helper.CONTROL_SHAPES]):
         assert argv == ['nested/build/benchmark', '--A_rows', str(shape[0]), '--A_cols', str(shape[1]), '--B_cols', str(shape[2]), '--check-only', '1']
         assert kwargs['timeout'] == 300
     monkeypatch.setattr(helper.subprocess, 'run', lambda *a, **kw: types.SimpleNamespace(returncode=1, stdout='', stderr='wrong C'))
@@ -939,7 +1492,7 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
         observed.append(kwargs)
         with torch.no_grad():
             output = invoke()
-        report_fake_samples(kwargs, output)
+        report_fake_samples(kwargs, output, invoke)
         def replay():
             assert torch.isnan(output).all()  # Same timed buffer was poisoned.
             with torch.no_grad():
@@ -947,7 +1500,7 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
             return output
         kwargs['timed_run']._bind(replay, output)
         return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
-                     'benchmark_samples': kwargs['repetition']}
+                     'benchmark_effective_repeats': 1, 'benchmark_samples': kwargs['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
@@ -2056,7 +2609,7 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
     def benchmark(invoke, **kwargs):
         assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
         output = invoke().detach()
-        report_fake_samples(kwargs, output)
+        report_fake_samples(kwargs, output, invoke)
         def replay():
             assert torch.isnan(output).all()
             with torch.no_grad():
@@ -2072,7 +2625,7 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
             return output
         kwargs['timed_run']._bind(replay, output)
         return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
-                     'benchmark_samples': kwargs['repetition']}
+                     'benchmark_effective_repeats': 1, 'benchmark_samples': kwargs['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf, cal_modu_latency=None,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)

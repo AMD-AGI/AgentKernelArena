@@ -1,6 +1,6 @@
 # triton_topk_log_softmax
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve the declared kernel and new implementation helpers;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -15,7 +15,7 @@ Constraints:
 
 Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
 (with one role and one action). Use `ARENA_EVAL_PHASE=candidate_evaluation` for submitted candidates.
-`workloads.json` declares all five original cases; the adapter verifies it against the
+`workloads.json` declares all five original scored cases and explicit correctness-only controls; the adapter verifies it against the
 protected harness table. Original input seeds, comparisons, tolerances, warmups, sample
 counts and graph/event timing remain in `scripts/task_runner.py`. Compilation includes
 syntax and import/interface checks. Missing candidates, incomplete measurements and
@@ -39,3 +39,18 @@ including on replay failure.
 Additional unscored public-branch controls from PR105: Singleton vocab plus below-block and FP16 above-block numerical edges.
 They have independent `control-upstream-*` manifest rows; existing scored
 inputs, numerical gates and timing remain unchanged.
+
+The wrapper, imports, allocations and layout normalization are protected; only
+`_topk_log_softmax_kernel` and permitted new implementation helpers are editable.
+The kernel uses unit column stride and dense token-ID offsets. The wrapper
+normalizes both logits and INT64 token IDs to contiguous storage, supporting
+strided caller views while preserving their values. Three explicit unscored
+`control-layout-*` rows cover last-dimension stride-two logits, stride-two INT64
+IDs and both together, with a 1033-token vocabulary and seven selected tokens.
+Their FP64 log-partition oracle is independent of the kernel's two-pass reduction.
+
+All original scored inputs are contiguous and already use INT64 IDs, so both
+normalizations preserve their pointers, allocation boundary and device work.
+The five original scored cases, seeds, tolerances, ten warmups and 100 samples
+are unchanged. Copies needed for strided callers belong to the same protected
+wrapper for baseline and candidate; no strided case contributes a timing score.

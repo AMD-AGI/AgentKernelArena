@@ -4,7 +4,12 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_ep_scatter_1.py
+  - path: source/triton_ep_scatter_1.py
+    scope: symbols
+    symbols:
+    - round_up_128
+    - _fwd_kernel_ep_scatter_1
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_ep_scatter_1.py
     kind: function

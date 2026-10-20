@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_bmm.py
+  - path: source/triton_bmm.py
+    scope: symbols
+    symbols:
+    - bmm_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_bmm.py
     kind: function

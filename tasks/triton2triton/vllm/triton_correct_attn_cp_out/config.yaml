@@ -4,7 +4,11 @@ candidate:
   language: triton
   initial_state: implemented
   editable:
-  - source/triton_correct_attn_cp_out.py
+  - path: source/triton_correct_attn_cp_out.py
+    scope: symbols
+    symbols:
+    - _correct_attn_cp_out_kernel
+    allow_new_helpers: true
   entrypoints:
   - file: source/triton_correct_attn_cp_out.py
     kind: function

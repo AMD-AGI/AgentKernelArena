@@ -55,3 +55,17 @@ different slice widths17/33, and both overwrite/addition behavior with nonzero
 initial output. Heterogeneous slices use cumulative offsets, as the original
 pointer-builder does; the original equal-width reference remains used for all
 scored cases. Unassigned tokens and surrounding output columns are preserved.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `mm_k`, `do_expand_kernel`, `_lora_expand_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
+
+The protected wrapper also fixes the launch configuration: the grid and the tile
+sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes above
+that mention tuning those values refer to the original whole-file contract; under
+this boundary, optimize the kernel bodies and implementation helpers instead.

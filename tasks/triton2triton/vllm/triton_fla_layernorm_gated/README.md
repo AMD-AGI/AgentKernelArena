@@ -42,3 +42,13 @@ a finally block, including replay failures; all added checks are outside timing.
 Additional unscored public-branch controls from PR105: FP16/BF16, singleton and 1025-wide tails, epsilon and activation variants.
 They have independent `control-upstream-*` manifest rows; existing scored
 inputs, numerical gates and timing remain unchanged.
+
+
+## Editable device implementation
+
+The declared device kernels `layer_norm_gated_fwd_kernel` and permitted new compiler helpers are editable. Existing imports, module-level
+execution, the public host wrapper, launch preparation, numerical checks and
+timing remain protected. Kernel arithmetic, tiling and memory operations can
+be optimized within that boundary. The implementation, workload values,
+correctness tolerances and scored samples are unchanged by this boundary.
+This is a reproducibility boundary, not an isolation guarantee for arbitrary code.

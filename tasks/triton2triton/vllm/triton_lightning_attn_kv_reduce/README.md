@@ -51,3 +51,12 @@ Both updated buffers must match the independent recurrence. In-place state is
 also input, so this diagnostic changes valid input state instead of poisoning
 values the operator must read. The caller-owned sources and work buffers are
 restored even after a failed replay. No additional case is added to scoring.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_fwd_kv_reduce`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

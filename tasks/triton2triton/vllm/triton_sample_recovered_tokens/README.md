@@ -42,3 +42,12 @@ historical graph-replay times.
 Additional unscored public-branch controls from PR105: Singleton, empty/ragged requests and deterministic recovered-distribution branch.
 Their `control-upstream-*` manifest rows preserve all existing scored cases,
 numerical gates, seeds and timing.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `sample_recovered_tokens_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.

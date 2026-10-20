@@ -86,7 +86,7 @@ def source_state(cfg):
 
 def check_dependencies(paths, final_language=True):
     """Enforce declared implementation dependencies, including from X import Y."""
-    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts"}
+    forbidden = {"src", "agents", "model", "test_kernel_harness", "task_runtime", "task_reference", "task_baseline", "reference_controls", "scripts", "_aka_benchmark"}
     backend_seen = False
     for path in paths:
         tree = ast.parse(path.read_text(), filename=str(path))
@@ -116,9 +116,9 @@ def check_dependencies(paths, final_language=True):
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call): continue
             name = dotted(node.func)
-            if final_language and (name in {"torch.mm", "torch.bmm", "torch.matmul", "torch.einsum", "torch.softmax", "torch.log_softmax", "torch.layer_norm", "torch.rms_norm"} or name.startswith("torch.nn.functional.")):
+            if final_language and (name in {"torch.mm", "torch.bmm", "torch.matmul", "torch.einsum", "torch.softmax", "torch.log_softmax", "torch.layer_norm", "torch.rms_norm", "torch._scaled_mm"} or name.startswith("torch.nn.functional.")):
                 raise ValueError(f"Library operator shortcut in candidate: {name}")
-            if name in {"eval", "exec", "__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:
+            if name in {"eval", "exec", "__import__", "builtins.eval", "builtins.exec", "builtins.__import__", "importlib.import_module", "importlib.util.spec_from_file_location"}:
                 raise ValueError(f"Dynamic implementation loading is not allowed: {name}")
     if final_language and not backend_seen:
         raise ValueError("Candidate does not declare a FlyDSL implementation dependency")

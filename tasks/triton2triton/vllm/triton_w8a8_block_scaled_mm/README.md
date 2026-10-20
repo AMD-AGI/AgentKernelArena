@@ -1,6 +1,6 @@
 # triton_w8a8_block_scaled_mm
 
-The starting candidate is implemented Triton. Improve the declared source files in place;
+The starting candidate is implemented Triton. Improve the declared device kernel in place;
 the framework freezes the initial implementation as the baseline. Baseline and candidate
 actions execute only this workspace, with no fallback to another implementation.
 
@@ -38,10 +38,25 @@ The FP8 wrapper also checks a noncontiguous B supported by its strides.
 
 The five scored shapes, seeds and input magnitudes remain unchanged, including
 the larger performance scales/operands. Ten warmups and 100 device-timed samples
-still measure the original public operator, including its output allocation.
+still measure device work replayed from the original public operator call.
+Graph capture executes the protected host wrapper and allocates its output; graph
+replay measures the captured device work and does not repeat that Python allocation.
+The event fallback measures the callable's GPU-stream event interval and can include
+stream gaps; it is not an independent CPU wall-clock or allocation-cost metric.
 The protected wrapper collects that output from the exact measured graph,
 checks it against the reference, then changes A/B/As/Bs, poisons the captured
 output and checks the same graph's replay. These checks are outside timing.
 Input buffers are verified read-only and restored even on replay failure.
 Numerical failures or FP16 overflow in any original scored case remain failures;
 the check does not substitute an easier timing workload.
+
+
+## Editable implementation boundary
+
+Only `_w8a8_triton_block_scaled_mm` and permitted new implementation helpers are
+editable. Existing imports, dtype selection, host launch configuration and public
+wrapper remain protected with the numerical checker and timer. This keeps module
+execution and wrapper changes from replacing the protected oracle or measured
+call. Device tiling arithmetic, memory operations and compiler-approved helpers
+remain available inside the declared kernel boundary. This is a reproducibility
+boundary, not a security sandbox for arbitrary code.

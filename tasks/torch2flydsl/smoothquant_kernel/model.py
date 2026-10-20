@@ -3,18 +3,15 @@
 """Pure-PyTorch reference for SmoothQuant dynamic per-token INT8 quantization.
 
 SmoothQuant first applies a per-channel smoothing scale to the activations
-(``x * x_scale``, ``x_scale`` of shape ``[n]``), then performs a dynamic
-per-token (per-row) INT8 quantization of the smoothed tensor. The op returns
-``(y, y_scale)`` where ``y`` is ``[m, n]`` int8 and ``y_scale`` is fp32 of
-shape ``[m, 1]``.
+(``x * x_scale``, ``x_scale`` of shape ``[n]``), then performs dynamic per-token
+(per-row) INT8 quantization. It returns ``(y, y_scale)`` with ``y`` of shape
+``[m, n]`` and dtype int8, and ``y_scale`` of shape ``[m, 1]`` and dtype fp32.
 
-AMD-runtime semantics (option-b): this mirrors the AMD runtime
-``smoothquant_fwd`` / ``pertoken_quant`` (int8) op. The per-row scale is
-``amax(|x * x_scale|) /
-127`` (INT8 max), with an all-zero row keeping a scale of 1. The smoothed
-values are divided by the per-row scale and converted to int8 by truncation
-toward zero (saturated to ``[-128, 127]``), matching the device kernel's
-``static_cast<int8_t>`` store.
+The task scale is ``amax(|x * x_scale|) / 127`` for nonzero rows. An all-zero
+row returns zero INT8 codes and scale 1. Smoothed values are divided by the
+scale, saturated to ``[-128, 127]``, and converted by truncation toward zero.
+The task owns this zero-row convention; a runtime cross-oracle may use a
+different zero-row convention while agreeing on the original nonzero draws.
 """
 import torch
 import torch.nn as nn

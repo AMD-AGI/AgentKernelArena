@@ -41,3 +41,12 @@ fresh baseline, not compared directly with the historical five-case aggregate.
 Additional unscored public-branch controls from PR105: BF16 vocab8209 and per-penalty no-op/speculative branch separation.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+
+### Editable device implementation boundary
+
+The editable device functions are `_penalties_kernel`.
+Their bodies and additional implementation helpers may be optimized. Module
+imports, initialization, host dispatch and pointer preparation remain protected,
+along with the existing numerical checks and benchmark protocol. The structural
+guard enforces this boundary; it does not isolate arbitrary Python execution.
