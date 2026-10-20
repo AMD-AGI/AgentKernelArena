@@ -15,9 +15,10 @@ from pathlib import Path
 from . import BUILDER_VERSION
 from .backend import generate
 from .bundle import ImportProblem, fingerprint, inspect_bundle
-from .config import Config
-from .materialize import check_contract, materialize_task, task_digest, task_tree
-from .validation import runtime_identity, validate_task
+from .checkout import inspect_checkout
+from .config import CheckoutConfig, Config
+from .materialize import check_contract, materialize_task, schema_task_files, task_digest, task_tree, write_files
+from .validation import runtime_identity, validate_schema_task, validate_task
 
 REPO = Path(__file__).resolve().parents[2]
 LOG = logging.getLogger(__name__)
@@ -48,6 +49,16 @@ def implementation_digest():
     return task_digest(Path(__file__).parent)
 
 
+def enclosing_task(output: Path, destination: Path) -> Path | None:
+    """A task config between output and destination, which would make the new task a nested one."""
+    for parent in destination.parents:
+        if parent == output or not parent.is_relative_to(output):
+            return None
+        if (parent / "config.yaml").exists():
+            return parent / "config.yaml"
+    return None
+
+
 def install_task(draft: Path, output: Path, task_id: str, evidence: dict) -> Path:
     if not evidence.get("ok") or evidence.get("task_digest") != task_digest(draft):
         raise ImportProblem("stale_validation", "Task changed or has no accepted validation")
@@ -57,6 +68,7 @@ def install_task(draft: Path, output: Path, task_id: str, evidence: dict) -> Pat
         if task_digest(destination) == evidence["task_digest"]:
             return destination
         raise ImportProblem("output_conflict", f"Existing task differs; refusing overwrite: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=".sikl-install-", dir=output))
     try:
         # Copy exactly the accepted files, excluding command-generated caches.
@@ -70,13 +82,27 @@ def install_task(draft: Path, output: Path, task_id: str, evidence: dict) -> Pat
         # an existing task, including an empty directory created by another run.
         with (output / ".sikl-install.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            if destination.exists():
+            if destination.exists() or enclosing_task(output, destination):
                 raise ImportProblem("output_conflict", str(destination))
             temporary.rename(destination)
         return destination
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
+
+
+def run_root(artifacts: Path, run_id: str | None) -> tuple[Path, bool]:
+    resuming = run_id is not None
+    run_id = run_id or (time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8])
+    if not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in run_id):
+        raise ValueError("Invalid run ID")
+    root = artifacts / run_id
+    if resuming:
+        if not root.is_dir():
+            raise ValueError(f"Run does not exist: {run_id}")
+    else:
+        root.mkdir(parents=True, exist_ok=False)
+    return root, resuming
 
 
 def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
@@ -94,16 +120,7 @@ def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
                             "implementation": implementation_digest(), "runtime": environment,
                             "tasks": {t.task_id: t.digest for t in tasks},
                             "bundle_files": bundle_files})
-    resuming = run_id is not None
-    run_id = run_id or (time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8])
-    if not run_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in run_id):
-        raise ValueError("Invalid run ID")
-    root = artifacts / run_id
-    if resuming:
-        if not root.is_dir():
-            raise ValueError(f"Run does not exist: {run_id}")
-    else:
-        root.mkdir(parents=True, exist_ok=False)
+    root, resuming = run_root(artifacts, run_id)
     with (root / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if resuming:
@@ -112,7 +129,7 @@ def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
                 raise ValueError("Resume refused: input, configuration, builder or runtime changed")
         else:
             shutil.copytree(source, root / "bundle")
-            state = {"run_id": run_id, "identity": identity, "environment": environment, "tasks": {}}
+            state = {"run_id": root.name, "identity": identity, "environment": environment, "tasks": {}}
             atomic_json(root / "config.json", config.mapping())
             atomic_json(root / "state.json", state)
         frozen = task_digest(root / "bundle")
@@ -191,6 +208,84 @@ def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
                 record["elapsed"] = elapsed_before + time.monotonic() - started
                 atomic_json(root / "state.json", state)
         state["ok"] = all(t["state"] == "installed" for t in state["tasks"].values())
+        atomic_json(root / "state.json", state)
+        atomic_json(root / "summary.json", state)
+        return state
+
+
+def run_checkout(config: CheckoutConfig, run_id: str | None = None, *, repo: Path = REPO) -> dict:
+    """Build one task per committed SIKL v5 schema: deterministic files, the initial-action gate, install."""
+    from src.preprocessing import _resolve_gfx_arch
+    source, output, artifacts = resolve_paths(config, repo)
+    environment = runtime_identity(config)
+    commit, tasks = inspect_checkout(source, config.tasks)
+    arch = _resolve_gfx_arch(config.target_gpu_model)
+    identity = fingerprint({"config": config.mapping(), "builder": BUILDER_VERSION,
+                            "implementation": implementation_digest(), "runtime": environment,
+                            "commit": commit, "tasks": {t.task_id: t.oid for t in tasks}})
+    root, resuming = run_root(artifacts, run_id)
+    with (root / ".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if resuming:
+            state = json.loads((root / "state.json").read_text())
+            if state["identity"] != identity:
+                raise ValueError("Resume refused: input, configuration, builder or runtime changed")
+        else:
+            state = {"run_id": root.name, "identity": identity, "environment": environment,
+                     "commit": commit, "tasks": {}}
+            atomic_json(root / "config.json", config.mapping())
+            atomic_json(root / "state.json", state)
+        for task in tasks:
+            record = state["tasks"].setdefault(task.task_id, {"state": "discovered", "attempts": 0})
+            destination = output / task.task_id
+            if record["state"] == "installed":
+                if not destination.is_dir() or task_digest(destination) != record["task_digest"]:
+                    raise ImportProblem("installed_changed", f"Installed task changed: {task.task_id}")
+                continue
+            # Materialization is deterministic, so only a failed gate is worth retrying.
+            if record["state"] in {"platform_deferred", "output_conflict", "baseline_rejected"}:
+                continue
+            if not task.supports(arch, config.target_gpu_model):
+                record.update(state="platform_deferred")
+                atomic_json(root / "state.json", state)
+                continue
+            draft = root / "drafts" / task.task_id
+            shutil.rmtree(draft, ignore_errors=True)
+            write_files(draft, schema_task_files(task, config, commit))
+            digest = task_digest(draft)
+            if destination.exists() or enclosing_task(output, destination):
+                if destination.is_dir() and task_digest(destination) == digest:
+                    record.update(state="installed", task_digest=digest, destination=str(destination))
+                else:
+                    record.update(state="output_conflict",
+                                  error={"code": "output_conflict", "message": f"{destination} differs or is nested"})
+                atomic_json(root / "state.json", state)
+                continue
+            record["attempts"] += 1
+            record["state"] = "validating"
+            atomic_json(root / "state.json", state)
+            LOG.info("Building %s (%d cases), attempt %d", task.task_id, len(task.cases), record["attempts"])
+            try:
+                evidence = validate_schema_task(draft, root / "evidence" / task.task_id / str(record["attempts"]),
+                                                config, task.task_id)
+                outcome = evidence["outcome"]
+                if evidence["ok"]:
+                    install_task(draft, output, task.task_id, evidence)
+                    record.update(state="installed", task_digest=evidence["task_digest"],
+                                  destination=str(destination), validation_id=evidence["validation_id"])
+                    record.pop("error", None)
+                else:
+                    record.update(state=outcome["state"], error={"code": outcome["code"],
+                                                                "message": f"see evidence attempt {record['attempts']}"})
+            except Exception as exc:
+                code = getattr(exc, "code", "execution_error")
+                # Another run installed a different task here after the pre-gate check.
+                record.update(state="output_conflict" if code == "output_conflict" else "failed",
+                              error={"code": code, "message": str(exc)})
+                LOG.exception("Task %s failed", task.task_id)
+            atomic_json(root / "state.json", state)
+        state["ok"] = not any(t["state"] in ("failed", "baseline_rejected", "output_conflict")
+                              for t in state["tasks"].values())
         atomic_json(root / "state.json", state)
         atomic_json(root / "summary.json", state)
         return state
