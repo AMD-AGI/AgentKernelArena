@@ -256,6 +256,16 @@ agent's `agent_config.yaml`. Cursor accepts the same overrides except a
 standalone `effort`. See [run-level overrides](docs/reference/agent-model-defaults.md#run-level-overrides)
 for exact semantics; other integrations define their own supported settings.
 
+Cursor, Claude Code, Codex, and DeepSeek Harness accept `budget_mode`.
+The default, `iterations`, runs one
+session that asks for up to `max_iterations` versions. With `time`,
+`timeout_seconds` becomes the agent's wall-clock budget: if the agent stops
+early, Arena resumes the same session with the time remaining. Every run also
+writes a per-task cost record (dollars and tokens where the provider reports
+them, `null` otherwise) to `<run_dir>/agent_costs/<task_workspace>.json`, for
+all agents. See [iteration and time budgets](docs/how-to/agents.md#iteration-and-time-budgets)
+and [agent cost records](docs/how-to/agents.md#agent-cost-records).
+
 For a Cursor, Claude Code, Codex, or task-validator config, verify only the
 selected first-class host CLI (the validator resolves to its configured backend):
 

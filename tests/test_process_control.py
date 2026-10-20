@@ -1,10 +1,49 @@
 """CPU checks for the pre-measurement process sweep; no GPU or container is used."""
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
 from src import process_control as pc
+
+
+def test_disappeared_darwin_group_is_checked_before_ignoring_eperm(monkeypatch):
+    monkeypatch.setattr(pc.sys, "platform", "darwin")
+    waited = []
+    process = SimpleNamespace(pid=4242, wait=lambda **kwargs: waited.append(kwargs))
+
+    def denied(*args):
+        raise PermissionError("group disappeared")
+
+    def groups(command, **kwargs):
+        assert command == ["/bin/ps", "-axo", "pgid="]
+        assert kwargs["timeout"] == 1
+        return SimpleNamespace(returncode=0, stdout="1\n 14242\n")
+
+    monkeypatch.setattr(pc.os, "killpg", denied)
+    monkeypatch.setattr(pc.subprocess, "run", groups)
+    pc.stop_process_group(process)
+    assert waited == [{}]
+
+
+@pytest.mark.parametrize("platform,returncode,stdout", [
+    ("darwin", 0, "1\n4242\n"), ("darwin", 1, ""), ("darwin", 0, ""),
+    ("darwin", 0, "invalid"), ("linux", 0, ""),
+])
+def test_group_permission_errors_are_not_hidden_without_proven_absence(
+        monkeypatch, platform, returncode, stdout):
+    monkeypatch.setattr(pc.sys, "platform", platform)
+    process = SimpleNamespace(pid=4242, wait=lambda **kwargs: None)
+
+    def denied(*args):
+        raise PermissionError("cannot signal group")
+
+    monkeypatch.setattr(pc.os, "killpg", denied)
+    monkeypatch.setattr(pc.subprocess, "run", lambda *args, **kwargs:
+                        SimpleNamespace(returncode=returncode, stdout=stdout))
+    with pytest.raises(PermissionError):
+        pc.stop_process_group(process)
 
 
 def fake_proc(root, rows):

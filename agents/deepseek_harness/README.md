@@ -48,8 +48,9 @@ remains pinned by the integration:
 | `protocol` | `chat-completions` or `messages`; must match the endpoint |
 | `base_url` | Endpoint override; null uses `DEEPSEEK_BASE_URL`, then upstream's protocol default |
 | `max_tokens` | Per-request output limit, not a total session budget |
-| `max_iterations` | Defaults to 9 versions; optimization guidance appended to the prompt, not a hard turn limit |
-| `timeout_seconds` | Positive per-invocation wall-clock budget; included in the prompt and enforced by stopping the process group on expiry |
+| `max_iterations` | Defaults to 9 versions; prompt guidance in `iterations` mode, not a hard turn limit; unused in `time` mode |
+| `budget_mode` | `iterations` (default) runs once; `time` resumes the same conversation until its deadline, subject to the shared continuation limits |
+| `timeout_seconds` | Positive wall-clock budget; in `time` mode it covers all continuations together; included in the prompt and enforced by stopping the process group on expiry |
 | `python_path` | Optional in-container Python interpreter; null uses Arena's interpreter |
 
 For example, budget a short run without editing shared defaults:
@@ -65,6 +66,25 @@ The shared budget guidance asks the agent to retain its best candidate at the
 declared paths and leave time for required checks. It does not weaken task
 acceptance or guarantee timely completion. Use `reasoning_effort` for DeepSeek;
 the other CLI integrations' `effort` field is not a DeepSeek setting.
+
+For repeated optimization within one time budget, select:
+
+```yaml
+agent:
+  template: deepseek_harness
+  budget_mode: time
+  timeout_seconds: 3600
+```
+
+The first prompt includes the total seconds and has no iteration-count target.
+Each continuation gets a prompt with the remaining minutes and a process
+timeout bounded by the original deadline. The runner retains the same isolated
+home and task directory, reads the first run's `session` event, and passes its
+exact `sessionId` as `--session-id` on continuations. A missing ID stops further
+continuations; a missing or mismatched persisted session fails rather than
+starting a fresh conversation. At least 10 minutes must remain to continue,
+and at most 20 invocations run per task. See the shared
+[budget rules](../../docs/how-to/agents.md#iteration-and-time-budgets).
 
 This adapter configures the DeepSeek provider. Other upstream providers and
 custom plugins are not exposed by this integration. For gateways, use a URL
@@ -118,11 +138,16 @@ The recorded schema-v2 GPU checks used `reasoning_effort: high`,
 `max_iterations: 1`, and `timeout_seconds: 1200`. They do not measure the model
 quality or performance of the current `max` / 9-version defaults.
 
-Every invocation creates a fresh `.deepseek_harness-*` directory inside its
+Every task launch creates a fresh `.deepseek_harness-*` directory inside its
 task workspace. It preserves the prompt, credential-free Cordis patch,
 invocation settings, stdout/stderr logs, and a separate `home/` for upstream
-sessions. Retries create another directory rather than overwriting past runs.
-Nonzero CLI exits and timeouts raise an agent failure. Under schema v2, Arena
+sessions. In `time` mode, `session-0001/`, `session-0002/`, and so on preserve
+each invocation's prompt, logs, resume ID, and effective timeout without
+overwriting earlier evidence. Retries create another task state directory and
+home rather than reusing past runs.
+Nonzero CLI exits raise an agent failure. A first-invocation timeout still
+raises `TimeoutError`; a continuation stopped at the deadline is normal
+completion of the time budget, following the shared CLI rules. Under schema v2, Arena
 records `agent_execution` separately and independently evaluates any retained
 candidate; a passing candidate does not turn a failed invocation into a completed
 agent run. The shared task prompt and `ARENA_TASK_CONTEXT`,
@@ -145,7 +170,8 @@ files are third-party artifacts and should be reviewed before sharing.
   `DEEPSEEK_API_KEY` and `DEEPSEEK_BASE_URL` for explicitly selected DeepSeek
   runs. Secrets are forwarded by environment variable name, not embedded in
   Docker arguments, prompts, patches, or invocation metadata.
-- Each invocation gets a new `DSH_HOME`. Inherited `DSH_*` overrides are removed,
+- Each task launch/retry gets a new `DSH_HOME`; only its own continuations reuse
+  that home and exact session ID. Inherited `DSH_*` overrides are removed,
   OTel telemetry is disabled, and `session-log-deepseek.enabled` is false.
   Model requests still send the task context and tool results to the configured
   provider; the patch disables the additional session-log contribution.

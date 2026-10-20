@@ -27,6 +27,8 @@ from src.runtime_env import apply_subprocess_python_path
 from src.task_spec import required_gpu_arches
 from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+from src.tools.agent_cost import AgentCostCollector
+from src.tools.agent_time_budget import validate_run_budget_mode
 from src.eval_tools.config import EvalToolsConfig
 from src.eval_tools.contracts import SourceEvidence
 from src.eval_tools.evidence import (
@@ -343,6 +345,11 @@ def _build_context(
     agent = _resolve_agent(config["agent"]["template"])
     if agent is None:
         return None
+    try:
+        validate_run_budget_mode(agent.value, config["agent"])
+    except ValueError as error:
+        print(f"Error: {error}")
+        return None
 
     project_root = Path(__file__).resolve().parent
     workspace_directory_name = (
@@ -457,6 +464,46 @@ def _submission_evidence_for_task(
 
 
 def run_task(
+    *,
+    eval_config: dict[str, Any],
+    agent: AgentType,
+    agent_launcher: Any,
+    task_name: str,
+    task_config_dir: str,
+    run_directory: Path,
+    timestamp: str,
+    logger: logging.Logger,
+    task_index: int,
+    total_tasks: int,
+) -> tuple[bool, Path | None]:
+    """Run one task and record the agent's cost for it.
+
+    The launcher is wrapped so that whatever usage the provider reports is
+    collected; after the task, one record per launched workspace is written to
+    ``<run_dir>/agent_costs/<workspace>.json`` (null cost when nothing was
+    reported). Writing the record never changes the task outcome.
+    """
+    agent_settings = eval_config.get("agent") if isinstance(eval_config, dict) else None
+    collector = AgentCostCollector(agent=agent.value, task_name=task_name,
+                                   run_settings=agent_settings)
+    try:
+        return _run_task(
+            eval_config=eval_config,
+            agent=agent,
+            agent_launcher=collector.wrap(agent_launcher) if agent_launcher is not None else None,
+            task_name=task_name,
+            task_config_dir=task_config_dir,
+            run_directory=run_directory,
+            timestamp=timestamp,
+            logger=logger,
+            task_index=task_index,
+            total_tasks=total_tasks,
+        )
+    finally:
+        collector.write(run_directory, logger)
+
+
+def _run_task(
     *,
     eval_config: dict[str, Any],
     agent: AgentType,
