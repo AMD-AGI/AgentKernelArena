@@ -399,12 +399,27 @@ def test_setup_cannot_change_contract_or_produce_completion_evidence(tmp_path, c
     assert record_unchecked(expected_workspace(tmp_path))["status"] == "failed"
 
 
-def test_resume_checks_runtime_identity(tmp_path, monkeypatch):
-    monkeypatch.setenv("AKA_SCORING_IMAGE_RUNTIME_REF", "runtime@sha256:original")
+@pytest.mark.parametrize("identity_variable", [
+    "AKA_SCORING_IMAGE_RUNTIME_REF", "AKA_SCORING_IMAGE_REFERENCE",
+])
+def test_resume_checks_runtime_identity(tmp_path, monkeypatch, identity_variable):
+    monkeypatch.setenv(identity_variable, "runtime@sha256:original")
     config, _ = task(tmp_path)
     workspace = run(config, tmp_path)
     write(workspace, "source/kernel.py", "optimized")
-    monkeypatch.setenv("AKA_SCORING_IMAGE_RUNTIME_REF", "runtime@sha256:changed")
+    monkeypatch.setenv(identity_variable, "runtime@sha256:changed")
+    with pytest.raises(MaterializationError, match="runtime identity changed"):
+        run(config, tmp_path)
+    assert (workspace / "source/kernel.py").read_text() == "optimized"
+
+
+def test_resume_rejects_unbound_legacy_runtime_without_touching_candidate(tmp_path, monkeypatch):
+    monkeypatch.delenv("AKA_SCORING_IMAGE_RUNTIME_REF", raising=False)
+    monkeypatch.delenv("AKA_SCORING_IMAGE_REFERENCE", raising=False)
+    config, _ = task(tmp_path)
+    workspace = run(config, tmp_path)
+    write(workspace, "source/kernel.py", "optimized")
+    monkeypatch.setenv("AKA_SCORING_IMAGE_REFERENCE", "runtime@sha256:bound")
     with pytest.raises(MaterializationError, match="runtime identity changed"):
         run(config, tmp_path)
     assert (workspace / "source/kernel.py").read_text() == "optimized"
@@ -438,7 +453,18 @@ def test_setup_never_leaves_background_writers(tmp_path, wait_for_child):
     # An orphan may briefly remain a zombie awaiting PID 1; it cannot write.
     proc = Path(f"/proc/{pid}/stat")
     try:
-        stopped = not proc.exists() or proc.read_text().split(")", 1)[1].split()[0] == "Z"
+        # SIGKILL is asynchronous: the kernel may still report a runnable task
+        # before it schedules delivery. Require observed exit, with a bounded
+        # wait, rather than racing the immediately preceding killpg call.
+        deadline = time.monotonic() + 1
+        while True:
+            try:
+                stopped = proc.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+            except FileNotFoundError:
+                stopped = True
+            if stopped or time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
         assert stopped
     finally:
         if proc.exists():

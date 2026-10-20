@@ -67,3 +67,7 @@ also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
 and the task's bundled `kernels/` helpers remain available under the existing
 numerical and timing contract. Baseline checks retain their declared initial
 backend; the final candidate must use FlyDSL.
+
+The task bundles the attributed legacy buffer/vector API adapters in
+`flydsl_compat/` for FlyDSL 0.3 runtimes. Older runtimes use their installed
+helpers. Kernel computation, inputs and numerical gates are unchanged.

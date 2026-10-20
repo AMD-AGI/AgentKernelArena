@@ -16,7 +16,7 @@ from flydsl._mlir.dialects import builtin
 from flydsl._mlir.dialects import gpu as _gpu
 from flydsl._mlir.dialects import llvm as _llvm
 from flydsl._mlir.dialects import scf as _scf
-from flydsl.expr import buffer_ops
+from flydsl_compat import buffer_ops
 from flydsl.expr.typing import T
 from flydsl.runtime.device import get_rocm_arch, is_rdna_arch
 

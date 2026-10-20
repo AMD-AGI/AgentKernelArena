@@ -64,12 +64,21 @@ gate; allclose at0.01 remains diagnostic. No reference or baseline algorithm cha
 The actual measured output and the same captured graph replay must both pass.
 Untimed replay negates Q and KV together: QK logits stay the same, latent values
 and the attention output negate. Page addresses and lengths stay unchanged.
-Output poisoning, independent reference work and restoration are outside timing.
+Replay preparation, independent reference work and input restoration are outside timing.
 All original seeds42+i, ten external warmups and100graph samples remain.
+Each measured invocation poisons the supplied output before launching the kernel,
+including every captured graph replay. Both roles include this reset in timing;
+earlier timings without the per-invocation reset are not directly comparable.
+Correctness also exercises reversed physical-page addresses and differing partial
+sequence lengths using the same independent oracle and unchanged 1% gate.
 
-Runtime qualification must bind the exact image. The unchanged source's
-multi-stage pipeline has shown non-finite output for the128-head/lora512case in
-a newer Triton runtime; the original pinned runtime passed all six diagnostic
-cases. Diagnostics alone do not qualify the task. Use a full validator report
-for the selected runtime; do not waive that case, alter its tolerance, or select
-a different baseline implementation after a session has frozen it.
+Runtime qualification must bind the exact image. The gfx950 decode kernel uses
+two pipeline stages with four waves per block: the two-wave pipelined schedule
+produced incorrect output on the ROCm 10 Triton runtime. The four-wave schedule
+retains asynchronous loads and double-buffered shared memory instead of disabling
+the pipeline. The operator, all six workloads and their numerical gates remain
+unchanged. The task correctness action retains its six seeded workloads and adds
+the page-routing and partial-length checks described above. Separately, repository
+GPU regression tests exercise additional seeds and repeated calls for the
+128-head/lora512 case. A full validator report is still required for the selected
+runtime; do not change the baseline after a session has frozen it.

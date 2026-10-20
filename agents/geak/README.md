@@ -63,7 +63,11 @@ Docker provisions Claude for `geak` and its v2 aliases, mounts only the selected
 GEAK checkout read-only, and forwards `GEAK_HOME`. The complete checkout is
 needed for revision checks and private engine/knowledge copies. Preflight
 installs the pinned SDK into the GEAK-only dependency directory when necessary
-and verifies the clean upstream pin. These checks do not certify a live
+and verifies the clean upstream pin. SDK dependencies are cached under
+`.aka-pyuserbase/geak-sdk/<python-abi>` so changing the image's Python version
+installs compatible wheels. The first run after an upgrade may reinstall the
+SDK; existing caches remain available for their original interpreter.
+These checks do not certify a live
 Workflow invocation or a GPU task.
 
 ## Upstream compatibility and evaluation

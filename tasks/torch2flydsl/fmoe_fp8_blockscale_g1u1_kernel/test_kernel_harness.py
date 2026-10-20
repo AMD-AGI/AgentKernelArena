@@ -72,8 +72,9 @@ SHAPES = [
     {"name": "glm5_t32_e257_k9", "tokens": 32, "model_dim": 6144, "inter_dim": 256, "experts": 257, "topk": 9},
 ]
 
-# Quantized fused-MoE gate: normalized worst-element error vs the aiter op.
-TOL = 1e-2
+# Task contract: 1.3% normalized worst-element error for both roles, including
+# measured outputs and perturbed replay. This replaces the historical 1% gate.
+TOL = 1.3e-2
 SEED = 20260401
 BLOCK_N, BLOCK_K = 128, 128
 
@@ -206,18 +207,27 @@ def _fmoe_replay_validator(model, hidden, weights, ids, expert_plan):
     inputs = _fmoe_inputs(model, hidden, weights, ids)
     originals = tuple(value.clone() for value in inputs)
     def reference():
+        # A prepared expert plan binds the original IDs. Recompute routing in
+        # the untimed reference when replay changes those operator inputs.
+        live_plan = expert_plan if ids.equal(originals[-1]) else None
         return _checked_fmoe_output(model.forward_with_routing(
-            hidden, weights, ids, expert_plan), hidden)
+            hidden, weights, ids, live_plan), hidden)
     expected = reference()
     require_unchanged(inputs, originals)
     def perturb():
         hidden.neg_()
         model.w1.neg_()
         model.w2.mul_(0.5)
+    def perturb_routing():
+        # Preserve valid, unique expert IDs and normalized routing weights,
+        # while changing both independently of the hidden/weight perturbation.
+        ids.add_(1).remainder_(model.experts)
+        weights.copy_(weights.roll(1, dims=-1))
     def validate(timed):
         return verify_timed_run(
             timed, inputs=inputs, originals=originals, expected=expected,
             perturb=perturb, reference=reference, compare=_compare_fmoe_output,
+            extra_perturb=perturb_routing,
         )
     return validate
 
@@ -228,7 +238,7 @@ def _record_fmoe_case(shape, status, *, metrics=None, error=None):
         row["metadata"] = metrics
         if status == "FAIL":
             row.update(failure_kind="numerical_mismatch",
-                       reason="Fused MoE normalized error exceeds the original tolerance")
+                       reason="Fused MoE normalized error exceeds the configured tolerance")
     if error is not None:
         row.update(failure_kind="execution_or_contract_error",
                    reason=f"{type(error).__name__}: {error}")

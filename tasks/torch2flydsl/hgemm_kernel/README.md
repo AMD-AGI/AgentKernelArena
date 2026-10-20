@@ -95,3 +95,13 @@ also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
 and the task's bundled `hgemm_kernel_ops/` helpers remain available under the existing
 numerical and timing contract. Baseline checks retain their declared initial
 backend; the final candidate must use FlyDSL.
+
+The performance action exposes the existing measured-output verification and
+Event metadata as `timed_output_checked` and `device_timing` for the validator.
+These fields add no timed work and preserve the protected benchmark settings.
+
+Candidate imports must not mutate shared dependency objects such as `torch.matmul`,
+including through import aliases. The task rejects known module/frame introspection
+routes before importing candidate code; the local compiled-kernel `_cf` cache lookup
+remains allowed. These checks supplement immutable harness files and GPU output
+checks; they are not a security sandbox for arbitrary Python.

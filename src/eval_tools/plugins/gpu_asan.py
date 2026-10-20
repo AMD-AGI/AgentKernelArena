@@ -73,7 +73,7 @@ class GpuAsanPlugin:
             engine = blocked_check(
                 CapabilityState.UNSUPPORTED,
                 "gpu_asan_flydsl_no_device_instrumentation",
-                "FlyDSL 0.2.x does not insert the AMDGPU AddressSanitizer pass.",
+                "No qualified FlyDSL GPU ASan instrumentation adapter is available.",
             )
         elif profile.framework == "aiter" or profile.artifact_kind == ArtifactKind.HSACO_PRECOMPILED:
             # Explicit source-rebuild evidence may make a future AITER HIP lane
@@ -148,26 +148,35 @@ class GpuAsanPlugin:
         # probe and intentionally never stat'ed in the scoring container.
         host_runtime = sidecar_path(context, "host_asan_preload")
         hip_runtime = sidecar_path(context, "hip_asan_runtime")
+        hsa_runtime = sidecar_path(context, "hsa_asan_runtime")
         runtime_dir = sidecar_path(context, "asan_runtime_dir")
         host_library_dir = sidecar_path(context, "host_asan_lib_dir")
         normal_rocm_library_dir = sidecar_path(context, "normal_rocm_lib_dir")
+        extra_library_dirs = context.options.get("asan_extra_library_dirs", ())
+        if not isinstance(extra_library_dirs, (list, tuple)) or any(
+            not isinstance(path, str) or "\x00" in path or not Path(path).is_absolute()
+            for path in extra_library_dirs
+        ):
+            raise ValueError("asan_extra_library_dirs must be a list of absolute sidecar paths")
         if host_runtime is not None and host_library_dir is None:
             host_library_dir = host_runtime.parent
         env["LD_LIBRARY_PATH"] = _prepend_paths(
             str(host_library_dir) if host_library_dir else None,
             str(runtime_dir) if runtime_dir else None,
+            *extra_library_dirs,
             str(normal_rocm_library_dir) if normal_rocm_library_dir else None,
             inherited=env.get("LD_LIBRARY_PATH", ""),
         )
-        if is_triton:
-            if host_runtime is None or hip_runtime is None:
-                raise ValueError(
-                    "Triton GPU ASan requires attested host_asan_preload and "
-                    "hip_asan_runtime sidecar paths"
-                )
+        if is_triton and (host_runtime is None or hip_runtime is None):
+            raise ValueError(
+                "Triton GPU ASan requires attested host_asan_preload and "
+                "hip_asan_runtime sidecar paths"
+            )
+        if host_runtime is not None and hip_runtime is not None:
             env["LD_PRELOAD"] = _prepend_paths(
                 str(host_runtime),
                 str(hip_runtime),
+                str(hsa_runtime) if hsa_runtime else None,
                 inherited=env.get("LD_PRELOAD", ""),
             )
         attestation_path = artifact_path(

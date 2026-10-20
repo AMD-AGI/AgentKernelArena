@@ -29,6 +29,8 @@ import torch
 
 import flydsl.compiler as flyc
 import flydsl.expr as fx
+from flydsl_compat import buffer_ops
+from flydsl._mlir import ir
 
 BLOCK_M = 128
 BLOCK_N = 128
@@ -49,7 +51,6 @@ def make_bounded_buffer_tensor(tensor, num_records_bytes):
     hardware OOB-drops stores past num_records_bytes. Mirrors the installed
     make_buffer_tensor body (which hardcodes max_size)."""
     from flydsl._mlir.dialects.fly_rocdl import TargetAddressSpace
-    from flydsl.expr.buffer_ops import _get_buffer_flags
 
     elem_ty = tensor.element_type
     ptr = fx.get_iter(tensor)
@@ -65,7 +66,7 @@ def make_bounded_buffer_tensor(tensor, num_records_bytes):
             ptr,
             fx.Int16(0).ir_value(),
             num_records_bytes.ir_value(),
-            fx.Int32(_get_buffer_flags()).ir_value(),
+            fx.Int32(buffer_ops._get_buffer_flags()).ir_value(),
         ],
     )
     return fx.make_view(buf_ptr, layout)
@@ -92,20 +93,20 @@ def jdbba_kernel(
     block_n_idx = pid_mn % N_BLOCKS
 
     # --- Device group resolution (read seq_offsets[b], seq_offsets[b+1]) ---
-    seq_rsrc = fx.buffer_ops.create_buffer_resource(SEQ_OFFSETS, max_size=True)
-    seq_start = fx.buffer_ops.buffer_load(
-        seq_rsrc, fx.Int32(off_b), vec_width=1, dtype=fx.T.i32()
+    seq_rsrc = buffer_ops.create_buffer_resource(SEQ_OFFSETS, max_size=True)
+    seq_start = buffer_ops.buffer_load(
+        seq_rsrc, fx.Int32(off_b), vec_width=1, dtype=fx.Int32.ir_type
     )
-    seq_end = fx.buffer_ops.buffer_load(
-        seq_rsrc, fx.Int32(off_b) + fx.Int32(1), vec_width=1, dtype=fx.T.i32()
+    seq_end = buffer_ops.buffer_load(
+        seq_rsrc, fx.Int32(off_b) + fx.Int32(1), vec_width=1, dtype=fx.Int32.ir_type
     )
     # seq_start/seq_end are block-uniform (one group per block) but buffer_load
     # types them per-lane (VGPR). Scalarize so everything derived from them --
     # M_b, the A/C/B/bias base offsets, and the C buffer-descriptor bound -- is
     # uniform (SGPR). Otherwise the divergent C descriptor forces the epilogue
     # store into a per-lane readfirstlane/exec-mask waterfall.
-    seq_start = fx.rocdl.readfirstlane(fx.T.i32(), seq_start)
-    seq_end = fx.rocdl.readfirstlane(fx.T.i32(), seq_end)
+    seq_start = fx.rocdl.readfirstlane(fx.Int32.ir_type, seq_start)
+    seq_end = fx.rocdl.readfirstlane(fx.Int32.ir_type, seq_end)
     M_b = seq_end - seq_start
     start_m = fx.Int32(block_m_idx) * fx.Int32(BLOCK_M)
 
@@ -238,10 +239,10 @@ def jdbba_kernel(
         thr_gBias = thr_copy_r2g_C.partition_S(gBias)
         bias_frag = fx.make_fragment_like(thr_gBias)
         fx.copy(fx.make_copy_atom(fx.rocdl.BufferCopy16b(), fx.BFloat16), thr_gBias, bias_frag)
-        bias_f32 = fx.arith.ExtFOp(fx.T.VectorType.get([64], fx.T.f32()), bias_frag.load()).result
+        bias_f32 = fx.arith.ExtFOp(ir.VectorType.get([64], fx.Float32.ir_type), bias_frag.load()).result
         mma_frag_C_bf16.store(
             fx.arith.trunc_f(
-                fx.T.VectorType.get([64], fx.T.bf16()),
+                ir.VectorType.get([64], fx.BFloat16.ir_type),
                 fx.arith.addf(mma_frag_C.load(), bias_f32),
             )
         )

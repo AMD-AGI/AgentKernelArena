@@ -377,6 +377,7 @@ class SidecarRuntimeClient:
             "gpu_asan": (
                 "asan_runtime_dir",
                 "hip_asan_runtime",
+                "hsa_asan_runtime",
                 "host_asan_preload",
                 "host_asan_lib_dir",
                 "normal_rocm_lib_dir",

@@ -24,14 +24,16 @@ initial tool set is:
 This feature is experimental and opt-in. Capability and evidence checks fail
 closed; whether an incomplete result blocks performance is controlled by the
 `advisory` or `required` policy. It is not a general sanitizer suite:
-sanitizer suite: every result is qualified by the kernel language, generated
+every result is qualified by the kernel language, generated
 artifact, adapter, tool image, GPU architecture, and evidence that the intended
 kernel was actually instrumented or dispatched.
 
 > **Current validation boundary:** sidecar build locks, integrated startup
-> controls, and end-to-end fixtures exist only for MI355X (`gfx950`). All six
-> startup controls passed in the current hardware qualification. Candidate
-> readiness still depends on language, artifact, adapter, and attestation.
+> controls, and end-to-end fixtures exist only for MI355X (`gfx950`). The ROCm 10
+> migration has passed five runtime startup controls; GPU ASan qualification is
+> blocked by failing safe probes on the tested hosts. See the
+> [runtime compatibility guide](../reference/mi355x-runtime.md).
+> Candidate readiness still depends on language, artifact, adapter, and attestation.
 > `gfx942` is unverified, and the Docker runner currently rejects
 > evaluation-tool sidecars on that architecture. Do not interpret normal
 > MI300/MI325 task support as sanitizer support.
@@ -77,11 +79,11 @@ that it imported this image-owned tree rather than the repository mounted at
 checkout used by a running worker; candidate-specific commands and inputs remain
 separate, explicitly mounted data.
 
-The verified `gfx950` scoring image remains:
+The ROCm 10 `gfx950` tool profile uses this scoring image:
 
 ```text
-lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705
-lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
+lmsysorg/sglang:v0.5.20-rocm10-mi35x
+lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
 ```
 
 When any evaluation tool is enabled, the runner resolves Docker's immutable
@@ -94,10 +96,13 @@ looks compatible. The selected reference and verified image ID are recorded unde
 `plan.source_evidence.metadata.scoring_runtime`, serialized with the report,
 and covered by the plan fingerprint.
 
-The current design deliberately does **not** upgrade that image, FlyDSL 0.2.2,
-or AITER `0.1.17.dev110+g9127c94a1`. The Triton FpSan sidecar replaces Triton
-only inside its own container; the other tool dependencies are likewise local
-to their sidecars. A sidecar is not a replacement scoring image and must not be
+All six sidecars use the same digest-pinned ROCm 10 base as scoring. Triton
+FpSan uses the base image's compiler and checks its exact package version; it
+does not install the older Python 3.10 / ROCm 7.2 wheels. GPU ASan installs its
+checksum-locked runtime into a separate versioned directory. Native rocJITsu
+engines retain their pinned GCC build stage, then run and compile candidate
+fixtures in the ROCm 10 runtime stage. Tool-specific dependencies stay inside
+their sidecars. A sidecar is not a replacement scoring image and must not be
 used to establish a new performance baseline.
 
 FlyDSL does not promise that every generated artifact or task remains compatible
@@ -111,8 +116,8 @@ The pinned sidecar dependencies are recorded in
 
 | Sidecar | Isolated dependency change |
 | --- | --- |
-| `triton_fpsan` | AMD Triton `3.7.0+amd.rocm7.2.0.gitd0d77a509` and matching `triton-kernels` wheels. |
-| `gpu_asan` | ROCm 7.2 ASan runtime packages, including `hip-runtime-amd-asan`. |
+| `triton_fpsan` | Bundled AMD Triton `3.8.0+git4cff872c.rocm10.0.0`; equivalent and known-wrong comparisons each require compiler instrumentation metadata. |
+| `gpu_asan` | Checksum-locked ROCm 10 ASan packages, separate from the normal scoring SDK. |
 | `rocjitsu` | rocJITsu from pinned `rocm-systems` commit `0bf561a0...`, built with GCC 13 for `gfx950`. |
 | `rocjitsu_waitcheck` | rocJITsu Waitcheck C API and CLI from pinned `rocm-systems` commit `ed35c0b...`; zstd source is separately checksum-locked. |
 | `rocjitsu_consan` | rocJITsu ConSan HSA hook from the same pinned `ed35c0b...` source, forced to strict record/replay mode. |
@@ -171,7 +176,7 @@ it does not mean the ordinary correctness command is automatically reused.
 | --- | --- | --- | --- | --- |
 | Editable Triton Python/JIT | Ready with comparison adapter and instrumentation attestation | Ready with dedicated command, fresh JIT cache, XNACK, and build attestation | Trusted `triton_aot` capsule replay is implemented on `gfx950`; whole-Python JIT remains unsupported, and capsule capture/binding to the correctness run is not automatic, so use it only as advisory evidence | Not applicable |
 | HIP source controlled by the task | Not applicable | Ready only after recompiling the candidate with `-fsanitize=address -shared-libsan --offload-arch=gfx950:xnack+`, then attesting that artifact | Ready with a dedicated native launcher | Source port and comparison adapter required; both reference and candidate paths must explicitly use `fpsan::Value` |
-| FlyDSL 0.2.2 Python/JIT | Unsupported; FlyDSL does not use the Triton FpSan pipeline | Unsupported; the current ROCDL pipeline does not insert AMD GPU ASan instrumentation | Trusted `flydsl_aot` capsule replay is implemented on `gfx950` and detects the seeded LDS race; automatic capsule capture/binding to the correctness run is not ready, so use it only as advisory evidence | Not applicable |
+| FlyDSL Python/JIT | Unsupported; FlyDSL does not use the Triton FpSan pipeline | Unsupported; the current ROCDL pipeline does not insert AMD GPU ASan instrumentation | Trusted `flydsl_aot` capsule replay is implemented on `gfx950` and detects the seeded LDS race; automatic capsule capture/binding to the correctness run is not ready, so use it only as advisory evidence | Not applicable |
 | Editable Triton source inside AITER | Engine may be eligible for the explicitly selected source only, with a dedicated comparison adapter; this does not sanitize AITER library kernels | Unsupported by the current default AITER runtime path | Unsupported by the current Python/AITER runtime | Not applicable |
 | AITER or another precompiled HSACO/library kernel | Cannot retrofit instrumentation | Unsupported unless the exact kernel source is rebuilt and attested; preloading the runtime is insufficient | Unsupported by the current evaluator runtime | Cannot retrofit value semantics |
 | rocBLAS or RCCL internal kernel | Do not enable; library internals are outside the selected submission | The stock library is not instrumented and is not covered | Not a supported general library-runtime path | Do not enable |
@@ -198,7 +203,7 @@ is qualified. The current `gfx950` startup qualification is stricter:
 | --- | --- |
 | Triton FpSan | Passing on hardware; eligible task paths can proceed to candidate attestation. |
 | HIP-FpSan | Passing on hardware; explicitly ported task paths can proceed to candidate attestation. |
-| GPU ASan | Passing on hardware for both HIP and Triton safe/OOB lanes; an applicable candidate still needs its own instrumentation/build attestation. |
+| GPU ASan | Not qualified on the new runtime: safe probes fail on the tested hosts. The runtime stays unavailable when its required controls fail; historical ROCm 7.2 results do not qualify this image. |
 | rocJITsu | Passing on hardware with barrier-safe and deliberately racy LDS fixtures; an applicable candidate still needs a native HIP launcher or validated AOT replay capsule. |
 | rocJITsu Waitcheck | Passing on hardware: a correct `s_waitcnt lgkmcnt(0)` fixture is clean and a missing-wait fixture produces one exact hazard. Candidate use still requires exact SHA-256, kernel name, and entry attestation. |
 | rocJITsu ConSan | Passing on hardware in strict record/replay: a single-wave LDS fixture is clean and a two-wave conflicting fixture produces complete FNV-attributed diagnostics. Candidate use still requires an exact code object, focused loader, and separate oracle. |
@@ -244,12 +249,12 @@ src/scripts/docker_benchmark.sh build-eval-tool-images
 The default local tags are:
 
 ```text
-agent-kernel-arena/eval-tool-triton-fpsan:gfx950
-agent-kernel-arena/eval-tool-gpu-asan:gfx950
-agent-kernel-arena/eval-tool-rocjitsu:gfx950
-agent-kernel-arena/eval-tool-rocjitsu-waitcheck:gfx950
-agent-kernel-arena/eval-tool-rocjitsu-consan:gfx950
-agent-kernel-arena/eval-tool-hip-fpsan:gfx950
+agent-kernel-arena/eval-tool-triton-fpsan:gfx950-rocm10
+agent-kernel-arena/eval-tool-gpu-asan:gfx950-rocm10
+agent-kernel-arena/eval-tool-rocjitsu:gfx950-rocm10
+agent-kernel-arena/eval-tool-rocjitsu-waitcheck:gfx950-rocm10
+agent-kernel-arena/eval-tool-rocjitsu-consan:gfx950-rocm10
+agent-kernel-arena/eval-tool-hip-fpsan:gfx950-rocm10
 ```
 
 Check that the workers start and report their pinned assets:
@@ -279,7 +284,7 @@ worker:
 
 | Tool | Startup positive control |
 | --- | --- |
-| `triton_fpsan` | Compile instrumented reference/candidate kernels and require a known numerical mismatch to produce different digests plus FpSan compiler metadata. |
+| `triton_fpsan` | Compile both equivalent and known-wrong reference/candidate pairs in separate caches; require matching/distinct digests respectively and FpSan compiler metadata for every compiled kernel. |
 | `gpu_asan` | Compile and run safe/OOB HIP fixtures and safe/OOB Triton fixtures; the task profile selects the relevant lane. |
 | `rocjitsu` | Require a barrier-protected fixture to remain clean and a deliberately racy LDS fixture to report a race. |
 | `rocjitsu_waitcheck` | Compile unbundled `gfx950` code objects and run the production entrypoint, inventory, C API, and parser on the correct-wait and missing-wait fixtures; retain a direct CLI hazard check as an independent engine control. |
@@ -292,13 +297,14 @@ JSON summaries before promotion. A normal evaluation with
 `positive_control: required` repeats the fail-closed check during the typed
 runtime probe.
 
-As of the current `gfx950` qualification run, all six integrated startup
-controls pass on hardware. This qualifies the installed tool runtimes only. It
-does not promote a candidate path without the language-specific adapter and
+On the new `gfx950` runtime, five integrated startup controls pass on hardware;
+GPU ASan remains unqualified. Startup controls qualify only an installed runtime.
+They do not promote a candidate path without the language-specific adapter and
 attestation in the strict support matrix.
 
-The same final image set also passed evaluator-manager-to-sidecar candidate
-fixtures on the physical MI355X host:
+The previous ROCm 7.2 image set passed these evaluator-manager-to-sidecar
+candidate fixtures on a physical MI355X host. These historical results do not
+qualify the new ROCm 10 images:
 
 | Tool and language | Safe fixture | Seeded bug fixture |
 | --- | --- | --- |
@@ -321,8 +327,8 @@ global milestone.
 
 | Phase | Work | Exit criterion |
 | --- | --- | --- |
-| 0. Freeze baselines | Keep the pinned scoring image, FlyDSL 0.2.2, and AITER version unchanged; build each tool from its lock into a sidecar. | Existing compilation, correctness, held-out, and performance baselines remain unchanged with tools disabled. Sidecar image IDs and the verified scoring-image ID/reference are captured in plans. |
-| 1. Qualify installations | Run automatic safe/known-bug startup controls on `gfx950`; repeat the now-passing six-tool qualification on clean hosts. | Both positive and negative lanes pass repeatedly. `eval-tools-smoke` evidence is archived and independently reviewed. |
+| 0. Freeze baselines | Freeze the selected scoring image and its bundled dependencies for each comparison; build each tool from its lock into a sidecar. | Existing compilation, correctness, held-out, and performance baselines remain unchanged with tools disabled. Sidecar image IDs and the verified scoring-image ID/reference are captured in plans. |
+| 1. Qualify installations | Run automatic safe/known-bug startup controls on `gfx950`; require all six tools to pass on compatible hosts. | Both positive and negative lanes pass repeatedly. `eval-tools-smoke` evidence is archived and independently reviewed. |
 | 2. Build trusted pilot adapters | Start with one editable Triton task for Triton FpSan, one Triton and one HIP task for GPU ASan, one native HIP task for rocJITsu, one final-HSACO task for Waitcheck, one focused native loader for ConSan, and one explicitly ported HIP-FpSan task. Put harnesses under protected `scripts/` paths and declare all inputs. | Each pilot distinguishes a safe fixture from a seeded bug, identifies the selected candidate, and produces bounded structured artifacts. No precompiled AITER/library kernel is claimed as broadly covered. |
 | 3. Finish AOT capture and binding | The trusted `triton_aot`/`flydsl_aot` replay path now validates one-dispatch capsules and generates the launcher. Add evaluator-owned extraction immediately after correctness and bind the capsule to that exact candidate/case. | Safe and racy fixtures pass end to end, malformed capsules fail closed, and a task cannot substitute a different valid capsule for the correctness dispatch. |
 | 4. Harden provenance and phase isolation | The runner now uses per-tool writable socket directories, a read-only socket parent in scoring, a narrow per-worker artifact mount, fresh per-invocation artifact directories, a complete serialized plan, and capsule digests in the fingerprint. Next run tools only after the agent exits, freeze the candidate, use evaluator-only/authenticated RPC and evaluator-owned artifacts, strengthen artifact/dispatch binding, and wire resume to plan freshness. | An adversarial task cannot call a worker, overwrite evidence, reach another task's artifacts, spoof a clean result, or reuse a stale report. This phase is required before sanitizer output becomes a reward signal. |
@@ -508,7 +514,7 @@ evaluation_tools:
         oracle_command: [scripts/load_hsaco, build/optimized.hsaco, --check]
 ```
 
-With ROCm 7.2, `hipcc --genco` produces a clang bundle by default; use
+`hipcc --genco` can produce a clang bundle rather than a raw code object; use
 `--no-gpu-bundle-output` or explicitly extract the final device ELF before
 supplying `code_object`.
 
@@ -696,7 +702,7 @@ tool_evaluation:
       metadata:
         scoring_runtime:
           image_id: "sha256:..."
-          reference: "lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705"
+          reference: "lmsysorg/sglang:v0.5.20-rocm10-mi35x"
   policy: advisory
   overall_status: incomplete
   resolved_task_profile: {}
@@ -987,8 +993,9 @@ the following:
   runner.
 - Every useful task still needs a reviewed adapter command. Tool installation
   alone usually produces `adapter_required`.
-- All six startup positive controls pass on the current `gfx950` host. This
-  qualifies tool installation, not candidate coverage.
+- Five startup controls pass for the ROCm 10 profile. GPU ASan remains
+  unqualified on the tested hosts. Passing controls qualify tool installation,
+  not candidate coverage.
 - Runtime-internal asset paths are injected from verified sidecar health and
   cannot be supplied by task configuration.
 - Build-attestation artifact paths must be relative to the attestation file;

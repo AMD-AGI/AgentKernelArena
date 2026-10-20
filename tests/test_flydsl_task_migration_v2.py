@@ -640,6 +640,10 @@ def _protected_triton_fingerprint(source, *, added_replay_checks=False, sglang_e
         tree = _RemoveElementwiseChecks().visit(tree)
     excluded={"_checked_extend_output", "_compare_extend_output", "_extend_replay_validator", "_compare_indexer_pair", "_indexer_replay_validator", "_checked_sage_output", "_compare_sage_output", "_sage_replay_validator", "_checked_mrope_output", "_compare_mrope_output", "_reference_glm", "_check_glm_axis_map", "_mrope_replay_validator", "_checked_lightning_output", "_lightning_gate", "_compare_lightning_output", "_check_lightning_slots", "_lightning_replay_validator", "_checked_recurrent_output", "_compare_recurrent_output", "_recurrent_replay_validator", "_require_unused_state", "_checked_unified_output", "_compare_unified_output", "_unified_replay_validator", "_checked_gdn_output", "_compare_gdn_output", "_gdn_replay_validator", "_checked_combine_output", "_compare_combine_output", "_combine_replay_validator", "_check_output_buffer", "_checked_router_output", "_compare_router_output", "_router_replay_validator", "_checked_flat_output", "_compare_flat_output", "_flat_replay_validator", "_checked_state_output", "_compare_state_output", "_state_replay_validator", "_checked_gr_output", "_compare_gr_output", "_gr_replay_validator", "_checked_mla_output", "_compare_mla_output", "_mla_replay_validator", "_checked_attention_output", "_compare_attention_output", "_attention_replay_validator", "_checked_pair_output", "_compare_routing_pair", "_pair_replay_validator", "_checked_scaled_gemm_output", "_scaled_gemm_replay_validator", "_checked_sglang_output", "_compare_sglang_output", "_sglang_replay_validator", "_checked_elementwise_output","_elementwise_replay_validator","_checked_mqa_output","_compare_mqa_output","_verify_mqa_timed","_checked_mx_pair","_mx_reference","_compare_mx_pair","_verify_quant_timed","_checked_quant_output","_compare_token_outputs","_batched_replay_validator","_load_source","load_module","run_compile","_prepare_kernel","_make_prepared_fused_moe_runner",
               "_reference_softmax","_reference_gemm","_reference_layernorm","_reference_quant"}
+    if mla_checks:
+        # Added checks have dedicated positive/negative coverage; retain every
+        # original reference, workload, gate and sample fingerprint below.
+        excluded.update({"_timed_mla_call", "_validate_mla_paged_variants"})
     nodes=[]
     for n in tree.body:
         if isinstance(n,ast.FunctionDef) and n.name not in excluded:
@@ -861,7 +865,7 @@ TRITON_SOURCE_SHA256 = {'aiter/batched_gemm_a8w8/batched_gemm_a8w8.py': 'd10dcae
  'aiter/gemm_afp8wfp8/gemm_afp8wfp8.py': '63631b70d3cf97f3dc2c682f322a7f1e71272bbc78e6760693ad34465b737786',
  'aiter/layernorm/layernorm.py': '42035db0231238ef54943cc30dfb986c7994bf50cee40d2b4a7951680ec27136',
  'aiter/mha/mha.py': 'b567863379b1d0133c67035dcc238b4a837cb989c3687a110d28d3d505a26070',
- 'aiter/mla/mla.py': 'e2e25d493b2fd95423a1b264e145180c81b3dc4a0990627b6661ad7c8b9f51b3',
+ 'aiter/mla/mla.py': 'aef4972ad1a61da4ae6ad217e5fffcfb1a6dd428c470319bf0a85aea40f89be5',
  'aiter/moe_fused_gemm/moe_fused_gemm.py': '9762ceea15b969bcbfc482a25f581be621ca171807b479ff4eea4961c2aff379',
  'aiter/moe_routing_sigmoid_top1/moe_routing_sigmoid_top1.py': '882d4404d5e585ae98f9c0f7d2e3828eb4bf6b10d08ee280530ad95d8f5f83be',
  'aiter/rmsnorm/rmsnorm.py': '641e4b54a0be80e2d9b24c33f0006c9e16e8a4388941b80d6b17b6f9200ba725',
@@ -1558,7 +1562,7 @@ def test_torch_gemm_measured_output_and_eager_reinvocation(name, provided, funct
             timed_run.rerun = rerun
         phase["value"] = "setup"
         return .1, {"benchmark_method": "cuda_graph" if use_cuda_graph else "cuda_event_fallback",
-                    "benchmark_samples": repetition}
+                    "benchmark_fallback_reason": fallback_reason, "benchmark_samples": repetition}
     kmod = types.SimpleNamespace(flydsl_batched_gemm_bf16=compute, flydsl_hgemm=compute)
     monkeypatch.setitem(sys.modules, "aiter", types.SimpleNamespace(batched_gemm_bf16_CK=compute))
     ns = {"TimedRun": Collector, "benchmark_cuda_graph_or_events": benchmark,
@@ -1577,7 +1581,15 @@ def test_torch_gemm_measured_output_and_eager_reinvocation(name, provided, funct
         functions.add("_timed_gemm_case")
     _harness_functions(task, functions, ns)
     if behavior == "correct":
-        result = ns[function](verbose=False)
+        if name == "hgemm_kernel" and function == "arena_benchmark":
+            actions = module(task / "scripts/task_actions.py")
+            result = actions.performance(types.SimpleNamespace(arena_benchmark=ns[function]))
+            assert result[0]["timed_output_checked"] is True
+            assert result[0]["device_timing"]["benchmark_method"] == "cuda_event_fallback"
+            assert result[0]["device_timing"]["benchmark_fallback_reason"] == "capture_unsafe_hipblaslt_reference"
+            assert result[0]["device_timing"]["benchmark_method_consistent"] is True
+        else:
+            result = ns[function](verbose=False)
         if function == "run_benchmark":result = json.loads((tmp_path/"build/performance_report.json").read_text())
         assert result[0]["timed_output_correctness"] == result[0]["replay_correctness"] == "PASS"
         assert calls == [(0,100,False,True),(0,100,False,False)]
@@ -2393,7 +2405,8 @@ def test_batched_int8_measured_outputs_and_replay(function, provided, behavior, 
                     return fn()
                 finally:phase['value']='setup'
             timed_run.rerun=replay
-        return .1,{'benchmark_method':'cuda_graph' if use_cuda_graph else 'cuda_event_fallback'}
+        return .1,{'benchmark_method':'cuda_graph' if use_cuda_graph else 'cuda_event_fallback',
+                   'benchmark_fallback_reason':fallback_reason}
     ns={'TimedRun':Collector,'benchmark_cuda_graph_or_events':benchmark,
         'require_tensor_contract':checks.require_tensor_contract,'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run,
         '_KERNEL_DIR':str(tmp_path),'KERNEL_FILE':'kernel.py','MODEL_FILE':'model.py','KERNEL_ENTRY':'flydsl_batched_gemm_a8w8',
@@ -2404,7 +2417,15 @@ def test_batched_int8_measured_outputs_and_replay(function, provided, behavior, 
         'SEED':20260401}
     _harness_functions(task,{function,'_norm_worst','_checked_batched_output','_compare_batched_output'},ns)
     if behavior=='correct':
-        result=ns[function](verbose=False)
+        if function == 'arena_benchmark':
+            actions = module(task/'scripts/task_actions.py')
+            result = actions.performance(types.SimpleNamespace(arena_benchmark=ns[function]))
+            assert result[0]['timed_output_checked'] is True
+            assert result[0]['device_timing']['benchmark_method'] == 'cuda_event_fallback'
+            assert result[0]['device_timing']['benchmark_fallback_reason'] == 'capture_unsafe_aiter_hipblaslt'
+            assert result[0]['device_timing']['benchmark_method_consistent'] is True
+        else:
+            result=ns[function](verbose=False)
         if function=='run_benchmark':result=json.loads((tmp_path/'build/performance_report.json').read_text())
         assert result[0]['timed_output_correctness']==result[0]['replay_correctness']=='PASS'
         assert calls==[(0,100,False,True),(0,100,False,False)]
@@ -2805,16 +2826,99 @@ def test_fmoe_raw_input_timing_boundary_and_replay(name,function,provided,behavi
 
 
 @pytest.mark.parametrize('name',_FMOE_REPLAY_NAMES)
-def test_fmoe_original_normalized_error_floor_kept(name):
+def test_fmoe_declared_normalized_error_floor_kept(name):
     import torch
     task=ROOT/'tasks/torch2flydsl'/name;checks=module(task/'scripts/replay_checks.py')
-    tol=.035 if 'tkw1' in name else .01
+    tree=ast.parse((task/'test_kernel_harness.py').read_text())
+    tol=next(ast.literal_eval(n.value) for n in tree.body
+             if isinstance(n,ast.Assign) and any(getattr(t,'id',None)=='TOL' for t in n.targets))
+    assert tol == (.035 if 'tkw1' in name else .013)
     ns={'TOL':tol,'require_tensor_contract':checks.require_tensor_contract}
     _harness_functions(task,{'_norm_worst','_compare_fmoe_output'},ns)
     expected=torch.zeros((2,2),dtype=torch.bfloat16)
     ns['_compare_fmoe_output'](torch.full_like(expected,tol*.9),expected)
     with pytest.raises(AssertionError,match='Numerical mismatch'):
         ns['_compare_fmoe_output'](torch.full_like(expected,tol*1.1),expected)
+
+
+@pytest.mark.parametrize('error,accepted',[
+    (.011450381679389313,True),(.012396694214876033,True),
+    (.01299999,True),(.01300001,False),(.5,False),
+])
+def test_fp8_fmoe_approved_gate_is_1p3_percent(error,accepted):
+    import torch
+    task=ROOT/'tasks/torch2flydsl/fmoe_fp8_blockscale_g1u1_kernel'
+    tree=ast.parse((task/'test_kernel_harness.py').read_text())
+    tol=next(ast.literal_eval(n.value) for n in tree.body
+             if isinstance(n,ast.Assign) and any(getattr(t,'id',None)=='TOL' for t in n.targets))
+    assert tol == .013
+    checks=module(task/'scripts/replay_checks.py')
+    ns={'TOL':tol,'require_tensor_contract':checks.require_tensor_contract}
+    _harness_functions(task,{'_norm_worst','_compare_fmoe_output'},ns)
+    expected=torch.zeros((2,2),dtype=torch.float64)
+    actual=torch.full_like(expected,error)
+    if accepted:
+        ns['_compare_fmoe_output'](actual,expected)
+    else:
+        with pytest.raises(AssertionError,match='Numerical mismatch'):
+            ns['_compare_fmoe_output'](actual,expected)
+
+
+@pytest.mark.parametrize('behavior',[
+    'correct','cached_ids','cached_weights','cached_routing','mutate_ids','mutate_weights',
+])
+def test_fp8_fmoe_replay_requires_current_routing_and_restores_inputs(behavior):
+    import torch,types
+    task=ROOT/'tasks/torch2flydsl/fmoe_fp8_blockscale_g1u1_kernel'
+    checks=module(task/'scripts/replay_checks.py')
+    hidden=torch.tensor([[1.,2.],[3.,4.]],dtype=torch.bfloat16)
+    weights=torch.tensor([[.8,.2],[.3,.7]],dtype=torch.float32)
+    ids=torch.tensor([[0,1],[1,2]],dtype=torch.int32)
+    initial_weights,initial_ids=weights.clone(),ids.clone()
+    class Model:
+        experts=3
+        w1=torch.tensor([1.,2.,4.],dtype=torch.bfloat16)
+        w2=torch.tensor([2.,3.,5.],dtype=torch.bfloat16)
+        def forward_with_routing(self,h,w,i,plan=None):
+            # A cached plan selects the old experts even if the IDs change.
+            selected=i if plan is None else plan
+            values=(self.w1.float()*self.w2.float())[selected.long()]
+            return (h.float()*(values*w).sum(1,keepdim=True)).to(h.dtype)
+    model=Model()
+    inputs=(hidden,model.w1,model.w2,weights,ids)
+    originals=tuple(v.clone() for v in inputs)
+    ns={'TOL':.013,'require_tensor_contract':checks.require_tensor_contract,
+        'require_unchanged':checks.require_unchanged,'verify_timed_run':checks.verify_timed_run}
+    _harness_functions(task,{'_norm_worst','_compare_fmoe_output','_checked_fmoe_output',
+                            '_fmoe_inputs','_fmoe_replay_validator'},ns)
+    validate=ns['_fmoe_replay_validator'](model,hidden,weights,ids,initial_ids)
+    observed=[]
+    def replay():
+        observed.append(tuple(v.clone() for v in inputs))
+        w=initial_weights if behavior in ('cached_weights','cached_routing') else weights
+        i=initial_ids if behavior in ('cached_ids','cached_routing') else ids
+        if behavior=='mutate_ids':ids.add_(1).remainder_(model.experts)
+        if behavior=='mutate_weights':weights.mul_(.5)
+        return model.forward_with_routing(hidden,w,i)
+    timed=types.SimpleNamespace(bound=True,outputs=model.forward_with_routing(hidden,weights,ids),rerun=replay)
+    if behavior=='correct':
+        assert validate(timed)['replay_correctness']=='PASS'
+    else:
+        with pytest.raises(AssertionError):validate(timed)
+    assert observed
+    # Keep the original hidden/weight draw intact, including original routing.
+    assert torch.equal(observed[0][0],-originals[0])
+    assert torch.equal(observed[0][1],-originals[1])
+    assert torch.equal(observed[0][2],originals[2]*.5)
+    assert torch.equal(observed[0][3],initial_weights)
+    assert torch.equal(observed[0][4],initial_ids)
+    if behavior not in ('mutate_ids','mutate_weights'):
+        assert len(observed)==2
+        assert all(torch.equal(observed[1][i],originals[i]) for i in range(3))
+        assert not torch.equal(observed[1][3],initial_weights)
+        assert not torch.equal(observed[1][4],initial_ids)
+    for value,original in zip(inputs,originals):
+        assert torch.equal(value.contiguous().view(torch.uint8),original.contiguous().view(torch.uint8))
 
 
 def test_fmoe_preserves_original_references_shapes_and_sampling_except_fair_input_boundary():
@@ -5102,7 +5206,14 @@ class _RemoveMlaChecks(_RemoveAttentionChecks):
             return None
         if ast.unparse(node) == "out.fill_(float('nan'))":
             return None
+        if isinstance(node.value, ast.Call) and getattr(node.value.func, 'id', None) == '_validate_mla_paged_variants':
+            return None
         return super().visit_Expr(node)
+
+    def visit_Call(self, node):
+        if isinstance(node.func, ast.Name) and node.func.id == '_timed_mla_call':
+            node.func.id = '_call_kernel'
+        return super().visit_Call(node)
 
 
 @pytest.mark.parametrize('queries', [1, 2])
@@ -5115,7 +5226,7 @@ def test_mla_actual_paged_buffer_contract_original_gate_and_measured_replay(quer
     ns = dict(NORM_ERR_TOL=.01, ALLCLOSE_TOL=.01, WARMUP_ITERATIONS=10, BENCHMARK_ITERATIONS=100,
               require_tensor_contract=checks.require_tensor_contract, require_unchanged=checks.require_unchanged,
               verify_timed_run=checks.verify_timed_run)
-    _harness_functions(task, {'_ref_masked_attention', 'torch_mla_extend', '_compare', '_call_kernel', '_checked_mla_output', '_compare_mla_output', '_mla_replay_validator'}, ns)
+    _harness_functions(task, {'_ref_masked_attention', 'torch_mla_extend', '_compare', '_call_kernel', '_timed_mla_call', '_validate_mla_paged_variants', '_checked_mla_output', '_compare_mla_output', '_mla_replay_validator'}, ns)
     q = torch.zeros((queries, 2, 3), dtype=torch.bfloat16)
     kv = torch.tensor([[[[2.,4.,0.]], [[6.,8.,0.]]], [[[10.,12.,0.]], [[14.,16.,0.]]]], dtype=q.dtype)
     out = torch.empty((queries, 2, 2), dtype=q.dtype)
@@ -5125,7 +5236,9 @@ def test_mla_actual_paged_buffer_contract_original_gate_and_measured_replay(quer
     def oracle(): return ns['torch_mla_extend'](q, kv, cu, used, table, 2, 1., q.dtype)
     cached = oracle().clone(); state = {'phase': 'setup'}
     def compute(*args):
-        result = oracle()
+        active_q, active_kv, active_out, active_cu, active_used, _, active_table, active_scale, active_lora = args[:9]
+        result = ns['torch_mla_extend'](active_q, active_kv, active_cu, active_used,
+                                      active_table, active_lora, active_scale, active_q.dtype)
         if phase == 'correctness' or state['phase'] == 'measured':
             if behavior == 'wrong': result.zero_()
             if behavior == 'shape': result = result.reshape(-1)
@@ -5136,9 +5249,9 @@ def test_mla_actual_paged_buffer_contract_original_gate_and_measured_replay(quer
             if behavior == 'metadata_modified': table.zero_()
         if behavior == state['phase'] + '_wrong': result.zero_()
         if state['phase'] == 'replay' and behavior == 'cached': result = cached.clone()
-        if behavior == 'unwritten': return out
-        out.data = result
-        return result.clone() if behavior == 'separate_return' else out
+        if behavior == 'unwritten': return active_out
+        active_out.data = result
+        return result.clone() if behavior == 'separate_return' else active_out
     class Collector:
         bound = False
     calls = []
@@ -5186,7 +5299,9 @@ def test_mla_real_cpu_paged_known_answer_rejects_wrong_gather_and_comparator(fau
 
 def test_mla_original_reference_inputs_gate_source_and_sample_fingerprints():
     task = ROOT / 'tasks/triton2flydsl/aiter/mla'
-    assert hashlib.sha256((task / 'mla.py').read_bytes()).hexdigest() == '22000b5f657b3d28afe38c94117f74e9343f10fb28f07b095ba3fa238e8d6baa'
+    # Pin the GPU-qualified gfx950 four-wave/two-stage repair; reference, input,
+    # gate and benchmark fingerprints below remain the original task's.
+    assert hashlib.sha256((task / 'mla.py').read_bytes()).hexdigest() == '60879bd2a8f94755b258e658c889e761aa1077f9c99dc2b3570e82fb7f56f4c0'
     hashes = {'load_module': 'f86cec48c13505a8571991aad880c0a25a0e06119b68730f57edd92e2757653f', '_is_transient_gpu_error': '5afa68828c130e63eef28cb95296055fe9a8ce93f9e0ff74d37824d5c545adb2', '_retry_gpu': '011da24c8f60af67764f9f5800d76e003e13ed1ace6a6eb6a579f9ca0bf8d2bf', 'make_test_data': '07680d0288f0496b9542c72764fe420592ebb582be2e57d08da7eef3adbeaab2', '_call_kernel': '21f919b5d8087d332e32c9177c52891349ce9fbb569021100e57b56ab4da23eb', '_ref_masked_attention': '1e6967be2b944fda854738ab6f84b3b041d78b75ab6f4e06f53bbbdd18e0bb5b', 'torch_mla_extend': '067ea108b35498b9b6703338c112c1db69335bf979cb76c1f712e66047433a45', '_compare': 'ff61bc86d21eebb74ffa14e426d5c4907aa35276e150280692314f0e27f5d034', 'run_compile': '555938e9c5b41aa7562d4b37d0ba6d90c8244137ef345acf02c2ed25e5d148f4', 'run_correctness': '9f482f5cd5213e6b12939ece6099288ccfcc52ab24adfb97d9c81ac5106abf19', 'run_performance': 'ab467bc1c4ffa77e7a6e83403d6c8527e8e08faf9de8561c3f8a08ba879b7038', 'main': '1a078382d740bf6949578767b767d05cc47c72a5ec777174ebadc2ffb2cbb0c0'}
     for fn in ast.parse((task / 'test_kernel_harness.py').read_text()).body:
         if isinstance(fn, ast.FunctionDef) and fn.name in hashes:
@@ -5949,7 +6064,9 @@ def test_torch_actual_operators_are_required_without_unused_builders(name,tmp_pa
 
 
 def test_unused_builder_cleanup_retains_starter_model_and_manifest_bytes():
-    original={'dynamic_mxfp8_quant_kernel': {'kernel.py': '04c2ab5eb9e9bee43be84633bc7b210fcb3ad8be69bba8aa98ef6897010611a0', 'model.py': '9e5b1e289eee05aba727b71e28a98e6a7611d9fd6737d5e87b83fe9469eed39d', 'cases.json': '9e76bdcd9955b731e930c2e46536dbce2522d2f88f4ad9cb76016e825821988d'}, 'gelu_and_mul_kernel': {'kernel.py': '4fb1de9fe9d5da55e5cb924ecd03458ab70cc493612857ca300343237d541f25', 'model.py': 'c171ab0b489b1cb87a3f551c3ba8ecd820e3147a9becb6810154040f4027f7dd', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gelu_tanh_and_mul_kernel': {'kernel.py': '04616e2c62589d5c2e4b8147772bf4e333e753e663eb5d95bb88456428110f24', 'model.py': '95988833405bac9d10624c4ca4e78ee0251a5a60c1dd457d6b915904b9b2dadf', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gemm_a8w8_bpreshuffle_kernel': {'kernel.py': 'b5d3e87a3ceca3fe555572f0b4ab5c7b1dd6c3f5c9e18ab924b589df3d485996', 'model.py': 'e4278a3637b56eab94baec3b712ff1fb5ac44206a0ac21b1925a7497ca0b9643', 'cases.json': '7f2d3e25a614486974800da54cb23d2c7913101b2ec1b82ca92818cdfec479ee'}, 'hgemm_kernel': {'kernel.py': '29cab2057d32224a7da558083f6b4edeb560e44efd59a60b82dfb14c9c6a8d28', 'model.py': '89ca4fce55817fdf5fcbaea925a1639f9b96cd809dcda8c06cd70f9e1033372e', 'cases.json': '8388fcafea635e69bde93aad82d8b6bcd10d3ffd9998f2594e4ab989c2fd61e4'}, 'jagged_dense_bmm_kernel': {'kernel.py': 'fcb9b75ec238ced56568fb5b27535a160314db29c212abe33c83be6f7df3c043', 'model.py': '1b446ea35fee03f47ae16121fb7ba8aa933e9e99c48f2d90584c770d56065186', 'cases.json': '8304b063316f9cfc3667a8f38d9d85805b38a2339deebd48b883bfb59b5427e3'}, 'moe_sorting_kernel': {'kernel.py': '4bc536d6d29f16e1f24278d9db05ffba13d723f3f42064cce18b60c687f3eb43', 'model.py': 'c874911efc1c947437d5c7c62019e7c52b34458a0ec1560ecdde72aa971de271', 'cases.json': '0c8247d8727d48dc3a8ddd20ede1db3ae2586e990222f7bf19ce39dc6ad913c4'}, 'qk_norm_rope_quant_kernel': {'kernel.py': 'be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46', 'model.py': '152a32140302f1264c555fbd9b6f9d8362583fd08b0344290a67d6b1bb849ee2', 'cases.json': 'de8e183a711424ddabe5f8bfea4fa00dbe79cb886462b5d3681f67fa9d6e0eb1'}, 'rmsnorm2d_dynamicquant_kernel': {'kernel.py': 'c8542e7ea4b69aa6881ae2e7046995c67112e7e38b68e95d3cc2a51965d05bdc', 'model.py': '5cd3abaf088651f8f2ed9db44513bfd8c5238a45145aaf3dcd3168d63e3ff080', 'cases.json': '046dcf1c5e6f49bf68bd6e935555006803f9f6af5668460389ae6147297528f1'}, 'rmsnorm2d_kernel': {'kernel.py': 'a20840e12a22f5c08fed1e87eee62de5dec590680c79b5b6fa8cb28d9dd9396a', 'model.py': '8442cb4d63444e7dfa9db1fa2d6253ceee0463b1debfd6919fc5219181de3b13', 'cases.json': '426c9e84d97161e5bb7a09353102c57648f5ca5a4790c46370b5369ba470fa64'}, 'rmsnorm2d_smoothquant_kernel': {'kernel.py': '701e11ec5e63bf65572fd9325a7e0b1bea0e1aa9561f8711de0e7ed0113fc2b0', 'model.py': '5496289dc3f8f72c1b9deefce1e39b7c1a00dc5726ad708abe65641fee4edf0e', 'cases.json': '359795558e6ebcfb617bbae66eda8540f5503cc5a04056f1fdfde58e13aedce4'}, 'swiglu_and_mul_kernel': {'kernel.py': '6adbabe7f43dd51289ec4afa3310ba30c56ad8f216edb801886882a1c00715e5', 'model.py': '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}}
+    # Starter hashes include the reviewed FlyDSL 0.3.2 API routing changes.
+    # Model and workload manifest hashes remain those of the original tasks.
+    original={'dynamic_mxfp8_quant_kernel': {'kernel.py': '04c2ab5eb9e9bee43be84633bc7b210fcb3ad8be69bba8aa98ef6897010611a0', 'model.py': '9e5b1e289eee05aba727b71e28a98e6a7611d9fd6737d5e87b83fe9469eed39d', 'cases.json': '9e76bdcd9955b731e930c2e46536dbce2522d2f88f4ad9cb76016e825821988d'}, 'gelu_and_mul_kernel': {'kernel.py': '4fb1de9fe9d5da55e5cb924ecd03458ab70cc493612857ca300343237d541f25', 'model.py': 'c171ab0b489b1cb87a3f551c3ba8ecd820e3147a9becb6810154040f4027f7dd', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gelu_tanh_and_mul_kernel': {'kernel.py': '04616e2c62589d5c2e4b8147772bf4e333e753e663eb5d95bb88456428110f24', 'model.py': '95988833405bac9d10624c4ca4e78ee0251a5a60c1dd457d6b915904b9b2dadf', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}, 'gemm_a8w8_bpreshuffle_kernel': {'kernel.py': 'da4cc1b465b8f5c620c88e5876a2e4799023b5d585a00b2f203e3914c2379269', 'model.py': 'e4278a3637b56eab94baec3b712ff1fb5ac44206a0ac21b1925a7497ca0b9643', 'cases.json': '7f2d3e25a614486974800da54cb23d2c7913101b2ec1b82ca92818cdfec479ee'}, 'hgemm_kernel': {'kernel.py': '27d4c78ecd9c8e42507f8c801ea80ab6e0fbd7667d0672e02b85a0b8ebe34667', 'model.py': '89ca4fce55817fdf5fcbaea925a1639f9b96cd809dcda8c06cd70f9e1033372e', 'cases.json': '8388fcafea635e69bde93aad82d8b6bcd10d3ffd9998f2594e4ab989c2fd61e4'}, 'jagged_dense_bmm_kernel': {'kernel.py': 'dbbda2a72ebe1872cf2a286eea086a33702c0bc4646a8e2006edc37be5fa7f0a', 'model.py': '1b446ea35fee03f47ae16121fb7ba8aa933e9e99c48f2d90584c770d56065186', 'cases.json': '8304b063316f9cfc3667a8f38d9d85805b38a2339deebd48b883bfb59b5427e3'}, 'moe_sorting_kernel': {'kernel.py': 'e46cc487791f85ae3aab7d32955f2b0784c946f1d3f7d8a03b89de53a7d3c8e0', 'model.py': 'c874911efc1c947437d5c7c62019e7c52b34458a0ec1560ecdde72aa971de271', 'cases.json': '0c8247d8727d48dc3a8ddd20ede1db3ae2586e990222f7bf19ce39dc6ad913c4'}, 'qk_norm_rope_quant_kernel': {'kernel.py': '1ca597964eb0b3899435b60fc01509891613a13cbe0d3552c6feac803ffe4d2a', 'model.py': '152a32140302f1264c555fbd9b6f9d8362583fd08b0344290a67d6b1bb849ee2', 'cases.json': 'de8e183a711424ddabe5f8bfea4fa00dbe79cb886462b5d3681f67fa9d6e0eb1'}, 'rmsnorm2d_dynamicquant_kernel': {'kernel.py': 'c8542e7ea4b69aa6881ae2e7046995c67112e7e38b68e95d3cc2a51965d05bdc', 'model.py': '5cd3abaf088651f8f2ed9db44513bfd8c5238a45145aaf3dcd3168d63e3ff080', 'cases.json': '046dcf1c5e6f49bf68bd6e935555006803f9f6af5668460389ae6147297528f1'}, 'rmsnorm2d_kernel': {'kernel.py': 'a20840e12a22f5c08fed1e87eee62de5dec590680c79b5b6fa8cb28d9dd9396a', 'model.py': '8442cb4d63444e7dfa9db1fa2d6253ceee0463b1debfd6919fc5219181de3b13', 'cases.json': '426c9e84d97161e5bb7a09353102c57648f5ca5a4790c46370b5369ba470fa64'}, 'rmsnorm2d_smoothquant_kernel': {'kernel.py': '701e11ec5e63bf65572fd9325a7e0b1bea0e1aa9561f8711de0e7ed0113fc2b0', 'model.py': '5496289dc3f8f72c1b9deefce1e39b7c1a00dc5726ad708abe65641fee4edf0e', 'cases.json': '359795558e6ebcfb617bbae66eda8540f5503cc5a04056f1fdfde58e13aedce4'}, 'swiglu_and_mul_kernel': {'kernel.py': '6adbabe7f43dd51289ec4afa3310ba30c56ad8f216edb801886882a1c00715e5', 'model.py': '74765a3a6e469d27926a92b0d710231f2bb7604850186fca782dc5446a8224b4', 'cases.json': 'a20a152b61a241426b4f7f4d9cbdfee7af9f92f2cf1d2e8d0c2ba0aecfb20129'}}
     # This starter was ported to the fixed FlyDSL image. Keep
     # the historical model/manifest pins and pin the complete reviewed kernel
     # bytes; focused port tests check the changed primitive adapter.
@@ -6965,7 +7082,7 @@ def test_bpreshuffle_actual_operator_and_event_output_controls(function,behavior
             timed_run.rerun=rerun
         phase['name']='setup'
         return .1,{'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable',
-                   'benchmark_samples':repetition}
+                   'benchmark_fallback_reason':fallback_reason,'benchmark_samples':repetition}
     monkeypatch.setattr(torch.cuda,'synchronize',lambda:None);monkeypatch.setattr(torch.cuda,'empty_cache',lambda:None)
     def make_inputs(m,n,k,device='cuda',*,seed=20260401):
         if seed==20260401:return x,w
@@ -6981,7 +7098,15 @@ def test_bpreshuffle_actual_operator_and_event_output_controls(function,behavior
     # Measured-only controls are separately tested on both real timing paths.
     should_pass=behavior=='correct' or correctness and behavior in {'measured_wrong','replay_wrong','cached','wrong_scale'}
     if should_pass:
-        result=ns[function](verbose=False)
+        if function == 'arena_benchmark':
+            actions = module(task/'scripts/task_actions.py')
+            result = actions.performance(types.SimpleNamespace(arena_benchmark=ns[function]))
+            assert result[0]['timed_output_checked'] is True
+            assert result[0]['device_timing']['benchmark_method'] == 'cuda_event_fallback'
+            assert result[0]['device_timing']['benchmark_fallback_reason'] == 'capture_unsafe_hipblaslt_reference'
+            assert result[0]['device_timing']['benchmark_method_consistent'] is True
+        else:
+            result=ns[function](verbose=False)
         if not correctness:
             report=json.loads((tmp_path/'build/performance_report.json').read_text()) if function=='run_benchmark' else result
             assert report[0]['timed_output_correctness']==report[0]['replay_correctness']=='PASS'
@@ -7500,7 +7625,7 @@ def test_qk_original_source_passes_static_compile_without_kernel_or_case_edit():
     assert result.metadata['compile_kind']=='python_bytecode'
     # Syntax evidence only: GPU compilation/correctness/performance are required
     # again with the corrected dependency policy and unchanged old API source.
-    assert hashlib.sha256((task/'kernel.py').read_bytes()).hexdigest()=='be6c11328764ac59054301e1d8a9312287227718eee498731698ddc45079fa46'
+    assert hashlib.sha256((task/'kernel.py').read_bytes()).hexdigest()=='1ca597964eb0b3899435b60fc01509891613a13cbe0d3552c6feac803ffe4d2a'
 
 
 
@@ -7635,3 +7760,63 @@ def test_a8w8_production_baseline_uses_one_consistent_reduction_policy():
     assert seen=={'run_correctness':1,'run_benchmark':1,'arena_benchmark':1}
     cfg=load_task_spec(task/'config.yaml',task_id='torch2flydsl/gemm_a8w8_kernel')
     assert cfg.baseline.correctness_policy=='required'
+
+
+@pytest.mark.parametrize('source', [
+    'import sys\nsys.modules["arena_harness"]._norm_worst = lambda *a: (0, 0)',
+    'import sys as runtime\nruntime.modules["arena_harness"].TOL = 1e9',
+    'from sys import modules as loaded\nloaded["arena_harness"]._compare_batched_output = lambda *a: None',
+    'import sys\ngetattr(sys, "modules")["arena_harness"].TOL = 1e9',
+    'import sys\nvars(sys)["modules"]["arena_harness"].TOL = 1e9',
+    'import sys\nsys.__dict__["modules"]["arena_harness"].TOL = 1e9',
+    'import inspect\ninspect.currentframe().f_back.f_globals["TOL"] = 1e9',
+    'def helper(): pass\nhelper.__globals__["TOL"] = 1e9',
+    'from builtins import getattr as lookup\nlookup(obj, "modules")',
+    'from sys import setprofile as disable\ndisable(None)',
+])
+def test_batched_int8_rejects_comparator_state_bypass_before_import(tmp_path, source):
+    task = ROOT / 'tasks/torch2flydsl/batched_gemm_a8w8_kernel'
+    runtime = module(task / 'task_runtime.py')
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl\n' + source + '\n')
+    with pytest.raises(ValueError, match='Protected|introspection'):
+        runtime.check_dependencies([candidate], final_language=True)
+
+
+def test_batched_int8_allows_ordinary_kernel_preparation_dependencies(tmp_path):
+    runtime = module(ROOT / 'tasks/torch2flydsl/batched_gemm_a8w8_kernel/task_runtime.py')
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl.compiler as flyc\nimport torch\nimport math\nimport sys\nlimit = sys.maxsize\n')
+    runtime.check_dependencies([candidate], final_language=True)
+
+
+@pytest.mark.parametrize('source', [
+    'import torch\ntorch.matmul = lambda *a: 0',
+    'import torch as t\nt.matmul = lambda *a: 0',
+    'import torch\nt = torch\nu = t\nu.matmul = lambda *a: 0',
+    'from torch import testing as checks\nchecks.assert_close = lambda *a: None',
+    'import torch\ndel torch.matmul',
+    'import torch\ntorch.__dict__["matmul"] = lambda *a: 0',
+    'import torch\nsetattr(torch, "matmul", lambda *a: 0)',
+    'import torch\nwrite = setattr\nwrite(torch, "matmul", lambda *a: 0)',
+    'import torch\ngetattr(torch, "__dict__")["matmul"] = lambda *a: 0',
+    'import sys\nsys.modules["torch"].matmul = lambda *a: 0',
+    'from sys import modules as loaded\nloaded["torch"].matmul = lambda *a: 0',
+    'import inspect\ninspect.currentframe().f_back.f_globals["TOL"] = 1e9',
+    'def helper(): pass\nhelper.__globals__["TOL"] = 1e9',
+])
+def test_hgemm_rejects_oracle_mutation_before_import(tmp_path, source):
+    runtime = module(ROOT / 'tasks/torch2flydsl/hgemm_kernel/task_runtime.py')
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl\n' + source + '\n')
+    with pytest.raises(ValueError, match='Protected|introspection'):
+        runtime.check_dependencies([candidate], final_language=True)
+
+
+def test_hgemm_retains_local_compilation_cache_and_initial_kernel(tmp_path):
+    task = ROOT / 'tasks/torch2flydsl/hgemm_kernel'
+    runtime = module(task / 'task_runtime.py')
+    runtime.check_dependencies([task / 'kernel.py'], final_language=True)
+    candidate = tmp_path / 'kernel.py'
+    candidate.write_text('import flydsl\ndef run(exe):\n    cf = getattr(exe, "_cf", None)\n    exe._cf = cf\n')
+    runtime.check_dependencies([candidate], final_language=True)

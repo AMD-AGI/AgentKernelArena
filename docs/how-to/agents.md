@@ -24,7 +24,7 @@ The following agents are available.
 | --- | --- |
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
-| `codex` | OpenAI Codex CLI |
+| `codex` | Codex CLI |
 | `deepseek_harness` | DeepSeek Harness headless CLI ([setup](../../agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge through the shared v2 task interface |
 | `geak` | GEAK Workflow engine through the shared v2 task interface |

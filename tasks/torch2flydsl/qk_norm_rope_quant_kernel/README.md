@@ -1,6 +1,10 @@
 # qk_norm_rope_quant_kernel: task-owned v2 contract
 
-Implement or optimize qk_norm_rope_quant in FlyDSL, preserving all task inputs, outputs and numerical gates.
+Implement or optimize the BF16 RMSNorm + RoPE (`quant=False`) path of
+`flydsl_qk_norm_rope_quant` in FlyDSL, preserving all six declared workloads,
+outputs and numerical gates. Optional FP8 quantization (`quant=True`) and its
+packed codes/scales are outside this task's evaluated contract; these cases
+do not qualify that separate capability.
 
 The candidate starts **implemented**. Arena freezes the implemented source in a separate baseline workspace.
 The original harness's primary implementation timing is retained; additional
@@ -17,9 +21,8 @@ reference against the original independent AITER comparison wherever that check
 was present. Small independent known-answer and negative-output controls in
 `scripts/reference_controls.py` supplement the full GPU checks.
 
-Edit only `candidate.editable` paths from `config.yaml`. Preserve each declared
-public operator/builder interface and all outputs (including residuals, packed
-quantization codes/scales, routing indices or state when applicable). Inspect the
+Edit only `candidate.editable` paths from `config.yaml`. Preserve the declared entrypoint and the evaluated four-element return tuple:
+BF16 Q, BF16 KV, None and None. Inspect the
 protected harness calls and `model.py` to understand shapes, strides and layout.
 The final operator computation must run FlyDSL GPU kernels. PyTorch is allowed
 for allocation, views and launch preparation, not replacement operator compute.
@@ -71,11 +74,12 @@ outside timing, poison both output tensors and replay the same measured
 invocation against the unchanged model. Recheck the two None scale slots on
 replay too, and restore the inputs. Baseline/candidate retain the original
 10external warmups,100samples and graph timing; diagnostic model timing retains
-its original10warmups. Source kernel, model, cases, group-size variants and seed
+its original10warmups. Kernel computation, model, cases, group-size variants and seed
 are unchanged. Final candidate arithmetic must run FlyDSL; the candidate-only
 auditor permits host preparation and checks operator calls outside timing.
-This original source uses the older FlyDSL buffer_ops API, so its full GPU
-qualification requires the pinned compatible image recorded with the report.
+The legacy buffer/vector calls use the bundled compatibility adapters when
+the installed runtime removes those helpers. Full GPU qualification must bind
+the task source and the selected image.
 
 The allowed preparation dependencies include exactly
 `from aiter.utility import dtypes` (with an optional alias), used by the original
@@ -98,3 +102,8 @@ passing the module to another function, dynamic attribute access, other members
 (including any library imported by the dtype module), and relative/package
 import alternatives are rejected. Reading a hardware dtype constant does not
 expose an AITER operator dependency to the candidate.
+
+The task-local `flydsl_compat` helpers preserve the legacy buffer/vector API
+when the installed FlyDSL no longer supplies it. See `flydsl_compat/SOURCE.md`
+for the pinned upstream source and retained license. Workloads, numerical gates,
+and timing parameters are unchanged.

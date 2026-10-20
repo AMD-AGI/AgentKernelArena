@@ -86,3 +86,6 @@ full public operator timing boundary remain unchanged, though this stronger
 data stream makes historical performance measurements not directly comparable.
 No captured-graph claim is made for this Event invocation. The task-local
 FlyDSL 0.3.2 buffer adapter is part of the initial implementation; edits to it or the harness require fresh qualification in the pinned image.
+
+The performance action reports the measured-output checks as
+`timed_output_checked` and `device_timing`; these fields add no timed work.

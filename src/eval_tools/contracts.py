@@ -16,7 +16,7 @@ from typing import Any, Mapping, Optional, Protocol, Sequence, runtime_checkable
 
 
 class _StringEnum(str, Enum):
-    """``StrEnum`` compatible with the Python 3.10 scoring image."""
+    """``StrEnum`` compatible with supported Python 3.10+ runtimes."""
 
     def __str__(self) -> str:
         return self.value

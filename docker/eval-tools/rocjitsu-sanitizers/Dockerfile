@@ -1,5 +1,8 @@
-ARG BASE_IMAGE=lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
-FROM ${BASE_IMAGE} AS builder
+ARG BASE_IMAGE=lmsysorg/sglang:v0.5.20-rocm10-mi35x@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69
+# Keep the native engine build toolchain pinned independently of its runtime.
+ARG BUILDER_IMAGE=lmsysorg/sglang-rocm:v0.5.14-rocm720-mi35x-20260705@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78
+FROM ${BUILDER_IMAGE} AS builder
+ARG BUILD_JOBS=8
 
 ARG ROCJITSU_SANITIZERS_COMMIT=ed35c0b54547c98bab359c8732529d9f5e8fd1ae
 ARG GOOGLETEST_COMMIT=b514bdc898e2951020cbdca1304b75f5950d1f59
@@ -45,7 +48,7 @@ RUN curl -sSfL -o /tmp/zstd.tar.gz \
         -DZSTD_BUILD_STATIC=ON \
         -DZSTD_BUILD_PROGRAMS=OFF \
         -DZSTD_BUILD_TESTS=OFF \
-    && cmake --build /build/zstd --parallel \
+    && cmake --build /build/zstd --parallel "${BUILD_JOBS}" \
     && cmake --install /build/zstd \
     && rm -f /tmp/zstd.tar.gz
 
@@ -58,7 +61,7 @@ RUN cmake -S /src/rocm-systems/emulation/rocjitsu -B /build/rocjitsu -G Ninja \
         -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=/src/googletest \
         -DFETCHCONTENT_SOURCE_DIR_FLATBUFFERS=/src/flatbuffers \
         -DBUILD_TESTING=OFF \
-    && cmake --build /build/rocjitsu --parallel \
+    && cmake --build /build/rocjitsu --parallel "${BUILD_JOBS}" \
         --target rj_waitcheck rocjitsu_waitcheck rocjitsu_dbi_hooks \
     && mkdir -p /opt/rocjitsu/include /opt/rocjitsu/lib \
     && cp -a /src/rocm-systems/emulation/rocjitsu/lib/rocjitsu/include/rocjitsu \
@@ -81,7 +84,7 @@ RUN g++-13 -std=c++17 -O2 -Wall -Wextra -Werror \
 
 FROM ${BASE_IMAGE} AS runtime-common
 
-LABEL org.opencontainers.image.base.digest="sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78" \
+LABEL org.opencontainers.image.base.digest="sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69" \
       org.opencontainers.image.revision="ed35c0b54547c98bab359c8732529d9f5e8fd1ae"
 
 COPY --from=builder /opt/rocjitsu /opt/rocjitsu
@@ -89,7 +92,7 @@ COPY src/eval_tools /opt/aka-eval-tools/src/eval_tools
 
 ENV AKA_EVAL_TOOL_FRAMEWORK_ROOT=/opt/aka-eval-tools \
     PYTHONPATH=/opt/aka-eval-tools \
-    LD_LIBRARY_PATH=/opt/rocjitsu/lib:/opt/rocjitsu/runtime \
+    LD_LIBRARY_PATH=/opt/rocjitsu/lib:/opt/rocjitsu/runtime:${LD_LIBRARY_PATH} \
     PATH=/opt/rocjitsu/bin:${PATH} \
     AKA_ROCJITSU_SANITIZERS_COMMIT=ed35c0b54547c98bab359c8732529d9f5e8fd1ae
 
@@ -112,6 +115,7 @@ LABEL org.opencontainers.image.title="AgentKernelArena rocJITsu ConSan runtime"
 ENV AKA_CONSAN_HOOK=/opt/rocjitsu/lib/librocjitsu_dbi_hooks.so
 
 RUN test -f /opt/rocjitsu/lib/librocjitsu_dbi_hooks.so \
+    && /opt/venv/bin/python -c "import ctypes; ctypes.CDLL('libamdhip64.so.7')" \
     && /opt/venv/bin/python -I \
         /opt/aka-eval-tools/src/eval_tools/adapters/consan_entrypoint.py \
         --help >/dev/null

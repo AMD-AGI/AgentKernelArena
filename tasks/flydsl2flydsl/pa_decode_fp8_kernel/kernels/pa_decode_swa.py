@@ -12,7 +12,8 @@ import flydsl.expr as fx
 from flydsl._mlir import ir
 from flydsl._mlir.dialects import llvm
 from flydsl.compiler.kernel_function import CompilationContext
-from flydsl.expr import arith, buffer_ops, const_expr, gpu, range_constexpr, rocdl, vector
+from flydsl.expr import arith, const_expr, gpu, range_constexpr, rocdl
+from flydsl_compat import buffer_ops, vector
 from flydsl.expr import math as fly_math
 from flydsl.expr.typing import Int32, T
 from flydsl.runtime.device import get_rocm_arch as get_hip_arch

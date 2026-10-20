@@ -55,7 +55,8 @@ def require_unchanged(inputs, originals):
         raise AssertionError("Operator modified a read-only input")
 
 
-def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare):
+def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare,
+                     extra_perturb=None):
     """Check last measured output, then perturb and replay the measured unit.
 
     A fresh ordinary correctness invocation cannot substitute for either check.
@@ -68,19 +69,22 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
         raise RuntimeError("Benchmark did not expose its measured invocation")
     require_unchanged(inputs, originals)
     compare(timed.outputs, expected)
-    try:
-        perturb()
-        changed = tuple(x.detach().clone() for x in inputs)
-        expected_replay = reference()
-        if not isinstance(timed.outputs, torch.Tensor):
-            raise AssertionError("Measured output must be a Tensor")
-        timed.outputs.fill_(float("nan"))
-        actual_replay = timed.rerun()
-        require_unchanged(inputs, changed)
-        compare(actual_replay, expected_replay)
-    finally:
-        # Subsequent diagnostic timings see the original declared input, too.
-        for value, original in zip(inputs, originals):
-            value.copy_(original)
+    perturbations = (perturb,) if extra_perturb is None else (perturb, extra_perturb)
+    for change in perturbations:
+        try:
+            change()
+            changed = tuple(x.detach().clone() for x in inputs)
+            expected_replay = reference()
+            if not isinstance(timed.outputs, torch.Tensor):
+                raise AssertionError("Measured output must be a Tensor")
+            timed.outputs.fill_(float("nan"))
+            actual_replay = timed.rerun()
+            require_unchanged(inputs, changed)
+            compare(actual_replay, expected_replay)
+        finally:
+            # Every independent replay starts from the declared original input.
+            for value, original in zip(inputs, originals):
+                value.copy_(original)
     return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
-            "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+            "replay_inputs_perturbed": True, "replay_output_poisoned": True,
+            "replay_input_draws": len(perturbations)}

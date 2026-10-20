@@ -442,3 +442,79 @@ def test_consan_positive_control_runs_production_entrypoint_and_oracle_split(
         assert sum(value.startswith("--oracle-arg=") for value in command) == 4
         assert "HSA_TOOLS_LIB" not in environment
         assert not any(key.startswith("RJ_CONSAN_") for key in environment)
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [(None, True), ("false_positive", False), ("missed_bug", False),
+     ("crash", False), ("uninstrumented", False)],
+)
+def test_triton_fpsan_requires_clean_and_bug_controls(
+    tmp_path: Path, monkeypatch, failure, expected
+) -> None:
+    import json
+
+    caches = []
+
+    def run_probe(name, command, *, cwd, environment, artifact_dir):
+        wrong = command[-1] == "wrong"
+        cache = Path(environment["TRITON_CACHE_DIR"])
+        caches.append(cache)
+        cache.mkdir(parents=True)
+        for index in range(2):
+            (cache / f"kernel-{index}.json").write_text(json.dumps({
+                "instrumentation_mode": "" if failure == "uninstrumented" else "fpsan"
+            }))
+        equal = not wrong
+        if failure == "false_positive" and not wrong:
+            equal = False
+        if failure == "missed_bug" and wrong:
+            equal = True
+        return {
+            "returncode": 139 if failure == "crash" else 0,
+            "_stdout": "AKA_FPSAN_RESULT " + json.dumps({
+                "reference_digest": "reference",
+                "candidate_digest": "reference" if equal else "different",
+            }),
+        }
+
+    monkeypatch.setattr(worker, "_run_probe_step", run_probe)
+    result = worker._triton_fpsan_positive(
+        tmp_path / "probes", tmp_path / "work", tmp_path / "artifacts"
+    )
+    assert result["passed"] is expected
+    assert set(result["controls"]) == {"equivalent", "known_mismatch"}
+    assert len(set(caches)) == 2
+
+
+def test_gpu_asan_uses_image_owned_normal_runtime_path(tmp_path: Path, monkeypatch) -> None:
+    root = Path(worker.__file__).resolve().parents[2]
+    monkeypatch.setattr(worker, "_framework_provenance", lambda _: (root, "image", Path(worker.__file__)))
+    monkeypatch.setattr(worker, "_gpu_evidence", lambda: {"gpu_arch": "gfx950"})
+    monkeypatch.setattr(worker, "positive_control_evidence", lambda *args, **kwargs: {"passed": False})
+    monkeypatch.setenv("AKA_GPU_ASAN_NORMAL_ROCM_LIB_DIR", "/opt/rocm/lib")
+    runtime = tmp_path / "asan/lib"
+    host = runtime / "llvm/lib/clang/23/lib/linux/libclang_rt.asan-x86_64.so"
+    host.parent.mkdir(parents=True)
+    host.touch()
+    (runtime / "libamdhip64.so").touch()
+    (runtime / "libhsa-runtime64.so").touch()
+    (runtime / "rocm_sysdeps/lib").mkdir(parents=True)
+    monkeypatch.setenv("AKA_GPU_ASAN_RUNTIME_DIR", str(runtime))
+    monkeypatch.setenv("LD_PRELOAD", "/custom/preload.so")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/custom/lib")
+    evidence = worker.runtime_evidence(
+        "gpu_asan", input_root=tmp_path, scratch_root=tmp_path, artifact_root=tmp_path
+    )
+    assert evidence["normal_rocm_lib_dir"] == "/opt/rocm/lib"
+    assert "/opt/rocm/lib" in worker._asan_environment(evidence)["LD_LIBRARY_PATH"].split(":")
+    assert "/opt/rocm-7.2.0/lib" not in worker._asan_environment(evidence)["LD_LIBRARY_PATH"].split(":")
+    environment = worker._asan_environment(evidence)
+    assert environment["LD_PRELOAD"].split(":") == [
+        str(host), str(runtime / "libamdhip64.so"),
+        str(runtime / "libhsa-runtime64.so"), "/custom/preload.so",
+    ]
+    assert environment["LD_LIBRARY_PATH"].split(":") == [
+        str(host.parent), str(runtime), str(runtime / "llvm/lib"),
+        str(runtime / "rocm_sysdeps/lib"), "/opt/rocm/lib", "/custom/lib",
+    ]

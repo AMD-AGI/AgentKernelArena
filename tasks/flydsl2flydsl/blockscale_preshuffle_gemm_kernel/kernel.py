@@ -11,7 +11,8 @@ import flydsl.compiler as flyc
 import flydsl.expr as fx
 from flydsl._mlir import ir
 from flydsl.compiler.kernel_function import CompilationContext
-from flydsl.expr import arith, buffer_ops, const_expr, gpu, range_constexpr, rocdl, vector
+from flydsl.expr import arith, const_expr, gpu, range_constexpr, rocdl
+from flydsl_compat import buffer_ops, vector
 from flydsl.expr.typing import T
 from flydsl.expr.typing import Vector as Vec
 from flydsl.runtime.device import get_rocm_arch as get_hip_arch
@@ -104,6 +105,11 @@ def compile_blockscale_preshuffle_gemm(
     def _out_elem_dtype():
         return fx.BFloat16 if is_bf16_out else fx.Float16
 
+    def _fp8_elem_type():
+        # Match the input encoding and the former architecture-dependent T.f8
+        # alias. Construct the IR type only inside the compilation context.
+        return fx.Float8E4M3FN.ir_type if _is_gfx950 else fx.Float8E4M3FNUZ.ir_type
+
     epilog_tag = "cshuffle" if use_cshuffle_epilog else "direct"
 
     module_name = (f"bs_gemm_{out_dtype}_{epilog_tag}" f"_t{tile_m}x{tile_n}x{tile_k}").replace("-", "_")
@@ -175,8 +181,8 @@ def compile_blockscale_preshuffle_gemm(
         base_ptr_pong = allocator_pong.get_base()
         base_ptr_ping = allocator_ping.get_base()
 
-        lds_a_pong = SmemPtr(base_ptr_pong, lds_pong_offset, T.f8, shape=(tile_m * tile_k,)).get()
-        lds_a_ping = SmemPtr(base_ptr_ping, lds_ping_offset, T.f8, shape=(tile_m * tile_k,)).get()
+        lds_a_pong = SmemPtr(base_ptr_pong, lds_pong_offset, _fp8_elem_type(), shape=(tile_m * tile_k,)).get()
+        lds_a_ping = SmemPtr(base_ptr_ping, lds_ping_offset, _fp8_elem_type(), shape=(tile_m * tile_k,)).get()
 
         if const_expr(use_cshuffle_epilog):
             lds_out = SmemPtr(base_ptr_pong, lds_pong_offset, _out_elem_type(), shape=(tile_m * tile_n,)).get()
@@ -239,7 +245,7 @@ def compile_blockscale_preshuffle_gemm(
                 n_blk=n_blk_list[ni],
                 n_intra=n_intra_list[ni],
                 lane_div_16=lane_div_16,
-                elem_type=T.f8,
+                elem_type=_fp8_elem_type(),
                 kpack_bytes=kpack_bytes,
                 elem_bytes=elem_bytes,
             )
@@ -259,7 +265,7 @@ def compile_blockscale_preshuffle_gemm(
                 vector,
                 b_rsrc,
                 idx_pack,
-                elem_type=T.f8,
+                elem_type=_fp8_elem_type(),
                 vec_elems=16,
                 elem_bytes=elem_bytes,
                 offset_in_bytes=True,
@@ -285,7 +291,7 @@ def compile_blockscale_preshuffle_gemm(
         def lds_load_16b(curr_row_a_lds, col_base, lds_buffer):
             col_base_swz = swizzle_xor16(curr_row_a_lds, col_base, k_blocks16)
             idx_a16 = curr_row_a_lds * _lds_k_dim_c + col_base_swz
-            return vector.load_op(T.f8x16, lds_buffer, [idx_a16])
+            return vector.load_op(ir.VectorType.get([16], _fp8_elem_type()), lds_buffer, [idx_a16])
 
         def lds_load_packs_k64(curr_row_a_lds, col_base, lds_buffer):
             loaded_a16 = lds_load_16b(curr_row_a_lds, col_base, lds_buffer)
@@ -305,7 +311,7 @@ def compile_blockscale_preshuffle_gemm(
                 return buffer_copy_gmem16_dwordx4(
                     buffer_ops,
                     vector,
-                    elem_type=T.f8,
+                    elem_type=_fp8_elem_type(),
                     idx_i32=idx_i32,
                     rsrc=a_rsrc,
                     vec_elems=16,
@@ -348,7 +354,7 @@ def compile_blockscale_preshuffle_gemm(
                         arith,
                         vector,
                         lds_memref=lds_buffer,
-                        vec16_ty=T.f8x16,
+                        vec16_ty=ir.VectorType.get([16], _fp8_elem_type()),
                         layout_lds=layout_lds,
                         row_local=row_a_local,
                         col_local_i32=col_a_local_i32,
@@ -363,7 +369,7 @@ def compile_blockscale_preshuffle_gemm(
                         arith,
                         vector,
                         lds_memref=lds_buffer,
-                        vec8_ty=T.f8x8,
+                        vec8_ty=ir.VectorType.get([8], _fp8_elem_type()),
                         layout_lds=layout_lds,
                         row_local=row_a_local,
                         col_local_i32=col_a_local_i32,

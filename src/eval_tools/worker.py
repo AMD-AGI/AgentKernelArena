@@ -36,7 +36,7 @@ MAX_REQUEST_BYTES = 1024 * 1024
 MAX_ARGV_ENTRIES = 4096
 MAX_ENV_ENTRIES = 4096
 MAX_LOG_LIMIT_BYTES = 1024 * 1024 * 1024
-TRITON_FPSAN_VERSION = "3.7.0+amd.rocm7.2.0.gitd0d77a509"
+TRITON_FPSAN_VERSION = "3.8.0+git4cff872c.rocm10.0.0"
 TRITON_ASAN_VERSIONS = {
     "3.6.0+git42270451",
     TRITON_FPSAN_VERSION,
@@ -313,10 +313,37 @@ def _positive_result(
 def _triton_fpsan_positive(
     probe_root: Path, work_dir: Path, artifact_dir: Path
 ) -> dict[str, Any]:
+    steps = {}
+    controls = {}
+    for name, arguments, expected_equal in (
+        ("equivalent", [], True),
+        ("known_mismatch", ["wrong"], False),
+    ):
+        result = _triton_fpsan_control(
+            probe_root, work_dir / name, artifact_dir / name,
+            arguments=arguments, expected_equal=expected_equal,
+        )
+        steps.update({f"{name}_{key}": value for key, value in result["steps"].items()})
+        controls[name] = {"passed": result["passed"]}
+    return _positive_result(
+        passed=all(control["passed"] for control in controls.values()),
+        kind="triton_fpsan_equivalence_and_mismatch",
+        detail="equivalent and known-wrong expressions must have the expected digest relation with independently attested FpSan compilation",
+        artifact_dir=artifact_dir,
+        steps=steps,
+        controls=controls,
+    )
+
+
+def _triton_fpsan_control(
+    probe_root: Path, work_dir: Path, artifact_dir: Path,
+    *, arguments: list[str], expected_equal: bool,
+) -> dict[str, Any]:
+    work_dir.mkdir(parents=True, exist_ok=True)
     cache = work_dir / "triton-fpsan-cache"
     step = _run_probe_step(
-        "known-mismatch",
-        [shutil.which("python") or os.sys.executable, str(probe_root / "triton_fpsan_probe.py"), "wrong"],
+        "comparison",
+        [shutil.which("python") or os.sys.executable, str(probe_root / "triton_fpsan_probe.py"), *arguments],
         cwd=work_dir,
         environment={
             "TRITON_INSTRUMENTATION_MODE": "fpsan",
@@ -337,44 +364,46 @@ def _triton_fpsan_positive(
             continue
         if isinstance(metadata, dict):
             modes.append(metadata.get("instrumentation_mode"))
-    mismatch = bool(
+    expected_relation = bool(
         record
         and record.get("reference_digest")
         and record.get("candidate_digest")
-        and record["reference_digest"] != record["candidate_digest"]
+        and (record["reference_digest"] == record["candidate_digest"]) == expected_equal
     )
-    passed = step["returncode"] == 0 and mismatch and len(modes) >= 2 and all(
+    passed = step["returncode"] == 0 and expected_relation and len(modes) >= 2 and all(
         mode == "fpsan" for mode in modes
     )
     return _positive_result(
         passed=passed,
-        kind="triton_fpsan_known_mismatch",
+        kind="triton_fpsan_comparison",
         detail=(
-            "known numerical mismatch produced distinct digests and every compiled kernel metadata record attested instrumentation_mode=fpsan"
+            "expected digest relation and every compiled kernel metadata record attested instrumentation_mode=fpsan"
             if passed
-            else "known mismatch did not produce both distinct digests and compiler metadata attesting fpsan mode"
+            else "comparison did not produce both the expected digest relation and compiler metadata attesting fpsan mode"
         ),
         artifact_dir=artifact_dir,
-        steps={"known_mismatch": step},
+        steps={"comparison": step},
     )
 
 
 def _asan_environment(evidence: Mapping[str, Any]) -> dict[str, str]:
     host_preload = str(evidence.get("host_asan_preload") or "")
     hip_runtime = str(evidence.get("hip_asan_runtime") or "")
+    hsa_runtime = str(evidence.get("hsa_asan_runtime") or "")
     host_lib_dir = str(evidence.get("host_asan_lib_dir") or "")
     runtime_dir = str(evidence.get("asan_runtime_dir") or "")
     normal_rocm_lib = str(evidence.get("normal_rocm_lib_dir") or "")
     inherited_preload = os.environ.get("LD_PRELOAD", "")
     inherited_libraries = os.environ.get("LD_LIBRARY_PATH", "")
     preload = ":".join(
-        value for value in (host_preload, hip_runtime, inherited_preload) if value
+        value for value in (host_preload, hip_runtime, hsa_runtime, inherited_preload) if value
     )
     library_path = ":".join(
         value
         for value in (
             host_lib_dir,
             runtime_dir,
+            *evidence.get("asan_extra_library_dirs", ()),
             normal_rocm_lib,
             inherited_libraries,
         )
@@ -981,7 +1010,7 @@ def runtime_evidence(
             "expected_triton_version": TRITON_FPSAN_VERSION,
         })
     elif tool == "gpu_asan":
-        runtime_dir = Path(os.environ.get("AKA_GPU_ASAN_RUNTIME_DIR", "/opt/rocm-7.2.0/lib/asan"))
+        runtime_dir = Path(os.environ.get("AKA_GPU_ASAN_RUNTIME_DIR", "/opt/rocm-asan-10.0/lib"))
         hip_runtime = Path(
             os.environ.get(
                 "AKA_GPU_ASAN_HIP_RUNTIME", str(runtime_dir / "libamdhip64.so")
@@ -993,7 +1022,7 @@ def runtime_evidence(
             runtime_dir / "libamd_comgr.so",
         )
         preload_candidates = sorted(
-            Path("/opt/rocm-7.2.0/lib/llvm/lib/clang").glob(
+            (runtime_dir / "llvm/lib/clang").glob(
                 "*/lib/linux/libclang_rt.asan-x86_64.so"
             )
         )
@@ -1007,9 +1036,17 @@ def runtime_evidence(
         evidence.update({
             "asan_runtime_dir": str(runtime_dir),
             "hip_asan_runtime": str(hip_runtime) if hip_runtime.is_file() else None,
+            "hsa_asan_runtime": str(runtime_dir / "libhsa-runtime64.so")
+            if (runtime_dir / "libhsa-runtime64.so").is_file() else None,
+            "asan_extra_library_dirs": [
+                str(path) for path in (runtime_dir / "llvm/lib", runtime_dir / "rocm_sysdeps/lib")
+                if path.is_dir()
+            ],
             "host_asan_preload": str(host_preload) if host_preload and host_preload.is_file() else None,
             "host_asan_lib_dir": str(host_preload.parent) if host_preload and host_preload.is_file() else None,
-            "normal_rocm_lib_dir": "/opt/rocm-7.2.0/lib",
+            "normal_rocm_lib_dir": os.environ.get(
+                "AKA_GPU_ASAN_NORMAL_ROCM_LIB_DIR", "/opt/rocm/lib"
+            ),
             "asan_libraries": {path.name: path.is_file() for path in required_libraries},
             "triton_version": triton_version,
             "triton_asan": triton_version in TRITON_ASAN_VERSIONS,
