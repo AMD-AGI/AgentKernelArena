@@ -218,6 +218,7 @@ def _fmoe_replay_validator(model, hidden, weights, ids, expert_plan):
         hidden.neg_()
         model.w1.neg_()
         model.w2.mul_(0.5)
+    def perturb_routing():
         # Preserve valid, unique expert IDs and normalized routing weights,
         # while changing both independently of the hidden/weight perturbation.
         ids.add_(1).remainder_(model.experts)
@@ -226,6 +227,7 @@ def _fmoe_replay_validator(model, hidden, weights, ids, expert_plan):
         return verify_timed_run(
             timed, inputs=inputs, originals=originals, expected=expected,
             perturb=perturb, reference=reference, compare=_compare_fmoe_output,
+            extra_perturb=perturb_routing,
         )
     return validate
 

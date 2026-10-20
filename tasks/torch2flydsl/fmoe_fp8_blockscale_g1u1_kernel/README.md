@@ -69,9 +69,11 @@ task-contract change, not a kernel accuracy improvement; historical results at
 Outputs must be finite BF16 tensors with the hidden tensor's shape/device.
 Hidden, raw weights and selected routing are read-only. The actual measured
 output and input-perturbed replay use the normalized max-error rule above;
-replay changes hidden, both weight tensors, selected expert IDs and routing
-weights, then restores all inputs. Its untimed reference rebuilds the expert
-plan for the changed IDs; a plan cached for the original routing is not reused.
+replay retains the original hidden/weight perturbation and adds a separate
+expert-ID/routing-weight perturbation. Each draw starts from the original inputs
+and restores them afterward. Its untimed reference rebuilds the expert plan for
+changed IDs; a plan cached for the original routing is not reused. Both replay
+draws must pass; neither substitutes for the measured-output check.
 Candidate-only dependency/dispatch auditing requires FlyDSL computation while
 allowing host launch preparation. GPU before/after timing-boundary qualification
 is required; this maintenance correction is not an optimization speedup.

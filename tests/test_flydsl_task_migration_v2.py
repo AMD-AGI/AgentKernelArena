@@ -2890,7 +2890,7 @@ def test_fp8_fmoe_replay_requires_current_routing_and_restores_inputs(behavior):
     validate=ns['_fmoe_replay_validator'](model,hidden,weights,ids,initial_ids)
     observed=[]
     def replay():
-        observed.append((weights.clone(),ids.clone()))
+        observed.append(tuple(v.clone() for v in inputs))
         w=initial_weights if behavior in ('cached_weights','cached_routing') else weights
         i=initial_ids if behavior in ('cached_ids','cached_routing') else ids
         if behavior=='mutate_ids':ids.add_(1).remainder_(model.experts)
@@ -2901,8 +2901,18 @@ def test_fp8_fmoe_replay_requires_current_routing_and_restores_inputs(behavior):
         assert validate(timed)['replay_correctness']=='PASS'
     else:
         with pytest.raises(AssertionError):validate(timed)
-    assert observed and not torch.equal(observed[0][0],initial_weights)
-    assert not torch.equal(observed[0][1],initial_ids)
+    assert observed
+    # Keep the original hidden/weight draw intact, including original routing.
+    assert torch.equal(observed[0][0],-originals[0])
+    assert torch.equal(observed[0][1],-originals[1])
+    assert torch.equal(observed[0][2],originals[2]*.5)
+    assert torch.equal(observed[0][3],initial_weights)
+    assert torch.equal(observed[0][4],initial_ids)
+    if behavior not in ('mutate_ids','mutate_weights'):
+        assert len(observed)==2
+        assert all(torch.equal(observed[1][i],originals[i]) for i in range(3))
+        assert not torch.equal(observed[1][3],initial_weights)
+        assert not torch.equal(observed[1][4],initial_ids)
     for value,original in zip(inputs,originals):
         assert torch.equal(value.contiguous().view(torch.uint8),original.contiguous().view(torch.uint8))
 
