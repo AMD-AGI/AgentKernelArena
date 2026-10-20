@@ -193,7 +193,8 @@ def copy_task(source: Path, destination: Path, *, remaining: Callable[[], float]
 
 def snapshot_mapping(snapshot: WorkspaceSnapshot) -> dict:
     return {"digests": snapshot.digests,
-            "initial_symbols": {k: sorted(v) for k, v in snapshot.initial_symbols.items()}}
+            "initial_symbols": {k: sorted(v) for k, v in snapshot.initial_symbols.items()},
+            "initial_patching": snapshot.initial_patching}
 
 
 class Bridge:
@@ -218,7 +219,8 @@ class Bridge:
         saved = self.job[key]
         verify_workspace_harness(WorkspaceSnapshot(
             root, saved["digests"], self.spec,
-            {k: frozenset(v) for k, v in saved["initial_symbols"].items()}))
+            {k: frozenset(v) for k, v in saved["initial_symbols"].items()},
+            saved.get("initial_patching")))
 
     def baseline_unchanged(self) -> None:
         self._guard(self.context.baseline, "baseline_harness")

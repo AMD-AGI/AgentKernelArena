@@ -139,7 +139,10 @@ def test_softmax_legal_builder_body_cannot_use_sys_module_map(tmp_path,statement
  # Preserve every module-level byte except the editable body, using line edits.
  text=source.read_text();needle='    tile_cols = BLOCK_THREADS * VEC_WIDTH'
  source.write_text(text.replace(needle,'    '+statement+'\n'+needle))
- verify_workspace_harness(guard,discard_added=False)
+ if 'vars(' in statement or '__dict__' in statement:
+  with pytest.raises(RuntimeError,match='runtime patching'):verify_workspace_harness(guard,discard_added=False)
+ else:
+  verify_workspace_harness(guard,discard_added=False)
  runtime=load(task/'task_runtime.py','_softmax_sys_policy')
  with pytest.raises(ValueError,match='sys|registry|control frames'):runtime.check_dependencies([source],final_language=True)
 
