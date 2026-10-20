@@ -158,7 +158,11 @@ candidate:
 
 A mapping's `scope` is `file`, `symbols`, or `tree`. `symbols` requires a nonempty
 symbol list; `allow_new_helpers` defaults to `false` and applies only to
-implementation helpers under a symbol-scoped boundary. `tree` permits an
+implementation helpers under a symbol-scoped boundary. `configuration_symbols`
+optionally names a subset of `symbols`, never an entrypoint, that only builds
+configuration data, for example a `_launch_config` helper returning tile sizes,
+`num_warps` and `num_stages`. Protected code may call such a helper and must
+validate what it returns before use. `tree` permits an
 implementation subtree, not its tests or build/evaluation policy. Broad tree
 access must not override a protected harness path. Generated build artifacts
 are not editable source declarations.
@@ -180,7 +184,9 @@ protected function definitions. Existing editable non-entrypoint configuration
 helpers must pass a restricted body check: configuration data/local assignments,
 returns, and branches using protected predicates or supported configuration
 operations. Initial aliases, kernel entrypoints, and newly introduced factories
-do not gain permission to run at definition time. The guard reports its
+do not gain permission to run at definition time. Symbols listed in
+`configuration_symbols` must stay undecorated functions that pass the same body
+check, because protected code calls them at launch time. The guard reports its
 effective policy in the validator context. It is a structural integrity check,
 not isolation of arbitrary Python code; reference/test manipulation remains
 forbidden and subject to semantic review.

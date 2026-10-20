@@ -140,3 +140,97 @@ def test_new_import_shadow_files_follow_described_guard_policy(tmp_path, name):
     assert extra.exists()
     verify_workspace_harness(before)
     assert not extra.exists()
+
+
+
+LAUNCH_SOURCE = ("import math\n"
+                 "def _launch_config(n):\n    return {'BLOCK': 64, 'num_warps': 4}\n"
+                 "def launch(n):\n    cfg = _launch_config(n)\n    return cfg['BLOCK'] * n\n")
+LAUNCH_RETURN = "    return {'BLOCK': 64, 'num_warps': 4}\n"
+
+
+def launch_workspace(tmp_path, *, declared=True):
+    root = tmp_path / "workspace"
+    (root / "source").mkdir(parents=True)
+    source = root / "source/kernel.py"
+    source.write_text(LAUNCH_SOURCE)
+    edit = {"path": "source/kernel.py", "scope": "symbols", "symbols": ["_launch_config"], "allow_new_helpers": True}
+    if declared:
+        edit["configuration_symbols"] = ["_launch_config"]
+    config = {"schema_version": 2, "candidate": {"language": "triton", "editable": [edit]},
+              "evaluation": {"runner": ["python3", "evaluate.py"]}}
+    (root / "config.yaml").write_text(yaml.safe_dump(config))
+    (root / "evaluate.py").write_text("# protected custom evaluation runner\n")
+    return root, source
+
+
+def test_declared_configuration_symbol_may_be_retuned(tmp_path):
+    root, source = launch_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    assert describe_workspace_harness(root, snapshot=before)["protected_path_policies"]["source/kernel.py"][
+        "configuration_symbols"] == ["_launch_config"]
+    tuned = ("    if n >= 4096:\n        return {'BLOCK': 256, 'num_warps': 8}\n"
+             "    block = 128\n    return {'BLOCK': block, 'num_warps': 4}\n")
+    source.write_text(source.read_text().replace(LAUNCH_RETURN, tuned))
+    verify_workspace_harness(before)
+
+
+HOST_CODE = [
+    "    math.sqrt(n)\n",
+    "    import os\n",
+    "    for _ in range(2):\n        pass\n",
+    "    launch.cache = 1\n",
+    "    globals()['TOLERANCE'] = 1\n",
+    "    with open('x') as f:\n        pass\n",
+]
+
+
+@pytest.mark.parametrize("host", HOST_CODE)
+def test_declared_configuration_symbol_cannot_run_host_code(tmp_path, host):
+    root, source = launch_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(source.read_text().replace(LAUNCH_RETURN, host + LAUNCH_RETURN))
+    with pytest.raises(RuntimeError, match="only builds configuration data"):
+        verify_workspace_harness(before)
+
+
+@pytest.mark.parametrize("change", [
+    lambda text: text.replace("def _launch_config(n):", "@staticmethod\ndef _launch_config(n):"),
+    lambda text: text.replace("def _launch_config(n):\n" + LAUNCH_RETURN, ""),
+])
+def test_declared_configuration_symbol_must_remain_a_plain_function(tmp_path, change):
+    root, source = launch_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(change(source.read_text()))
+    with pytest.raises(RuntimeError, match="source/kernel.py|kernel.py"):
+        verify_workspace_harness(before)
+
+
+def test_undeclared_editable_functions_keep_the_existing_definition_policy(tmp_path):
+    # Python implementation tasks let protected code call editable host code.
+    root, source = launch_workspace(tmp_path, declared=False)
+    before = snapshot_workspace_harness(root)
+    source.write_text(source.read_text().replace(LAUNCH_RETURN, HOST_CODE[0] + LAUNCH_RETURN))
+    verify_workspace_harness(before)
+
+
+@pytest.mark.parametrize("edit,message", [
+    ({"symbols": ["compute"], "configuration_symbols": ["other"]}, "listed in symbols"),
+    ({"symbols": ["compute"], "configuration_symbols": "compute"}, "listed in symbols"),
+    ({"symbols": ["compute"], "configuration_symbols": ["compute"], "entry": True}, "entrypoint"),
+    ({"scope": "file", "configuration_symbols": []}, "symbol scope"),
+])
+def test_configuration_symbols_schema(tmp_path, edit, message):
+    from src.task_spec import TaskConfigError, load_task_spec
+    entry = edit.pop("entry", False)
+    raw = {"path": "source/kernel.py", "scope": "symbols", **edit}
+    candidate = {"language": "triton", "initial_state": "implemented", "initial_language": "triton",
+                 "editable": [raw]}
+    if entry:
+        candidate["entrypoints"] = [{"file": "source/kernel.py", "kind": "function", "symbol": "compute"}]
+    config = {"schema_version": 2, "description": "d", "candidate": candidate,
+              "evaluation": {"runner": ["python3", "evaluate.py"]}}
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(TaskConfigError, match=message):
+        load_task_spec(path, task_id="t")
