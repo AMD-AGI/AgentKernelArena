@@ -259,8 +259,15 @@ def test_manifest_controls_are_bound_and_real_adapter_dispatches_failure(task_na
     assert result['status']=='FAIL' and 'manifest' in result['reason'].lower()
 
 
+def test_reviewed_history_pins_contract_files_not_readme_text():
+    from reviewed_contract_history import ATTENTION_SAMPLING_COVERAGE_FILES,TRITON_DEVICE_BOUNDARY_FILES
+    assert len(TRITON_DEVICE_BOUNDARY_FILES)==45
+    assert all(relative.endswith('/config.yaml') for relative in TRITON_DEVICE_BOUNDARY_FILES)
+    assert not any(relative.endswith('/README.md') for relative in ATTENTION_SAMPLING_COVERAGE_FILES)
+
+
 @pytest.mark.parametrize('relative',__import__('reviewed_contract_history').TRITON_DEVICE_BOUNDARY_FILES)
-def test_all_45_boundary_config_and_doc_inverses_require_exact_current_bytes(relative):
+def test_all_45_boundary_config_inverses_require_exact_current_bytes(relative):
     import hashlib
     from reviewed_contract_history import TRITON_DEVICE_BOUNDARY_FILES,historical_triton_device_boundary_file
     source=(ROOT/relative).read_text()
