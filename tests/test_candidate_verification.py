@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.candidate_verification import apply_review, bind_policy, finalize, policy, verify_candidate
-from tests.test_task_session_v2 import create
+from tests.test_task_session_v2 import RUNNER, create
 
 
 def result(session):
@@ -127,6 +127,9 @@ def test_review_gate_controls_final_acceptance_and_exports(tmp_path, monkeypatch
     monkeypatch.setattr('agents.candidate_verifier.backend.review',
         lambda prompt, root, settings, logger: draft(root, status=status))
     path = package(tmp_path, exporter='import os\nfrom pathlib import Path\nPath(os.environ["ARENA_EXPORT_PATH"]).parent.mkdir(parents=True,exist_ok=True)\nPath(os.environ["ARENA_EXPORT_PATH"]).write_text("exported")\n')
+    # A synthetic 2x candidate keeps the score assertion able to tell accepted from rejected.
+    (path.parent / 'evaluate.py').write_text(RUNNER.replace(
+        'execution_time_ms=0.1', "execution_time_ms=(0.1 if role == 'baseline' else 0.05)"))
     _, workspace = run_task_v2(eval_config={'agent': {'template': 'codex'},
         'candidate_verification': {'backend': 'claude_code'}}, agent=SimpleNamespace(value='codex'),
         agent_launcher=lambda **_: None, task_name='suite/protocol_fixture', task_config_dir=str(path),
@@ -135,8 +138,8 @@ def test_review_gate_controls_final_acceptance_and_exports(tmp_path, monkeypatch
     assert saved['pass_correctness'] and saved['pass_verification'] is accepted
     assert saved['candidate_accepted'] is accepted
     assert bool(saved['exports']) is accepted
-    assert saved['speedup_ratio'] == (1 if accepted else 0)
-    assert saved['score'] == (220 if accepted else 120)
+    assert saved['speedup_ratio'] == (2 if accepted else 0)
+    assert saved['score'] == (pytest.approx(0.689202437604511) if accepted else 0)
 
 
 def test_backend_uses_read_only_tools_and_never_exposes_shell(monkeypatch, tmp_path):

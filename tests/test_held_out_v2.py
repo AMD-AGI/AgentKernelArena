@@ -69,7 +69,7 @@ def test_uses_saved_baseline_and_shared_actions_instead_of_current_task_checkout
     result = evaluate(workspace, task_dir)
     assert result["generalization_status"] == "both_pass", result
     assert result["speedup_ratio"] == 2.0
-    assert result["score"] == 320.0
+    assert result["score"] == pytest.approx(0.689202437604511)
     orig = tmp_path / "heldout" / "orig" / "kernel.py"
     assert "return 3" in orig.read_text()
     assert "return 1 + 2" in (workspace / "kernel.py").read_text()
