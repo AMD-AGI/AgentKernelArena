@@ -37,9 +37,15 @@ Canonical benchmark helpers must be materialized by Arena; do not edit their gen
 
 `_arena_checks.py` checks output shape, dtype, device, finiteness, and numerical
 values against pristine inputs; Q, K, V and slope are read-only. Additional
-unscored checks cover 273 tokens (a second main block and a partial sub-block),
-zero/nonzero decay, the public 4D slope form, and BLOCK=64/CBLOCK=16.
+unscored checks cover 273 and 545 tokens (second and third main blocks with
+partial sub-blocks), zero/nonzero decay, the public 4D slope form, and
+BLOCK=64/CBLOCK=16 on the 273-token case.
 All five scored cases, seeds, 10 warmups and 100 timing samples are unchanged.
-The benchmark checks the actual `TimedRun` output, changes all four inputs,
-poisons that output, and numerically checks the exact captured replay outside
-timing. Caller inputs are restored even when replay or verification fails.
+Both roles use explicit device-Event timing to invoke the allocating public
+wrapper for every measured sample. Graph `after_sample` would expose a captured
+output after each replay, but replay would omit a fresh wrapper invocation and
+a batched graph could leave earlier outputs unchecked. The benchmark checks
+every measured output, changes all four inputs, poisons the final output, and
+numerically checks an eager rerun of the same callable outside timing. Caller
+inputs are restored even when rerun or verification fails. These Event times
+are not directly comparable with historical graph-replay times.

@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_hip2hip_gpumode_restores_state_and_uses_reference_method_policy():
     harnesses = sorted(
-        (ROOT / "tasks/hip2hip/gpumode").rglob("cal_kernel_perf.py")
+        (ROOT / "tasks/hip2hip").rglob("cal_kernel_perf.py")
     )
     assert len(harnesses) == 22
     for harness in harnesses:
@@ -41,10 +41,10 @@ def test_geak_method_mismatch_is_never_aggregated_as_one_x():
 def test_native_drivers_use_nonzero_inputs_and_validate_an_actual_replay():
     matrix = (
         ROOT
-        / "tasks/hip2hip/others/matrix_multiplication/scripts/native/benchmark_driver.hip"
+        / "tasks/hip2hip/matrix_multiplication/scripts/native/benchmark_driver.hip"
     ).read_text()
     mla = (
-        ROOT / "tasks/hip2hip/others/mla_decode/scripts/native/benchmark_driver.hip"
+        ROOT / "tasks/hip2hip/mla_decode/scripts/native/benchmark_driver.hip"
     ).read_text()
     helper = (ROOT / "src/tools/perf/native_hip_graph_benchmark.hpp").read_text()
 
@@ -67,10 +67,10 @@ def test_state_reset_and_scratch_are_outside_timed_workload():
     assert "prepare_fn=output_tensor.zero_" in lora
 
     roiaware_cpp = (
-        ROOT / "tasks/hip2hip/others/roiaware_pool3d/src/roiaware_pool3d.cpp"
+        ROOT / "tasks/hip2hip/roiaware_pool3d/src/roiaware_pool3d.cpp"
     ).read_text()
     roipoint_cpp = (
-        ROOT / "tasks/hip2hip/others/roipoint_pool3d/src/roipoint_pool3d.cpp"
+        ROOT / "tasks/hip2hip/roipoint_pool3d/src/roipoint_pool3d.cpp"
     ).read_text()
     assert "at::empty" not in roiaware_cpp
     assert "at::empty" not in roipoint_cpp
@@ -117,22 +117,40 @@ def test_hipblaslt_baseline_and_candidate_share_predetermined_event_policy():
 
 
 def test_implemented_gemm_and_hipblaslt_reference_share_event_policy():
-    tasks = ["gemm_a8w8_bpreshuffle_kernel", "hgemm_kernel"]
-    for task in tasks:
+    helpers = {
+        "gemm_a8w8_bpreshuffle_kernel": "_timed_bpreshuffle_case",
+        "hgemm_kernel": "_timed_gemm_case",
+    }
+    for task, helper in helpers.items():
         harness = ROOT / "tasks/torch2flydsl" / task / "test_kernel_harness.py"
         source = harness.read_text()
         tree = ast.parse(source)
-        # Both the legacy entrypoint and the v2 result adapter preserve the
-        # predetermined Event policy for the candidate/reference timing pair.
+        # Both entrypoints delegate to the same candidate/reference timing pair.
+        # Follow that helper so moving the calls does not hide a policy change.
         functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
         for name in ("run_benchmark", "arena_benchmark"):
             calls = [node for node in ast.walk(functions[name]) if isinstance(node, ast.Call)
                      and getattr(node.func, "id", "") == "benchmark_cuda_graph_or_events"]
-            assert len(calls) == 2, (harness, name)
-            for call in calls:
-                use_graph = next(k.value for k in call.keywords if k.arg == "use_cuda_graph")
-                assert isinstance(use_graph, ast.Constant) and use_graph.value is False
-        assert "capture_unsafe_hipblaslt_reference" in source, harness
+            assert calls == [], (harness, name)
+            delegates = [node for node in ast.walk(functions[name]) if isinstance(node, ast.Call)
+                         and getattr(node.func, "id", "") == helper]
+            assert len(delegates) == 1, (harness, name)
+        calls = [node for node in ast.walk(functions[helper]) if isinstance(node, ast.Call)
+                 and getattr(node.func, "id", "") == "benchmark_cuda_graph_or_events"]
+        assert len(calls) == 2, (harness, helper)
+        for call in calls:
+            keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+            assert isinstance(keywords["use_cuda_graph"], ast.Constant)
+            assert keywords["use_cuda_graph"].value is False
+            assert isinstance(keywords["fallback_reason"], ast.Name)
+            assert keywords["fallback_reason"].id == "reason"
+        reasons = [node.value for node in ast.walk(functions[helper])
+                   if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "reason"
+                           for target in node.targets)]
+        assert len(reasons) == 1
+        assert isinstance(reasons[0], ast.Constant)
+        assert reasons[0].value == "capture_unsafe_hipblaslt_reference"
 
 
 def test_torch2flydsl_gfx950_configs_use_platform_support():
@@ -176,7 +194,7 @@ def test_sglang_mxfp8_runners_handle_anonymous_docker_uids():
 def test_normal_attention_dot_predetermines_event_timing_for_rocm_teardown():
     runner = (
         ROOT
-        / "tasks/hip2hip/gpumode/NormalAttention_dot/eval_tools/cal_kernel_perf.py"
+        / "tasks/hip2hip/NormalAttention_dot/eval_tools/cal_kernel_perf.py"
     ).read_text()
     assert 'graph_fallback_reason = "capture_unsafe_rocm_graph_teardown"' in runner
     marker = runner.index('graph_fallback_reason = "capture_unsafe_rocm_graph_teardown"')

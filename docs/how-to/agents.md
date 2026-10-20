@@ -24,7 +24,7 @@ The following agents are available.
 | --- | --- |
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
-| `codex` | OpenAI Codex CLI |
+| `codex` | Codex CLI |
 | `deepseek_harness` | DeepSeek Harness headless CLI ([setup](../../agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge through the shared v2 task interface |
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
@@ -97,6 +97,84 @@ DeepSeek's run-level overrides and per-invocation budget follow
 [its integration guide](../../agents/deepseek_harness/README.md#install-and-configure).
 It uses `reasoning_effort` rather than the other CLIs' `effort` field. Schema-v2
 agent completion and independent candidate acceptance are reported separately.
+
+## Iteration and time budgets
+
+Cursor, Claude Code, Codex, and DeepSeek Harness accept `agent.budget_mode`:
+
+| `budget_mode` | Behavior |
+| --- | --- |
+| `iterations` (default) | One agent session. The prompt asks for up to `max_iterations` versions, and `timeout_seconds` is the session's hard limit. Unchanged from earlier releases. |
+| `time` | No iteration count. `timeout_seconds` is the agent's wall-clock budget for the task. If the agent ends its session early, Arena resumes the same session with a prompt stating the time remaining, and stops it at the original deadline. |
+
+```yaml
+agent:
+  template: claude_code
+  budget_mode: time
+  timeout_seconds: 21600
+```
+
+The deadline is fixed when the first session starts, after the framework's
+setup and baseline measurement and before candidate evaluation, so those phases
+do not consume the budget. A continuation starts only while at least 10 minutes
+remain, and at most 20 sessions run per task. A continuation stopped at the
+deadline is not an agent failure; a first session that times out, a nonzero
+exit, or a failed result still is. Arena evaluates the files delivered at the
+declared paths either way.
+
+To resume, `time` mode keeps the provider's session state: Claude Code runs
+with `--session-id` instead of `--no-session-persistence`, and Codex runs
+without `--ephemeral`. Those CLIs write state to their own home directories.
+DeepSeek Harness keeps one isolated `DSH_HOME` per task launch and passes the
+opening JSON event's session ID through `--session-id` on each continuation.
+Its continuations retain the same task directory and home, with separate
+prompt/stdout/stderr artifacts per invocation; a later task retry gets a fresh
+home. A missing session ID stops continuation, and a failed adoption never
+falls back to a new conversation.
+The shared loop is `src/tools/agent_time_budget.py`, the prompt text is
+`src/prompts/agent_budget.py`, and each CLI's resume arguments and output parsing
+stay in its `agents/<agent_name>/launch_agent.py`. Other agents reject
+`budget_mode: time` when the run starts; GEAK and Forge use their own budget
+settings.
+
+## Agent cost records
+
+For every task whose agent was launched, `main.py` writes
+`<run_dir>/agent_costs/<task_workspace>.json`, for all agents. The record is
+written after the agent returns or fails, and a cost-record error never changes
+the task outcome. Each launcher only exposes what its provider reports; the
+shared tool `src/tools/agent_cost.py` normalizes it and writes `null` when a
+value is not reported. Arena never estimates dollars from tokens.
+
+| Agent | Dollars | Tokens |
+| --- | --- | --- |
+| `claude_code` | `result.total_cost_usd` | `result.usage` |
+| `codex` | `null` (not reported by the CLI) | `turn.completed.usage` |
+| `cursor` | `null` (not reported by the CLI) | `result.usage`, when the CLI version emits it |
+| `geak` | Claude Agent SDK `ResultMessage.total_cost_usd` | `ResultMessage.usage` |
+| `forge` | KernelForge `llm_usage.total_cost_usd`, when `cost_available` is not false | KernelForge `llm_usage` counters |
+| `deepseek_harness` | `null` | The `--json` final event's `usage`, when emitted; otherwise `null` |
+| `task_validator` | `null` | `null` |
+
+Main fields:
+
+- `total_cost_usd` and `usage`: totals over every attempt and session, or `null`.
+- `cost_status` and `usage_status`: `complete`; `partial` when the total is a
+  lower bound (for example, a session stopped at its deadline reported nothing,
+  or GEAK work finished after its last SDK result); `not_reported`; or
+  `ambiguous` when resumed values cannot be combined safely.
+- `attempts`: one entry per launch of the task, including a later
+  `--resume-run` attempt, with run settings, agent seconds, any launcher error,
+  and each raw provider report (`invocations`).
+
+Resumed sessions are not double counted. Codex token usage and Claude Code
+2.1.277 or later dollar totals are running totals for the session, so only the
+increase is added. Older Claude Code versions report per process, and those
+values are summed. If the Claude Code version cannot be parsed and a session
+was resumed, the dollar total is `null` with status `ambiguous`. Token field
+names are converted to snake_case but otherwise kept as the provider defines
+them. For example, Codex `input_tokens` includes `cached_input_tokens`, while
+Claude `input_tokens` excludes cache reads.
 
 ## A/B testing and ablation studies
 

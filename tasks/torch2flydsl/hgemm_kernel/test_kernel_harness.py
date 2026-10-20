@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.sample_controls import MeasuredInputStream
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -99,6 +100,120 @@ def _compare_gemm_output(actual, expected):
         raise AssertionError(f"Numerical mismatch: {pct}% close, required={PASS_PCT}%")
 
 
+def _timed_gemm_case(candidate, a, b, *, case_index, warmup, iters):
+    """Time the same full call for both roles and check all reported outputs."""
+    import torch
+
+    stream = MeasuredInputStream(a, b, seed=SEED, case_index=case_index, samples=iters)
+    reason = "capture_unsafe_hipblaslt_reference"
+    try:
+        candidate()
+        torch.cuda.synchronize()
+        require_unchanged((a, b), (stream.original_a, stream.original_b))
+        for _ in range(warmup):
+            candidate()
+            torch.cuda.synchronize()
+            require_unchanged((a, b), (stream.original_a, stream.original_b))
+
+        sample_reference = lambda: _gemm_reference(a, b)
+        stream.bind(sample_reference, _compare_gemm_output)
+        timed = TimedRun()
+        timed.after_sample = stream.observe
+        kernel_ms, kernel_meta = benchmark_cuda_graph_or_events(
+            candidate, warmup=0, repetition=iters, use_cuda_graph=False,
+            fallback_reason=reason, prepare_fn=stream.prepare, timed_run=timed,
+        )
+        if kernel_meta.get("benchmark_samples") != iters:
+            raise AssertionError("Reported sample count differs from the declared count")
+        last_expected = stream.validate(sample_reference, _compare_gemm_output)
+        last_inputs = (a.clone(), b.clone())
+        kernel_meta.update(verify_timed_run(
+            timed, inputs=(a, b), originals=last_inputs, expected=last_expected,
+            perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
+            reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
+        ))
+        kernel_meta["validated_sample_count"] = stream.checked
+
+        # The diagnostic PyTorch side receives the identical prepared stream.
+        stream.restore()
+        reference_stream = MeasuredInputStream(a, b, seed=SEED,
+                                               case_index=case_index, samples=iters)
+        try:
+            ref_ms, ref_meta = benchmark_cuda_graph_or_events(
+                lambda: torch.mm(a, b.transpose(-1, -2)),
+                warmup=0, repetition=iters, use_cuda_graph=False,
+                fallback_reason=reason, prepare_fn=reference_stream.prepare_reference,
+            )
+            if reference_stream.reference_prepared != iters or ref_meta.get("benchmark_samples") != iters:
+                raise AssertionError("Reference stream differs from candidate sample count")
+        finally:
+            reference_stream.restore()
+        return kernel_ms, kernel_meta, ref_ms, ref_meta
+    finally:
+        stream.restore()
+
+
+def _signed_candidate_control(candidate, model, shape, *, device="cuda"):
+    """Exercise the candidate on signed operands at an existing supported shape."""
+    import torch
+
+    m, n, k = shape["m"], shape["n"], shape["k"]
+    row_sign = torch.ones(m, device=device, dtype=torch.bfloat16)
+    col_sign = torch.ones(n, device=device, dtype=torch.bfloat16)
+    row_sign[1::2] = -1
+    col_sign[1::2] = -1
+    a = row_sign[:, None].expand(m, k).clone()
+    b = col_sign[:, None].expand(n, k).clone()
+    originals = (a.clone(), b.clone())
+    exact = (row_sign.float()[:, None] * col_sign.float()[None, :] * k).to(a.dtype)
+    reference = _gemm_reference(a, b)
+    if not torch.equal(reference, exact) or not torch.equal(model(a, b), exact):
+        raise AssertionError("Signed FP32 reference disagrees with independent integer dot products")
+    tiling = {key: shape[key] for key in TILING_KEYS if key in shape}
+    output = candidate(a, b, **tiling)
+    if a.is_cuda:
+        torch.cuda.synchronize()
+    require_unchanged((a, b), originals)
+    _compare_gemm_output(output, exact)
+    _compare_gemm_output(output, reference)
+
+
+def _mixed_sign_candidate_control(candidate, model, shape, *, device="cuda"):
+    """Exact mixed-sign dots with cancellation at an existing supported shape."""
+    import torch
+
+    m, n, k = shape["m"], shape["n"], shape["k"]
+    period = 16
+    if k % period:
+        raise AssertionError("Mixed-sign exact control requires a full period")
+    rows = torch.arange(m, device=device)[:, None]
+    cols = torch.arange(n, device=device)[:, None]
+    offsets = torch.arange(period, device=device)[None, :]
+    a_period = torch.where((rows + 3 * offsets) % 7 < 3, 1, -1).to(torch.int32)
+    b_period = torch.where((3 * cols + 5 * offsets) % 11 < 5, 1, -1).to(torch.int32)
+    a = a_period.to(torch.bfloat16).repeat(1, k // period)
+    b = b_period.to(torch.bfloat16).repeat(1, k // period)
+    originals = (a.clone(), b.clone())
+    # Sum 16 exact integer products explicitly. This control shares neither
+    # the candidate's GEMM implementation nor the FP32 reference reduction.
+    exact_period = torch.zeros((m, n), device=device, dtype=torch.int32)
+    for offset in range(period):
+        exact_period += a_period[:, offset, None] * b_period[None, :, offset]
+    exact = (exact_period * (k // period)).to(torch.bfloat16)
+    if not bool((exact < 0).any() and (exact > 0).any() and (exact == 0).any()):
+        raise AssertionError("Mixed-sign control lacks cancellation or output sign diversity")
+    reference = _gemm_reference(a, b)
+    if not torch.equal(reference, exact) or not torch.equal(model(a, b), exact):
+        raise AssertionError("Mixed-sign FP32 reference disagrees with exact integer dots")
+    tiling = {key: shape[key] for key in TILING_KEYS if key in shape}
+    output = candidate(a, b, **tiling)
+    if a.is_cuda:
+        torch.cuda.synchronize()
+    require_unchanged((a, b), originals)
+    _compare_gemm_output(output, exact)
+    _compare_gemm_output(output, reference)
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -142,7 +257,21 @@ def run_correctness(verbose=True):
             if verbose:
                 print(f"  FAIL: {shape['name']} - {str(e)[:100]}")
 
-    status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(SHAPES)})"
+    for shape in SHAPES:
+        for name, control in (("signed_candidate_control", _signed_candidate_control),
+                              ("mixed_sign_candidate_control", _mixed_sign_candidate_control)):
+            label = f"{name}/{shape['name']}"
+            try:
+                with torch.no_grad():
+                    control(kmod.flydsl_hgemm, model, shape)
+                if verbose:
+                    print(f"  PASS: {label}")
+            except Exception as e:  # noqa: BLE001
+                failures.append(label)
+                if verbose:
+                    print(f"  FAIL: {label} - {str(e)[:100]}")
+
+    status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(SHAPES) * 3})"
     print(f"Status: {status}")
     print(f"correctness: {'pass' if not failures else 'fail'}")
     assert not failures, f"correctness FAILED for: {failures}"
@@ -165,32 +294,9 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         tiling = {kk: shape[kk] for kk in TILING_KEYS if kk in shape}
         a, b = _make_inputs(m, n, k)
 
-        originals = (a.clone(), b.clone())
-        expected = _gemm_reference(a, b)
-        kmod.flydsl_hgemm(a, b, **tiling)
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            kmod.flydsl_hgemm(a, b, **tiling)
-        torch.cuda.synchronize()
-
-        event_reason = "capture_unsafe_hipblaslt_reference"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: kmod.flydsl_hgemm(a, b, **tiling),
-            warmup=0, repetition=iters, use_cuda_graph=False,
-            fallback_reason=event_reason,
-            timed_run=timed,
-        )
-        kernel_bench_meta.update(verify_timed_run(
-            timed, inputs=(a, b), originals=originals, expected=expected,
-            perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
-            reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
-        ))
-
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a, b.transpose(-1, -2)),
-            warmup=0, repetition=iters, use_cuda_graph=False,
-            fallback_reason=event_reason,
+        kernel_ms, kernel_bench_meta, ref_ms, ref_bench_meta = _timed_gemm_case(
+            lambda: kmod.flydsl_hgemm(a, b, **tiling), a, b,
+            case_index=idx, warmup=warmup, iters=iters,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
@@ -298,32 +404,9 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         tiling = {kk: shape[kk] for kk in TILING_KEYS if kk in shape}
         a, b = _make_inputs(m, n, k)
 
-        originals = (a.clone(), b.clone())
-        expected = _gemm_reference(a, b)
-        kmod.flydsl_hgemm(a, b, **tiling)
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            kmod.flydsl_hgemm(a, b, **tiling)
-        torch.cuda.synchronize()
-
-        event_reason = "capture_unsafe_hipblaslt_reference"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: kmod.flydsl_hgemm(a, b, **tiling),
-            warmup=0, repetition=iters, use_cuda_graph=False,
-            fallback_reason=event_reason,
-            timed_run=timed,
-        )
-        kernel_bench_meta.update(verify_timed_run(
-            timed, inputs=(a, b), originals=originals, expected=expected,
-            perturb=lambda: (a.mul_(0.5), b.mul_(0.5)),
-            reference=lambda: _gemm_reference(a, b), compare=_compare_gemm_output,
-        ))
-
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.mm(a, b.transpose(-1, -2)),
-            warmup=0, repetition=iters, use_cuda_graph=False,
-            fallback_reason=event_reason,
+        kernel_ms, kernel_bench_meta, ref_ms, ref_bench_meta = _timed_gemm_case(
+            lambda: kmod.flydsl_hgemm(a, b, **tiling), a, b,
+            case_index=idx, warmup=warmup, iters=iters,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]

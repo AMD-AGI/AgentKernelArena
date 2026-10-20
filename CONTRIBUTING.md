@@ -126,7 +126,7 @@ This project depends on GPU hardware/drivers and orchestrates external LLM agent
 
 - Test environment (GPU model, ROCm version, Docker image, OS)
 - Agent(s) used and their versions
-- Task selector exercised (for example `hip2hip`, `triton2triton`, `instruction2triton`, `torch2hip`, a FlyDSL task type, or `image_kernel`)
+- Task selector exercised (for example `hip2hip`, `triton2triton`, `torch2hip`, a FlyDSL task type, or `image_kernel`)
 - Key commands and output summary, e.g.:
 
 ```bash

@@ -21,6 +21,7 @@ from agents.forge.common import _read_forge_result, _resolve_gpu_arch, _resolve_
 from agents.forge.task_context import TaskContext
 from agents.forge.bundles import allow_candidate_paths, candidate_files, committed_candidate, copy_workspace, install_candidate
 from src.task_spec import resolve_task_path
+from src.tools.agent_cost import report_agent_usage
 
 
 class ForgeRunError(RuntimeError):
@@ -277,6 +278,29 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
     return command
 
 
+def report_engine_usage(result, initialization, *, timed_out: bool, seconds: float, model) -> None:
+    """Expose KernelForge's own llm_usage totals; Arena does not price tokens.
+
+    The loop result combines initialization and optimization usage. Without it,
+    only the initialization record is known, which is a lower bound.
+    """
+    usage = result.get("llm_usage") if isinstance(result, dict) else None
+    complete = not timed_out
+    if not isinstance(usage, dict):
+        usage = initialization.get("llm_usage") if isinstance(initialization, dict) else None
+        complete = False
+    source = "kernelforge llm_usage"
+    if not isinstance(usage, dict):
+        report_agent_usage(source=source, model=model, timed_out=timed_out, seconds=seconds, complete=False)
+        return
+    if ((isinstance(result, dict) and result.get("llm_usage_complete") is False)
+            or usage.get("complete") is False or usage.get("incomplete") is True):
+        complete = False
+    cost = usage.get("total_cost_usd") if usage.get("cost_available") is not False else None
+    report_agent_usage(cost_usd=cost, cost_scope="invocation", usage=usage, usage_scope="invocation",
+                       source=source, model=model, timed_out=timed_out, seconds=seconds, complete=complete)
+
+
 def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
     """Consume only the framework context; config_path is the standard ABI."""
     del task_config_dir
@@ -404,6 +428,8 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         status.update({"exit_code": process.returncode, "timed_out": timed_out, "engine_result": result})
         if Path(plan["initialization_result"]).is_file():
             status["initialization"] = json.loads(Path(plan["initialization_result"]).read_text())
+        report_engine_usage(result, status.get("initialization"), timed_out=timed_out,
+                            seconds=time.time() - started, model=config.get("model"))
         if timed_out:
             recovered, selection = recover_timeout_candidate(
                 plan, engine, result, fallback=_timeout_fallback(plan, status))

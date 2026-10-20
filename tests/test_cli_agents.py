@@ -7,7 +7,10 @@ from pathlib import Path
 import signal
 import sys
 import time
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # pytest depends on tomli for Python < 3.11.
+    import tomli as tomllib
 
 import pytest
 
@@ -109,16 +112,28 @@ def fake_cli(tmp_path, monkeypatch, launcher):
 import json, os, subprocess, sys, time
 from pathlib import Path
 if '--version' in sys.argv:
-    print('fake-cli 1.0')
+    print(os.environ.get('FAKE_CLI_VERSION', 'fake-cli 1.0'))
     raise SystemExit(0)
-Path('invocation.json').write_text(json.dumps({
+record = json.dumps({
     'argv': sys.argv[1:], 'cwd': os.getcwd(),
     'python': os.environ.get('AGENT_KERNEL_ARENA_PYTHON'),
     'memory': os.environ.get('CLAUDE_CODE_DISABLE_AUTO_MEMORY'),
     'sandbox': os.environ.get('IS_SANDBOX'),
     'stdin': sys.stdin.read(),
-}))
+})
+Path('invocation.json').write_text(record)
+with open('invocations.jsonl', 'a') as log:
+    log.write(record + '\\n')
+n = len(Path('invocations.jsonl').read_text().splitlines())
 mode = os.environ.get('ARENA_TEST_CLI_MODE')
+if mode in ('trace_timeout', 'trace_nonzero'):
+    print(json.dumps({'type':'item.completed','item':{
+        'type':'command_execution','command':'test-kernel','status':'completed',
+        'aggregated_output':'x' * 2000 + 'FULL_TOOL_OUTPUT_TAIL'}}), flush=True)
+    print('FULL_ERROR_DETAIL ' + os.environ.get('ARENA_TEST_API_KEY', ''), file=sys.stderr, flush=True)
+    if mode == 'trace_timeout':
+        time.sleep(60)
+    raise SystemExit(7)
 if mode == 'timeout':
     child = subprocess.Popen([sys.executable, '-c',
         "import os,signal,time; from pathlib import Path; "
@@ -135,13 +150,26 @@ if mode == 'failed_event':
     print(json.dumps(event))
     raise SystemExit(0)
 if codex:
+    # Codex reports the thread's running token total on every turn.completed.
+    print(json.dumps({'type':'thread.started','thread_id':'fake-thread'}))
     print(json.dumps({'type':'item.completed', 'item':{
         'type':'agent_message','text':'ARENA_FAKE_OK'}}))
-    print(json.dumps({'type':'turn.completed','usage':{}}))
-else:
+    print(json.dumps({'type':'turn.completed','usage':{
+        'input_tokens':100 * n,'cached_input_tokens':0,'output_tokens':10 * n}}))
+elif '--trust' in sys.argv:
+    # Cursor reports this turn's tokens in camelCase and no dollars.
     print(json.dumps({'type':'assistant','message':{
         'content':[{'type':'text','text':'ARENA_FAKE_OK'}]}}))
-    print(json.dumps({'type':'result','subtype':'success','is_error':False}))
+    print(json.dumps({'type':'result','subtype':'success','is_error':False,
+                      'session_id':'fake-session',
+                      'usage':{'inputTokens':100,'outputTokens':10,'cacheReadTokens':5}}))
+else:
+    # Claude Code: total_cost_usd is a running session total on newer CLIs.
+    print(json.dumps({'type':'assistant','message':{
+        'content':[{'type':'text','text':'ARENA_FAKE_OK'}]}}))
+    print(json.dumps({'type':'result','subtype':'success','is_error':False,
+                      'session_id':'fake-session','total_cost_usd':0.25 * n,
+                      'usage':{'input_tokens':100,'output_tokens':10}}))
 ''')
     binary.chmod(0o755)
     monkeypatch.setattr(launcher.shutil, "which", lambda _: str(binary))
@@ -224,6 +252,26 @@ def test_cli_failure_is_not_returned_as_success(launcher, fake_cli, monkeypatch,
         launcher.launch_agent({}, "unused", str(workspace))
 
 
+@pytest.mark.parametrize("launcher", ["codex"], indirect=True)
+@pytest.mark.parametrize("mode", ["trace_timeout", "trace_nonzero"])
+def test_codex_preserves_full_private_events_after_failure(launcher, fake_cli, monkeypatch, mode):
+    workspace, prompt = fake_cli
+    secret = "synthetic-private-credential"
+    monkeypatch.setenv("ARENA_TEST_CLI_MODE", mode)
+    monkeypatch.setenv("ARENA_TEST_API_KEY", secret)
+    with pytest.raises((TimeoutError, RuntimeError)):
+        launcher.launch_agent({"agent": {"timeout_seconds": 1}}, "unused", str(workspace))
+    directory, = workspace.parent.glob(f".{workspace.name}-codex-stream-*")
+    output = (directory / "stdout.jsonl").read_text()
+    errors = (directory / "stderr.jsonl").read_text()
+    assert "FULL_TOOL_OUTPUT_TAIL" in output
+    assert "FULL_ERROR_DETAIL" in errors
+    assert secret not in output + errors and "[REDACTED]" in errors
+    assert prompt not in output + errors
+    assert directory.stat().st_mode & 0o777 == 0o700
+    assert all(p.stat().st_mode & 0o777 == 0o600 for p in directory.iterdir())
+
+
 def test_timeout_stops_tool_child_and_reports_failure(launcher, fake_cli, monkeypatch):
     workspace, _ = fake_cli
     monkeypatch.setenv("ARENA_TEST_CLI_MODE", "timeout")
@@ -248,3 +296,111 @@ def test_timeout_stops_tool_child_and_reports_failure(launcher, fake_cli, monkey
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
+
+def _invocations(workspace):
+    return [json.loads(line) for line in (workspace / "invocations.jsonl").read_text().splitlines()]
+
+
+def _delivered_prompt(name, invocation):
+    return invocation["argv"][-1] if name == "cursor" else invocation["stdin"]
+
+
+def _launch_collecting(launcher, config, workspace):
+    from src.tools.agent_cost import AgentCostCollector
+
+    collector = AgentCostCollector(agent=agent_name(launcher), task_name="suite/task",
+                                   run_settings=config["agent"])
+    collector.wrap(launcher.launch_agent)(eval_config=config, task_config_dir="unused",
+                                          workspace=str(workspace))
+    return collector.attempt()
+
+
+def test_iterations_mode_is_unchanged(launcher, fake_cli):
+    workspace, prompt = fake_cli
+    name = agent_name(launcher)
+    config = {"agent": {"max_iterations": 3, "timeout_seconds": 10, "python_path": sys.executable}}
+    attempt = _launch_collecting(launcher, config, workspace)
+    runs = _invocations(workspace)
+    assert len(runs) == 1
+    expected = prompt.rstrip() + "\n\nFor this optimization, you must iterate up to 3 versions."
+    assert _delivered_prompt(name, runs[0]).startswith(expected + "\n\nThe total wall-clock budget")
+    assert "no fixed number" not in _delivered_prompt(name, runs[0])
+    args = runs[0]["argv"]
+    assert "--resume" not in args and "resume" not in args
+    if name == "claude_code":
+        assert "--no-session-persistence" in args and "--session-id" not in args
+    if name == "codex":
+        assert "--ephemeral" in args
+    # One invocation is still recorded through the cost tool.
+    assert len(attempt["invocations"]) == 1
+    assert attempt["usage"]["input_tokens"] == 100
+
+
+def test_time_mode_resumes_the_session_and_counts_cost_once(launcher, fake_cli, monkeypatch):
+    from src.tools import agent_time_budget
+
+    workspace, _ = fake_cli
+    name = agent_name(launcher)
+    monkeypatch.setattr(agent_time_budget, "MIN_RESUME_SECONDS", 0)
+    monkeypatch.setattr(agent_time_budget, "MAX_SESSIONS", 3)
+    monkeypatch.setenv("FAKE_CLI_VERSION", "2.1.290 (Claude Code)")
+    config = {"agent": {"budget_mode": "time", "max_iterations": 3, "timeout_seconds": 60}}
+    attempt = _launch_collecting(launcher, config, workspace)
+    runs = _invocations(workspace)
+    assert len(runs) == 3
+    first = runs[0]["argv"]
+    first_prompt = _delivered_prompt(name, runs[0])
+    assert "up to 3 versions" not in first_prompt
+    assert "no fixed number of versions" in first_prompt
+    for later in runs[1:]:
+        args = later["argv"]
+        assert "minutes of the wall-clock budget remain" in _delivered_prompt(name, later)
+        if name == "claude_code":
+            assert args[args.index("--resume") + 1] == first[first.index("--session-id") + 1]
+            assert "--no-session-persistence" not in args
+        elif name == "cursor":
+            assert args[args.index("--resume") + 1] == "fake-session"
+        else:
+            assert args[args.index("resume") + 1] == "fake-thread"
+            assert args[-2:] == ["--", "-"]
+            assert "--ephemeral" not in args
+    assert len(attempt["invocations"]) == 3
+    if name == "claude_code":
+        # Running totals 0.25, 0.50, 0.75 for one session: spend is 0.75, not 1.50.
+        assert attempt["total_cost_usd"] == 0.75 and attempt["cost_status"] == "complete"
+        assert attempt["usage"]["input_tokens"] == 300
+    elif name == "codex":
+        # Thread totals 100, 200, 300 input tokens: usage is 300, not 600.
+        assert attempt["usage"] == {"input_tokens": 300, "cached_input_tokens": 0, "output_tokens": 30}
+        assert attempt["total_cost_usd"] is None and attempt["cost_status"] == "not_reported"
+    else:
+        assert attempt["usage"] == {"input_tokens": 300, "output_tokens": 30,
+                                    "cache_read_input_tokens": 15}
+        assert attempt["total_cost_usd"] is None and attempt["cost_status"] == "not_reported"
+
+
+@pytest.mark.parametrize("launcher", ["claude_code"], indirect=True)
+def test_claude_cost_with_unknown_cli_version_is_not_guessed_after_resume(launcher, fake_cli, monkeypatch):
+    from src.tools import agent_time_budget
+
+    workspace, _ = fake_cli
+    monkeypatch.setattr(agent_time_budget, "MIN_RESUME_SECONDS", 0)
+    monkeypatch.setattr(agent_time_budget, "MAX_SESSIONS", 2)
+    attempt = _launch_collecting(
+        launcher, {"agent": {"budget_mode": "time", "timeout_seconds": 60}}, workspace)
+    assert len(attempt["invocations"]) == 2
+    assert attempt["total_cost_usd"] is None and attempt["cost_status"] == "ambiguous"
+
+
+def test_time_mode_does_not_resume_without_budget_left(launcher, fake_cli):
+    workspace, _ = fake_cli
+    launcher.launch_agent({"agent": {"budget_mode": "time", "timeout_seconds": 60}},
+                          "unused", str(workspace))
+    assert len(_invocations(workspace)) == 1
+
+
+@pytest.mark.parametrize("value", ["tokens", "", False])
+def test_invalid_budget_mode_rejected(launcher, value):
+    with pytest.raises(ValueError, match="budget_mode"):
+        launcher._load_agent_config({"agent": {"budget_mode": value}})

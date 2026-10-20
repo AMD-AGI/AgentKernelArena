@@ -35,8 +35,10 @@ unscored public-interface controls from `scripts/semantic_controls.py`. These co
 do not replace or add scored cases. Full output shape, dtype, device, finiteness and
 read-only inputs are checked.
 
-The timed invocation keeps the original allocation/dispatch boundary, 10 warmups and
-100 samples. `TimedRun` retains outputs of the actual captured graph. After measurement,
+Timing measures device work replayed from the captured graph, with the original
+10 warmups and 100 samples. Python allocation and dispatch execute during capture
+and are not part of the reported replay latency. `TimedRun` retains outputs of
+that actual graph. After measurement,
 the harness checks those outputs, changes an operand, poisons outputs, and replays that
 same graph against the original numerical reference. All comparisons, snapshots,
 perturbations and restoration are outside the timed window. An unobservable graph
@@ -47,6 +49,27 @@ reference and numerical gate compare the **complete** chunk matrix for both flag
 values, including all upper-triangle elements. The earlier phrase “optional causal
 masking” was inaccurate for this task's expected output. No elementwise triangular
 mask is part of the accepted result. Candidate tile choices must still produce every
-required element. The existing five workloads, kernel and comparator are unchanged.
-An additional unscored `causal=True` known answer checks the complete matrix and
-regression coverage rejects replacing its upper triangle with zeros.
+required element. The existing five scored workloads and comparator are unchanged.
+The kernel no longer skips upper tiles when `causal=True`, because the reference
+requires their values. An additional unscored chunk-size-128 causal known answer
+checks the complete matrix, and regression coverage rejects omitted upper tiles.
+
+Unscored stride controls independently vary each operand's token and group
+strides while keeping the last dimension contiguous, as required by the wrapper.
+Two further unscored known-answer controls use nonaligned K=35 and K=65, with
+nonzero products in the final K lane. They check the complete padded output and
+read-only inputs for both causal flag values. These controls do not change the
+five scored cases, timing path, tolerance, warmups, or sample count.
+
+The protected device benchmark captures one public invocation per replay and
+checks all 100 measured outputs. Ten warmups and the scored geometries remain
+unchanged. Each sample after the first uses new deterministic, same-shaped inputs
+and an independent oracle prepared before the start Event. Read-only inputs are
+checked before every refill and after the last sample; captured output is reset
+outside timing. The extra changed-input replay retains the previous valid output
+to reject cached-answer shortcuts. Inputs are restored on success or failure.
+
+The previous multi-call graph timings are not directly comparable with this
+protocol. Input/oracle preparation and validation can affect cache state and wall
+time, even though they are outside device timing. These changes establish no
+kernel speedup; baseline and candidate use the same protected measurement path.

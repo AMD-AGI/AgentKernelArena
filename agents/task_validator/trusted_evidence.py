@@ -6,6 +6,8 @@ before launching the model. Nothing here reads agent-produced gate decisions.
 """
 from __future__ import annotations
 
+from src.measurement import measurement_kind
+
 from dataclasses import dataclass
 import hashlib
 import json
@@ -162,7 +164,7 @@ def evaluate_task_evidence(snapshot: TrustedTaskEvidence) -> dict:
                     raise ValueError("Action continued after a failed command")
                 try:
                     parsed.append(parse_command_result(command["stdout"], role=role, action=action,
-                                                       returncode=command["returncode"]))
+                                                       returncode=command["returncode"], measurement=measurement_kind(spec.to_mapping())))
                 except ValueError:
                     # A runner can crash or violate its result protocol. Its
                     # final failed command is still preserved execution evidence.

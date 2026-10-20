@@ -18,9 +18,14 @@ Constraints:
 
 Run `python3 _arena_eval.py validate-task`, or `python3 _arena_eval.py baseline|candidate compile|correctness|performance`
 (with one role and one action). Use `ARENA_EVAL_PHASE=candidate_evaluation` for submitted candidates.
-`workloads.json` declares all five original cases; the adapter verifies it against the
-protected harness table. Original input seeds, comparisons, tolerances, warmups, sample
-counts and graph/event timing remain in `scripts/task_runner.py`. Compilation includes
+`workloads.json` declares all five original case IDs, seeds and geometry; the adapter
+verifies them against the protected harness table. The scored q/v/h random draws
+use amplitude 0.5 instead of the former 0.1, and A uses 0.05 instead of 0.01;
+g remains at 0.01. The original small-amplitude draws remain unscored correctness
+regressions. This makes an all-zero output fail the declared atol=rtol=5e-2 on
+every scored seed. Historical timings from the old input distribution are not
+directly comparable. Comparisons, tolerances, warmups, sample counts and graph/event
+timing remain in `scripts/task_runner.py`. Compilation includes
 syntax and import/interface checks. Missing candidates, incomplete measurements and
 invalid timing fail; commands emit `arena-eval-v1`, never final Arena score reports.
 Canonical benchmark helpers must be materialized by Arena; do not edit their generated regions.
@@ -42,9 +47,28 @@ unscored public-interface controls from `scripts/semantic_controls.py`. These co
 do not replace or add scored cases. Full output shape, dtype, device, finiteness and
 read-only inputs are checked.
 
-The timed invocation keeps the original allocation/dispatch boundary, 10 warmups and
-100 samples. `TimedRun` retains outputs of the actual captured graph. After measurement,
+The public invocation still allocates the output and dispatches the kernel; the
+device timer measures the GPU commands, not Python allocation time. Python
+allocation/dispatch runs during graph capture. On the graph path, each of 100
+reported samples replays exactly one captured public wrapper call after 10 warmups.
+The captured output is poisoned before each replay, outside the timed interval. `TimedRun`
+checks every reported sample output after its end event and
+retains outputs of the actual captured graph. After measurement,
 the harness checks those outputs, changes an operand, poisons outputs, and replays that
 same graph against the original numerical reference. All comparisons, snapshots,
 perturbations and restoration are outside the timed window. An unobservable graph
 fallback fails instead of validating a different untimed invocation.
+The one-call graph boundary replaces historical multi-call graph batching;
+latencies across those methods are not directly comparable. Preparation and
+post-sample checks can also affect cache and clock state outside device timing.
+
+Unscored known-answer controls also exercise chunk sizes 32 and 128 with two
+batches, three heads, mixed feature widths and partial final chunks. The 32-token
+case crosses into a third chunk. Independent scalar state and causal-attention
+sums validate complete outputs at the same 5e-2 tolerances; the five scored
+64-token cases, timing and input generation remain unchanged.
+Two further correctness-only known answers isolate K=80,V=32 and K=32,V=160.
+The first requires a later key tile for either BK choice; the second requires
+a later value tile for either BV choice. Nonzero state and attention terms in
+those regions reject implementations that skip either loop while leaving all
+five scored K=V=32 cases and their timing unchanged.

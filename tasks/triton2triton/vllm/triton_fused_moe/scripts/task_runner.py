@@ -85,7 +85,7 @@ def run_compile():
 
 
 
-CONTROL_CASES = ('optional_weights', 'unweighted', 'invalid_experts')
+CONTROL_CASES = ('optional_weights', 'unweighted', 'invalid_experts', 'small_topk_one')
 
 
 def reference(inputs, options):
@@ -99,10 +99,27 @@ def reference(inputs, options):
 
 def control_inputs(name, device):
     import torch
+    if name == 'small_topk_one':
+        # Partial N/K tiles and topk=1 are legal independently of scored shapes.
+        A = torch.tensor([[1, 0, -2, 0, 0, 3, 0],
+                          [0, -1, 0, 2, 0, 0, 1],
+                          [3, 0, 0, 0, -2, 0, 1]], device=device, dtype=torch.float16)
+        B = ((torch.arange(2*5*7, device=device).reshape(2, 5, 7) % 11)-5).to(torch.float16)
+        return {'A': A, 'B': B,
+                'ids': torch.tensor([[0], [1], [0]], device=device, dtype=torch.int32),
+                'weights': torch.tensor([2, -.5, 3], device=device, dtype=torch.float32)}, {'mul_routed_weight': True}
     M, K, E, N = 5, 35, 3, 70
     A = torch.zeros(M, K, device=device, dtype=torch.float16)
     A[torch.arange(M,device=device),torch.arange(M,device=device)*7] = torch.tensor([1,-2,3,-1,2], device=device, dtype=torch.float16)
     B = ((torch.arange(E*N*K,device=device).reshape(E,N,K)%17)-8).to(torch.float16)
+    if name == 'optional_weights':
+        padded = torch.full((M,K*2),-123,device=device,dtype=A.dtype)
+        padded[:, ::2].copy_(A)
+        A = padded[:, ::2]
+    elif name == 'unweighted':
+        padded = torch.full((E,N,K*2),-123,device=device,dtype=B.dtype)
+        padded[:, :, ::2].copy_(B)
+        B = padded[:, :, ::2]
     ids = torch.tensor([[0,1,1],[-1,2,3],[2,0,1],[1,2,0],[0,-1,2]], device=device,dtype=torch.int32)
     if name=='invalid_experts': ids.fill_(-1)
     inputs = {'A':A,'B':B,'ids':ids}

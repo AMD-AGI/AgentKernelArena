@@ -1,3 +1,7 @@
+import argparse
+from contextlib import redirect_stdout
+import io
+import json
 import logging
 import tempfile
 import unittest
@@ -6,7 +10,8 @@ from unittest.mock import patch
 
 import yaml
 
-from main import run_task, should_run_task_for_platform
+from main import _build_context, run_task, should_run_task_for_platform
+from src.tools.agent_cost import report_agent_usage
 from agents.task_validator.report_schema import (
     CHECK_NAMES,
     REPORT_SCHEMA_VERSION,
@@ -148,6 +153,125 @@ class TaskValidatorWorkspaceTests(unittest.TestCase):
             self.assertTrue(completed)
             self.assertIsNotNone(workspace)
             self.assertTrue(validation_report_is_complete(workspace))
+
+
+class AgentCostRecordTests(unittest.TestCase):
+    """main.run_task writes one cost record per launched task, for every agent."""
+
+    task_name = "hip2hip/example"
+    timestamp = "20260721_000000"
+
+    def run_with(self, launcher, root: Path, *, setup_error: Exception | None = None):
+        run_directory = root / "run"
+        run_directory.mkdir()
+        config_path = root / "config.yaml"
+        config_path.write_text("task_type: hip2hip\n")
+
+        def make_workspace(task_config_dir, run_dir, timestamp, logger, task_name):
+            if setup_error is not None:
+                raise setup_error
+            workspace = get_task_workspace_path(run_dir, task_name, timestamp)
+            workspace.mkdir(parents=True)
+            return workspace
+
+        with patch("main.setup_workspace", side_effect=make_workspace), \
+                patch("main.evaluate_compilation", return_value=(False, "skipped")), \
+                patch("main.snapshot_workspace_harness", return_value=object()), \
+                patch("main.verify_workspace_harness"), \
+                patch("main.materialize_perf_helpers_in_workspace"), \
+                patch("main.evaluate_kernel", return_value={}), \
+                patch("main.write_task_result"), \
+                patch("main.is_task_complete", return_value=True):
+            completed, workspace = run_task(
+                eval_config={"agent": {"template": "claude_code", "timeout_seconds": 60}},
+                agent=AgentType.CLAUDE_CODE,
+                agent_launcher=launcher,
+                task_name=self.task_name,
+                task_config_dir=str(config_path),
+                run_directory=run_directory,
+                timestamp=self.timestamp,
+                logger=logging.getLogger(__name__),
+                task_index=1,
+                total_tasks=1,
+            )
+        return completed, workspace, run_directory
+
+    def record(self, run_directory: Path, workspace: Path) -> dict:
+        return json.loads((run_directory / "agent_costs" / f"{workspace.name}.json").read_text())
+
+    def test_agent_that_reports_nothing_gets_a_null_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            completed, workspace, run_directory = self.run_with(
+                lambda **kwargs: "done", Path(temporary_directory))
+            self.assertTrue(completed)
+            record = self.record(run_directory, workspace)
+            self.assertEqual(record["agent"], "claude_code")
+            self.assertEqual(record["task"], self.task_name)
+            self.assertIsNone(record["total_cost_usd"])
+            self.assertEqual(record["cost_status"], "not_reported")
+            self.assertIsNone(record["usage"])
+            self.assertEqual(record["attempts"][0]["invocations"], [])
+            self.assertEqual(record["attempts"][0]["run_settings"], {"timeout_seconds": 60})
+
+    def test_reported_usage_and_launcher_failure_are_recorded(self) -> None:
+        def launcher(**kwargs):
+            report_agent_usage(cost_usd=0.2, cost_scope="invocation",
+                               usage={"input_tokens": 7}, usage_scope="invocation")
+            raise RuntimeError("agent exited with code 1")
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            completed, workspace, run_directory = self.run_with(launcher, Path(temporary_directory))
+            self.assertFalse(completed)
+            record = self.record(run_directory, workspace)
+            self.assertEqual(record["total_cost_usd"], 0.2)
+            self.assertEqual(record["usage"], {"input_tokens": 7})
+            self.assertEqual(record["attempts"][0]["launcher_error"], "RuntimeError")
+
+    def test_no_record_when_the_agent_never_launched(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            completed, _, run_directory = self.run_with(
+                lambda **kwargs: "unused", Path(temporary_directory),
+                setup_error=FileNotFoundError("missing source"))
+            self.assertFalse(completed)
+            self.assertFalse((run_directory / "agent_costs").exists())
+
+
+class BudgetModeRunValidationTests(unittest.TestCase):
+    """An unsupported budget_mode fails at run start, before any run directory exists."""
+
+    def build(self, agent_settings: dict):
+        config = {"tasks": [], "agent": agent_settings,
+                  "workspace_directory_prefix": "workspace", "target_gpu_model": "MI355X"}
+        args = argparse.Namespace(run_suffix=None, config_name="unused.yaml")
+        output = io.StringIO()
+        with patch("main._load_config", return_value=config), \
+                patch("main._resolve_run", side_effect=AssertionError("run directory resolved")), \
+                redirect_stdout(output):
+            context = _build_context(args, need_agent_launcher=True)
+        return context, output.getvalue()
+
+    def test_time_mode_rejected_for_agents_without_session_resume(self) -> None:
+        for template in ("geak", "forge", "task_validator"):
+            with self.subTest(template=template):
+                context, output = self.build({"template": template, "budget_mode": "time"})
+                self.assertIsNone(context)
+                self.assertIn("not supported", output)
+
+    def test_unknown_budget_mode_rejected_for_every_agent(self) -> None:
+        for template in ("claude_code", "geak"):
+            with self.subTest(template=template):
+                context, output = self.build({"template": template, "budget_mode": "tokens"})
+                self.assertIsNone(context)
+                self.assertIn("budget_mode", output)
+
+    def test_supported_modes_pass_validation(self) -> None:
+        for settings in ({"template": "claude_code", "budget_mode": "time"},
+                         {"template": "deepseek_harness", "budget_mode": "time"},
+                         {"template": "geak", "budget_mode": "iterations"},
+                         {"template": "geak"}):
+            with self.subTest(settings=settings):
+                with self.assertRaisesRegex(AssertionError, "run directory resolved"):
+                    self.build(settings)
 
 
 class PlatformSupportTests(unittest.TestCase):

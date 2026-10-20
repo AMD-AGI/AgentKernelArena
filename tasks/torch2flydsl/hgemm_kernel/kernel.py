@@ -35,10 +35,11 @@ from flydsl.expr import (
     range_constexpr,
     rocdl,
 )
-from flydsl_compat import buffer_ops, vector
 from flydsl.expr.typing import T
 from flydsl.runtime.device import get_rocm_arch
 from flydsl.utils.smem_allocator import SMEM_CAPACITY_MAP, SmemAllocator, SmemPtr
+
+from hgemm_kernel_ops import buffer_ops, vector
 
 
 # ===========================================================================

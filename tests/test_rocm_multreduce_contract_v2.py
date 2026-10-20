@@ -12,7 +12,7 @@ import pytest
 import torch
 
 ROOT=Path(__file__).resolve().parents[1]
-TASKS=['instruction2triton/rocmbench/multreduce_matmul_dot_kernel','triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel']
+TASKS=['triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel']
 
 
 def load(path):
@@ -179,34 +179,7 @@ def test_only_reviewed_load_masks_changed_kernel_and_original_cases_retained(tas
     assert parse_command_result('ARENA_EVAL_RESULT='+json.dumps(result),role='task',action='validate-task',returncode=0).status=='PASS'
 
 # Stable source/case expectations, independent of Git history.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/multreduce_matmul_dot_kernel': {'files': {'config.yaml': 'ebc28a5fab2dd87b7ec4aeca4ca6aa75079bbeca6949ad16339f1d67289b7177',
-                                                                               'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
-                                                                     'functions': {'allclose': 'ea6ddc8a99b520e26dfac2ef1524d3a25ce4c4fe2add5c7197c8f12e992939b1',
-                                                                                   'calculate_gemm_gbps': '7fe8b4fe7178d7076751611e942359f1e47654813b8d387de1854fdf0d85afb2',
-                                                                                   'calculate_gemm_tflops': 'a91dc4b494aa2aaae56f121022891bcd0f7e044752a458b4101c83240049de7f',
-                                                                                   'gen_input': 'b812ff15f66c1ecf2e0c069959667914e4240e725a76f111c4a1c520b492a213',
-                                                                                   'gen_input_benchmark': 'fa8d338f61c4352e800706ff04a0e05dae4864e5e975caf6b4c3842f7d6c5bc9',
-                                                                                   'get_target_shapes': '467c4c0b4367b8ec289b73b72c2f366845dd552a4b52aa2c0e57313bc339d77f',
-                                                                                   'get_target_shapes_for_perf': 'b549441d2fc8d2518467208ff2469fd1976f7b9d4f6ac4d6c61f9878445a45f2',
-                                                                                   'get_triton_autotune_key': '67ddfbc4712ede5b0ac0b88c54ec37b1d1a8899d6585586b2a46adbb572834b3',
-                                                                                   'get_triton_dot_autotune_configs': '3718af43458b8f8e63b7ab84d3306f8ec53b2ed8f2bb93418173a849575fc1a5',
-                                                                                   'get_triton_heuristics': 'b16d9f06bbfd7c6ae5a42668a59524e1cead9b2cbdfe13ad5afe1117d3b987e2',
-                                                                                   'main': '7a7baa59c6b7c882ed7ebf7a209cc20a4ec004a9aa7ca0d02eb08ebfee24e7a9',
-                                                                                   'matmul': '7b19151b80c5225f8c5c16bff201aafd74091345068152547ec1c3c58080d17e',
-                                                                                   'ms_to_gibps': 'cc24cf65990c046072e0cf055bd87fc577528ad5631ac79b77ec33bd9714e92d',
-                                                                                   'parse_args': '051ca1908494081b087379865e852c8cce673444d43459de1efb10f652894cd7',
-                                                                                   'positive_int': '1f8569bfc1225c7a7b58f8a4a8392d479a16e0584e8fdda483381dc4734d6f99',
-                                                                                   'run_benchmark': '869ece821d0a2eacf64ed8e54aaa13d556fb4aaa0264ed6be0c18b507211adc6',
-                                                                                   'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                                                   'test_performance': '590e572282c1170151c7eef2399c2f2386a443a03551201c21dea92ac18cf719',
-                                                                                   'test_save_performance_results': 'e75049a8bfa70933554c63918336d2909e576a9a7940225ed7fa3c50aad1b8d9',
-                                                                                   'test_save_results': 'e65c749df181c1c11b002cda5185ba56e40dab445af669fa59337de2e2509d3a',
-                                                                                   'torch_matmul': 'f1155e0c41510d3dd52f5dd0d489fff5da5475c6f616c11b9a0e9daaeeb5b573',
-                                                                                   'triton_dot_matmul_kernel': '55eeb6fad1b00f73a2e5201175f6f7dbc9a3a7f73c298a6059bb166753dcefda',
-                                                                                   'triton_matmul': '14ab68bcc12baf55b05dc2ee4e3bdbf72b3f6de2ef5729fa67d69f97f3dc191e'},
-                                                                     'kernel_ast': '2d6cfd78c6b97bb40d06e08dfcb081db9f6d8a7f4de24ef832fb5c1937f67636',
-                                                                     'rows': 'ac381686e9f8affb1c6cb59b1116d385e93f82154d78c9465be0c1c01f4c08b2'},
- 'tasks/triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel': {'files': {'config.yaml': 'ebc28a5fab2dd87b7ec4aeca4ca6aa75079bbeca6949ad16339f1d67289b7177',
+ORIGINAL = {'tasks/triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel': {'files': {'config.yaml': 'ebc28a5fab2dd87b7ec4aeca4ca6aa75079bbeca6949ad16339f1d67289b7177',
                                                                                'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
                                                                      'functions': {'allclose': 'ea6ddc8a99b520e26dfac2ef1524d3a25ce4c4fe2add5c7197c8f12e992939b1',
                                                                                    'calculate_gemm_gbps': '7fe8b4fe7178d7076751611e942359f1e47654813b8d387de1854fdf0d85afb2',

@@ -127,10 +127,14 @@ def extract_triton_aot(
         if isinstance(key, str) and key in arg_names:
             return arg_names.index(key)
         if isinstance(key, int) and not isinstance(key, bool) and key >= 0:
-            return key
-        if isinstance(key, str) and key.isdecimal():
-            return int(key)
-        raise CapsuleValidationError(f"Triton argument {key!r} has no source position")
+            index = key
+        elif isinstance(key, str) and key.isdecimal():
+            index = int(key)
+        else:
+            raise CapsuleValidationError(f"Triton argument {key!r} has no source position")
+        if arg_names and index >= len(arg_names):
+            raise CapsuleValidationError(f"Triton argument {key!r} is outside source declaration")
+        return index
 
     indexed_signature: dict[int, str] = {}
     for key, value in signature.items():
@@ -146,7 +150,10 @@ def extract_triton_aot(
             if len(key) != 1:
                 raise CapsuleValidationError("nested Triton constexpr arguments are not supported")
             key = key[0]
-        indexed_constants[argument_index(key)] = value
+        index = argument_index(key)
+        if index in indexed_constants:
+            raise CapsuleValidationError(f"duplicate Triton constexpr position {index}")
+        indexed_constants[index] = value
 
     dims = tuple(int(v) for v in grid)
     if len(dims) > 3 or not dims:

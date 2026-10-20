@@ -76,9 +76,13 @@ cases remain unchanged. Each added case runs the real public wrapper with the
 same 0.01 gates and an unscored captured-replay diagnostic during correctness.
 That diagnostic uses ten warmups and 100 samples; it is never a performance row.
 The control covers ragged context/query lengths, non-identity physical pages, a
-nondefault attention scale, and the wrapper's window or ALiBi path. The oracle
+nondefault attention scale, and the wrapper's required ALiBi path. The oracle
 reconstructs context from actual cache bytes and independently forms the masked
 attention operation; cached generator outputs cannot substitute for this check.
+An additional float32 correctness-only case uses the public wrapper's FP32
+branch with 65 query tokens in its first sequence, crossing that branch's
+64-token tile boundary. It keeps the same full-output 0.01 gates and captured
+replay diagnostic; the five scored float16 workloads and their timing are unchanged.
 
 The official scoring domain remains exactly `perf1` through `perf5`, with their
 original inputs, tolerances, timing boundaries, ten warmups and 100 samples.
@@ -87,6 +91,22 @@ branch is checked inside the correctness action and reported as an explicitly
 unscored diagnostic in that case's metrics. The performance action executes
 only the five original workloads; neither their weights nor aggregation change.
 
-Additional unscored public-branch controls from PR105: Ragged cache/new-query boundaries with optional ALiBi, window and scale.
+Additional unscored public-branch controls cover ragged cache/new-query boundaries,
+required ALiBi slopes and an explicit attention scale. This wrapper has no
+sliding-window argument or no-ALiBi mode; those branches are not part of this
+task's interface or claimed coverage.
 These use explicit `control-upstream-*` manifest rows. Original scored inputs,
 numerical gates, seeds, warmups and sample counts remain unchanged.
+
+The protected device benchmark captures one public invocation per replay and
+checks all 100 measured outputs. Ten warmups and the scored geometries remain
+unchanged. Each sample after the first uses new deterministic, same-shaped inputs
+and an independent oracle prepared before the start Event. Read-only inputs are
+checked before every refill and after the last sample; captured output is reset
+outside timing. The extra changed-input replay retains the previous valid output
+to reject cached-answer shortcuts. Inputs are restored on success or failure.
+
+The previous multi-call graph timings are not directly comparable with this
+protocol. Input/oracle preparation and validation can affect cache state and wall
+time, even though they are outside device timing. These changes establish no
+kernel speedup; baseline and candidate use the same protected measurement path.

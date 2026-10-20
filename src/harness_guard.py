@@ -641,6 +641,16 @@ def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
             path: list(edit.symbols) for path, edit in scopes.items()
         },
         "protected_path_policies": policies,
+        "new_file_policy": {
+            "protected_directories": sorted(_HARNESS_DIRS),
+            "protected_filenames": sorted(_HARNESS_FILE_NAMES),
+            "protected_suffixes": list(_HARNESS_FILE_SUFFIXES),
+            "ignored_runtime_directories": sorted(_V2_RUNTIME_DIRS),
+            "excluded_output_names": sorted(_V2_OUTPUT_NAMES),
+            "default_action": "discard_added_protected_files_before_scoring",
+            "strict_action": "reject_added_protected_files_without_deleting",
+            "unmatched_new_files": "not_rejected_by_this_guard",
+        },
     }
 
 

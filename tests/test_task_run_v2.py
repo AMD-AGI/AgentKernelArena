@@ -59,6 +59,43 @@ def read_report(workspace):
     return yaml.safe_load((workspace / "task_result.yaml").read_text())
 
 
+@pytest.mark.parametrize("status,required,blocked", [
+    ("leftovers", False, True), ("unavailable", True, True), ("error", True, True),
+    ("clean", True, False), ("unavailable", False, False),
+])
+def test_sweep_taint_never_reaches_performance_or_aggregation(tmp_path, monkeypatch, status, required, blocked):
+    path = package(tmp_path)
+    # A scoreable synthetic 2x speedup would leak if the sweep were only applied
+    # to candidate_accepted after evaluation. No GPU measurements are made here.
+    (path.parent / "evaluate.py").write_text(RUNNER.replace(
+        "execution_time_ms=0.1", "execution_time_ms=(0.1 if role == 'baseline' else 0.05)"))
+    monkeypatch.setattr("src.task_run._sweep_before_final_evaluation", lambda *_: {
+        "status": status, "required": required})
+    from src.task_session import TaskSession
+    candidate_action = TaskSession.candidate_action
+    actions = []
+    def observe(self, action, *args, **kwargs):
+        actions.append(action)
+        return candidate_action(self, action, *args, **kwargs)
+    monkeypatch.setattr(TaskSession, "candidate_action", observe)
+    _, workspace = run(tmp_path, path, lambda **_: None)
+    report = read_report(workspace)
+    assert report["pass_compilation"] and report["pass_correctness"]
+    assert report["candidate_accepted"] is not blocked
+    assert ("performance" in actions) is not blocked
+    assert report["speedup_ratio"] == (0 if blocked else 2)
+    assert report["score"] == (0 if blocked else pytest.approx(0.689202437604511))
+    assert report["benchmark_method_consistent"] is not blocked
+    if blocked:
+        assert "Process sweep" in report["speedup_calculation_error_message"]
+        assert not (workspace / "optimized_perf.yaml").exists()
+    general_post_processing([str(workspace)], logger=None)
+    summary = json.loads((workspace.parent / "reports/task_type_breakdown.json").read_text())["overall"]
+    assert summary["valid_speedup_count"] == (0 if blocked else 1)
+    assert summary["speedup_gt_1_count"] == (0 if blocked else 1)
+    assert read_report(workspace)["score"] == (0 if blocked else pytest.approx(0.689202437604511))
+
+
 def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_path):
     path = package(tmp_path)
 
@@ -72,9 +109,10 @@ def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_pa
     complete, workspace = run(tmp_path, path, launcher)
     report = read_report(workspace)
     assert complete and report["candidate_accepted"]
-    assert report["score"] == 220
+    assert report["score"] == 0
     assert report["agent_execution"]["status"] == "FAILED"
     assert report["agent_execution"]["candidate_changed"] is True
+    assert report["optimization_outcome"] == "accepted_change"
     assert report["baseline_correctness"]["status"] == "PASS"
     assert report["delivery_status"] == "COMPLETE"
     assert task_run_is_complete(workspace, "suite/protocol_fixture", "codex")
@@ -101,9 +139,10 @@ def test_unchanged_candidate_is_reported_without_discarding_independent_evaluati
 
     complete, workspace = run(tmp_path, path, launcher)
     report = read_report(workspace)
-    assert complete and report["candidate_accepted"] and report["score"] == 220
+    assert complete and report["candidate_accepted"] and report["score"] == 0
     assert report["agent_execution"]["status"] == ("FAILED" if fail else "COMPLETED")
     assert report["agent_execution"]["candidate_changed"] is False
+    assert report["optimization_outcome"] == "unchanged"
 
 
 def test_empty_candidate_is_valid_initially_but_not_a_successful_submission(tmp_path):
@@ -221,9 +260,39 @@ def test_resume_retains_original_baseline_and_performs_new_candidate_checks(tmp_
     report = read_report(workspace)
     assert not report["candidate_accepted"]
     assert report["baseline_correctness"]["status"] == "PASS"
-    assert report["score"] == 20
+    assert report["score"] == 0
     after = json.loads((workspace.parent / ".task-sessions" / workspace.name / "initial_sources.json").read_text())
     assert before == after
+
+
+@pytest.mark.parametrize('remaining', [60, -1])
+def test_resume_in_final_reserve_keeps_candidate_and_writes_result(tmp_path, remaining):
+    import time
+    from src.task_run import _budget_path
+    path = package(tmp_path)
+    config = {'agent': {'template': 'codex'}, 'budget': {
+        'task_wall_time_s': 3600, 'final_evaluation_reserve_s': 300}}
+    args = dict(eval_config=config, agent=SimpleNamespace(value='codex'),
+        task_name='suite/protocol_fixture', task_config_dir=str(path),
+        run_directory=tmp_path/'run', timestamp='fixture', logger=logging.getLogger(__name__))
+    def deliver(**kwargs):
+        (Path(kwargs['workspace'])/'kernel.py').write_text('def compute(): return 1 + 2\n')
+    _, workspace = run_task_v2(agent_launcher=deliver, **args)
+    budget_path = _budget_path(args['run_directory'], args['task_name'])
+    budget = json.loads(budget_path.read_text())
+    budget['deadline_epoch'] = time.time() + remaining
+    budget_path.write_text(json.dumps(budget))
+    retained = (workspace/'kernel.py').read_bytes()
+    (workspace/'task_result.yaml').unlink()
+    complete, workspace = run_task_v2(agent_launcher=lambda **_: pytest.fail('Search must not restart'), **args)
+    result = read_report(workspace)
+    assert complete and result['agent_execution']['status'] == 'BUDGET_EXHAUSTED'
+    assert (workspace/'kernel.py').read_bytes() == retained
+    assert json.loads(budget_path.read_text())['deadline_epoch'] == budget['deadline_epoch']
+    assert result['candidate_accepted'] is (remaining > 0)
+    assert result['agent_execution']['candidate_changed'] is False
+    assert result['candidate_changed_from_initial'] is True
+    assert result['optimization_outcome'] == ('accepted_change' if remaining > 0 else 'rejected_change')
 
 
 @pytest.mark.parametrize("modify_report", [False, "delete", "symlink", "directory"])
@@ -233,7 +302,7 @@ output = pathlib.Path(os.environ["ARENA_EXPORT_PATH"])
 output.parent.mkdir(parents=True, exist_ok=True)
 report = pathlib.Path(os.environ["ARENA_FINAL_RESULT_PATH"])
 evaluation = yaml.safe_load(report.read_text())
-assert evaluation['pass_correctness'] and evaluation['score'] == 220
+assert evaluation['pass_correctness'] and evaluation['score'] == 0
 assert not {'candidate_accepted', 'exports', 'delivery_status'} & evaluation.keys()
 output.write_text(json.dumps({"delivered": True}))
 '''
@@ -246,7 +315,7 @@ output.write_text(json.dumps({"delivered": True}))
     path = package(tmp_path, exporter=code)
     _, workspace = run(tmp_path, path, lambda **_: None, agent="claude_code")
     report = read_report(workspace)
-    assert report["score"] == 220
+    assert report["score"] == 0
     assert report["delivery_status"] == ("INCOMPLETE" if modify_report else "COMPLETE")
     assert report["exports"][0]["status"] == ("FAIL" if modify_report else "PASS")
     assert json.loads((workspace / "artifacts/solution.json").read_text())["delivered"]
@@ -268,7 +337,7 @@ output.write_text('{}')
     path = package(tmp_path, exporter=code)
     _, workspace = run(tmp_path, path, lambda **_: None)
     report = read_report(workspace)
-    assert report["pass_correctness"] and report["score"] == 220
+    assert report["pass_correctness"] and report["score"] == 0
     assert not report["candidate_accepted"]
     assert report["delivery_status"] == "INCOMPLETE"
     assert report["exports"][0]["protected_state_unchanged"] is False
@@ -280,11 +349,13 @@ def test_quality_loop_api_returns_exact_scored_report_and_rechecks_new_candidate
     config = {"agent": {"template": "quality_loop"}}
     first = evaluate_task_session(session, eval_config=config)
     assert first == read_report(session.workspace)
-    assert first["score"] == 220
+    assert first["score"] == 0
+    assert first["pass_correctness"]
     (session.workspace / "kernel.py").write_text("def compute(): return -1\n")
     second = evaluate_task_session(session, eval_config=config)
     assert second == read_report(session.workspace)
-    assert second["score"] == 20
+    assert second["score"] == 0
+    assert not second["pass_correctness"]
     assert second["baseline_correctness"]["status"] == "PASS"
 
 
@@ -296,7 +367,7 @@ raise RuntimeError('failed before writing the artifact')
     path = package(tmp_path, exporter=code)
     _, workspace = run(tmp_path, path, lambda **_: None)
     report = read_report(workspace)
-    assert report["pass_correctness"] and report["score"] == 220
+    assert report["pass_correctness"] and report["score"] == 0
     assert report["evaluated_candidate_sources"]["kernel.py"]
     assert report["delivery_status"] == "INCOMPLETE"
     assert not report["candidate_accepted"]
@@ -309,7 +380,7 @@ raise RuntimeError('failed before writing the artifact')
     assert row["Status"] == "NOT_ACCEPTED"
     assert row["Candidate Accepted"] == "NO"
     assert row["Delivery Status"] == "INCOMPLETE"
-    assert float(row["Score"]) == report["score"] == 220
+    assert float(row["Score"]) == report["score"] == 0
     summary = json.loads((reports / "task_type_breakdown.json").read_text())
     assert summary["overall"]["candidate_rejected_count"] == 1
     assert summary["overall"]["delivery_incomplete_count"] == 1

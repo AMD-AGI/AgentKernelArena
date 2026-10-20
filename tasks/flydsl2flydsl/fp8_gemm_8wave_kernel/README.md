@@ -49,8 +49,15 @@ qualify the v2 runner. The parent integration schedules new GPU validation.
 
 Upstream source: {"commit": "28a18d328b4882c999864b2df2f8f9fe3fcc8b47", "date": "2026-06-01", "path": "kernels/fp8_gemm_8wave.py", "repo": "https://github.com/ROCm/FlyDSL"}.
 
-Scored outputs must satisfy the original numerical rule after the actual timed
-invocation. Outside timing the harness also changes the activation tensor in
+Every one of the 100 reported outputs must satisfy the original numerical rule
+after its completed measured invocation. The observer also checks read-only
+inputs after each sample. Graph timing uses one public invocation per sample
+for both baseline and candidate; this changes the measurement boundary from
+historical graph batching, so old latency values are not directly comparable.
+The preallocated output is poisoned with NaN outside the timed interval before
+every reported invocation, so a kernel that skips a write cannot pass by
+reusing the preceding sample's output.
+Outside timing the harness also changes the activation tensor in
 place, poisons output storage, and checks replay against the protected reference.
 Logical and preshuffled input buffers are protected from candidate mutation.
 Output shape/dtype/device and complete case coverage remain required. Unsupported

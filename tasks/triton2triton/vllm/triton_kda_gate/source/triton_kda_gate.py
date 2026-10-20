@@ -88,7 +88,13 @@ def fused_kda_gate(
         y: [..., H, D]
     """
     orig_shape = g.shape[:-1]
-    g = g.view(-1, g.shape[-1])
+    # The JIT below addresses g, A and optional bias with unit-stride offsets.
+    # Normalize accepted views before those flat pointer loads. For the original
+    # contiguous scored inputs, contiguous() returns the same tensor/storage.
+    g = g.view(-1, g.shape[-1]).contiguous()
+    A = A.contiguous()
+    if g_bias is not None:
+        g_bias = g_bias.contiguous()
     T = g.shape[0]
     HD = g.shape[1]
     H = A.numel()

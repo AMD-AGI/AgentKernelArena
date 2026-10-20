@@ -9,6 +9,7 @@ GFX950_V0519_DOCKER_IMAGE="lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913"
 GFX950_V0519_IMMUTABLE_IMAGE="lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93"
 GFX950_V0520_DOCKER_IMAGE="lmsysorg/sglang:v0.5.20-rocm10-mi35x"
 GFX950_V0520_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
+GFX950_SGLANG_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:7a3087bc8b17b246a807215c37e2260e2b83c052423a92cb73966eea5d8b2d7f"
 # Pin the MI355X runtime; retain the older manifest for explicit rollback.
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0520_IMMUTABLE_IMAGE}"
 # Built on first use when absent; its Dockerfile pins the base.
@@ -166,6 +167,7 @@ uses_gfx950_aiter_cache_overrides() {
         || "$image_reference" == "$GFX950_V0519_IMMUTABLE_IMAGE" \
         || "$image_reference" == "$GFX950_V0520_DOCKER_IMAGE" \
         || "$image_reference" == "$GFX950_V0520_IMMUTABLE_IMAGE" \
+        || "$image_reference" == "$GFX950_SGLANG_V0514_IMMUTABLE_IMAGE" \
         || ( -n "${AKA_SCORING_IMAGE_RUNTIME_REF:-}" \
             && "$SELECTED_IMAGE" == "$AKA_SCORING_IMAGE_RUNTIME_REF" ) ]]
 }
@@ -174,21 +176,19 @@ read_config_docker_image() {
     # Agent-only checks can supply both an explicit agent list and GPU arch
     # without an on-disk run config, as before this optional field existed.
     [[ -f "$1" ]] || return 0
-    python3 - "$1" <<'PY'
-import re
-import sys
-import yaml
-
-with open(sys.argv[1], encoding="utf-8") as source:
-    config = yaml.safe_load(source) or {}
-if not isinstance(config, dict):
-    raise SystemExit("Run config must be a mapping")
-if "docker_image" in config:
-    image = config["docker_image"]
-    if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/@:-]*", image):
-        raise SystemExit("docker_image must be a nonempty Docker image reference")
-    print(image)
-PY
+    # The selected image may be declared in YAML. Bootstrap metadata parsing in
+    # the architecture default when host PyYAML is unavailable, using the same
+    # restricted, read-only Docker parser as the task metadata path.
+    if ! serving_host_python_available; then
+        local arch
+        if [[ -n "$(read_target_gpu_model "$1")" ]]; then
+            arch="$(resolve_config_gpu_arch "$1")" || return 1
+        else
+            arch="$(detect_host_gpu_arch)"
+        fi
+        select_runtime "$arch"
+    fi
+    serving_runtime_metadata config-image "$1"
 }
 
 read_target_gpu_model() {
@@ -207,7 +207,8 @@ resolve_gfx_arch_from_model() {
             sub(/[[:space:]]+$/, "", s)
             return s
         }
-        /^[[:space:]]{2}[^[:space:]][^:]*:[[:space:]]*$/ {
+        # Older mawk in pinned serving images does not support interval regexes.
+        /^[[:space:]][[:space:]][^[:space:]][^:]*:[[:space:]]*$/ {
             current = $0
             sub(/^[[:space:]]*/, "", current)
             sub(/:.*/, "", current)
@@ -285,12 +286,96 @@ select_runtime() {
     echo "Docker runtime: arch=${SELECTED_GPU_ARCH} image=${SELECTED_IMAGE}" >&2
 }
 
+SERVING_PYTHON="${AKA_SERVING_PYTHON:-python3}"
+
+serving_host_python_available() {
+    "$SERVING_PYTHON" -c 'import yaml' >/dev/null 2>&1
+}
+
+serving_runtime_metadata() {
+    local mode="$1" config="$2" config_path
+    shift 2
+    if serving_host_python_available; then
+        (cd "$HOST_ROOT" && "$SERVING_PYTHON" -m src.serving_runtime "$mode" --config "$config" "$@")
+        return
+    fi
+    # Ordinary kernel runs need no host Python packages. Parse metadata using
+    # the runtime image, without devices, credentials, network or writable mounts.
+    config_path="$(cd "$HOST_ROOT" && cd "$(dirname "$config")" && pwd)/$(basename "$config")" || return 1
+    [[ -f "$config_path" ]] || die "Run config not found: $config"
+    ensure_runtime_image || return 1
+    docker run --rm --network=none --read-only --user "$(id -u):$(id -g)" \
+        -e PYTHONDONTWRITEBYTECODE=1 -e PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
+        -v "$HOST_ROOT:/workspace:ro" -v "$config_path:/run/aka-run-config.yaml:ro" \
+        -w /workspace --entrypoint python3 "$SELECTED_IMAGE" \
+        -m src.serving_runtime "$mode" --config /run/aka-run-config.yaml "$@"
+}
+
+require_serving_host_python() {
+    serving_host_python_available || die "Serving tasks require host Python with PyYAML for the clean executor. Install PyYAML in a dedicated venv and set AKA_SERVING_PYTHON to its bin/python (see docs/how-to/e2e-kernel-tasks.md)."
+}
+
 select_runtime_for_config() {
     local config="$1"
-    local image arch
+    local image arch locked_image arch_override
     image="$(read_config_docker_image "$config")" || die "Invalid runtime image configuration: $config"
     arch="$(resolve_config_gpu_arch "$config")" || return 1
     select_runtime "$arch" "$image"
+    arch_override="AKA_DOCKER_IMAGE_${arch^^}"
+    locked_image="$(serving_runtime_metadata image "$config")" || return 1
+    if [[ -n "$locked_image" ]]; then
+        require_serving_host_python
+        [[ -z "${AKA_DOCKER_IMAGE:-}" || "$AKA_DOCKER_IMAGE" == "$locked_image" ]] \
+            || die "Image override conflicts with the serving task runtime lock"
+        [[ -z "${!arch_override:-}" || "${!arch_override}" == "$locked_image" ]] \
+            || die "Architecture image override conflicts with the serving task runtime lock"
+        [[ -z "$image" || "$image" == "$locked_image" ]] || die "Config image conflicts with the serving runtime lock"
+        SELECTED_IMAGE="$locked_image"
+    fi
+}
+
+SERVING_RUNTIME_DIR=""
+SERVING_RUNTIME_PID=""
+
+start_serving_runtime() {
+    local config="$1" image
+    image="$(serving_runtime_metadata image "$config")" || return 1
+    [[ -n "$image" ]] || return 0
+    require_serving_host_python
+    SERVING_RUNTIME_DIR="$(mktemp -d /tmp/aka-serving.XXXXXX)"
+    # Artifacts are retained, including failed action evidence.
+    local artifacts="${AKA_SERVING_ARTIFACT_ROOT:-$HOST_HOME/.local/state/aka-serving}/$(basename "$SERVING_RUNTIME_DIR")"
+    mkdir -p "$artifacts"
+    (cd "$HOST_ROOT" && exec "$SERVING_PYTHON" -m src.serving_runtime serve --config "$config" \
+        --socket "$SERVING_RUNTIME_DIR/eval.sock" --artifacts "$artifacts" \
+        --container-root "$CONTAINER_WORKDIR" \
+        --devices "${AKA_VISIBLE_GPU:?serving GPU group must be assigned}") >"$artifacts/service.log" 2>&1 &
+    SERVING_RUNTIME_PID=$!
+    local attempt
+    for attempt in {1..100}; do
+        [[ -S "$SERVING_RUNTIME_DIR/eval.sock" ]] && return 0
+        kill -0 "$SERVING_RUNTIME_PID" 2>/dev/null || die "Serving executor failed; see $artifacts/service.log"
+        sleep 0.1
+    done
+    die "Serving executor did not become ready"
+}
+
+stop_serving_runtime() {
+    if [[ -n "$SERVING_RUNTIME_PID" ]]; then
+        kill "$SERVING_RUNTIME_PID" 2>/dev/null || true
+        wait "$SERVING_RUNTIME_PID" 2>/dev/null || true
+        SERVING_RUNTIME_PID=""
+    fi
+}
+
+assign_serial_gpu_group() {
+    local config="$1" image pool groups
+    image="$(serving_runtime_metadata image "$config")" || return 1
+    [[ -n "$image" ]] || return 0
+    pool="$(resolve_gpu_ids | paste -sd, -)"
+    groups="$(serving_runtime_metadata groups "$config" --devices "$pool")" || return 1
+    [[ "$groups" != *$'\n'* ]] || die "Serial serving run requires exactly one GPU group"
+    export AKA_VISIBLE_GPU="$groups"
 }
 
 select_runtime_for_host() {
@@ -450,15 +535,16 @@ read_validator_backend() {
     sed -nE 's/^backend:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$cfg" | head -n 1
 }
 
-read_run_validator_backend() {
+read_run_agent_setting() {
     local run_config="${1:-}"
+    local setting="${2:?}"
     [[ -f "$run_config" ]] || return 0
-    awk '
+    awk -v setting="$setting" '
         /^[^[:space:]#][^:]*:[[:space:]]*/ {
             in_agent = ($0 ~ /^agent[[:space:]]*:/)
             next
         }
-        in_agent && /^[[:space:]]+backend[[:space:]]*:/ {
+        in_agent && $0 ~ "^[[:space:]]+" setting "[[:space:]]*:" {
             sub(/^[^:]*:[[:space:]]*/, "")
             sub(/[[:space:]#].*/, "")
             gsub(/^["\047]|["\047]$/, "")
@@ -471,7 +557,7 @@ read_run_validator_backend() {
 # Decide which agent CLIs to provision into the container.
 # AKA_AGENTS env (comma/space list) overrides; else derive from config's
 # agent.template (task_validator -> its backend); else all three.
-resolve_required_agents() {
+resolve_optimizer_agents() {
     local config="${1:-}"
     if [[ -n "${AKA_AGENTS:-}" ]]; then
         printf '%s\n' "${AKA_AGENTS//,/ }"
@@ -485,7 +571,7 @@ resolve_required_agents() {
     fi
     if [[ "$tmpl" == "task_validator" ]]; then
         local run_backend
-        run_backend="$(read_run_validator_backend "$config")"
+        run_backend="$(read_run_agent_setting "$config" backend)"
         tmpl="${run_backend:-$(read_validator_backend)}"
     fi
     case "$tmpl" in
@@ -496,6 +582,18 @@ resolve_required_agents() {
         geak|geak_v4|geak-v4) printf 'claude_code\n' ;;
         *) printf '%s\n' "$tmpl" ;;
     esac
+}
+
+# Final serving verification runs a separate CLI; provision it even when the
+# optimization agent uses another backend or AKA_AGENTS is explicitly set.
+resolve_required_agents() {
+    local config="${1:-}" selected verifier
+    selected="$(resolve_optimizer_agents "$config")" || return 1
+    if [[ -n "$config" && -f "$config" ]]; then
+        verifier="$(serving_runtime_metadata verifier "$config")" || return 1
+        selected="$selected $verifier"
+    fi
+    printf '%s\n' "$selected" | awk '{for(i=1;i<=NF;i++) if (!seen[$i]++) printf "%s ", $i} END {print ""}'
 }
 
 # Normalize the user-facing check list and reject specialized integrations that
@@ -1118,6 +1216,11 @@ build_docker_args() {
         docker_args+=(-e "AKA_ROCM_SDK_CORE_RUNTIME=1")
     fi
 
+    if [[ -n "$SERVING_RUNTIME_DIR" ]]; then
+        docker_args+=(-v "$SERVING_RUNTIME_DIR:/run/aka-serving:ro"
+            -e "AKA_SERVING_SOCKET=/run/aka-serving/eval.sock")
+    fi
+
     # GEAK's claude-agent-sdk is installed with `pip install --target` into
     # this host-mounted dir (see container_setup_geak). Only put it on
     # a GEAK-only root for the bootstrap to qualify by Python ABI and prepend
@@ -1161,6 +1264,9 @@ build_docker_args() {
 
     if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
         local logical_gpu="${AKA_LOGICAL_GPU:-0}"
+        if [[ -z "${AKA_LOGICAL_GPU:-}" && "${AKA_VISIBLE_GPU}" == *,* ]]; then
+            logical_gpu="$(python3 -c 'import sys; print(",".join(str(i) for i in range(len(sys.argv[1].split(",")))))' "$AKA_VISIBLE_GPU")"
+        fi
         docker_args+=(
             -e "AGENT_KERNEL_ARENA_HOST_GPU_ID=${AKA_VISIBLE_GPU}"
             -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
@@ -1171,6 +1277,11 @@ build_docker_args() {
     fi
     if [[ -n "${AKA_WORKER_ID:-}" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_WORKER_ID=${AKA_WORKER_ID}")
+    fi
+    if [[ "${AKA_DEDICATED_CONTAINER:-0}" == "1" ]]; then
+        # Lets the framework sweep agent leftovers before final evaluation;
+        # never set for shells or preflight where other processes are legitimate.
+        docker_args+=(-e "AGENT_KERNEL_ARENA_DEDICATED_CONTAINER=1")
     fi
     if [[ "${AGENT_HOME_ISOLATION:-0}" == "1" ]]; then
         docker_args+=(-e "AGENT_KERNEL_ARENA_ISOLATED_HOME=1")
@@ -1634,43 +1745,88 @@ print("geak_engine=pinned clean checkout; live Workflow capability is checked by
 PY
 }
 
+copy_worker_state() {
+    local source="$1" target="$2" kind="$3"
+    # An existing worker home is left alone, as before. A failed new copy never
+    # creates this path, so the next launch cannot mistake partial state for it.
+    [[ ! -e "$target" && ! -L "$target" ]] || return 0
+
+    local attempt scratch entry copied
+    for attempt in 1 2 3 4; do
+        scratch="$(mktemp -d "$HOME/.aka-agent-state-stage.XXXXXXXX")" \
+            || die "Could not create private worker state staging directory"
+        if ! chmod 0700 "$scratch"; then
+            rm -rf -- "$scratch"
+            die "Could not protect worker state staging directory"
+        fi
+        copied=0
+        if [[ "$kind" == codex ]]; then
+            if ! mkdir -m 0700 "$scratch/state"; then
+                rm -rf -- "$scratch"
+                die "Could not create private Codex state staging directory"
+            fi
+            # Native Codex packages are immutable and mounted separately at
+            # their original path. Copy only mutable auth/config/session state.
+            if (
+                shopt -s dotglob nullglob
+                for entry in "$source"/*; do
+                    [[ "${entry##*/}" == packages ]] && continue
+                    cp -a "$entry" "$scratch/state/" 2>/dev/null || exit 1
+                done
+            ); then
+                copied=1
+            fi
+        elif cp -a "$source" "$scratch/state" 2>/dev/null; then
+            copied=1
+        fi
+
+        if [[ "$copied" == 1 ]]; then
+            if [[ "$kind" == file ]]; then
+                chmod u+rw "$scratch/state" 2>/dev/null || copied=0
+            else
+                chmod -R u+rwX "$scratch/state" 2>/dev/null || copied=0
+            fi
+        fi
+        if [[ "$copied" == 1 ]]; then
+            if [[ -e "$target" || -L "$target" ]]; then
+                rm -rf -- "$scratch"
+                die "Worker state destination appeared during staging"
+            fi
+            if mv -- "$scratch/state" "$target" 2>/dev/null; then
+                rmdir -- "$scratch"
+                return 0
+            fi
+        fi
+        # Only this mktemp-created private staging tree is disposable. Never
+        # remove or expose the mounted source or a published worker home.
+        rm -rf -- "$scratch"
+        if [[ "$attempt" -lt 4 ]]; then
+            warn "Worker state copy changed or failed; retrying ($attempt/4)"
+            sleep 0.2
+        fi
+    done
+    die "Worker state copy failed after four attempts"
+}
+
 container_prepare_worker_home() {
     local state_root="${AGENT_STATE_MOUNT_ROOT:-/opt/aka-agent-state}"
     mkdir -p "$HOME"
 
-    if [[ -d "$state_root/.codex" && ! -e "$HOME/.codex" ]]; then
-        mkdir -p "$HOME/.codex"
-        # Native Codex packages are immutable and can be hundreds of MB. The
-        # standalone package tree is mounted separately at its original path;
-        # copy only mutable auth/config/session state into the worker HOME.
-        (
-            shopt -s dotglob nullglob
-            local entry
-            for entry in "$state_root/.codex"/*; do
-                [[ "$(basename "$entry")" == "packages" ]] && continue
-                cp -a "$entry" "$HOME/.codex/"
-            done
-        )
-        chmod -R u+rwX "$HOME/.codex" 2>/dev/null || true
+    if [[ -d "$state_root/.codex" ]]; then
+        copy_worker_state "$state_root/.codex" "$HOME/.codex" codex
     fi
-
-    if [[ -d "$state_root/.claude" && ! -e "$HOME/.claude" ]]; then
-        cp -a "$state_root/.claude" "$HOME/.claude"
-        chmod -R u+rwX "$HOME/.claude" 2>/dev/null || true
+    if [[ -d "$state_root/.claude" ]]; then
+        copy_worker_state "$state_root/.claude" "$HOME/.claude" directory
     fi
-    if [[ -f "$state_root/.claude.json" && ! -e "$HOME/.claude.json" ]]; then
-        cp -a "$state_root/.claude.json" "$HOME/.claude.json"
-        chmod u+rw "$HOME/.claude.json" 2>/dev/null || true
+    if [[ -f "$state_root/.claude.json" ]]; then
+        copy_worker_state "$state_root/.claude.json" "$HOME/.claude.json" file
     fi
-
-    if [[ -d "$state_root/.cursor" && ! -e "$HOME/.cursor" ]]; then
-        cp -a "$state_root/.cursor" "$HOME/.cursor"
-        chmod -R u+rwX "$HOME/.cursor" 2>/dev/null || true
+    if [[ -d "$state_root/.cursor" ]]; then
+        copy_worker_state "$state_root/.cursor" "$HOME/.cursor" directory
     fi
-    if [[ -d "$state_root/.config/cursor" && ! -e "$HOME/.config/cursor" ]]; then
+    if [[ -d "$state_root/.config/cursor" ]]; then
         mkdir -p "$HOME/.config"
-        cp -a "$state_root/.config/cursor" "$HOME/.config/cursor"
-        chmod -R u+rwX "$HOME/.config/cursor" 2>/dev/null || true
+        copy_worker_state "$state_root/.config/cursor" "$HOME/.config/cursor" directory
     fi
 }
 
@@ -1782,6 +1938,11 @@ resolve_gpu_ids() {
         return
     fi
 
+    if [[ -n "${ROCR_VISIBLE_DEVICES:-}" ]]; then
+        printf '%s\n' "${ROCR_VISIBLE_DEVICES//,/ }" | tr ' ' '\n' | sed '/^$/d'
+        return
+    fi
+
     if command -v rocm-smi >/dev/null 2>&1; then
         rocm-smi --showid 2>/dev/null \
             | sed -nE 's/.*GPU\[([0-9]+)\].*/\1/p' \
@@ -1819,6 +1980,14 @@ run_parallel() {
     done < <(resolve_gpu_ids)
     [[ "${#gpu_ids[@]}" -gt 0 ]] || die "No GPU IDs available; set GPU_IDS=0,1,..."
 
+    local grouped_pool groups_text
+    grouped_pool="$(IFS=,; echo "${gpu_ids[*]}")"
+    groups_text="$(serving_runtime_metadata groups "$config_name" --devices "$grouped_pool")" || return 1
+    gpu_ids=()
+    while IFS= read -r gpu_id; do
+        [[ -n "$gpu_id" ]] && gpu_ids+=("$gpu_id")
+    done <<< "$groups_text"
+
     echo "Parallel run: run_name=${run_name} workers=${#gpu_ids[@]} gpu_ids=${gpu_ids[*]}" >&2
 
     (
@@ -1849,9 +2018,10 @@ run_parallel() {
             export AKA_CONTAINER_HOME="/tmp/aka-home-${safe_run_name}-worker-${worker_id}"
             export AKA_CACHE_SUFFIX="${safe_run_name}-worker-${worker_id}"
             export AGENT_HOME_ISOLATION=1
-            trap stop_eval_tool_sidecars EXIT
+            trap 'stop_serving_runtime; stop_eval_tool_sidecars' EXIT
+            start_serving_runtime "$config_name"
             start_eval_tool_sidecars "$config_name" "${safe_run_name}-worker-${worker_id}"
-            docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
+            AKA_DEDICATED_CONTAINER=1 docker_exec 0 python main.py "$@" --parallel-worker --worker-id "$worker_id" --run-name "$run_name"
         ) &
         pids+=("$!")
     done
@@ -1890,10 +2060,13 @@ case "${1:-}" in
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
+        assign_serial_gpu_group "$config_name"
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
-        trap stop_eval_tool_sidecars EXIT
+        trap 'stop_serving_runtime; stop_eval_tool_sidecars' EXIT
+        start_serving_runtime "$config_name"
         start_eval_tool_sidecars "$config_name" "run-${BASHPID}"
-        docker_exec 0 python main.py "$@"
+        AKA_DEDICATED_CONTAINER=1 docker_exec 0 python main.py "$@"
+        stop_serving_runtime
         stop_eval_tool_sidecars
         trap - EXIT
         ;;

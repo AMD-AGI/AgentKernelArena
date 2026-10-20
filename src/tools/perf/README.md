@@ -35,7 +35,8 @@ Do not commit `_aka_benchmark.py` or `hip_graph_benchmark.hpp` copies under
 workspace, or `make materialize-perf-task TASK=tasks/...` for local inspection.
 
 See `docs/reference/benchmark-methodology.md` for measurement and fairness
-rules, including paired graph/Event baseline selection.
+rules, including paired graph/Event baseline selection and the opt-in
+cold-weight timing of `benchmark_cuda_graph_cold_weights_samples()`.
 
 ## Observing measured outputs
 
@@ -67,6 +68,12 @@ must not reset inputs or run the reference. It does not change graph batching.
 Apply the same observation and state policy to baseline and candidate. An
 observer exception rejects the measurement and leaves the collector unbound.
 
+Serving tasks use the same workspace materialization mechanism for the canonical
+client adapter in `src/tools/perf/serving.py`. They declare a separate wall-clock measurement
+contract; this does not change device-timing rules for kernel tasks.
+`serving_bundle.py` is the task-local source for multi-file compute replacement,
+source hashing and execution evidence. It is materialized beside the adapter;
+do not edit the generated `_aka_serving_bundle.py` copies.
 To check the results of the reported samples themselves, set
 `timed_run.after_sample` to a callback accepting the sample's outputs (the
 captured outputs under CUDA-graph timing, the return value under Event timing).

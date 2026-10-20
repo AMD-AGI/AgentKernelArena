@@ -63,6 +63,9 @@ def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int]
                     text = entrypoint.read_text()
                 except (OSError, UnicodeDecodeError):
                     continue
+                if "_aka_serving" in text:
+                    family = "serving_client"
+                    break
                 if "_aka_benchmark" in text:
                     family = "canonical_python"
                     break
@@ -84,6 +87,9 @@ def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int]
                 text = module.read_text(errors="replace")
                 if any(marker in text for marker in MARK_STARTS):
                     family = "vllm_adapter"
+                    break
+                if "_aka_serving" in text:
+                    family = "serving_client"
                     break
                 if "_aka_benchmark" in text:
                     family = "canonical_python"

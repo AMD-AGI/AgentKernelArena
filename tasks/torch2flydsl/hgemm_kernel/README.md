@@ -53,20 +53,30 @@ this migration; the parent integration schedules fresh GPU validation.
 
 Measured outputs and subsequent invocations are checked against the protected
 FP32-accumulating, BF16-output reference using the original numerical gate.
+Correctness also invokes the candidate on constant and nonuniform mixed-sign
+operands at every declared shape and tiling. Exact integer dot-product answers
+check the FP32 reference independently; candidate outputs use the unchanged
+numerical gate described above. These additional cases are not scored timing workloads.
 The harness also rejects wrong shape/dtype/device, non-finite outputs and
 read-only input mutation. Input perturbation, reference calculation and output
 poisoning occur outside timing, identically for baseline and candidate.
-Explicit Event timing observes the last actual measured sample; its validation
-re-invokes the same eager callable and is not captured graph replay. Graph timing
-validates the actual captured replay. Original shapes, seeds, tolerance, warmup,
-sample counts and Graph/Event selection remain unchanged.
+Explicit Event timing checks the output of every completed measured sample.
+Sample zero uses the original input; each later sample receives a distinct
+seeded BF16 pair outside timing. The same stream is used for both Arena roles
+and the diagnostic PyTorch timing. One FP32 reference is prepared before each
+start Event; each complete output is checked after its end Event and released.
+Oracle preparation can change cache state identically for both roles.
+After checking all measured values, the harness poisons the final output and reruns the same
+eager callable on perturbed inputs. The five scored shapes, original sample,
+tolerance, ten warmups, 100 samples and Event policy remain unchanged. The
+strengthened data stream makes earlier timing results not directly comparable.
 
-The initial implementation uses the legacy FlyDSL buffer/vector interface.
-The bundled compatibility package supplies the removed helpers on current
-FlyDSL runtimes; see its attribution below. Select the runtime through the
-run-level Docker image setting, and keep baseline and candidate on the same
-image and timing method. Qualification binds a specific task source and image
-and does not certify a subsequently modified candidate.
+The initial implementation uses the task's `hgemm_kernel_ops/` adapters for the
+low-level buffer and vector operations in FlyDSL 0.3.2. Those adapters use
+FlyDSL MLIR primitives; the GEMM arithmetic and launch remain in `kernel.py`.
+Run the task validator on the configured GPU image before treating a modified
+initial implementation as qualified. Candidate and baseline must use the same
+runtime and timing method.
 
 
 Only the entrypoints listed in config.yaml are required interfaces. The primary
@@ -82,14 +92,9 @@ imported operator is not candidate-owned arithmetic. Import aliases and
 `from ... import ...` do not change this rule. External backend/native dispatch
 (`ctypes`, subprocesses, or `torch.ops`) and dynamic implementation loading are
 also forbidden. Ordinary Python utilities, PyTorch allocation/layout operations,
-and the task's bundled `kernels/` helpers remain available under the existing
+and the task's bundled `hgemm_kernel_ops/` helpers remain available under the existing
 numerical and timing contract. Baseline checks retain their declared initial
 backend; the final candidate must use FlyDSL.
-
-The task-local `flydsl_compat` helpers preserve the legacy buffer/vector API
-when the installed FlyDSL no longer supplies it. See `flydsl_compat/SOURCE.md`
-for the pinned upstream source and retained license. Workloads, numerical gates,
-and timing parameters are unchanged.
 
 The performance action exposes the existing measured-output verification and
 Event metadata as `timed_output_checked` and `device_timing` for the validator.

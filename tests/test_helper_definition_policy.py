@@ -107,9 +107,7 @@ def test_test_environment_hooks_cannot_be_new_helpers(tmp_path, declaration):
         verify_workspace_harness(snapshot)
 
 
-@pytest.mark.parametrize("task", [
-    "instruction2triton/rocmbench/moe_gemm", "triton2triton/rocmbench/hard/moe_gemm",
-])
+@pytest.mark.parametrize("task", ['triton2triton/rocmbench/hard/moe_gemm'])
 @pytest.mark.parametrize("name,args,return_statement", [
     ("__getattr__", "name", "raise AttributeError(name)"),
     ("__dir__", "", "return list(globals())"),
@@ -227,11 +225,8 @@ def test_editable_config_factory_has_a_separate_restricted_body_policy(tmp_path,
             verify_workspace_harness(snapshot)
 
 
-@pytest.mark.parametrize("task", [
-    "instruction2triton/rocmbench/moe_gemm",
-    "triton2triton/rocmbench/hard/moe_gemm",
-])
-def test_exact_reported_fixture_rejected_on_both_actual_moe_tasks(tmp_path, task):
+@pytest.mark.parametrize("task", ['triton2triton/rocmbench/hard/moe_gemm'])
+def test_exact_reported_fixture_rejected_on_retained_moe_task(tmp_path, task):
     workspace = tmp_path / "task"; shutil.copytree(ROOT / "tasks" / task, workspace)
     materialize_perf_helpers_in_workspace(workspace)
     snapshot = snapshot_workspace_harness(workspace)

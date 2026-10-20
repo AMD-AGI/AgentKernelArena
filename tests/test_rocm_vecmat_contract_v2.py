@@ -12,7 +12,7 @@ import pytest
 import torch
 
 ROOT=Path(__file__).resolve().parents[1]
-TASKS=['instruction2triton/rocmbench/test_batched_vecmat','triton2triton/rocmbench/easy/test_batched_vecmat']
+TASKS=['triton2triton/rocmbench/easy/test_batched_vecmat']
 
 
 def load(path):
@@ -183,18 +183,7 @@ def test_allocating_wrapper_real_timer_replay_and_restore(task,monkeypatch,dtype
     assert all(ref.equal_bytes(x,y) for x,y in timed_original)
 
 # Stable originals; no CI Git-history dependency.
-ORIGINAL = {'tasks/instruction2triton/rocmbench/test_batched_vecmat': {'files': {'config.yaml': 'c7d0c82734863968d20ed2523462ceda06f06d319a062a066945853d9b56de99',
-                                                                      'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
-                                                            'functions': {'batched_vecmat_triton_wrapper': '5296dd80ea1db6284199f671c84e7ae191bb90f46d91f293f34a9f0d82b28ca9',
-                                                                          'calculate_batched_vecmat_gbps': '558ba8e0d85140a049e7671fca345e0c9045f3ddf5b895cbb94c23eb110e3d82',
-                                                                          'calculate_batched_vecmat_tflops': '92b6d979d6a76eb876ce1f3a05e84cc8b56424ecb2b6fa82c8e9a2ffcadf5b93',
-                                                                          'set_seed': 'cfdef0cf93153372206c26f3a11dfe9ecd53892109b325cb7dc55337e70be1ce',
-                                                                          'test_save_performance_results': 'e75049a8bfa70933554c63918336d2909e576a9a7940225ed7fa3c50aad1b8d9',
-                                                                          'test_save_results': '557a528e777fd099f5b131e01721dfebf7caa45416f1f0864010681d99fa97b8'},
-                                                            'kernel_ast': '3fbfcbae473ffd0e577db74836c08ae01d91a5829ace5b6e92c48707dd151974',
-                                                            'performance_without_skip': '9a859de9a7a59bd3c283ba2fb32db6bb1aedb7352da7c5fe5b0d66322ba9e4f1',
-                                                            'rows': '544eb99ca853d9d2681c3bff5ecc927c84bdadd88ba03bedc3f8f1010c96b4a9'},
- 'tasks/triton2triton/rocmbench/easy/test_batched_vecmat': {'files': {'config.yaml': 'c7d0c82734863968d20ed2523462ceda06f06d319a062a066945853d9b56de99',
+ORIGINAL = {'tasks/triton2triton/rocmbench/easy/test_batched_vecmat': {'files': {'config.yaml': 'c7d0c82734863968d20ed2523462ceda06f06d319a062a066945853d9b56de99',
                                                                       'performance_utils_pytest.py': 'e0dfef878da9ac042c39f1832e7940520fa1738ab29d9af2fcdbbc7e42d146c9'},
                                                             'functions': {'batched_vecmat_triton_wrapper': '5296dd80ea1db6284199f671c84e7ae191bb90f46d91f293f34a9f0d82b28ca9',
                                                                           'calculate_batched_vecmat_gbps': '558ba8e0d85140a049e7671fca345e0c9045f3ddf5b895cbb94c23eb110e3d82',

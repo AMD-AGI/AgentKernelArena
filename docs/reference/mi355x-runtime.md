@@ -3,9 +3,10 @@
 The proposed MI355X default is the immutable SGLang 0.5.20 / ROCm 10 manifest
 selected in [`docker_benchmark.sh`](../../src/scripts/docker_benchmark.sh).
 The `gfx942` and `gfx1201` defaults are unchanged. Explicit image overrides and
-task-specific runtime requirements still apply. The migration remains
-**unqualified for promotion** while GPU ASan cannot pass its required controls.
-Earlier image qualifications do not qualify this source/image combination.
+task-specific runtime requirements still apply. GPU ASan is **unqualified** on
+the tested hosts and remains unavailable when its required controls fail. The
+scoring-runtime migration does not qualify this optional analysis tool. Earlier
+image qualifications do not qualify a changed source/image combination.
 
 All six optional tool runtimes use the same scoring base and distinct
 `gfx950-rocm10` tags. The scoring-image verifier rejects mismatched images and

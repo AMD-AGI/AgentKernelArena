@@ -77,7 +77,7 @@ class HeldOutDiscoveryTests(unittest.TestCase):
     def test_discovers_only_supported_task_scopes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             tasks_root = Path(temporary_directory)
-            supported = tasks_root / "hip2hip" / "gpumode" / "GELU"
+            supported = tasks_root / "hip2hip" / "GELU"
             unsupported = tasks_root / "repository" / "aiter" / "example"
             supported.mkdir(parents=True)
             unsupported.mkdir(parents=True)
@@ -86,7 +86,7 @@ class HeldOutDiscoveryTests(unittest.TestCase):
 
             discovered = discover_tasks(tasks_root)
 
-            self.assertEqual(discovered, [("hip2hip/gpumode/GELU", supported)])
+            self.assertEqual(discovered, [("hip2hip/GELU", supported)])
 
     def test_resolves_task_id_from_task_result(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -99,6 +99,27 @@ class HeldOutDiscoveryTests(unittest.TestCase):
                 resolve_task_id(workspace),
                 "triton2triton/vllm/triton_rms_norm",
             )
+
+    def test_resolves_flattened_task_ids_from_workspace_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            cases = {
+                "hip2hip_layer_normalization_20261009_120000": "hip2hip/layer_normalization",
+                "hip2hip_gpumode_layer_normalization_20261008_120000":
+                    "hip2hip/layer_normalization",
+                "hip2hip_others_assign_score_withk_20261008_120000":
+                    "hip2hip/assign_score_withk",
+                "hip2hip_vllm_paged_attention_large_20261008_120000":
+                    "hip2hip/paged_attention_large",
+                "triton2triton_rocmbench_test_triton_flip_20261009_120000":
+                    "triton2triton/rocmbench/test_triton_flip",
+                "triton2triton_rocmbench_easy_test_add_kernel_20261009_120000":
+                    "triton2triton/rocmbench/easy/test_add_kernel",
+            }
+            for directory, expected in cases.items():
+                workspace = root / directory
+                workspace.mkdir()
+                self.assertEqual(resolve_task_id(workspace), expected)
 
 
 class HeldOutBenchmarkMethodTests(unittest.TestCase):
@@ -199,7 +220,7 @@ class HeldOutBenchmarkMethodTests(unittest.TestCase):
             self.assertEqual(result["speedup_ratio"], 0.0)
             self.assertFalse(result["benchmark_method_consistent"])
             self.assertEqual(len(result["benchmark_method_mismatches"]), 1)
-            self.assertEqual(result["score"], 120.0)
+            self.assertEqual(result["score"], 0.0)
             self.assertFalse(
                 (output_workspace / "orig" / "comparison_baseline_perf.yaml")
                 .exists()

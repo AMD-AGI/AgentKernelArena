@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.sample_controls import MeasuredQuantizedStream, RawReferenceStream
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -107,11 +108,11 @@ def _retry(fn, tries=5, what="kernel"):
     raise last
 
 
-def _make_inputs(m, n, k, device="cuda"):
+def _make_inputs(m, n, k, device="cuda", *, seed=SEED):
     import torch
 
     gen = torch.Generator(device=device)
-    gen.manual_seed(SEED)
+    gen.manual_seed(seed)
     x = torch.randn((m, k), generator=gen, device=device, dtype=torch.bfloat16)
     weight = torch.randn((n, k), generator=gen, device=device, dtype=torch.bfloat16)
     return x, weight
@@ -155,11 +156,89 @@ def _quantized_dense_reference(xq, wq, x_scale, w_scale):
     return (acc * x_scale * w_scale.transpose(0, 1)).to(torch.bfloat16)
 
 
-def _perturb_preshuffle_scales(x_scale, w_scale):
-    # Positive finite scales stay in-domain; change the actual measured inputs
-    # without changing the timed case, quantization or packed-weight preparation.
-    x_scale.mul_(0.5)
-    w_scale.mul_(0.5)
+def _install_alternate_quantized_inputs(kmod, mmod, inputs, *, case_index):
+    """Replace both quantized operands with a second valid independent draw."""
+    import torch
+
+    x, weight, xq, wq, wq_shuf, x_scale, w_scale = inputs
+    alternate_x, alternate_weight = _make_inputs(
+        x.shape[0], weight.shape[0], x.shape[1], device=x.device,
+        seed=SEED + 10_000 * (case_index + 1),
+    )
+    alternate_xq, alternate_x_scale = mmod.pertoken_quant(alternate_x)
+    alternate_wq, alternate_w_scale = mmod.pertoken_quant(alternate_weight)
+    if torch.equal(alternate_xq, xq) or torch.equal(alternate_wq, wq):
+        raise AssertionError("Alternate replay did not change both quantized operands")
+    alternate_packed_wq = _checked_preshuffle(kmod, alternate_wq)
+    for target, source in zip(inputs, (alternate_x, alternate_weight,
+                                       alternate_xq, alternate_wq, alternate_packed_wq,
+                                       alternate_x_scale, alternate_w_scale)):
+        if target.shape != source.shape or target.dtype != source.dtype or target.device != source.device:
+            raise AssertionError("Alternate quantized replay changed an input contract")
+        target.copy_(source)
+
+
+def _timed_bpreshuffle_case(kmod, mmod, inputs, candidate, *, case_index, warmup, iters):
+    """Score full public GEMM calls on distinct, checked quantized operands."""
+    import torch
+
+    x, weight, xq, wq, wq_shuf, x_scale, w_scale = inputs
+    stream = MeasuredQuantizedStream(
+        inputs, seed=SEED, case_index=case_index, samples=iters,
+        make_inputs=_make_inputs, quantize=mmod.pertoken_quant,
+        checked_preshuffle=lambda value: _checked_preshuffle(kmod, value),
+        check_unchanged=require_unchanged,
+    )
+    reason = "capture_unsafe_hipblaslt_reference"
+    try:
+        _retry(candidate, what=SHAPES[case_index]["name"])
+        torch.cuda.synchronize()
+        require_unchanged(inputs, stream.originals)
+        for _ in range(warmup):
+            candidate()
+            torch.cuda.synchronize()
+            require_unchanged(inputs, stream.originals)
+
+        sample_reference = lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale)
+        stream.bind(sample_reference, _compare_preshuffle_output)
+        timed = TimedRun()
+        timed.after_sample = stream.observe
+        kernel_ms, kernel_meta = benchmark_cuda_graph_or_events(
+            candidate, warmup=0, repetition=iters, use_cuda_graph=False,
+            fallback_reason=reason, prepare_fn=stream.prepare, timed_run=timed,
+        )
+        if kernel_meta.get("benchmark_samples") != iters:
+            raise AssertionError("Reported sample count differs from the declared count")
+        last_expected = stream.validate(sample_reference, _compare_preshuffle_output)
+        last_inputs = tuple(value.clone() for value in inputs)
+        kernel_meta.update(verify_timed_run(
+            timed, inputs=inputs, originals=last_inputs, expected=last_expected,
+            perturb=lambda: _install_alternate_quantized_inputs(
+                kmod, mmod, inputs, case_index=case_index),
+            reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
+            compare=_compare_preshuffle_output, minimum_replay_change=2 * NORM_TOL,
+        ))
+        kernel_meta["validated_sample_count"] = stream.checked
+        kernel_meta["replay_quantized_operands_changed"] = True
+
+        stream.restore()
+        reference_stream = RawReferenceStream(
+            x, weight, seed=SEED, case_index=case_index, samples=iters,
+            make_inputs=_make_inputs,
+        )
+        try:
+            ref_ms, ref_meta = benchmark_cuda_graph_or_events(
+                lambda: torch.matmul(x, weight.transpose(-1, -2)),
+                warmup=0, repetition=iters, use_cuda_graph=False,
+                fallback_reason=reason, prepare_fn=reference_stream.prepare,
+            )
+            if reference_stream.prepared != iters or ref_meta.get("benchmark_samples") != iters:
+                raise AssertionError("Reference stream differs from candidate sample count")
+        finally:
+            reference_stream.restore()
+        return kernel_ms, kernel_meta, ref_ms, ref_meta
+    finally:
+        stream.restore()
 
 
 def run_correctness(verbose=True):
@@ -250,47 +329,15 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         wq_shuf = _checked_preshuffle(kmod, wq)
 
         protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
-        originals = tuple(v.clone() for v in protected_inputs)
-        expected = _quantized_dense_reference(xq, wq, x_scale, w_scale)
 
         def _call():
             return kmod.flydsl_gemm_a8w8_bpreshuffle(
                 xq, wq_shuf, x_scale, w_scale, **tiling
             )
 
-        _retry(_call, what=shape["name"])
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            _call()
-        torch.cuda.synchronize()
-
-        # The PyTorch reference dispatches hipBLASLt, which rejects stream
-        # capture in this image. Predetermine an Event-only policy for both
-        # sides so the candidate cannot select a different timing method.
-        event_reason = "capture_unsafe_hipblaslt_reference"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            _call,
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=False,
-            fallback_reason=event_reason,
-            timed_run=timed,
-        )
-
-        kernel_bench_meta.update(verify_timed_run(
-            timed, inputs=protected_inputs, originals=originals, expected=expected,
-            perturb=lambda: _perturb_preshuffle_scales(x_scale, w_scale),
-            reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
-            compare=_compare_preshuffle_output,
-        ))
-
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.matmul(x, weight.transpose(-1, -2)),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=False,
-            fallback_reason=event_reason,
+        kernel_ms, kernel_bench_meta, ref_ms, ref_bench_meta = _timed_bpreshuffle_case(
+            kmod, mmod, protected_inputs, _call,
+            case_index=idx, warmup=warmup, iters=iters,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]
@@ -404,47 +451,15 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         wq_shuf = _checked_preshuffle(kmod, wq)
 
         protected_inputs = (x, weight, xq, wq, wq_shuf, x_scale, w_scale)
-        originals = tuple(v.clone() for v in protected_inputs)
-        expected = _quantized_dense_reference(xq, wq, x_scale, w_scale)
 
         def _call():
             return kmod.flydsl_gemm_a8w8_bpreshuffle(
                 xq, wq_shuf, x_scale, w_scale, **tiling
             )
 
-        _retry(_call, what=shape["name"])
-        torch.cuda.synchronize()
-        for _ in range(warmup):
-            _call()
-        torch.cuda.synchronize()
-
-        # The PyTorch reference dispatches hipBLASLt, which rejects stream
-        # capture in this image. Predetermine an Event-only policy for both
-        # sides so the candidate cannot select a different timing method.
-        event_reason = "capture_unsafe_hipblaslt_reference"
-        timed = TimedRun()
-        kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
-            _call,
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=False,
-            fallback_reason=event_reason,
-            timed_run=timed,
-        )
-
-        kernel_bench_meta.update(verify_timed_run(
-            timed, inputs=protected_inputs, originals=originals, expected=expected,
-            perturb=lambda: _perturb_preshuffle_scales(x_scale, w_scale),
-            reference=lambda: _quantized_dense_reference(xq, wq, x_scale, w_scale),
-            compare=_compare_preshuffle_output,
-        ))
-
-        ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
-            lambda: torch.matmul(x, weight.transpose(-1, -2)),
-            warmup=0,
-            repetition=iters,
-            use_cuda_graph=False,
-            fallback_reason=event_reason,
+        kernel_ms, kernel_bench_meta, ref_ms, ref_bench_meta = _timed_bpreshuffle_case(
+            kmod, mmod, protected_inputs, _call,
+            case_index=idx, warmup=warmup, iters=iters,
         )
 
         methods_match = kernel_bench_meta["benchmark_method"] == ref_bench_meta["benchmark_method"]

@@ -52,6 +52,21 @@ assert_before() {
 # Capture the exact argv that the runner would pass to Docker without requiring
 # a daemon, GPU devices, or the benchmark images on this host.
 docker() {
+    if [[ -n "${FAKE_METADATA_ARGS:-}" && " $* " == *" -m src.serving_runtime "* ]]; then
+        printf '%s\n' "$@" > "$FAKE_METADATA_ARGS"
+        [[ "${FAKE_METADATA_FAILURE:-0}" == 0 ]] || return 42
+        local config="" mode="" pool="0" index
+        local -a metadata_args=("$@")
+        for ((index = 0; index < ${#metadata_args[@]}; index++)); do
+            case "${metadata_args[$index]}" in
+                *:/run/aka-run-config.yaml:ro) config="${metadata_args[$index]%:/run/aka-run-config.yaml:ro}" ;;
+                src.serving_runtime) mode="${metadata_args[$((index + 1))]}" ;;
+                --devices) pool="${metadata_args[$((index + 1))]}" ;;
+            esac
+        done
+        "$REAL_PYTHON3" -m src.serving_runtime "$mode" --config "$config" --devices "$pool"
+        return
+    fi
     if [[ -n "${FAKE_RUNTIME_DIR:-}" ]]; then
         printf '%s\n' "$1" >> "$FAKE_RUNTIME_DIR/events"
         case "$1" in
@@ -313,6 +328,7 @@ assert_cache_args_present "" "${args[@]}"
 # The qualification image has the same non-root cache requirement. Test both
 # public references and per-worker isolation without promoting it to default.
 for image in \
+    lmsysorg/sglang@sha256:7a3087bc8b17b246a807215c37e2260e2b83c052423a92cb73966eea5d8b2d7f \
     lmsysorg/sglang-rocm:v0.5.19-rocm10-mi35x-20260913 \
     lmsysorg/sglang-rocm@sha256:106a7adbeec5554b6e66a4bda0b3694af442717b9fe92754a9885520077b6f93 \
     lmsysorg/sglang:v0.5.20-rocm10-mi35x \
@@ -558,7 +574,7 @@ printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) ec
     "$QUALITY_TEST_RUN_ID" "$QUALITY_ARTIFACT_REL" "$QUALITY_WORKTREE_REL" \
     > "$QUALITY_BIN/python3"
 chmod +x "$QUALITY_BIN/python3"
-printf 'tasks:\n  - hip2hip/gpumode/GELU\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
+printf 'tasks:\n  - hip2hip/GELU\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
 mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
 
 mapfile -t args < <(
@@ -829,6 +845,63 @@ run_runtime_command() {
         --config_name "${RUNTIME_TEST_CONFIG:-example_configs/quickstart_claude_rdna4.yaml}" \
         > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"
 }
+
+# Simulate a Docker-only host with no usable PyYAML interpreter. Docker itself
+# remains mocked; only the metadata parser is run by the test interpreter.
+NO_YAML_BIN="$TEST_HOME/no-host-yaml-bin"
+mkdir -p "$NO_YAML_BIN"
+cat > "$NO_YAML_BIN/python3" <<'PYTHON'
+#!/usr/bin/env bash
+exec "$REAL_PYTHON3" -S "$@"
+PYTHON
+chmod +x "$NO_YAML_BIN/python3"
+if "$NO_YAML_BIN/python3" -c 'import yaml' >/dev/null 2>&1; then
+    fail "no-host-yaml fixture unexpectedly imports PyYAML"
+fi
+for runtime_mode in check-agents preflight run parallel-run; do
+    RUNTIME_DIR="$TEST_HOME/no-host-yaml-$runtime_mode"
+    mkdir -p "$RUNTIME_DIR"
+    run_runtime_command "$runtime_mode" PATH="$NO_YAML_BIN:$PATH" AKA_SERVING_PYTHON=python3 \
+        FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "$runtime_mode requires undeclared host PyYAML"
+    }
+    # Agent-only checks also parse the optional image through the restricted
+    # Docker fallback, without introducing a host PyYAML dependency.
+    mapfile -t args < "$RUNTIME_DIR/metadata-args"
+    assert_has --network=none "${args[@]}"
+    assert_has --read-only "${args[@]}"
+    assert_has PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin "${args[@]}"
+    assert_has "$ROOT:/workspace:ro" "${args[@]}"
+    assert_has python3 "${args[@]}"
+    assert_not_has --privileged "${args[@]}"
+    assert_not_has --device "${args[@]}"
+    assert_not_has "$CLAUDE_HOME/.claude:$CLAUDE_HOME/.claude" "${args[@]}"
+done
+# A config image must survive the bootstrap parser on a Docker-only host.
+RUNTIME_DIR="$TEST_HOME/no-host-yaml-config-image"
+mkdir -p "$RUNTIME_DIR"
+RUNTIME_TEST_CONFIG="$DEEPSEEK_CONFIG" run_runtime_command check-agents \
+    PATH="$NO_YAML_BIN:$PATH" AKA_SERVING_PYTHON=python3 AKA_AGENTS=claude_code \
+    FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "config image parsing requires host PyYAML"
+    }
+mapfile -t args < "$RUNTIME_DIR/stdout"
+assert_has "$DEEPSEEK_IMAGE" "${args[@]}"
+
+if run_runtime_command run AKA_SERVING_PYTHON=/does-not-exist \
+    FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" FAKE_METADATA_FAILURE=1; then
+    fail "metadata parser failure launched an experiment"
+fi
+if env HOME="$CLAUDE_HOME" AKA_GPU_ARCH=gfx950 AKA_SERVING_PYTHON=/does-not-exist \
+    FAKE_METADATA_ARGS="$RUNTIME_DIR/metadata-args" bash "$RUNNER" run \
+    --config_name example_configs/e2e_qwen3_codex_mi355x.yaml \
+    > "$RUNTIME_DIR/stdout" 2> "$RUNTIME_DIR/stderr"; then
+    fail "serving executor ran without its declared host dependency"
+fi
+[[ "$(cat "$RUNTIME_DIR/stderr")" == *"AKA_SERVING_PYTHON"* ]] \
+    || fail "serving host dependency error does not explain remediation"
 
 for runtime_mode in shell smoke check-agents preflight run parallel-run; do
     RUNTIME_DIR="$TEST_HOME/runtime-$runtime_mode"

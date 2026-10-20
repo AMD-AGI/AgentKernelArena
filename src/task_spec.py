@@ -8,6 +8,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+import math
 import re
 from typing import Any, Mapping
 
@@ -245,8 +246,19 @@ def _baseline(value: Any, candidate: CandidateSpec) -> BaselineSpec:
 
 def _actions(value: Any) -> tuple[ActionSpec, ...]:
     obj = _mapping(value, "evaluation", {
-        "runner", "workloads", "timeout_s", "task", "baseline", "candidate",
+        "runner", "workloads", "timeout_s", "task", "baseline", "candidate", "measurement",
     })
+    if "measurement" in obj:
+        m = _mapping(obj["measurement"], "evaluation.measurement", {"kind", "runtime_lock", "pairs", "max_p99_tpot_ms", "minimum_speedup_ratio"})
+        _choice(m.get("kind"), ("serving",), "measurement.kind")
+        relative_path(m.get("runtime_lock"), "measurement.runtime_lock")
+        if type(m.get("pairs")) is not int or not 3 <= m["pairs"] <= 100:
+            raise TaskConfigError("Serving measurements require 3 to 100 fixed A/B pairs")
+        threshold = m.get("minimum_speedup_ratio", 1.0)
+        if type(threshold) not in (int, float) or not math.isfinite(threshold) or threshold < 1:
+            raise TaskConfigError("minimum_speedup_ratio must be finite and at least 1")
+        if "max_p99_tpot_ms" in m:
+            _timeout(m["max_p99_tpot_ms"], "measurement.max_p99_tpot_ms")
     runner = _argv(obj["runner"], "evaluation.runner") if "runner" in obj else None
     default_timeout = _timeout(obj.get("timeout_s", 3600), "evaluation.timeout_s")
     if "workloads" in obj:

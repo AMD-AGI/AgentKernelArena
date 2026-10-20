@@ -40,6 +40,11 @@ def test_extract_orders_runtime_arguments_by_source_position(tmp_path, signature
     ({0: "*i32", "out": "*i32"}, {}, ["out"], "duplicate"),
     ({0: "*i32"}, {(1, 0): 8}, None, "nested"),
     ({0: "*i32"}, {"unknown": 8}, ["out"], "no source position"),
+    ({0: "*i32", 2: "i32"}, {}, ["out"], "outside source declaration"),
+    ({0: "*i32"}, {2: 8}, ["out"], "outside source declaration"),
+    ({0: "*i32", 1: "constexpr"}, {1: 8, (1,): 16}, None, "duplicate Triton constexpr"),
+    ({"out": "*i32", "block": "constexpr"}, {"block": 8, (1,): 16},
+     ["out", "block"], "duplicate Triton constexpr"),
 ])
 def test_extract_rejects_ambiguous_or_unsupported_abi(tmp_path, signature, constants, names, match):
     with pytest.raises(CapsuleValidationError, match=match):

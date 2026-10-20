@@ -1,0 +1,66 @@
+# points_in_boxes: native HIP task
+
+Optimize only `src/points_in_boxes_cuda.hip`. All task inputs, references,
+CPU comparisons, wrappers, bindings, compiler flags, launch boundaries, and
+benchmark helpers are protected. The initial implementation is present and
+written in HIP. Arena freezes that initial candidate in a separate workspace
+for every baseline action; final candidate actions always build and execute the
+submitted implementation, with no baseline fallback.
+
+The complete independent manifest in `workload.json` includes **20 cases**
+from the original 5 shapes, including every measured operation/layout.
+The original harness remains `scripts/task_runner.py`; its seed schedule,
+numerical tolerances and output-contract checks are retained. Extra checks in
+`scripts/reference_checks.py` provide small independent reference controls and
+cover measured variants previously missing from correctness. Do not reduce these
+cases or alter expected outputs to improve a score.
+Boxes use `(cx, cy, cz, dx, dy, dz, heading)` with `cz` at the bottom. After
+rotation into the box frame, points on an x or y face are outside the box;
+points at `cz` and `cz + dz` are inside. Correctness-only controls cover these
+faces and a rotated box without changing the measured cases.
+Additional correctness-only controls use eight positive and negative headings
+at small 4-by-1 rectangles. Ordered local points are rotated into world space
+independently; exact part/all membership is checked against both the CPU oracle
+and native wrapper. These controls also check input bytes remain unchanged.
+
+Compilation uses the actual original HIP compiler/extension build, including
+both native verification and benchmark binaries where applicable. The original
+warmup (10), sample count (100), CUDA-graph/event fallback policy, state reset,
+and allocation/timing boundaries remain in the protected harness. Runtime
+requirements are the selected ROCm image, a compatible GPU and HIP compiler,
+and PyTorch for extension tasks. Generated performance helpers are supplied by
+Arena and must not be edited.
+
+Call `python3 scripts/evaluate.py` followed by `validate-task`, or by
+`baseline|candidate` and `compile|correctness|performance`. Each action emits one
+`ARENA_EVAL_RESULT=` envelope. Missing cases, compiler errors, numerical errors,
+and unavailable runtime dependencies are failures, never implicit skips.
+
+Native extension compilation snapshots `src/` into a fresh directory under
+`build/native_sources/`. PyTorch hipify writes only into that build copy;
+the authored binding, candidate source, and frozen baseline files remain intact.
+Relative includes and current candidate bytes are preserved. Staged inputs are
+retained with the workspace for inspection. This does not change timed work.
+
+The baseline's declared timing method remains fixed for both roles. If edited
+native source fails the current-stream/capture-safety check required by that
+method, evaluation rejects it; it cannot force graph timing for an unsafe launch
+or downgrade only the candidate to event timing. The returned timing method is
+checked against the declared graph policy after the native extension is loaded,
+including environment changes made by a native static initializer. Implementation/launcher edits
+remain within the declared file boundary, and must honor this stream contract.
+
+Each graph-timed sample now captures one native operator call
+(`max_graph_repeats=1`). The earlier capture cap allowed more calls per
+sample, so historical latency may differ and needs a same-source rerun before
+comparison. The 10 warmups, 100 samples, cases, and correctness gates remain
+the same.
+
+Performance now compares the actual timed graph outputs to the full protected
+CPU reference, poisons those buffers and checks the same graph after replay.
+Caller inputs must remain unchanged. Reference calculation and checks remain
+outside measured samples; case IDs, input generation, exact-index or numerical
+gates, 10 warmups, 100 repetitions and original reset callbacks are retained.
+Native void-return entrypoints expose their written output buffers to the
+observer; this does not time a separate validation invocation. Integer outputs
+use integer-safe poisoning. These are same-input replay checks.

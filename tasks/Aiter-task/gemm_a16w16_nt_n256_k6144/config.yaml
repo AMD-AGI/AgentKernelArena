@@ -20,13 +20,14 @@ baseline:
   - aiter_source/aiter/tuned_gemm.py
   correctness_policy: diagnostic
   diagnostic_reason: >-
-    MI355X/gfx950 job 181463 on 2026-09-30 completed all 13 baseline cases with
-    image sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78.
-    Seven cases (M=4 through M=256) had finite numerical mismatches and all
-    output contracts passed. README.md gives the per-case results, validation
-    request identity and pinned-image reproduction commands. The current
-    captured correctness action supplies the evidence; the older nine-case
-    observation in README.md used a different image and is historical context.
+    MI355X/gfx950 validation on 2026-10-09, request
+    935989825de94f69b57ddb6f4314e058, completed all 13 baseline cases with
+    image sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69.
+    Nine cases (M=4 through M=1024) had finite numerical mismatches and all
+    output contracts passed. README.md gives the per-case results and distinguishes
+    this capture from the seven-case 2026-09-30 observation on image
+    sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78.
+    The completed correctness action supplies the numerical diagnostic evidence.
     Retain baseline numerical and timed-replay diagnostics; compilation,
     execution, coverage and output-contract errors are not exempt.
     Candidate correctness and timed replay retain the full original gate.

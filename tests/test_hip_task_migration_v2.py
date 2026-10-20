@@ -10,6 +10,7 @@ import importlib.util
 import inspect
 import json
 import math
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -24,19 +25,42 @@ from src.task_spec import ACTIONS, load_task_spec
 from src.task_protocol import CaseManifest, parse_command_result
 
 ROOT = Path(__file__).resolve().parents[1]
+HIP_NATIVE_NAMES = {
+    'assign_score_withk', 'ball_query', 'furthest_point_sample', 'knn',
+    'matrix_multiplication', 'mla_decode', 'points_in_boxes',
+    'roiaware_pool3d', 'roipoint_pool3d', 'three_nn',
+}
+
+
+def historical_hip_path(path):
+    """Resolve a flattened HIP file to its pre-move Git tree path."""
+    relative = path.relative_to(ROOT)
+    if relative.parts[:2] != ('tasks', 'hip2hip'):
+        return relative.as_posix()
+    group = 'others' if relative.parts[2] in HIP_NATIVE_NAMES else 'gpumode'
+    return Path('tasks/hip2hip', group, *relative.parts[2:]).as_posix()
+
+
+def gpumode_task_root(family, directory):
+    root = ROOT / 'tasks' / family
+    return root / directory if family == 'hip2hip' else root / 'gpumode' / directory
+
+
 # This suite checks the original migration cohort and its historical manifests.
 # New inference tasks have their own contracts in test_inference_tasks_v2.py.
 MIGRATION_ROOTS = (
-    'hip2hip/gpumode',
-    'hip2hip/others',
     'torch2hip/gpumode',
     'torch2hip/kernelbench',
 )
-CONFIGS = sorted(p for root in MIGRATION_ROOTS
-                 for p in (ROOT / 'tasks' / root).rglob('config.yaml'))
+HIP_INFERENCE_NAMES = {'paged_attention_large', 'wvsplitk'}
+HIP_MIGRATION_CONFIGS = [p for p in (ROOT / 'tasks/hip2hip').glob('*/config.yaml')
+                         if p.parent.name not in HIP_INFERENCE_NAMES]
+CONFIGS = sorted([*HIP_MIGRATION_CONFIGS,
+                  *(p for root in MIGRATION_ROOTS
+                    for p in (ROOT / 'tasks' / root).rglob('config.yaml'))])
 EXTENSIONS = [p for p in CONFIGS if (p.parent / 'eval_tools/evaluate.py').is_file()]
 NATIVE = [p for p in CONFIGS if (p.parent / 'scripts/evaluate.py').is_file()]
-ADDITIONAL_GPUMODE_REPLAY = ['hip2hip/gpumode/InnerProd', 'hip2hip/gpumode/KDLoss', 'hip2hip/gpumode/MLP_model', 'hip2hip/gpumode/MultiHeadAttention', 'hip2hip/gpumode/NormalAttention_embedded_gaussian', 'hip2hip/gpumode/PositionWiseFeedForward', 'hip2hip/gpumode/SimpleMatmulModule', 'hip2hip/gpumode/SoftmaxModule', 'hip2hip/gpumode/TransformerFFNLayer', 'hip2hip/gpumode/Transpose', 'hip2hip/gpumode/layer_normalization', 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian', 'torch2hip/gpumode/10082_SoftmaxModule', 'torch2hip/gpumode/10099_Gather', 'torch2hip/gpumode/10456_MultiHeadAttention', 'torch2hip/gpumode/1067_Transpose', 'torch2hip/gpumode/11122_PositionEmbedder', 'torch2hip/gpumode/11709_InnerProd', 'torch2hip/gpumode/11754_layer_normalization', 'torch2hip/gpumode/1178_MLP_model', 'torch2hip/gpumode/14007_KDLoss', 'torch2hip/gpumode/14044_PositionWiseFeedForward', 'torch2hip/gpumode/14069_TransformerFFNLayer', 'torch2hip/gpumode/3267_SimpleMatmulModule']
+ADDITIONAL_GPUMODE_REPLAY = ['hip2hip/InnerProd', 'hip2hip/KDLoss', 'hip2hip/MLP_model', 'hip2hip/MultiHeadAttention', 'hip2hip/NormalAttention_embedded_gaussian', 'hip2hip/PositionWiseFeedForward', 'hip2hip/SimpleMatmulModule', 'hip2hip/SoftmaxModule', 'hip2hip/TransformerFFNLayer', 'hip2hip/Transpose', 'hip2hip/layer_normalization', 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian', 'torch2hip/gpumode/10082_SoftmaxModule', 'torch2hip/gpumode/10099_Gather', 'torch2hip/gpumode/10456_MultiHeadAttention', 'torch2hip/gpumode/1067_Transpose', 'torch2hip/gpumode/11122_PositionEmbedder', 'torch2hip/gpumode/11709_InnerProd', 'torch2hip/gpumode/11754_layer_normalization', 'torch2hip/gpumode/1178_MLP_model', 'torch2hip/gpumode/14007_KDLoss', 'torch2hip/gpumode/14044_PositionWiseFeedForward', 'torch2hip/gpumode/14069_TransformerFFNLayer', 'torch2hip/gpumode/3267_SimpleMatmulModule']
 
 
 def import_path(path):
@@ -44,6 +68,35 @@ def import_path(path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def small_gate_replay_fixture(root):
+    """A real six-parameter gate on small CPU inputs for replay mechanics tests."""
+    functional = import_path(root / 'pytorch_code_functional/py_5334_GateGRUSelectionLayer_func.py')
+    model = functional.GateGRUSelectionLayer(2, 4, 0.0).eval()
+    with torch.no_grad():
+        for parameter in model.parameters():
+            parameter.fill_(.1)
+    inputs = [torch.tensor([[[[-1., .5]]]]), torch.tensor([[[[.2, .8]]]])]
+    return model, inputs, functional.module_fn
+
+
+def report_fake_samples(kwargs, output):
+    """Model the helper's read-only callback after every reported sample."""
+    callback = kwargs['timed_run'].after_sample
+    if callback is None:
+        return
+    original = copy.deepcopy(output)
+    for _ in range(kwargs['repetition']):
+        callback(output)
+    def values(value):
+        if isinstance(value, torch.Tensor):
+            return [value]
+        if isinstance(value, (tuple, list)):
+            return [tensor for item in value for tensor in values(item)]
+        return []
+    for actual, expected in zip(values(output), values(original)):
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
 
 
 def options(config):
@@ -66,6 +119,8 @@ def harness_namespace(task):
 
 
 def test_inventory():
+    assert {p.parent.name for p in (ROOT / 'tasks/hip2hip').glob('*/config.yaml')} - \
+        {p.parent.name for p in HIP_MIGRATION_CONFIGS} == HIP_INFERENCE_NAMES
     assert len(CONFIGS) == 89
     assert len(EXTENSIONS) == 79 and len(NATIVE) == 10
     assert len([p for p in CONFIGS if p.is_relative_to(ROOT / 'tasks/hip2hip')]) == 32
@@ -206,38 +261,84 @@ def test_output_contract_rejects_broadcast_dtype_and_nonfinite(path):
 
 @pytest.mark.parametrize('path', NATIVE, ids=lambda p: p.parent.name)
 def test_native_all_actions_and_errors_emit_envelopes(path, tmp_path, monkeypatch, capsys):
-    runner = import_path(path.parent / 'scripts/evaluate.py')
+    protected_roi = path.parent.name in {'points_in_boxes', 'roiaware_pool3d', 'roipoint_pool3d'}
+    if protected_roi:
+        from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
+        workspace = tmp_path / path.parent.name
+        shutil.copytree(path.parent, workspace, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', 'build'))
+        materialize_perf_helpers_in_workspace(workspace, root=ROOT)
+        runner = import_path(workspace / 'scripts/evaluate.py')
+    else:
+        workspace = tmp_path
+        runner = import_path(path.parent / 'scripts/evaluate.py')
     data = json.loads(path.with_name('workload.json').read_text())
-    (tmp_path / 'workload.json').write_text(json.dumps(data))
-    for relative in data['candidate_files']:
-        p = tmp_path / relative; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('native candidate')
+    if not protected_roi:
+        (workspace / 'workload.json').write_text(json.dumps(data))
+        for relative in data['candidate_files']:
+            p = workspace / relative; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('native candidate')
     measured = [{**row, 'execution_time_ms': .1, 'benchmark_method': 'cuda_graph'} for row in data['cases']]
     h = types.SimpleNamespace(TEST_SHAPES=[tuple(s) for s in data['test_shapes']], run_compile=lambda: (True, None),
                               run_correctness=lambda: (True, None), run_performance=lambda: measured,
                               HIP_GRAPH_ENABLED=True, HIP_GRAPH_FALLBACK_REASON=None)
     controls = types.SimpleNamespace(self_test=lambda h: None, check_additional_paths=lambda h: None)
-    monkeypatch.setattr(runner, 'ROOT', tmp_path)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setitem(sys.modules, 'task_runner', h)
-    monkeypatch.setitem(sys.modules, 'reference_checks', controls)
-    manifest = None
-    for role, action in ACTIONS:
-        argv = ['validate-task'] if role == 'task' else [role, action]
-        code = runner.main(argv)
-        result = parse_command_result(capsys.readouterr().out, role=role, action=action, returncode=code)
-        assert result.passed
-        if role == 'task': manifest = CaseManifest.from_result(result)
-        else: manifest.validate(result)
-    h.run_compile = lambda: (False, 'compiler crashed')
-    h.run_correctness = lambda: (False, 'reference comparison failed')
-    h.run_performance = lambda: measured[:-1]
-    for role in ('baseline', 'candidate'):
-        for action in ('compile', 'correctness', 'performance'):
-            code = runner.main([role, action])
+    prior_cwd = Path.cwd()
+    prior_extensions = os.environ.get('TORCH_EXTENSIONS_DIR')
+    monkeypatch.setattr(runner, 'ROOT', workspace)
+    monkeypatch.chdir(workspace)
+    if protected_roi:
+        # The native evaluator deliberately binds its runner and policy modules
+        # by protected file path, ignoring these old sys.modules stand-ins.
+        # Load the real materialized runner, then replace only GPU actions.
+        actual_factory = runner._protected_runner
+        def cpu_action_factory():
+            loaded = actual_factory()
+            assert Path(loaded.__file__).resolve() == (workspace / 'scripts/task_runner.py').resolve()
+            assert Path(loaded._PROTECTED_BENCHMARK.__file__).resolve() == (workspace / 'scripts/_aka_benchmark.py').resolve()
+            assert Path(loaded._PROTECTED_REFERENCE_CHECKS.__file__).resolve() == (workspace / 'scripts/reference_checks.py').resolve()
+            loaded.run_compile = h.run_compile
+            loaded.run_correctness = h.run_correctness
+            loaded.run_performance = h.run_performance
+            loaded._PROTECTED_REFERENCE_CHECKS.self_test = controls.self_test
+            loaded._PROTECTED_REFERENCE_CHECKS.check_additional_paths = controls.check_additional_paths
+            return loaded
+        monkeypatch.setattr(runner, '_protected_runner', cpu_action_factory)
+    else:
+        monkeypatch.setitem(sys.modules, 'task_runner', h)
+        monkeypatch.setitem(sys.modules, 'reference_checks', controls)
+    prior_path = sys.path[:]
+    protected_names = ('task_runner', '_aka_benchmark', 'reference_checks', 'replay_validation')
+    prior_modules = {name: sys.modules.get(name) for name in protected_names}
+    try:
+        manifest = None
+        for role, action in ACTIONS:
+            argv = ['validate-task'] if role == 'task' else [role, action]
+            code = runner.main(argv)
             result = parse_command_result(capsys.readouterr().out, role=role, action=action, returncode=code)
-            assert not result.passed
-            assert result.failure_kind != 'numerical_mismatch'  # No guessing from arbitrary error text.
-            manifest.validate(result)
+            assert result.passed
+            if role == 'task': manifest = CaseManifest.from_result(result)
+            else: manifest.validate(result)
+        h.run_compile = lambda: (False, 'compiler crashed')
+        h.run_correctness = lambda: (False, 'reference comparison failed')
+        h.run_performance = lambda: measured[:-1]
+        for role in ('baseline', 'candidate'):
+            for action in ('compile', 'correctness', 'performance'):
+                code = runner.main([role, action])
+                result = parse_command_result(capsys.readouterr().out, role=role, action=action, returncode=code)
+                assert not result.passed
+                assert result.failure_kind != 'numerical_mismatch'  # No guessing from arbitrary error text.
+                manifest.validate(result)
+    finally:
+        sys.path[:] = prior_path
+        for name, original in prior_modules.items():
+            if original is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
+        monkeypatch.chdir(prior_cwd)
+        if prior_extensions is None:
+            os.environ.pop('TORCH_EXTENSIONS_DIR', None)
+        else:
+            os.environ['TORCH_EXTENSIONS_DIR'] = prior_extensions
 
 
 @pytest.mark.parametrize('corruption', ['missing', 'duplicate', 'identity', 'nan', 'zero', 'host_time'])
@@ -251,7 +352,8 @@ def test_native_performance_rejects_partial_or_invalid_results(corruption):
     elif corruption == 'nan': measured[0]['execution_time_ms'] = float('nan')
     elif corruption == 'zero': measured[0]['execution_time_ms'] = 0
     else: measured[0]['benchmark_method'] = 'wall_clock'
-    with pytest.raises(RuntimeError): runner.checked_performance(cases, measured)
+    with pytest.raises(RuntimeError):
+        runner.checked_performance(cases, measured)
 
 
 @pytest.mark.parametrize('action', ['compile', 'correctness', 'performance'])
@@ -295,41 +397,41 @@ def test_cli_errors_have_envelope(path, capsys):
 
 # Golden hashes of all original Python/native sources at migration base 5c9f8ef2.
 # Includes generators, tolerances, seeds, state reset, timing, wrappers and helpers.
-ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10,
+ORIGINAL_SOURCE_DIGESTS = {'hip2hip/CrossEntropyLossLabelSmoothing': (10,
                                                     'fa337b2263b20acf4177677b5da9fabfe34ae67c2af0d82380cc109b71c0bc8f'),
- 'hip2hip/gpumode/Feedforward': (10, '92d64c214c217b60c875f6c23ecc49a7f4b1beee8dc52e8cb711f0c2db720bb7'),
- 'hip2hip/gpumode/FusedLeakyReLU': (10, '1668336a0c97514899f3abc48835239f7b0899320c8e0c865a38a3f345ff771c'),
- 'hip2hip/gpumode/GELU': (10, '8e0645b21ac68246e58103339b0cb7ba52c65c3627737cebc22a64bb28106332'),
- 'hip2hip/gpumode/GateGRUSelectionLayer': (10, '00b0f44cbd329e9728058ade5005880e3f0af17d3dd58e3d02a4d6d2fccb1b47'),
- 'hip2hip/gpumode/InnerProd': (10, 'b8edd8ae0192044d3b808c1775b17dbeecf237f81fda8e3b0b3d1b5f7a8704d0'),
- 'hip2hip/gpumode/ItemQueryAttention': (10, 'cf4e83d9950f92f15fc43ee0663b768cd6381cb78c53dffdba2cb0b1ff15f2ef'),
- 'hip2hip/gpumode/KDLoss': (10, 'f1a96b62167ecffcaeaeeb551bccbf300593c1d48255e963e53f745f66cc22e0'),
- 'hip2hip/gpumode/MLP_model': (10, 'e0357ad5232bfa4ea09d6b6b85de653678093411cce9dd94d8196276f0c72a34'),
- 'hip2hip/gpumode/MaskedLanguageModel': (10, 'ffbcf6f0b2bdd1bf784dadb01ea4e615e1c3e621949d6b07b54838db8ae0fbc3'),
- 'hip2hip/gpumode/MultiHeadAttention': (10, '6db156f70dbac14de687e911278c0f0617ae938e8cf00da7c980622c814a159a'),
- 'hip2hip/gpumode/NormalAttention_dot': (10, '2d3282896325cbda9d542cc52cb93537acdb66262b7e5db77e832a436da29327'),
- 'hip2hip/gpumode/NormalAttention_embedded_gaussian': (10,
+ 'hip2hip/Feedforward': (10, '92d64c214c217b60c875f6c23ecc49a7f4b1beee8dc52e8cb711f0c2db720bb7'),
+ 'hip2hip/FusedLeakyReLU': (10, '1668336a0c97514899f3abc48835239f7b0899320c8e0c865a38a3f345ff771c'),
+ 'hip2hip/GELU': (10, '8e0645b21ac68246e58103339b0cb7ba52c65c3627737cebc22a64bb28106332'),
+ 'hip2hip/GateGRUSelectionLayer': (10, '00b0f44cbd329e9728058ade5005880e3f0af17d3dd58e3d02a4d6d2fccb1b47'),
+ 'hip2hip/InnerProd': (10, 'b8edd8ae0192044d3b808c1775b17dbeecf237f81fda8e3b0b3d1b5f7a8704d0'),
+ 'hip2hip/ItemQueryAttention': (10, 'cf4e83d9950f92f15fc43ee0663b768cd6381cb78c53dffdba2cb0b1ff15f2ef'),
+ 'hip2hip/KDLoss': (10, 'f1a96b62167ecffcaeaeeb551bccbf300593c1d48255e963e53f745f66cc22e0'),
+ 'hip2hip/MLP_model': (10, 'e0357ad5232bfa4ea09d6b6b85de653678093411cce9dd94d8196276f0c72a34'),
+ 'hip2hip/MaskedLanguageModel': (10, 'ffbcf6f0b2bdd1bf784dadb01ea4e615e1c3e621949d6b07b54838db8ae0fbc3'),
+ 'hip2hip/MultiHeadAttention': (10, '6db156f70dbac14de687e911278c0f0617ae938e8cf00da7c980622c814a159a'),
+ 'hip2hip/NormalAttention_dot': (10, '2d3282896325cbda9d542cc52cb93537acdb66262b7e5db77e832a436da29327'),
+ 'hip2hip/NormalAttention_embedded_gaussian': (10,
                                                        '529c4e46ef540a14b7ac22330a71650b83590a08eb089cd82c48dc274bb58c57'),
- 'hip2hip/gpumode/PositionWiseFeedForward': (10,
+ 'hip2hip/PositionWiseFeedForward': (10,
                                              '6e4bdeab4ed2eb9efabd02a7bd548358ba128ec68432560df61414b306be67be'),
- 'hip2hip/gpumode/SiLU': (10, '6357de18c8d66b74b8cebdf9814c77b715e6c344d764d3da5d374be48869f0f1'),
- 'hip2hip/gpumode/Sigmoid': (10, 'a62e47d90f34f38d3450d9e6a82f4e3dda675f940ae94eb884898821bd33134f'),
- 'hip2hip/gpumode/SimpleMatmulModule': (10, 'e9cab26ed75fb47aca9b678018c16817cdb0b1fcf7a960ca79892ede2d3036b2'),
- 'hip2hip/gpumode/SoftmaxModule': (10, 'a637beb956a816abdf207fea96faf79d3a273c1f2608747df3f38a67b9ad929f'),
- 'hip2hip/gpumode/TanH': (10, '6610c817f00ac6c09137f363ef1cb848c659fb277748940c021de9718d21ff2e'),
- 'hip2hip/gpumode/TransformerFFNLayer': (10, '8a43e0e4568a5507ef8c3e9abb7fc84421c46ad576ecf9ea37a43a3808c3183d'),
- 'hip2hip/gpumode/Transpose': (10, 'a0ce0efb1abb8346256aa63348dd3c993b01a13305667f3b5087d259a5a99401'),
- 'hip2hip/gpumode/layer_normalization': (10, 'abb3b0b5ec06ab5517d46166b220d58a192045fb1e741b8ec77bb06c913b0d9f'),
- 'hip2hip/others/assign_score_withk': (7, '35f5d4498a5c78cd9aa89e278616ef1d49a3abc5fa04a77abc9f493bebc06b1a'),
- 'hip2hip/others/ball_query': (9, 'bd291b4a553ca4f841a39af5b1618f1547f5c81541dc265422f14b37d10eabe7'),
- 'hip2hip/others/furthest_point_sample': (9, '4e2f2042e989a3084c876f0217a07918bd11edfaadee8bdaaf4dba93210a3176'),
- 'hip2hip/others/knn': (7, '0a9f3654d031d8bd2ca6454c76c77f61aed51c9dac6982e9d65df9d74de43f57'),
- 'hip2hip/others/matrix_multiplication': (12, '4a44245c3c870a834334fb67e8163507fa0c76a26ead9537f91556121c06b0a7'),
- 'hip2hip/others/mla_decode': (3, 'fccef49f7a97d1e06579abc065fe6b86d73021cad2e1805d9ef7d0b8abf37770'),
- 'hip2hip/others/points_in_boxes': (7, '86292ceb094ed6ee0c77bc903c51c72d6db5158732cd34e18c19565a937cec47'),
- 'hip2hip/others/roiaware_pool3d': (7, '5faf7054e8cabf6f5fa1401634d94ac5bed05949edb4fb749e88e285ce88ed1f'),
- 'hip2hip/others/roipoint_pool3d': (7, '367df9a8950e03ade116d3c4c13baf19455e5a31207136f1336ef6ed1ee9c820'),
- 'hip2hip/others/three_nn': (7, '6c679235f9e0511896fd942337004e55f3d853831ed1fc6d122daea007ff186b'),
+ 'hip2hip/SiLU': (10, '6357de18c8d66b74b8cebdf9814c77b715e6c344d764d3da5d374be48869f0f1'),
+ 'hip2hip/Sigmoid': (10, 'a62e47d90f34f38d3450d9e6a82f4e3dda675f940ae94eb884898821bd33134f'),
+ 'hip2hip/SimpleMatmulModule': (10, 'e9cab26ed75fb47aca9b678018c16817cdb0b1fcf7a960ca79892ede2d3036b2'),
+ 'hip2hip/SoftmaxModule': (10, 'a637beb956a816abdf207fea96faf79d3a273c1f2608747df3f38a67b9ad929f'),
+ 'hip2hip/TanH': (10, '6610c817f00ac6c09137f363ef1cb848c659fb277748940c021de9718d21ff2e'),
+ 'hip2hip/TransformerFFNLayer': (10, '8a43e0e4568a5507ef8c3e9abb7fc84421c46ad576ecf9ea37a43a3808c3183d'),
+ 'hip2hip/Transpose': (10, 'a0ce0efb1abb8346256aa63348dd3c993b01a13305667f3b5087d259a5a99401'),
+ 'hip2hip/layer_normalization': (10, 'abb3b0b5ec06ab5517d46166b220d58a192045fb1e741b8ec77bb06c913b0d9f'),
+ 'hip2hip/assign_score_withk': (7, '35f5d4498a5c78cd9aa89e278616ef1d49a3abc5fa04a77abc9f493bebc06b1a'),
+ 'hip2hip/ball_query': (9, 'bd291b4a553ca4f841a39af5b1618f1547f5c81541dc265422f14b37d10eabe7'),
+ 'hip2hip/furthest_point_sample': (9, '4e2f2042e989a3084c876f0217a07918bd11edfaadee8bdaaf4dba93210a3176'),
+ 'hip2hip/knn': (7, '0a9f3654d031d8bd2ca6454c76c77f61aed51c9dac6982e9d65df9d74de43f57'),
+ 'hip2hip/matrix_multiplication': (12, '4a44245c3c870a834334fb67e8163507fa0c76a26ead9537f91556121c06b0a7'),
+ 'hip2hip/mla_decode': (3, 'fccef49f7a97d1e06579abc065fe6b86d73021cad2e1805d9ef7d0b8abf37770'),
+ 'hip2hip/points_in_boxes': (7, '86292ceb094ed6ee0c77bc903c51c72d6db5158732cd34e18c19565a937cec47'),
+ 'hip2hip/roiaware_pool3d': (7, '5faf7054e8cabf6f5fa1401634d94ac5bed05949edb4fb749e88e285ce88ed1f'),
+ 'hip2hip/roipoint_pool3d': (7, '367df9a8950e03ade116d3c4c13baf19455e5a31207136f1336ef6ed1ee9c820'),
+ 'hip2hip/three_nn': (7, '6c679235f9e0511896fd942337004e55f3d853831ed1fc6d122daea007ff186b'),
  'torch2hip/gpumode/1001_NormalAttention_dot': (9,
                                                 '164c44698ef8352e934b9131c22a67757031c3ca1ee914084da2b72d1459d8ce'),
  'torch2hip/gpumode/10024_Feedforward': (9, '68b824549008f00760c6bc788b55a2962e5dacb69090d309eefe349d599e48b8'),
@@ -438,18 +540,19 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (10
 # out-of-place and validate timed replay; matrix must validate every output.
 # Job 139100 additionally found missing replay checks in FusedLeakyReLU, GRU and item attention.
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
-# Original digests remain the gate for tasks without an explicit reviewed repair.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/gpumode/GELU': (11, '4f9540b61f00d8e22d65e0907db7387c96d6a90c149ed0c46dcd57389574cf95'), 'torch2hip/gpumode/14539_GELU': (10, '6c990124da84450c8da0e6135d375be2afa8b712f1d20f0b8fd4628a21b32c6f'), 'hip2hip/others/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/gpumode/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/gpumode/GateGRUSelectionLayer': (11, 'caf22f456cba41142677bf9455f4f7330931c65ad645b14e3830c3a0500999ac'), 'hip2hip/gpumode/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/gpumode/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/gpumode/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/gpumode/Sigmoid': (11, '4e7b4b92dbdee90c258f442c994038e6bba420947f510550adf601f061000d71'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (10, '783a2770eb6a1c464563aabe03bc7b45bf893a21a82f9f54eb565c161748e7ea'), 'hip2hip/gpumode/TanH': (11, '007897566632c1584b5913a1592362aeaca4a3038422f93642e172777848fa43'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/others/assign_score_withk': (8, '42e3493889a8c098bca37112f5c93c756ca0f2710ffdc29c06c79d78c0e1152f'), 'hip2hip/others/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/others/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/others/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/others/points_in_boxes': (8, '076e6ed46ccfd82e5ee0360f8ff63ddfcc3f28bc430a42a99ade4e04c47dfa21'), 'hip2hip/others/roiaware_pool3d': (8, 'da874d09478d56aaf6b7af62df2053d306cd774e7e27078a5b46c85a86b387cd'), 'hip2hip/others/roipoint_pool3d': (8, '1777ecf526530d16b3072fdba19fbb612406af9c4f40cbd4105f9ce7759790f1'), 'hip2hip/others/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '3c2a8da59b2dc300fb22ea681772e8e8ed446a0dbb3cf64242258029a02cd919'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '6fd8c286fdebc9da5b7dad8174c9f69243946cdbe68c5c9a320212a6e8ad4cb2'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (11, '0afcd86f516c808c9a4a9641ba22abfeee74130dccff1987fd38213130d1d7af'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/gpumode/CrossEntropyLossLabelSmoothing': (12, 'c28f313b850a8e34983473564d00ebdbc2113c6a2db85f1541680567fa2884fa'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (11, '285a57b17629499fe15b1e7a3242afe5ae7ce636b2a06029ddf6bff66f1a2acf'), 'hip2hip/gpumode/NormalAttention_dot': (11, 'e0d6aaf0d805eb8869274d3f737b0cfdaf47b998036ca61ae3175dc994aa63ac'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/gpumode/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '79b2020bdc61cb4936085128c3079882e07b8aed7046c51ef6198598084a8c0d'), 'hip2hip/gpumode/InnerProd': (12, 'be30da86654f285e6ea2de1e64602b5fcf6ca511eef2d6560e388938a40144b9'), 'hip2hip/gpumode/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/gpumode/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/gpumode/MultiHeadAttention': (12, '6b97ab8915628a40324b97cdc34a85eb43b804f0631f37fa281648fff635b0b8'), 'hip2hip/gpumode/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/gpumode/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/gpumode/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/gpumode/SoftmaxModule': (11, '4241a1dcc8875d4f8cf2eeb98dc35a7830bd6970b7375ad4c0522e7f6ef114ab'), 'hip2hip/gpumode/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/gpumode/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/gpumode/layer_normalization': (12, '3c0c71c1acfcc5e3fe8ed0dbd662d55c55837dcc673a6fe6b1e8d8953b688f1b'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '0d76d2a4bccbde7e47029aa905d4716212b941475512459e97e167b53c49fcfb'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (11, 'e8e70c09c01273e62e561c3ced2efbfd2d5e7858968794ddbf8ee51bf502cd45'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (11, '382f0710eb619281f08554cbb55a7ac2217b7d95186e2f74284eab0e94488652'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '23db7153133fd97e5ee40ded27e147ee5c4464d5fccb65867c8d39b22dd050ea'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, 'd0392538be766d65c8cb65d2c8d6241a4c9ec3c27630981f6959b23852de7d8b'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad'), 'hip2hip/others/mla_decode': (5, 'c085a1d2388f5b1e0b231ad6bb7810f2657745b564fddffb3045ea97e8652e39')}
+# Additional repair pins require source-bound validation. Original digests remain
+# the gate for tasks without an explicit reviewed repair.
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/GELU': (11, '4f9540b61f00d8e22d65e0907db7387c96d6a90c149ed0c46dcd57389574cf95'), 'torch2hip/gpumode/14539_GELU': (10, '6c990124da84450c8da0e6135d375be2afa8b712f1d20f0b8fd4628a21b32c6f'), 'hip2hip/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/GateGRUSelectionLayer': (11, 'de46da65c66d79abc1c7925a7fb185e7912023ecf310fbb91feb0612e0fdbe38'), 'hip2hip/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/Sigmoid': (11, 'bed76f2a0219f9a3c2e98f5417f7a3ada481cd318f5894743fcdee6306139917'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (11, 'ff7adbb481d08823be4dbab1c6320f188e12dd465190f8b1f0c5e2aedb8051a6'), 'hip2hip/TanH': (11, '25da5e37f4ef1d11be19cdab2cbee95f27c7a0af7c701e2b0945c5c81328439c'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/assign_score_withk': (8, '42e3493889a8c098bca37112f5c93c756ca0f2710ffdc29c06c79d78c0e1152f'), 'hip2hip/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/points_in_boxes': (8, '31e25de5aa59d735b5db3144910327bc047874032c1e44a186c48b4cba9ce720'), 'hip2hip/roiaware_pool3d': (8, '404415a6986ed902472a7dce0817239ce4c44f2804c3df2e0d95e64853de2d6e'), 'hip2hip/roipoint_pool3d': (8, 'deb9554c3d10268687c2008bbdaace48b432a681b63de320c60aaf7a1e9fb406'), 'hip2hip/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '3c2a8da59b2dc300fb22ea681772e8e8ed446a0dbb3cf64242258029a02cd919'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '6fd8c286fdebc9da5b7dad8174c9f69243946cdbe68c5c9a320212a6e8ad4cb2'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (11, '0afcd86f516c808c9a4a9641ba22abfeee74130dccff1987fd38213130d1d7af'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/CrossEntropyLossLabelSmoothing': (12, '92daa38f15572e2a2b3b26d67739951fdfe4e974e563573477ecac74a65b46c9'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (11, '285a57b17629499fe15b1e7a3242afe5ae7ce636b2a06029ddf6bff66f1a2acf'), 'hip2hip/NormalAttention_dot': (11, '9e16cc5e223ebc24f3247b73121fad8ba82130560326d7ef646b3923be30a6ae'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '87333cb853696b3ff17afdcb5692934dcfc1ae96d39f46ad063272589fe2b74d'), 'hip2hip/InnerProd': (12, '4af2b26e19ba45c2c53106e9a5da2d947f75862e7c5e1a4eb41459956cd70e4a'), 'hip2hip/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/MultiHeadAttention': (12, '8cb3edadb96b5bf38ef78c3fa657a7b8557dd9556fdea76e0e1551dfcc268c8c'), 'hip2hip/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/SoftmaxModule': (11, '4241a1dcc8875d4f8cf2eeb98dc35a7830bd6970b7375ad4c0522e7f6ef114ab'), 'hip2hip/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/layer_normalization': (12, '37ca69c98db2a1626c9a220c47d5f9fd868ee6293e4ad5b47091a5bc7db1399b'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '0d76d2a4bccbde7e47029aa905d4716212b941475512459e97e167b53c49fcfb'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (11, 'e8e70c09c01273e62e561c3ced2efbfd2d5e7858968794ddbf8ee51bf502cd45'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (11, '7c6030f3d6c1740d9169dacdafe573f0470d4cd70b86d6991999e9b36a197068'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '43b4d4c44e89ad2e16b95ba53f6abeb20a8bd5418cacccc9b8761aee999337e8'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, '427e56420448afacb52020a539063381e9c33c00e1043c9aa04cc2b0e1c21418'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad'), 'hip2hip/mla_decode': (5, 'c085a1d2388f5b1e0b231ad6bb7810f2657745b564fddffb3045ea97e8652e39')}
 
 
 # Reviewed PR105 additions: analytic nonuniform backward checks and a separate
 # candidate translation unit. CPU known answers/macro counterexamples live in
 # test_quality_loop_task_hardening.py and test_pr107_main_integration.py.
 PR105_NATIVE_FILES = {
-    'hip2hip/others/assign_score_withk/scripts/task_runner.py': 'b5deaa21ca87e7c6ac22e3b982e9d3c193a539711ba958d3156ecbf670eb0ddf',
-    'hip2hip/others/mla_decode/mla_decode.hip': 'f48e56e755604ac9b1ea374ec5cdb5b33daece75224b07b523f51d14c1aa78cd',
-    'hip2hip/others/mla_decode/scripts/native/candidate_driver.hip': '70f0fddd267d6b8615b4479916ba2b9ba2e480478f7d7d0fc12f0aa71e150dcb',
-    'hip2hip/others/mla_decode/scripts/task_runner.py': '92a1bd338f82f10279a134ecfeeda7f22be378d76cbc7d44f713b6725af7b860',
+    'hip2hip/assign_score_withk/scripts/task_runner.py': 'b5deaa21ca87e7c6ac22e3b982e9d3c193a539711ba958d3156ecbf670eb0ddf',
+    'hip2hip/mla_decode/mla_decode.hip': 'f48e56e755604ac9b1ea374ec5cdb5b33daece75224b07b523f51d14c1aa78cd',
+    'hip2hip/mla_decode/scripts/native/candidate_driver.hip': '70f0fddd267d6b8615b4479916ba2b9ba2e480478f7d7d0fc12f0aa71e150dcb',
+    'hip2hip/mla_decode/scripts/task_runner.py': '92a1bd338f82f10279a134ecfeeda7f22be378d76cbc7d44f713b6725af7b860',
 }
 
 
@@ -467,7 +570,7 @@ def test_original_code_case_seed_tolerance_and_timing_preserved(path):
     for p in files:
         content = p.read_bytes()
         if p.relative_to(ROOT/'tasks').as_posix() in PR105_NATIVE_FILES:
-            content = subprocess.check_output(['git', 'show', 'e8ec5d6b:' + p.relative_to(ROOT).as_posix()], cwd=ROOT)
+            content = subprocess.check_output(['git', 'show', 'e8ec5d6b:' + historical_hip_path(p)], cwd=ROOT)
         if p.parent == path.parent and p.name in ('main.hip', 'mla_decode.hip'):
             header = (path.parent / 'source/kernel.hpp').read_bytes().split(b'#pragma once\n', 1)[1]
             if p.name == 'mla_decode.hip':
@@ -477,12 +580,14 @@ def test_original_code_case_seed_tolerance_and_timing_preserved(path):
             assert 'source/kernel.hpp' in path.with_name('Makefile').read_text()
         digest.update(str(p.relative_to(path.parent)).encode() + b'\0' + content + b'\0')
     relative = str(path.parent.relative_to(ROOT / 'tasks'))
-    assert (len(files), digest.hexdigest()) == GPU_VALIDATOR_REPAIR_DIGESTS.get(relative, ORIGINAL_SOURCE_DIGESTS[relative])
+    assert (len(files), digest.hexdigest()) == GPU_VALIDATOR_REPAIR_DIGESTS.get(
+        relative, ORIGINAL_SOURCE_DIGESTS[relative])
 
 
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
-@pytest.mark.parametrize('provided_hip', [False, True])
-def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_path, monkeypatch, role, provided_hip):
+@pytest.mark.parametrize('provided_hip,method', [(False, 'cuda_graph'), (True, 'cuda_graph'),
+                                                (True, 'cuda_event_fallback')])
+def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_path, monkeypatch, role, provided_hip, method):
     path = next(p for p in EXTENSIONS if ('hip2hip' in p.parts) == provided_hip)
     raw = yaml.safe_load(path.read_text()); args = options(raw)
     runner = import_path(path.parent / 'eval_tools/evaluate.py')
@@ -503,7 +608,17 @@ def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_pat
             perf.load_hip_kernel('selected', str(tmp_path / 'hip_opt'), 'copied_candidate.hip')
         perf._write_perf_report({'status': 'ok', 'test_cases': [{'case_idx': 0, 'correct': True,
             'ref_time': .3, 'ori_time': .2, 'opt_time': .1,
-            'reference_benchmark_method': 'cuda_graph', 'benchmark_method': 'cuda_graph'}]})
+            'reference_benchmark_method': method, 'benchmark_method': method,
+            'reference_benchmark': {'benchmark_method': method, 'replay_validation_valid': True,
+                                    'validated_sample_count': 100, 'benchmark_samples': 100,
+                                    'timed_output_checked': True,
+                                    **({'benchmark_fallback_reason': 'hip_source_declares_event_only'}
+                                       if method == 'cuda_event_fallback' else {})},
+            'replay_validation_valid': True, 'validated_sample_count': 100,
+            'benchmark_samples': 100, 'timed_output_checked': True,
+            'benchmark_method_consistent': True,
+            **({'benchmark_fallback_reason': 'hip_source_declares_event_only'}
+               if method == 'cuda_event_fallback' else {})}]})
     perf.cal_kernel_perf = benchmark
     monkeypatch.setitem(sys.modules, 'cal_kernel_perf', perf)
     # This fixture isolates role/source routing; dedicated tests exercise the
@@ -515,6 +630,19 @@ def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_pat
     expected = (.3 if provided_hip else .2) if role == 'baseline' else .1
     assert measured[0]['execution_time_ms'] == expected
     if provided_hip:
+        assert measured[0]['metadata']['device_timing']['timed_output_checked'] is True
+        assert measured[0]['metadata']['timed_output_checked'] is True
+        assert measured[0]['metadata']['benchmark_method_consistent'] is True
+        if method == 'cuda_event_fallback':
+            from agents.task_validator.report_v2 import _replay_validation_applicability
+            fake_result = types.SimpleNamespace(passed=True, cases=measured)
+            spec = load_task_spec(path, task_id=path.parent.relative_to(ROOT / 'tasks').as_posix())
+            applicability = _replay_validation_applicability({
+                'evidence_valid': True, 'accepted': True, 'spec': spec,
+                'results': {('baseline', 'performance'): fake_result,
+                            ('candidate', 'performance'): fake_result}})
+            assert applicability['status'] == 'not_applicable'
+    if provided_hip:
         assert compiled[0][0] == tmp_path / args.baseline_hip
         assert compiled[1][0] == tmp_path / (args.baseline_hip if role == 'baseline' else args.candidate)
         assert compiled[0][1]['slot'] != compiled[1][1]['slot']
@@ -523,7 +651,7 @@ def test_extension_performance_explicit_models_sources_and_case_coverage(tmp_pat
 
 
 def test_references_against_small_independent_known_answers():
-    tasks = ROOT / 'tasks/hip2hip/gpumode'
+    tasks = ROOT / 'tasks/hip2hip'
     for name in ('GELU', 'SoftmaxModule', 'InnerProd'):
         root = tasks / name
         config = yaml.safe_load((root / 'config.yaml').read_text()); args = options(config)
@@ -570,7 +698,7 @@ def extract_cpp_function(text, prefix):
 def test_mla_protected_host_reference_known_answers_on_cpu(tmp_path):
     compiler = shutil.which('g++')
     if not compiler: pytest.skip('CPU C++ compiler unavailable; not GPU validation')
-    text = (ROOT / 'tasks/hip2hip/others/mla_decode/mla_decode.hip').read_text()
+    text = (ROOT / 'tasks/hip2hip/mla_decode/mla_decode.hip').read_text()
     decoder = extract_cpp_function(text, '__host__ __device__ __forceinline__ float fp8_e4m3fn_to_f32')
     reference = extract_cpp_function(text, 'static void host_reference(')
     diff = extract_cpp_function(text, 'static void max_diff(')
@@ -678,8 +806,8 @@ def test_canonical_helpers_materialize_with_v2_config_only(path, tmp_path):
     assert created and not materialize_perf_helpers_in_workspace(workspace, root=ROOT)
 
 
-@pytest.mark.parametrize('task', ['hip2hip/gpumode/GELU', 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock',
-                                 'hip2hip/others/assign_score_withk', 'hip2hip/others/matrix_multiplication'])
+@pytest.mark.parametrize('task', ['hip2hip/GELU', 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock',
+                                 'hip2hip/assign_score_withk', 'hip2hip/matrix_multiplication'])
 def test_real_cli_cpu_initial_action_reports_dependencies_honestly(task, tmp_path):
     from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
     original = ROOT / 'tasks' / task; workspace = tmp_path / 'task'
@@ -689,7 +817,7 @@ def test_real_cli_cpu_initial_action_reports_dependencies_honestly(task, tmp_pat
     completed = subprocess.run([sys.executable, *command[1:], 'validate-task'], cwd=workspace,
                                capture_output=True, text=True, timeout=60)
     report = parse_command_result(completed.stdout, role='task', action='validate-task', returncode=completed.returncode)
-    if 'others' in task:
+    if task.rsplit('/', 1)[-1] in HIP_NATIVE_NAMES:
         # Native validate-task performs CPU reference/structural checks only.
         # The subsequent compile/correctness/performance still require ROCm.
         assert report.passed, report.reason
@@ -704,7 +832,7 @@ def test_matrix_full_cpu_reference_and_unsampled_negative_control(tmp_path):
     compiler = shutil.which('g++')
     if not compiler:
         pytest.skip('CPU C++ compiler unavailable; not GPU validation')
-    header = ROOT / 'tasks/hip2hip/others/matrix_multiplication/scripts/native/matrix_reference.hpp'
+    header = ROOT / 'tasks/hip2hip/matrix_multiplication/scripts/native/matrix_reference.hpp'
     source = tmp_path / 'matrix_reference.cpp'
     source.write_text('#include "' + str(header) + '"\n' + r'''
 #include <cassert>
@@ -736,7 +864,7 @@ int main() {
 
 
 def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
-    root = ROOT / 'tasks/hip2hip/others/matrix_multiplication'
+    root = ROOT / 'tasks/hip2hip/matrix_multiplication'
     helper = import_path(root / 'scripts/reference_checks.py')
     shapes = json.loads((root / 'workload.json').read_text())['test_shapes']
     calls = []
@@ -755,18 +883,18 @@ def test_matrix_additional_checks_cover_all_original_shapes(monkeypatch):
         helper.check_additional_paths(harness)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/GELU', 'torch2hip/gpumode/14539_GELU',
-                                         'hip2hip/gpumode/FusedLeakyReLU', 'hip2hip/gpumode/GateGRUSelectionLayer',
-                                         'hip2hip/gpumode/ItemQueryAttention',
-                                         'hip2hip/gpumode/SiLU',
-                                         'hip2hip/gpumode/Sigmoid',
+@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/gpumode/14539_GELU',
+                                         'hip2hip/FusedLeakyReLU', 'hip2hip/GateGRUSelectionLayer',
+                                         'hip2hip/ItemQueryAttention',
+                                         'hip2hip/SiLU',
+                                         'hip2hip/Sigmoid',
                                          'torch2hip/gpumode/10190_FusedLeakyReLU',
                                          'torch2hip/gpumode/5334_GateGRUSelectionLayer',
                                          'torch2hip/gpumode/102_ItemQueryAttention',
                                          'torch2hip/gpumode/16636_SiLU',
                                          'torch2hip/gpumode/11184_Sigmoid',
-                                         'hip2hip/gpumode/TanH', 'torch2hip/gpumode/11178_TanH',
-                                         'hip2hip/gpumode/MaskedLanguageModel', 'torch2hip/gpumode/8325_MaskedLanguageModel'] +
+                                         'hip2hip/TanH', 'torch2hip/gpumode/11178_TanH',
+                                         'hip2hip/MaskedLanguageModel', 'torch2hip/gpumode/8325_MaskedLanguageModel'] +
                          [p.parent.relative_to(ROOT / 'tasks').as_posix() for p in CONFIGS if 'level1' in p.parts] + ADDITIONAL_GPUMODE_REPLAY + ['torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide', 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm', 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd', 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool', 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm', 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale', 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling', 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax', 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool', 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling', 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max', 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp', 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU', 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max', 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax', 'torch2hip/kernelbench/level3/l3n31_VisionAttention', 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention', 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation', 'input_alias'])
 def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypatch):
@@ -775,30 +903,76 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
     runner = import_path(root / 'eval_tools/evaluate.py')
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
     monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    if relative == 'torch2hip/gpumode/11184_Sigmoid':
+        # This test uses an undeclared synthetic shape to isolate replay mechanics.
+        monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
+            assert_declared_control=lambda _model, _inputs: None))
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
-    inputs = [torch.tensor([-1., .5, 2.])]
+    gate_case = relative == 'hip2hip/GateGRUSelectionLayer'
+    affine_case = relative == 'torch2hip/gpumode/11754_layer_normalization'
+    if gate_case:
+        module, inputs, gate_fn = small_gate_replay_fixture(root)
+        reference_for_replay = lambda: module(*inputs)
+    elif affine_case:
+        monkeypatch.setitem(sys.modules, 'case_controls',
+                            import_path(root/'eval_tools/case_controls.py'))
+        class AffineModel(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.gamma = torch.nn.Parameter(torch.tensor([.7, 1.1, 1.3]))
+                self.beta = torch.nn.Parameter(torch.tensor([-.2, .1, .3]))
+            def forward(self, x, fn=None):
+                if fn is None:
+                    return torch.nn.functional.layer_norm(x, (3,), self.gamma, self.beta)
+                return fn(x, self.gamma, self.beta)
+        module = AffineModel()
+        inputs = [torch.tensor([-1., .5, 2.])]
+        reference_for_replay = lambda: module(*inputs)
+    else:
+        inputs = [torch.tensor([-1., .5, 2.])]
     observed = []
     reference_operator = ((lambda x: torch.softmax(x, dim=-1))
                           if hasattr(helper, 'softmax_reference') else torch.nn.functional.gelu)
+    if not gate_case and not affine_case:
+        reference_for_replay = lambda: reference_operator(inputs[0])
     def benchmark(invoke, **kwargs):
         observed.append(kwargs)
-        output = invoke()
+        with torch.no_grad():
+            output = invoke()
+        report_fake_samples(kwargs, output)
         def replay():
             assert torch.isnan(output).all()  # Same timed buffer was poisoned.
-            output.copy_(torch.zeros_like(output) if behavior == 'wrong_replay' else reference_operator(inputs[0]))
+            with torch.no_grad():
+                output.copy_(torch.zeros_like(output) if behavior == 'wrong_replay' else reference_for_replay())
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
+                     'benchmark_samples': kwargs['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
     helper.install(perf, runner.output_contract)
-    def module(x, fn=reference_operator): return fn(x)
-    def candidate(x):
-        output = reference_operator(x)
-        if behavior == 'input_mutation': x.add_(1)
-        if behavior == 'input_alias': x.copy_(output); return x
-        return output
+    if gate_case:
+        def candidate(x_1, x_2, reset_weight, reset_bias, update_weight, update_bias,
+                      proposal_weight, proposal_bias):
+            output = gate_fn(x_1, x_2, reset_weight, reset_bias, update_weight,
+                             update_bias, proposal_weight, proposal_bias)
+            if behavior == 'input_mutation': x_1.add_(1)
+            if behavior == 'input_alias': x_1.copy_(output); return x_1
+            return output
+    elif affine_case:
+        def candidate(x, gamma, beta):
+            output = torch.nn.functional.layer_norm(x, (3,), gamma, beta)
+            if behavior == 'input_mutation': x.add_(1)
+            if behavior == 'input_alias': x.copy_(output); return x
+            return output
+    else:
+        def module(x, fn=reference_operator): return fn(x)
+        def candidate(x):
+            output = reference_operator(x)
+            if behavior == 'input_mutation': x.add_(1)
+            if behavior == 'input_alias': x.copy_(output); return x
+            return output
     if behavior == 'correct':
         elapsed, metadata = perf.cal_hip_latency(module, inputs, candidate)
         assert elapsed == .25 and metadata['replay_validation_valid'] is True
@@ -812,7 +986,7 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
 @pytest.mark.parametrize('name', ['FusedLeakyReLU', 'GateGRUSelectionLayer'])
 def test_added_replay_tasks_reference_known_answer_and_readonly_inputs(name, family):
     directory = name if family == 'hip2hip' else {'FusedLeakyReLU': '10190_FusedLeakyReLU', 'GateGRUSelectionLayer': '5334_GateGRUSelectionLayer'}[name]
-    root = ROOT / 'tasks' / family / 'gpumode' / directory
+    root = gpumode_task_root(family, directory)
     args = options(yaml.safe_load((root / 'config.yaml').read_text()))
     for filename in [args.module, args.functional]:
         cls = getattr(import_path(root / filename), name)
@@ -843,7 +1017,7 @@ def test_added_replay_tasks_reference_known_answer_and_readonly_inputs(name, fam
 @pytest.mark.parametrize('family', ['hip2hip', 'torch2hip'])
 def test_item_attention_zero_projection_known_answer_and_readonly_inputs(family):
     directory = 'ItemQueryAttention' if family == 'hip2hip' else '102_ItemQueryAttention'
-    root = ROOT / 'tasks' / family / 'gpumode' / directory
+    root = gpumode_task_root(family, directory)
     args = options(yaml.safe_load((root / 'config.yaml').read_text()))
     queries = torch.arange(12, dtype=torch.float32).reshape(2,3,2)
     support = torch.arange(18, dtype=torch.float32).reshape(3,3,2)
@@ -866,7 +1040,7 @@ def test_item_attention_zero_projection_known_answer_and_readonly_inputs(family)
 def test_masked_language_weight_transpose_covers_nonsquare_manifest_weights(tmp_path, suffix):
     compiler = shutil.which('g++')
     if not compiler: pytest.skip('CPU C++ compiler unavailable; not GPU validation')
-    root = ROOT / 'tasks/hip2hip/gpumode/MaskedLanguageModel'
+    root = ROOT / 'tasks/hip2hip/MaskedLanguageModel'
     text = (root / f'hip/hip_8325_MaskedLanguageModel{suffix}.hip').read_text()
     kernel = 'template<typename scalar_t>\n' + extract_cpp_function(text, '__global__ void transpose2d_kernel')
     grid = next(line.strip() for line in text.splitlines() if 'dim3 gridT(' in line)
@@ -911,7 +1085,7 @@ int main() {
 @pytest.mark.parametrize('name', ['SiLU', 'Sigmoid', 'TanH'])
 def test_priority_activation_references_have_independent_known_answers(name, family):
     directory = name if family == 'hip2hip' else {'SiLU': '16636_SiLU', 'Sigmoid': '11184_Sigmoid', 'TanH': '11178_TanH'}[name]
-    root = ROOT / 'tasks' / family / 'gpumode' / directory
+    root = gpumode_task_root(family, directory)
     args = options(yaml.safe_load((root / 'config.yaml').read_text()))
     inputs = torch.tensor([-1.,0.,1.])
     for filename in (args.module,args.functional):
@@ -929,7 +1103,71 @@ def test_priority_activation_references_have_independent_known_answers(name, fam
         assert actual.untyped_storage().data_ptr()!=inputs.untyped_storage().data_ptr()
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/FusedLeakyReLU',
+@pytest.mark.parametrize('relative,source,digest,required_call', [
+    ('hip2hip/TanH', 'eval_tools/evaluate.py',
+     '655c8172f4296c712c874b9f2f5cd2856f984812cf38ebf29a1d144c995dda57',
+     'check_signed_scalar_controls'),
+    ('hip2hip/points_in_boxes', 'scripts/reference_checks.py',
+     '87a67556f8d9cee8a9d1b6dd2ebfae712e89578d0d55884485efccf9ab7c258e',
+     'check_heading_controls'),
+    ('torch2hip/gpumode/11184_Sigmoid', 'eval_tools/evaluate.py',
+     'fb8ed250fec11280db12dfccdd0b81e253aa08269be2a86dd58ad7b107a8892f',
+     'check_sigmoid_controls'),
+])
+def test_v9_additive_correctness_controls_are_source_bound_and_invoked(
+        relative, source, digest, required_call):
+    """Pin protected controls excluded from the historical source aggregate."""
+    path = ROOT/'tasks'/relative/source
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
+    tree = ast.parse(path.read_text())
+    invoker_name = ('check_additional_paths' if relative == 'hip2hip/points_in_boxes'
+                    else 'correctness')
+    invoker = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                   and node.name == invoker_name)
+    calls = [node for node in ast.walk(invoker) if isinstance(node, ast.Call)
+             and isinstance(node.func, ast.Name) and node.func.id == required_call]
+    assert calls, (relative, required_call)
+    if relative == 'hip2hip/TanH':
+        control = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                       and node.name == required_call)
+        labels = {node.value for node in ast.walk(control) if isinstance(node, ast.Constant)
+                  and isinstance(node.value, str)}
+        assert {'zero_a', 'zero_max', 'negative_a_only', 'negative_max_only',
+                'both_negative'} <= labels
+        # New unscored controls cover the vec2/vec4 and double2 tails absent
+        # from every original scored length, without changing their cases.
+        tail = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                    and node.name == 'check_tail_geometry_controls')
+        tail_labels = {node.value for node in ast.walk(tail) if isinstance(node, ast.Constant)
+                       and isinstance(node.value, str)}
+        assert {'float32_vec2_tail', 'float32_vec4_vec2_tail',
+                'float64_vec2_tail', 'float64_two_vec2_tail'} <= tail_labels
+        assert any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                   and node.func.id == 'check_tail_geometry_controls'
+                   for node in ast.walk(invoker))
+    elif relative == 'hip2hip/points_in_boxes':
+        heading = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                       and node.name == 'heading_control_inputs')
+        headings = next(node.value for node in heading.body
+                        if isinstance(node, ast.Assign) and any(
+                            isinstance(target, ast.Name) and target.id == 'headings'
+                            for target in node.targets))
+        expected = ast.parse('(-.7, -math.pi/2, -2.2, -math.pi, '
+                             '.7, math.pi/2, 2.2, math.pi)', mode='eval').body
+        assert ast.dump(headings, include_attributes=False) == ast.dump(
+            expected, include_attributes=False)
+    else:
+        control = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                       and node.name == required_call)
+        variants = next(node.value for node in ast.walk(control) if isinstance(node, ast.Assign)
+                        and any(isinstance(target, ast.Name) and target.id == 'variants'
+                                for target in node.targets))
+        assert [item.elts[0].value for item in variants.elts] == [
+            'default', 'half', 'inverse', 'steep', 'shallow',
+            'negative_max', 'zero_a', 'zero_max']
+
+
+@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU',
                                       'torch2hip/gpumode/10190_FusedLeakyReLU'])
 def test_fused_manifest_states_exercise_bias_channels_slope_and_scale(relative):
     root = ROOT / 'tasks' / relative
@@ -984,7 +1222,7 @@ def test_fused_manifest_states_exercise_bias_channels_slope_and_scale(relative):
         helper.validate_controls(zero)
 
 
-@pytest.mark.parametrize('task', sorted((ROOT / 'tasks/hip2hip/others').glob('*/kernel_loader.py')),
+@pytest.mark.parametrize('task', sorted((ROOT / 'tasks/hip2hip').glob('*/kernel_loader.py')),
                          ids=lambda p: p.parent.name)
 def test_native_hipify_writes_only_to_fresh_build_inputs(task, tmp_path, monkeypatch):
     task_root = tmp_path / 'task'
@@ -1023,7 +1261,7 @@ def test_native_hipify_writes_only_to_fresh_build_inputs(task, tmp_path, monkeyp
 
 @pytest.mark.parametrize('name', ['roiaware_pool3d', 'roipoint_pool3d'])
 def test_roi_full_output_rejects_conserved_sum_corruption(name):
-    helper = import_path(ROOT / 'tasks/hip2hip/others' / name / 'scripts/reference_checks.py')
+    helper = import_path(ROOT / 'tasks/hip2hip' / name / 'scripts/reference_checks.py')
     expected = torch.tensor([0., 2., 4., 8.]).reshape(1,1,2,2)
     wrong = expected.roll(1, dims=-1)
     assert torch.equal(wrong.sum(), expected.sum())
@@ -1042,7 +1280,7 @@ def test_ball_query_native_annulus_predicate_known_boundaries(tmp_path):
     compiler = shutil.which('g++')
     if compiler is None:
         pytest.skip('C++ compiler unavailable')
-    path = ROOT / 'tasks/hip2hip/others/ball_query/src/ball_query_cuda.hip'
+    path = ROOT / 'tasks/hip2hip/ball_query/src/ball_query_cuda.hip'
     text = path.read_text()
     predicate = next(value for value in re.findall(r'if\s*\(([^\n]+)\)', text)
                      if 'min_radius2' in value and 'max_radius2' in value)
@@ -1080,7 +1318,7 @@ def test_native_candidate_cannot_override_frozen_graph_safety(path, baseline_gra
         assert harness.HIP_GRAPH_FALLBACK_REASON == manifest['graph_policy']['reason']
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/MaskedLanguageModel',
+@pytest.mark.parametrize('relative', ['hip2hip/MaskedLanguageModel',
                                       'torch2hip/gpumode/8325_MaskedLanguageModel'])
 def test_masked_language_reference_nonuniform_known_answer(relative):
     root = ROOT / 'tasks' / relative
@@ -1112,7 +1350,7 @@ def test_masked_language_reference_nonuniform_known_answer(relative):
 @pytest.mark.parametrize('name', ['knn', 'three_nn'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation'])
 def test_native_integer_and_tuple_timed_replay(name, behavior, monkeypatch):
-    root = ROOT / 'tasks/hip2hip/others' / name
+    root = ROOT / 'tasks/hip2hip' / name
     controls = import_path(root / 'scripts/reference_checks.py')
     replay = import_path(root / 'scripts/replay_validation.py')
     h = harness_namespace(root)
@@ -1158,7 +1396,7 @@ def test_native_integer_and_tuple_timed_replay(name, behavior, monkeypatch):
 
 
 def test_three_nn_timed_contract_preserves_ties_and_rejects_wrong_index():
-    root = ROOT / 'tasks/hip2hip/others/three_nn'
+    root = ROOT / 'tasks/hip2hip/three_nn'
     controls = import_path(root / 'scripts/reference_checks.py')
     h = harness_namespace(root)
     target = torch.zeros(1, 1, 3)
@@ -1179,7 +1417,7 @@ def test_three_nn_timed_contract_preserves_ties_and_rejects_wrong_index():
                                  'roiaware_pool3d', 'roipoint_pool3d'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation'])
 def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, monkeypatch):
-    root = ROOT / 'tasks/hip2hip/others' / name
+    root = ROOT / 'tasks/hip2hip' / name
     controls = import_path(root / 'scripts/reference_checks.py')
     replay = import_path(root / 'scripts/replay_validation.py')
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
@@ -1196,6 +1434,10 @@ def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, mon
         # -1 is a legitimate outside-box value, so poisoning must change it too.
         expected = torch.tensor([[0, -1 if name == 'points_in_boxes' else 1, 2]], dtype=torch.int32)
         check = lambda actual: controls.close(actual, expected)
+    changed_expected = copy.deepcopy(expected)
+    if name in {'points_in_boxes', 'roiaware_pool3d', 'roipoint_pool3d'}:
+        for value in replay.tensors(changed_expected):
+            if name == 'points_in_boxes' or value.is_floating_point(): value.add_(1)
     output = copy.deepcopy(expected)
     calls = []
 
@@ -1205,14 +1447,23 @@ def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, mon
 
     def invoke():
         calls.append('invoke')
-        for value, original in zip(replay.tensors(output), replay.tensors(expected)): value.copy_(original)
+        source = changed_expected if name in {'points_in_boxes', 'roiaware_pool3d', 'roipoint_pool3d'} and inputs[0][0] != 1 else expected
+        for value, original in zip(replay.tensors(output), replay.tensors(source)): value.copy_(original)
         return output
+
+    def change_input():
+        inputs[0].add_(1)
+        def check_changed(actual):
+            for value, reference in zip(replay.tensors(actual), replay.tensors(changed_expected)):
+                torch.testing.assert_close(value, reference, rtol=0, atol=0)
+        return check_changed
 
     def benchmark(fn, **kwargs):
         assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
         prep = kwargs.get('prepare_fn')
         if prep: prep()
         observed_output = fn()
+        report_fake_samples(kwargs, observed_output)
 
         def captured():
             for value, original in zip(replay.tensors(output), replay.tensors(expected)):
@@ -1226,18 +1477,21 @@ def test_native_pool_and_query_replay_checks_written_buffers(name, behavior, mon
             return observed_output
 
         kwargs['timed_run']._bind(captured, observed_output)
-        return .5, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+        return .5, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
+                    'benchmark_samples': kwargs['repetition']}
 
     options = dict(warmup=10, repetition=100, use_cuda_graph=True)
     if name.startswith('roi'): options['prepare_fn'] = prepare
+    changed_arg = ((change_input,),) if name in {'points_in_boxes', 'roiaware_pool3d', 'roipoint_pool3d'} else ()
     if behavior == 'correct':
-        elapsed, metadata = replay.measure(benchmark, invoke, inputs, check, **options)
+        elapsed, metadata = replay.measure(benchmark, invoke, inputs, check, *changed_arg, **options)
         assert elapsed == .5 and metadata['replay_validation_valid'] is True
     else:
         with pytest.raises((ValueError, AssertionError)):
-            replay.measure(benchmark, invoke, inputs, check, **options)
-    assert calls.count('invoke') == 2
-    assert calls.count('prepare') == (2 if name.startswith('roi') else 0)
+            replay.measure(benchmark, invoke, inputs, check, *changed_arg, **options)
+    expected_calls = 3 if behavior == 'correct' and changed_arg else 2
+    assert calls.count('invoke') == expected_calls
+    assert calls.count('prepare') == (expected_calls if name.startswith('roi') else 0)
 
 
 @pytest.mark.parametrize('path', [p for p in CONFIGS if 'level1' in p.parts], ids=lambda p: p.parent.name)
@@ -1314,7 +1568,7 @@ def test_level1_reference_independent_known_answers_and_readonly_inputs(path):
             torch.testing.assert_close(state[key],value,rtol=0,atol=0)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/CrossEntropyLossLabelSmoothing',
+@pytest.mark.parametrize('relative', ['hip2hip/CrossEntropyLossLabelSmoothing',
                                       'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing'])
 @pytest.mark.parametrize('kind', ['captured_graph', 'eager_callable'])
 @pytest.mark.parametrize('defect', ['none', 'last_sample', 'reinvocation', 'input_mutation'])
@@ -1326,6 +1580,8 @@ def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kin
     targets = torch.tensor([[.25,.25,.5],[.5,0.,.5]])
     controls = import_path(root / 'eval_tools/case_controls.py')
     monkeypatch.setitem(sys.modules, 'case_controls', controls)
+    if relative == 'hip2hip/CrossEntropyLossLabelSmoothing':
+        monkeypatch.setattr(controls, 'assert_declared_control', lambda _model, _inputs: None)
     controls.apply_control(model, {'smooth_eps': 0.}, [logits, targets])
     expected = torch.tensor(-(.25*math.log(1/6)+.25*math.log(2/6)+.5*math.log(3/6)
                               +.5*math.log(2/6)+.5*math.log(1/6))/2)
@@ -1344,20 +1600,21 @@ def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kin
         output = invoke()
         observed_buffers.append(output)
         if defect == 'last_sample': output.zero_()
+        report_fake_samples(kwargs, output)
         if defect == 'input_mutation': targets.add_(1)
 
         def rerun():
             assert torch.isnan(output).all()
             # An explicit Event re-invocation may allocate a different buffer.
             actual = invoke() if kind == 'eager_callable' else output
-            actual.copy_(expected)
+            actual.copy_(invoke())
             if defect == 'reinvocation': actual.zero_()
             observed_buffers.append(actual)
             return actual
 
         kwargs['timed_run']._bind(rerun,output)
         return .5, {'benchmark_method':'cuda_graph' if kind == 'captured_graph' else 'cuda_event_fallback',
-                    'benchmark_timed_run_kind':kind}
+                    'benchmark_timed_run_kind':kind, 'benchmark_samples': kwargs['repetition']}
 
     def cal_kernel_perf(rtol=1e-4,atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
@@ -1374,8 +1631,8 @@ def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kin
     if defect == 'last_sample': assert len(observed_buffers) == 1
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/NormalAttention_dot',
-    'torch2hip/gpumode/1001_NormalAttention_dot', 'hip2hip/gpumode/Feedforward',
+@pytest.mark.parametrize('relative', ['hip2hip/NormalAttention_dot',
+    'torch2hip/gpumode/1001_NormalAttention_dot', 'hip2hip/Feedforward',
     'torch2hip/gpumode/10024_Feedforward'])
 @pytest.mark.parametrize('kind', ['captured_graph', 'eager_callable'])
 @pytest.mark.parametrize('defect', ['none', 'last_sample', 'reinvocation'])
@@ -1427,15 +1684,16 @@ def test_attention_and_feedforward_measured_outputs_have_independent_oracles(rel
         assert kwargs['warmup']==10 and kwargs['repetition']==100
         output=invoke().detach()
         if defect=='last_sample': output.zero_()
+        report_fake_samples(kwargs, output)
         def rerun():
             assert torch.isnan(output).all()
             actual=invoke().detach() if kind=='eager_callable' else output
-            actual.copy_(expected)
+            actual.copy_(invoke())
             if defect=='reinvocation': actual.zero_()
             return actual
         kwargs['timed_run']._bind(rerun,output)
         return .5,{'benchmark_method':'cuda_graph' if kind=='captured_graph' else 'cuda_event_fallback',
-                   'benchmark_timed_run_kind':kind}
+                   'benchmark_timed_run_kind':kind, 'benchmark_samples': kwargs['repetition']}
 
     def cal_kernel_perf(rtol=1e-4,atol=1e-5): pass
     perf=types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf,
@@ -1553,7 +1811,7 @@ def test_remaining_gpumode_references_against_independent_answers(relative):
         for key,value in model.state_dict().items(): torch.testing.assert_close(value,state[key],rtol=0,atol=0)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/FusedLeakyReLU',
+@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU',
                                       'torch2hip/gpumode/10190_FusedLeakyReLU'])
 @pytest.mark.parametrize('defect', ['none', 'omit_bias', 'wrong_channel', 'fixed_slope', 'fixed_scale'])
 def test_fused_timed_replay_uses_nonzero_manifest_reference(relative, defect, monkeypatch):
@@ -1614,7 +1872,7 @@ def test_fused_timed_replay_uses_nonzero_manifest_reference(relative, defect, mo
     assert len(reruns) == 5 + (5 if defect == 'none' else int(defect in ('fixed_slope', 'fixed_scale')))
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/FusedLeakyReLU',
+@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU',
                                       'torch2hip/gpumode/10190_FusedLeakyReLU'])
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
 @pytest.mark.parametrize('behavior', ['correct', 'cached_answer', 'fresh_replay_error',
@@ -1700,7 +1958,7 @@ def test_fused_changed_input_replay_restores_scored_workload(relative, role, beh
         assert not torch.allclose(*compared[-1], rtol=1e-4, atol=1e-5)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/InnerProd', 'torch2hip/gpumode/11709_InnerProd'])
+@pytest.mark.parametrize('relative', ['hip2hip/InnerProd', 'torch2hip/gpumode/11709_InnerProd'])
 def test_innerprod_manifest_affine_state_and_negative_controls(relative):
     root = ROOT / 'tasks' / relative
     helper = import_path(root / 'eval_tools/case_controls.py')
@@ -1746,6 +2004,19 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
     runner = import_path(path.parent / 'eval_tools/evaluate.py')
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
     monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
+    if path.parent.name == '11184_Sigmoid':
+        # Synthetic affine model has no sigmoid controls; this checks state replay.
+        monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
+            assert_declared_control=lambda _model, _inputs: None))
+    if path.parent.name == '11754_layer_normalization':
+        # The shared state fixture has weight/offset, while the real task's
+        # affine control uses gamma/beta. Exercise both live state slots here;
+        # task-specific tests retain the real named-parameter contract.
+        def perturb_shared_affine(model, parameter):
+            target = model.weight if parameter == 'gamma' else model.offset
+            with torch.no_grad(): target.add_(.25)
+        monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
+            perturb_affine=perturb_shared_affine))
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
     class Model(torch.nn.Module):
         def __init__(self):
@@ -1754,7 +2025,16 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
             self.register_buffer('offset', torch.tensor(.5))
         def forward(self, x, fn=None):
             return torch.nn.functional.gelu(x * self.weight + self.offset) if fn is None else fn(x, self.weight, self.offset)
-    model = Model().eval()
+    gate_case = path.parent.name == 'GateGRUSelectionLayer'
+    if gate_case:
+        model, inputs, candidate = small_gate_replay_fixture(path.parent)
+        x = inputs[0]
+        original_inputs = [value.clone() for value in inputs]
+        original_state = {name: value.clone() for name, value in model.state_dict().items()}
+    else:
+        model = Model().eval()
+        x = torch.tensor([-1., .5, 2.])
+        inputs = [x]
     if path.parent.name in {'GELU', '14539_GELU', 'l1n26_GELU_'}:
         # The shared state test uses a synthetic affine model; actual GELU's
         # independent oracle and both real call paths have separate controls.
@@ -1762,45 +2042,60 @@ def test_all_python_timed_paths_preserve_and_restore_state(path, role, fault, mo
     if path.parent.name in {'SoftmaxModule', '10082_SoftmaxModule', 'l1n23_Softmax'}:
         # Isolate shared state mechanics; real Softmax has independent controls.
         monkeypatch.setattr(helper, 'softmax_reference', lambda value, axis: model(value))
-    x = torch.tensor([-1., .5, 2.])
     original = x.clone()
     if 'CrossEntropyLossLabelSmoothing' in path.parent.name:
         # This test isolates shared state mechanics with its synthetic model.
         # The actual loss oracle and replay are exercised separately below.
         model.smooth_eps, model.smooth_dist = .3, None
         monkeypatch.setitem(sys.modules, 'case_controls', types.SimpleNamespace(
-            reference=lambda value, epsilon, distribution: model(value)))
-    def candidate(x, weight, offset):
-        return torch.nn.functional.gelu(x * weight + offset)
+            reference=lambda value, epsilon, distribution: model(value),
+            assert_declared_control=lambda _model, _inputs: None))
+    if not gate_case:
+        def candidate(x, weight, offset):
+            return torch.nn.functional.gelu(x * weight + offset)
     def benchmark(invoke, **kwargs):
         assert kwargs['warmup'] == 10 and kwargs['repetition'] == 100
         output = invoke().detach()
+        report_fake_samples(kwargs, output)
         def replay():
             assert torch.isnan(output).all()
             with torch.no_grad():
-                output.copy_(candidate(x, model.weight, model.offset))
+                output.copy_(invoke() if gate_case else candidate(x, model.weight, model.offset))
                 if fault in ('input', 'exception'): x.add_(1)
-                if fault in ('parameter', 'exception'): model.weight.add_(1)
-                if fault in ('buffer', 'exception'): model.offset.add_(1)
+                if fault in ('parameter', 'exception'):
+                    (model.update.weight if gate_case else model.weight).add_(1)
+                if fault in ('buffer', 'exception'):
+                    # GateGRU has six parameters and no buffer; mutate a second
+                    # live gate argument while retaining this state-fault branch.
+                    (model.reset.bias if gate_case else model.offset).add_(1)
                 if fault == 'exception': raise RuntimeError('deliberate replay failure')
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph'}
+        return .25, {'benchmark_method': 'cuda_graph', 'benchmark_timed_run_kind': 'captured_graph',
+                     'benchmark_samples': kwargs['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf, cal_modu_latency=None,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
     helper.install(perf, runner.output_contract)
     def run():
-        return perf.cal_modu_latency(model, [x]) if role == 'baseline' else perf.cal_hip_latency(model, [x], candidate)
+        return perf.cal_modu_latency(model, inputs) if role == 'baseline' else perf.cal_hip_latency(model, inputs, candidate)
     if fault == 'none':
         _, meta = run()
         assert meta['input_state_restored'] and meta['model_state_validation_valid']
-        assert meta['model_state_tensor_count'] == 2
+        assert meta['model_state_tensor_count'] == (6 if gate_case else 2)
+        if path.parent.name == '11754_layer_normalization':
+            assert meta['changed_affine_replay_count'] == 2
     else:
         with pytest.raises((ValueError, RuntimeError, AssertionError)):
             run()
     torch.testing.assert_close(x, original, rtol=0, atol=0)
-    assert model.weight.item() == 2 and model.offset.item() == .5
+    if gate_case:
+        for value, pristine in zip(inputs, original_inputs):
+            torch.testing.assert_close(value, pristine, rtol=0, atol=0)
+        for name, value in model.state_dict().items():
+            torch.testing.assert_close(value, original_state[name], rtol=0, atol=0)
+    else:
+        assert model.weight.item() == 2 and model.offset.item() == .5
 
 
 @pytest.mark.parametrize('path', [p for p in EXTENSIONS if 'level2' in p.parts or 'level3' in p.parts], ids=lambda p: p.parent.name)
@@ -1921,7 +2216,7 @@ def test_level23_references_against_independent_small_answers(path):
 
 
 def test_assign_score_scalar_and_vectorized_known_gradients():
-    h = harness_namespace(ROOT / 'tasks/hip2hip/others/assign_score_withk')
+    h = harness_namespace(ROOT / 'tasks/hip2hip/assign_score_withk')
     scores = torch.tensor([[[[2.], [2.]]]], requires_grad=True)
     points = torch.tensor([[[[3.]], [[5.]]]], requires_grad=True)
     centers = torch.tensor([[[[1.]], [[7.]]]], requires_grad=True)
@@ -1936,7 +2231,7 @@ def test_assign_score_scalar_and_vectorized_known_gradients():
 
 @pytest.mark.parametrize('fault', ['none', 'wrong_gradient', 'missing_reset', 'input_mutation', 'exception'])
 def test_assign_score_timed_backward_checks_and_restores_gradients(fault, monkeypatch):
-    root = ROOT / 'tasks/hip2hip/others/assign_score_withk'
+    root = ROOT / 'tasks/hip2hip/assign_score_withk'
     helper = import_path(root / 'scripts/replay_validation.py')
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
     monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
@@ -1988,7 +2283,7 @@ def test_assign_score_timed_backward_checks_and_restores_gradients(fault, monkey
 def test_mla_reference_gate_rejects_consistent_wrong_replay_and_nan_under_fast_math(tmp_path):
     compiler = shutil.which('g++')
     if compiler is None: pytest.skip('CPU C++ compiler unavailable; not GPU validation')
-    root = ROOT / 'tasks/hip2hip/others/mla_decode'
+    root = ROOT / 'tasks/hip2hip/mla_decode'
     header = root / 'scripts/native/output_validation.hpp'
     program = tmp_path / 'check.cpp'
     program.write_text('''
@@ -2019,7 +2314,7 @@ int main() {
 def test_mla_host_reference_nonzero_known_answer_with_remapped_tokens(tmp_path):
     compiler = shutil.which('g++')
     if compiler is None: pytest.skip('CPU C++ compiler unavailable; not GPU validation')
-    root = ROOT / 'tasks/hip2hip/others/mla_decode'
+    root = ROOT / 'tasks/hip2hip/mla_decode'
     text = (root / 'mla_decode.hip').read_text()
     decode = extract_cpp_function(text, '__host__ __device__ __forceinline__ float fp8_e4m3fn_to_f32')
     reference = extract_cpp_function(text, 'static void host_reference')
@@ -2058,7 +2353,7 @@ int main(){
 
 @pytest.mark.parametrize('control_index', range(5))
 def test_ball_query_mmcv_exact_zero_boundaries_order_and_padding(control_index):
-    task = ROOT / 'tasks/hip2hip/others/ball_query'
+    task = ROOT / 'tasks/hip2hip/ball_query'
     h = harness_namespace(task)
     controls = import_path(task / 'scripts/reference_checks.py')
     lower, upper, count, xyz, center, expected = list(controls.boundary_controls())[control_index]
@@ -2071,7 +2366,7 @@ def test_ball_query_mmcv_exact_zero_boundaries_order_and_padding(control_index):
 
 
 def test_ball_query_index_validation_has_no_near_zero_or_padding_escape():
-    task = ROOT / 'tasks/hip2hip/others/ball_query'
+    task = ROOT / 'tasks/hip2hip/ball_query'
     h = harness_namespace(task)
     tree = ast.parse((task / 'scripts/task_runner.py').read_text())
     node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'validate_ball_query')
@@ -2128,6 +2423,9 @@ def test_ce_actual_reference_and_timed_replay_negative_controls(path, role, faul
     helper = import_path(path.parent / 'eval_tools/replay_validation.py')
     runner = import_path(path.parent / 'eval_tools/evaluate.py')
     monkeypatch.setitem(sys.modules, 'case_controls', controls)
+    if path.parent.name == 'CrossEntropyLossLabelSmoothing':
+        # This known-answer shape is deliberately outside the five scored shapes.
+        monkeypatch.setattr(controls, 'assert_declared_control', lambda _model, _inputs: None)
     timed = import_path(ROOT / 'src/tools/perf/aka_benchmark.py')
     monkeypatch.setitem(sys.modules, '_aka_benchmark', timed)
     monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
@@ -2141,6 +2439,7 @@ def test_ce_actual_reference_and_timed_replay_negative_controls(path, role, faul
         return controls.reference(input, target, kwargs['smooth_eps'], kwargs['smooth_dist'])
     def benchmark(invoke, **kwargs):
         output = invoke().detach()
+        report_fake_samples(kwargs, output)
         def replay():
             assert torch.isnan(output).all()
             eps = 0. if fault == 'ignore_smoothing' else model.smooth_eps
@@ -2153,7 +2452,8 @@ def test_ce_actual_reference_and_timed_replay_negative_controls(path, role, faul
                 if fault == 'mutate_target': target.mul_(.5)
             return output
         kwargs['timed_run']._bind(replay, output)
-        return .2, {'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable'}
+        return .2, {'benchmark_method':'cuda_event_fallback','benchmark_timed_run_kind':'eager_callable',
+                    'benchmark_samples': kwargs['repetition']}
     def policy(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=policy, cal_modu_latency=None,
         benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)
@@ -2173,7 +2473,7 @@ def test_mla_input_bytes_and_finally_restore_on_native_validation_failures(tmp_p
     compiler = shutil.which('g++')
     if compiler is None:
         pytest.skip('C++ compiler unavailable')
-    header = ROOT / 'tasks/hip2hip/others/mla_decode/scripts/native/output_validation.hpp'
+    header = ROOT / 'tasks/hip2hip/mla_decode/scripts/native/output_validation.hpp'
     source = tmp_path / 'restore.cpp'
     source.write_text('#include <vector>\n#include <cassert>\n#include <stdexcept>\n#include "' + str(header) + '"\n' + r'''
 int main() {
@@ -2211,7 +2511,7 @@ def test_innerprod_native_reduction_preserves_cancellation_answer(name, tmp_path
     compiler = shutil.which('g++')
     if compiler is None:
         pytest.skip('C++ compiler unavailable')
-    text = (ROOT / 'tasks/hip2hip/gpumode/InnerProd/hip' / name).read_text()
+    text = (ROOT / 'tasks/hip2hip/InnerProd/hip' / name).read_text()
     def definition(marker):
         start = text.index(marker); opening = text.index('{', start)
         depth = 1; end = opening + 1
@@ -2298,7 +2598,7 @@ def test_mla_routed_manifest_controls_reject_ignored_mapping_and_lengths(tmp_pat
     compiler = shutil.which('g++')
     if compiler is None:
         pytest.skip('CPU C++ compiler unavailable; not GPU validation')
-    root = ROOT / 'tasks/hip2hip/others/mla_decode'
+    root = ROOT / 'tasks/hip2hip/mla_decode'
     source = (root / 'mla_decode.hip').read_text()
     decode = extract_cpp_function(source, '__host__ __device__ __forceinline__ float fp8_e4m3fn_to_f32')
     encode = extract_cpp_function(source, 'static uint8_t f32_to_fp8_e4m3fn')
@@ -2368,7 +2668,7 @@ int main(){
     assert [(r['params']['batch'],r['params']['ctx']) for r in manifest['cases']] == [(1,512),(4,1024),(16,2048),(1,4096),(1,8192)]
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/GELU', 'torch2hip/gpumode/14539_GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
+@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/gpumode/14539_GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
 def test_gelu_reference_independent_of_shared_production_operator(relative, monkeypatch):
     root = ROOT / 'tasks' / relative
     helper = import_path(root / 'eval_tools/replay_validation.py')
@@ -2390,7 +2690,7 @@ def test_gelu_reference_independent_of_shared_production_operator(relative, monk
     assert not torch.allclose(approximate, expected, rtol=1e-4, atol=1e-5)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/gpumode/GELU', 'torch2hip/gpumode/14539_GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
+@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/gpumode/14539_GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
 def test_gelu_timing_rejects_shared_wrong_gelu(relative, role, monkeypatch):
     root = ROOT / 'tasks' / relative
@@ -2466,7 +2766,7 @@ def test_softmax_action_rejects_incomparable_timing(tmp_path, monkeypatch, refer
             runner.performance(args,'candidate',rows)
 
 
-ATTENTION_TASKS = ['hip2hip/gpumode/MultiHeadAttention','torch2hip/gpumode/10456_MultiHeadAttention']
+ATTENTION_TASKS = ['hip2hip/MultiHeadAttention','torch2hip/gpumode/10456_MultiHeadAttention']
 
 
 @pytest.mark.parametrize('relative', ATTENTION_TASKS)
@@ -2550,7 +2850,7 @@ def test_attention_real_correctness_runner_rejects_route_and_mask_defects(relati
     assert all(r.get('failure_kind')=='numerical_mismatch' for r in result if r['status']=='FAIL')
 
 
-SOFTMAX_ORACLE_TASKS = ['hip2hip/gpumode/SoftmaxModule', 'torch2hip/gpumode/10082_SoftmaxModule',
+SOFTMAX_ORACLE_TASKS = ['hip2hip/SoftmaxModule', 'torch2hip/gpumode/10082_SoftmaxModule',
                         'torch2hip/kernelbench/level1/l1n23_Softmax']
 
 
@@ -2678,6 +2978,7 @@ def test_attention_timing_restores_real_python_model_state(relative, role, fault
         with torch.no_grad(): output = invoke().detach()
         # The original module legitimately derives two heads for this shape.
         assert selected.h == (2 if role == 'baseline' else 4)
+        report_fake_samples(kw, output)
         def replay():
             assert torch.isnan(output).all()
             with torch.no_grad(): output.copy_(invoke())
@@ -2687,7 +2988,8 @@ def test_attention_timing_restores_real_python_model_state(relative, role, fault
             if fault == 'exception': raise RuntimeError('deliberate replay error')
             return output
         kw['timed_run']._bind(replay, output)
-        return .2, {'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph'}
+        return .2, {'benchmark_method':'cuda_graph','benchmark_timed_run_kind':'captured_graph',
+                    'benchmark_samples': kw['repetition']}
     def cal_kernel_perf(rtol=1e-4, atol=1e-5): pass
     perf = types.SimpleNamespace(cal_kernel_perf=cal_kernel_perf, cal_modu_latency=None,
                                 benchmark_cuda_graph_or_events=benchmark, _compare_results=torch.allclose)

@@ -13,6 +13,7 @@ The platform provides:
 - **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, DeepSeek Harness, GEAK-based agents, or custom agents through a shared interface.
 - **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
+- **Fixed-workload serving tasks**: Evaluate kernel changes through model throughput with pinned settings and fresh paired measurements; see [the e2e guide](docs/how-to/e2e-kernel-tasks.md).
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
 - **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.
@@ -83,12 +84,11 @@ AgentKernelArena/
 ├── tasks/
 │   ├── hip2hip/
 │   ├── triton2triton/
-│   ├── instruction2triton/
 │   ├── torch2hip/
 │   ├── torch2flydsl/
 │   ├── triton2flydsl/
 │   ├── flydsl2flydsl/
-│   ├── Aiter-task/                 # Production GEMM and MoE to FlyDSL
+│   ├── Aiter-task/                 # Production GEMM, MoE, mHC, top-k and MLA to FlyDSL
 │   └── image_kernel/               # Kernels from declared in-image source trees
 └── docs/                            # Full documentation
 ```
@@ -142,13 +142,12 @@ for tested CLI/model versions, run-level overrides, and the scope of live checks
 | --- | --- |
 | `hip2hip` | Optimize an existing HIP implementation |
 | `triton2triton` | Optimize an existing Triton implementation |
-| `instruction2triton` | Implement a Triton kernel from a specification |
 | `torch2hip` | Replace a PyTorch reference with a HIP implementation |
 | `torch2flydsl` | Replace a PyTorch reference with a FlyDSL implementation |
 | `triton2flydsl` | Translate a Triton implementation to FlyDSL |
 | `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
 | `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
-| `Aiter-task` | Reimplement production BF16 GEMM and MXFP4 MoE operators in FlyDSL |
+| `Aiter-task` | Reimplement production BF16 and blockwise-scaled FP8 GEMM, MXFP4 MoE, fused mHC, paged top-k and sparse flash MLA operators in FlyDSL |
 
 These names organize task selection; the candidate and evaluation declarations
 determine behavior. Every retained suite uses the unified task contract in
@@ -218,7 +217,7 @@ The following configurations provide starting points for supported runtimes:
 | `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | One DeepSeek Harness GELU task on MI300/MI300X; requires the pinned CLI and API key. |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | One DeepSeek Harness GELU task on MI355X; see [setup](agents/deepseek_harness/README.md). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 60-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 54-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
 Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
 quickstart. On another GPU, pass the matching configuration explicitly; for
@@ -256,6 +255,16 @@ For Codex and Claude Code, the run config's `agent` mapping can override
 agent's `agent_config.yaml`. Cursor accepts the same overrides except a
 standalone `effort`. See [run-level overrides](docs/reference/agent-model-defaults.md#run-level-overrides)
 for exact semantics; other integrations define their own supported settings.
+
+Cursor, Claude Code, Codex, and DeepSeek Harness accept `budget_mode`.
+The default, `iterations`, runs one
+session that asks for up to `max_iterations` versions. With `time`,
+`timeout_seconds` becomes the agent's wall-clock budget: if the agent stops
+early, Arena resumes the same session with the time remaining. Every run also
+writes a per-task cost record (dollars and tokens where the provider reports
+them, `null` otherwise) to `<run_dir>/agent_costs/<task_workspace>.json`, for
+all agents. See [iteration and time budgets](docs/how-to/agents.md#iteration-and-time-budgets)
+and [agent cost records](docs/how-to/agents.md#agent-cost-records).
 
 For a Cursor, Claude Code, Codex, or task-validator config, verify only the
 selected first-class host CLI (the validator resolves to its configured backend):
@@ -333,12 +342,18 @@ The `Aiter-task` suite was previously named `SIKL-task`. Update custom selectors
 to `Aiter-task/...`. This rename changes task IDs and report grouping; start a
 new run with the new selectors, since existing runs retain their original IDs.
 
+HIP tasks now live directly under `hip2hip/`; their former `gpumode/`, `others/`,
+and `vllm/` grouping directories are gone. The redundant
+`instruction2triton/rocmbench/` selections were removed in favor of the
+registered `triton2triton/rocmbench/` tasks. The distinct flip task is now
+`triton2triton/rocmbench/test_triton_flip`. These moves change task IDs, so use
+new selectors for new runs; existing reports keep their historical IDs.
+
 ```yaml
 tasks:
-  - hip2hip/gpumode
+  - hip2hip
   - triton2triton/vllm
   - triton2triton/rocmbench
-  - instruction2triton/rocmbench
   - torch2hip
   - torch2flydsl
   - triton2flydsl
@@ -349,21 +364,33 @@ tasks:
 
 Every normal optimization task produces `task_result.yaml` with compilation and correctness status, baseline and optimized times, speedup, timing-method metadata, and the final score.
 
-The default score is:
+The score uses the power family with **`p = 0.5`** (square root):
 
-| Component | Points | Condition |
-| --- | ---: | --- |
-| Compilation | 20 | The optimized implementation compiles |
-| Correctness | 100 | Correctness passes |
-| Performance | `speedup_ratio × 100` | Added only when compilation and correctness pass |
+```text
+score = max(0, 1 - speedup_threshold / speedup_ratio) ** p
+```
 
-Therefore:
+Compilation and correctness must pass, and the evaluator must provide a valid,
+comparable speedup. Otherwise the score is `0`. There are no compilation or
+correctness bonuses. With the default `speedup_threshold = 1.05`, a candidate
+must be more than 5% faster to earn a positive score:
 
-- Compilation fails → `0`
-- Compilation passes but correctness fails → `20`
-- Both pass → `120 + speedup_ratio × 100`
+| Speedup | Score |
+| --- | ---: |
+| At or below 1.05× | 0 |
+| 1.1× | 0.2132 |
+| 1.2× | 0.3536 |
+| 2× | 0.6892 |
 
-For multi-case tasks, the evaluator prefers the explicit per-case average `speedup_ratio` rather than deriving the score from only the two aggregate timing values. The scoring policy can be replaced in `src/score.py` when an experiment needs a different reward function.
+Scores are bounded between `0` and `1`. The concave curve gives modest qualifying
+improvements more credit than a linear curve. A zero score does not imply a
+correctness failure; compilation, correctness, and acceptance have separate fields.
+
+To adjust the curve, edit `SCORE_POWER` in [`src/score.py`](src/score.py): `0.5`
+is concave, `1.0` is linear, and `2.0` is convex. Edit
+`SCORE_SPEEDUP_THRESHOLD` to change the cutoff. Both constants must be finite and
+positive. See [Scoring](docs/reference/api-reference.md#scoring) for the variable
+definitions, aggregation rule, and implications for comparing historical scores.
 
 ## Task Configuration
 
@@ -372,7 +399,7 @@ files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
 for the canonical schema, examples, command/result contracts, baseline and
 candidate lifecycle, optional sanitizers, and migration instructions.
 
-All 438 retained tasks declare schema v2 and task-owned evaluation actions.
+All retained tasks declare schema v2 and task-owned evaluation actions.
 GPU qualification and agent campaign results are tracked separately from that
 migration. Task-family directory names remain useful selectors; no family has
 a separate configuration schema.

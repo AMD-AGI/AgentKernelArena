@@ -30,7 +30,7 @@ reusable selections rather than PR-specific task lists or retry rounds:
 agent:
   template: task_validator
 tasks:
-  - hip2hip/gpumode/GELU
+  - hip2hip/GELU
   - triton2triton/vllm/triton_rms_norm
   # - all                     # validate every task
 target_gpu_model: MI300

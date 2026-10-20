@@ -56,7 +56,7 @@ Limit a smoke run to several tasks:
 ```bash
 make docker-quality-loop \
   CONFIG=example_configs/quality_loop_mi300.yaml \
-  QUALITY_LOOP_ARGS="--tasks hip2hip/gpumode/GELU triton2triton/vllm/triton_rms_norm"
+  QUALITY_LOOP_ARGS="--tasks hip2hip/GELU triton2triton/vllm/triton_rms_norm"
 ```
 
 Resume after interruption:

@@ -453,7 +453,18 @@ def test_setup_never_leaves_background_writers(tmp_path, wait_for_child):
     # An orphan may briefly remain a zombie awaiting PID 1; it cannot write.
     proc = Path(f"/proc/{pid}/stat")
     try:
-        stopped = not proc.exists() or proc.read_text().split(")", 1)[1].split()[0] == "Z"
+        # SIGKILL is asynchronous: the kernel may still report a runnable task
+        # before it schedules delivery. Require observed exit, with a bounded
+        # wait, rather than racing the immediately preceding killpg call.
+        deadline = time.monotonic() + 1
+        while True:
+            try:
+                stopped = proc.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+            except FileNotFoundError:
+                stopped = True
+            if stopped or time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
         assert stopped
     finally:
         if proc.exists():

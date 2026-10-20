@@ -57,10 +57,17 @@ agent:
 `model`, `timeout_seconds`, `max_iterations`, and `python_path` apply to all
 three integrations. `effort` applies to Codex and Claude. Claude additionally
 accepts an optional positive finite `max_budget_usd`, forwarded to its print-mode
-CLI. This limit is not a run-wide cap across multiple tasks. `max_iterations` is
-prompt guidance, not a CLI-enforced turn limit. An explicit `model: null` omits
+CLI. This limit is not a run-wide cap across multiple tasks. In `time` budget
+mode it applies to each resumed process separately. `max_iterations` is
+prompt guidance, not a CLI-enforced turn limit. `budget_mode` (`iterations` by
+default, or `time`) applies to all three; see
+[Iteration and time budgets](../how-to/agents.md#iteration-and-time-budgets).
+An explicit `model: null` omits
 the model argument and delegates selection to the CLI; omitting the field uses
 Arena's checked-in default. Explicit `effort: null` similarly omits that flag.
+
+DeepSeek Harness also supports `budget_mode`, with its own model/provider
+settings described in the [DeepSeek guide](../../agents/deepseek_harness/README.md).
 
 All three CLI prompts also expose the resolved per-invocation time budget and
 ask the agent to retain its best implementation at the declared delivery paths,

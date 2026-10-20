@@ -101,6 +101,9 @@ complete effective guard from context_path; sampled paths are not its full scope
 LIFECYCLE AND AUTHORITY
 - The finalizer alone verifies TaskSpec, actual stdout/exit codes, action coverage,
   independent case manifest, baseline policy, and candidate lifecycle.
+- validate-task emits the independent case manifest. Its checks list declares
+  coverage required from later correctness/performance actions; it does not claim
+  those actions already ran. Verify their separate captured command evidence.
 - The draft is not the official report. Write only {DRAFT_FILENAME}; never write
   validation_report.yaml, .validation_complete, task_result.yaml, the context,
   source, inputs, references, comparison rules, or harness files.
@@ -130,6 +133,17 @@ LIFECYCLE AND AUTHORITY
   the actual expected-value computation rather than inferring its role from a
   filename containing "baseline" or "reference". An unchanged valid initial
   implementation can pass; task validation does not require an optimization gain.
+
+SERVING MEASUREMENTS
+When evaluation.measurement.kind is serving, the scored unit is complete request
+processing measured by the protected client with serving_wall_clock, not device
+kernel duration. Review fixed token/request counts, settings, pinned runtime and
+weights, clean candidate injection with per-rank actual-call evidence, independent
+operator and model correctness, and warmups outside the measurement window.
+CUDA graph replay review is not applicable to this client timer; leave
+replay_validation_valid null. This does not waive model or operator correctness,
+workload symmetry, state, or timing-boundary checks. Declared read-only runtime
+assets supplied by the host are dependencies, not undeclared task imports.
 
 SEMANTIC REVIEW
 Perform all 12 checks represented by the final report; framework command/schema

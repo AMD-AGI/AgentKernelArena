@@ -101,15 +101,31 @@ benchmark_fallback_reason: "cuda_graph_failed: RuntimeError: ..."
 benchmark_effective_repeats: 1
 ```
 
-Tasks may disable graph capture for a known incompatibility by passing
-`use_cuda_graph=False` with a stable `fallback_reason`.  A result is never
-silently changed to event timing merely because graph timing is slower.
+Tasks may select Event timing for a known graph-capture incompatibility, or
+when the declared measured unit requires a fresh invocation of the public
+Python callable on every sample (for example, a wrapper that allocates and
+returns a new output). Pass `use_cuda_graph=False` with a stable
+`fallback_reason`, document why graph replay is not equivalent, and apply the
+same method and callable to baseline and candidate. A result is never silently
+changed to Event timing merely because graph timing is slower.
+
+Graph `after_sample` receives the captured output after each reported replay.
+When one graph contains multiple calls, capture retains only the last returned
+output; graph replay also does not rerun Python dispatch or allocation. A
+single-call graph can make every replay's captured output observable, but it
+still measures graph replay rather than a fresh public call. Choose the method
+from the task contract, not from the apparent speedup. Disclose a method change
+and compare its before/after device times only under matched hardware, image,
+runtime, inputs and sampling settings. Device Events report GPU elapsed time;
+they do not turn host allocation or dispatch into CPU wall-clock timing.
 
 Before accepting fallback, task harnesses should hoist host-side shape work,
 pointer-table creation, temporary allocation, and JIT setup out of `fn`, then
 directly launch the underlying kernel where that is part of the task's stable
-API. A legacy HIP extension that hard-codes stream `0` is a legitimate example
-of an incompatible launch: CUDA/HIP Graph capture begins on a non-default side
+API. Do not remove a public wrapper's required allocation or dispatch merely
+to make its declared measured unit graph-capturable. A legacy HIP extension
+that hard-codes stream `0` is a legitimate example of an incompatible launch:
+CUDA/HIP Graph capture begins on a non-default side
 stream, while capturable PyTorch allocation/fill nodes can otherwise make a
 graph look non-empty even when the target kernel escaped to stream zero. HIP
 task harnesses therefore run a conservative source preflight. Every visible
@@ -138,6 +154,29 @@ explicit Events and `captured_graph` for graph replay. The existing
 Automatic fallback from a failed/empty/invalid graph still rejects a requested
 collector; it does not silently switch the validation contract. Event timing
 must be selected explicitly when that is the task's declared methodology.
+
+## Cold-weight timing
+
+`benchmark_cuda_graph_cold_weights_samples()` is an opt-in method for operators whose cost in a decode step comes from reading a weight from HBM. Under the default timing every sample reads the same weight, so after the first sample the weight sits in the L2 and the MALL. When `prepare_fn` restores or rotates inputs, each replay also holds a single call, so a decode-size operator that runs for a few microseconds is charged the whole fixed cost of a graph replay.
+
+The task passes one zero-argument callable per weight copy. `cold_weight_copy_count(weight_bytes)` gives enough copies to pass 1 GiB in total, and at least 8:
+
+```python
+from _aka_benchmark import (
+    TimedRun, benchmark_cuda_graph_cold_weights_samples, cold_weight_copy_count,
+)
+
+copies = cold_weight_copy_count(weight_bytes, rotate_bytes=1 << 30, min_copies=8)
+calls = [make_call(weights[i]) for i in range(copies)]
+samples, metadata = benchmark_cuda_graph_cold_weights_samples(
+    calls, warmup=20, repetition=100, prepare_fn=rotation, timed_run=TimedRun())
+```
+
+One CUDA graph calls every callable once, in order. Each sample is the replay time divided by the number of calls, so every call reads its weight from HBM and the fixed replay cost is shared by all calls. `TimedRun.outputs` is the list of per-call outputs, `after_sample` receives that list, and `rerun_ms()` returns the per-call time of one more replay. The metadata reports `benchmark_method: cuda_graph_cold_weights`, `benchmark_calls_per_replay` and `benchmark_cold_weight_copies`. The method has no event fallback, and `AKA_BENCHMARK_FORCE_EVENT=1` makes it raise.
+
+Every call needs its own weight copy and its own input buffer. Each weight copy is a separate draw from the task's initializer and stays fixed. `prepare_fn` runs once before the start event of each replay and draws a fresh, independent input into every call's buffer. With identical copies an implementation could read one copy for every call, so the weight stays in the caches. With identical copies and one shared input it could also compute one result and copy it to the other outputs. Both shortcuts pass the output checks.
+
+A task that uses this method keeps the integrity checks of its default timing. It checks the output of every call against a reference for that call's input and weight copy, in the timed replays and in replays with fresh unseen inputs for every call. It also holds the reported time to the cost of the unseen inputs and checks that no weight copy changed.
 
 ## Independent task workspaces
 
@@ -201,6 +240,7 @@ Benchmark methods are then compared **per matched case**:
 - event fallback versus event fallback is comparable;
 - graph versus event fallback is retained as timing data but produces no
   speedup;
+- cold-weight graph (`cuda_graph_cold_weights`) is comparable only with cold-weight graph;
 - different shapes may use different methods, provided each matched
   baseline/optimized pair uses the same exact method.
 
@@ -212,8 +252,8 @@ Event versus Event. The evaluator never collects or selects a candidate-driven
 alternate Event baseline.
 
 Missing or unknown method metadata is not comparable and produces no speedup;
-every scored case must explicitly identify `cuda_graph` or
-`cuda_event_fallback`.
+every scored case must explicitly identify `cuda_graph`,
+`cuda_event_fallback` or `cuda_graph_cold_weights`.
 
 An aggregate `mixed:...` method string is never scored, even when the baseline
 and optimized strings are identical. It records only a set of methods and loses
@@ -225,6 +265,28 @@ This means a task can legitimately use graph timing for one shape and event
 fallback for another. The evaluator records method sets, per-case mismatch
 details, and `benchmark_method_consistent` in `task_result.yaml`. All
 `benchmark_*` metadata survives the baseline/optimized YAML round trip.
+
+## Serving wall-clock measurement
+
+Tasks that declare `evaluation.measurement.kind: serving` do not time a kernel.
+Their unit of work is a fixed request set completed by a pinned benchmark
+client against a freshly started model server; the reported
+`benchmark_method` is `serving_wall_clock`, `execution_time_ms` is the client's
+wall duration, and `metrics.output_tokens_per_s` is the scored quantity. The
+protocol rejects a case whose completed requests, output tokens or input tokens
+differ from the manifest, or whose throughput does not equal tokens divided by
+duration. Graph-replay checks do not apply to this timer.
+
+Final evaluation alternates baseline and candidate for at least three fresh
+pairs, each in its own clean container from the trusted task template. The
+per-case ratio is the median of the paired throughput ratios; several cases
+combine by geometric mean. `serving_measurement.uncertainty` keeps the ratio
+range and each side's repeat variation so a small median is not read as a
+gain. Before each performance action the container verifies the device is idle,
+and before final evaluation the worker container is swept of agent leftovers;
+both records are part of the result. Kernel tasks keep the device-timing rules
+above; mixed runs report the two groups separately with no combined average.
+See [the e2e guide](../how-to/e2e-kernel-tasks.md) for the task-side contract.
 
 ## Maintenance checks
 

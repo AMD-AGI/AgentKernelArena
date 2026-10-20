@@ -463,6 +463,57 @@ def _completed_producer_error(
     return None
 
 
+_SDK_COST_ROWS = 256
+
+
+def _metric(value: Any) -> bool:
+    return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+
+def _metrics(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {key: item for key, item in value.items() if isinstance(key, str) and _metric(item)}
+
+
+def _record_sdk_cost(name: str, message: Any, identity: dict[str, Any]) -> None:
+    """Retain the SDK's reported dollars and tokens without deriving totals.
+
+    ResultMessage.total_cost_usd is a running total within the SDK session and
+    each result's usage covers its own part. Background task usage is kept per
+    task id, so the notifications replayed after the lifecycle are not counted
+    twice. ``background_after_result`` marks a task that finished after the
+    last result, whose spend that result may not include.
+    """
+    if name == "ResultMessage":
+        record = identity.setdefault("sdk_cost", {"results": [], "task_usage": {}})
+        if len(record["results"]) >= _SDK_COST_ROWS:
+            record["truncated"] = True
+            return
+        cost = getattr(message, "total_cost_usd", None)
+        turns = getattr(message, "num_turns", None)
+        session = getattr(message, "session_id", None)
+        record["results"].append({
+            "total_cost_usd": float(cost) if _metric(cost) else None,
+            "usage": _metrics(getattr(message, "usage", None)),
+            "num_turns": turns if type(turns) is int else None,
+            "session_id": session[:200] if isinstance(session, str) else None,
+        })
+        record["background_after_result"] = False
+    elif name == "TaskNotificationMessage":
+        task_id = getattr(message, "task_id", None)
+        usage = _metrics(getattr(message, "usage", None))
+        if not isinstance(task_id, str) or usage is None:
+            return
+        record = identity.setdefault("sdk_cost", {"results": [], "task_usage": {}})
+        key = task_id[:200]
+        if key in record["task_usage"] or len(record["task_usage"]) >= _SDK_COST_ROWS:
+            return
+        record["task_usage"][key] = usage
+        if record["results"]:
+            record["background_after_result"] = True
+
+
 def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
     """Retain observed CLI/model identity without conversation or auth material."""
     def record_workflow_identity(wrapper: Any) -> None:
@@ -535,6 +586,7 @@ def _record_runtime_identity(message: Any, identity: dict[str, Any]) -> None:
                         errors.add(code)
             if errors:
                 identity["runtime_error_codes"] = sorted(errors)
+    _record_sdk_cost(name, message, identity)
     if name == "TaskNotificationMessage" and getattr(message, "status", None) == "completed":
         output = getattr(message, "output_file", None)
         wrapper = _read_json(Path(output)) if output else None

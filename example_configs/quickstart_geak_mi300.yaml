@@ -5,7 +5,7 @@ agent:
   template: geak
 
 tasks:
-  - hip2hip/gpumode/GELU
+  - hip2hip/GELU
 
 target_gpu_model: MI300
 log_directory: logs

@@ -30,6 +30,7 @@ repository.
       * :doc:`Run tasks in parallel across multiple GPUs <how-to/parallel-run>`
       * :doc:`Configure agents and models <how-to/agents>`
       * :doc:`Task definition, schema, and authoring <how-to/add-task>`
+      * :doc:`Optimize kernels through serving throughput <how-to/e2e-kernel-tasks>`
       * :doc:`Validate tasks <how-to/task-validator>`
       * :doc:`Visualize and compare runs <how-to/visualization>`
 

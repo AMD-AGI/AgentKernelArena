@@ -8,7 +8,6 @@ import logging
 import os
 from pathlib import Path
 import shutil
-import signal
 import subprocess
 import tempfile
 import threading
@@ -20,7 +19,13 @@ import yaml
 from agents import register_agent
 from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
+from src.process_control import stop_process_group as _stop_process_group
+from src.prompts.agent_budget import time_budget_guidance
 from src.runtime_env import build_subprocess_env
+from src.tools.agent_cost import report_agent_usage
+from src.tools.agent_time_budget import (
+    SessionOutcome, raise_for_sessions, resolve_budget_mode, run_sessions,
+)
 
 
 def _load_config(eval_config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -34,7 +39,7 @@ def _load_config(eval_config: dict[str, Any] | None = None) -> dict[str, Any]:
         raise ValueError("DeepSeek Harness agent must be a mapping")
     for name in (
         "model", "reasoning_effort", "protocol", "base_url", "max_tokens",
-        "max_iterations", "timeout_seconds", "python_path",
+        "max_iterations", "timeout_seconds", "python_path", "budget_mode",
     ):
         if name in overrides:
             config[name] = overrides[name]
@@ -49,6 +54,7 @@ def _load_config(eval_config: dict[str, Any] | None = None) -> dict[str, Any]:
         raise ValueError("Unsupported DeepSeek Harness reasoning_effort")
     if config.get("protocol") not in {"messages", "chat-completions"}:
         raise ValueError("Unsupported DeepSeek Harness protocol")
+    config["budget_mode"] = resolve_budget_mode(config)
     return config
 
 
@@ -113,33 +119,43 @@ def _patch(config: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _stop_process_group(process: subprocess.Popen[str]) -> None:
-    """Stop tool children too, including after the headless parent has exited."""
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        process.wait()
-        return
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        process.poll()  # Reap the leader before testing whether the group survived.
+def _final_usage(lines: list[str]) -> dict[str, Any] | None:
+    """Token usage from the --json final event, if this CLI version emits one.
+
+    The pinned CLI does not document usage or dollars; absence is reported as
+    unknown rather than estimated.
+    """
+    usage = None
+    for line in lines:
         try:
-            os.killpg(process.pid, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(0.05)
-    else:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "final" and isinstance(event.get("usage"), dict):
+            usage = event["usage"]
+    return usage
+
+
+def _session_id(lines: list[str]) -> str | None:
+    """Read the opaque identity from the headless stream's opening event."""
+    for line in lines:
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-    process.wait(timeout=5)
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("type") == "session":
+            value = event.get("sessionId")
+            if isinstance(value, str) and value.strip():
+                return value
+    return None
 
 
 def _run(
     command: list[str], workspace: Path, state: Path,
-    env: dict[str, str], timeout: int, logger: logging.Logger,
-) -> str:
+    env: dict[str, str], timeout: float, logger: logging.Logger, model: str | None = None,
+) -> tuple[str, SessionOutcome]:
+    """Run one headless process and stop its tool children before returning."""
+    started = time.monotonic()
     outputs: dict[str, list[str]] = {"stdout": [], "stderr": []}
     secret = env.get("DEEPSEEK_API_KEY", "")
 
@@ -175,13 +191,17 @@ def _run(
         _stop_process_group(process)
         for thread in threads:
             thread.join(timeout=5)
-    if timed_out:
-        raise TimeoutError(f"DeepSeek Harness exceeded {timeout}s; see {state}")
-    if process.returncode != 0:
-        raise RuntimeError(
-            f"DeepSeek Harness exited with code {process.returncode}; see {state}"
+        report_agent_usage(
+            usage=_final_usage(outputs["stdout"]), usage_scope="invocation",
+            session_id=_session_id(outputs["stdout"]),
+            source="deepseek_harness --json final", model=model, timed_out=timed_out,
+            seconds=time.monotonic() - started,
         )
-    return "".join(outputs["stdout"]) + "".join(outputs["stderr"])
+    output = "".join(outputs["stdout"]) + "".join(outputs["stderr"])
+    return output, SessionOutcome(
+        timed_out=timed_out, returncode=process.returncode,
+        session_id=_session_id(outputs["stdout"]), seconds=time.monotonic() - started,
+    )
 
 
 @register_agent("deepseek_harness")
@@ -193,16 +213,18 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
     root = Path(workspace).resolve(strict=True)
     builder = load_prompt_builder(AgentType.DEEPSEEK_HARNESS, logger)
     prompt = builder(task_config_dir, str(root), eval_config, logger)
+    if config["budget_mode"] == "time":
+        prompt = prompt.rstrip() + time_budget_guidance()
+    else:
+        prompt += f"\n\nFor this optimization, iterate up to {config['max_iterations']} versions."
     prompt += (
-        f"\n\nFor this optimization, iterate up to {config['max_iterations']} versions."
         f"\nUse this Python interpreter: `{env['AGENT_KERNEL_ARENA_PYTHON']}`. "
         "Run pytest through that interpreter with `-m pytest`.\n"
     )
     prompt = append_run_budget(prompt, config["timeout_seconds"])
-    # Unique on every invocation, including retries. Never reuse host sessions/settings.
+    # Fresh for each task launch/retry; only this launch's continuations share it.
     state = Path(tempfile.mkdtemp(prefix=".deepseek_harness-", dir=root))
     env["DSH_HOME"] = str(state / "home")
-    (state / "prompt.txt").write_text(prompt, encoding="utf-8")
     patch_path = state / "cordis.patch.yml"
     patch_path.write_text(yaml.safe_dump(_patch(config), sort_keys=False), encoding="utf-8")
     (state / "invocation.json").write_text(json.dumps({
@@ -210,7 +232,32 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
         "endpoint_override": bool(config.get("base_url") or env.get("DEEPSEEK_BASE_URL")),
     }, indent=2) + "\n", encoding="utf-8")
     logger.info("DeepSeek Harness version=%s model=%s state=%s", version, config["model"], state)
-    return _run(
-        [binary, "--profile", "headless", "--patch", str(patch_path), "--json"],
-        root, state, env, config["timeout_seconds"], logger,
+    outputs: list[str] = []
+
+    def invoke(prompt_text: str, resume_id: str | None, timeout: float) -> SessionOutcome:
+        # Preserve the original iterations-mode artifact paths. Each time-mode
+        # invocation gets its own prompt/logs and uses the same isolated home.
+        invocation = state
+        if config["budget_mode"] == "time":
+            invocation = state / f"session-{len(outputs) + 1:04d}"
+            invocation.mkdir()
+            (invocation / "invocation.json").write_text(json.dumps({
+                "resume_session_id": resume_id, "timeout_seconds": timeout,
+            }, indent=2) + "\n", encoding="utf-8")
+        (invocation / "prompt.txt").write_text(prompt_text, encoding="utf-8")
+        command = [binary, "--profile", "headless", "--patch", str(patch_path), "--json"]
+        if resume_id is not None:
+            command.extend(["--session-id", resume_id])
+        output, outcome = _run(command, root, invocation, env, timeout, logger, model=config["model"])
+        outputs.append(output)
+        if resume_id is not None and outcome.session_id not in (None, resume_id):
+            raise RuntimeError(f"DeepSeek Harness resumed a different session; see {invocation}")
+        return outcome
+
+    runs = run_sessions(
+        invoke, mode=config["budget_mode"], prompt=prompt,
+        timeout_seconds=config["timeout_seconds"], logger=logger,
     )
+    raise_for_sessions(runs, mode=config["budget_mode"], agent_label="DeepSeek Harness",
+                       timeout_seconds=config["timeout_seconds"])
+    return "\n".join(outputs)

@@ -12,7 +12,7 @@ All schema-v2 task families use the public runner and manifest contract.
 Legacy shape-generation helpers remain for:
   - triton2triton/vllm
   - triton2triton/rocmbench
-  - hip2hip/gpumode
+  - hip2hip
   - torch2hip/gpumode
 
 Usage:
@@ -43,7 +43,7 @@ logger = logging.getLogger("generate_heldout")
 
 SUPPORTED_SCOPES = {
     "triton2triton": ["vllm", "rocmbench"],
-    "hip2hip": ["gpumode"],
+    "hip2hip": [""],
     "torch2hip": ["gpumode"],
 }
 

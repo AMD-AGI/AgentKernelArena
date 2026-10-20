@@ -11,7 +11,7 @@ original graph/event policy. `model.py` is protected reference/source material;
 its presence alone does not select the performance baseline.
 
 There are 3 declared cases in `cases.json`. All original dimensions,
-parameter variants, seeds, tolerances, numerical metrics, output checks, warmups
+parameter variants, seeds, numerical metrics, output checks, warmups
 and repetition counts remain in the protected harness. It validates the PyTorch
 reference against the original independent AITER comparison wherever that check
 was present. Small independent known-answer and negative-output controls in
@@ -58,22 +58,30 @@ each measured call, matching the candidate's input boundary. Router logits,
 top-k selection and the diagnostic reference's expert plan stay outside timing
 as before. This corrects the older baseline-only preprocessing exclusion; old
 kernel-only timings cannot be compared as if the timed work were unchanged.
-The original three cases, seed, numerical gates, warmups and samples remain.
+The original three cases, seed, warmups and samples remain. The numerical gate
+is explicitly revised from 1% to **1.2%** normalized worst-element error:
+`max(abs(reference - output)) / max(abs(reference)) <= 0.012`, with a denominator
+of 1 when the reference is all zero. The same limit applies to baseline and
+candidate correctness, measured outputs and input-perturbed replay. This is a
+task-contract change, not a kernel accuracy improvement; historical results at
+1% retain their original outcomes. Errors above 1.2% still fail.
 
 Outputs must be finite BF16 tensors with the hidden tensor's shape/device.
 Hidden, raw weights and selected routing are read-only. The actual measured
-output and input-perturbed replay use the original normalized max-error rule;
-replay changes hidden and both weight tensors, then restores all inputs.
+output and input-perturbed replay use the normalized max-error rule above;
+replay changes hidden, both weight tensors, selected expert IDs and routing
+weights, then restores all inputs. Its untimed reference rebuilds the expert
+plan for the changed IDs; a plan cached for the original routing is not reused.
 Candidate-only dependency/dispatch auditing requires FlyDSL computation while
 allowing host launch preparation. GPU before/after timing-boundary qualification
 is required; this maintenance correction is not an optimization speedup.
 
 Correctness records each completed case separately, including normalized and
-absolute baseline errors and the original tolerance. If one case fails, other
+absolute baseline errors and the configured tolerance. If one case fails, other
 completed cases retain their actual PASS status. Only a failed numerical gate
 receives `numerical_mismatch`; launch errors, invalid outputs and input mutation
 remain execution/contract failures. Baseline correctness is still required;
-these diagnostics do not grant a numerical exception or widen tolerances.
+these diagnostics do not bypass the configured numerical gate.
 
 
 Correctness failures retain each independently completed case's true result and

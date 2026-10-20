@@ -60,11 +60,14 @@ def manifest(contract):
 def test_complete_manifest_is_accepted_by_framework(config_path, monkeypatch):
     with modules(config_path.parent, monkeypatch) as contract:
         captured = manifest(contract)
-        assert len(captured.cases) == 13
+        workload = contract.load_workload()
+        assert len(captured.cases) == len(workload['cases'])
+        if workload['op_type'] in ('gemm', 'moe'):
+            assert len(captured.cases) == 13
         for row in captured.cases:
             assert row['checks'] == ['correctness', 'performance']
             assert row['params']['uuid']
-            assert row['dtype'] == 'bfloat16'
+            assert row['dtype'] == ('float32' if workload['op_type'] == 'topk' else 'bfloat16')
 
 
 @pytest.mark.parametrize('config_path', TASKS, ids=lambda p: p.parent.name)
@@ -483,7 +486,6 @@ def test_baseline_timed_output_diagnostic_cannot_exempt_candidate_or_non_numeric
         monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', lambda c: {})
         monkeypatch.setattr(measure.task_inputs, 'PERSISTENT_INPUTS', ())
         monkeypatch.setattr(measure.task_inputs, 'call_varying_draws', lambda i, seeds: [{} for _ in seeds])
-        monkeypatch.setattr(measure, 'RotatingDraws', lambda i, draws: types.SimpleNamespace(consumed={}))
         monkeypatch.setattr(measure, 'run_unseen_draws', lambda *a: ([0.1] * 4, []))
         monkeypatch.setattr(measure, 'verify_timed_cost', lambda *a, **kw: {'status': 'PASS', 'metadata': {}})
         monkeypatch.setattr(measure, 'case_call', lambda *a, **kw: lambda: None)
@@ -752,6 +754,16 @@ def test_runner_controls_are_mandatory_and_preserve_real_manifest(tmp_path, monk
             assert len(CaseManifest.from_result(result).cases) == 13
 
 
+# The floating-point deepseek-v4-flash tasks compare against an FP32 reference that the
+# production baseline is not required to meet; each declares that family policy,
+# with task-specific evidence where a mismatch was measured.
+DSV4_FAMILY_POLICY = 'deepseek-v4-flash family policy'
+DSV4_TASKS = {*(f'gemm_a16w16_nt_n{n}_k4096' for n in (64, 256, 512, 1024, 2048)),
+              'flash_mla_with_kvcache_dsv4_fp8_10011_q1_h64_d512_p256_k128',
+              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep2_ek8256',
+              'flash_mla_with_kvcache_dsv4_fp8_11111_q1_h64_d512_p256_k128_ep64_ek512'}
+
+
 def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
     evidence = {
         'gemm_a16w16_nt_n4096_k2048': '329bc9861f7199c4df4d6fc0fc0eb16353cfe995',
@@ -763,16 +775,26 @@ def test_diagnostic_policy_only_names_tasks_with_specific_evidence():
         'gemm_a16w16_nt_n6144_k3072': '9488e7dd33b407bbbbb193b258d812870132d1a31708475bebe7d93f36a6da55',
         'gemm_a16w16_nt_n6144_k4096': '01fa1cdb8b76a15e0c4de1643b0cabcf5c4d3c49ebd550d2cc079c7f3237ef01',
         'gemm_a16w16_nt_n6144_k6144': 'd641c76d2113890966f1b4132fd3cb0cd53fde9a6a7d44e25bd177db9ecc86b5',
+        'gemm_a16w16_nt_n64_k4096': 'c471e5e842344d232f504c5d8a191116bcfb8aa4119e7dfb3431edc7264cab81',
+        'gemm_a16w16_nt_n256_k4096': 'd529534b7ae881c1416f22dec7b9a0e8c8657ddb040b0a755f8a7344c53c6ccd',
+        'gemm_a16w16_nt_n512_k4096': '4e795b1efd64cdd01d9ff229e4176a27d12cadf81c5c864bb397a0f1c30b86fd',
+        'gemm_a16w16_nt_n1024_k4096': '1b1eff453ec7d1f253c5361eac683d91d5d14a73eb620f92b8c3bc1a1b7213d3',
+        'gemm_a16w16_nt_n2048_k4096': '20aa34f087b048be14d8b4352b03b79039f10f83d4e16a5c106b719ecc05937a',
     }
     diagnostic = []
     for path in TASKS:
+        name = path.parent.name
         spec = load_task_spec(path, task_id=str(path.parent.relative_to(ROOT / 'tasks')))
         if spec.baseline.correctness_policy == 'diagnostic':
-            diagnostic.append(path.parent.name)
-            assert evidence[path.parent.name] in spec.baseline.diagnostic_reason
+            diagnostic.append(name)
+            assert name in evidence or name in DSV4_TASKS
+            if name in evidence:
+                assert evidence[name] in spec.baseline.diagnostic_reason
+            if name in DSV4_TASKS:
+                assert spec.baseline.diagnostic_reason.startswith(DSV4_FAMILY_POLICY)
         else:
             assert spec.baseline.diagnostic_reason is None
-    assert set(diagnostic) == set(evidence)
+    assert set(diagnostic) == set(evidence) | DSV4_TASKS
 
 
 def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
@@ -794,28 +816,60 @@ def test_diagnostic_task_still_reports_actual_pass(monkeypatch):
         assert baseline_correctness_accepted(result, baseline=spec.baseline, phase='task_validation', manifest=manifest(contract))
 
 
-@pytest.mark.parametrize('name', [
+UPGRADED_GEMMS = [
     'gemm_a16w16_nt_n4096_k2048',
     'gemm_a16w16_nt_n6144_k3072', 'gemm_a16w16_nt_n16384_k2048',
+]
+
+
+@pytest.mark.parametrize('name', UPGRADED_GEMMS)
+def test_upgraded_gemm_timed_outputs_reject_wrong_stale_and_missing_results(name, monkeypatch):
+    torch = pytest.importorskip('torch')
+    with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
+        measure = importlib.import_module('task_measure')
+        inputs = {'a': torch.zeros((1, 2), dtype=torch.bfloat16)}
+        monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
+        monkeypatch.setattr(measure.task_reference, 'run', lambda a: a * 2)
+        first = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
+        second = {'a': torch.tensor([[3., 5.]], dtype=torch.bfloat16)}
+        correct = measure.verify_timed_outputs(
+            inputs, [(first, first['a'] * 2), (second, second['a'] * 2)])
+        assert correct['status'] == 'PASS'
+        assert correct['metadata']['checked_invocations'] == 2
+        for wrong in (second['a'], first['a'] * 2):
+            result = measure.verify_timed_outputs(inputs, [(second, wrong)])
+            assert result['failure_kind'] == 'numerical_mismatch'
+            assert result['metadata']['failed_invocations'] == 1
+        for missing in (None, torch.full_like(second['a'], float('nan'))):
+            assert measure.verify_timed_outputs(
+                inputs, [(second, missing)])['failure_kind'] == 'output_contract'
+
+
+@pytest.mark.parametrize('name', UPGRADED_GEMMS)
+@pytest.mark.parametrize('kernel_type, status, failure_kind', [
+    (_Honest, 'PASS', None),
+    (_ValueMemo, 'FAIL', 'timing_input_memoized'),
+    (_StaleUntilDisturbed, 'FAIL', 'numerical_mismatch'),
+    (_SkipsEveryThirdCall, 'FAIL', 'numerical_mismatch'),
 ])
-def test_deferred_task_replay_still_rejects_wrong_and_missing_outputs(name, monkeypatch):
+def test_upgraded_gemm_checks_actual_timed_path(name, kernel_type, status, failure_kind, monkeypatch):
+    """Small CPU buffers exercise the real draw, reference and comparison path."""
     torch = pytest.importorskip('torch')
     with modules(ROOT / 'tasks/Aiter-task' / name, monkeypatch):
         measure = importlib.import_module('task_measure')
         monkeypatch.setattr(torch.cuda, 'synchronize', lambda: None)
-        inputs = {'a': torch.tensor([[1., 2.]], dtype=torch.bfloat16)}
-        output = torch.zeros((1, 2), dtype=torch.bfloat16)
-        monkeypatch.setattr(measure.task_inputs, 'refill_case_inputs', lambda i: i['a'].fill_(2))
-        monkeypatch.setattr(measure.task_inputs, 'call_kwargs', lambda i: i)
-        monkeypatch.setattr(measure.task_reference, 'run', lambda **kw: torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        timed = types.SimpleNamespace(bound=True, outputs=output,
-                                     rerun=lambda: output.copy_(inputs['a']))
-        result = measure.verify_timed_invocation(inputs, timed)
-        assert output.tolist() == [[2., 2.]]  # Finite and different, still wrong.
-        assert result['failure_kind'] == 'numerical_mismatch'
-        assert result['metadata']['replay_checked']
-        timed.rerun = lambda: output.copy_(torch.tensor([[18., 28.]], dtype=torch.bfloat16))
-        output.zero_()
-        assert measure.verify_timed_invocation(inputs, timed)['status'] == 'PASS'
-        timed.rerun = lambda: output  # Poison survives an empty replay.
-        assert measure.verify_timed_invocation(inputs, timed)['failure_kind'] == 'output_contract'
+
+        def small_inputs(case):
+            return measure.task_inputs.task_initialize.run(
+                {'a': torch.empty((1, 4), dtype=torch.bfloat16),
+                 'b': torch.empty((3, 4), dtype=torch.bfloat16)}, seed=measure.task_inputs.SEED)
+
+        monkeypatch.setattr(measure.task_inputs, 'build_case_inputs', small_inputs)
+        monkeypatch.setattr(measure, 'choose_checked_samples',
+                            lambda repetition, count: list(range(count)))
+        kernel = kernel_type(measure.task_reference)
+        monkeypatch.setitem(sys.modules, '_aka_benchmark', _simulated_graph_helper(kernel))
+        result = measure.time_case(measure.task_inputs.CASES[0], role='candidate', launch=kernel)
+        assert result['status'] == status, result
+        assert result.get('failure_kind') == failure_kind
+        assert result['metadata']['timed_output_correctness']['metadata']['checked_invocations'] == 12
