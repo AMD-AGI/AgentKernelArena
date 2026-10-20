@@ -11,9 +11,10 @@ Serving tasks measure model throughput while allowing only kernel source changes
 TP/EP/PP, weights, precision, serving flags, request concurrency, prompt lengths,
 output lengths and benchmark policy remain fixed before either implementation runs.
 The imported Magpie recipes in `tasks/e2e/` are workload data, not automatically
-qualified tasks. Executable adapters target SGLang with Qwen3-0.6B on one MI355X
-and Qwen3-Next-80B on four MI355X devices. Each task version requires its own
-qualification; other models/frameworks need their own integration.
+qualified tasks. Maintained task packages include SGLang Qwen3-0.6B and Qwen3-Next-80B.
+The [Magpie catalog](#magpie-workload-catalog) materializes additional models through
+shared SGLang, vLLM and ATOM backend/scenario adapters. Each bound runtime needs
+baseline qualification; catalog membership does not establish a GPU pass.
 
 ## Run configuration
 
@@ -77,6 +78,9 @@ Asset acquisition and executor orchestration run on the host; GPU experiments us
 cache defaults to `~/.cache/aka-serving`; set `AKA_SERVING_CACHE` on the host for
 another prepared location. For Slurm, use the corresponding `make slurm-run`
 entrypoint and request enough scheduler wall time for the task's budget.
+Each clean action explicitly selects the declared executable as the container
+entrypoint. A runtime image's default serving CLI cannot reinterpret evaluator
+arguments; all remaining action arguments are passed directly, without a shell.
 
 ## Runtime and integrity
 
@@ -135,6 +139,13 @@ accepts only task-declared actions and source submissions under the experiment
 checkout. Source archives are checked for path traversal and escaping links;
 scoring runs offline against prepared assets. GPU containers and the agent's
 ordinary repository mounts remain outside a hostile-code security boundary.
+
+On clusters that prohibit privileged workers, `AKA_DOCKER_PRIVILEGED=0` keeps
+Docker's default capabilities. If the default bridge cannot reach the agent's
+provider, explicitly select `AKA_DOCKER_NETWORK=host` where the cluster permits
+it. This changes only the worker's network namespace; it grants no additional
+capabilities and does not change clean evaluation-container settings, model
+flags or workload. Unset preserves the runner's existing network choice.
 
 Direct `codex` runs and `task_validator` backends also save complete sanitized
 stdout/stderr events beside the workspace, in a private directory created for
@@ -338,6 +349,16 @@ The protected installer rejects duplicate targets, escaping paths and targets
 outside the declared compute namespaces. It records complete bundle hashes,
 actual replacement calls and model execution in every TP rank. Runtime identity
 is computed from fixed per-rank model observations, independent of patch count.
+For compiled regions it records `compiled_trace` separately from direct calls;
+the model must still execute on every rank. Tracing alone is not GPU execution
+evidence. The vLLM observer sits outside compiled `forward`, so configuration
+inspection and audit I/O do not break or disable its compute graph. Source review
+and model checks remain necessary; this is not a per-kernel dispatch proof.
+The observer retains the configured compiler-cache directory before the first
+model call. Only for the native empty/automatic input, runtime identity normalizes
+vLLM's generated source-hash directory suffix. The cache root, explicit overrides,
+compile mode, backend, graph settings and precision stay compared. Complete
+effective paths remain in the raw evidence.
 
 The clean executor rebuilds the source tree, including additions and deletions,
 inside a fresh evaluator copy. It never overlays arbitrary agent directories on
@@ -350,6 +371,16 @@ to the agent. There is no mandatory profiling API, report format or automatic
 per-fusion oracle generation. Existing targeted operator checks do not claim
 coverage of every model-wide replacement. Whole-model numerical and quality gates
 remain mandatory, with their finite coverage stated in task instructions.
+
+New model-wide workloads should reuse high-level checks rather than enumerate
+the model's current operator set. Every compute kernel used by the model is an
+eligible optimization target, including newly introduced kernels and fusion.
+The framework checks fixed workload/runtime identity, model outputs and fresh
+paired measurements. The separate `candidate_verifier` agent reviews the frozen
+implementation and execution evidence for preserved semantics, generality and
+reward hacking. It must not demand a hand-written oracle for each replacement
+or treat the optimizer's claims as evidence. A failed, unavailable or inconclusive
+required review blocks acceptance; review never overrides numerical failures.
 
 The independent framework reserve always checks delivered bytes again, including
 when search has exhausted its budget. Resuming within that reserve finalizes the
@@ -365,3 +396,178 @@ or adjust tolerances after seeing a candidate. An accepted calibration is a
 finite check, not a variance estimate. Candidate quality or numerical failures
 retain their case identity and failure category instead of becoming a manifest
 mismatch.
+
+## Magpie workload catalog
+
+The maintained `tasks/e2e/magpie/catalog.json` includes all recipes from its
+pinned upstream commit. List or refresh it from a clean upstream checkout:
+
+```bash
+python3 -m src.magpie_catalog list
+python3 -m src.magpie_catalog refresh --checkout ../Magpie
+```
+
+The catalog stores original recipe bytes and hashes, not fifty copies of the
+model evaluator. Backend adapters cover SGLang, vLLM and ATOM. Scenario adapters
+cover fixed-request text, random multimodal inputs and canonical AgentX replay.
+Ray deployment, external endpoints and server reuse are normalized to a fresh
+evaluator-owned local server inside the pinned container. Profiling examples use
+the same workload with profiling outside scoring. TP/EP/PP, precision, engine
+options and workload settings remain protected after binding.
+The bundle excludes configuration/observation namespaces from replacement targets,
+so a candidate cannot declare the evaluator's own configuration accessor as a
+kernel. This boundary does not enumerate compute operators. Indirect mutation and
+other semantic violations still require the independent candidate review.
+
+### Bind once, then materialize
+
+A recipe becomes a selectable v2 task after the maintainer supplies a runtime
+profile. This step occurs **before optimization**. The profile is private run
+input; it is not generated by the optimizing agent and is never refreshed during
+a run or resume. It declares:
+
+- `image`: immutable registry digest; `gpu_arch`, `gpu_count`, and actual
+  `model_architectures` class names from that model's configuration.
+- `model`: the recipe's model ID and exact revision. Host-local model examples
+  additionally require an explicit `source_model_alias`.
+- `correctness`: the shared numerical reference policy and baseline-calibrated
+  tolerances, sample counts and generation lengths. `inputs` contains protected
+  `correctness.json` prompts; `production_quality` additionally needs its frozen
+  `quality.json` and quality policy. Do not reuse another model's calibration
+  without checking it. `production_numerical` uses fresh original-server prefix
+  comparisons and teacher forcing of actual candidate continuations, without
+  imposing one answer dataset on every model. FP32-capable models can instead
+  use `transformers_fp32`.
+- ATOM images without a full logprob API expose actual generated IDs through
+  the reporting adapter, with exact prompt-ID and completion-count checks. It
+  never re-tokenizes decoded text. Bind one text policy before optimization:
+  `production_tokens` with `token_match: exact` compares every generated token
+  against a fresh original server; `transformers_tokens` instead teacher-forces
+  every actual continuation on the independent FP32 model and bounds each
+  generated token's regret from the FP32 argmax by `model_logprob_atol`. The
+  latter permits near-tied greedy choices while rejecting incorrect tokens,
+  requires the complete FP32 reference model to fit the evaluation hardware,
+  and does not claim engine logprob equivalence. Both retain the protected short,
+  long and concurrent probe plan, must pass original baseline qualification,
+  and never switch policies after a failure. Existing tasks keep their original
+  checks. Ordinary timed/streaming
+  responses and computation are unchanged by the reporting adapter.
+- Optional `limits` and action/final-reserve budgets appropriate to actual model
+  startup and measurement cost. Do not shrink them after search begins.
+- Optional `measurement_num_prompts` can **increase** the native text/media
+  sample count during baseline preparation. This makes tiny profiling examples
+  usable for a stable measurement window. It cannot reduce the original count,
+  change per-request lengths/concurrency/engine settings, or change after search
+  begins. `provenance.json` records both counts; baseline and candidate use the
+  same prepared count. Media request manifests must cover that complete count.
+  Canonical trace replay keeps its original duration instead of this override.
+- Text workloads require `client_runtime`, prepared before binding. Use
+  `{kind: image, executable: /opt/client/bin/python}` when the pinned image
+  already supplies the native client's Python and complete dependencies.
+  Otherwise use `{kind: archive, asset: client-python.tar.gz,
+  executable: python/bin/python3.12}` and declare that relocatable Python/package
+  archive in `assets` with its SHA-256 and either a public HTTPS URL or
+  `source: provided`. For offline supplied files, pass
+  `--asset-file client-python.tar.gz=PATH` to `src.prepare_serving_runtime`.
+  The host path stays in preparation input, never the task or runtime lock.
+  Every host needs that declared file or an already verified cache; a missing
+  file fails before GPU actions. The host acquires and verifies it;
+  each clean action extracts it locally before measurement. The archive must
+  include the complete environment, not an installer or an unfrozen requirements
+  file. The native client receives `MAGPIE_BENCHMARK_PYTHON`; package indexes and
+  automatic interpreter downloads are disabled. Missing dependencies fail rather
+  than bootstrap during scoring. Full client sources and extracted runtime
+  contents are checked before/after execution. This setup changes no requests,
+  model computation or serving flags.
+  A report-only hook captures the native generator's actual request bytes
+  (hashed) and token lengths before its HTTP timer. A separate preparation call
+  runs the same generator without sending requests. Both roles must match that
+  complete plan, including any native decode/re-encode length variation; nominal
+  ISL alone is not an exact realized token count. Missing plans, changed payloads,
+  missing requests and incorrect measured lengths fail closed.
+- A fixed `server_seed` for SGLang. An explicit upstream seed is preserved;
+  otherwise materialization freezes 1729 before either role starts. The shared
+  launcher supplies it to both roles, rather than ignoring seed differences in
+  runtime fingerprints. A conflicting explicit seed is rejected.
+  Fingerprints retain effective compute, precision and parallelism settings.
+  Raw rank evidence also retains derived compile times, native source-cache keys
+  and ATOM-generated rendezvous addresses/ports; those observations are separated
+  from configured switches so a fresh server or changed source can be compared.
+- `server_topology` for original client-only recipes; `runner_type` when hardware
+  is not declared upstream. Old native scripts that cannot split server/client
+  phases require an explicit `server_launch` with literal `argv`, `env` and
+  `health_path`, prepared from that native recipe. Their measurement uses the
+  common framework client. This adaptation must be reviewed during qualification.
+
+Complete script/source bindings from clean, pinned upstream checkouts, then
+materialize a selected workload under the normal task root:
+
+```bash
+python3 -m src.magpie_catalog bind \
+  --id benchmark_vllm_qwen3_next_80b_fp8 \
+  --profile /tmp/runtime-profile.json \
+  --magpie ../Magpie --inferencex ../InferenceX \
+  --output /tmp/runtime-binding.json
+python3 -m src.magpie_catalog materialize \
+  --id benchmark_vllm_qwen3_next_80b_fp8 \
+  --binding /tmp/runtime-binding.json \
+  --output tasks/e2e/magpie/benchmark_vllm_qwen3_next_80b_fp8
+```
+
+Both commands refuse to overwrite an existing binding/package. Select the
+resulting `e2e/magpie/benchmark_vllm_qwen3_next_80b_fp8` task in a run config,
+prepare immutable assets with `src.prepare_serving_runtime`, and use the normal
+Docker runner and `task_validator`. A generated package is self-contained after
+materialization. Keep experiment-specific bindings/packages untracked unless
+intentionally contributing a maintained, GPU-qualified task.
+
+### Media and trace bindings
+
+Multimodal profiles additionally declare a `request_manifest` with immutable
+`dataset_sha256` plus complete `input_lens`/`output_lens` from the pinned native
+client's unmodified preparation run. The native client saves detailed per-request
+lengths; this reporting adaptation does not change serving settings. The protected
+`inputs.media_checks.json` contains image-bearing chat requests with inline data
+URIs and fixed decode lengths. Set `correctness.media_sha256` to those exact JSON
+bytes and use `production_serving`: both numerical/logprob and no-logprob paths
+must match fresh original-server continuations. This strict policy must pass
+unmodified baseline calibration; media models with divergent normal continuations
+need a separately qualified numerical policy, not an answer-only bypass. Text-only
+probes do not qualify image kernels.
+
+AgentX profiles contain the resolved canonical `agentx.launch_spec` (literal
+`argv`, `env`, `health_path`), its `recipe_fingerprint`, and `agentx.client`
+(literal `argv` and `env`) captured from the pinned native replay preparation.
+The client must run the `inferencex-agentx-mvp` scenario for the canonical duration,
+not fast/diagnostic mode. Use `{model}`, `{client}`, `{root}`, `{port}` and
+`{assets}` placeholders for evaluator-owned paths/endpoints. Preinstall client
+requirements in the immutable image: scoring does not bootstrap packages or
+follow moving dataset revisions. Declare the exact AIPerf source in `dependencies`
+and offline trace files in `assets` as relative names with SHA-256 and either a
+public HTTPS URL or `source: provided` (host-only `--asset-file`); these
+are acquired on the host, content-verified and mounted read-only. The original
+Magpie/InferenceX resolved recipe and client configuration remain review evidence.
+An optional prepared `client_runtime` also supports `{client_python}` in the
+canonical replay argv, for example a pinned runtime running `-m aiperf`.
+
+The AgentX `request_manifest` fixes `dataset_sha256`, `duration_s` and trace turns
+(`requests`: unique `id` as `trace-id:turn-index`, exact `input_tokens` and
+`output_tokens`). `correctness.trace_probe_indices` selects protected trace shapes
+for model numerical checks. All replayed profiling records are checked against
+the turn manifest, with exact integer token counts and no failed or cancelled
+requests. A completed record must explicitly report `was_cancelled: false`;
+matching token counts cannot turn a cancelled request into completed work.
+Native aggregate completion/error counters must agree with those records; missing
+rows and context-overflow skips cannot silently change the measured workload.
+Warmup records remain diagnostic. Fixed-duration replay intentionally permits
+more completed requests when faster; the corpus, replay command, session
+concurrency and measurement duration must remain the same. No token total is
+inferred from a rounded throughput field. Native request records are retained.
+
+Catalog import, task materialization, baseline calibration, actual candidate
+acceptance and performance gain are separate outcomes. Representative GPU
+validation of shared paths does not qualify every catalog entry. Any unsupported
+new upstream framework/scenario fails visibly during import or binding; do not
+silently replace it with a different workload. The separate candidate verifier
+remains mandatory for every serving candidate, with failed or inconclusive
+review blocking acceptance.

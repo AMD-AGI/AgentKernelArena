@@ -125,6 +125,8 @@ def runtime_mounts(runtime: Path, lock: dict) -> list[str]:
         if not source.is_dir():
             raise ValueError('Runtime dependency must be a directory')
         mounts.extend(["-v", f"{source}:/task/runtime/{name}:ro"])
+    if lock.get('assets'):
+        mounts.extend(['-v', f"{(runtime/'assets').resolve(strict=True)}:/task/assets:ro"])
     return mounts
 
 
@@ -225,7 +227,8 @@ class CleanExecutor:
                         dst.write_bytes(read_file_at(source_fd, edit.path, max_bytes=limit))
                 verify_workspace_harness(snapshot, discard_added=False)
         check_request()
-        identity = {key: lock[key] for key in ("model", "dependencies")}
+        from .prepare_serving_runtime import asset_identity
+        identity = asset_identity(lock)
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         runtime = self.model_cache / key
         self.runtime_verifier.verify(runtime, identity)
@@ -245,7 +248,8 @@ class CleanExecutor:
                    "-e", "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl", "-e", "PYTHONPYCACHEPREFIX=/tmp/pycache",
                    "-e", f"ROCR_VISIBLE_DEVICES={self.devices}",
                    "-e", "HIP_VISIBLE_DEVICES=" + ",".join(map(str, range(lock["gpu_count"]))),
-                   "-e", f"ARENA_EVAL_PHASE={phase}", lock["image"], *declared.commands[0]]
+                   "-e", f"ARENA_EVAL_PHASE={phase}",
+                   "--entrypoint", declared.commands[0][0], lock["image"], *declared.commands[0][1:]]
         device_groups = {path.stat().st_gid for path in [Path("/dev/kfd"), *Path("/dev/dri").glob("render*")] if path.exists()}
         for group in sorted(device_groups):
             command[2:2] = ["--group-add", str(group)]
