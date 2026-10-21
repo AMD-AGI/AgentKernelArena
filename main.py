@@ -1,5 +1,6 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 import argparse
+import json
 import logging
 import os
 import re
@@ -9,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from src import knowledge_wiki
 from src.tasks import get_task_config
 from src.preprocessing import (
     get_task_workspace_path,
@@ -347,6 +349,7 @@ def _build_context(
         return None
     try:
         validate_run_budget_mode(agent.value, config["agent"])
+        wiki = knowledge_wiki.validate_run(config, agent.value)
     except ValueError as error:
         print(f"Error: {error}")
         return None
@@ -364,6 +367,8 @@ def _build_context(
     logger = _configure_logging(config, agent, timestamp, run_directory_name, args, role=role)
     logger.info(f"Agent: {agent.value}")
     logger.info(f"Target Architecture: {config['target_gpu_model']}")
+    if wiki is not None:
+        logger.info(f"Knowledge wiki: {json.dumps(wiki.identity(), sort_keys=True)}")
     logger.info(f"Workspace Directory: {workspace_directory}")
     logger.info(f"Run Directory: {run_directory}")
     logger.info(f"{'RESUME' if resume_mode else 'NEW'} RUN: {run_directory_name}")

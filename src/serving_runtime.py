@@ -324,7 +324,8 @@ def request_handler(executor):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["config-image", "image", "groups", "verifier", "serve"])
+    parser.add_argument("mode", choices=["config-image", "config-knowledge-wiki", "image", "groups", "verifier",
+                                         "serve"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--container-root", default="/workspace")
@@ -341,6 +342,10 @@ def main():
             if not isinstance(image, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/@:-]*", image):
                 raise ValueError("docker_image must be a nonempty Docker image reference")
             print(image)
+        return
+    if args.mode == "config-knowledge-wiki":
+        value = config.get("knowledge_wiki")
+        print(1 if isinstance(value, dict) and value.get("enabled") is True else 0)
         return
     if args.mode == "groups":
         for group in gpu_groups(config, args.devices.split(",")):

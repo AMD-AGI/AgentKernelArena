@@ -1,0 +1,180 @@
+{
+  "cases": [
+    {
+      "test_case_id": "case_0",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              8,
+              1024,
+              1024
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1048576,
+              1024,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1337
+      }
+    },
+    {
+      "test_case_id": "case_1",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              32,
+              1024,
+              1024
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              1048576,
+              1024,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1338
+      }
+    },
+    {
+      "test_case_id": "case_2",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              16,
+              2048,
+              2048
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              4194304,
+              2048,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1339
+      }
+    },
+    {
+      "test_case_id": "case_3",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              4,
+              4096,
+              4096
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              16777216,
+              4096,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1340
+      }
+    },
+    {
+      "test_case_id": "case_4",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              1,
+              4096,
+              32000
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              131072000,
+              32000,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1341
+      }
+    },
+    {
+      "test_case_id": "case_5",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              64,
+              512,
+              512
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              262144,
+              512,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1342
+      }
+    },
+    {
+      "test_case_id": "case_6",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              1,
+              16384,
+              1024
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              16777216,
+              1024,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1343
+      }
+    },
+    {
+      "test_case_id": "case_7",
+      "params": {
+        "inputs": [
+          {
+            "shape": [
+              256,
+              128,
+              128
+            ],
+            "dtype": "torch.float32",
+            "stride": [
+              16384,
+              128,
+              1
+            ]
+          }
+        ],
+        "model_init_seed": 0,
+        "correctness_seed": 1344
+      }
+    }
+  ]
+}

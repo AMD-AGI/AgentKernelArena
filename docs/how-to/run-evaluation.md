@@ -110,6 +110,13 @@ For debugging, enter the same Docker runtime used by the experiment:
 make docker-shell
 ```
 
+To run one command non-interactively in that runtime, without provisioning an
+agent CLI or forwarding credentials (for example, a baseline-only measurement):
+
+```bash
+AKA_VISIBLE_GPU=0 bash src/scripts/docker_benchmark.sh exec python3 <script> [args...]
+```
+
 The Docker runner currently supports Codex, Claude Code, and Cursor Agent login
 reuse from the host. It preflights the selected config before starting the run.
 

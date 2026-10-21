@@ -17,6 +17,7 @@ import yaml
 
 from agents import register_agent
 from agents.geak.workflow_runner import _read_json
+from src import knowledge_wiki
 from src.harness_guard import snapshot_workspace_harness
 from src.task_execution import _run_process
 from src.task_spec import load_task_spec
@@ -175,6 +176,7 @@ def prepare_job(context: TaskContext, run_dir: Path, options: dict, *,
 @register_agent("geak")
 def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str:
     options = load_options(eval_config)
+    wiki = knowledge_wiki.resolve(eval_config)
     started = time.monotonic()
     deadline = started + options["timeout_seconds"]
     deadline_epoch = time.time() + options["timeout_seconds"]
@@ -204,7 +206,13 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
     status = {"status": "FAILED", "delivery": "NOT_ATTEMPTED", "arena_acceptance": "PENDING"}
     try:
         bridge = prepare_job(context, run_dir, options, deadline=deadline, deadline_epoch=deadline_epoch)
-        bridge.job["engine"] = prepare_engine(checkout, bridge, python=python, options=options)
+        knowledge = ""
+        if wiki is not None:
+            wiki_log = run_dir / knowledge_wiki.LOG_NAME
+            knowledge = wiki.instructions(python, wiki_log)
+            status["knowledge_wiki"] = {**wiki.identity(), "log": str(wiki_log)}
+            write_json(run_dir / "knowledge_wiki.json", status["knowledge_wiki"])
+        bridge.job["engine"] = prepare_engine(checkout, bridge, python=python, options=options, knowledge=knowledge)
         write_json(bridge.job_path, bridge.job)
         code = _run_engine(bridge, python)
         result_path = run_dir / "engine_result.json"

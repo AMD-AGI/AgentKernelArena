@@ -845,7 +845,7 @@ def test_committed_hip2hip_sources_are_graph_capture_compatible(monkeypatch):
         if (task / "eval_tools/evaluate.py").is_file()
         for source in task.rglob("*.hip")
     )
-    assert len(gpumode_sources) == 44
+    assert len(gpumode_sources) == 48
     failures = {
         str(path.relative_to(repo)): helper.hip_source_graph_capture_policy(path)
         for path in gpumode_sources

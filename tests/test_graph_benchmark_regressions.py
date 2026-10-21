@@ -9,7 +9,7 @@ def test_hip2hip_gpumode_restores_state_and_uses_reference_method_policy():
     harnesses = sorted(
         (ROOT / "tasks/hip2hip").rglob("cal_kernel_perf.py")
     )
-    assert len(harnesses) == 22
+    assert len(harnesses) == 24
     for harness in harnesses:
         source = harness.read_text()
         assert "ref_check_pristine" in source, harness

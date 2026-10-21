@@ -1,0 +1,40 @@
+schema_version: 2
+description: Optimize SimpleMatmulModule in HIP; preserve all declared input cases and the protected reference
+  contract.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - hip/hip_3267_SimpleMatmulModule.hip
+  entrypoints:
+  - file: hip/hip_3267_SimpleMatmulModule.hip
+    kind: function
+    symbol: forward
+baseline:
+  kind: provided
+  language: hip
+  source_files:
+  - pytorch_code_module/py_3267_SimpleMatmulModule.py
+  - pytorch_code_functional/py_3267_SimpleMatmulModule_func.py
+  - hip/hip_3267_SimpleMatmulModule_ref.hip
+evaluation:
+  runner:
+  - python3
+  - eval_tools/evaluate.py
+  - --candidate
+  - hip/hip_3267_SimpleMatmulModule.hip
+  - --module
+  - pytorch_code_module/py_3267_SimpleMatmulModule.py
+  - --functional
+  - pytorch_code_functional/py_3267_SimpleMatmulModule_func.py
+  - --model-class
+  - SimpleMatmulModule
+  - --initial-state
+  - implemented
+  - --baseline-hip
+  - hip/hip_3267_SimpleMatmulModule_ref.hip
+  workloads: workload.json
+platform_support:
+  required_arch: gfx942

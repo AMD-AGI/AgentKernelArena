@@ -45,6 +45,8 @@ subtrees:
       title: Audit and harden tasks
     - file: how-to/held-out-evaluation
       title: Evaluate on held-out shapes
+    - file: how-to/knowledge-wiki
+      title: Offer a kernel knowledge base to agents
     - file: how-to/visualization
       title: Visualize and compare runs
 
