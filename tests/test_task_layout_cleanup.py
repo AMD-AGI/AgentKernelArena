@@ -15,7 +15,7 @@ TASKS = ROOT / "tasks"
 
 def test_flattened_hip_tasks_are_unique_and_loadable():
     discovered = get_task_config(str(TASKS), "hip2hip")
-    assert len(discovered) == 34
+    assert len(discovered) == 36
     assert all(len(Path(task_id).parts) == 2 for task_id in discovered)
     # Ignored bytecode from an older checkout may retain these directories.
     # None may retain an authored task package.
@@ -35,7 +35,7 @@ def test_rocmbench_has_one_registered_flip_and_no_old_classification():
     assert not (TASKS / "triton2triton/rocmbench/easy/test_triton_flip/config.yaml").exists()
     assert not get_task_config(str(TASKS), "instruction2triton")
     serving = get_task_config(str(TASKS), "e2e")
-    assert len(get_task_config(str(TASKS))) == 436 + len(serving)
+    assert len(get_task_config(str(TASKS))) == 440 + len(serving)
 
 
 @pytest.mark.parametrize("name", [

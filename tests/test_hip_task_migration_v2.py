@@ -53,8 +53,10 @@ MIGRATION_ROOTS = (
     'torch2hip/kernelbench',
 )
 HIP_INFERENCE_NAMES = {'paged_attention_large', 'wvsplitk'}
+# Production-size variants change only an original's case list; test_production_size_variants.py holds them to that.
+HIP_VARIANT_NAMES = {'SimpleMatmulModule_large', 'SoftmaxModule_large'}
 HIP_MIGRATION_CONFIGS = [p for p in (ROOT / 'tasks/hip2hip').glob('*/config.yaml')
-                         if p.parent.name not in HIP_INFERENCE_NAMES]
+                         if p.parent.name not in HIP_INFERENCE_NAMES | HIP_VARIANT_NAMES]
 CONFIGS = sorted([*HIP_MIGRATION_CONFIGS,
                   *(p for root in MIGRATION_ROOTS
                     for p in (ROOT / 'tasks' / root).rglob('config.yaml'))])
@@ -139,7 +141,7 @@ def harness_namespace(task):
 
 def test_inventory():
     assert {p.parent.name for p in (ROOT / 'tasks/hip2hip').glob('*/config.yaml')} - \
-        {p.parent.name for p in HIP_MIGRATION_CONFIGS} == HIP_INFERENCE_NAMES
+        {p.parent.name for p in HIP_MIGRATION_CONFIGS} == HIP_INFERENCE_NAMES | HIP_VARIANT_NAMES
     assert len(CONFIGS) == 89
     assert len(EXTENSIONS) == 79 and len(NATIVE) == 10
     assert len([p for p in CONFIGS if p.is_relative_to(ROOT / 'tasks/hip2hip')]) == 32

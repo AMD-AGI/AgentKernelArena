@@ -1,0 +1,40 @@
+schema_version: 2
+description: Optimize SoftmaxModule in HIP; preserve all declared input cases and the protected reference
+  contract.
+instructions:
+- README.md
+candidate:
+  language: hip
+  initial_state: implemented
+  editable:
+  - hip/hip_10082_SoftmaxModule.hip
+  entrypoints:
+  - file: hip/hip_10082_SoftmaxModule.hip
+    kind: function
+    symbol: softmax_forward
+baseline:
+  kind: provided
+  language: hip
+  source_files:
+  - pytorch_code_module/py_10082_SoftmaxModule.py
+  - pytorch_code_functional/py_10082_SoftmaxModule_func.py
+  - hip/hip_10082_SoftmaxModule_ref.hip
+evaluation:
+  runner:
+  - python3
+  - eval_tools/evaluate.py
+  - --candidate
+  - hip/hip_10082_SoftmaxModule.hip
+  - --module
+  - pytorch_code_module/py_10082_SoftmaxModule.py
+  - --functional
+  - pytorch_code_functional/py_10082_SoftmaxModule_func.py
+  - --model-class
+  - SoftmaxModule
+  - --initial-state
+  - implemented
+  - --baseline-hip
+  - hip/hip_10082_SoftmaxModule_ref.hip
+  workloads: workload.json
+platform_support:
+  required_arch: gfx942

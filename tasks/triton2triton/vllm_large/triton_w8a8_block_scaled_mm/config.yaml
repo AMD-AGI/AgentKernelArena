@@ -1,0 +1,25 @@
+schema_version: 2
+description: Optimize triton_w8a8_block_scaled_mm with the original Triton operator contract.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - path: source/triton_w8a8_block_scaled_mm.py
+    scope: symbols
+    symbols:
+    - _w8a8_triton_block_scaled_mm
+    allow_new_helpers: true
+  entrypoints:
+  - file: source/triton_w8a8_block_scaled_mm.py
+    kind: function
+    symbol: _w8a8_triton_block_scaled_mm
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json
+platform_support:
+  required_arch: gfx942

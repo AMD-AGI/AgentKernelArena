@@ -1,0 +1,25 @@
+schema_version: 2
+description: Optimize triton_awq_gemm with the original Triton operator contract.
+candidate:
+  language: triton
+  initial_state: implemented
+  editable:
+  - path: source/triton_awq_gemm.py
+    scope: symbols
+    symbols:
+    - awq_gemm_kernel
+    allow_new_helpers: true
+  entrypoints:
+  - file: source/triton_awq_gemm.py
+    kind: function
+    symbol: awq_gemm_kernel
+baseline:
+  kind: initial_candidate
+  language: triton
+evaluation:
+  runner:
+  - python3
+  - _arena_eval.py
+  workloads: workloads.json
+platform_support:
+  required_arch: gfx942
