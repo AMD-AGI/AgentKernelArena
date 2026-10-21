@@ -103,11 +103,11 @@ def adapt_lane(source: str) -> str:
     return source
 
 
-def arena_contract(bridge: Bridge, python: str) -> str:
+def arena_contract(bridge: Bridge, python: str, knowledge: str = "") -> str:
     command = shlex.join([python, str(Path(__file__).with_name("bridge.py")),
                           "--job", str(bridge.job_path)])
     spec = bridge.spec.to_mapping()
-    return f"""Arena task contract (takes precedence over upstream layout/harness examples)
+    contract = f"""Arena task contract (takes precedence over upstream layout/harness examples)
 Target language: {bridge.spec.candidate.language}. Initial state: {bridge.spec.candidate.initial_state}.
 Read the task's config.yaml, README.md if present, declared instructions and entrypoints.
 Keep all relative paths, multifile interfaces, and symbol-scoped restrictions exactly as declared:
@@ -141,9 +141,10 @@ other than the configured model, or publish/write learned knowledge outside this
 Upstream analysis/KB source is advisory; runtime dependencies are provisioned by Arena.
 GEAK metrics guide search only. Arena independently evaluates delivered candidate files.
 """
+    return contract + (f"\n{knowledge}" if knowledge else "")
 
 
-def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict) -> dict:
+def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict, knowledge: str = "") -> dict:
     verify_upstream(checkout, remaining=bridge.remaining)
     bridge.remaining()
     private = bridge.root / "engine"
@@ -156,7 +157,7 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
     roles = Path(__file__).with_name("roles")
     for role in roles.glob("*.md"):
         copy_file(role, workflow / "roles" / role.name, remaining=bridge.remaining, overwrite=True)
-    contract = arena_contract(bridge, python)
+    contract = arena_contract(bridge, python, knowledge)
     dispatcher = workflow / "kernel_workflow.js"
     for role in (workflow / "roles").glob("*.md"):
         bridge.remaining()

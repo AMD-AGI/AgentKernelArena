@@ -39,6 +39,7 @@ python -m sphinx -T -b html docs docs/_build/html
 | `how-to/task-validator.md` | How-to | Current task-validator execution, checks, and framework-finalized reports. |
 | `how-to/quality-loop.md` | How-to | Repository-wide validation, one-pass optimization, task hardening, and single-draft-PR publication. |
 | `how-to/held-out-evaluation.md` | How-to | Generate private shapes and evaluate completed runs for generalization. |
+| `how-to/knowledge-wiki.md` | How-to | Offer a read-only kernel knowledge base to GEAK, with every query logged. |
 | `how-to/visualization.md` | How-to | Build dashboard data and serve the comparison dashboard. |
 | `examples/examples.md` | Examples | Step-by-step walkthroughs with expected output. |
 | `about/license.md` | License | Apache 2.0 notice and link to the full repository `LICENSE`. |

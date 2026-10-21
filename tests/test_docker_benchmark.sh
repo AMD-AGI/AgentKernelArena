@@ -1165,6 +1165,31 @@ mapfile -t args < <(env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPI
 assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
 assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
 
+# Only a run that enables knowledge_wiki mounts the checkout read-only and
+# forwards its path; the same agent without the key gets neither, and an
+# enabled run without a checkout refuses to start.
+WIKI_ROOT="$TEST_HOME/knowledge-wiki"
+WIKI_CONFIG="$TEST_HOME/wiki-config.yaml"
+mkdir -p "$WIKI_ROOT"
+WIKI_ROOT="$(realpath -e "$WIKI_ROOT")"
+printf 'agent:\n  template: geak_v4\nknowledge_wiki:\n  enabled: true\n' > "$WIKI_CONFIG"
+mapfile -t args < <(run_check_args \
+    "$GEAK_HOME" "$WIKI_CONFIG" \
+    AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    AKA_KNOWLEDGE_WIKI_ROOT="$WIKI_ROOT")
+assert_has "$WIKI_ROOT:$WIKI_ROOT:ro" "${args[@]}"
+assert_has "AKA_KNOWLEDGE_WIKI_ROOT=$WIKI_ROOT" "${args[@]}"
+mapfile -t args < <(run_check_args \
+    "$GEAK_HOME" "$GEAK_CONFIG" \
+    AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    AKA_KNOWLEDGE_WIKI_ROOT="$WIKI_ROOT")
+assert_not_has "$WIKI_ROOT:$WIKI_ROOT:ro" "${args[@]}"
+assert_not_has "AKA_KNOWLEDGE_WIKI_ROOT=$WIKI_ROOT" "${args[@]}"
+if env -u AKA_KNOWLEDGE_WIKI_ROOT HOME="$GEAK_HOME" AKA_GPU_ARCH=gfx950 AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    bash "$RUNNER" check-agents --config_name "$WIKI_CONFIG" >/dev/null 2>&1; then
+    fail "knowledge_wiki without AKA_KNOWLEDGE_WIKI_ROOT must fail"
+fi
+
 # A forge config provisions its agent backend's CLI (Claude unless the run sets
 # agent_backend: codex), mounts the pinned Hyperloom checkout read-only, forwards
 # Claude credentials by name, and prepends the installed engine. Other agents

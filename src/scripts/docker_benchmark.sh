@@ -31,6 +31,9 @@ GEAK_RUNTIME=0
 # Forge templates likewise normalize to their agent backend's CLI; this flag
 # selects the Hyperloom mount, engine install and credential forwarding.
 FORGE_RUNTIME=0
+# Set from the run config's knowledge_wiki.enabled. Only such runs mount the
+# knowledge base checkout, so the arm of an A/B pair without it cannot read it.
+KNOWLEDGE_WIKI_RUNTIME=0
 # quality_loop keeps the repository checkout read-only in the agent container.
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
@@ -105,6 +108,8 @@ Environment overrides:
                            Per-tool sidecar image override, e.g. AKA_EVAL_TOOL_IMAGE_GPU_ASAN.
   HYPERLOOM_ROOT          Pinned Hyperloom checkout for forge runs (mounted read-only;
                           make docker-setup-forge installs its committed HEAD).
+  AKA_KNOWLEDGE_WIKI_ROOT Knowledge base checkout for runs with knowledge_wiki.enabled
+                          (mounted read-only; must be outside this repository).
 EOF
 }
 
@@ -550,6 +555,17 @@ read_run_agent_field() {
             exit
         }
     ' "$run_config"
+}
+
+configure_knowledge_wiki() {
+    local config="$1"
+    KNOWLEDGE_WIKI_RUNTIME=0
+    [[ -f "$config" ]] || return 0
+    # Most configs never name the key; only those pay for a YAML parse, which
+    # may need the runtime image when the host has no PyYAML.
+    grep -q "knowledge_wiki" "$config" || return 0
+    KNOWLEDGE_WIKI_RUNTIME="$(serving_runtime_metadata config-knowledge-wiki "$config")" \
+        || die "Could not read knowledge_wiki from $config"
 }
 
 agent_list_contains() {
@@ -1499,6 +1515,20 @@ build_docker_args() {
         docker_args+=(-e "HYPERLOOM_ROOT=$hyperloom_root")
     fi
 
+    if [[ "$KNOWLEDGE_WIKI_RUNTIME" == "1" ]]; then
+        local wiki_root
+        [[ -n "${AKA_KNOWLEDGE_WIKI_ROOT:-}" ]] \
+            || die "knowledge_wiki is enabled; set AKA_KNOWLEDGE_WIKI_ROOT to the knowledge base checkout"
+        wiki_root="$(realpath -e "$AKA_KNOWLEDGE_WIKI_ROOT" 2>/dev/null)" && [[ -d "$wiki_root" ]] \
+            || die "AKA_KNOWLEDGE_WIKI_ROOT is not a directory: $AKA_KNOWLEDGE_WIKI_ROOT"
+        case "$wiki_root/" in
+            "$(realpath -e "$HOST_ROOT")/"*)
+                die "Keep the knowledge base outside $HOST_ROOT; that tree is mounted into every container" ;;
+        esac
+        add_mount "$wiki_root" "$wiki_root" ro
+        docker_args+=(-e "AKA_KNOWLEDGE_WIKI_ROOT=$wiki_root")
+    fi
+
     # The base image lacks the GNU `time` binary and the container runs as a
     # non-root user (so it cannot apt-install it). Bind-mount the host binary
     # read-only so commands that invoke `/usr/bin/time` do not fail with 127.
@@ -2070,6 +2100,7 @@ run_parallel() {
     select_runtime_for_config "$config_name"
     configure_geak_runtime "$config_name"
     configure_forge_runtime "$config_name"
+    configure_knowledge_wiki "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -2163,6 +2194,7 @@ case "${1:-}" in
         select_runtime_for_config "$config_name"
         configure_geak_runtime "$config_name"
         configure_forge_runtime "$config_name"
+        configure_knowledge_wiki "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -2274,6 +2306,7 @@ case "${1:-}" in
         select_runtime_for_config "$config_name"
         configure_geak_runtime "$config_name"
         configure_forge_runtime "$config_name"
+        configure_knowledge_wiki "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
@@ -2307,6 +2340,7 @@ case "${1:-}" in
         select_runtime_for_host "$config_image"
         configure_geak_runtime "$config_name"
         configure_forge_runtime "$config_name"
+        configure_knowledge_wiki "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
