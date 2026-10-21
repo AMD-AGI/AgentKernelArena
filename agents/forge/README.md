@@ -318,10 +318,27 @@ checks that both commands still take the options the adapter builds.
 only as a library. It refuses anything else.
 
 Upstream owns its GPU DSL/compiler support and SDKs. Install the `forge` extra in
-the GPU runtime environment (it also pulls the agent SDK dependencies):
+the GPU runtime environment (it also pulls the agent SDK dependencies). Through
+Docker, name the pinned checkout on the host:
 
 ```bash
-# HYPERLOOM_ROOT names the separately mounted/pinned checkout in the container.
+HYPERLOOM_ROOT=/path/to/Hyperloom make docker-setup-forge
+HYPERLOOM_ROOT=/path/to/Hyperloom make docker-run CONFIG=<forge-run-config>
+```
+
+For `forge` runs the runner mounts `HYPERLOOM_ROOT` read-only, provisions the
+agent backend's CLI and authentication (Claude Code unless the run sets
+`agent.agent_backend: codex`), forwards Claude credentials by name as for GEAK,
+and prepends `.aka-pyuserbase/forge-engine/<Python cache tag>` to `PYTHONPATH`,
+since an image upgrade can change the Python ABI. Setup installs the
+committed `HEAD` of `HYPERLOOM_ROOT` there with `pip install --target`, from an
+exported copy because setuptools builds in tree. It records the revision in
+`.aka-hyperloom-revision` and warns that uncommitted changes are not installed.
+Run and preflight repeat the install only when that revision changes, then
+require `agents/forge/engine.py --arena-probe` to pass. Outside Docker, install
+into the interpreter directly:
+
+```bash
 python3 -m pip install "${HYPERLOOM_ROOT}[forge]"
 python3 agents/forge/engine.py --arena-probe
 ```

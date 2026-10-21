@@ -28,6 +28,9 @@ DEFAULT_RUN_CONFIG="example_configs/quickstart_claude_mi300.yaml"
 # separate from REQUIRED_AGENTS because GEAK templates normalize to claude_code
 # before Docker arguments are built.
 GEAK_RUNTIME=0
+# Forge templates likewise normalize to their agent backend's CLI; this flag
+# selects the Hyperloom mount, engine install and credential forwarding.
+FORGE_RUNTIME=0
 # quality_loop keeps the repository checkout read-only in the agent container.
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
@@ -64,6 +67,7 @@ Usage:
   src/scripts/docker_benchmark.sh parallel-run [main.py args...]
   src/scripts/docker_benchmark.sh preflight [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh shell
+  src/scripts/docker_benchmark.sh exec <command> [args...]
   src/scripts/docker_benchmark.sh check-agents [--config_name <run-config.yaml>]
   src/scripts/docker_benchmark.sh quality-loop [--config <quality-loop-config.yaml>] [quality_loop args...]
   src/scripts/docker_benchmark.sh sikl-task-builder [--config <config.yaml>] <inspect|run|resume> [args...]
@@ -99,6 +103,8 @@ Environment overrides:
   AKA_EVAL_TOOLS          Override evaluation_tools.enabled (comma/space separated).
   AKA_EVAL_TOOL_IMAGE_<TOOL>
                            Per-tool sidecar image override, e.g. AKA_EVAL_TOOL_IMAGE_GPU_ASAN.
+  HYPERLOOM_ROOT          Pinned Hyperloom checkout for forge runs (mounted read-only;
+                          make docker-setup-forge installs its committed HEAD).
 EOF
 }
 
@@ -518,6 +524,34 @@ configure_geak_runtime() {
     esac
 }
 
+configure_forge_runtime() {
+    local config="$1"
+    FORGE_RUNTIME=0
+    case "$(read_agent_template "$config")" in
+        forge|forge_operator2flydsl) FORGE_RUNTIME=1 ;;
+    esac
+}
+
+# Read one scalar under the run config's top-level agent mapping (best-effort).
+read_run_agent_field() {
+    local run_config="${1:-}"
+    local field="$2"
+    [[ -f "$run_config" ]] || return 0
+    awk -v field="$field" '
+        /^[^[:space:]#][^:]*:[[:space:]]*/ {
+            in_agent = ($0 ~ /^agent[[:space:]]*:/)
+            next
+        }
+        in_agent && $0 ~ ("^[[:space:]]+" field "[[:space:]]*:") {
+            sub(/^[^:]*:[[:space:]]*/, "")
+            sub(/[[:space:]#].*/, "")
+            gsub(/^["\047]|["\047]$/, "")
+            print
+            exit
+        }
+    ' "$run_config"
+}
+
 agent_list_contains() {
     local agents="$1"
     local expected="$2"
@@ -580,6 +614,14 @@ resolve_optimizer_agents() {
         codex) printf 'codex\n' ;;
         # All retained v2 tasks use GEAK's unified Claude Workflow engine.
         geak|geak_v4|geak-v4) printf 'claude_code\n' ;;
+        # Forge sessions run on its agent backend, Claude unless set to codex.
+        forge|forge_operator2flydsl)
+            if [[ "$(read_run_agent_field "$config" agent_backend)" == "codex" ]]; then
+                printf 'codex\n'
+            else
+                printf 'claude_code\n'
+            fi
+            ;;
         *) printf '%s\n' "$tmpl" ;;
     esac
 }
@@ -1229,6 +1271,12 @@ build_docker_args() {
     if [[ "$GEAK_RUNTIME" == "1" ]]; then
         docker_args+=(-e "AKA_GEAK_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
+    # Hyperloom[forge] is installed the same way from the pinned checkout
+    # (see container_setup_forge), under the same per-ABI subdirectory, and
+    # prepended only for Forge runs.
+    if [[ "$FORGE_RUNTIME" == "1" ]]; then
+        docker_args+=(-e "AKA_FORGE_ENGINE_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/forge-engine")
+    fi
 
     # Explicit DeepSeek runs alone receive these provider variables. Pass names,
     # not secret values, so Docker argv/logs do not expose the API key.
@@ -1289,16 +1337,16 @@ build_docker_args() {
     if agent_list_contains "$agents" claude_code && [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
         docker_args+=(-e CLAUDE_CODE_OAUTH_TOKEN)
     fi
-    # Forward the host's Claude / Anthropic auth+config only for GEAK execution
-    # containers that provision Claude Code. Requiring both conditions keeps
-    # existing Claude/task-validator runs unchanged and prevents setup-geak
-    # (which has no agent CLI) from receiving runtime credentials. Each var is
-    # passed by name only (no "=value") so secrets stay out of argv / process
-    # listings.
-    if [[ "$GEAK_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
+    # Forward the host's Claude / Anthropic auth+config only for GEAK and Forge
+    # execution containers that provision Claude Code. Requiring both conditions
+    # keeps existing Claude/task-validator runs unchanged and prevents setup-geak
+    # and setup-forge (which have no agent CLI) from receiving runtime
+    # credentials. Each var is passed by name only (no "=value") so secrets stay
+    # out of argv / process listings.
+    if [[ "$GEAK_RUNTIME" == "1" || "$FORGE_RUNTIME" == "1" ]] && agent_list_contains "$agents" claude_code; then
         local claude_env_var
         for claude_env_var in \
-            ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL \
+            ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL ANTHROPIC_CUSTOM_HEADERS \
             ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL \
             ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
             CLAUDE_CODE_SUBAGENT_MODEL API_TIMEOUT_MS \
@@ -1441,6 +1489,16 @@ build_docker_args() {
         fi
     fi
 
+    # The pinned Hyperloom checkout is the Forge engine's install source and
+    # stays read-only; container_setup_forge refuses a run without it.
+    if [[ "$FORGE_RUNTIME" == "1" && -n "${HYPERLOOM_ROOT:-}" ]]; then
+        local hyperloom_root
+        hyperloom_root="$(realpath -e "$HYPERLOOM_ROOT" 2>/dev/null)" && [[ -d "$hyperloom_root" ]] \
+            || die "HYPERLOOM_ROOT is not a directory: $HYPERLOOM_ROOT"
+        add_mount "$hyperloom_root" "$hyperloom_root" ro
+        docker_args+=(-e "HYPERLOOM_ROOT=$hyperloom_root")
+    fi
+
     # The base image lacks the GNU `time` binary and the container runs as a
     # non-root user (so it cannot apt-install it). Bind-mount the host binary
     # read-only so commands that invoke `/usr/bin/time` do not fail with 127.
@@ -1459,7 +1517,7 @@ docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export AKA_GEAK_SDK_PATH="${AKA_GEAK_SDK_PATH}/$(python -c "import sys; print(sys.implementation.cache_tag)")"; export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AKA_ROCM_SDK_CORE_RUNTIME:-0}" == "1" ]]; then sdk_library_path="$(python src/scripts/rocm_sdk_runtime.py --print-library-path)" && export LD_LIBRARY_PATH="$sdk_library_path" && mkdir -p /tmp/aka-runtime-bin && ln -sf "$AGENT_KERNEL_ARENA_WORKDIR/src/scripts/rocm_sdk_runtime.py" /tmp/aka-runtime-bin/rocprofv3 && export PATH="/tmp/aka-runtime-bin:$PATH"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
+    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export AKA_GEAK_SDK_PATH="${AKA_GEAK_SDK_PATH}/$(python -c "import sys; print(sys.implementation.cache_tag)")"; export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ -n "${AKA_FORGE_ENGINE_PATH:-}" ]]; then export AKA_FORGE_ENGINE_PATH="${AKA_FORGE_ENGINE_PATH}/$(python -c "import sys; print(sys.implementation.cache_tag)")"; export PYTHONPATH="${AKA_FORGE_ENGINE_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AKA_ROCM_SDK_CORE_RUNTIME:-0}" == "1" ]]; then sdk_library_path="$(python src/scripts/rocm_sdk_runtime.py --print-library-path)" && export LD_LIBRARY_PATH="$sdk_library_path" && mkdir -p /tmp/aka-runtime-bin && ln -sf "$AGENT_KERNEL_ARENA_WORKDIR/src/scripts/rocm_sdk_runtime.py" /tmp/aka-runtime-bin/rocprofv3 && export PATH="/tmp/aka-runtime-bin:$PATH"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
 }
 
 extract_config_name() {
@@ -1670,6 +1728,10 @@ container_preflight() {
             container_setup_geak
             container_check_geak
             ;;
+        forge|forge_operator2flydsl)
+            container_setup_forge
+            container_check_forge
+            ;;
     esac
 python - "$config_name" <<'PY'
 import pathlib
@@ -1816,6 +1878,38 @@ copy_worker_state() {
         fi
     done
     die "Worker state copy failed after four attempts"
+}
+
+# Install Hyperloom[forge] from HYPERLOOM_ROOT into a host-mounted target, as
+# for GEAK's SDK. The checkout is mounted read-only and setuptools builds in
+# tree, so install from an exported copy of HEAD; the recorded revision is then
+# exactly the installed code. Uncommitted changes are never installed.
+container_setup_forge() {
+    [[ -n "${HYPERLOOM_ROOT:-}" ]] || die "Forge runs need HYPERLOOM_ROOT naming the pinned Hyperloom checkout"
+    local target="${AKA_FORGE_ENGINE_PATH:-${PYTHONUSERBASE:-$PWD/.aka-pyuserbase}/forge-engine/$(python -c 'import sys; print(sys.implementation.cache_tag)')}"
+    local marker="$target/.aka-hyperloom-revision"
+    local revision source
+    revision="$(git -C "$HYPERLOOM_ROOT" rev-parse HEAD)" || die "HYPERLOOM_ROOT is not a git checkout: $HYPERLOOM_ROOT"
+    if [[ -n "$(git -C "$HYPERLOOM_ROOT" status --porcelain --untracked-files=no)" ]]; then
+        warn "HYPERLOOM_ROOT has uncommitted changes; installing committed revision $revision only"
+    fi
+    if [[ -f "$marker" && "$(cat "$marker")" == "$revision" ]]; then
+        echo "hyperloom=$revision already installed in $target"
+        return 0
+    fi
+    source="$(mktemp -d)"
+    git -C "$HYPERLOOM_ROOT" archive HEAD | tar -x -C "$source"
+    rm -rf "$target"
+    python -m pip install --target "$target" "${source}[forge]"
+    rm -rf "$source"
+    printf '%s\n' "$revision" > "$marker"
+    echo "hyperloom=$revision installed in $target"
+}
+
+container_check_forge() {
+    python agents/forge/engine.py --arena-probe > /dev/null \
+        || die "The installed KernelForge does not accept the commands the Forge adapter builds"
+    echo "forge_engine=hyperloom $(cat "${AKA_FORGE_ENGINE_PATH:-/nonexistent}/.aka-hyperloom-revision" 2>/dev/null || echo unknown)"
 }
 
 container_prepare_worker_home() {
@@ -1975,6 +2069,7 @@ run_parallel() {
     config_name="$(extract_config_name "$@")"
     select_runtime_for_config "$config_name"
     configure_geak_runtime "$config_name"
+    configure_forge_runtime "$config_name"
 
     REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
     AGENTS_STRICT=1
@@ -2067,6 +2162,7 @@ case "${1:-}" in
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
         configure_geak_runtime "$config_name"
+        configure_forge_runtime "$config_name"
         # Only the configured agent's CLI/auth is required for a run.
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
@@ -2177,9 +2273,20 @@ case "${1:-}" in
         config_name="$(extract_config_name "$@")"
         select_runtime_for_config "$config_name"
         configure_geak_runtime "$config_name"
+        configure_forge_runtime "$config_name"
         REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_preflight "$config_name"
+        ;;
+    exec)
+        # Run one command non-interactively in the runtime, e.g. a baseline-only
+        # measurement. No agent CLI is provisioned, so no credentials are forwarded.
+        shift
+        [[ $# -gt 0 ]] || die "exec needs a command"
+        select_runtime_for_host
+        REQUIRED_AGENTS=""
+        AGENTS_STRICT=0
+        docker_exec 0 "$@"
         ;;
     shell)
         select_runtime_for_host
@@ -2199,6 +2306,7 @@ case "${1:-}" in
         config_image="$(read_config_docker_image "$config_name")" || die "Invalid runtime image configuration: $config_name"
         select_runtime_for_host "$config_image"
         configure_geak_runtime "$config_name"
+        configure_forge_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
         REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
@@ -2245,12 +2353,23 @@ case "${1:-}" in
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_geak
         ;;
+    setup-forge)
+        select_runtime_for_host
+        FORGE_RUNTIME=1
+        REQUIRED_AGENTS=""
+        AGENTS_STRICT=0
+        docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_forge
+        ;;
     _container_setup_flydsl)
         container_setup_flydsl
         ;;
     _container_setup_geak)
         container_setup_geak
         container_check_geak
+        ;;
+    _container_setup_forge)
+        container_setup_forge
+        container_check_forge
         ;;
     _container_smoke)
         container_smoke
