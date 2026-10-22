@@ -1,0 +1,12 @@
+agent:
+  template: task_validator
+tasks:
+  - Aiter-task-mi300/gemm_a16w16_nt_n128_k6144
+  - Aiter-task-mi300/gemm_a16w16_nt_n2048_k2048
+  - Aiter-task-mi300/gemm_a16w16_nt_n6144_k6144
+target_gpu_model: MI300
+# primussafe/sglang:v0.5.18-rocm720-mi35x-aiter-dbd8bf5-flydsl032-20260921 (AITER dbd8bf5, FlyDSL 0.3.2, ROCm PyTorch
+# for gfx942 and gfx950); pin the tested image bytes.
+docker_image: docker.io/primussafe/sglang@sha256:1bdb3a9f1c068255d5d631ba4ce80df7f27223f582b8f70036040ea6fc497370
+log_directory: logs
+workspace_directory_prefix: workspace

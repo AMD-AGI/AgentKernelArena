@@ -312,7 +312,8 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
 
     functional_count = len(list((ROOT / "tasks/Aiter-task").glob("*/scripts/workload.json")))
     serving_count = len(list((ROOT / "tasks/e2e").glob("*/config.yaml")))
-    assert config_count == 420 + functional_count + serving_count
+    # The three gfx942 variants under tasks/Aiter-task-mi300 use the same runner as their Aiter-task originals.
+    assert config_count == 420 + functional_count + serving_count + 3
     assert problems == []
     assert sum(counts.values()) == config_count
     # Replay-aware adapters call the canonical sample API directly so their
@@ -321,7 +322,7 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     # the canonical TimedRun API before the generated vLLM stub is inspected.
     # Five retained ROCmBench runners also call that API directly to validate each sample.
     assert counts == {
-        "canonical_python": 273 + functional_count,
+        "canonical_python": 273 + functional_count + 3,
         "serving_client": serving_count,
         "native_graph_driver": 2,
         "rocmbench_adapter": 10,
