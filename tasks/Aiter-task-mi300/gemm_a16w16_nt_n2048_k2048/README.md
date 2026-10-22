@@ -11,9 +11,9 @@ and baseline entry are unchanged. Three things differ:
    modules it imports joined into one file, so that it passes the import guard. `build_gemm_a16w16_nt_n2048_k2048_module` launches it with one
    configuration for M <= 32 and one for larger M. The agent optimizes this kernel in FlyDSL instead of writing one
    from an empty module. `evaluate.py`'s initial-state check follows the state `config.yaml` declares. Measured on
-   MI300X on 2026-10-16, its mean case speedup over the baseline below is 0.56.
+   MI300X on 2026-10-22, its mean case speedup over the baseline below is 0.55.
 3. **Baseline dispatch.** On gfx942, `aiter.tuned_gemm.gemm_a16w16` finds no tuned entry for MI300X (its tuned
-   tables are for gfx950). Measured on 2026-10-16, it dispatched to torch (hipBLASLt) for every case. Speedups are against that dispatch,
+   tables are for gfx950). Measured on 2026-10-22, it dispatched to torch (hipBLASLt) for every case. Speedups are against that dispatch,
    not against gfx950's production selection, so they are not comparable with gfx950 results.
 
 The original task's description follows, with the two sentences that no longer hold updated.
