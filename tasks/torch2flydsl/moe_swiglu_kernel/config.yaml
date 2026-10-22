@@ -1,0 +1,23 @@
+source_file_path:
+- kernel.py
+target_kernel_functions:
+- flydsl_moe_swiglu
+- build_moe_stage1_module
+- build_moe_stage2_module
+- compile_mixed_moe_gemm1
+- compile_mixed_moe_gemm2
+compile_command:
+- python3 -c "import torch; from kernel import build_moe_stage1_module, build_moe_stage2_module;
+  build_moe_stage1_module(model_dim=3072, inter_dim=512, experts=128, topk=4, tile_m=32,
+  tile_n=256, tile_k=256, doweight_stage1=False, a_dtype='fp4', b_dtype='fp4', out_dtype='bf16',
+  act='swiglu'); build_moe_stage2_module(model_dim=3072, inter_dim=512, experts=128,
+  topk=4, tile_m=32, tile_n=256, tile_k=256, doweight_stage2=True, a_dtype='fp4',
+  b_dtype='fp4', out_dtype='bf16'); print('compile ok')"
+correctness_command:
+- python3 test_kernel_harness.py --correctness
+performance_command:
+- python3 test_kernel_harness.py --full-benchmark
+task_type: torch2flydsl
+supported_archs:
+- gfx950
+task_result_template: null
