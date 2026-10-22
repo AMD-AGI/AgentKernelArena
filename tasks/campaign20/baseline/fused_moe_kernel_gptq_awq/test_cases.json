@@ -1,0 +1,62 @@
+[
+  {
+    "test_case_id": "c2",
+    "concurrency_B": 2,
+    "params_repr": {
+      "B": 2,
+      "M_tokens": 2048,
+      "seqlen": 1024,
+      "K": 7168,
+      "N": 512,
+      "num_experts": 384,
+      "top_k": 8,
+      "group_size": 32,
+      "BLOCK_SIZE_M": 64,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 32,
+      "use_int4_w4a16": true,
+      "has_zp": false,
+      "note": "token-parallel MoE GEMM; M=B*1024; shapes driven by scripts/harness_run.py"
+    }
+  },
+  {
+    "test_case_id": "c32",
+    "concurrency_B": 32,
+    "params_repr": {
+      "B": 32,
+      "M_tokens": 32768,
+      "seqlen": 1024,
+      "K": 7168,
+      "N": 512,
+      "num_experts": 384,
+      "top_k": 8,
+      "group_size": 32,
+      "BLOCK_SIZE_M": 64,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 32,
+      "use_int4_w4a16": true,
+      "has_zp": false,
+      "note": "token-parallel MoE GEMM; M=B*1024; shapes driven by scripts/harness_run.py"
+    }
+  },
+  {
+    "test_case_id": "c64",
+    "concurrency_B": 64,
+    "params_repr": {
+      "B": 64,
+      "M_tokens": 65536,
+      "seqlen": 1024,
+      "K": 7168,
+      "N": 512,
+      "num_experts": 384,
+      "top_k": 8,
+      "group_size": 32,
+      "BLOCK_SIZE_M": 64,
+      "BLOCK_SIZE_N": 64,
+      "BLOCK_SIZE_K": 32,
+      "use_int4_w4a16": true,
+      "has_zp": false,
+      "note": "token-parallel MoE GEMM; M=B*1024; shapes driven by scripts/harness_run.py"
+    }
+  }
+]

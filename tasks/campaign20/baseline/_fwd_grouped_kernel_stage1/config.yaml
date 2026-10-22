@@ -1,0 +1,25 @@
+source_file_path:
+- source/triton__fwd_grouped_kernel_stage1.py
+target_kernel_functions:
+- _fwd_grouped_kernel_stage1
+compile_command:
+- python3 scripts/task_runner.py compile
+correctness_command:
+- python3 scripts/task_runner.py correctness
+performance_command:
+- python3 scripts/task_runner.py performance
+task_type: triton2triton
+task_result_template: null
+prompt:
+  source_code: null
+  instructions: Optimize the Triton kernel `_fwd_grouped_kernel_stage1` (originally
+    vllm.v1.attention.ops.triton_decode_attention). Captured via inspect.getsource.
+    Tests generate inputs from test_cases.json on the fly.
+  cheatsheet: null
+extracted_from:
+  engine: vllm
+  kernel_id: triton:vllm.v1.attention.ops.triton_decode_attention._fwd_grouped_kernel_stage1
+  triton_fn: _fwd_grouped_kernel_stage1
+  origin_module: vllm.v1.attention.ops.triton_decode_attention
+  source: triton_inspect
+  test_cases: 1

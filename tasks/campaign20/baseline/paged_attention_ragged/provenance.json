@@ -1,0 +1,56 @@
+{
+  "rank": 45,
+  "backend": "hip",
+  "kernel_name": "paged_attention_ragged",
+  "op_category": "attention",
+  "origin": "aiter",
+  "origin_detail": "aiter.paged_attention_ragged -> csrc/cpp_itfs/pa/pa_ragged.py (jinja-templated HIP, JIT-compiled). Launches paged_attention_ll4mi_QKV_mfma16_kernel + reduce kernel. Same 'll4mi' lineage as vLLM rank-8 paged_attention (carries 'Copyright The vLLM team' + vllm::Fp8KVCacheDataType), but a generalized superset (ragged kv_indptr/kv_page_indices/kv_last_page_lens interface, MTP, logits soft cap, sliding window, q_scale, head/gqa loop generalization).",
+  "max_time_pct": 42.07,
+  "n_source_models": 1,
+  "n_instances": 1,
+  "canonical": {
+    "combo": "qwen3-30b-a3b__sglang_hip",
+    "task_dir": "aiter_paged_attention_ragged"
+  },
+  "instances": [
+    {
+      "model": "qwen3-30b-a3b",
+      "engine": "sglang",
+      "mode": "hip",
+      "combo": "qwen3-30b-a3b__sglang_hip",
+      "time_pct": null,
+      "source_dir": "results/qwen3-30b-a3b_sglang_hip/aiter_paged_attention_ragged",
+      "is_canonical": true
+    }
+  ],
+  "observed_instances_not_extracted": [
+    {"model": "Qwen_Qwen3-235B-A22B-FP8", "engine": "sglang", "mode": "hip", "time_pct": 42.07},
+    {"model": "Qwen_Qwen3.5-35B-A3B", "engine": "sglang", "mode": "hip", "time_pct": 19.27},
+    {"model": "Qwen_Qwen3.5-35B-A3B", "engine": "sglang", "mode": "default", "time_pct": 9.38},
+    {"model": "Qwen_Qwen3-235B-A22B-FP8", "engine": "sglang", "mode": "default", "time_pct": 2.07}
+  ],
+  "notes": "Absent from the formal_run selection pipeline because every formal_run sglang combo hit a structural extraction gap for this kernel (summary.md: 'aiter paged_attention_ragged: structural extraction gap ... Skipped'). The only materialized extraction is the earlier results/qwen3-30b-a3b_sglang_hip batch, used here as canonical. canonical/src/aiter_meta/hsa (108M of prebuilt asm .co blobs) was trimmed: the cpp_itfs HIP build only needs csrc/ + 3rdparty/composable_kernel headers.",
+  "test_status": {
+    "compile": "PASS",
+    "correctness": "PASS (reference-based; validated against an analytic paged-attention reference)",
+    "performance_ms_per_case": [0.0517, 0.0512, 0.0512, 0.0511, 0.0519, 0.0501, 0.0507, 0.0503]
+  },
+  "audit": {
+    "correctness_is_valid": true,
+    "original_findings": [
+      "No analytic reference: scripts/_runtime.py REFERENCES had no entry for 'paged_attention_ragged' (or any attention op). reference_for('paged_attention_ragged','aiter') returned None, so run_correctness() fell back to the else-branch: kernel run twice with the SAME seed=42, only checking out1==out2 — a determinism check, not math-correctness (a deterministic all-zero kernel passed).",
+      "Degenerate inputs: build_inputs generated structurally-inconsistent paged-KV metadata (kv_indptr was random ints, not a prefix sum, because the positional aiter call has no arg names so the name-keyed structured generators never fired). context_len went negative/garbage -> kernel read out of range -> output was all NaN; with compare(equal_nan=True) the NaNs still 'passed'."
+    ],
+    "fix_applied": {
+      "files": ["canonical/scripts/_runtime.py", "canonical/scripts/task_runner.py"],
+      "changes": [
+        "Added _ref_paged_attention_ragged: analytic decode attention softmax((K@q)*scale [+alibi][soft_cap]) @ V over the per-seq gathered KV pages (NHD/HND, GQA, block_size>=1), registered as REFERENCES['aiter:paged_attention_ragged'] so run_correctness compares kernel vs reference.",
+        "Added make_consistent_paged_attention_ragged: deterministic in-place repair of the positional launch — kv_indptr -> valid monotonic prefix sum (0..num_pages); kv_page_indices -> in-bounds unique block ids; kv_last_page_lens in [1,block_size] when block_size>1; plus a 4x query gain so the softmax is non-degenerate (output ~O(1)) and the bf16 atol can't mask scale errors.",
+        "task_runner.py routes all three modes through _prep_inputs() = build_inputs + normalize_aiter_call + consistency repair."
+      ],
+      "verification": "All 8 cases PASS vs reference (real_vs_ref max abs diff ~0.0156 << bf16 atol 0.05). Negative tests now FAIL as expected: out*=1.5 -> FAIL (diff 1.609), zero-out -> FAIL (diff 3.25). Pre-fix these passed.",
+      "validates": "kernel computes standard paged decode attention correctly (matches the analytic reference)."
+    },
+    "broader_note": "The same original weakness still affects rank-8 vllm paged_attention and the triton unified/paged-attention entries (no attention reference + name-less positional inputs). The reference + consistent-input pattern added here can be ported to them (reuse _ref_paged_attention_ragged for 'vllm:paged_attention' with its block_tables/seq_lens layout)."
+  }
+}

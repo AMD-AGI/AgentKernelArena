@@ -1,0 +1,167 @@
+[
+  {
+    "test_case_id": "c2",
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          256,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          2,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {
+      "concurrency_B": 2,
+      "tokens": 2,
+      "K": 7168,
+      "weight_N": 256,
+      "note": "decode skinny GEMM; in_b rows=tokens capped at 4 by kernel"
+    },
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ]
+  },
+  {
+    "test_case_id": "c32",
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          256,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          4,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {
+      "concurrency_B": 32,
+      "tokens": 4,
+      "K": 7168,
+      "weight_N": 256,
+      "note": "decode skinny GEMM; in_b rows=tokens capped at 4 by kernel"
+    },
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ]
+  },
+  {
+    "test_case_id": "c64",
+    "args_sig": [
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          256,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "tensor",
+        "dtype": "bfloat16",
+        "shape": [
+          4,
+          7168
+        ],
+        "stride": [
+          7168,
+          1
+        ],
+        "device": "cuda:0"
+      },
+      {
+        "kind": "scalar",
+        "value": null,
+        "py_type": "NoneType"
+      },
+      {
+        "kind": "scalar",
+        "value": 304,
+        "py_type": "int"
+      }
+    ],
+    "kwargs_sig": {},
+    "params_repr": {
+      "concurrency_B": 64,
+      "tokens": 4,
+      "K": 7168,
+      "weight_N": 256,
+      "note": "decode skinny GEMM; in_b rows=tokens capped at 4 by kernel"
+    },
+    "args_names": [
+      "in_a",
+      "in_b",
+      "in_bias",
+      "CuCount"
+    ]
+  }
+]

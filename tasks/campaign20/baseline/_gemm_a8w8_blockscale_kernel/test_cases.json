@@ -1,0 +1,107 @@
+[
+  {
+    "test_case_id": "c2",
+    "count": 1,
+    "regime": {
+      "B": 2,
+      "seqlen": 1024,
+      "M": 2048,
+      "N": 2624,
+      "K": 6144,
+      "group_size": 128,
+      "scale_k": 48,
+      "scale_n": 21,
+      "role": "prefill token-parallel GEMM"
+    },
+    "meta": {
+      "BLOCK_SIZE_M": 128,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 128,
+      "GROUP_SIZE_M": 1,
+      "NUM_KSPLIT": 1,
+      "SPLITK_BLOCK_SIZE": 6144,
+      "GROUP_K": 128,
+      "GROUP_N": 128,
+      "num_warps": 4,
+      "num_stages": 2,
+      "cache_modifier": ".cg"
+    },
+    "grid_formula": "NUM_KSPLIT * cdiv(M,BLOCK_SIZE_M) * cdiv(N,BLOCK_SIZE_N)",
+    "params_repr": {
+      "B": 2,
+      "M": 2048,
+      "N": 2624,
+      "K": 6144
+    }
+  },
+  {
+    "test_case_id": "c32",
+    "count": 1,
+    "regime": {
+      "B": 32,
+      "seqlen": 1024,
+      "M": 32768,
+      "N": 2624,
+      "K": 6144,
+      "group_size": 128,
+      "scale_k": 48,
+      "scale_n": 21,
+      "role": "prefill token-parallel GEMM"
+    },
+    "meta": {
+      "BLOCK_SIZE_M": 128,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 128,
+      "GROUP_SIZE_M": 1,
+      "NUM_KSPLIT": 1,
+      "SPLITK_BLOCK_SIZE": 6144,
+      "GROUP_K": 128,
+      "GROUP_N": 128,
+      "num_warps": 4,
+      "num_stages": 2,
+      "cache_modifier": ".cg"
+    },
+    "grid_formula": "NUM_KSPLIT * cdiv(M,BLOCK_SIZE_M) * cdiv(N,BLOCK_SIZE_N)",
+    "params_repr": {
+      "B": 32,
+      "M": 32768,
+      "N": 2624,
+      "K": 6144
+    }
+  },
+  {
+    "test_case_id": "c64",
+    "count": 1,
+    "regime": {
+      "B": 64,
+      "seqlen": 1024,
+      "M": 65536,
+      "N": 2624,
+      "K": 6144,
+      "group_size": 128,
+      "scale_k": 48,
+      "scale_n": 21,
+      "role": "prefill token-parallel GEMM"
+    },
+    "meta": {
+      "BLOCK_SIZE_M": 128,
+      "BLOCK_SIZE_N": 128,
+      "BLOCK_SIZE_K": 128,
+      "GROUP_SIZE_M": 1,
+      "NUM_KSPLIT": 1,
+      "SPLITK_BLOCK_SIZE": 6144,
+      "GROUP_K": 128,
+      "GROUP_N": 128,
+      "num_warps": 4,
+      "num_stages": 2,
+      "cache_modifier": ".cg"
+    },
+    "grid_formula": "NUM_KSPLIT * cdiv(M,BLOCK_SIZE_M) * cdiv(N,BLOCK_SIZE_N)",
+    "params_repr": {
+      "B": 64,
+      "M": 65536,
+      "N": 2624,
+      "K": 6144
+    }
+  }
+]

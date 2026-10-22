@@ -1,0 +1,52 @@
+source_file_path:
+  - kernel_jit.py
+
+target_kernel_functions:
+  - fused_moe_kernel_gptq_awq
+
+compile_command:
+  - python3 scripts/task_runner.py compile
+
+correctness_command:
+  - python3 scripts/task_runner.py correctness
+
+performance_command:
+  - python3 scripts/task_runner.py performance
+
+task_type: triton2triton
+
+task_result_template: null
+
+prompt:
+  source_code: null
+  instructions: |
+    Optimize the vLLM Triton `fused_moe_kernel_gptq_awq` (int4 W4A16 fused-MoE
+    GEMM) in kernel_jit.py. This is the single dominant kernel in Kimi-K2.6 int4
+    serving on ROCm/MI300X (~66% of device time); on ROCm it is always the live
+    path. Edit the `@triton.jit` body in kernel_jit.py — that file is the local,
+    editable copy of the kernel (extracted verbatim from vLLM).
+
+    Dtypes: bf16 activations, uint8-packed int4 weights, group_size=32.
+    Dequant = ((b.to(fp32) - zp) * scale) with fp32 accumulation via tl.dot(acc=).
+
+    Live shapes (TP4, EP1): E=384 experts, top_k=8, hidden K=7168.
+      gemm1 (gate_up): N=1024, K=7168 ;  gemm2 (down): N=7168, K=512.
+    Launch config is fixed in host.py (BLOCK_SIZE_M=16, N=64, K=64,
+    GROUP_SIZE_M=8, num_warps=4, num_stages=2, waves_per_eu=0).
+
+    Optimization levers (kernel body):
+      - Hoist the per-iteration integer divide for the scale/zp group index out
+        of the K loop (BLOCK_SIZE_K % group_size == 0 → constant stride).
+      - Hoist loop-invariant scale/zp pointer arithmetic out of the loop.
+      - tl.multiple_of / tl.max_contiguous on offs_k for wider vectorized loads.
+      - Collapse the always-true A-mask when block_k_diviable.
+
+    Constraints:
+      - Keep the `fused_moe_kernel_gptq_awq` signature stable; host.invoke()
+        launches it with a fixed argument list.
+      - Golden = the installed-original vLLM kernel; candidate = kernel_jit.py.
+        Output must match under identical inputs (torch.allclose rtol/atol=2e-2),
+        across 5 cases including the has_zp path.
+      - Requires an environment with vLLM + Triton installed (the golden is the
+        installed vLLM kernel).
+  cheatsheet: null

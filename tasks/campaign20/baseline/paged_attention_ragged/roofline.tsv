@@ -1,0 +1,3 @@
+kernel	瓶颈类型	实际gflops	算力峰值gflops	利用率(实际/算力峰值,%)	算术强度(Flops/byte)	实际带宽(GB/s)	带宽峰值(GB/s)	带宽利用度(%)	当前算术强度下roofline(GFLOP/s)	理论优化空间(x)
+paged_attention_ll4mi_QKV_mfma16	memory-bound	60775.78	501969.81	12.11	13.26	4599.33	4198.26	109.55	55668.93	0.92
+trampoline	latency-bound	0.00	38312.97	0.00	0.00	1.01	4198.26	0.02	0.00	—
