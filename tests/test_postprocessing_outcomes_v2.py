@@ -15,7 +15,7 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
     tmp_path, monkeypatch, recover_from_text,
 ):
     # A positive score exercises the four-decimal report and dashboard formats.
-    speedup, expected_score = 1.1, 0.21320071635561044
+    speedup, expected_score = 1.1, 1 / 22  # 1 - 1.05/1.1, reported as 0.0455
     run = tmp_path / "workspace_MI355X_codex" / "run_20260916_120000"
     # Legacy results have numerical evidence, but no evidence of final acceptance.
     fixtures = [

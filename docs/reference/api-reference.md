@@ -342,7 +342,7 @@ the ordinary correctness run.
 ## Scoring
 
 The existing `score` field uses a bounded power-family reward. The default is
-the concave square-root curve (`p = 0.5`) with a `1.05×` speedup cutoff:
+the linear curve (`p = 1`) with a `1.05×` speedup cutoff:
 
 ```text
 s = speedup_ratio
@@ -375,19 +375,23 @@ run-configuration section:
 
 | Constant | Default | Effect |
 | --- | ---: | --- |
-| `SCORE_POWER` | `0.5` | Exponent `p`: `0.5` is concave, `1.0` linear, `2.0` convex |
+| `SCORE_POWER` | `1.0` | Exponent `p`: `1.0` linear, `0.5` concave, `2.0` convex |
 | `SCORE_SPEEDUP_THRESHOLD` | `1.05` | Speedup at or below which the score is zero |
 
-Both constants must be finite and positive. `p = 0.5` raises scores for modest
-qualifying improvements; `p = 2.0` emphasizes large improvements. All choices
-preserve the ranking above the cutoff. Changing `p` does not provide a signal
+Both constants must be finite and positive. With the default `p = 1`, the score
+is the fraction of runtime saved beyond the threshold, and its slope
+`d score / d s = speedup_threshold / s**2` stays finite at the cutoff. Any
+`p < 1` has an unbounded slope as `s` approaches the cutoff from above, so
+scores of candidates just above `1.05×` swing with timing noise. `p = 0.5`
+raises scores for modest qualifying improvements; `p = 2.0` emphasizes large
+improvements. All choices preserve the ranking above the cutoff. Changing `p` does not provide a signal
 below the cutoff. Setting the threshold to `1.0` removes the 5% margin but still
 gives zero to baseline-equivalent and slower candidates.
 
 **Example**: For a correct candidate taking 80 microseconds against a
 100-microsecond baseline, `s = 1.25`. The default score is
-`sqrt(1 - 1.05 / 1.25) = 0.4`. The same measurement scores `0.16` with `p = 1`
-and `0.0256` with `p = 2`.
+`1 - 1.05 / 1.25 = 0.16`. The same measurement scores `0.4` with `p = 0.5`
+(`sqrt(0.16)`) and `0.0256` with `p = 2`.
 
 #### Result interpretation and historical reports
 

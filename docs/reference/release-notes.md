@@ -11,6 +11,12 @@ This topic summarizes the features available in each AgentKernelArena release. F
 
 ## Unreleased
 
+- Changed the default per-task score curve from square root to linear
+  (`SCORE_POWER` 0.5 → 1.0); the 1.05× threshold is unchanged. The linear
+  curve has a finite slope at the threshold, so scores just above it no longer
+  swing with timing noise. Positive scores decrease (for example, 2× now scores
+  0.475 instead of 0.689), so scores from earlier revisions are not directly
+  comparable. See [Scoring](api-reference.md#scoring).
 - Added the opt-in `deepseek_harness` agent with a pinned headless CLI,
   API-key authentication, isolated per-task sessions, and Docker/Slurm
   quickstarts. See the [integration guide](../../agents/deepseek_harness/README.md)
