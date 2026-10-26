@@ -1,19 +1,24 @@
 # GEAK for Arena schema v2
 
 `agents.geak.launch_agent.launch_agent` runs the real upstream GEAK dispatcher
-and single-language lane through Claude Code's dynamic `Workflow` tool. GEAK's
+and kernel lane through Claude Code's dynamic `Workflow` tool. GEAK's
 TechLead plans, author engineer creates seeds, specialist engineers search,
 verifiers check patches, and the Director validates. No Codex substitute or
 task-family dispatcher is involved.
 
 The adapter accepts `ARENA_TASK_CONTEXT` version 1 from an accepted `TaskSession`.
 It loads the shared `TaskSpec`, captured case manifest, candidate workspace,
-and independent baseline workspace. It supports declared `hip`, `triton`, and
-`flydsl` languages; implemented and unimplemented candidates; provided and
-frozen initial-candidate baselines; nested/multiple files; file, tree, and
+and independent baseline workspace. It supports declared `hip`, `triton`,
+`flydsl`, and `gpu` languages; implemented and unimplemented candidates;
+provided and frozen initial-candidate baselines; nested/multiple files; file, tree, and
 Python symbol scopes. Initial-language translations use GEAK's author mode.
 Backend availability and actual generated-code correctness are decided by the
 task's public runner and the selected GPU runtime, not the file extension.
+For ordinary kernel tasks, `gpu` permits the implementation backends allowed
+by the task, including mixed backend implementations. The adapter forwards this
+declaration without selecting a substitute language. This path has source and
+CPU interface coverage; native GPU qualification remains task-specific.
+Serving measurements require a separate adapter and are rejected here.
 
 ## Arena integration
 
@@ -106,6 +111,20 @@ imported into the agent, no framework helper is injected into a task, and no
 baseline is reconstructed from a generated candidate. The framework's accepted
 initial context owns baseline correctness/diagnostic policy; the bridge does
 not relabel diagnostic failures as ordinary passes.
+
+For weighted tasks, stock GEAK ranks the verifier agent's reported `verified_weighted`.
+The role contract instructs the verifier to copy `speedup_weighted` from a fresh
+`FULL_BENCHMARK` result; the lane does not independently bind that reported value
+to a bridge invocation. The Director command independently measures the canonical
+candidate through the bridge. Delivery and Arena's final evaluation perform
+their own checks and measurements.
+
+GEAK-EVO does not yet have a separately registered Arena adapter. Comparing it
+with GEAK requires the same task, fixed cases and weights, baseline, correctness
+contract and final Arena verification. Its search prompts must communicate the
+declared objective, and its native ranking must consume the same weighted total
+time ratio. An adapter and native qualification are prerequisites for that
+comparison; the task declaration alone does not establish them.
 
 ## Delivery and failure semantics
 

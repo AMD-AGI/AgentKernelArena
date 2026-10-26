@@ -1,0 +1,35 @@
+{
+  "binding_status": "pending_profile_and_numerical_contract",
+  "workload": {
+    "model": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+    "model_revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+    "tp": 8,
+    "ep": 1,
+    "concurrency": 64,
+    "input_tokens": 8192,
+    "output_tokens": 1024,
+    "num_prompts": 64,
+    "request_seed": 42,
+    "server_seed": 379165553,
+    "request_rate": "inf",
+    "temperature": 0.0,
+    "random_range_ratio": 1.0,
+    "dataset_repository": "anon8231489123/ShareGPT_Vicuna_unfiltered",
+    "dataset_file": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "dataset_sha256": "35f0e213ce091ed9b9af2a1f0755e9d39f9ccec34ab281cd4ca60d70f6479ba4"
+  },
+  "runtime_environment": {
+    "AITER_BF16_FP8_MOE_BOUND": "0"
+  },
+  "cases": [],
+  "numerical_contract": null,
+  "timing": null,
+  "frequency_provenance": null,
+  "missing_bindings": [
+    "Actual pinned-runtime call cases, payloads, routing/layout/state coverage and workload invocation frequencies.",
+    "Frozen A1/A2 quantization, intermediate rounding, output/state and numerical acceptance.",
+    "Common complete-call timing policy and fresh upstream native baseline."
+  ],
+  "source_policy": "New input payloads must be reproduced from this workload and declared through the protected input carrier. No old saved kernel fixtures, case lists or timings are enrolled.",
+  "runtime_binding": null
+}

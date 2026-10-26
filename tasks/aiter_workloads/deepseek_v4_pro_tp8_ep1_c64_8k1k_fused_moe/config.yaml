@@ -1,0 +1,39 @@
+schema_version: 2
+description: >-
+  Optimize the complete upstream AITER fused_moe call for DeepSeek V4 Pro,
+  TP8 EP1, concurrency64, input8192/output1024. Public inputs already include
+  selected expert IDs and weights. Workload binding is pending; validation
+  rejects the empty manifest until actual cases and numerical policy are frozen.
+kernel_identity:
+  logical_operator: deepseek_v4_pro_whole_fused_moe
+  source_owner: aiter
+instructions: [README.md]
+platform_support:
+  required_arch: gfx950
+candidate:
+  language: gpu
+  initial_language: gpu
+  initial_state: implemented
+  editable:
+    - {path: source, scope: tree}
+  entrypoints:
+    - {file: source/kernel.py, kind: function, symbol: fused_moe}
+baseline:
+  kind: provided
+  language: gpu
+  correctness_policy: required
+  source_files: [upstream/aiter/fused_moe.py]
+workspace:
+  sources:
+    - kind: git
+      url: https://github.com/ROCm/aiter.git
+      revision: 2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0
+      destination: upstream
+  setup:
+    - [python3, scripts/runtime.py]
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: workloads.json
+  timeout_s: 3600
+  # Add weighted_total_time and its measured case weights/provenance only when
+  # the workload is bound. The runner rejects a bound task without this method.

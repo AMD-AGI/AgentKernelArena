@@ -189,7 +189,7 @@ def test_legacy_bridge_keeps_geomean_without_weighted_objective(task_factory):
     assert "speedup_weighted" not in measured
 
 
-@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl", "gpu"])
 @pytest.mark.parametrize("state,baseline", [("implemented", "initial_candidate"),
                                            ("implemented", "provided"), ("unimplemented", "provided")])
 def test_languages_states_baselines_and_nested_delivery(task_factory, language, state, baseline):
@@ -216,6 +216,19 @@ def test_wrong_candidate_never_replaced_by_baseline(task_factory):
     with pytest.raises(Exception, match="candidate.correctness"):
         bridge.deliver(bridge.eval_dir / "workspace")
     assert (bridge.context.workspace / "source/nested/implementation.py").read_text() == "value = 7\n"
+
+
+@pytest.mark.parametrize("language", ["hip", "gpu"])
+def test_serving_measurements_require_a_separate_adapter(task_factory, tmp_path, language):
+    bridge = task_factory(language)
+    raw = bridge.context.raw
+    raw["task_config"]["evaluation"]["measurement"] = {
+        "kind": "serving", "runtime_lock": "runtime-lock.json", "pairs": 3,
+    }
+    context_path = tmp_path / "serving-context.json"
+    write_json(context_path, raw)
+    with pytest.raises(ValueError, match="serving measurements require a separate adapter"):
+        TaskContext.load(context_path)
 
 
 @pytest.mark.parametrize("probe", [{"action": "correctness", "drop_case": True},
@@ -685,7 +698,7 @@ def upstream():
     return path
 
 
-@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl", "gpu"])
 @pytest.mark.parametrize("state", ["implemented", "unimplemented"])
 def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     bridge = task_factory(language, state)
@@ -812,7 +825,7 @@ def test_engine_and_knowledge_copy_deadlines(task_factory, upstream, monkeypatch
     assert not (bridge.root / "engine_identity.json").exists()
 
 
-@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl", "gpu"])
 @pytest.mark.parametrize("state", ["implemented", "unimplemented"])
 def test_actual_geak_dispatcher_and_lane_run_on_cpu(task_factory, upstream, tmp_path, language, state):
     node = os.environ.get("GEAK_TEST_NODE") or shutil.which("node")
@@ -834,6 +847,9 @@ const globals = {
     const label = options.label;
     calls.push(label);
     if (!prompt.includes('Arena task contract')) throw Error('missing task contract');
+    if (input.engine_args.target_language === 'gpu' &&
+        !prompt.includes("The target 'gpu' means the task permits GPU implementation backends"))
+      throw Error('missing backend-neutral GPU contract');
     if (options.model !== 'explicit-model') throw Error('wrong child model');
     if (label.startsWith('author:')) return {authored: true, correctness: 'pass'};
     if (label === 'tech_lead:analyze') return {kernel_type:'arbitrary', roadmap_summary:'probe'};

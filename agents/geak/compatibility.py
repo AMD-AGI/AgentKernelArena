@@ -135,6 +135,9 @@ only a diagnostic. Never put the weighted ratio into a geomean field.
 """
     return f"""Arena task contract (takes precedence over upstream layout/harness examples)
 Target language: {bridge.spec.candidate.language}. Initial state: {bridge.spec.candidate.initial_state}.
+The target 'gpu' means the task permits GPU implementation backends; choose or
+combine only backends allowed by its instructions and public runner.
+Choose backend knowledge for the actual implementation languages.
 Read the task's config.yaml, README.md if present, declared instructions and entrypoints.
 Keep all relative paths, multifile interfaces, and symbol-scoped restrictions exactly as declared:
 {json.dumps(spec, indent=2)}

@@ -1,0 +1,17 @@
+{
+  "repository": "https://github.com/ROCm/aiter",
+  "revision": "2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0",
+  "aiter_files": {
+    "aiter/fused_moe.py": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c",
+    "aiter/configs/model_configs/dsv4_fp8fp4_tuned_fmoe.csv": "c04c4d0a31e1deeeb75f0bb9bbd8281c1499541a9957c7d9047be730d0508368",
+    "aiter/configs/model_configs/dsv4_fp8fp4_untuned_fmoe.csv": "d7d4d0a44f63f26d12d16142f951729deef9e7d0aabdf3c0ae98964e3100a115",
+    "aiter/test_common.py": "ab6fca8ff0c159869ac12016caf852efab8eba458f9f5381b9f2ad3aa5e58032",
+    "aiter/ops/enum.py": "16151d2f452be7a12e040f6f4ee4c1e7852c2f8922b4c7d30065f71ca02f2ecc",
+    "aiter/utility/fp4_utils.py": "5a2c7623aa51813dbf94dce0f4030ab2a0ff05324438ecb9b09f784755664fea",
+    "aiter/jit/core.py": "671a3baad3861933afa95f074e6e934e29dacf78e110228cd5d5d373aeff2bcc",
+    "aiter/ops/quant.py": "ef517795ec59df4df0300ae5806dfb607b08f66336abc2a360865763c7abd9cc",
+    "aiter/ops/shuffle.py": "7831eb1e0a2b8e5e10d900e973b03e27d2e265a84b555f358b8f8be8f487b54a",
+    "aiter/ops/flydsl/moe_common.py": "49e6d7c4c1c65e4a918425ec1985ec4dc077039b0e47aca4749d5f1ba611f719"
+  },
+  "scope": "Exact selected installed-source checks plus framework-recorded pinned source acquisition and composed runtime identity."
+}
