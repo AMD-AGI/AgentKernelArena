@@ -1,4 +1,5 @@
 """CPU fixture runners test lifecycle control, not GPU numerical performance."""
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -41,7 +42,7 @@ sys.exit(0 if report["status"] == "PASS" else 1)
 '''
 
 
-def create(tmp_path, *, empty=False, provided=None, diagnostic=False, aggregation=None):
+def create(tmp_path, *, empty=False, provided=None, diagnostic=False, aggregation=None, source_text=None):
     workspace = tmp_path / "candidate"
     workspace.mkdir()
     (workspace / "evaluate.py").write_text(RUNNER)
@@ -52,6 +53,10 @@ def create(tmp_path, *, empty=False, provided=None, diagnostic=False, aggregatio
               "evaluation": {"runner": [sys.executable, "evaluate.py"]}}
     if aggregation is not None:
         config["evaluation"]["aggregation"] = aggregation
+        if source_text is not None:
+            source_path = workspace / aggregation["source"]["path"]
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_text(source_text)
     if provided is not None:
         (workspace / "provided.txt").write_text(str(provided))
         config["baseline"] = {"kind": "provided"}
@@ -85,6 +90,36 @@ def test_fixed_aggregation_survives_session_and_agent_context_round_trip(tmp_pat
     resumed = TaskSession.load(session.spec, session.workspace, session.state_directory)
     assert resumed.initial_validation.accepted
     assert resumed.spec.aggregation == aggregation
+
+
+def test_aggregation_frequency_source_is_bound_to_captured_bytes_and_protected_on_resume(tmp_path):
+    source_text = '{"method": "count calls", "case_counts": {"one": 64}}\n'
+    source = {"path": "evidence/frequencies.json", "sha256": hashlib.sha256(source_text.encode()).hexdigest().upper()}
+    aggregation = {"method": "weighted_total_time", "case_weights": {"one": 64}, "source": source}
+    session = create(tmp_path, aggregation=aggregation, source_text=source_text)
+    assert session.validate_initial().accepted
+    assert session.harness.digests[source["path"]] == source["sha256"].lower()
+    resumed = TaskSession.load(session.spec, session.workspace, session.state_directory)
+    assert resumed.initial_validation.accepted
+    assert resumed.spec.aggregation["source"] == source
+    (session.workspace / source["path"]).write_text("changed frequency derivation\n")
+    with pytest.raises(RuntimeError, match="Protected test/harness"):
+        TaskSession.load(session.spec, session.workspace, session.state_directory)
+
+
+@pytest.mark.parametrize("source_text", [None, "wrong derivation bytes\n"])
+def test_missing_or_mismatched_frequency_source_stops_before_baseline_and_on_resume(tmp_path, source_text):
+    aggregation = {
+        "method": "weighted_total_time", "case_weights": {"one": 64},
+        "source": {"path": "evidence/frequencies.json", "sha256": "a" * 64},
+    }
+    session = create(tmp_path, aggregation=aggregation, source_text=source_text)
+    initial = session.validate_initial()
+    assert not initial.accepted
+    assert "frequency source digest mismatch" in initial.errors[0]
+    assert list(session.results) == [("task_validation", "task", "validate-task")]
+    with pytest.raises(TaskExecutionError, match="frequency source digest mismatch"):
+        TaskSession.load(session.spec, session.workspace, session.state_directory)
 
 
 @pytest.mark.parametrize("weights", [{"missing": 1}, {"one": 1, "extra": 1}])

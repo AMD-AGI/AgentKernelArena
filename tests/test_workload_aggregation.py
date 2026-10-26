@@ -20,7 +20,7 @@ def cases(times):
             for i, (key, time) in enumerate(zip(("rare", "frequent"), times))]
 
 
-def test_workload_regression_is_not_rewarded_by_a_large_rare_case_speedup():
+def test_workload_regression_is_not_rewarded_by_a_large_rare_case_speedup(caplog):
     baseline, candidate = cases((1, 100)), cases((0.1, 120))
     assert calculate_average_speedup(baseline, candidate) > 5
     weights = {"rare": 1, "frequent": 10}
@@ -29,6 +29,9 @@ def test_workload_regression_is_not_rewarded_by_a_large_rare_case_speedup():
     assert calculate_average_speedup(baseline, candidate[::-1], case_weights={
         "rare": 0.1, "frequent": 1,
     }) == pytest.approx(1001 / 1200.1)
+    with caplog.at_level("INFO"):
+        calculate_average_speedup(baseline, candidate, case_weights=weights)
+    assert "weighted_total_time speedup" in caplog.text
 
 
 @pytest.mark.parametrize("fault", ["missing", "extra", "duplicate", "renamed", "synthetic",
@@ -79,12 +82,16 @@ print("ARENA_EVAL_RESULT="''')
     (workspace / "evaluate.py").write_text(text)
     (workspace / "kernel.py").write_text("def compute(): return 3\n")
     (workspace / "workload.json").write_text('{"workload": "CPU scoring fixture"}\n')
+    provenance = b'{"kind": "synthetic CPU fixture", "counts": {"rare": 1, "frequent": 10}}\n'
+    (workspace / "frequencies.json").write_bytes(provenance)
+    frequency_source = {"path": "frequencies.json", "sha256": hashlib.sha256(provenance).hexdigest()}
     config = {
         "schema_version": 2,
         "candidate": {"language": "hip", "initial_state": "implemented", "editable": ["kernel.py"],
                       "entrypoints": [{"file": "kernel.py", "kind": "function", "symbol": "compute"}]},
         "evaluation": {"runner": [sys.executable, "evaluate.py"], "workloads": "workload.json", "aggregation": {
             "method": "weighted_total_time", "case_weights": {"rare": 1, "frequent": 10},
+            "source": frequency_source,
         }},
     }
     session = TaskSession.create(TaskSpec.from_mapping(config, task_id="fixture/workload"),
@@ -98,6 +105,7 @@ print("ARENA_EVAL_RESULT="''')
     report = yaml.safe_load((workspace / "task_result.yaml").read_text())
     assert report["performance_aggregation"] == {
         "method": "weighted_total_time", "case_weights": {"rare": 1, "frequent": 10},
+        "source": frequency_source,
         "baseline_total_time_ms": 1001, "candidate_total_time_ms": 1200.1,
         "task_spec_sha256": hashlib.sha256(json.dumps(
             session.spec.to_mapping(), sort_keys=True, separators=(",", ":"), allow_nan=False,

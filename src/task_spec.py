@@ -262,7 +262,7 @@ def _actions(value: Any) -> tuple[ActionSpec, ...]:
             _timeout(m["max_p99_tpot_ms"], "measurement.max_p99_tpot_ms")
     if "aggregation" in obj:
         where = "evaluation.aggregation"
-        aggregation = _mapping(obj["aggregation"], where, {"method", "case_weights"})
+        aggregation = _mapping(obj["aggregation"], where, {"method", "case_weights", "source"})
         _choice(aggregation.get("method"), ("weighted_total_time",), f"{where}.method")
         if "measurement" in obj:
             raise TaskConfigError("evaluation.aggregation is not supported for serving measurements")
@@ -277,6 +277,12 @@ def _actions(value: Any) -> tuple[ActionSpec, ...]:
                 valid = False
             if not valid:
                 raise TaskConfigError(f"{where}.case_weights values must be finite positive numbers")
+        if "source" in aggregation:
+            source = _mapping(aggregation["source"], f"{where}.source", {"path", "sha256"})
+            relative_path(source.get("path"), f"{where}.source.path")
+            digest = _text(source.get("sha256"), f"{where}.source.sha256")
+            if not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+                raise TaskConfigError(f"{where}.source.sha256 must be a 64-digit hexadecimal digest")
     runner = _argv(obj["runner"], "evaluation.runner") if "runner" in obj else None
     default_timeout = _timeout(obj.get("timeout_s", 3600), "evaluation.timeout_s")
     if "workloads" in obj:
@@ -396,6 +402,9 @@ class TaskSpec:
         protected = {"config.yaml", "README.md", *obj.get("instructions", [])}
         if "workloads" in obj["evaluation"]:
             protected.add(obj["evaluation"]["workloads"])
+        source = obj["evaluation"].get("aggregation", {}).get("source")
+        if source:
+            protected.add(source["path"])
         # Read-only baseline material must not overlap editable candidate files.
         # initial_candidate has an independent frozen snapshot instead.
         for path in protected | set(baseline.source_files):

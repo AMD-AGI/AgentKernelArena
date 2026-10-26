@@ -472,7 +472,7 @@ def evaluate_kernel(
                                 }
                     if avg_speedup > 0:
                         results['average_speedup'] = avg_speedup
-                        log.info(f"Average speedup: {avg_speedup:.2f}x")
+                        log.info(f"Task speedup: {avg_speedup:.2f}x")
                     else:
                         error_msg = (
                             "Cannot calculate speedup because baseline and optimized "

@@ -190,6 +190,40 @@ def test_kernel_aggregation_is_opt_in_and_round_trips_without_mutation():
     assert task.aggregation == declared
 
 
+def test_aggregation_frequency_source_round_trips_as_protected_input():
+    raw = config()
+    source = {"path": "evidence/frequencies.json", "sha256": "Ab" * 32}
+    raw["evaluation"]["aggregation"] = {
+        "method": "weighted_total_time", "case_weights": {"decode": 64}, "source": source,
+    }
+    task = spec(raw)
+    assert task.aggregation["source"] == source
+    assert spec(task.to_mapping()).aggregation == task.aggregation
+    for edit in (source["path"], {"path": "evidence", "scope": "tree"},
+                 {"path": source["path"], "scope": "symbols", "symbols": ["pretend"]}):
+        raw["candidate"]["editable"] = [edit]
+        with pytest.raises(TaskConfigError, match="protected"):
+            spec(raw)
+
+
+@pytest.mark.parametrize("source", [
+    None, {}, {"path": "profile.json"}, {"sha256": "a" * 64},
+    {"path": "profile.json", "sha256": "a" * 64, "extra": True},
+    {"path": "/profile.json", "sha256": "a" * 64},
+    {"path": "../profile.json", "sha256": "a" * 64},
+    {"path": "profile.json", "sha256": "a" * 63},
+    {"path": "profile.json", "sha256": "g" * 64},
+    {"path": "profile.json", "sha256": True},
+])
+def test_aggregation_frequency_source_requires_relative_path_and_exact_digest(source):
+    raw = config()
+    raw["evaluation"]["aggregation"] = {
+        "method": "weighted_total_time", "case_weights": {"decode": 64}, "source": source,
+    }
+    with pytest.raises(TaskConfigError, match="aggregation.source"):
+        spec(raw)
+
+
 @pytest.mark.parametrize("aggregation", [
     None,
     {},

@@ -651,7 +651,8 @@ def calculate_average_speedup(
     if not math.isfinite(avg_speedup) or avg_speedup <= 0:
         log.warning("Invalid aggregate speedup")
         return 0.0
-    log.info(f"Average speedup across {len(speedups)} test case(s): {avg_speedup:.2f}x")
+    label = "weighted_total_time speedup" if case_weights is not None else "Average speedup"
+    log.info("%s across %d test case(s): %.2fx", label, len(speedups), avg_speedup)
     return avg_speedup
 
 

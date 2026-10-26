@@ -439,16 +439,29 @@ evaluation:
 These illustrative weights are invocation counts or proportional frequencies,
 fixed before search. They must be positive finite numbers and cover **exactly**
 the performance-case IDs declared by `validate-task`. Correctness-only cases
-are not weighted. The framework rejects missing or extra weights before
+are not weighted; omit their `performance` check instead of assigning zero.
+The framework rejects missing or extra weights before
 baseline measurement or agent launch, and rechecks them when a session resumes.
 The score uses `sum(weight * baseline_ms) / sum(weight * candidate_ms)` with
 complete case, input, correctness, and timing-method checks. Weights embedded
 only in a workload JSON file do not opt into aggregation; declare them above.
 
+An optional `aggregation.source: {path: frequency_provenance.json, sha256: ...}`
+binds the weights to a task-relative derivation record. Use the file's actual
+64-character SHA-256 digest. The record should identify the workload, case-ID
+mapping, profile or generator evidence, and method used to obtain frequencies.
+The framework protects that file and checks its captured content hash before
+baseline work and on resume; the result retains the source reference. This
+binding establishes provenance, not that an arbitrary frequency estimate is
+scientifically valid. Workload-derived benchmark tasks should provide it.
+
 Keep the task agent-neutral: place workload settings, case data, frequency
 provenance, references and the pinned upstream baseline in protected task files.
-Agent/model selection belongs in the run configuration. The agent should see
-the workload objective and weights. The runner should use fresh data draws
+Agent/model selection belongs in the run configuration. The task's
+`config.yaml` and `ARENA_TASK_CONTEXT.task_config` are agent-visible and include
+the complete aggregation declaration. The shared v2 prompt also renders the
+weighted objective and fixed weights explicitly, independent of the selected
+agent. The runner should use fresh data draws
 under the same frozen workload/input policy for independent validation.
 
 For example, an AITER task for a particular serving configuration must bind the
