@@ -91,22 +91,25 @@ def _prepare_normalized_result(
     correctness: str = "pass",
     geomean: object = 1.20,
     weighted: object = 1.50,
+    workflow_fields: dict[str, object] | None = None,
+    director_fields: dict[str, object] | None = None,
 ) -> tuple[Path, dict[str, object]]:
     eval_dir = tmp_path / "eval"
     eval_dir.mkdir()
     _write_json(
         eval_dir / "workflow_return.json",
-        _workflow_return(eval_dir, workload_aligned=workload_aligned),
+        {**_workflow_return(eval_dir, workload_aligned=workload_aligned),
+         **(workflow_fields or {})},
     )
     _write_json(
         eval_dir / "director_validation.json",
-        _director_validation(
+        {**_director_validation(
             eval_dir,
             validation_status=validation_status,
             correctness=correctness,
             geomean=geomean,
             weighted=weighted,
-        ),
+        ), **(director_fields or {})},
     )
     (eval_dir / "final_patch.diff").write_text(
         "non-empty offline fixture\n",
@@ -326,6 +329,7 @@ def test_normalize_non_workload_uses_director_geomean(tmp_path):
     assert result["final_geomean"] == pytest.approx(1.20)
     assert result["final_weighted"] == pytest.approx(9.0)
     assert result["applied_to_original"] == "true"
+    assert "aggregation" not in result
 
 
 def test_normalize_workload_aligned_uses_director_weighted_speedup(tmp_path):
@@ -363,6 +367,118 @@ def test_normalize_workload_falls_back_when_weighted_is_non_finite(tmp_path):
     assert result["status"] == "ok"
     assert result["final_speedup"] == pytest.approx(1.20)
     assert result["final_weighted"] is None
+
+
+_AGGREGATION = {"method": "weighted_total_time", "case_weights": {"rare": 1, "frequent": 10}}
+
+
+@pytest.mark.parametrize("workload_aligned", [False, True])
+@pytest.mark.parametrize("weighted,geomean,status", [(1.5, 0.8, "ok"), (0.8, 2.0, "no_gain")])
+def test_explicit_weighted_objective_controls_normalized_gain(tmp_path, workload_aligned, weighted, geomean, status):
+    eval_dir, result = _prepare_normalized_result(
+        tmp_path, workload_aligned=workload_aligned, geomean=geomean, weighted=weighted,
+        workflow_fields={"aggregation": _AGGREGATION, "final_weighted": 9.0, "final_speedup": 9.0},
+        director_fields={"aggregation": _AGGREGATION},
+    )
+
+    assert result["status"] == status
+    assert result["final_speedup"] == pytest.approx(weighted)
+    assert result["final_weighted"] == pytest.approx(weighted)
+    assert result["final_geomean"] == pytest.approx(geomean)
+    assert result["aggregation"] == _AGGREGATION
+    assert workflow_runner._terminal_artifact_exists(eval_dir)
+    native = json.loads((eval_dir / "workflow_return.json").read_text())
+    assert workflow_runner._extract_workflow_return(json.dumps(native), eval_dir) == native
+
+
+@pytest.mark.parametrize("metric", ["director_verified_speedup_weighted", "final_weighted", "final_speedup"])
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf"), True, 0, -1, "1.5", 10**1000],
+                         ids=["missing", "nan", "inf", "bool", "zero", "negative", "string", "overflow"])
+def test_explicit_weighted_metrics_fail_closed(tmp_path, metric, value):
+    workflow = {"aggregation": _AGGREGATION, "final_weighted": 1.5, "final_speedup": 1.5}
+    director = {"aggregation": _AGGREGATION}
+    fields = director if metric.startswith("director_") else workflow
+    fields[metric] = value
+    eval_dir, result = _prepare_normalized_result(
+        tmp_path, workflow_fields=workflow, director_fields=director,
+    )
+    if value is None:
+        artifact_path = eval_dir / ("director_validation.json" if metric.startswith("director_")
+                                   else "workflow_return.json")
+        artifact = json.loads(artifact_path.read_text())
+        artifact.pop(metric)
+        _write_json(artifact_path, artifact)
+        result = workflow_runner.normalize_result(eval_dir)
+
+    assert result["status"] == "error"
+    if metric.startswith("director_"):
+        assert result["final_speedup"] is None
+        assert not workflow_runner._valid_director_validation(
+            json.loads((eval_dir / "director_validation.json").read_text()), eval_dir)
+    else:
+        native = json.loads((eval_dir / "workflow_return.json").read_text())
+        assert not workflow_runner._valid_workflow_return(native, eval_dir)
+        assert workflow_runner._extract_workflow_return(json.dumps(native), eval_dir) is None
+
+
+@pytest.mark.parametrize("aggregation", [
+    None, "weighted_total_time", {}, {"method": "other", "case_weights": {"case": 1}},
+    {"method": "weighted_total_time", "case_weights": {}},
+    {"method": "weighted_total_time", "case_weights": {"": 1}},
+    *[{"method": "weighted_total_time", "case_weights": {"case": weight}}
+      for weight in (True, 0, -1, "1", float("nan"), float("inf"), 10**1000)],
+])
+def test_explicit_weighted_metadata_must_be_valid(tmp_path, aggregation):
+    eval_dir, result = _prepare_normalized_result(
+        tmp_path,
+        workflow_fields={"aggregation": aggregation, "final_weighted": 1.5},
+        director_fields={"aggregation": aggregation},
+    )
+
+    assert result["status"] == "error"
+    assert not workflow_runner._terminal_artifact_exists(eval_dir)
+
+
+@pytest.mark.parametrize("declaration", ["different_weights", "workflow_only", "director_only"])
+def test_explicit_weighted_declarations_must_match(tmp_path, declaration):
+    workflow = {"aggregation": _AGGREGATION, "final_weighted": 1.5, "final_speedup": 1.5}
+    director = {"aggregation": _AGGREGATION}
+    if declaration == "different_weights":
+        workflow["aggregation"] = {"method": "weighted_total_time", "case_weights": {"rare": 2, "frequent": 10}}
+    elif declaration == "workflow_only":
+        director.clear()
+    else:
+        workflow.pop("aggregation")
+    _, result = _prepare_normalized_result(tmp_path, workflow_fields=workflow, director_fields=director)
+
+    assert result["status"] == "error"
+    assert "aggregation declarations differ" in result["reason"]
+
+
+def test_explicit_weighted_director_only_recovery(tmp_path):
+    eval_dir, _ = _prepare_normalized_result(
+        tmp_path, weighted=0.8, director_fields={"aggregation": _AGGREGATION},
+    )
+    (eval_dir / "workflow_return.json").unlink()
+
+    result = workflow_runner.normalize_result(eval_dir)
+
+    assert result["status"] == "no_gain"
+    assert result["final_speedup"] == pytest.approx(0.8)
+    assert result["aggregation"] == _AGGREGATION
+
+
+def test_invalid_explicit_workflow_argument_is_not_discarded_silently(tmp_path):
+    eval_dir, _ = _prepare_normalized_result(
+        tmp_path, director_fields={"aggregation": _AGGREGATION},
+    )
+    (eval_dir / "workflow_return.json").unlink()
+    native = {**_workflow_return(eval_dir), "aggregation": _AGGREGATION, "final_weighted": None}
+
+    result = workflow_runner.normalize_result(eval_dir, native)
+
+    assert result["status"] == "error"
+    assert "workflow return artifact is present but invalid" in result["reason"]
 
 
 def test_normalize_flagged_candidate_is_rejected(tmp_path):

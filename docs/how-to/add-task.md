@@ -228,6 +228,7 @@ harness; do not put a family-specific numerical tolerance in the common schema.
 | --- | --- | --- |
 | `evaluation.runner` | Nonempty argv list | Common command prefix; the framework appends the role/action arguments in the next section. |
 | `evaluation.workloads` | Optional relative file path | Case data consumed by the runner. Existing JSON/JSONL data can stay in its current format. Omit when the runner constructs its cases. |
+| `evaluation.aggregation` | Optional mapping | Opt into workload-weighted total time for kernel tasks; see below. Omit to retain the arithmetic mean of case speedups. |
 | `evaluation.timeout_s` | Positive integer, default `3600` | Total deadline for each action, including all commands in that action. |
 | `evaluation.task` | Optional action mapping | Overrides for `validate-task`: `commands` and/or `timeout_s`. |
 | `evaluation.baseline.<action>` | Optional action mapping | Overrides for baseline `compile`, `correctness`, or `performance`. |
@@ -403,8 +404,9 @@ fresh legacy output to this envelope and preserve failure exit codes.
 The framework records config/source identities, actual environment, action,
 command, exit status, and tool evidence. Commands never author or overwrite
 `task_result.yaml` or `validation_report.yaml`. Scores and speedup aggregation
-remain in the centralized evaluator; defining v2 must not silently change the
-existing scoring formula. See the [result reference](../reference/api-reference.md#result-schema-task_resultyaml)
+remain in the centralized evaluator; v2 retains the existing scoring formula
+and default aggregation unless the task explicitly declares an alternative.
+See the [result reference](../reference/api-reference.md#result-schema-task_resultyaml)
 and [benchmark methodology](../reference/benchmark-methodology.md).
 
 The `validate-task` report must include `metadata.candidate_state` with
@@ -418,6 +420,62 @@ During final evaluation, successful compilation and correctness evidence bind
 to the same candidate source content subsequently measured. A source change
 invalidates earlier checks and requires compilation/correctness again. Command
 logs and failure evidence are retained outside the candidate workspace.
+
+### Fixed-workload kernel objectives
+
+A workload-specific task can opt into a ratio of weighted total times:
+
+```yaml
+evaluation:
+  runner: [python3, evaluate.py]
+  workloads: workload.json
+  aggregation:
+    method: weighted_total_time
+    case_weights:
+      prefill_case: 1
+      decode_case: 384
+```
+
+These illustrative weights are invocation counts or proportional frequencies,
+fixed before search. They must be positive finite numbers and cover **exactly**
+the performance-case IDs declared by `validate-task`. Correctness-only cases
+are not weighted. The framework rejects missing or extra weights before
+baseline measurement or agent launch, and rechecks them when a session resumes.
+The score uses `sum(weight * baseline_ms) / sum(weight * candidate_ms)` with
+complete case, input, correctness, and timing-method checks. Weights embedded
+only in a workload JSON file do not opt into aggregation; declare them above.
+
+Keep the task agent-neutral: place workload settings, case data, frequency
+provenance, references and the pinned upstream baseline in protected task files.
+Agent/model selection belongs in the run configuration. The agent should see
+the workload objective and weights. The runner should use fresh data draws
+under the same frozen workload/input policy for independent validation.
+
+For example, an AITER task for a particular serving configuration must bind the
+model/checkpoint and precision, runtime and AITER revision, TP/EP and other
+parallelism, request generator, scheduler, hardware, and the dispatched
+operation or complete region. Select cases and frequencies from that workload;
+an upstream test sweep or tuning CSV does not establish call frequency. Record
+the actual installed implementation and dispatch, and measure a fresh baseline.
+Assert compatible hardware and complete case execution rather than treating a
+zero exit code or silent skip as successful validation.
+
+The objective is an operation/region time proxy. It does not establish an
+end-to-end throughput gain. If fusion or another reorganization changes
+internal calls, measure complete equivalent work, including preparation and
+observable state updates. Preserve the external workload, not the original
+internal launch list. Confirm workload benefit through a full integration run
+under the same serving settings; see [the e2e guide](e2e-kernel-tasks.md).
+
+`performance_aggregation` in `task_result.yaml` retains the method, weights,
+weighted totals, canonical task-spec hash and the protected workload file's
+path/content hash when declared. Existing aggregate execution-time fields remain unweighted
+diagnostic means. Serving tasks retain their separate paired measurement
+policy and cannot declare this kernel aggregation. The current held-out
+**shape-injection** evaluator rejects weighted tasks: changing a case's shape
+does not establish that its old frequency applies. Use fresh data under the
+fixed task contract, or define a separately bound workload task with its own
+cases and frequencies.
 
 ## Initial task validation and final candidate evaluation
 

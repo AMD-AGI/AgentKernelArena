@@ -85,6 +85,12 @@ engine/knowledge copy and applies these explicit adaptations:
   which calls `run_action` with the task's declared argv commands. Correctness
   rebuilds; performance rebuilds and checks first. The captured manifest and
   baseline/candidate timing-method pairing are enforced.
+- For tasks declaring `evaluation.aggregation.method: weighted_total_time`,
+  rank candidates using `sum(case_weight * baseline_ms) /
+  sum(case_weight * candidate_ms)`. The adapter supplies the fixed frequencies
+  to GEAK's native weighted selector and requires weighted evidence for ranking
+  and final result recovery. Geometric mean remains a separate diagnostic;
+  tasks without this declaration retain GEAK's existing metric behavior.
 - Replace the private workspace copier with a generic, fresh-destination copy
   preserving task-relative inputs and private git history. Disable artifact
   reclamation, external knowledge warm starts, learned writes and web research.

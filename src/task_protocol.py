@@ -186,6 +186,15 @@ class CaseManifest:
             _fail("Task manifest has no performance cases")
         return cls(tuple(deepcopy(result.cases)))
 
+    def validate_aggregation(self, aggregation: dict | None) -> None:
+        """Bind a schema-validated aggregation to every performance case exactly."""
+        if aggregation is None:
+            return
+        expected = {row["test_case_id"] for row in self.cases if "performance" in row["checks"]}
+        actual = set(aggregation["case_weights"])
+        if actual != expected:
+            _fail(f"Aggregation case_weights mismatch: missing={sorted(expected - actual)}, extra={sorted(actual - expected)}")
+
     def validate(self, result: ActionResult) -> None:
         """Validate against the independently captured manifest, not intersection."""
         if result.action == "validate-task":

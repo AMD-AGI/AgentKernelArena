@@ -19,8 +19,8 @@ def resolve_speedup_ratio(
     Resolve the speedup ratio to use for scoring/reporting.
 
     Prefer an explicit speedup_ratio written by the evaluator. This preserves the
-    intended aggregation logic for multi-testcase tasks where each testcase should
-    contribute equally. An explicit zero is authoritative: current evaluators use
+    task's declared aggregation logic for multi-testcase tasks. An explicit zero
+    is authoritative: current evaluators use
     it when a comparison is invalid, so reconstructing from average times would
     bypass their fairness checks.
 

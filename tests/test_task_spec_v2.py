@@ -170,3 +170,81 @@ def test_yaml_duplicate_fields_are_not_silently_overwritten(tmp_path):
     path.write_text("schema_version: 2\nschema_version: 1\n")
     with pytest.raises(TaskConfigError, match="Duplicate"):
         load_task_spec(path, task_id="suite/task")
+
+
+def test_kernel_aggregation_is_opt_in_and_round_trips_without_mutation():
+    assert spec().aggregation is None
+    raw = config()
+    declared = {"method": "weighted_total_time", "case_weights": {"decode": 64, "prefill": 0.5}}
+    raw["evaluation"]["aggregation"] = deepcopy(declared)
+    task = spec(raw)
+    assert task.aggregation == declared
+    restored = TaskSpec.from_mapping(task.to_mapping(), task_id=task.task_id)
+    assert restored.aggregation == declared
+    assert restored.to_mapping()["evaluation"]["aggregation"] == declared
+    raw["evaluation"]["aggregation"]["case_weights"]["decode"] = 100
+    exposed = task.aggregation
+    exposed["case_weights"]["decode"] = 200
+    serialized = task.to_mapping()
+    serialized["evaluation"]["aggregation"]["case_weights"]["decode"] = 300
+    assert task.aggregation == declared
+
+
+@pytest.mark.parametrize("aggregation", [
+    None,
+    {},
+    {"method": "arithmetic_mean", "case_weights": {"case": 1}},
+    {"method": "weighted_total_time"},
+    {"method": "weighted_total_time", "case_weights": {}, "extra": 1},
+    {"method": "weighted_total_time", "case_weights": {}},
+    {"method": "weighted_total_time", "case_weights": []},
+    {"method": "weighted_total_time", "case_weights": {1: 1}},
+    {"method": "weighted_total_time", "case_weights": {"": 1}},
+    {"method": "weighted_total_time", "case_weights": {" \t": 1}},
+    {"method": "weighted_total_time", "case_weights": {"case\x00": 1}},
+])
+def test_kernel_aggregation_rejects_ambiguous_declarations(aggregation):
+    raw = config()
+    raw["evaluation"]["aggregation"] = aggregation
+    with pytest.raises(TaskConfigError, match="aggregation"):
+        spec(raw)
+
+
+@pytest.mark.parametrize("weight", [
+    True, False, 0, -1, 0.0, -0.5, float("nan"), float("inf"), -float("inf"),
+    "1", None, [], {}, 10 ** 1000,
+])
+def test_kernel_aggregation_requires_finite_positive_numeric_weights(weight):
+    raw = config()
+    raw["evaluation"]["aggregation"] = {
+        "method": "weighted_total_time", "case_weights": {"case": weight},
+    }
+    with pytest.raises(TaskConfigError, match="finite positive"):
+        spec(raw)
+
+
+def test_kernel_aggregation_does_not_override_paired_serving_measurement():
+    raw = config()
+    raw["evaluation"].update(
+        measurement={"kind": "serving", "runtime_lock": "runtime.json", "pairs": 3},
+        aggregation={"method": "weighted_total_time", "case_weights": {"case": 1}},
+    )
+    with pytest.raises(TaskConfigError, match="serving"):
+        spec(raw)
+
+
+def test_yaml_duplicate_aggregation_weights_are_not_silently_overwritten(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "schema_version: 2\n"
+        "candidate: {language: hip, editable: [kernel.hip]}\n"
+        "evaluation:\n"
+        "  runner: [python3, evaluate.py]\n"
+        "  aggregation:\n"
+        "    method: weighted_total_time\n"
+        "    case_weights:\n"
+        "      decode: 1\n"
+        "      decode: 2\n"
+    )
+    with pytest.raises(TaskConfigError, match="Duplicate"):
+        load_task_spec(path, task_id="suite/task")

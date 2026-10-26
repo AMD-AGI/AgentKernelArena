@@ -551,20 +551,26 @@ def calculate_average_speedup(
     optimized_cases: List[TestCaseResult],
     logger: Optional[logging.Logger] = None,
     require_complete_match: bool = True,
+    case_weights: Optional[Dict[str, float]] = None,
 ) -> float:
     """
-    Calculate average speedup across all matched test cases.
+    Calculate matched per-case speedup, or a declared workload time ratio.
     
     Args:
         baseline_cases: Baseline test case results
         optimized_cases: Optimized test case results
         logger: Optional logger
         require_complete_match: Require every baseline and optimized case to match
+        case_weights: Fixed occurrence counts/frequencies by explicit case ID.
+            When present, require complete coverage and use the ratio of weighted
+            total times, rather than the arithmetic mean of per-case ratios.
         
     Returns:
         Average speedup ratio (baseline_time / optimized_time), or 0.0 if no valid matches
     """
     log = logger or logging.getLogger(__name__)
+    if case_weights is not None:
+        require_complete_match = True
     
     allow_index_fallback = (
         not require_complete_match
@@ -633,9 +639,42 @@ def calculate_average_speedup(
         log.warning("No valid speedups calculated")
         return 0.0
     
-    avg_speedup = sum(speedups) / len(speedups)
+    if case_weights is not None:
+        try:
+            avg_speedup = weighted_total_time(baseline_cases, case_weights) / weighted_total_time(
+                optimized_cases, case_weights)
+        except ValueError as exc:
+            log.warning("Cannot aggregate workload time: %s", exc)
+            return 0.0
+    else:
+        avg_speedup = sum(speedups) / len(speedups)
+    if not math.isfinite(avg_speedup) or avg_speedup <= 0:
+        log.warning("Invalid aggregate speedup")
+        return 0.0
     log.info(f"Average speedup across {len(speedups)} test case(s): {avg_speedup:.2f}x")
     return avg_speedup
+
+
+def weighted_total_time(cases: List[TestCaseResult], case_weights: Dict[str, float]) -> float:
+    """Sum latency times occurrence frequency, rejecting incomplete evidence."""
+    ids = [case.test_case_id for case in cases]
+    if not case_weights or len(set(ids)) != len(ids) or set(ids) != set(case_weights):
+        raise ValueError("Case weights must exactly cover unique performance case IDs")
+    try:
+        for case in cases:
+            weight = case_weights[case.test_case_id]
+            if (isinstance(weight, bool) or not isinstance(weight, (int, float))
+                    or not math.isfinite(weight) or weight <= 0
+                    or (case.metadata or {}).get(_SYNTHETIC_TEST_ID_METADATA_KEY)
+                    or type(case.execution_time_ms) not in (int, float)
+                    or not math.isfinite(case.execution_time_ms) or case.execution_time_ms <= 0):
+                raise ValueError("Workload totals require positive finite weights/times and explicit IDs")
+        total = math.fsum(case_weights[c.test_case_id] * c.execution_time_ms for c in cases)
+    except (OverflowError, TypeError) as exc:
+        raise ValueError("Invalid weighted performance time") from exc
+    if not math.isfinite(total) or total <= 0:
+        raise ValueError("Weighted performance time must be positive and finite")
+    return total
 
 
 def _benchmark_method_mismatches(

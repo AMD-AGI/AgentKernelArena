@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from src.task_execution import TaskExecutionError
+from src.task_protocol import TaskProtocolError
 from src.task_session import TaskSession
 from src.task_spec import TaskConfigError, TaskSpec
 
@@ -40,7 +41,7 @@ sys.exit(0 if report["status"] == "PASS" else 1)
 '''
 
 
-def create(tmp_path, *, empty=False, provided=None, diagnostic=False):
+def create(tmp_path, *, empty=False, provided=None, diagnostic=False, aggregation=None):
     workspace = tmp_path / "candidate"
     workspace.mkdir()
     (workspace / "evaluate.py").write_text(RUNNER)
@@ -49,6 +50,8 @@ def create(tmp_path, *, empty=False, provided=None, diagnostic=False):
               "candidate": {"language": "hip", "initial_state": "unimplemented" if empty else "implemented",
                             "editable": ["kernel.py"], "entrypoints": [{"file": "kernel.py", "kind": "function", "symbol": "compute"}]},
               "evaluation": {"runner": [sys.executable, "evaluate.py"]}}
+    if aggregation is not None:
+        config["evaluation"]["aggregation"] = aggregation
     if provided is not None:
         (workspace / "provided.txt").write_text(str(provided))
         config["baseline"] = {"kind": "provided"}
@@ -71,6 +74,30 @@ def test_baseline_is_a_separate_copy_and_context_contains_complete_manifest(tmp_
     assert context["task_config"]["schema_version"] == 2
     assert context["manifest"]["cases"][0]["checks"] == ["correctness", "performance"]
     assert Path(context["baseline_workspace"]) != Path(context["workspace"])
+
+
+def test_fixed_aggregation_survives_session_and_agent_context_round_trip(tmp_path):
+    aggregation = {"method": "weighted_total_time", "case_weights": {"one": 64}}
+    session = create(tmp_path, aggregation=aggregation)
+    assert session.validate_initial().accepted
+    context = json.loads(session.agent_context_path.read_text())
+    assert context["task_config"]["evaluation"]["aggregation"] == aggregation
+    resumed = TaskSession.load(session.spec, session.workspace, session.state_directory)
+    assert resumed.initial_validation.accepted
+    assert resumed.spec.aggregation == aggregation
+
+
+@pytest.mark.parametrize("weights", [{"missing": 1}, {"one": 1, "extra": 1}])
+def test_aggregation_manifest_mismatch_stops_before_baseline_or_search_and_on_resume(tmp_path, weights):
+    session = create(tmp_path, aggregation={"method": "weighted_total_time", "case_weights": weights})
+    initial = session.validate_initial()
+    assert not initial.accepted
+    assert "Aggregation case_weights mismatch" in initial.errors[0]
+    assert list(session.results) == [("task_validation", "task", "validate-task")]
+    with pytest.raises(TaskExecutionError, match="accepted initial"):
+        session.candidate_action("compile")
+    with pytest.raises(TaskProtocolError, match="Aggregation case_weights mismatch"):
+        TaskSession.load(session.spec, session.workspace, session.state_directory)
 
 
 def test_empty_initial_candidate_does_not_skip_final_candidate_checks(tmp_path):

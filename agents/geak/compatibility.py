@@ -1,7 +1,7 @@
 """Per-run compatibility copy of GEAK's real engine, pinned and fail-closed.
 
-Only setup/benchmark plumbing and role contracts change. Planning, authoring,
-engineer fan-out, verification, integration, and stopping stay upstream GEAK.
+Setup/benchmark plumbing, role contracts and declared metric fallback change.
+Planning, authoring, engineer fan-out, verification and integration stay upstream.
 """
 from __future__ import annotations
 
@@ -100,6 +100,19 @@ def adapt_lane(source: str) -> str:
     # Disable its producer gate, even if a role reports a real GPU identity.
     source = source.replace("const KB_WRITE_OK = KB_ROOT_OK && !!KB_ARTIFACTS_DIR;",
                             "const KB_WRITE_OK = false; // Arena forbids external publication")
+    # Use GEAK's native weighted selector, but never fall back to a different
+    # objective when a task requires weighted total time. Legacy runs retain it.
+    source = source.replace("if (HAS_WORKLOAD && Number.isFinite(w)) return w;",
+                            "if (A.arena_aggregation) return Number.isFinite(w) && w > 0 ? w : 0;\n"
+                            "  if (HAS_WORKLOAD && Number.isFinite(w)) return w;")
+    source = source.replace(
+        "const finalPrimary = HAS_WORKLOAD && Number.isFinite(finalWeighted) ? finalWeighted : finalGeomean;",
+        "const finalPrimary = A.arena_aggregation\n"
+        "  ? (Number.isFinite(finalWeighted) && finalWeighted > 0 ? finalWeighted : null)\n"
+        "  : (HAS_WORKLOAD && Number.isFinite(finalWeighted) ? finalWeighted : finalGeomean);")
+    source = source.replace("  workload_aligned: HAS_WORKLOAD,",
+                            "  ...(A.arena_aggregation ? { aggregation: A.arena_aggregation } : {}),\n"
+                            "  workload_aligned: HAS_WORKLOAD,")
     return source
 
 
@@ -107,6 +120,19 @@ def arena_contract(bridge: Bridge, python: str) -> str:
     command = shlex.join([python, str(Path(__file__).with_name("bridge.py")),
                           "--job", str(bridge.job_path)])
     spec = bridge.spec.to_mapping()
+    objective = ""
+    if bridge.spec.aggregation is not None:
+        objective = """
+The declared search objective is weighted_total_time: sum(count * baseline_ms) /
+sum(count * optimized_ms) over EVERY manifest performance case. Counts are fixed
+in evaluation.aggregation.case_weights. FULL_BENCHMARK emits speedup_weighted;
+copy that number into engineer speedup_weighted, verifier verified_weighted,
+integrator best.weighted and report final_speedup_weighted. Director returns the
+bridge's director_verified_speedup_weighted verbatim. Rank, integrate and stop
+using this weighted speedup. Missing weighted evidence makes a candidate ineligible.
+Keep speedup_geomean/verified_geomean as the actual unweighted geometric mean,
+only a diagnostic. Never put the weighted ratio into a geomean field.
+"""
     return f"""Arena task contract (takes precedence over upstream layout/harness examples)
 Target language: {bridge.spec.candidate.language}. Initial state: {bridge.spec.candidate.initial_state}.
 Read the task's config.yaml, README.md if present, declared instructions and entrypoints.
@@ -140,6 +166,7 @@ Never read credentials, dump the environment, install dependencies, access exter
 other than the configured model, or publish/write learned knowledge outside this private run.
 Upstream analysis/KB source is advisory; runtime dependencies are provisioned by Arena.
 GEAK metrics guide search only. Arena independently evaluates delivered candidate files.
+{objective}
 """
 
 
@@ -185,6 +212,11 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
 
     baseline = [{"name": row["test_case_id"], "baseline_ms": row["execution_time_ms"],
                  "ms": row["execution_time_ms"], "speedup": 1.0} for row in cases]
+    aggregation = bridge.spec.aggregation
+    if aggregation is not None:
+        for row in baseline:
+            count = aggregation["case_weights"][row["name"]]
+            row.update(count=count, weight=count * row["baseline_ms"], weight_source="caller")
     candidate = bridge.spec.candidate
     author = candidate.initial_state == "unimplemented" or candidate.initial_language != candidate.language
     args = {
@@ -211,6 +243,10 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
                             "baseline_geomean_ms": math.exp(sum(math.log(row["ms"]) for row in baseline) / len(baseline)),
                             "reliable": True},
     }
+    if aggregation is not None:
+        args.update(arena_aggregation=aggregation, workload=baseline)
+        args["arena_benchmark"].update(workload_aligned=True,
+                                       baseline_weighted_total_ms=math.fsum(row["weight"] for row in baseline))
     dispatcher.write_text(adapt_workflow(dispatcher.read_text(), contract, trusted_args=args))
     transport = {"adapter_version": 4,
                  "adapted_workflow_sha256": hashlib.sha256(dispatcher.read_bytes()).hexdigest()}

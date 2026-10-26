@@ -247,6 +247,7 @@ def _baseline(value: Any, candidate: CandidateSpec) -> BaselineSpec:
 def _actions(value: Any) -> tuple[ActionSpec, ...]:
     obj = _mapping(value, "evaluation", {
         "runner", "workloads", "timeout_s", "task", "baseline", "candidate", "measurement",
+        "aggregation",
     })
     if "measurement" in obj:
         m = _mapping(obj["measurement"], "evaluation.measurement", {"kind", "runtime_lock", "pairs", "max_p99_tpot_ms", "minimum_speedup_ratio"})
@@ -259,6 +260,23 @@ def _actions(value: Any) -> tuple[ActionSpec, ...]:
             raise TaskConfigError("minimum_speedup_ratio must be finite and at least 1")
         if "max_p99_tpot_ms" in m:
             _timeout(m["max_p99_tpot_ms"], "measurement.max_p99_tpot_ms")
+    if "aggregation" in obj:
+        where = "evaluation.aggregation"
+        aggregation = _mapping(obj["aggregation"], where, {"method", "case_weights"})
+        _choice(aggregation.get("method"), ("weighted_total_time",), f"{where}.method")
+        if "measurement" in obj:
+            raise TaskConfigError("evaluation.aggregation is not supported for serving measurements")
+        weights = aggregation.get("case_weights")
+        if not isinstance(weights, dict) or not weights:
+            raise TaskConfigError(f"{where}.case_weights must be a nonempty mapping")
+        for case_id, weight in weights.items():
+            _text(case_id, f"{where}.case_weights key")
+            try:
+                valid = type(weight) in (int, float) and math.isfinite(weight) and weight > 0
+            except OverflowError:
+                valid = False
+            if not valid:
+                raise TaskConfigError(f"{where}.case_weights values must be finite positive numbers")
     runner = _argv(obj["runner"], "evaluation.runner") if "runner" in obj else None
     default_timeout = _timeout(obj.get("timeout_s", 3600), "evaluation.timeout_s")
     if "workloads" in obj:
@@ -355,6 +373,11 @@ class TaskSpec:
     baseline: BaselineSpec
     actions: tuple[ActionSpec, ...]
     _config: dict
+
+    @property
+    def aggregation(self) -> dict | None:
+        """Return the protected, opt-in kernel timing aggregation declaration."""
+        return deepcopy(self._config["evaluation"].get("aggregation"))
 
     @classmethod
     def from_mapping(cls, config: Mapping[str, Any], *, task_id: str) -> "TaskSpec":

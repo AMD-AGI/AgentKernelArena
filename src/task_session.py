@@ -174,6 +174,7 @@ class TaskSession:
                 session.task_evidence = session.results[key]
                 if parsed.passed:
                     session.manifest = CaseManifest.from_result(parsed)
+                    session.manifest.validate_aggregation(spec.aggregation)
             elif session.manifest is not None:
                 session.manifest.validate(parsed)
         report_path = state_directory / "initial_validation.json"
@@ -275,6 +276,7 @@ class TaskSession:
                 raise TaskExecutionError(task.result.reason or "Task validation failed")
             self._verify_initial_state(task)
             self.manifest = CaseManifest.from_result(task.result)
+            self.manifest.validate_aggregation(self.spec.aggregation)
             for action in ("compile", "correctness", "performance"):
                 result = self._execute("baseline", action, phase).result
                 accepted = result.passed
