@@ -5,14 +5,16 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from test_forge_v2 import ROOT, fixture_task, mock_engine
 from agents.forge import adapter, bridge
 from agents.forge.bundles import allow_candidate_paths
-from agents.forge.initialization import materialize_targets
+from agents.forge.initialization import materialize_targets, _make_initialization_agent, _new_path_patterns, prepare_loop
 from src.task_spec import TaskSpec
 
 
@@ -79,6 +81,82 @@ def test_initialization_cannot_take_the_entire_loop_budget(value):
         adapter._config({"agent": {"initialization_budget_fraction": value}})
 
 
+@pytest.mark.parametrize("grouped", [False, True])
+def test_implementer_api_preserves_all_initialization_controls(monkeypatch, grouped):
+    options = dict(program_md="INITIALIZE", kernel_backend_name="hip", profiling_enabled=False,
+                   task_type="repository", source_files=["kernel.hip"], target_functions=["forward"],
+                   extra_protected_paths=["driver.py"], session_timeout_sec=23,
+                   permission_mode="acceptEdits", insession_gate=True, validation_timeout_sec=17,
+                   driver_script="driver.py", interposed_driver_path="driver.py",
+                   correctness_only=True, usage=object())
+    received = {}
+    if grouped:
+        def factory(config, setup, *, usage):
+            received.update(config=config, setup=setup, usage=usage)
+    else:
+        def factory(config, program_md, **kwargs):
+            received.update(config=config, program_md=program_md, **kwargs)
+    engine = SimpleNamespace(make_agent_fn=factory, ImplementerTask=SimpleNamespace,
+                             SessionOptions=SimpleNamespace, ImplementerSetup=SimpleNamespace)
+    package = ModuleType("kernelforge")
+    package.__path__ = []
+    monkeypatch.setitem(sys.modules, "kernelforge", package)
+    monkeypatch.setitem(sys.modules, "kernelforge.orchestrator", SimpleNamespace(agent=engine))
+    monkeypatch.setitem(sys.modules, "kernelforge.loop", ModuleType("kernelforge.loop"))
+    monkeypatch.setitem(sys.modules, "kernelforge.loop.gate_settings",
+                        SimpleNamespace(GateMeasurement=SimpleNamespace))
+    config = object()
+    _make_initialization_agent(config, new_path_patterns=["source/*", "source/nested/*"], **options)
+    assert received["config"] is config
+    if not grouped:
+        assert received == dict(config=config, **options)
+        return
+    setup = received["setup"]
+    assert vars(setup.task) == dict({key: options[key] for key in
+        ("program_md", "kernel_backend_name", "profiling_enabled", "task_type", "source_files",
+         "target_functions", "extra_protected_paths")}, commit_new_paths=["source/*", "source/nested/*"])
+    assert vars(setup.session) == dict(session_timeout_sec=23, permission_mode="acceptEdits", insession_gate=True)
+    assert vars(setup.measurement) == dict(driver_script="driver.py", interposed_driver_path="driver.py",
+                                         correctness_only=True, stage_timeout_sec=17, bench_timeout_sec=17)
+    assert received["usage"] is options["usage"]
+    with pytest.raises(ValueError, match="Unmapped Forge implementer settings"):
+        _make_initialization_agent(config, **options, unsupported_setting=True)
+
+
+def test_new_file_patterns_stay_inside_declared_tree_directories(tmp_path):
+    context, plan, _ = fixture_task(tmp_path, language="hip", initial_state="unimplemented")
+    mapping = context.spec.to_mapping()
+    mapping["candidate"]["editable"] = [{"path": "source", "scope": "tree"}]
+    root = Path(plan["engine_root"])
+    (root / "source/nested").mkdir()
+    (root / "unrelated").mkdir()
+    spec = TaskSpec.from_mapping(mapping, task_id=context.spec.task_id)
+    assert _new_path_patterns(spec, root) == ["source/*", "source/nested/*"]
+    assert _new_path_patterns(context.spec, root) == []
+
+
+@pytest.mark.parametrize("absolute,existing", [(False, False), (True, False), (True, True)])
+def test_loop_handoff_refreshes_budget_without_extending_deadline(tmp_path, monkeypatch, absolute, existing):
+    _, plan, _ = fixture_task(tmp_path)
+    adapter._initialize_git(Path(plan["engine_root"]))
+    plan["deadline_unix"] = 10000.0
+    parameters = [SimpleNamespace(name="deadline_unix")] if absolute else []
+    package = ModuleType("kernelforge")
+    package.cli = SimpleNamespace(main=SimpleNamespace(commands={"forge-loop": SimpleNamespace(params=parameters)}))
+    monkeypatch.setitem(sys.modules, "kernelforge", package)
+    monkeypatch.setattr(time, "time", lambda: 100.0)
+    argv = ["forge-loop", "--source-files", "old", "--max-hours", "99"]
+    if existing:
+        argv += ["--deadline-unix", "20000"]
+    result = prepare_loop(plan, argv)
+    assert result[result.index("--source-files") + 1] != "old"
+    assert float(result[result.index("--max-hours") + 1]) == adapter.engine_budget_hours(plan)
+    assert argv[argv.index("--max-hours") + 1] == "99"
+    assert result.count("--deadline-unix") == int(absolute)
+    if absolute:
+        assert float(result[result.index("--deadline-unix") + 1]) == plan["deadline_unix"]
+
+
 # This program runs inside the real, pinned Hyperloom interpreter. Only the
 # provider response and the final loop callback are scripted. The real Forge
 # implementer factory, backend prompts, API session loop, workspace guard,
@@ -105,7 +183,8 @@ loop_calls, sessions = [], []
 
 class ScriptedProvider:
     name = 'codex'
-    capabilities = AgentCapabilities(stop_hooks=False, resumable=False, workspace_guard=True)
+    capabilities = AgentCapabilities(stop_hooks=False, resumable=False, workspace_guard=True,
+                                     requires_workspace_cwd=True)
     def __init__(self, runtime):
         self.runtime = runtime
     async def run(self, spec, usage=None):
@@ -226,6 +305,10 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
     path.write_text(json.dumps(plan))
     engine = Path(plan["engine_root"])
     (engine / "source/kernel.py").write_text("")
+    # The grouped API admits explicit directory-level new-file patterns; it
+    # rejects recursive '**'. Retain nested new-file delivery coverage within
+    # a directory present when the session's allowlist is frozen.
+    (engine / "source/nested").mkdir()
     # The accepted first implementation is *slower* than baseline: initialization
     # must accept correctness and let the ordinary loop improve it later.
     for workspace in (engine, Path(plan["template"]), context.baseline_workspace):

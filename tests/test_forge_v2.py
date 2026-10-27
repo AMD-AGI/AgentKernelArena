@@ -247,8 +247,16 @@ def test_real_upstream_rejects_failure_diagnostics_as_benchmark_or_correctness(t
     script = r'''
 import asyncio, json, sys
 from agents.forge.engine import probe
-from kernelforge.mcp_server.tools.test import test_correctness
-from kernelforge.mcp_server.tools.bench import bench_wallclock
+try:
+    from kernelforge.evaluation.correctness.driver import test_correctness
+    from kernelforge.evaluation.benchmark.runner import bench_wallclock as measure, BenchRun
+    async def bench_wallclock(driver):
+        return await measure(BenchRun(driver))
+except ModuleNotFoundError as error:
+    if not error.name.startswith('kernelforge.evaluation'):
+        raise
+    from kernelforge.mcp_server.tools.test import test_correctness
+    from kernelforge.mcp_server.tools.bench import bench_wallclock
 probe()
 async def main():
     return {'correctness': await test_correctness(sys.argv[1]),
@@ -846,11 +854,17 @@ def test_scratch_branch_passes_real_upstream_campaign_preflight(tmp_path, monkey
     script = r'''
 import sys
 from agents.forge.engine import probe
-from kernelforge.loop.campaign_config import create_campaign_config
+from kernelforge.loop import campaign_config
+import inspect
 probe()
-create_campaign_config(workspace_dir=sys.argv[1], kernel='kernel.py', driver='driver.py',
-    source_files=['kernel.py'], program_md_file=None, target_functions=['add'],
+options = dict(kernel='kernel.py', driver='driver.py', program_md_file=None,
     gpu_target='gfx950', gpu_type='mi355x', kernel_backend='triton', task_type='repository')
+if 'inputs' in inspect.signature(campaign_config.create_campaign_config).parameters:
+    inputs = campaign_config.CampaignInputs(**options, source_files='kernel.py', target_functions='add')
+    campaign_config.create_campaign_config(workspace_dir=sys.argv[1], inputs=inputs)
+else:
+    campaign_config.create_campaign_config(workspace_dir=sys.argv[1], **options,
+        source_files=['kernel.py'], target_functions=['add'])
 '''
     env = dict(os.environ, PYTHONPATH=str(ROOT))
     run = subprocess.run([python, "-c", script, str(root)], cwd=root, env=env,
@@ -900,7 +914,9 @@ from pathlib import Path
 from agents.forge.process_tree import managed_children
 with managed_children():
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], start_new_session=True)
-    Path(sys.argv[1]).write_text(str(child.pid))
+    temporary = Path(sys.argv[1]).with_suffix('.tmp')
+    temporary.write_text(str(child.pid))
+    temporary.replace(sys.argv[1])
     time.sleep(120)
 '''
     marker = tmp_path / "child.pid"

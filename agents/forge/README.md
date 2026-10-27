@@ -90,6 +90,16 @@ entering the ordinary performance search:
    expertise prompt, normal configured provider/model, real SDK session execution,
    workspace guard and correctness-only in-session gate. The task instructions,
    evaluator and declared entrypoints supply the implementation contract.
+   Both the keyword interface and the grouped `ImplementerSetup` interface are
+   supported, preserving the same protected paths, correctness gate and session
+   limit. The grouped gate receives the validation limit for both stage and
+   benchmark timeouts.
+   For grouped engines, new helper files are allowed inside declared trees in
+   directories present at session startup. That engine's nonrecursive new-file
+   allowlist rejects helpers in newly created directories; Arena does not widen
+   the allowlist outside the task's declared trees.
+   After initialization, the loop receives the remaining campaign budget and,
+   when supported by its CLI, the same absolute deadline.
 3. After each session, independently run candidate compile and complete
    correctness through the same public runner. A provider's text or gate flag
    cannot substitute for that check. Feed concrete failures and partial code into
