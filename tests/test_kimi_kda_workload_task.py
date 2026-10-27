@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import types
@@ -44,6 +45,19 @@ def test_manifest_is_checkpoint_derived(modules):
     assert data["workload"]["ep"] is None
     assert data["workload"]["dcp"] is None
     modules["evaluate"].check_candidate_source()
+
+
+def test_validate_task_emits_framework_parseable_case_statuses(modules, monkeypatch, capsys):
+    from src.task_protocol import CaseManifest, parse_command_result
+
+    monkeypatch.setitem(sys.modules, "runtime", types.SimpleNamespace(verify_runtime=lambda: {}))
+    code = modules["evaluate"].main(["validate-task"])
+    output = capsys.readouterr().out
+    result = parse_command_result(output, role="task", action="validate-task", returncode=code)
+    CaseManifest.from_result(result)
+    rows = json.loads(output.split("ARENA_EVAL_RESULT=", 1)[1])["cases"]
+    assert [row["status"] for row in rows] == ["PASS", "PASS"]
+    assert rows[1]["checks"] == ["correctness"]
 
 
 def test_reference_known_scalar_transition(modules):

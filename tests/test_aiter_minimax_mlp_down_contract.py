@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import types
 
 import pytest
 import yaml
@@ -30,6 +31,25 @@ def test_schema_and_exact_case_geometry():
     assert [case["shape"] for case in data["cases"]] == [[8192, 6144, 1536], [64, 6144, 1536]]
     assert data["workload"]["ep"] is None
     assert data["operation"]["includes_all_reduce"] is False
+
+
+def test_validate_task_emits_framework_parseable_case_statuses(monkeypatch):
+    from src.task_protocol import CaseManifest, parse_command_result
+
+    for name in ("contract", "inputs", "reference", "runtime"):
+        monkeypatch.setitem(sys.modules, name, load_script(name))
+    runner = load_script("evaluate")
+    monkeypatch.setattr(runner, "verify_runtime", lambda: {})
+    monkeypatch.setattr(runner, "candidate", lambda: None)
+    aiter = types.ModuleType("aiter")
+    aiter.__path__ = []
+    monkeypatch.setitem(sys.modules, "aiter", aiter)
+    monkeypatch.setitem(sys.modules, "aiter.tuned_gemm", types.SimpleNamespace(gemm_a16w16=lambda: None))
+    report, code = runner.invoke(["validate-task"])
+    result = parse_command_result("ARENA_EVAL_RESULT=" + json.dumps(report),
+                                  role="task", action="validate-task", returncode=code)
+    CaseManifest.from_result(result)
+    assert [row["status"] for row in report["cases"]] == ["PASS", "PASS"]
 
 
 @pytest.mark.parametrize("mutation", ["drop_case", "change_k", "unweighted", "changed_model"])
