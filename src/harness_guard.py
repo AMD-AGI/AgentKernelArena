@@ -245,6 +245,123 @@ def _config_factory_body_allowed(node: ast.FunctionDef, bindings: dict[str, str]
     return True
 
 
+def _launch_configuration_allowed(node: ast.FunctionDef, bindings: dict[str, str],
+                                  bound_names: set[str]) -> bool:
+    """Keep declared launch configuration functions on plain metadata and data.
+
+    The protected caller supplies scalar/container metadata, never tensors or
+    user-defined objects. Unlike legacy definition-time factories, these helpers
+    cannot read global objects or call protected functions: even an apparently
+    passive subscript can invoke a helper's __class_getitem__ or __getitem__.
+    """
+    if node.decorator_list:
+        return False
+    args = node.args
+    parameters = [*args.posonlyargs, *args.args, *args.kwonlyargs,
+                  *([args.vararg] if args.vararg else []),
+                  *([args.kwarg] if args.kwarg else [])]
+    locals_ = {arg.arg for arg in parameters}
+    locals_.update(item.id for item in ast.walk(node)
+                   if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Store))
+    imports = {key: value for key, value in bindings.items() if key not in locals_}
+    builtins = {"min", "max", "abs", "bool", "int", "float", "len"} - (
+        bound_names | set(bindings) | locals_)
+
+    def literal(value: ast.AST | None) -> bool:
+        if isinstance(value, ast.Constant):
+            return type(value.value) in (str, bytes, int, float, bool, type(None))
+        if isinstance(value, (ast.Tuple, ast.List, ast.Set)):
+            return all(literal(item) for item in value.elts)
+        if isinstance(value, ast.Dict):
+            return all(key is not None and literal(key) and literal(item)
+                       for key, item in zip(value.keys, value.values))
+        return (isinstance(value, ast.UnaryOp) and isinstance(value.op, (ast.UAdd, ast.USub))
+                and literal(value.operand))
+
+    def annotation(value: ast.AST | None) -> bool:
+        if value is None or (isinstance(value, ast.Constant)
+                             and (value.value is None or isinstance(value.value, str))):
+            return True
+        return (isinstance(value, ast.Name)
+                and value.id in {"bool", "int", "float", "str", "bytes", "dict", "list", "tuple", "set"}
+                and value.id not in bound_names | set(bindings))
+
+    if (not all(literal(value) for value in [*args.defaults, *args.kw_defaults] if value is not None)
+            or not all(annotation(value) for value in [node.returns, *[arg.annotation for arg in parameters]])):
+        return False
+
+    def expression(value: ast.AST | None, available: set[str]) -> bool:
+        if isinstance(value, ast.Constant):
+            return literal(value)
+        if isinstance(value, ast.Name):
+            return value.id in available
+        if isinstance(value, (ast.Tuple, ast.List, ast.Set)):
+            return all(expression(item, available) for item in value.elts)
+        if isinstance(value, ast.Dict):
+            return all(key is not None and expression(key, available) and expression(item, available)
+                       for key, item in zip(value.keys, value.values))
+        if isinstance(value, ast.BinOp):
+            return (isinstance(value.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv,
+                                         ast.Mod, ast.Pow, ast.LShift, ast.RShift,
+                                         ast.BitOr, ast.BitAnd, ast.BitXor))
+                    and expression(value.left, available) and expression(value.right, available))
+        if isinstance(value, ast.UnaryOp):
+            return (isinstance(value.op, (ast.UAdd, ast.USub, ast.Not, ast.Invert))
+                    and expression(value.operand, available))
+        if isinstance(value, ast.BoolOp):
+            return all(expression(item, available) for item in value.values)
+        if isinstance(value, ast.Compare):
+            return expression(value.left, available) and all(
+                expression(item, available) for item in value.comparators)
+        if isinstance(value, ast.IfExp):
+            return all(expression(item, available) for item in (value.test, value.body, value.orelse))
+        if isinstance(value, ast.Subscript):
+            return expression(value.value, available) and expression(value.slice, available)
+        if isinstance(value, ast.Slice):
+            return all(item is None or expression(item, available)
+                       for item in (value.lower, value.upper, value.step))
+        if isinstance(value, ast.Call):
+            safe = ((isinstance(value.func, ast.Name) and value.func.id in builtins)
+                    or _qualified_import(value.func, imports) in _LAUNCH_LAMBDA_CALLS)
+            return (safe and all(expression(item, available) for item in value.args)
+                    and all(item.arg is not None and expression(item.value, available)
+                            for item in value.keywords))
+        return False
+
+    def block(statements: list[ast.stmt], available: set[str]) -> tuple[set[str], bool] | None:
+        available = set(available)
+        falls_through = True
+        for statement in statements:
+            if isinstance(statement, ast.Return):
+                if not expression(statement.value, available):
+                    return None
+                falls_through = False
+            elif isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+                if (not all(isinstance(target, ast.Name) for target in targets)
+                        or not expression(statement.value, available)
+                        or (isinstance(statement, ast.AnnAssign) and not annotation(statement.annotation))):
+                    return None
+                available.update(target.id for target in targets)
+            elif isinstance(statement, ast.If):
+                if not expression(statement.test, available):
+                    return None
+                yes, no = block(statement.body, available), block(statement.orelse, available)
+                if yes is None or no is None:
+                    return None
+                continuing = [names for names, continues in (yes, no) if continues]
+                if continuing:
+                    available = set.intersection(*continuing)
+                else:
+                    falls_through = False
+            elif not (isinstance(statement, ast.Pass)
+                      or (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant))):
+                return None
+        return available, falls_through
+
+    return block(node.body, {arg.arg for arg in parameters}) is not None
+
+
 def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
                                   initial_names: frozenset[str], definition_names: set[str],
                                   configuration_factories: set[str],
@@ -368,7 +485,10 @@ def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]
     # editable target or newly introduced helper is not a protected factory.
     protected_functions = (set(functions) & initial_names) - set(edit.symbols)
     configuration_factories = set(protected_functions)
-    for name in (set(functions) & initial_names & set(edit.symbols)) - entrypoint_symbols:
+    # Declared launch helpers receive plain metadata only from protected callers.
+    # Do not let editable decorators invoke them with arbitrary host objects.
+    for name in ((set(functions) & initial_names & set(edit.symbols))
+                 - entrypoint_symbols - set(edit.configuration_symbols)):
         if _config_factory_body_allowed(functions[name], bindings, protected_functions,
                                         set(initial_names) | definition_names):
             configuration_factories.add(name)
@@ -385,6 +505,16 @@ def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]
                     raise RuntimeError(f"Protected test/harness policy rejected {path.name}: {exc}") from exc
                 continue
         kept.append(node)
+    # Protected host code calls declared configuration symbols at launch time,
+    # so each must remain a configuration factory, never arbitrary host code.
+    for name in edit.configuration_symbols:
+        node = functions.get(name)
+        if (node is None or node.decorator_list
+                or not _launch_configuration_allowed(node, bindings,
+                                                     set(initial_names) | definition_names)):
+            raise RuntimeError(f"Protected test/harness policy rejected {path.name}: configuration "
+                               f"symbol {name!r} must be an undecorated function that only builds "
+                               "configuration data")
     tree.body = kept
     return hashlib.sha256(ast.dump(tree, include_attributes=False).encode("utf-8")).hexdigest()
 
@@ -1036,6 +1166,7 @@ def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
                             else "sha256_bytes"),
             "editable_symbols": list(edit.symbols) if edit else [],
             "allow_new_helpers": edit.allow_new_helpers if edit else False,
+            "configuration_symbols": list(edit.configuration_symbols) if edit else [],
             "initial_top_level_names": sorted(snapshot.initial_symbols.get(path, ())),
             "definition_policy": "compiler_decorators_no_test_hooks_v1" if edit else "byte_protected",
             "allowed_compiler_decorators": sorted(_COMPILER_DECORATORS) if edit else [],

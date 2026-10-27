@@ -158,7 +158,11 @@ candidate:
 
 A mapping's `scope` is `file`, `symbols`, or `tree`. `symbols` requires a nonempty
 symbol list; `allow_new_helpers` defaults to `false` and applies only to
-implementation helpers under a symbol-scoped boundary. `tree` permits an
+implementation helpers under a symbol-scoped boundary. `configuration_symbols`
+optionally names a subset of `symbols`, never an entrypoint, that only builds
+configuration data, for example a `_launch_config` helper returning tile sizes,
+`num_warps` and `num_stages`. Protected code may call such a helper and must
+validate what it returns before use. `tree` permits an
 implementation subtree, not its tests or build/evaluation policy. Broad tree
 access must not override a protected harness path. Generated build artifacts
 are not editable source declarations.
@@ -180,7 +184,19 @@ protected function definitions. Existing editable non-entrypoint configuration
 helpers must pass a restricted body check: configuration data/local assignments,
 returns, and branches using protected predicates or supported configuration
 operations. Initial aliases, kernel entrypoints, and newly introduced factories
-do not gain permission to run at definition time. Every editable Python file,
+do not gain permission to run at definition time. Symbols listed in
+`configuration_symbols` use a stricter launch-time policy: they must stay
+undecorated functions whose values come only from metadata parameters, local
+configuration data, literal collections, arithmetic and branches. Unshadowed
+`min`, `max`, `abs`, `bool`, `int`, `float`, `len`, `triton.cdiv` and
+`triton.next_power_of_2` calls are allowed. Global objects, helper/protected
+function calls, arbitrary attributes, callbacks and comprehensions are rejected;
+defaults must be literal data and annotations use simple builtin types or
+strings. The protected caller must supply plain scalar/container metadata and
+validate the returned configuration before launch. Declared launch helpers are
+not definition-time factories and cannot be called from editable compiler
+decorators, which could supply arbitrary objects instead of metadata.
+Every editable Python file,
 whatever its scope, also may not add runtime patching: calls to `globals()`,
 `vars()`, `setattr`/`delattr`, `exec`/`eval`/`__import__` (including qualified
 `builtins` calls and imported aliases), `importlib` or frame

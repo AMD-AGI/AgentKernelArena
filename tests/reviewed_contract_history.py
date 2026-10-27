@@ -1186,6 +1186,185 @@ def historical_attention_sampling_file(relative, text):
     return _exact_reviewed_file_inverse(text, record) if record is not None else text
 
 
+# Tunable launch configurations: each record moves a wrapper's tuning values into
+# its editable `_launch_config` helper and adds the protected validator. Full
+# current/before bytes bound every inverse; the boundary inverse applies after it.
+TRITON_LAUNCH_CONFIG_FILES = {'tasks/triton2triton/vllm/triton_bmm/config.yaml': {'after_sha256': 'd67c2742d3e92815508850fb6ff378fcfb60960f0d8075e98ea0585a64617d0f',
+                                                     'before_sha256': '6e04236bbc34f35a60c1dcaaa47f218ac2e42d75a4cf85778240feaa8088462e',
+                                                     'reverse_edits': [(10,
+                                                                        11,
+                                                                        ['    - _launch_config\n'],
+                                                                        []),
+                                                                       (12,
+                                                                        14,
+                                                                        ['    configuration_symbols:\n',
+                                                                         '    - _launch_config\n'],
+                                                                        [])]},
+ 'tasks/triton2triton/vllm/triton_bmm/source/triton_bmm.py': {'after_sha256': '6a072c2f033459d042d0662fb5ed58b43a2d8f8c1c65f218d0be2bfa5f740c06',
+                                                              'before_sha256': 'cb7ef5165d6e7adab326435a534adf667eeeda98d497bf5f86727b15c8ef7feb',
+                                                              'reverse_edits': [(103,
+                                                                                 141,
+                                                                                 ['def '
+                                                                                  '_launch_config(dtype_name, '
+                                                                                  'batch, m, n, k):\n',
+                                                                                  '    """Return the '
+                                                                                  'bmm_kernel tile sizes, '
+                                                                                  'num_warps and '
+                                                                                  'num_stages.\n',
+                                                                                  '\n',
+                                                                                  '    Tune these values, '
+                                                                                  'optionally per dtype or '
+                                                                                  'problem size. The '
+                                                                                  'protected\n',
+                                                                                  '    wrapper validates '
+                                                                                  'them and derives the grid '
+                                                                                  'from the tile sizes.\n',
+                                                                                  '    """\n',
+                                                                                  '    if dtype_name == '
+                                                                                  '"float32":\n',
+                                                                                  '        return '
+                                                                                  '{"BLOCK_SIZE_M": 64, '
+                                                                                  '"BLOCK_SIZE_N": 64, '
+                                                                                  '"BLOCK_SIZE_K": 32,\n',
+                                                                                  '                '
+                                                                                  '"num_stages": 2, '
+                                                                                  '"num_warps": 4}\n',
+                                                                                  '    return '
+                                                                                  '{"BLOCK_SIZE_M": 128, '
+                                                                                  '"BLOCK_SIZE_N": 128, '
+                                                                                  '"BLOCK_SIZE_K": 32,\n',
+                                                                                  '            "num_stages": '
+                                                                                  '2, "num_warps": 8}\n',
+                                                                                  '\n',
+                                                                                  '\n',
+                                                                                  '_DTYPE_NAMES = '
+                                                                                  '{torch.bfloat16: '
+                                                                                  '"bfloat16", '
+                                                                                  'torch.float16: "float16", '
+                                                                                  'torch.float32: '
+                                                                                  '"float32"}\n',
+                                                                                  '_TILE_KEYS = '
+                                                                                  '("BLOCK_SIZE_M", '
+                                                                                  '"BLOCK_SIZE_N", '
+                                                                                  '"BLOCK_SIZE_K")\n',
+                                                                                  '\n',
+                                                                                  '\n',
+                                                                                  'def '
+                                                                                  '_checked_launch_config(cfg):\n',
+                                                                                  '    """Accept only tile '
+                                                                                  'sizes, num_warps and '
+                                                                                  'num_stages within '
+                                                                                  'supported bounds."""\n',
+                                                                                  '    expected = '
+                                                                                  'set(_TILE_KEYS) | '
+                                                                                  '{"num_warps", '
+                                                                                  '"num_stages"}\n',
+                                                                                  '    if not '
+                                                                                  'isinstance(cfg, dict) or '
+                                                                                  'set(cfg) != expected:\n',
+                                                                                  '        raise '
+                                                                                  'ValueError(f"Launch '
+                                                                                  'configuration must set '
+                                                                                  'exactly '
+                                                                                  '{sorted(expected)}")\n',
+                                                                                  '    checked = {}\n',
+                                                                                  '    for key in '
+                                                                                  'sorted(expected):\n',
+                                                                                  '        value = '
+                                                                                  'cfg[key]\n',
+                                                                                  '        if type(value) is '
+                                                                                  'not int:\n',
+                                                                                  '            raise '
+                                                                                  'ValueError(f"Launch '
+                                                                                  'setting {key} must be an '
+                                                                                  'int")\n',
+                                                                                  '        checked[key] = '
+                                                                                  'value\n',
+                                                                                  '    for key in '
+                                                                                  '_TILE_KEYS:\n',
+                                                                                  '        if not (16 <= '
+                                                                                  'checked[key] <= 256 and '
+                                                                                  'checked[key] & '
+                                                                                  '(checked[key] - 1) == '
+                                                                                  '0):\n',
+                                                                                  '            raise '
+                                                                                  'ValueError(f"{key} must '
+                                                                                  'be a power of two in [16, '
+                                                                                  '256]")\n',
+                                                                                  '    if '
+                                                                                  'checked["num_warps"] not '
+                                                                                  'in (1, 2, 4, 8, 16):\n',
+                                                                                  '        raise '
+                                                                                  'ValueError("num_warps '
+                                                                                  'must be 1, 2, 4, 8 or '
+                                                                                  '16")\n',
+                                                                                  '    if not 1 <= '
+                                                                                  'checked["num_stages"] <= '
+                                                                                  '4:\n',
+                                                                                  '        raise '
+                                                                                  'ValueError("num_stages '
+                                                                                  'must be in [1, 4]")\n',
+                                                                                  '    return checked\n',
+                                                                                  '\n',
+                                                                                  '\n'],
+                                                                                 []),
+                                                                                (154,
+                                                                                 155,
+                                                                                 ['    cfg = '
+                                                                                  '_checked_launch_config(_launch_config(_DTYPE_NAMES[dtype], '
+                                                                                  'B_size, M, N, K))\n'],
+                                                                                 ['    configs = {\n',
+                                                                                  '        torch.bfloat16: '
+                                                                                  '{\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_M": 128,\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_N": 128,\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_K": 32,\n',
+                                                                                  '            "num_stages": '
+                                                                                  '2,\n',
+                                                                                  '            "num_warps": '
+                                                                                  '8,\n',
+                                                                                  '        },\n',
+                                                                                  '        torch.float16: '
+                                                                                  '{\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_M": 128,\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_N": 128,\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_K": 32,\n',
+                                                                                  '            "num_stages": '
+                                                                                  '2,\n',
+                                                                                  '            "num_warps": '
+                                                                                  '8,\n',
+                                                                                  '        },\n',
+                                                                                  '        torch.float32: '
+                                                                                  '{\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_M": 64,\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_N": 64,\n',
+                                                                                  '            '
+                                                                                  '"BLOCK_SIZE_K": 32,\n',
+                                                                                  '            "num_stages": '
+                                                                                  '2,\n',
+                                                                                  '            "num_warps": '
+                                                                                  '4,\n',
+                                                                                  '        },\n',
+                                                                                  '    }\n',
+                                                                                  '\n',
+                                                                                  '    cfg = '
+                                                                                  'configs[dtype]\n'])]}}
+
+
+def historical_triton_launch_config_file(relative, text):
+    record = TRITON_LAUNCH_CONFIG_FILES.get(relative)
+    return _exact_reviewed_file_inverse(text, record) if record is not None else text
+
+
 def historical_triton_device_boundary_file(relative, text):
+    text = historical_triton_launch_config_file(relative, text)
     record = TRITON_DEVICE_BOUNDARY_FILES.get(relative)
     return _exact_reviewed_file_inverse(text, record) if record is not None else text

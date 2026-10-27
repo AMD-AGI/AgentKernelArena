@@ -78,7 +78,12 @@ def scored_shapes():
 def bmm_module(*, fault=None, seen=None):
     """Execute the actual protected wrapper around a CPU model of bmm_kernel."""
     tree = ast.parse((TASK / 'source/triton_bmm.py').read_text())
-    wrapper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'bmm_triton')
+    # The wrapper with its launch-configuration helpers and tables; only the
+    # device kernel is modeled and the imports are supplied below.
+    wrapper = [n for n in tree.body if not isinstance(n, (ast.Import, ast.ImportFrom))
+               and not (isinstance(n, ast.FunctionDef) and n.name == 'bmm_kernel')]
+    assert {n.name for n in wrapper if isinstance(n, ast.FunctionDef)} == {
+        '_launch_config', '_checked_launch_config', 'bmm_triton'}
     scored = scored_shapes()
 
     class Kernel:
@@ -110,7 +115,7 @@ def bmm_module(*, fault=None, seen=None):
 
     namespace = {'torch': torch, 'triton': SimpleNamespace(cdiv=lambda x, y: (x + y - 1) // y),
                  'bmm_kernel': Kernel()}
-    exec(compile(ast.Module(body=[wrapper], type_ignores=[]), '<actual bmm wrapper>', 'exec'), namespace)
+    exec(compile(ast.Module(body=wrapper, type_ignores=[]), '<actual bmm wrapper>', 'exec'), namespace)
     return SimpleNamespace(bmm_triton=namespace['bmm_triton'])
 
 
@@ -373,8 +378,10 @@ def test_scored_rows_kernel_checks_and_timing_unchanged_from_base(env):
     runner = (TASK / 'scripts/task_runner.py').read_text()
     assert runner.count(DISPATCH) == 1
     assert runner.replace(DISPATCH, '', 1) == base_text('scripts/task_runner.py')
+    from reviewed_contract_history import historical_triton_launch_config_file
     for relative in ('source/triton_bmm.py', '_arena_checks.py'):
-        assert (TASK / relative).read_text() == base_text(relative)
+        current = historical_triton_launch_config_file(f'tasks/{TASK_ID}/{relative}', (TASK / relative).read_text())
+        assert current == base_text(relative)
     old_adapter = base_text('_arena_eval.py').splitlines(True)
     new_adapter = (TASK / '_arena_eval.py').read_text().splitlines(True)
     opcodes = difflib.SequenceMatcher(a=old_adapter, b=new_adapter, autojunk=False).get_opcodes()
@@ -384,14 +391,15 @@ def test_scored_rows_kernel_checks_and_timing_unchanged_from_base(env):
     assert (harness.WARMUP_ITERATIONS, harness.BENCHMARK_ITERATIONS) == (10, 100)
 
 
-@pytest.mark.parametrize('change', ['kernel', 'helper', 'controls', 'manifest', 'wrapper', 'runner'])
+@pytest.mark.parametrize('change', ['kernel', 'helper', 'launch_config', 'launch_host_code',
+                                    'controls', 'manifest', 'wrapper', 'runner'])
 def test_guard_protects_control_module_and_keeps_kernel_editable(tmp_path, change):
     work = tmp_path / 'task'
     shutil.copytree(TASK, work, ignore=shutil.ignore_patterns('__pycache__', 'build'))
     spec = load_task_spec(work / 'config.yaml', task_id=TASK_ID)
     edit, = spec.candidate.editable
     assert edit.path == 'source/triton_bmm.py' and edit.scope == 'symbols'
-    assert edit.symbols == ('bmm_kernel',) and edit.allow_new_helpers
+    assert edit.symbols == ('bmm_kernel', '_launch_config') and edit.allow_new_helpers
     assert not edit.contains('_domain_controls.py')
     guard = snapshot_workspace_harness(work, task_spec=spec)
     assert '_domain_controls.py' in guard.digests
@@ -403,6 +411,12 @@ def test_guard_protects_control_module_and_keeps_kernel_editable(tmp_path, chang
         node.body.append(ast.Pass())
     elif change == 'helper':
         tree.body.extend(ast.parse('@triton.jit\ndef tile_helper(x):\n    return x\n').body)
+    elif change in ('launch_config', 'launch_host_code'):
+        node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_launch_config')
+        tuned = ('if m >= 512:\n    return {"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 64,'
+                 ' "num_stages": 3, "num_warps": 8}\n')
+        host = 'torch.cuda.synchronize()\n'
+        node.body[1:1] = ast.parse(tuned if change == 'launch_config' else host).body
     elif change == 'controls':
         (work / '_domain_controls.py').write_text('CASES = []\n')
     elif change == 'manifest':
@@ -413,7 +427,7 @@ def test_guard_protects_control_module_and_keeps_kernel_editable(tmp_path, chang
         runner = work / 'scripts/task_runner.py'
         runner.write_text(runner.read_text().replace(DISPATCH, '', 1))
     source.write_text(ast.unparse(ast.fix_missing_locations(tree)))
-    if change in ('kernel', 'helper'):
+    if change in ('kernel', 'helper', 'launch_config'):
         verify_workspace_harness(guard, discard_added=False)
     else:
         with pytest.raises(RuntimeError):

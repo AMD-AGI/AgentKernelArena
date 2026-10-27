@@ -124,6 +124,9 @@ class EditScope:
     scope: str = "file"
     symbols: tuple[str, ...] = ()
     allow_new_helpers: bool = False
+    # Editable symbols that may only build configuration data. Protected code
+    # may call them at launch time, so the harness guard restricts their bodies.
+    configuration_symbols: tuple[str, ...] = ()
 
     def contains(self, path: str) -> bool:
         return path == self.path or (
@@ -181,7 +184,8 @@ def _candidate(value: Any) -> CandidateSpec:
     edits = []
     for raw in obj["editable"]:
         edit = {"path": raw} if isinstance(raw, str) else _mapping(
-            raw, "candidate.editable[]", {"path", "scope", "symbols", "allow_new_helpers"})
+            raw, "candidate.editable[]", {"path", "scope", "symbols", "allow_new_helpers",
+                                          "configuration_symbols"})
         path = relative_path(edit.get("path"), "candidate.editable[].path")
         scope = _choice(edit.get("scope", "file"), ("file", "symbols", "tree"), "scope")
         symbols = edit.get("symbols", [])
@@ -190,12 +194,17 @@ def _candidate(value: Any) -> CandidateSpec:
         helpers = edit.get("allow_new_helpers", False)
         if type(helpers) is not bool:
             raise TaskConfigError("allow_new_helpers must be a boolean")
+        configuration = edit.get("configuration_symbols", [])
+        if (not isinstance(configuration, list)
+                or any(not isinstance(s, str) or s not in symbols for s in configuration)
+                or len(configuration) != len(set(configuration))):
+            raise TaskConfigError("configuration_symbols must be unique names listed in symbols")
         if scope == "symbols":
             if not symbols or len(symbols) != len(set(symbols)):
                 raise TaskConfigError("Symbol scope requires nonempty unique symbols")
-        elif "symbols" in edit or "allow_new_helpers" in edit:
-            raise TaskConfigError("symbols/allow_new_helpers only apply to symbol scope")
-        item = EditScope(path, scope, tuple(symbols), helpers)
+        elif {"symbols", "allow_new_helpers", "configuration_symbols"} & set(edit):
+            raise TaskConfigError("symbols/allow_new_helpers/configuration_symbols only apply to symbol scope")
+        item = EditScope(path, scope, tuple(symbols), helpers, tuple(configuration))
         if any(e.contains(path) or item.contains(e.path) for e in edits):
             raise TaskConfigError(f"Overlapping editable declarations: {path}")
         edits.append(item)
@@ -219,6 +228,10 @@ def _candidate(value: Any) -> CandidateSpec:
         if parsed in parsed_entries:
             raise TaskConfigError("Duplicate entrypoint")
         parsed_entries.append(parsed)
+    for edit in edits:
+        if any(entry.file == edit.path and entry.symbol in edit.configuration_symbols
+               for entry in parsed_entries):
+            raise TaskConfigError("A configuration symbol cannot also be an entrypoint")
     return CandidateSpec(language, state, initial, tuple(edits), tuple(parsed_entries))
 
 
