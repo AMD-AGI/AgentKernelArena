@@ -76,43 +76,6 @@ def test_loss_rejects_state_change_after_correct_reported_sample(monkeypatch):
     controls.assert_declared_control(model, inputs)
 
 
-def test_sigmoid_scored_cases_use_both_parameters_and_reject_mutation(monkeypatch):
-    root = TASKS / 'torch2hip/gpumode/11184_Sigmoid'
-    controls = load(root / 'eval_tools/case_controls.py')
-    module = load(root / 'pytorch_code_module/py_11184_Sigmoid.py')
-    functional = load(root / 'pytorch_code_functional/py_11184_Sigmoid_func.py')
-    rows = json.loads((root / 'workload.json').read_text())['cases']
-    assert all('operator' not in row['params'] for row in rows)
-    left, right = module.Sigmoid(), functional.Sigmoid()
-    value = torch.tensor([-.8, .2, 1.3])
-    controls.assert_declared_control(right, [value])
-    right.max = 2
-    with pytest.raises(ValueError, match='original scored sigmoid'):
-        controls.assert_declared_control(right, [value])
-    right.max = 10
-    runner = load(root / 'eval_tools/evaluate.py')
-    checks = load(root / 'eval_tools/correctness_check.py')
-    monkeypatch.setitem(sys.modules, 'correctness_check', checks)
-    names = runner.check_sigmoid_controls(left, right, None, 1e-4, 1e-5, device='cpu')
-    assert names[:15] == [
-        'scalar', 'empty', 'extreme',
-        'half_scalar', 'half_empty', 'half_extreme',
-        'inverse_scalar', 'inverse_empty', 'inverse_extreme',
-        'steep_scalar', 'steep_empty', 'steep_extreme',
-        'shallow_scalar', 'shallow_empty', 'shallow_extreme',
-    ]
-    assert names[15:] == [
-        f'{variant}_{shape}'
-        for variant in ('negative_max', 'zero_a', 'zero_max')
-        for shape in ('scalar', 'empty', 'extreme')
-    ]
-    assert len(names) == 24
-    assert (left.a, left.max, right.a, right.max) == (1, 10, 1, 10)
-    with pytest.raises(ValueError, match='mathematical reference'):
-        runner.check_sigmoid_controls(left, right,
-            lambda v, _a, _max: torch.sigmoid(v) * 10, 1e-4, 1e-5, device='cpu')
-
-
 def test_roiaware_scored_max_rejects_systematic_fifteen_percent_error():
     path = TASKS / 'hip2hip/roiaware_pool3d/scripts/reference_checks.py'
     checks = load(path)

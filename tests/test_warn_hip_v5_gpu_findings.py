@@ -40,8 +40,6 @@ def test_native_graph_tasks_reject_candidate_controlled_event_downgrade(monkeypa
 
 @pytest.mark.parametrize("relative", [
     "gpumode/10024_Feedforward",
-    "gpumode/11184_Sigmoid",
-    "gpumode/11754_layer_normalization",
     "kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale",
     "kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling",
 ])
@@ -77,8 +75,6 @@ def test_torch2hip_adapter_requires_complete_timed_sample_validation(relative):
 
 @pytest.mark.parametrize("relative", [
     "gpumode/10024_Feedforward",
-    "gpumode/11184_Sigmoid",
-    "gpumode/11754_layer_normalization",
     "kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale",
     "kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling",
 ])
@@ -123,8 +119,6 @@ def test_torch2hip_performance_action_rejects_invalid_timing(relative, fault, tm
 
 @pytest.mark.parametrize("relative", [
     "gpumode/10024_Feedforward",
-    "gpumode/11184_Sigmoid",
-    "gpumode/11754_layer_normalization",
     "kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale",
     "kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling",
 ])

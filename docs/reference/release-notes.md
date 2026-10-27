@@ -11,6 +11,15 @@ This topic summarizes the features available in each AgentKernelArena release. F
 
 ## Unreleased
 
+- Retired five ROCmBench primitive tasks (`test_reverse_range`,
+  `test_triton_swizzle2d`, `test_random_int`, `test_randn`, `test_kernel_sub`)
+  and 16 `torch2hip/gpumode` generation tasks whose PyTorch references and
+  workload manifests match retained `hip2hip` optimization tasks. The bundled
+  inventory now contains 420 task packages. Remove these retired selectors
+  from custom run configs; use the corresponding HIP optimization task when
+  appropriate. Earlier qualification records describe their original revisions.
+- Removed retired-task-only CPU tests and parameter cases. CPU CI limits
+  nested numerical-library threads and uploads per-test timing results.
 - Changed the default per-task score curve from square root to linear
   (`SCORE_POWER` 0.5 → 1.0); the 1.05× threshold is unchanged. The linear
   curve has a finite slope at the threshold, so scores just above it no longer

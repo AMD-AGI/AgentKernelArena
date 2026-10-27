@@ -17,12 +17,12 @@ from agents.task_validator.validation_prompt_v2 import build_v2_validation_promp
 from src.task_spec import TaskSpec
 
 ROOT = Path(__file__).resolve().parents[1]
-TASK = ROOT / 'tasks/torch2hip/gpumode/14539_GELU'
+TASK = ROOT / 'tasks/torch2hip/kernelbench/level1/l1n26_GELU_'
 
 
 def declared_spec():
     return TaskSpec.from_mapping(yaml.safe_load((TASK / 'config.yaml').read_text()),
-                                 task_id='torch2hip/gpumode/14539_GELU')
+                                 task_id='torch2hip/kernelbench/level1/l1n26_GELU_')
 
 
 def parse_declared_args(tree, argv):

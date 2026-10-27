@@ -117,6 +117,11 @@ audit. Use a full Git checkout (`git fetch --unshallow` for an existing shallow
 clone), because preservation tests read historical task sources with `git show`.
 Keep those source comparisons enabled.
 
+For CPU/mock checks, set `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1` and
+`OPENBLAS_NUM_THREADS=1`, matching CI. Many reference and negative-control
+tests perform small tensor operations; large nested thread pools add overhead.
+CI uploads JUnit test timings so slow cases can be investigated individually.
+
 This audit requirement does not upgrade the Docker scoring images. Actual GPU
 runs still use the task's qualified image and Python version; an older image's
 task-specific PASS does not establish compatibility with every retained task.
