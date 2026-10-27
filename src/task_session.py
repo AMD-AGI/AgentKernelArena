@@ -118,6 +118,7 @@ class TaskSession:
         _write_json(state_directory / "harness.json", {
             "digests": harness.digests,
             "initial_symbols": {key: sorted(names) for key, names in harness.initial_symbols.items()},
+            "initial_patching": harness.initial_patching,
             "effective_guard": describe_workspace_harness(workspace, snapshot=harness),
         })
         session = cls(spec, workspace, state_directory, sources, logger)
@@ -143,6 +144,7 @@ class TaskSession:
         session.harness = WorkspaceSnapshot(
             workspace, saved_harness["digests"], spec,
             {key: frozenset(names) for key, names in saved_harness["initial_symbols"].items()},
+            saved_harness.get("initial_patching"),
         )
         session.verify_baseline_sources()
         session.verify_candidate_harness(discard_added=not read_only)
