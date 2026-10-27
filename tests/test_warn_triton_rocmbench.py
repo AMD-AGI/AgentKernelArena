@@ -14,7 +14,6 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 TASKS = (
     "triton2triton/rocmbench/easy/test_kernel_dot",
-    "triton2triton/rocmbench/easy/test_reverse_range",
     "triton2triton/rocmbench/medium/rmsnorm_fwd",
     "triton2triton/rocmbench/hard/test_block_pointer_matmul",
     "triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel",
@@ -96,8 +95,6 @@ def test_block_pointer_graph_prepares_one_full_output_per_sample(monkeypatch):
     assert saw_prepared == [True] * 3
     assert row["metadata"]["measured_samples_checked"] == 3
     assert checked.prepare_fn is None
-
-
 
 
 @pytest.mark.parametrize("task", TASKS)
@@ -233,7 +230,6 @@ def test_adapter_checks_measured_samples_and_bound_replay(monkeypatch, task, met
     if is_rms:
         assert "poisoned" in calls
     elif task in (
-        'triton2triton/rocmbench/easy/test_reverse_range',
         'triton2triton/rocmbench/hard/test_block_pointer_matmul',
         'triton2triton/rocmbench/hard/triton_multreduce_matmul_kernel',
     ):

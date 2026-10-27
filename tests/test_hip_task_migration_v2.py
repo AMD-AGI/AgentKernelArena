@@ -60,7 +60,7 @@ CONFIGS = sorted([*HIP_MIGRATION_CONFIGS,
                     for p in (ROOT / 'tasks' / root).rglob('config.yaml'))])
 EXTENSIONS = [p for p in CONFIGS if (p.parent / 'eval_tools/evaluate.py').is_file()]
 NATIVE = [p for p in CONFIGS if (p.parent / 'scripts/evaluate.py').is_file()]
-ADDITIONAL_GPUMODE_REPLAY = ['hip2hip/InnerProd', 'hip2hip/KDLoss', 'hip2hip/MLP_model', 'hip2hip/MultiHeadAttention', 'hip2hip/NormalAttention_embedded_gaussian', 'hip2hip/PositionWiseFeedForward', 'hip2hip/SimpleMatmulModule', 'hip2hip/SoftmaxModule', 'hip2hip/TransformerFFNLayer', 'hip2hip/Transpose', 'hip2hip/layer_normalization', 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian', 'torch2hip/gpumode/10082_SoftmaxModule', 'torch2hip/gpumode/10099_Gather', 'torch2hip/gpumode/10456_MultiHeadAttention', 'torch2hip/gpumode/1067_Transpose', 'torch2hip/gpumode/11122_PositionEmbedder', 'torch2hip/gpumode/11709_InnerProd', 'torch2hip/gpumode/11754_layer_normalization', 'torch2hip/gpumode/1178_MLP_model', 'torch2hip/gpumode/14007_KDLoss', 'torch2hip/gpumode/14044_PositionWiseFeedForward', 'torch2hip/gpumode/14069_TransformerFFNLayer', 'torch2hip/gpumode/3267_SimpleMatmulModule']
+ADDITIONAL_GPUMODE_REPLAY = ['hip2hip/InnerProd', 'hip2hip/KDLoss', 'hip2hip/MLP_model', 'hip2hip/MultiHeadAttention', 'hip2hip/NormalAttention_embedded_gaussian', 'hip2hip/PositionWiseFeedForward', 'hip2hip/SimpleMatmulModule', 'hip2hip/SoftmaxModule', 'hip2hip/TransformerFFNLayer', 'hip2hip/Transpose', 'hip2hip/layer_normalization', 'torch2hip/gpumode/10099_Gather', 'torch2hip/gpumode/11122_PositionEmbedder', 'torch2hip/gpumode/11709_InnerProd', 'torch2hip/gpumode/14044_PositionWiseFeedForward', 'torch2hip/gpumode/14069_TransformerFFNLayer']
 
 
 def import_path(path):
@@ -140,10 +140,10 @@ def harness_namespace(task):
 def test_inventory():
     assert {p.parent.name for p in (ROOT / 'tasks/hip2hip').glob('*/config.yaml')} - \
         {p.parent.name for p in HIP_MIGRATION_CONFIGS} == HIP_INFERENCE_NAMES
-    assert len(CONFIGS) == 89
-    assert len(EXTENSIONS) == 79 and len(NATIVE) == 10
+    assert len(CONFIGS) == 73
+    assert len(EXTENSIONS) == 63 and len(NATIVE) == 10
     assert len([p for p in CONFIGS if p.is_relative_to(ROOT / 'tasks/hip2hip')]) == 32
-    assert sum(len(json.loads(p.with_name('workload.json').read_text())['cases']) for p in CONFIGS) == 553
+    assert sum(len(json.loads(p.with_name('workload.json').read_text())['cases']) for p in CONFIGS) == 442
 
 
 @pytest.mark.parametrize('path', CONFIGS, ids=lambda p: str(p.parent.relative_to(ROOT / 'tasks')))
@@ -466,38 +466,15 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/CrossEntropyLossLabelSmoothing': (10,
  'hip2hip/roiaware_pool3d': (7, '5faf7054e8cabf6f5fa1401634d94ac5bed05949edb4fb749e88e285ce88ed1f'),
  'hip2hip/roipoint_pool3d': (7, '367df9a8950e03ade116d3c4c13baf19455e5a31207136f1336ef6ed1ee9c820'),
  'hip2hip/three_nn': (7, '6c679235f9e0511896fd942337004e55f3d853831ed1fc6d122daea007ff186b'),
- 'torch2hip/gpumode/1001_NormalAttention_dot': (9,
-                                                '164c44698ef8352e934b9131c22a67757031c3ca1ee914084da2b72d1459d8ce'),
  'torch2hip/gpumode/10024_Feedforward': (9, '68b824549008f00760c6bc788b55a2962e5dacb69090d309eefe349d599e48b8'),
- 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (9,
-                                                              '959acf417db2a246b506afb5798c203bb496e3d4faacf06916c67e372a61d072'),
- 'torch2hip/gpumode/10082_SoftmaxModule': (9, '9fe5305416b9190d484ce8127382f8d5889c714b9efe244c697b77b2b45b2ea1'),
  'torch2hip/gpumode/10099_Gather': (9, '1aabaff70e2b64f5530c3a18cb478d3fe4f64b09e578a7ade6beb5009c3dec4f'),
- 'torch2hip/gpumode/10190_FusedLeakyReLU': (9, '483e610a12b98911e490eb39fcaa31eeac04615dfe94e837615379a19c09f66a'),
- 'torch2hip/gpumode/102_ItemQueryAttention': (9,
-                                              '89d8d59d2270275a1c5193187c5646da280bed9122d4652496fb35efed74f71f'),
- 'torch2hip/gpumode/10456_MultiHeadAttention': (9,
-                                                'f939e60f74bf2212673f34ba1bfcb328f03f5b9ae37d70b274d3b30b0fa32de9'),
- 'torch2hip/gpumode/1067_Transpose': (9, 'a7dcb5c5ddc695a312dfbffe0a65efd87a68ce41eafb320b8e0037b9e8a08c74'),
  'torch2hip/gpumode/11122_PositionEmbedder': (9,
                                               '805a31972b706724dab615dd3955e054fa0dc01c50539641f3a5ea8d9039ed78'),
- 'torch2hip/gpumode/11178_TanH': (9, 'f44ab23dfa4975a80bb317a7ce3357ce867bd99b3c61e0d2e0a174e6ba60a34f'),
- 'torch2hip/gpumode/11184_Sigmoid': (9, '493cf1cfc9fc1eef59bfe6033e4629013954b25210adf51a1d74fb54f78c89c9'),
  'torch2hip/gpumode/11709_InnerProd': (9, '48ef35bc6ff27e57ecfde80c2bcb44365293d924302a155568731479d8329eb6'),
- 'torch2hip/gpumode/11754_layer_normalization': (9,
-                                                 '022fbed1df4b4db5248ce2daa55e1fe37674832a8a9ea5c64dd96d489a6fbc34'),
- 'torch2hip/gpumode/1178_MLP_model': (9, '0c16388bbbb91cdda1bc68b3b071bbaf7b47f0847721f0a5a5d3fff5dc5122e4'),
- 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (9,
-                                                            'c0fcd99d102ae6704bf0c6f486df5a86bf6c34f5fb8e04631b24c986860432e1'),
- 'torch2hip/gpumode/14007_KDLoss': (9, '471098a4ad428b3f19d2b0dd4e0d856c7490aabd87a03f6ebf43c8fd4b0620c6'),
  'torch2hip/gpumode/14044_PositionWiseFeedForward': (9,
                                                      'b871167c54ac55a9d4e16354cc8235446054f952a44332dacd37047d6cc9f86f'),
  'torch2hip/gpumode/14069_TransformerFFNLayer': (9,
                                                  '3c1e25fbf21d024f25de5ed916462ede19ab3ef828597d1a532a3a77dde5f64e'),
- 'torch2hip/gpumode/14539_GELU': (9, 'a387ba05afb78f9b734ac5fc8cfdf23ebc018a434cedf0516a59d9317c006820'),
- 'torch2hip/gpumode/16636_SiLU': (9, 'cbff466482ef3795f3bc65b65c9d799e70bfd1b3141b2b2681fbbc569f10bd25'),
- 'torch2hip/gpumode/3267_SimpleMatmulModule': (9,
-                                               '811d16947fb16d78b06b74736641fc5ef2294084196114a8ccb534f53174ffdd'),
  'torch2hip/gpumode/5334_GateGRUSelectionLayer': (9,
                                                   'cfaf238e199417f930b1774e1620fabca021084cc1e6beeb65dc64b9dd186f77'),
  'torch2hip/gpumode/8325_MaskedLanguageModel': (9,
@@ -576,7 +553,7 @@ ORIGINAL_SOURCE_DIGESTS = {'hip2hip/CrossEntropyLossLabelSmoothing': (10,
 # MaskedLanguageModel also needed its transposed weight launch axes corrected.
 # Additional repair pins require source-bound validation. Original digests remain
 # the gate for tasks without an explicit reviewed repair.
-GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/GELU': (11, '4f9540b61f00d8e22d65e0907db7387c96d6a90c149ed0c46dcd57389574cf95'), 'torch2hip/gpumode/14539_GELU': (10, '6c990124da84450c8da0e6135d375be2afa8b712f1d20f0b8fd4628a21b32c6f'), 'hip2hip/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/GateGRUSelectionLayer': (11, 'de46da65c66d79abc1c7925a7fb185e7912023ecf310fbb91feb0612e0fdbe38'), 'hip2hip/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/Sigmoid': (11, 'bed76f2a0219f9a3c2e98f5417f7a3ada481cd318f5894743fcdee6306139917'), 'torch2hip/gpumode/10190_FusedLeakyReLU': (11, 'c6fbff431520d64b059cc1495a3e98b7462e771e0afec52a12c9cbfb637aa364'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'torch2hip/gpumode/102_ItemQueryAttention': (10, 'cd9d6537d805e3d175b038e539ae36a2400a1c2cb08e4858faf663ca248528c4'), 'torch2hip/gpumode/16636_SiLU': (10, '5330ab36cee1ca0704a0d45db8bb0a47bfc8b53d2bba521bdcf3f21c3da6ba94'), 'torch2hip/gpumode/11184_Sigmoid': (11, 'ff7adbb481d08823be4dbab1c6320f188e12dd465190f8b1f0c5e2aedb8051a6'), 'hip2hip/TanH': (11, '25da5e37f4ef1d11be19cdab2cbee95f27c7a0af7c701e2b0945c5c81328439c'), 'torch2hip/gpumode/11178_TanH': (10, '1d61bea5024422ea638fc84d953b20128d647fbdf88e5fe418f2686a2d9c4503'), 'hip2hip/assign_score_withk': (8, '42e3493889a8c098bca37112f5c93c756ca0f2710ffdc29c06c79d78c0e1152f'), 'hip2hip/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/points_in_boxes': (8, '31e25de5aa59d735b5db3144910327bc047874032c1e44a186c48b4cba9ce720'), 'hip2hip/roiaware_pool3d': (8, '404415a6986ed902472a7dce0817239ce4c44f2804c3df2e0d95e64853de2d6e'), 'hip2hip/roipoint_pool3d': (8, 'deb9554c3d10268687c2008bbdaace48b432a681b63de320c60aaf7a1e9fb406'), 'hip2hip/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '3c2a8da59b2dc300fb22ea681772e8e8ed446a0dbb3cf64242258029a02cd919'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '6fd8c286fdebc9da5b7dad8174c9f69243946cdbe68c5c9a320212a6e8ad4cb2'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (11, '0afcd86f516c808c9a4a9641ba22abfeee74130dccff1987fd38213130d1d7af'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/CrossEntropyLossLabelSmoothing': (12, '92daa38f15572e2a2b3b26d67739951fdfe4e974e563573477ecac74a65b46c9'), 'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing': (11, '285a57b17629499fe15b1e7a3242afe5ae7ce636b2a06029ddf6bff66f1a2acf'), 'hip2hip/NormalAttention_dot': (11, '9e16cc5e223ebc24f3247b73121fad8ba82130560326d7ef646b3923be30a6ae'), 'torch2hip/gpumode/1001_NormalAttention_dot': (10, '044854eccc3c0db3955fcf640c2da0fc01a5d154572b2d6f2bf5f67635cf6761'), 'hip2hip/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '87333cb853696b3ff17afdcb5692934dcfc1ae96d39f46ad063272589fe2b74d'), 'hip2hip/InnerProd': (12, '4af2b26e19ba45c2c53106e9a5da2d947f75862e7c5e1a4eb41459956cd70e4a'), 'hip2hip/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/MultiHeadAttention': (12, '8cb3edadb96b5bf38ef78c3fa657a7b8557dd9556fdea76e0e1551dfcc268c8c'), 'hip2hip/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/SoftmaxModule': (11, '4241a1dcc8875d4f8cf2eeb98dc35a7830bd6970b7375ad4c0522e7f6ef114ab'), 'hip2hip/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/layer_normalization': (12, '37ca69c98db2a1626c9a220c47d5f9fd868ee6293e4ad5b47091a5bc7db1399b'), 'torch2hip/gpumode/1003_NormalAttention_embedded_gaussian': (10, '4e6b2b5a43cf3e0220be48f3aba290b6860ed62b91c6df024020228f30252fb1'), 'torch2hip/gpumode/10082_SoftmaxModule': (10, '0d76d2a4bccbde7e47029aa905d4716212b941475512459e97e167b53c49fcfb'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/10456_MultiHeadAttention': (11, 'e8e70c09c01273e62e561c3ced2efbfd2d5e7858968794ddbf8ee51bf502cd45'), 'torch2hip/gpumode/1067_Transpose': (10, 'f3a6ac32eebc9f7788d3f99cd587418017f41fd879ce28daf6e34629544a8071'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/11754_layer_normalization': (11, '7c6030f3d6c1740d9169dacdafe573f0470d4cd70b86d6991999e9b36a197068'), 'torch2hip/gpumode/1178_MLP_model': (10, '7856ee9beaf792f0aec8d84aeaf54579316de9b3dea782daba32f46d02a0c139'), 'torch2hip/gpumode/14007_KDLoss': (10, 'cf7f9a76d572e0b164b54df09f55225ceec70261d25e2ae6d2052e485e094b94'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/gpumode/3267_SimpleMatmulModule': (10, 'a912fd2c41021a55c029d35a410a01dc00a46fc9bb34d48bbee0a131084dd6fe'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '43b4d4c44e89ad2e16b95ba53f6abeb20a8bd5418cacccc9b8761aee999337e8'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, '427e56420448afacb52020a539063381e9c33c00e1043c9aa04cc2b0e1c21418'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad'), 'hip2hip/mla_decode': (5, 'c085a1d2388f5b1e0b231ad6bb7810f2657745b564fddffb3045ea97e8652e39')}
+GPU_VALIDATOR_REPAIR_DIGESTS = {'hip2hip/GELU': (11, '4f9540b61f00d8e22d65e0907db7387c96d6a90c149ed0c46dcd57389574cf95'), 'hip2hip/matrix_multiplication': (13, 'ccb2386a2eedf9b0d5a956bb656e6bae07bf738af5b84e3aa47b9e01c7bfffab'), 'hip2hip/FusedLeakyReLU': (12, '774ebc2b63b75e648ff4e40dd9f5222dc334318bb8ec6ac019586542645ca639'), 'hip2hip/GateGRUSelectionLayer': (11, 'de46da65c66d79abc1c7925a7fb185e7912023ecf310fbb91feb0612e0fdbe38'), 'hip2hip/ItemQueryAttention': (11, '78e4567f5a065446466e0c41d6e2135ffaa7b69ccb2ed9056ef27f93232011dd'), 'hip2hip/MaskedLanguageModel': (11, 'bb8969ec7690e5dbbc5675e4ac97db7443714d21d8c063a1574a45ea81c468ac'), 'hip2hip/SiLU': (11, '43c5f0a8c2cb9eaf4c0a52d75f952e27304a723c9c8f7cc4ac56bb90d09fa64c'), 'hip2hip/Sigmoid': (11, 'bed76f2a0219f9a3c2e98f5417f7a3ada481cd318f5894743fcdee6306139917'), 'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, '3d631fc5dce6c0574920709fdffd5c3eba28405ae3d83bd935e6e916abc14412'), 'hip2hip/TanH': (11, '25da5e37f4ef1d11be19cdab2cbee95f27c7a0af7c701e2b0945c5c81328439c'), 'hip2hip/assign_score_withk': (8, '42e3493889a8c098bca37112f5c93c756ca0f2710ffdc29c06c79d78c0e1152f'), 'hip2hip/ball_query': (10, 'cd11b843e3fb5be4644e86ad082dac15f58be645e7e98417da5e2feacd97b14e'), 'hip2hip/furthest_point_sample': (10, 'c76c7a8cb25cec5c79852ca7d174a19fd788517642c3f819beac596f899e8544'), 'hip2hip/knn': (8, '3ecfb50ee4713f8b0ecb65dadd2c76fc889d3b119449582e8ff95c4cc45de558'), 'hip2hip/points_in_boxes': (8, '31e25de5aa59d735b5db3144910327bc047874032c1e44a186c48b4cba9ce720'), 'hip2hip/roiaware_pool3d': (8, '404415a6986ed902472a7dce0817239ce4c44f2804c3df2e0d95e64853de2d6e'), 'hip2hip/roipoint_pool3d': (8, 'deb9554c3d10268687c2008bbdaace48b432a681b63de320c60aaf7a1e9fb406'), 'hip2hip/three_nn': (8, '40e7b452866f727f83c37e3e9306d4c9a4fddbfb89ba4cf502f89baccbb052d4'), 'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '2fb3f69dcecad77a6e350430090830dc5b3af6d7a2ff03d8b8d0cb4e29678e2b'), 'torch2hip/kernelbench/level1/l1n1_Square_matrix_multiplication_': (10, '20b6ac9b8c3d37d45587e72a62c91a794ad00538217705d12c2bac1a57e81c5d'), 'torch2hip/kernelbench/level1/l1n23_Softmax': (10, '3c2a8da59b2dc300fb22ea681772e8e8ed446a0dbb3cf64242258029a02cd919'), 'torch2hip/kernelbench/level1/l1n26_GELU_': (10, '6fd8c286fdebc9da5b7dad8174c9f69243946cdbe68c5c9a320212a6e8ad4cb2'), 'torch2hip/kernelbench/level1/l1n2_Standard_matrix_multiplication_': (10, '3947c3d599ec40cc77ccaefee8d4b55c9bebb5186b8dd1a97e55abb494b733d5'), 'torch2hip/kernelbench/level1/l1n36_RMSNorm_': (10, '26983a696c85e3c6f9bb0df51e131e5c1fd9e646a147e158ea210a58fdd7ac7e'), 'torch2hip/kernelbench/level1/l1n3_Batched_matrix_multiplication': (10, '499811d76f7fccd1e4cd51ed172109aadbc1a72f8795db87eef66b2755ecbb7d'), 'torch2hip/kernelbench/level1/l1n40_LayerNorm': (11, '0afcd86f516c808c9a4a9641ba22abfeee74130dccff1987fd38213130d1d7af'), 'torch2hip/kernelbench/level1/l1n42_Max_Pooling_2D': (10, '6357ce29e8c56f3182c5c40f2543ce40affffbbbfe74911ed9ff9d0e1f5d7375'), 'torch2hip/kernelbench/level1/l1n47_Sum_reduction_over_a_dimension': (10, '609c722ceb99129492ec248d2332020e5072bc76a3e8f9bfc0d303253b536e76'), 'torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_': (10, '9a2412cb0a319bc4d3a2bc1d5eeeee7a946af1f85f37acb3dbd9f01cccee59e1'), 'torch2hip/kernelbench/level1/l1n63_conv_standard_2D__square_input__square_kernel': (10, 'aed202bc6ee1649644598e4edeb71929ac546f1a7f7f279c36cdffc597325409'), 'torch2hip/kernelbench/level1/l1n82_conv_depthwise_2D_square_input_square_kernel': (10, '9c65cb3c33f81ce01e9a7771978b1da6e1b90317547be87983df41f6ffe9d869'), 'torch2hip/kernelbench/level1/l1n8_Matmul_with_irregular_shapes_': (10, '06563b8354b58fc1a19b9530958427b58905f732f37d0c82bb8d32fbe47dc95e'), 'torch2hip/kernelbench/level1/l1n95_CrossEntropyLoss': (10, '4760199ce48b862e98d6cc1400aa17bfaddfdc1526f77c538111488325b900d4'), 'torch2hip/kernelbench/level1/l1n9_Tall_skinny_matrix_multiplication_': (10, '4181e90055b4a574d36ddbfd712e06b44f682be7b701167aab0bc6bfb15f674f'), 'hip2hip/CrossEntropyLossLabelSmoothing': (12, '92daa38f15572e2a2b3b26d67739951fdfe4e974e563573477ecac74a65b46c9'), 'hip2hip/NormalAttention_dot': (11, '9e16cc5e223ebc24f3247b73121fad8ba82130560326d7ef646b3923be30a6ae'), 'hip2hip/Feedforward': (11, '40e1e191db0544dad748a983378beff6daf4cbee497fa1f965586b888ab55dc0'), 'torch2hip/gpumode/10024_Feedforward': (10, '87333cb853696b3ff17afdcb5692934dcfc1ae96d39f46ad063272589fe2b74d'), 'hip2hip/InnerProd': (12, '4af2b26e19ba45c2c53106e9a5da2d947f75862e7c5e1a4eb41459956cd70e4a'), 'hip2hip/KDLoss': (11, '519fb7118865ba9e00cdc6b9059d7add4f7d2f0a9c1e56611d1439ea6a64b6ec'), 'hip2hip/MLP_model': (11, 'd47715de80e5bd5e2494617707e49c325cc87bd09fede7b8bdb817a8d5e7c7a9'), 'hip2hip/MultiHeadAttention': (12, '8cb3edadb96b5bf38ef78c3fa657a7b8557dd9556fdea76e0e1551dfcc268c8c'), 'hip2hip/NormalAttention_embedded_gaussian': (11, 'af24da05b8ea606df87fe9e7e9e26186afe7d098f98de5dce873e89c541ce643'), 'hip2hip/PositionWiseFeedForward': (11, 'df0164ed765748cc088b24f4d56cf0999f2e492a72c1b1b0e675c3f00a8d271d'), 'hip2hip/SimpleMatmulModule': (11, 'd4dc537d8858f7aa1c14b9f4e4f24b8fb092341229e335eb3c958c613b0418db'), 'hip2hip/SoftmaxModule': (11, '4241a1dcc8875d4f8cf2eeb98dc35a7830bd6970b7375ad4c0522e7f6ef114ab'), 'hip2hip/TransformerFFNLayer': (11, '452dd026048faf7b0c52f39222834a943b0138936ea92efb44266edcefa1c267'), 'hip2hip/Transpose': (11, 'e37c704ef3121fe4a37a2105084a51bb9c9d37178cd2ae5722498a052d31e168'), 'hip2hip/layer_normalization': (12, '37ca69c98db2a1626c9a220c47d5f9fd868ee6293e4ad5b47091a5bc7db1399b'), 'torch2hip/gpumode/10099_Gather': (10, 'b812f72c4cc17a19c11efb380f08f3b807da768fc4e2bad5afa984804c44f6c0'), 'torch2hip/gpumode/11122_PositionEmbedder': (10, 'e06e7c1eee5408c79a64fcac82801c757affd21d491c69bf424645e9a4e658a7'), 'torch2hip/gpumode/11709_InnerProd': (11, '399c11b6c10e8052cbd1266a3b8e1165a71b205eac78ec02ac61b9b30506f38e'), 'torch2hip/gpumode/14044_PositionWiseFeedForward': (10, 'cb0f9baa199a4b87f7e67905769be0693b68731ada888696cf9ef0c1ca0f9106'), 'torch2hip/gpumode/14069_TransformerFFNLayer': (10, '8b134fecdba1fef0e1c272721d0f3eec77cb3a3d240122a0b730919d6356cf12'), 'torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide': (10, '5e683ac6cacf817d6df23145a49ef858580b228d774e12363e11e91216ce62db'), 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm': (10, 'f2f4617a554667cdb94ac1f0086414161a63b9de87b00769a00beb2e290d18d1'), 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd': (10, '968de902011ebf3c7d4426e1a59aff3df8d16d60a6d643a419c71c49f583b29c'), 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool': (10, 'abcaa40577247626b1b6b96bc1190dbcfbe68202eafc7a0eb526a39c86386892'), 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm': (10, '0ebd91aa7952491a2b79c772bf19fb58b49d8c761c5b414f01247187339ee67c'), 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale': (10, '43b4d4c44e89ad2e16b95ba53f6abeb20a8bd5418cacccc9b8761aee999337e8'), 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling': (10, '316416aeae848fc04b2f925aa1d11026387abbfac16613fd1f9616a20e3795c1'), 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax': (10, '5abfcb99c3c248270aa0e35a8f455c04995ad8d5a04829230310ce3cdf268cc9'), 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool': (10, 'cbbcc6e39cc4874fd4eff05c65b024cfa72af6090d6b7c45a985fc19f9428a6f'), 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling': (10, '427e56420448afacb52020a539063381e9c33c00e1043c9aa04cc2b0e1c21418'), 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max': (10, '1965dcbf0a873b2dac96f0f56237dff4c5ab0aafe50ed2f236ef922bd4482f6c'), 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp': (10, '30018c04c529fd9f2d71ef248d304050d7ea8f13442673fdae85c76db5fcd3ad'), 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU': (10, '9b0be02c49ad151540f9809841b5cecb1103f7fcd0b425e7e06529d0579ff13d'), 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max': (10, 'ab8d0508fb2d6dd8a570ac802b217e31b178738f75382a5a6f69718f4a764458'), 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax': (10, '8fabb1d609c2327c90ac16be5ed1d124661f6a1da0eb29fcf4bfa1598a581316'), 'torch2hip/kernelbench/level3/l3n31_VisionAttention': (10, 'd0af0fbc6b95cbf5602cc2a30474c663095faf401390e4d6fcd7318d07bbc40b'), 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention': (10, '14353949b386acbb41c7e4f02277a5b33909e1752020d127dba87cd25e7200e9'), 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock': (10, 'd1edd1bb46b907d2fb56d68a9b1237d2bbfa0ef40d415c17a98ce5ade130d5ad'), 'hip2hip/mla_decode': (5, 'c085a1d2388f5b1e0b231ad6bb7810f2657745b564fddffb3045ea97e8652e39')}
 
 
 # Reviewed PR105 additions: analytic nonuniform backward checks and a separate
@@ -609,7 +586,6 @@ RL_GENERATION_WORKLOAD_SOURCE_DIGESTS = {
     'torch2hip/gpumode/5334_GateGRUSelectionLayer': (10, 'e5ac05611ce488f637b5d6f187d21ab802882f7edf33ae1c83073f0bc6ddd374'),
     'torch2hip/gpumode/8325_MaskedLanguageModel': (10, '84b28ce0495dd24e1f61164a2dab7aceb01ac063351319836b8caaeb0182919c'),
 }
-
 
 
 # Intentional matrix input-distribution upgrade. Timed values changed; this
@@ -1436,17 +1412,13 @@ def test_matrix_additional_checks_cover_all_original_shapes_and_dense_controls(m
         helper.check_additional_paths(harness)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/gpumode/14539_GELU',
+@pytest.mark.parametrize('relative', ['hip2hip/GELU',
                                          'hip2hip/FusedLeakyReLU', 'hip2hip/GateGRUSelectionLayer',
                                          'hip2hip/ItemQueryAttention',
                                          'hip2hip/SiLU',
                                          'hip2hip/Sigmoid',
-                                         'torch2hip/gpumode/10190_FusedLeakyReLU',
                                          'torch2hip/gpumode/5334_GateGRUSelectionLayer',
-                                         'torch2hip/gpumode/102_ItemQueryAttention',
-                                         'torch2hip/gpumode/16636_SiLU',
-                                         'torch2hip/gpumode/11184_Sigmoid',
-                                         'hip2hip/TanH', 'torch2hip/gpumode/11178_TanH',
+                                         'hip2hip/TanH',
                                          'hip2hip/MaskedLanguageModel', 'torch2hip/gpumode/8325_MaskedLanguageModel'] +
                          [p.parent.relative_to(ROOT / 'tasks').as_posix() for p in CONFIGS if 'level1' in p.parts] + ADDITIONAL_GPUMODE_REPLAY + ['torch2hip/kernelbench/level2/l2n17_Conv2d_InstanceNorm_Divide', 'torch2hip/kernelbench/level2/l2n37_Matmul_Swish_Sum_GroupNorm', 'torch2hip/kernelbench/level2/l2n40_Matmul_Scaling_ResidualAdd', 'torch2hip/kernelbench/level2/l2n46_Conv2d_Subtract_Tanh_Subtract_AvgPool', 'torch2hip/kernelbench/level2/l2n52_Conv2d_Activation_BatchNorm', 'torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale', 'torch2hip/kernelbench/level2/l2n59_Matmul_Swish_Scaling', 'torch2hip/kernelbench/level2/l2n66_Matmul_Dropout_Softmax', 'torch2hip/kernelbench/level2/l2n6_Conv3d_Softmax_MaxPool_MaxPool', 'torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling', 'torch2hip/kernelbench/level2/l2n82_Conv2d_Tanh_Scaling_BiasAdd_Max', 'torch2hip/kernelbench/level2/l2n85_Conv2d_GroupNorm_Scale_MaxPool_Clamp', 'torch2hip/kernelbench/level2/l2n86_Matmul_Divide_GELU', 'torch2hip/kernelbench/level2/l2n98_Matmul_AvgPool_GELU_Scale_Max', 'torch2hip/kernelbench/level2/l2n99_Matmul_GELU_Softmax', 'torch2hip/kernelbench/level3/l3n31_VisionAttention', 'torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention', 'torch2hip/kernelbench/level3/l3n44_MiniGPTBlock'])
 @pytest.mark.parametrize('behavior', ['correct', 'wrong_replay', 'input_mutation', 'input_alias'])
@@ -1535,8 +1507,7 @@ def test_gelu_exact_timed_replay_and_input_contract(relative, behavior, monkeypa
     assert observed[0]['warmup'] == 10 and observed[0]['repetition'] == 100
 
 
-@pytest.mark.parametrize('family', ['hip2hip', 'torch2hip'])
-@pytest.mark.parametrize('name', ['FusedLeakyReLU', 'GateGRUSelectionLayer'])
+@pytest.mark.parametrize('family,name', [('hip2hip', 'FusedLeakyReLU'), ('hip2hip', 'GateGRUSelectionLayer'), ('torch2hip', 'GateGRUSelectionLayer')])
 def test_added_replay_tasks_reference_known_answer_and_readonly_inputs(name, family):
     directory = name if family == 'hip2hip' else {'FusedLeakyReLU': '10190_FusedLeakyReLU', 'GateGRUSelectionLayer': '5334_GateGRUSelectionLayer'}[name]
     root = gpumode_task_root(family, directory)
@@ -1567,7 +1538,7 @@ def test_added_replay_tasks_reference_known_answer_and_readonly_inputs(name, fam
             torch.testing.assert_close(before_state[key], value, rtol=0, atol=0)
 
 
-@pytest.mark.parametrize('family', ['hip2hip', 'torch2hip'])
+@pytest.mark.parametrize('family', ['hip2hip'])
 def test_item_attention_zero_projection_known_answer_and_readonly_inputs(family):
     directory = 'ItemQueryAttention' if family == 'hip2hip' else '102_ItemQueryAttention'
     root = gpumode_task_root(family, directory)
@@ -1634,7 +1605,7 @@ int main() {
     subprocess.run([str(tmp_path/'check')],check=True,timeout=10)
 
 
-@pytest.mark.parametrize('family', ['hip2hip', 'torch2hip'])
+@pytest.mark.parametrize('family', ['hip2hip'])
 @pytest.mark.parametrize('name', ['SiLU', 'Sigmoid', 'TanH'])
 def test_priority_activation_references_have_independent_known_answers(name, family):
     directory = name if family == 'hip2hip' else {'SiLU': '16636_SiLU', 'Sigmoid': '11184_Sigmoid', 'TanH': '11178_TanH'}[name]
@@ -1663,9 +1634,6 @@ def test_priority_activation_references_have_independent_known_answers(name, fam
     ('hip2hip/points_in_boxes', 'scripts/reference_checks.py',
      '87a67556f8d9cee8a9d1b6dd2ebfae712e89578d0d55884485efccf9ab7c258e',
      'check_heading_controls'),
-    ('torch2hip/gpumode/11184_Sigmoid', 'eval_tools/evaluate.py',
-     'fb8ed250fec11280db12dfccdd0b81e253aa08269be2a86dd58ad7b107a8892f',
-     'check_sigmoid_controls'),
 ])
 def test_v9_additive_correctness_controls_are_source_bound_and_invoked(
         relative, source, digest, required_call):
@@ -1720,8 +1688,7 @@ def test_v9_additive_correctness_controls_are_source_bound_and_invoked(
             'negative_max', 'zero_a', 'zero_max']
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU',
-                                      'torch2hip/gpumode/10190_FusedLeakyReLU'])
+@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU'])
 def test_fused_manifest_states_exercise_bias_channels_slope_and_scale(relative):
     root = ROOT / 'tasks' / relative
     helper = import_path(root / 'eval_tools/case_controls.py')
@@ -2121,8 +2088,7 @@ def test_level1_reference_independent_known_answers_and_readonly_inputs(path):
             torch.testing.assert_close(state[key],value,rtol=0,atol=0)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/CrossEntropyLossLabelSmoothing',
-                                      'torch2hip/gpumode/12501_CrossEntropyLossLabelSmoothing'])
+@pytest.mark.parametrize('relative', ['hip2hip/CrossEntropyLossLabelSmoothing'])
 @pytest.mark.parametrize('kind', ['captured_graph', 'eager_callable'])
 @pytest.mark.parametrize('defect', ['none', 'last_sample', 'reinvocation', 'input_mutation'])
 def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kind, defect, monkeypatch):
@@ -2185,7 +2151,7 @@ def test_loss_observes_actual_event_sample_and_distinguishes_graph(relative, kin
 
 
 @pytest.mark.parametrize('relative', ['hip2hip/NormalAttention_dot',
-    'torch2hip/gpumode/1001_NormalAttention_dot', 'hip2hip/Feedforward',
+     'hip2hip/Feedforward',
     'torch2hip/gpumode/10024_Feedforward'])
 @pytest.mark.parametrize('kind', ['captured_graph', 'eager_callable'])
 @pytest.mark.parametrize('defect', ['none', 'last_sample', 'reinvocation'])
@@ -2364,8 +2330,7 @@ def test_remaining_gpumode_references_against_independent_answers(relative):
         for key,value in model.state_dict().items(): torch.testing.assert_close(value,state[key],rtol=0,atol=0)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU',
-                                      'torch2hip/gpumode/10190_FusedLeakyReLU'])
+@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU'])
 @pytest.mark.parametrize('defect', ['none', 'omit_bias', 'wrong_channel', 'fixed_slope', 'fixed_scale'])
 def test_fused_timed_replay_uses_nonzero_manifest_reference(relative, defect, monkeypatch):
     """A correct eager call cannot excuse wrong fused math on the timed replay.
@@ -2425,8 +2390,7 @@ def test_fused_timed_replay_uses_nonzero_manifest_reference(relative, defect, mo
     assert len(reruns) == 5 + (5 if defect == 'none' else int(defect in ('fixed_slope', 'fixed_scale')))
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU',
-                                      'torch2hip/gpumode/10190_FusedLeakyReLU'])
+@pytest.mark.parametrize('relative', ['hip2hip/FusedLeakyReLU'])
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
 @pytest.mark.parametrize('behavior', ['correct', 'cached_answer', 'fresh_replay_error',
                                       'fresh_oracle_error', 'fresh_input_mutation'])
@@ -3226,7 +3190,7 @@ int main(){
     assert [(r['params']['batch'],r['params']['ctx']) for r in manifest['cases']] == [(1,512),(4,1024),(16,2048),(1,4096),(1,8192)]
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/gpumode/14539_GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
+@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
 def test_gelu_reference_independent_of_shared_production_operator(relative, monkeypatch):
     root = ROOT / 'tasks' / relative
     helper = import_path(root / 'eval_tools/replay_validation.py')
@@ -3248,7 +3212,7 @@ def test_gelu_reference_independent_of_shared_production_operator(relative, monk
     assert not torch.allclose(approximate, expected, rtol=1e-4, atol=1e-5)
 
 
-@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/gpumode/14539_GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
+@pytest.mark.parametrize('relative', ['hip2hip/GELU', 'torch2hip/kernelbench/level1/l1n26_GELU_'])
 @pytest.mark.parametrize('role', ['baseline', 'candidate'])
 def test_gelu_timing_rejects_shared_wrong_gelu(relative, role, monkeypatch):
     root = ROOT / 'tasks' / relative
@@ -3293,38 +3257,7 @@ def test_kernelbench_gelu_signed_inputs_preserve_all_original_draws(monkeypatch)
         calls.clear()
 
 
-@pytest.mark.parametrize('reference_method,actual_method,consistent', [
-    ('cuda_graph','cuda_graph',True),
-    ('cuda_graph','cuda_event_fallback',False),
-    ('cuda_graph','cuda_event_fallback',True),
-    ('cuda_graph','cuda_graph',False),
-])
-def test_softmax_action_rejects_incomparable_timing(tmp_path, monkeypatch, reference_method, actual_method, consistent):
-    root = ROOT / 'tasks/torch2hip/gpumode/10082_SoftmaxModule'
-    runner = import_path(root / 'eval_tools/evaluate.py')
-    args = options(yaml.safe_load((root / 'config.yaml').read_text()))
-    monkeypatch.setattr(runner, 'ROOT', tmp_path)
-    (tmp_path / 'build').mkdir()
-    rows = [{'test_case_id':'case_0','params':{'inputs':[{'shape':[2],'dtype':'torch.float32','stride':[1]}]}}]
-    perf = types.SimpleNamespace(_compare_results=lambda *a, **k: True,
-        load_modu_obj=lambda *a: None,load_func_obj=lambda *a: None,
-        load_function_from_path=lambda *a: lambda: iter([[torch.ones(2)]]))
-    def benchmark(*paths, **kwargs):
-        list(perf.load_function_from_path('module','get_inputs')())
-        perf._write_perf_report({'status':'ok','test_cases':[{'case_idx':0,'correct':True,'ori_time':.2,'opt_time':.1,
-            'reference_benchmark_method':reference_method,'benchmark_method':actual_method,
-            'benchmark_method_consistent':consistent}]})
-    perf.cal_kernel_perf = benchmark
-    monkeypatch.setitem(sys.modules,'cal_kernel_perf',perf)
-    monkeypatch.setitem(sys.modules,'replay_validation',types.SimpleNamespace(install=lambda *a:None))
-    if consistent and reference_method==actual_method:
-        assert runner.performance(args,'candidate',rows)[0]['execution_time_ms']==.1
-    else:
-        with pytest.raises(RuntimeError,match='incomparable'):
-            runner.performance(args,'candidate',rows)
-
-
-ATTENTION_TASKS = ['hip2hip/MultiHeadAttention','torch2hip/gpumode/10456_MultiHeadAttention']
+ATTENTION_TASKS = ['hip2hip/MultiHeadAttention']
 
 
 @pytest.mark.parametrize('relative', ATTENTION_TASKS)
@@ -3408,7 +3341,7 @@ def test_attention_real_correctness_runner_rejects_route_and_mask_defects(relati
     assert all(r.get('failure_kind')=='numerical_mismatch' for r in result if r['status']=='FAIL')
 
 
-SOFTMAX_ORACLE_TASKS = ['hip2hip/SoftmaxModule', 'torch2hip/gpumode/10082_SoftmaxModule',
+SOFTMAX_ORACLE_TASKS = ['hip2hip/SoftmaxModule',
                         'torch2hip/kernelbench/level1/l1n23_Softmax']
 
 

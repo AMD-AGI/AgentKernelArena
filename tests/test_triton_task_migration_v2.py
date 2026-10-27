@@ -583,7 +583,6 @@ def test_vllm_called_jit_kernel_cannot_be_replaced_with_plain_python(config, tmp
     assert 'must remain a Triton JIT kernel' in result['reason']
 
 
-
 def test_staged_write_reference_known_answer_and_untouched_cells(monkeypatch):
     task = ROOT/'tasks/triton2triton/vllm/triton_apply_write'
     harness = module_at(task/'scripts/task_runner.py', monkeypatch)
@@ -1327,25 +1326,19 @@ PR105_HOST_FUNCTIONS = {
 def before_pr105_additions(source, task):
     """Prove the additive main merge, then reuse the original migration audit."""
     relative = task.relative_to(ROOT/'tasks').as_posix()
-    additions = {
-        'triton2triton/rocmbench/easy/test_randn': {'launch_randn', 'philox_rand_reference',
-            'test_rand_seed_differentiation', 'test_rand_seeded_sequence_and_repeatability'},
-        'triton2triton/rocmbench/medium/test_triton_swizzle2d': {'swizzle2d_reference', 'test_swizzle2d_boundary'},
-    }
     decorators = {
         'triton2triton/rocmbench/easy/test_block_copy': 'test_block_copy',
         'triton2triton/rocmbench/hard/test_tma_store_gemm': 'test_tma_load_store',
         'triton2triton/rocmbench/medium/test_cast_matmul': 'test_cast_matmul',
     }
     raw = source.read_bytes()
-    if relative not in additions and relative not in decorators and relative not in PR105_HOST_FUNCTIONS:
+    if relative not in decorators and relative not in PR105_HOST_FUNCTIONS:
         return raw
     before = subprocess.check_output(['git', 'show', 'e8ec5d6b:' + source.relative_to(ROOT).as_posix()], cwd=ROOT)
     old, new = ast.parse(before), ast.parse(raw)
     olddefs = {n.name:n for n in old.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
     newdefs = {n.name:n for n in new.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
-    added = additions.get(relative, set())
-    assert newdefs.keys() - olddefs.keys() == added
+    assert not newdefs.keys() - olddefs.keys()
     for name, digest in PR105_HOST_FUNCTIONS.get(relative, {}).items():
         assert hashlib.sha256(ast.get_source_segment(raw.decode(), newdefs[name]).encode()).hexdigest() == digest
     if relative in decorators:
@@ -1364,7 +1357,6 @@ def before_pr105_additions(source, task):
                 assert isinstance(old_cases,ast.List) and isinstance(new_cases,ast.List)
                 assert [ast.dump(n) for n in new_cases.elts[:len(old_cases.elts)]] == [ast.dump(n) for n in old_cases.elts]
         newdefs[name].decorator_list = olddefs[name].decorator_list
-    new.body = [n for n in new.body if not isinstance(n,(ast.FunctionDef,ast.ClassDef)) or n.name not in added]
     for index,node in enumerate(new.body):
         if isinstance(node,(ast.FunctionDef,ast.ClassDef)) and node.name in PR105_HOST_FUNCTIONS.get(relative,{}):
             new.body[index] = olddefs[node.name]
@@ -1630,42 +1622,6 @@ def test_rocm_v2_preserves_original_source_and_complete_parameter_manifest(path)
     ast.parse((task/'_arena_reference.py').read_text())
 
 
-
-@pytest.mark.parametrize('exitcode,timed_out', [(0,False),(1,False),(None,True)])
-@pytest.mark.parametrize('task', ['tasks/triton2triton/rocmbench/easy/test_kernel_sub'])
-def test_kernel_sub_declared_compilation_case_executes_and_rejects_child_failure(task,exitcode,timed_out):
-    # Run the protected test body against a controlled process, verifying that
-    # a skipped/nonzero/timed-out compilation cannot become successful evidence.
-    tree=ast.parse((ROOT/task/'test_kernel_sub.py').read_text())
-    definition=next(node for node in tree.body if isinstance(node,ast.FunctionDef)
-                    and node.name=='test_compile_kernel_sub_in_subproc')
-    definition.decorator_list=[]
-    calls=[]
-    def compile_target(): pass
-    class Process:
-        def __init__(self, target):
-            assert target is compile_target
-            self.exitcode=exitcode
-        def start(self): calls.append('start')
-        def join(self, timeout=None): calls.append(('join',timeout))
-        def is_alive(self): return timed_out
-        def terminate(self): calls.append('terminate')
-    namespace=dict(multiprocessing=SimpleNamespace(set_start_method=lambda *a,**k:None,Process=Process),
-                   set_seed=lambda:None,pytest=pytest,torch=torch,result_gold={},
-                   compile_kernel_sub_for_test=compile_target)
-    exec(compile(ast.Module(body=[definition],type_ignores=[]),str(ROOT/task/'test_kernel_sub.py'),'exec'),namespace)
-    run=lambda: namespace[definition.name]('fresh-cache',SimpleNamespace(node=SimpleNamespace(name='compile-case')))
-    if timed_out:
-        with pytest.raises(pytest.fail.Exception,match='Process timed out'): run()
-        assert 'terminate' in calls
-    elif exitcode != 0:
-        with pytest.raises(AssertionError): run()
-    else:
-        run()
-        assert namespace['result_gold']['compile_case'].item()==1.0
-    assert calls[:2]==['start',('join',60)]
-
-
 @pytest.mark.parametrize('task',['tasks/triton2triton/rocmbench/medium/rmsnorm_fwd'])
 @pytest.mark.parametrize('epsilon', [1e-6, 1e-5])
 @pytest.mark.parametrize('zero_centered', [True, False])
@@ -1748,26 +1704,6 @@ def test_rms_forward_declared_dtype_pairs_execute_original_performance_body(monk
 
 def oracle(name,monkeypatch):
     return module_at(ROCM_TASKS[name]/'_arena_reference.py',monkeypatch)
-
-
-def test_philox_known_counter_and_uniform_negative_control(monkeypatch):
-    reference=oracle('test_randn',monkeypatch)
-    # Philox4x32-10 zero counter/key known answer (first lane).
-    assert reference.philox32(0,1).tolist()==[0x6627e8d5]
-    output=torch.zeros(16)
-    check=reference.prepare({'seed_val':0,'N_elements':16,'x_output_buffer':output},None)
-    with pytest.raises(reference.NumericalMismatch):check(output)
-
-
-def test_swizzle_matches_original_explicit_known_order(monkeypatch):
-    reference=oracle('test_triton_swizzle2d',monkeypatch)
-    expected=reference.swizzle_reference(5,7,3,dtype=torch.int32,device='cpu')
-    task=ROCM_TASKS['test_triton_swizzle2d']/'test_triton_swizzle2d.py'
-    tree=ast.parse(task.read_text());test=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='test_swizzle2d')
-    assignment=next(n for n in ast.walk(test) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='expected_order' for t in n.targets))
-    original_order=ast.literal_eval(assignment.value.func.value.args[0])
-    assert expected.tolist()==original_order
-    with pytest.raises(reference.NumericalMismatch):reference.compare(expected,torch.arange(35).reshape(5,7),exact=True,check_dtype=False)
 
 
 def test_rms_backward_reference_matches_autograd_and_rejects_wrong_gradients(monkeypatch):
@@ -2565,7 +2501,7 @@ def test_all_rocm_manifests_match_original_cpu_collected_pytest_parameters():
     fixture=ROOT/'tests/fixtures/triton_migration/collect_rocm_cpu.py'
     run=subprocess.run([sys.executable,str(fixture)],cwd=ROOT,text=True,capture_output=True,check=True)
     collected=json.loads(run.stdout)
-    assert len(collected)==31
+    assert len(collected)==26
     for task,functions in collected.items():
         expected={}
         for fn in functions:
@@ -4899,7 +4835,6 @@ def test_grouped_norm_adapter_installs_checks(monkeypatch):
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_grouped_layernorm_checks'
 
 
-
 def _bincount_cpu(mapping, tokens, prompt, prefill, masks, counts, *, reset=True):
     if reset:
         masks[mapping.long()] = 0
@@ -5040,7 +4975,6 @@ def test_bincount_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_bincount/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_bincount_checks'
-
 
 
 def _reduce_segments_cpu(partial, maxima, sums, output, lengths, starts, tile_size=16):
@@ -5271,7 +5205,6 @@ def test_gather_tables_adapter_installs_checks(monkeypatch):
     adapter = module_at(ROOT/'tasks/triton2triton/vllm/triton_gather_block_tables/_arena_eval.py', monkeypatch)
     h = adapter.load_harness()
     assert h.run_correctness.__module__ == h.run_performance.__module__ == '_gather_table_checks'
-
 
 
 def _recovered_tokens_cpu(cu, ids, draft, target, q, maximum, vocab):

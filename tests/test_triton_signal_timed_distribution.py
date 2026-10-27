@@ -228,8 +228,14 @@ def test_actual_performance_runner_uses_new_inputs_and_unchanged_timing_policy(t
     monkeypatch.setattr(h, '_benchmark_cuda_graph_or_events', benchmark)
     rows = h.run_performance()
     assert len(rows) == 5 and all(row['execution_time_ms'] == .125 for row in rows), rows
+    assert all(row['strong_signal_replay_checked'] for row in rows)
     assert options == [{'warmup': 10, 'repetition': 100}] * 5
     assert len(calls) == 10
+    if path.name == 'triton_ssd_chunk_scan':
+        # This same honest run also checks replay amplification. Re-running
+        # every CPU oracle solely to inspect cb duplicates all five cases.
+        for timed, replay in zip(calls[::2], calls[1::2]):
+            assert torch.equal(timed['cb'], replay['cb'])
     for index, measured in enumerate(calls[::2]):
         if path.name == 'triton_ssd_chunk_scan':
             expected = h.gen_inputs(h.TEST_SHAPES[index], 0, 'cpu')

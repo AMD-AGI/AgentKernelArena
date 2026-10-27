@@ -27,7 +27,7 @@ def test_flattened_hip_tasks_are_unique_and_loadable():
 
 def test_rocmbench_has_one_registered_flip_and_no_old_classification():
     discovered = get_task_config(str(TASKS), "triton2triton/rocmbench")
-    assert len(discovered) == 31
+    assert len(discovered) == 26
     flip = "triton2triton/rocmbench/test_triton_flip"
     assert flip in discovered
     assert load_task_spec(Path(discovered[flip]), task_id=flip).to_mapping()["schema_version"] == 2
@@ -35,7 +35,7 @@ def test_rocmbench_has_one_registered_flip_and_no_old_classification():
     assert not (TASKS / "triton2triton/rocmbench/easy/test_triton_flip/config.yaml").exists()
     assert not get_task_config(str(TASKS), "instruction2triton")
     serving = get_task_config(str(TASKS), "e2e")
-    assert len(get_task_config(str(TASKS))) == 436 + len(serving)
+    assert len(get_task_config(str(TASKS))) == 415 + len(serving)
 
 
 @pytest.mark.parametrize("name", [
@@ -50,7 +50,7 @@ def test_updated_example_selectors_resolve_without_duplicates(name):
         assert get_task_config(str(TASKS), selector), selector
 
 
-def test_cursor_example_preserves_unique_historical_task_selection():
+def test_cursor_example_preserves_retained_historical_task_selection():
     original = yaml.safe_load(
         (ROOT / "tests/fixtures/benchmark_cursor_original_60.yaml").read_text()
     )["tasks"]
@@ -69,8 +69,10 @@ def test_cursor_example_preserves_unique_historical_task_selection():
             replacement = matches[0]
         else:
             replacement = selector
+        if parts[0] == "torch2hip" and not (TASKS / replacement / "config.yaml").exists():
+            continue  # Retired generation duplicates; HIP optimization tasks remain.
         mapped.append(replacement)
     expected = list(dict.fromkeys(mapped))
-    assert len(expected) == 54
+    assert len(expected) == 46
     actual = yaml.safe_load((ROOT / "example_configs/benchmark_cursor_mi355x.yaml").read_text())["tasks"]
     assert actual == expected
