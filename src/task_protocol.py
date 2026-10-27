@@ -13,7 +13,7 @@ import math
 from typing import Any, Iterable
 
 from .task_spec import ACTIONS, BaselineSpec
-from .measurement import DEVICE_METHODS, SERVING_METHOD, validate_serving_case
+from .measurement import DEVICE_METHODS, SERVING_METHOD, cold_cache_identity, validate_serving_case
 
 
 RESULT_PREFIX = "ARENA_EVAL_RESULT="
@@ -164,6 +164,11 @@ def parse_command_result(stdout: str, *, role: str, action: str, returncode: int
             allowed = {SERVING_METHOD} if measurement == "serving" else TIMING_METHODS
             if not isinstance(method, str) or method not in allowed:
                 _fail(f"case {case_id} has unsupported device benchmark_method")
+            if method == "cuda_graph_cold_cache":
+                try:
+                    cold_cache_identity(row.get("metadata", {}))
+                except ValueError as exc:
+                    _fail(str(exc))
             if measurement == "serving":
                 try:
                     validate_serving_case(row)
