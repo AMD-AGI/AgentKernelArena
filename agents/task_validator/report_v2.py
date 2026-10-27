@@ -110,7 +110,8 @@ def _replay_validation_applicability(evaluated: dict) -> dict:
             return applicability
         cases.extend(result.cases)
     applicability.update(roles=roles, case_count=len(cases))
-    if any(row.get("benchmark_method") == "cuda_graph" for row in cases):
+    graph_methods = {"cuda_graph", "cuda_graph_cold_weights", "cuda_graph_cold_cache"}
+    if any(row.get("benchmark_method") in graph_methods for row in cases):
         applicability.update(status="required", reason="Captured graph timing occurs in the measured cases.")
         return applicability
     from src.measurement import measurement_kind, SERVING_METHOD
