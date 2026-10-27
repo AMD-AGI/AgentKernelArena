@@ -6,17 +6,76 @@ moving dataset or installs dependencies while measuring the candidate.
 from __future__ import annotations
 
 import copy
+from datetime import datetime, timezone
 import hashlib
 import importlib.util
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 import subprocess
 import tarfile
 import tempfile
 
 _CLIENT_RUNTIMES = {}
+
+
+def validate_client_review_sources(spec):
+    """Optional, digest-bound Python/shell sources from the native client archive."""
+    if not isinstance(spec, dict):
+        raise ValueError('Client review sources require a runtime mapping')
+    sources = spec.get('review_sources', {})
+    if (not isinstance(sources, dict) or len(sources) > 16
+            or sources and spec.get('kind', 'archive') != 'archive'):
+        raise ValueError('Client review sources require a bounded archive file mapping')
+    for name, digest in sources.items():
+        if not isinstance(name, str):
+            raise ValueError('Client review source path must be relative')
+        path = PurePosixPath(name)
+        if (path.is_absolute() or '..' in path.parts or path.as_posix() != name
+                or path.suffix not in {'.py', '.sh'} or not isinstance(digest, str)
+                or not re.fullmatch(r'[0-9a-f]{64}', digest)):
+            raise ValueError('Client review sources require relative source paths and SHA-256 digests')
+    return sources
+
+
+def client_review_sources(root, lock):
+    """Read the exact native timer sources from its immutable runtime archive.
+
+    The executed extraction is verified against this archive before and after
+    client execution. No imports, extractions or external commands are needed.
+    """
+    spec = lock.get('client_runtime')
+    if spec is None:
+        return []
+    declared = validate_client_review_sources(spec)
+    if not declared:
+        return []
+    archive = root/'assets'/spec['asset']
+    archive_sha = hashlib.sha256(archive.read_bytes()).hexdigest()
+    if archive_sha != lock['assets'][spec['asset']]['sha256']:
+        raise ValueError('Native client source archive differs from the locked digest')
+    records, total = [], 0
+    with tarfile.open(archive) as package:
+        members = package.getmembers()
+        if len(members) > 100000 or sum(member.size for member in members) > 2*1024**3:
+            raise ValueError('Client runtime exceeds the source inspection budget')
+        for name, expected in declared.items():
+            matches = [member for member in members if member.name == name]
+            if len(matches) != 1 or not matches[0].isfile() or matches[0].size > 256*1024:
+                raise ValueError('Native client review source is missing, ambiguous or exceeds its budget')
+            total += matches[0].size
+            if total > 512*1024:
+                raise ValueError('Native client review sources exceed the combined budget')
+            with package.extractfile(matches[0]) as stream:
+                data = stream.read(256*1024+1)
+            actual = hashlib.sha256(data).hexdigest()
+            if actual != expected:
+                raise ValueError('Native client review source differs from its locked digest')
+            records.append(dict(path='client-runtime:'+name, role='native timing and phase implementation',
+                sha256=actual, archive_sha256=archive_sha, source=data.decode('utf-8'), start_line=1))
+    return records
 
 
 def _client_data_filter(member, destination):
@@ -141,9 +200,14 @@ def manifest_identity(config, lock, dtype):
     if 'TP' in config['envs']:
         params['tp'] = int(config['envs']['TP'])
     if lock['scenario'] == 'agentx':
+        if __package__:
+            from ...measurement import trace_input_token_policy, trace_manifest_identity
+        else:
+            from _aka_measurement import trace_input_token_policy, trace_manifest_identity
         params.update(workload_kind='trace_window', duration_target_s=manifest['duration_s'],
             recipe_fingerprint=lock['agentx']['recipe_fingerprint'],
-            trace_requests=manifest['requests'],
+            trace_input_token_policy=trace_input_token_policy(manifest),
+            **trace_manifest_identity(manifest['requests']),
             client_sha256=hashlib.sha256(json.dumps(lock['agentx']['client'], sort_keys=True).encode()).hexdigest())
     else:
         params.update(num_requests=len(manifest['input_lens']), input_lens=manifest['input_lens'],
@@ -154,17 +218,31 @@ def manifest_identity(config, lock, dtype):
 
 def check_plan(config, lock, prompts):
     """Text AgentX probes cover locked trace lengths without imposing an op list."""
+    if not prompts or any(not tokens for tokens in prompts):
+        raise ValueError('Model correctness prompts must contain tokens')
     requests = lock['request_manifest']['requests']
     indices = lock['correctness']['trace_probe_indices']
     if not indices or len(set(indices)) != len(indices) or any(type(i) is not int or not 0 <= i < len(requests) for i in indices):
         raise ValueError('Invalid protected trace correctness coverage')
+    batch = lock['correctness'].get('trace_batch_indices')
+    concurrency = int(config['envs']['CONC'])
+    if (not isinstance(batch, list) or concurrency <= 0 or len(batch) != concurrency
+            or any(type(i) is not int or not 0 <= i < len(requests) for i in batch)):
+        raise ValueError('Invalid protected concurrent trace correctness coverage')
+    def inputs_for(selected):
+        expanded = []
+        for index in selected:
+            tokens = prompts[index % len(prompts)]
+            length = requests[index]['input_tokens']
+            expanded.append((tokens * ((length + len(tokens) - 1)//len(tokens)))[:length])
+        return expanded
     groups = []
     for index in indices:
         record = requests[index]
-        tokens = prompts[index % len(prompts)]
-        length = record['input_tokens']
-        expanded = (tokens * ((length + len(tokens) - 1)//len(tokens)))[:length]
-        groups.append(dict(kind='trace_shape', concurrency=1, inputs=[expanded], outputs=[record['output_tokens']]))
+        groups.append(dict(kind='trace_shape', concurrency=1, inputs=inputs_for([index]),
+                           outputs=[record['output_tokens']]))
+    groups.append(dict(kind='trace_batch', concurrency=concurrency, inputs=inputs_for(batch),
+                       outputs=[requests[index]['output_tokens'] for index in batch]))
     return groups
 
 
@@ -215,11 +293,16 @@ def media_generations(root, port, plan, send, *, return_logprob=True):
 
 
 def trace_metrics(records, manifest):
-    """Account for every completed native replay request; never infer counts from TPS."""
+    """Validate completed replay records before native phase-window accounting."""
+    if __package__:
+        from ...measurement import trace_input_token_policy
+    else:
+        from _aka_measurement import trace_input_token_policy
+    input_policy = trace_input_token_policy(manifest)
     expected = {row['id']: row for row in manifest['requests']}
     if len(expected) != len(manifest['requests']):
         raise ValueError('Trace manifest contains duplicate turn IDs')
-    inputs, outputs, ids, starts, ends = [], [], [], [], []
+    inputs, outputs, ids, starts, ends, nominal_inputs = [], [], [], [], [], []
     for record in records:
         meta = record.get('metadata', {})
         if record.get('error') or meta.get('error') or record.get('status') in ('error', 'failed'):
@@ -230,13 +313,18 @@ def trace_metrics(records, manifest):
             raise ValueError('Trace replay skipped request work')
         if meta.get('benchmark_phase') not in (None, 'profiling'):
             continue
-        conversation = meta['conversation_id'].split('::', 1)[0]
+        # Native IDs include subagent and flattened-branch identities after
+        # "::". They are not replay-session suffixes: stripping them aliases
+        # distinct agents to their parent and can accept an unlisted child.
+        conversation = meta['conversation_id']
+        if not isinstance(conversation, str) or not conversation:
+            raise ValueError('Trace replay omitted its native conversation identity')
         turn = str(meta['turn_index'])
         target = expected.get(conversation + ':' + turn)
         if target is None:
             raise ValueError('Replay used a turn outside the frozen trace corpus')
         def metric(name):
-            result = record['metrics'][name]
+            result = record['metrics'].get(name)
             value = result['value'] if isinstance(result, dict) else result
             # Native exporters may encode an integer token count as 8.0.
             # Accept that exact representation, never round fractional work.
@@ -245,9 +333,19 @@ def trace_metrics(records, manifest):
                 raise ValueError('Trace token work must be an exact positive integer')
             return int(value)
         incoming, outgoing = metric('input_sequence_length'), metric('output_sequence_length')
-        if incoming != target['input_tokens'] or outgoing != target['output_tokens']:
+        # A native reconstruction budget counts token IDs before decoding
+        # disjoint corpus blocks into text and applying chat formatting. BPE
+        # re-encoding can merge or split them; it has no fixed ordering with
+        # the wire count. Keep both domains, rather than inventing a tolerance.
+        if ((input_policy == 'exact' and incoming != target['input_tokens'])
+                or outgoing != target['output_tokens']):
             raise ValueError('Replay changed per-turn token work')
+        if input_policy == 'native_reconstruction' and (
+                metric('usage_prompt_tokens') != incoming
+                or metric('usage_completion_tokens') != outgoing):
+            raise ValueError('Native usage counters contradict per-turn token work')
         inputs.append(incoming); outputs.append(outgoing)
+        nominal_inputs.append(target['input_tokens'])
         # A trajectory can revisit a turn during a timed replay. Timestamp and
         # session identity distinguish those real calls from duplicated rows.
         identity = [meta.get('session_num'), meta['conversation_id'], turn,
@@ -263,15 +361,23 @@ def trace_metrics(records, manifest):
     duration = (max(ends) - min(starts))/1e9
     if not math.isfinite(duration) or duration <= 0:
         raise ValueError('Invalid native replay duration')
-    return dict(duration_s=duration, completed_requests=len(ids), input_tokens=sum(inputs),
+    result = dict(duration_s=duration, completed_requests=len(ids), input_tokens=sum(inputs),
                 output_tokens=sum(outputs), output_tokens_per_s=sum(outputs)/duration,
                 input_lens=inputs, output_lens=outputs, request_ids=ids, failed_requests=0)
+    if input_policy == 'native_reconstruction':
+        result.update(nominal_input_lens=nominal_inputs, nominal_input_tokens=sum(nominal_inputs))
+    return result
 
 
 def verify_trace_export(aggregate, metrics):
     """Reconcile native counters so missing JSONL rows cannot alter the work."""
     if not isinstance(aggregate, dict) or aggregate.get('was_cancelled') is not False:
         raise ValueError('Canonical replay did not finish normally')
+    verdict = aggregate.get('metadata')
+    if (not isinstance(verdict, dict) or verdict.get('scenario') != 'inferencex-agentx-mvp'
+            or verdict.get('submission_valid') is not True
+            or verdict.get('submission_invalid_reasons', []) != []):
+        raise ValueError('Canonical replay lacks an accepted native scenario verdict')
     def count(name, default=None):
         if name not in aggregate and default is not None:
             return default
@@ -287,6 +393,55 @@ def verify_trace_export(aggregate, metrics):
     for name in ('error_request_count', 'context_overflow_count', 'skipped_context_overflow_count'):
         if count(name, 0) != 0:
             raise ValueError('Canonical replay contains failed or skipped request work')
+
+
+def trace_measurement(records, manifest, aggregate):
+    """Reconcile native work and retain the entire native observation window.
+
+    First-request/last-response span omits initial idle time and terminal
+    grace/drain time. The native client includes those in throughput, even
+    though its separately exported benchmark_duration is only a request span.
+    """
+    metrics = trace_metrics(records, manifest)
+    verify_trace_export(aggregate, metrics)
+    if aggregate.get('error_summary', []) != []:
+        raise ValueError('Native trace export contains request errors')
+
+    def boundary(name):
+        value = aggregate.get(name)
+        if not isinstance(value, str) or 'T' not in value:
+            raise ValueError('Missing native trace observation window')
+        try:
+            stamp = datetime.fromisoformat(value)
+            # The fixed client runtime exports naive UTC datetimes.
+            stamp = stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp
+            delta = stamp.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError('Invalid native trace observation window') from error
+        return (delta.days * 86400 + delta.seconds) * 10**9 + delta.microseconds * 1000
+
+    start, end = boundary('start_time'), boundary('end_time')
+    selected = [r for r in records if r.get('metadata', {}).get('benchmark_phase') in (None, 'profiling')]
+    first = min(r['metadata']['request_start_ns'] for r in selected)
+    last = max(r['metadata']['request_end_ns'] for r in selected)
+    # Native JSON datetime serialization rounds nanosecond clocks to microseconds.
+    if end <= start or first < start - 1000 or last > end + 1000:
+        raise ValueError('Native trace records lie outside the observation window')
+    duration = (end - start) / 1e9
+    for name, expected in (('total_isl', metrics['input_tokens']), ('total_osl', metrics['output_tokens'])):
+        field = aggregate.get(name)
+        value = field.get('avg') if isinstance(field, dict) else None
+        if type(value) not in (int, float) or not math.isfinite(value) or value != expected:
+            raise ValueError('Native trace token totals disagree with completed records')
+    field = aggregate.get('output_token_throughput')
+    rate = field.get('avg') if isinstance(field, dict) else None
+    calculated = metrics['output_tokens'] / duration
+    if (type(rate) not in (int, float) or not math.isfinite(rate) or rate <= 0
+            or not math.isclose(rate, calculated, rel_tol=1e-8)):
+        raise ValueError('Native trace throughput contradicts its observation window')
+    metrics.update(request_span_s=metrics['duration_s'], duration_s=duration,
+        output_tokens_per_s=calculated, observation_start_ns=start, observation_end_ns=end)
+    return metrics
 
 
 def _client_invocation(root, config, lock, client, port):
@@ -384,10 +539,11 @@ def performance(root, config, lock, limits, client, port, row):
         client_python(root, lock)  # Also reject interpreter/package mutations.
     if lock['scenario'] == 'agentx':
         artifact = root/'aiperf_artifacts/profile_export_aiperf.json'
-        aggregate = json.loads(artifact.read_text())
-        records = [json.loads(line) for line in (root/'aiperf_artifacts/profile_export.jsonl').read_text().splitlines()]
-        metrics = trace_metrics(records, lock['request_manifest'])
-        verify_trace_export(aggregate, metrics)
+        export_bytes = artifact.read_bytes()
+        records_bytes = (root/'aiperf_artifacts/profile_export.jsonl').read_bytes()
+        aggregate = json.loads(export_bytes)
+        records = [json.loads(line) for line in records_bytes.splitlines()]
+        metrics = trace_measurement(records, lock['request_manifest'], aggregate)
     else:
         measured = json.loads((root/'inferencex_result.json').read_text())
         metrics = dict(duration_s=measured['duration'], completed_requests=measured['completed'],
@@ -408,6 +564,13 @@ def performance(root, config, lock, limits, client, port, row):
     metadata = dict(scenario=lock['scenario'], client_command=command,
         dataset_sha256=lock.get('request_manifest', {}).get('dataset_sha256'),
         request_plan_sha256=row['params'].get('request_plan_sha256'))
+    if lock['scenario'] == 'agentx':
+        metadata['native_replay_evidence'] = dict(
+            export_sha256=hashlib.sha256(export_bytes).hexdigest(),
+            records_sha256=hashlib.sha256(records_bytes).hexdigest(),
+            export_summary={name: aggregate.get(name) for name in (
+                'metadata', 'was_cancelled', 'error_summary', 'start_time', 'end_time',
+                'request_count', 'total_isl', 'total_osl', 'output_token_throughput')})
     if lock.get('client_runtime'):
         runtime = lock['client_runtime']
         metadata['client_runtime'] = dict(runtime,
@@ -433,6 +596,7 @@ def performance(root, config, lock, limits, client, port, row):
             path = Path(spec.origin)
             sources.append(dict(path='image:vllm.benchmarks.serve', role='native timed media client',
                 source=path.read_text(), sha256=hashlib.sha256(path.read_bytes()).hexdigest(), start_line=1))
+        sources.extend(client_review_sources(root, lock))
         metadata.update(benchmark_sources=sources,
             client_log=(root/'client.log').read_text()[-24000:])
     return row, metadata

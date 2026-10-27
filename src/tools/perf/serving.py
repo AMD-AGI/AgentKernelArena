@@ -154,6 +154,8 @@ def logprob_error(tokens, expected, rows):
     actual = [float(row[0]) for row in rows[1:]]
     if not all(math.isfinite(v) for v in [*actual, *expected]):
         raise ModelNumericalFailure('Model logprob values must be finite')
+    if any(v > 0 for v in [*actual, *expected]):
+        raise ModelNumericalFailure('Model logprob values must be nonpositive')
     return max(abs(a-b) for a,b in zip(actual, expected))
 
 
@@ -260,8 +262,24 @@ def error_statistics(values):
                 p99=ordered[math.ceil(.99 * len(ordered)) - 1], count=len(values))
 
 
+def production_logprob_tolerances(lock):
+    """An explicit decode budget, or the existing stricter prefix error budget.
+
+    Both are frozen before search. An older binding never silently disables
+    decode comparison; its initial baseline must also satisfy these bounds.
+    """
+    prefix = production_tolerances(lock)
+    rule = lock['correctness'].get('decode_logprob_tolerances')
+    if 'decode_logprob_tolerances' not in lock['correctness']:
+        return {name+'_abs': prefix['prefix_'+name+'_abs'] for name in ('max', 'mean', 'p99')}
+    if (not isinstance(rule, dict) or set(rule) != {'max_abs', 'mean_abs', 'p99_abs'}
+            or any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0 for v in rule.values())):
+        raise ValueError('Decode logprob comparison requires complete finite calibrated tolerances')
+    return rule
+
+
 def production_teacher_reference(port, sample, request_fn):
-    """Score every actual no-logprob continuation on the independent original.
+    """Score every actual continuation on the independent original.
 
     FP8 prefill and recurrent decode need not be bit-identical. The locked
     production policy bounds this difference; it is not an FP32 oracle.
@@ -282,14 +300,52 @@ def production_teacher_reference(port, sample, request_fn):
     best = [float(top[0][0]) for top in tops[1:]]
     if not all(math.isfinite(v) for v in values + best):
         raise ModelNumericalFailure('Original teacher-forcing values must be finite')
+    if any(v > 0 for v in values + best):
+        raise ModelNumericalFailure('Original teacher-forcing logprobs must be nonpositive')
     return dict(values=values, best=best)
+
+
+def production_references(port, diagnostics, plain_samples, request_fn):
+    """Use the original to score the exact tokens observed in both API modes.
+
+    Independently generated continuations can have different prefixes. Their
+    logprobs cannot replace a reference for the actual diagnostic decode.
+    """
+    for samples in (diagnostics, plain_samples):
+        start = 0
+        while start < len(samples):
+            first = samples[start]
+            concurrency = first.get('concurrency', 1)
+            if type(concurrency) is not int or concurrency <= 0:
+                raise ModelNumericalFailure('Original reference concurrency must be positive')
+            end = start+1
+            while (end < len(samples) and samples[end].get('check_kind') == first.get('check_kind')
+                    and samples[end].get('concurrency', 1) == concurrency):
+                end += 1
+            group = samples[start:end]
+            if concurrency > 1 and len(group) != concurrency:
+                raise ModelNumericalFailure('Original reference batch coverage changed')
+            with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                references = list(pool.map(
+                    lambda item: production_teacher_reference(port, item, request_fn), group))
+            for sample, reference in zip(group, references):
+                sample['reference'] = reference
+            start = end
+    references = []
+    for item in diagnostics:
+        values = item['reference']['values']
+        item['reference_rows'] = [[None, item['tokens'][0]]] + [
+            [value, token] for value, token in zip(values, item['tokens'][1:])]
+        references.append(values)
+    return references
 
 
 def production_numerical_checks(diagnostics, plain_samples, lock):
     rule = production_tolerances(lock)
+    logprob_rule = production_logprob_tolerances(lock)
     if not diagnostics or len(diagnostics) != len(plain_samples):
         raise ModelNumericalFailure('Model comparison sample coverage changed')
-    prefix, decode = [], []
+    prefix, decode, diagnostic_decode, decode_logprobs = [], [], [], []
     for item, plain in zip(diagnostics, plain_samples):
         tokens = item['input_tokens']
         if plain['input_tokens'] != tokens:
@@ -301,24 +357,48 @@ def production_numerical_checks(diagnostics, plain_samples, lock):
         logprob_error(tokens, expected, rows)
         prefix.append(error_statistics([abs(float(row[0]) - value)
             for row, value in zip(rows[1:], expected)]))
+        reference = item.get('reference', {})
+        values, best = reference.get('values', []), reference.get('best', [])
+        sequence, length = item.get('tokens', []), item.get('output_length')
+        if (type(length) is not int or length <= 0 or sequence[:len(tokens)] != tokens
+                or len(sequence) != len(tokens) + length or len(values) != len(sequence)-1
+                or len(best) != len(values)):
+            raise ModelNumericalFailure('Diagnostic decode reference coverage changed')
+        logprob_error(sequence, values, item['actual'])
+        if not all(math.isfinite(v) and v <= 0 for v in best):
+            raise ModelNumericalFailure('Diagnostic decode reference logprobs must be finite and nonpositive')
+        start = len(tokens)-1
+        decode_logprobs.append(error_statistics([abs(float(row[0])-value)
+            for row, value in zip(item['actual'][len(tokens):], values[start:])]))
+        diagnostic_decode.append(error_statistics([max(0., b-v)
+            for v, b in zip(values[start:], best[start:])]))
         values, best = plain['reference']['values'], plain['reference']['best']
         start = len(tokens) - 1
         if (len(values) != len(plain['tokens']) - 1 or len(best) != len(values)
                 or len(values) - start != plain['output_length']):
             raise ModelNumericalFailure('No-logprob reference coverage changed')
-        if not all(math.isfinite(v) for v in values + best):
-            raise ModelNumericalFailure('No-logprob reference contains nonfinite values')
+        if not all(math.isfinite(v) and v <= 0 for v in values + best):
+            raise ModelNumericalFailure('No-logprob reference contains nonfinite or positive values')
         decode.append(error_statistics([max(0., b - v)
             for v, b in zip(values[start:], best[start:])]))
     # Bound every case, not only an average diluted by thousands of easy tokens.
-    for label, cases, suffix in (('prefix', prefix, 'abs'), ('decode', decode, 'regret')):
+    for label, cases, suffix in (('prefix', prefix, 'abs'), ('decode', decode, 'regret'),
+                                 ('diagnostic_decode', diagnostic_decode, 'regret')):
         for index, metrics in enumerate(cases):
             for metric in ('max', 'mean', 'p99'):
-                if metrics[metric] > rule[f'{label}_{metric}_{suffix}']:
+                policy = 'decode' if label == 'diagnostic_decode' else label
+                if metrics[metric] > rule[f'{policy}_{metric}_{suffix}']:
                     raise ModelNumericalFailure(
                         f'Model {label} case {index} {metric} error exceeds the locked threshold: '
-                        f'{metrics[metric]} > {rule[f"{label}_{metric}_{suffix}"]}')
-    return dict(prefix_cases=prefix, decode_cases=decode, thresholds=rule)
+                        f'{metrics[metric]} > {rule[f"{policy}_{metric}_{suffix}"]}')
+    for index, metrics in enumerate(decode_logprobs):
+        for metric in ('max', 'mean', 'p99'):
+            if metrics[metric] > logprob_rule[metric+'_abs']:
+                raise ModelNumericalFailure(
+                    f'Model decode logprob case {index} {metric} error exceeds the locked threshold: '
+                    f'{metrics[metric]} > {logprob_rule[metric+"_abs"]}')
+    return dict(prefix_cases=prefix, decode_cases=decode, diagnostic_decode_cases=diagnostic_decode,
+                decode_logprob_cases=decode_logprobs, thresholds=rule, decode_logprob_thresholds=logprob_rule)
 
 
 def request(port, path, value=None, *, timeout=120):
@@ -469,6 +549,14 @@ def server_log_tail(path):
         return stream.read().decode(errors='replace')
 
 
+def readiness_probe(port, path, *, timeout):
+    # Native health endpoints may return an empty or plain-text 2xx response.
+    # JSON parsing remains mandatory for actual inference in request().
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/{path}', timeout=timeout) as response:
+        if not 200 <= response.status < 300:
+            raise OSError(f'Serving health endpoint returned HTTP {response.status}')
+
+
 def start_server(config, limits, *, install_kernel=True):
     port = serving_port()
     env = dict(os.environ)
@@ -494,7 +582,7 @@ def start_server(config, limits, *, install_kernel=True):
             if 'address already in use' in tail.lower():
                 raise RuntimeError('Serving port bind failed: ' + tail)
             try:
-                request(port, ready_endpoint, timeout=min(5, max(0.001, deadline - time.monotonic())))
+                readiness_probe(port, ready_endpoint, timeout=min(5, max(0.001, deadline - time.monotonic())))
                 return process, port, log
             except (OSError, ValueError):
                 time.sleep(min(1, max(0, deadline - time.monotonic())))
@@ -749,31 +837,30 @@ def evaluate(args, config, lock, limits):
             return [row], metadata
         # Compare against a separate implementation with task-declared semantics.
         if reference_kind in ('production_serving', 'production_quality', 'production_numerical'):
-            # Repeat identical prompt/decode shapes in the frozen image. FP8
-            # prefill and recurrent decode need not agree exactly; the quality
-            # reference also teacher-forces each actual continuation below and
-            # applies its separately calibrated numerical bounds.
+            # The uninjected original scores the actual observed prefixes. Its
+            # prefill and recurrent decode can differ numerically, so the task
+            # freezes independently calibrated comparison bounds before search.
             reference_process, reference_port, reference_log = start_server(config, limits, install_kernel=False)
             try:
                 reference = []
                 reference_request = deadline_client(limits['client_timeout_s'])
-                reference_samples = generation_checks(reference_port, plan, reference_request)
-                plain_reference = generation_checks(reference_port, plan, reference_request, return_logprob=False)
-                for item, sample in zip(plain_samples, plain_reference):
-                    item['reference_tokens'] = sample['tokens']
-                for item, sample in zip(diagnostics, reference_samples):
-                    rows = sample['actual']
-                    values = [float(row[0]) for row in rows[1:]]
-                    item['reference_tokens'] = sample['tokens']
-                    item['reference_rows'] = rows
-                    reference.append(values)
                 if reference_kind in ('production_quality', 'production_numerical'):
                     production_tolerances(lock)
-                    for item in plain_samples:
-                        item['reference'] = production_teacher_reference(
-                            reference_port, item, reference_request)
+                    production_logprob_tolerances(lock)
+                    reference = production_references(reference_port, diagnostics, plain_samples, reference_request)
+                    metadata['model_reference_mode'] = 'teacher_forced_actual_continuations'
                     if reference_kind == 'production_quality':
                         reference_quality = quality.run(reference_port, lock, reference_request, 'reference')
+                else:
+                    reference_samples = generation_checks(reference_port, plan, reference_request)
+                    plain_reference = generation_checks(reference_port, plan, reference_request, return_logprob=False)
+                    for item, sample in zip(plain_samples, plain_reference):
+                        item['reference_tokens'] = sample['tokens']
+                    for item, sample in zip(diagnostics, reference_samples):
+                        rows = sample['actual']
+                        item['reference_tokens'] = sample['tokens']
+                        item['reference_rows'] = rows
+                        reference.append([float(row[0]) for row in rows[1:]])
             finally:
                 stop_server(reference_process, reference_log)
         elif reference_kind == 'transformers_fp32':
@@ -797,8 +884,7 @@ def evaluate(args, config, lock, limits):
             metadata['production_numerical_checks'] = production_numerical_checks(diagnostics, plain_samples, lock)
             return [row], metadata
         if reference_kind == 'production_quality':
-            # Keep independent generated sequences as diagnostics. Normal FP8
-            # variation is checked against a frozen per-case numerical policy,
+            # Normal variation is bounded on both actual continuations,
             # alongside answer accuracy and the independent operator oracle.
             calibration = args.role == 'baseline' and os.environ.get('ARENA_EVAL_PHASE') == 'task_validation'
             (ROOT / 'accuracy_report.json').write_text(json.dumps(dict(
@@ -812,8 +898,6 @@ def evaluate(args, config, lock, limits):
                 label = 'Baseline calibration failed' if calibration else 'Candidate model quality failed'
                 raise ModelQualityFailure(label + ': ' + str(exc)) from exc
             metadata['baseline_calibration'] = calibration
-            metadata['model_divergent_sequences'] = sum(
-                item['tokens'] != item['reference_tokens'] for item in diagnostics)
             return [row], metadata
         if reference_kind == 'production_serving':
             # Fail closed on divergent greedy continuations: logprobs under

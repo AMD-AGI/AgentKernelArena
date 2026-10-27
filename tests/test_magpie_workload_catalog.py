@@ -52,6 +52,7 @@ def binding(entry):
                 '--concurrency', str(recipe['envs']['CONC']), '--url', 'http://127.0.0.1:{port}'], env={}))
         value['dependencies']['aiperf'] = dict(repository='https://example.invalid/aiperf', revision='6'*40)
         value['correctness']['trace_probe_indices'] = [0]
+        value['correctness']['trace_batch_indices'] = [0] * int(recipe['envs']['CONC'])
     if info['scenario'] == 'multimodal':
         value['correctness']['model_reference'] = 'production_serving'
         value['correctness']['model_logprob_atol'] = .01
@@ -128,6 +129,33 @@ def test_incomplete_binding_cannot_materialize(tmp_path, mutate):
     assert not (tmp_path/'task').exists()
 
 
+@pytest.mark.parametrize('timeout', [None, 3599, 3600])
+def test_agentx_replay_rejects_insufficient_client_budget_before_materializing(tmp_path, timeout):
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario'] == 'agentx')
+    profile = binding(entry)
+    profile['request_manifest']['duration_s'] = 3600
+    argv = profile['agentx']['client']['argv']
+    argv[argv.index('--benchmark-duration') + 1] = '3600'
+    if timeout is not None:
+        profile['limits'] = {'client_timeout_s': timeout}
+    with pytest.raises(ValueError, match='client timeout must exceed'):
+        catalog.materialize(CATALOG, entry['id'], profile, tmp_path/'task')
+    assert not (tmp_path/'task').exists()
+
+
+def test_agentx_materialization_preserves_explicit_long_run_limits(tmp_path):
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario'] == 'agentx')
+    profile = binding(entry)
+    profile['request_manifest']['duration_s'] = 3600
+    argv = profile['agentx']['client']['argv']
+    argv[argv.index('--benchmark-duration') + 1] = '3600'
+    profile['limits'] = dict(server_startup_timeout_s=1800, client_timeout_s=10800,
+        minimum_measurement_s=3420, max_candidate_source_bytes=16777216,
+        idle_vram_limit_mib=2048)
+    task = catalog.materialize(CATALOG, entry['id'], profile, tmp_path/'task')
+    assert json.loads((task/'runtime.lock.json').read_text())['limits'] == profile['limits']
+
+
 def test_model_cannot_change_during_binding():
     entry = CATALOG['entries'][-1]; value = binding(entry)
     value['model']['id'] = 'other/model'
@@ -162,11 +190,46 @@ def test_new_and_unknown_upstream_contract_fails_visibly():
     with pytest.raises(ValueError, match='No serving backend'): catalog.describe(entry)
 
 
-def trace_record(index=0, *, error=None):
-    return dict(metadata=dict(conversation_id='trace::session', turn_index=0, request_id=str(index),
+def trace_record(index=0, *, error=None, conversation_id='trace'):
+    return dict(metadata=dict(conversation_id=conversation_id, turn_index=0, request_id=str(index),
         request_start_ns=index*10**9, request_end_ns=(index+120)*10**9, benchmark_phase='profiling',
         was_cancelled=False, cancellation_time_ns=None),
         metrics=dict(input_sequence_length={'value':8},output_sequence_length={'value':2}), error=error)
+
+
+def test_trace_correctness_covers_serial_shapes_and_one_complete_concurrent_batch():
+    config = dict(envs={'CONC': 2})
+    lock = dict(request_manifest=dict(requests=[
+        dict(id='parent:0', input_tokens=5, output_tokens=3),
+        dict(id='parent::sa:child:0', input_tokens=8, output_tokens=4)]),
+        correctness=dict(trace_probe_indices=[1], trace_batch_indices=[0, 1]))
+    plan = scenarios.check_plan(config, lock, [[11, 12], [21, 22, 23]])
+    assert [(group['kind'], group['concurrency']) for group in plan] == [
+        ('trace_shape', 1), ('trace_batch', 2)]
+    assert plan[0]['inputs'] == [[21, 22, 23, 21, 22, 23, 21, 22]]
+    assert plan[1]['inputs'] == [[11, 12, 11, 12, 11], [21, 22, 23, 21, 22, 23, 21, 22]]
+    assert plan[1]['outputs'] == [3, 4]
+
+
+@pytest.mark.parametrize('indices', [None, [], [0], [0, True], [0, -1], [0, 2]])
+def test_trace_correctness_cannot_omit_or_shorten_concurrent_coverage(indices):
+    lock = dict(request_manifest=dict(requests=[
+        dict(id='trace:0', input_tokens=8, output_tokens=2),
+        dict(id='trace:1', input_tokens=12, output_tokens=3)]),
+        correctness=dict(trace_probe_indices=[0], trace_batch_indices=indices))
+    with pytest.raises(ValueError, match='concurrent trace'):
+        scenarios.check_plan(dict(envs={'CONC': 2}), lock, [[1, 2]])
+
+
+def test_agentx_materialization_rejects_incomplete_concurrent_probe_binding(tmp_path):
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario'] == 'agentx')
+    profile = binding(entry)
+    profile['correctness'].pop('trace_batch_indices')
+    with pytest.raises(ValueError, match='concurrent trace'):
+        catalog.materialize(CATALOG, entry['id'], profile, tmp_path/'missing')
+    profile['correctness']['trace_batch_indices'] = [0]
+    with pytest.raises(ValueError, match='complete concurrent'):
+        catalog.materialize(CATALOG, entry['id'], profile, tmp_path/'shortened')
 
 
 def test_trace_duration_mode_accounts_native_work_without_fixing_throughput():
@@ -183,6 +246,178 @@ def test_trace_duration_mode_accounts_native_work_without_fixing_throughput():
         with pytest.raises(ValueError): scenarios.trace_metrics(invalid, lock['request_manifest'])
     bad = trace_record(); bad['metrics']['output_sequence_length']['value'] = 1
     with pytest.raises(ValueError, match='token work'): scenarios.trace_metrics([bad],lock['request_manifest'])
+
+
+def _formatted_trace_record(*, incoming=1115, outgoing=20):
+    record = trace_record()
+    record['metrics'].update(
+        input_sequence_length={'value': incoming}, output_sequence_length={'value': outgoing},
+        usage_prompt_tokens={'value': incoming}, usage_completion_tokens={'value': outgoing})
+    return record
+
+
+@pytest.mark.parametrize('nominal,incoming', [(1024, 1115), (667264, 667101)])
+def test_native_reconstruction_and_wire_tokens_have_separate_count_domains(nominal, incoming):
+    manifest = dict(input_token_policy='native_reconstruction', requests=[
+        dict(id='trace:0', input_tokens=nominal, output_tokens=20)])
+    record = _formatted_trace_record(incoming=incoming)
+    result = scenarios.trace_metrics([record], manifest)
+    assert result['input_tokens'] == incoming
+    assert result['input_lens'] == [incoming]
+    assert result['nominal_input_lens'] == [nominal]
+    assert result['nominal_input_tokens'] == nominal
+    assert result['output_tokens'] == 20
+    # Existing exact-wire contracts do not acquire this permission implicitly.
+    manifest.pop('input_token_policy')
+    with pytest.raises(ValueError, match='token work'):
+        scenarios.trace_metrics([record], manifest)
+
+
+@pytest.mark.parametrize('incoming,outgoing', [(0, 20), (1115, 19), (1115, 21)])
+def test_native_reconstruction_requires_positive_wire_input_and_exact_output_work(incoming, outgoing):
+    manifest = dict(input_token_policy='native_reconstruction', requests=[
+        dict(id='trace:0', input_tokens=1024, output_tokens=20)])
+    with pytest.raises(ValueError, match='token work|exact positive integer'):
+        scenarios.trace_metrics([_formatted_trace_record(incoming=incoming, outgoing=outgoing)], manifest)
+
+
+@pytest.mark.parametrize('field,value', [
+    ('usage_prompt_tokens', None), ('usage_prompt_tokens', 1114),
+    ('usage_prompt_tokens', 1115.5), ('usage_completion_tokens', None),
+    ('usage_completion_tokens', 19), ('usage_completion_tokens', True)])
+def test_native_reconstruction_requires_matching_server_usage(field, value):
+    manifest = dict(input_token_policy='native_reconstruction', requests=[
+        dict(id='trace:0', input_tokens=1024, output_tokens=20)])
+    record = _formatted_trace_record()
+    if value is None:
+        record['metrics'].pop(field)
+    else:
+        record['metrics'][field]['value'] = value
+    with pytest.raises(ValueError):
+        scenarios.trace_metrics([record], manifest)
+
+
+@pytest.mark.parametrize('policy', [None, True, 'ignore', 'minimum_content', {}, []])
+def test_native_trace_rejects_unknown_input_count_policy(policy):
+    with pytest.raises(ValueError, match='input token policy'):
+        scenarios.trace_metrics([trace_record()], dict(input_token_policy=policy,
+            requests=[dict(id='trace:0', input_tokens=8, output_tokens=2)]))
+
+
+def test_trace_input_count_policy_is_bound_into_the_measurement_identity():
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario'] == 'agentx')
+    lock = binding(entry)
+    config = catalog.normalized_recipe(entry, lock)
+    exact = scenarios.manifest_identity(config, {**lock, 'scenario': 'agentx'}, 'float4')
+    lock['request_manifest']['input_token_policy'] = 'native_reconstruction'
+    content = scenarios.manifest_identity(config, {**lock, 'scenario': 'agentx'}, 'float4')
+    assert exact['params']['trace_input_token_policy'] == 'exact'
+    assert content['params']['trace_input_token_policy'] == 'native_reconstruction'
+
+
+def test_native_reconstruction_requires_server_counting_before_materialization(tmp_path):
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario'] == 'agentx')
+    profile = binding(entry)
+    profile['request_manifest']['input_token_policy'] = 'native_reconstruction'
+    with pytest.raises(ValueError, match='server-token-count'):
+        catalog.materialize(CATALOG, entry['id'], profile, tmp_path/'missing-server-counts')
+    profile['agentx']['client']['argv'].append('--use-server-token-count')
+    task = catalog.materialize(CATALOG, entry['id'], profile, tmp_path/'bound-content')
+    lock = json.loads((task/'runtime.lock.json').read_text())
+    assert lock['request_manifest']['input_token_policy'] == 'native_reconstruction'
+
+
+@pytest.mark.parametrize('nominal', [None, [], [1024.5], [True], [1024, 1024]])
+def test_native_reconstruction_result_cannot_omit_or_misstate_its_nominal_counts(nominal):
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario'] == 'agentx')
+    lock = binding(entry)
+    lock['request_manifest'].update(input_token_policy='native_reconstruction', requests=[
+        dict(id='trace:0', input_tokens=1024, output_tokens=20)])
+    row = scenarios.manifest_identity(catalog.normalized_recipe(entry, lock),
+        {**lock, 'scenario': 'agentx'}, 'float4')
+    metrics = scenarios.trace_metrics([_formatted_trace_record()], lock['request_manifest'])
+    measured = {**row, 'metrics': metrics, 'execution_time_ms': metrics['duration_s'] * 1000}
+    validate_serving_case(measured)
+    metrics['nominal_input_lens'] = nominal
+    with pytest.raises(ValueError, match='reconstruction budgets'):
+        validate_serving_case(measured)
+
+
+def test_large_trace_identity_binds_complete_corpus_without_repeating_it_in_results():
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario']=='agentx')
+    lock = {**binding(entry), 'scenario': 'agentx'}
+    lock['request_manifest']['requests'] = [
+        dict(id=f'trace-{i}:0', input_tokens=8+i, output_tokens=2) for i in range(100000)]
+    row = scenarios.manifest_identity(catalog.normalized_recipe(entry,lock), lock, 'float4')
+    assert len(json.dumps(row)) < 4096
+    assert row['params']['trace_turn_count'] == 100000
+    expected = hashlib.sha256(json.dumps(lock['request_manifest']['requests'],
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    assert row['params']['trace_manifest_sha256'] == expected
+    changed = copy.deepcopy(lock)
+    changed['request_manifest']['requests'][-1]['input_tokens'] += 1
+    other = scenarios.manifest_identity(catalog.normalized_recipe(entry,changed), changed, 'float4')
+    assert other['params']['trace_manifest_sha256'] != expected
+    # Exact native per-turn checks still use the full protected lock.
+    record = trace_record(conversation_id='trace-99999')
+    with pytest.raises(ValueError, match='token work'):
+        scenarios.trace_metrics([record], lock['request_manifest'])
+
+
+@pytest.mark.parametrize('change', [
+    {'trace_turn_count': 0}, {'trace_turn_count': True},
+    {'trace_manifest_sha256': 'not-a-digest'},
+    {'trace_requests': [dict(id='trace:0', input_tokens=8, output_tokens=2)]},
+])
+def test_trace_compact_identity_rejects_missing_or_ambiguous_binding(change):
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario']=='agentx')
+    lock = {**binding(entry), 'scenario': 'agentx'}
+    row = scenarios.manifest_identity(catalog.normalized_recipe(entry,lock), lock, 'float4')
+    metrics = scenarios.trace_metrics([trace_record()],lock['request_manifest'])
+    row.update(metrics=metrics, execution_time_ms=metrics['duration_s']*1000)
+    row['params'].update(change)
+    with pytest.raises(ValueError, match='manifest identit'):
+        validate_serving_case(row)
+
+
+def test_previous_full_trace_identity_remains_validated():
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario']=='agentx')
+    lock = {**binding(entry), 'scenario': 'agentx'}
+    row = scenarios.manifest_identity(catalog.normalized_recipe(entry,lock), lock, 'float4')
+    row['params'].pop('trace_turn_count')
+    row['params'].pop('trace_manifest_sha256')
+    row['params']['trace_requests'] = lock['request_manifest']['requests']
+    metrics = scenarios.trace_metrics([trace_record()],lock['request_manifest'])
+    row.update(metrics=metrics, execution_time_ms=metrics['duration_s']*1000)
+    validate_serving_case(row)
+    row['params']['trace_requests'][0]['input_tokens'] = 0
+    with pytest.raises(ValueError, match='invalid work counts'):
+        validate_serving_case(row)
+
+
+@pytest.mark.parametrize('conversation_id', [
+    'trace::sa:child', 'trace::fa:001', 'trace::sa:child:fa:002', 'trace::sa:child:aux:003',
+])
+def test_trace_preserves_native_subagent_and_branch_identities(conversation_id):
+    parent = trace_record()
+    child = trace_record(1, conversation_id=conversation_id)
+    child['metrics']['input_sequence_length']['value'] = 17
+    child['metrics']['output_sequence_length']['value'] = 5
+    manifest = dict(requests=[
+        dict(id='trace:0', input_tokens=8, output_tokens=2),
+        dict(id=conversation_id+':0', input_tokens=17, output_tokens=5),
+    ])
+    result = scenarios.trace_metrics([parent, child], manifest)
+    assert result['completed_requests'] == 2
+    assert result['input_tokens'] == 25 and result['output_tokens'] == 7
+    assert len(set(result['request_ids'])) == 2
+
+
+def test_trace_unlisted_child_cannot_be_counted_as_its_parent():
+    child = trace_record(conversation_id='trace::sa:unlisted')
+    manifest = dict(requests=[dict(id='trace:0', input_tokens=8, output_tokens=2)])
+    with pytest.raises(ValueError, match='outside the frozen trace corpus'):
+        scenarios.trace_metrics([child], manifest)
 
 
 @pytest.mark.parametrize('cancelled,cancel_time', [
@@ -205,10 +440,81 @@ def test_trace_rejects_cancelled_or_unproven_completion_even_with_matching_count
 ])
 def test_trace_export_reconciles_native_counters_and_rejects_skipped_work(field, value):
     metrics = dict(completed_requests=1)
-    valid = dict(was_cancelled=False, request_count={'avg': 1.0})
+    valid = dict(was_cancelled=False, request_count={'avg': 1.0},
+        metadata=dict(scenario='inferencex-agentx-mvp', submission_valid=True))
     scenarios.verify_trace_export(valid, metrics)  # Native zero-error counters can be absent.
     with pytest.raises(ValueError):
         scenarios.verify_trace_export({**valid, field: value}, metrics)
+
+
+@pytest.mark.parametrize('metadata', [
+    None, {}, dict(scenario='other', submission_valid=True),
+    dict(scenario='inferencex-agentx-mvp', submission_valid=False),
+    dict(scenario='inferencex-agentx-mvp', submission_valid=1),
+    dict(scenario='inferencex-agentx-mvp', submission_valid='true'),
+    dict(scenario='inferencex-agentx-mvp', submission_valid=True,
+         submission_invalid_reasons=['profile_metric_coverage']),
+])
+def test_trace_export_requires_native_scenario_acceptance_even_when_counts_match(metadata):
+    aggregate = dict(was_cancelled=False, request_count={'avg': 1.0}, metadata=metadata)
+    with pytest.raises(ValueError, match='native scenario'):
+        scenarios.verify_trace_export(aggregate, dict(completed_requests=1))
+
+
+def _native_trace_window_export():
+    return dict(was_cancelled=False, request_count={'avg': 1.0}, error_summary=[],
+        metadata=dict(scenario='inferencex-agentx-mvp', submission_valid=True),
+        start_time='1970-01-01T00:00:00', end_time='1970-01-01T00:02:10',
+        total_isl={'avg': 8.0}, total_osl={'avg': 2.0},
+        output_token_throughput={'avg': 2 / 130})
+
+
+def test_native_trace_measurement_includes_phase_idle_and_terminal_drain_time():
+    manifest = dict(requests=[dict(id='trace:0', input_tokens=8, output_tokens=2)])
+    result = scenarios.trace_measurement([trace_record()], manifest, _native_trace_window_export())
+    assert result['request_span_s'] == 120
+    assert result['duration_s'] == 130
+    assert result['output_tokens_per_s'] == 2 / 130
+
+
+@pytest.mark.parametrize('field,value', [
+    ('start_time', None), ('start_time', 'not-a-time'),
+    ('start_time', '1970-01-01T00:00:01'), ('end_time', '1970-01-01T00:01:59'),
+    ('end_time', '1970-01-01T00:00:00'), ('total_isl', {'avg': 7}),
+    ('total_osl', {'avg': 3}), ('total_osl', {'avg': True}),
+    ('output_token_throughput', {'avg': 2 / 120}),
+    ('output_token_throughput', None), ('error_summary', ['request failed']),
+])
+def test_native_trace_measurement_rejects_missing_or_contradictory_window_and_totals(field, value):
+    manifest = dict(requests=[dict(id='trace:0', input_tokens=8, output_tokens=2)])
+    aggregate = {**_native_trace_window_export(), field: value}
+    with pytest.raises(ValueError):
+        scenarios.trace_measurement([trace_record()], manifest, aggregate)
+
+
+def test_agentx_performance_preserves_native_window_and_review_evidence(tmp_path, monkeypatch):
+    entry = next(e for e in CATALOG['entries'] if catalog.describe(e)['scenario'] == 'agentx')
+    lock = {**binding(entry), 'scenario': 'agentx'}
+    lock.pop('client_runtime')
+    row = scenarios.manifest_identity(catalog.normalized_recipe(entry, lock), lock, 'float4')
+    artifact = tmp_path/'aiperf_artifacts'
+    artifact.mkdir()
+    export_bytes = json.dumps(_native_trace_window_export()).encode()
+    records_bytes = (json.dumps(trace_record()) + '\n').encode()
+    (artifact/'profile_export_aiperf.json').write_bytes(export_bytes)
+    (artifact/'profile_export.jsonl').write_bytes(records_bytes)
+    monkeypatch.setattr(scenarios, '_run_client', lambda *a, **k: (['aiperf', 'profile'], None))
+    monkeypatch.setitem(sys.modules, '_aka_serving', types.SimpleNamespace(prepare_client=lambda lock: None))
+    monkeypatch.delenv('ARENA_EVAL_PHASE', raising=False)
+    measured, metadata = scenarios.performance(tmp_path, {}, lock,
+        {'minimum_measurement_s': 120}, tmp_path, 1234, row)
+    validate_serving_case(measured)
+    assert measured['metrics']['duration_s'] == 130
+    evidence = metadata['native_replay_evidence']
+    assert evidence['export_sha256'] == hashlib.sha256(export_bytes).hexdigest()
+    assert evidence['records_sha256'] == hashlib.sha256(records_bytes).hexdigest()
+    assert evidence['export_summary']['metadata']['submission_valid'] is True
+    assert evidence['export_summary']['output_token_throughput']['avg'] == 2 / 130
 
 
 def test_trace_rejects_native_context_overflow_skip_with_matching_counts():

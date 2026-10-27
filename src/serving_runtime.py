@@ -29,6 +29,59 @@ from .measurement import lock_limits, measurement_kind
 from .task_spec import load_task_spec, resolve_task_path
 from .tasks import get_task_config
 
+_CLEANUP_TIMEOUT_S = 90.0
+_CLEANUP_POLL_S = 0.25
+
+
+def _remove_action_container(name: str, evidence: Path) -> dict:
+    """Bound removal retries and prove absence even if the rm client failed.
+
+    Killing the attached Docker client does not synchronously remove its
+    container. A timed-out removal command may still have taken effect; only
+    a successful, empty exact-name query establishes that another GPU action
+    may start. Unknown or lingering state remains a failure.
+    """
+    started = time.monotonic()
+    deadline = started + _CLEANUP_TIMEOUT_S
+    proof = {"container": name, "status": "IN_PROGRESS", "attempts": []}
+    def save_proof():
+        # The action container can write its task mount. Never follow a link
+        # it may have left at the host-owned evidence filename.
+        temporary = evidence.with_name(evidence.name + "." + uuid.uuid4().hex + ".tmp")
+        with temporary.open("x") as handle:
+            json.dump(proof, handle, indent=2)
+            handle.write("\n")
+        temporary.replace(evidence)
+    while not proof["attempts"] or time.monotonic() < deadline:
+        attempt = {}
+        for action, argv in (
+            ("remove", ["docker", "rm", "-f", name]),
+            ("inspect", ["docker", "ps", "-aq", "--filter", f"name=^/{name}$"]),
+        ):
+            try:
+                result = subprocess.run(argv, capture_output=True, text=True,
+                    timeout=min(30 if action == "remove" else 5,
+                                max(0.1, deadline - time.monotonic())))
+                attempt[action] = {"returncode": result.returncode,
+                    "stdout": result.stdout[-1024:], "stderr": result.stderr[-1024:]}
+            except (OSError, subprocess.SubprocessError) as exc:
+                attempt[action] = {"error": f"{type(exc).__name__}: {exc}"}
+        proof["attempts"].append(attempt)
+        inspected = attempt["inspect"]
+        if inspected.get("returncode") == 0 and not inspected["stdout"].strip():
+            proof["status"] = "PASS"
+        proof["elapsed_s"] = time.monotonic() - started
+        save_proof()
+        if proof["status"] == "PASS":
+            return proof
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(_CLEANUP_POLL_S, remaining))
+    proof["status"] = "FAIL"
+    proof["elapsed_s"] = time.monotonic() - started
+    save_proof()
+    raise RuntimeError("Serving container absence could not be established")
+
 
 def validate_runtime_lock(lock: dict) -> None:
     if type(lock.get("version")) is not int or lock["version"] != 1:
@@ -289,13 +342,7 @@ class CleanExecutor:
             return response
         finally:
             try:
-                subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=30)
-                # --rm may have removed it already; prove absence, rather than
-                # interpreting either rm exit code as successful cleanup.
-                remaining = subprocess.run(["docker", "ps", "-aq", "--filter", f"name=^/{container_name}$"],
-                                           capture_output=True, text=True, timeout=30, check=True)
-                if remaining.stdout.strip():
-                    raise RuntimeError("Serving container remained after cleanup")
+                _remove_action_container(container_name, directory / "cleanup_evidence.json")
                 self.active_container = None
             except Exception as exc:
                 self.cleanup_error = "Serving cleanup failed; refusing further GPU actions"

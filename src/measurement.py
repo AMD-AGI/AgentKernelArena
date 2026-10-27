@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import math
 import statistics
+import hashlib
+import json
 
 DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback", "cuda_graph_cold_weights"})
 SERVING_METHOD = "serving_wall_clock"
@@ -47,6 +49,13 @@ def serving_pair_count(config: dict, override: int | None = None) -> int:
     if count < declared:
         raise ValueError("final_evaluation_pairs cannot reduce the task's declared pairs")
     return count
+
+
+def trace_input_token_policy(manifest: dict) -> str:
+    policy = manifest.get('input_token_policy', 'exact')
+    if not isinstance(policy, str) or policy not in {'exact', 'native_reconstruction'}:
+        raise ValueError('Trace input token policy must be exact or native_reconstruction')
+    return policy
 
 
 def validate_serving_case(row: dict) -> None:
@@ -108,6 +117,7 @@ def _validate_trace_window(metrics: dict, params: dict) -> None:
     requiring exact native per-request accounting. Fixed-count text/media tasks
     retain the stricter original count contract above.
     """
+    input_policy = trace_input_token_policy({'input_token_policy': params.get('trace_input_token_policy', 'exact')})
     for key in ('dataset_sha256', 'recipe_fingerprint', 'client_sha256'):
         value = params.get(key)
         if not isinstance(value, str) or len(value) != 64 or any(c not in '0123456789abcdef' for c in value):
@@ -118,11 +128,17 @@ def _validate_trace_window(metrics: dict, params: dict) -> None:
     if type(params.get('concurrency')) is not int or params['concurrency'] <= 0:
         raise ValueError('Trace workload must fix session concurrency')
     turns = params.get('trace_requests')
-    if not isinstance(turns, list) or not turns or len({t['id'] for t in turns}) != len(turns):
-        raise ValueError('Trace workload requires a complete turn manifest')
-    for turn in turns:
-        if not isinstance(turn.get('id'), str) or not turn['id'] or any(type(turn.get(k)) is not int or turn[k] <= 0 for k in ('input_tokens', 'output_tokens')):
-            raise ValueError('Trace turn has invalid work counts')
+    if turns is None:
+        digest = params.get('trace_manifest_sha256')
+        count = params.get('trace_turn_count')
+        if (not isinstance(digest, str) or len(digest) != 64
+                or any(c not in '0123456789abcdef' for c in digest)
+                or type(count) is not int or count <= 0):
+            raise ValueError('Trace workload requires its complete turn-manifest identity')
+    else:
+        if 'trace_manifest_sha256' in params or 'trace_turn_count' in params:
+            raise ValueError('Trace workload has ambiguous turn-manifest identities')
+        trace_manifest_identity(turns)  # Retain validation of older full manifests.
     count = metrics['completed_requests']
     ids = metrics.get('request_ids')
     if not isinstance(ids, list) or len(ids) != count or len(set(ids)) != count or metrics.get('failed_requests') != 0:
@@ -131,6 +147,29 @@ def _validate_trace_window(metrics: dict, params: dict) -> None:
         values = metrics.get(key)
         if not isinstance(values, list) or len(values) != count or any(type(v) is not int or v <= 0 for v in values) or sum(values) != metrics.get(total):
             raise ValueError('Trace token totals differ from per-request evidence')
+    if input_policy == 'native_reconstruction':
+        nominal = metrics.get('nominal_input_lens')
+        if (not isinstance(nominal, list) or len(nominal) != count
+                or any(type(v) is not int or v <= 0 for v in nominal)
+                or sum(nominal) != metrics.get('nominal_input_tokens')):
+            raise ValueError('Trace reconstruction budgets are missing or inconsistent')
+
+
+def trace_manifest_identity(turns: list[dict]) -> dict:
+    """Bind all protected turns without duplicating the corpus in every result.
+
+    The task lock retains the complete manifest used by exact per-call checks.
+    Results and paired comparisons carry its digest/count, so large canonical
+    corpora do not exhaust the independent review's evidence budget.
+    """
+    if not isinstance(turns, list) or not turns or len({t['id'] for t in turns}) != len(turns):
+        raise ValueError('Trace workload requires a complete turn manifest')
+    for turn in turns:
+        if not isinstance(turn.get('id'), str) or not turn['id'] or any(type(turn.get(k)) is not int or turn[k] <= 0 for k in ('input_tokens', 'output_tokens')):
+            raise ValueError('Trace turn has invalid work counts')
+    return dict(trace_manifest_sha256=hashlib.sha256(json.dumps(
+        turns, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+        trace_turn_count=len(turns))
 
 
 def paired_throughput(pairs: list[tuple[list, list]], *, minimum_speedup_ratio: float = 1.0) -> dict:

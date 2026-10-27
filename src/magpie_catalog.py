@@ -20,7 +20,7 @@ import tempfile
 
 import yaml
 
-from .measurement import lock_limits
+from .measurement import lock_limits, trace_input_token_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / 'tasks/e2e/magpie/catalog.json'
@@ -212,8 +212,9 @@ def validate_binding(binding, info):
     if len(prompts) != binding['correctness'].get('model_samples'):
         raise ValueError('Model correctness sample count differs from protected inputs')
     if reference in {'production_quality', 'production_numerical'}:
-        from .tools.perf.serving import production_tolerances
+        from .tools.perf.serving import production_logprob_tolerances, production_tolerances
         production_tolerances(binding)
+        production_logprob_tolerances(binding)
     elif reference == 'production_tokens':
         if binding['correctness'].get('token_match') != 'exact':
             raise ValueError('Native token reference requires exact equality, with no fallback')
@@ -226,7 +227,7 @@ def validate_binding(binding, info):
         ('media_checks.json', binding['correctness'].get('media_sha256'))):
         if filename in inputs and sha256(json_bytes(inputs[filename])) != expected:
             raise ValueError('Protected JSON bytes differ from their binding: ' + filename)
-    lock_limits(binding)
+    limits = lock_limits(binding)
     if 'server_seed' in binding and (type(binding['server_seed']) is not int or not 0 <= binding['server_seed'] < 2**31):
         raise ValueError('Server seed must be a nonnegative 31-bit integer')
     scripts = binding.get('benchmark_scripts')
@@ -243,6 +244,8 @@ def validate_binding(binding, info):
     if info['scenario'] == 'text' or client:
         if not isinstance(client, dict):
             raise ValueError('Text workloads require an immutable prepared client_runtime')
+        from .tools.perf.serving_scenarios import validate_client_review_sources
+        validate_client_review_sources(client)
         if client.get('kind', 'archive') == 'image':
             executable = PurePosixPath(client.get('executable', ''))
             if not executable.is_absolute() or len(executable.parts) < 2 or '..' in executable.parts or executable.parts[1] not in {'opt', 'usr'}:
@@ -283,12 +286,20 @@ def validate_binding(binding, info):
         duration = manifest.get('duration_s')
         if type(duration) is not int or duration <= 0:
             raise ValueError('AgentX requires a fixed positive measurement duration')
+        if limits['client_timeout_s'] <= duration:
+            raise ValueError('AgentX client timeout must exceed its fixed replay duration')
         argv = agentx['client']['argv']
+        if trace_input_token_policy(manifest) == 'native_reconstruction' and (
+                argv.count('--use-server-token-count') != 1 or '--no-use-server-token-count' in argv):
+            raise ValueError('Native reconstruction requires --use-server-token-count')
         if str(duration) != argv[argv.index('--benchmark-duration')+1]:
             raise ValueError('AgentX replay command differs from its duration manifest')
         indices = binding['correctness'].get('trace_probe_indices')
         if not isinstance(indices, list) or not indices or any(type(i) is not int or not 0 <= i < len(manifest.get('requests', [])) for i in indices):
             raise ValueError('AgentX requires protected trace-shape correctness coverage')
+        batch = binding['correctness'].get('trace_batch_indices')
+        if not isinstance(batch, list) or not batch or any(type(i) is not int or not 0 <= i < len(manifest.get('requests', [])) for i in batch):
+            raise ValueError('AgentX requires protected concurrent trace correctness coverage')
     if binding.get('server_launch'):
         _command(binding['server_launch'], 'Prepared server')
 
@@ -316,6 +327,8 @@ def materialize(catalog, recipe_id, binding, destination: Path, *, root=ROOT):
         if len(binding['request_manifest']['input_lens']) != expected:
             raise ValueError('Media request manifest differs from the complete prepared sample count')
     if info['scenario'] == 'agentx':
+        if len(binding['correctness']['trace_batch_indices']) != int(recipe['envs']['CONC']):
+            raise ValueError('AgentX correctness requires one complete concurrent trace batch')
         client = binding['agentx']['client']
         argv = client['argv']
         for flag, expected in [('--concurrency', str(recipe['envs']['CONC'])),

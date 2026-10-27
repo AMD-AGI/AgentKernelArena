@@ -67,7 +67,7 @@ def test_serving_bind_failure_cleans_up_even_if_parent_alive(serving_adapter, tm
         cleaned.append(proc)
         log.close()
     monkeypatch.setattr(module, 'stop_server', stop)
-    monkeypatch.setattr(module, 'request', lambda *args, **kwargs: pytest.fail('must not probe a conflicting server'))
+    monkeypatch.setattr(module, 'readiness_probe', lambda *args, **kwargs: pytest.fail('must not probe a conflicting server'))
     with pytest.raises(RuntimeError, match='Serving port bind failed'):
         module.start_server({'envs': {}}, {'server_startup_timeout_s': 600})
     assert cleaned == [process]
@@ -90,12 +90,48 @@ def test_serving_readiness_requests_share_startup_deadline(serving_adapter, tmp_
     def stop(proc, log):
         cleaned.append(proc)
         log.close()
-    monkeypatch.setattr(module, 'request', request)
+    monkeypatch.setattr(module, 'readiness_probe', request)
     monkeypatch.setattr(module, 'stop_server', stop)
     with pytest.raises(TimeoutError, match='Model startup exceeded 8 seconds'):
         module.start_server({'envs': {}}, {'server_startup_timeout_s': 8})
     assert timeouts == [5, 2]
     assert now == [8] and len(cleaned) == 1
+
+
+@pytest.mark.parametrize('body', [b'', b'OK', b'{"status":"ready"}'])
+def test_serving_readiness_accepts_successful_http_without_a_json_body(serving_adapter, tmp_path, monkeypatch, body):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+    module = serving_adapter
+    class Health(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *args):
+            pass
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Health)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    process = SimpleNamespace(poll=lambda: None)
+    monkeypatch.setattr(module, 'ROOT', tmp_path)
+    monkeypatch.setattr(module, 'serving_port', lambda: server.server_port)
+    monkeypatch.setattr(module, 'launch_command', lambda *args: (['server'], 'health'))
+    monkeypatch.setattr(module.subprocess, 'Popen', lambda *args, **kwargs: process)
+    monkeypatch.setattr(module, 'stop_server', lambda process, log: log.close())
+    try:
+        actual, port, log = module.start_server({'envs': {}}, {'server_startup_timeout_s': 1})
+        log.close()
+        assert actual is process and port == server.server_port
+        if body != b'{"status":"ready"}':
+            # Model API replies still require valid JSON; accepting empty health
+            # responses cannot weaken inference or numerical result parsing.
+            with pytest.raises(ValueError):
+                module.request(port, 'health', timeout=1)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(2)
 
 
 def test_nonroot_image_path_preserves_tools_and_missing_tool_semantics(tmp_path, monkeypatch):
@@ -1095,8 +1131,10 @@ def production_fixture():
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     lock={'correctness':{'production_tolerances':dict(prefix_max_abs=.5,prefix_mean_abs=.2,
         prefix_p99_abs=.5,decode_max_regret=.5,decode_mean_regret=.2,decode_p99_regret=.5)}}
-    diagnostic=dict(input_tokens=[10,20,30],actual=[[None,10],[-1.1,20],[-2.1,30]],
-        reference_rows=[[None,10],[-1.,20],[-2.,30]])
+    diagnostic=dict(input_tokens=[10,20,30],tokens=[10,20,30,40,50],output_length=2,
+        actual=[[None,10],[-1.1,20],[-2.1,30],[-.42,40],[-.29,50]],
+        reference_rows=[[None,10],[-1.,20],[-2.,30],[-.4,40],[-.3,50]],
+        reference=dict(values=[-1.,-2.,-.4,-.3],best=[-1.,-2.,-.3,-.2]))
     plain=dict(input_tokens=[10,20,30],tokens=[10,20,30,40,50],output_length=2,
         reference=dict(values=[-1.,-2.,-.4,-.3],best=[-1.,-2.,-.3,-.2]))
     return module,lock,diagnostic,plain
@@ -1107,6 +1145,9 @@ def test_production_normal_variation_retains_per_case_bounds():
     result=module.production_numerical_checks([diagnostic],[plain],lock)
     assert result['prefix_cases'][0]['mean']==pytest.approx(.1)
     assert result['decode_cases'][0]['max']==pytest.approx(.1)
+    assert result['decode_logprob_cases'][0]['max']==pytest.approx(.02)
+    assert result['decode_logprob_cases'][0]['count']==2
+    assert result['diagnostic_decode_cases'][0]['max']==pytest.approx(.1)
     assert result['thresholds']==lock['correctness']['production_tolerances']
 
 
@@ -1143,6 +1184,96 @@ def test_production_teacher_reference_scores_actual_continuation():
         return {'meta_info':dict(input_token_logprobs=[[None,10],[-1,20],[-2,30],[-.4,40],[-.3,50]],
             input_top_logprobs=[None,[[-1,20]],[[-2,30]],[[-.3,41]],[[-.2,51]]])}
     assert module.production_teacher_reference(1,plain,request)==plain['reference']
+
+
+@pytest.mark.parametrize('value',[1000.,-1000.,-.99,float('nan'),float('inf')])
+def test_production_diagnostic_decode_probabilities_are_independently_checked(value):
+    module,lock,diagnostic,plain=production_fixture()
+    diagnostic['actual'][-1][0]=value
+    with pytest.raises(module.ModelNumericalFailure):
+        module.production_numerical_checks([diagnostic],[plain],lock)
+
+
+@pytest.mark.parametrize('corruption',['missing_reference','missing_probability','missing_best',
+    'missing_token','wrong_decode_id','wrong_prompt','wrong_output_length','positive_reference','bad_choice'])
+def test_production_diagnostic_decode_requires_complete_aligned_reference(corruption):
+    module,lock,diagnostic,plain=production_fixture()
+    if corruption=='missing_reference':diagnostic.pop('reference')
+    if corruption=='missing_probability':diagnostic['reference']['values'].pop()
+    if corruption=='missing_best':diagnostic['reference']['best'].pop()
+    if corruption=='missing_token':diagnostic['actual'].pop()
+    if corruption=='wrong_decode_id':diagnostic['actual'][-1][1]=51
+    if corruption=='wrong_prompt':diagnostic['tokens'][0]=11
+    if corruption=='wrong_output_length':diagnostic['output_length']=3
+    if corruption=='positive_reference':diagnostic['reference']['values'][-1]=1.
+    if corruption=='bad_choice':
+        diagnostic['reference']['values'][-1]=-4.
+        diagnostic['actual'][-1][0]=-4.
+    with pytest.raises(module.ModelNumericalFailure):
+        module.production_numerical_checks([diagnostic],[plain],lock)
+
+
+def test_production_diagnostic_logprob_errors_cannot_be_diluted_by_other_cases():
+    module,lock,diagnostic,plain=production_fixture()
+    diagnostics=[copy.deepcopy(diagnostic) for _ in range(100)]
+    plains=[copy.deepcopy(plain) for _ in range(100)]
+    diagnostics[-1]['actual'][-1][0]=-4.
+    with pytest.raises(module.ModelNumericalFailure,match='decode logprob case 99'):
+        module.production_numerical_checks(diagnostics,plains,lock)
+
+
+def test_production_decode_logprob_policy_is_explicit_or_uses_existing_prefix_bounds():
+    module,lock,diagnostic,plain=production_fixture()
+    assert module.production_logprob_tolerances(lock)==dict(max_abs=.5,mean_abs=.2,p99_abs=.5)
+    rule=dict(max_abs=.03,mean_abs=.03,p99_abs=.03)
+    lock['correctness']['decode_logprob_tolerances']=rule
+    assert module.production_numerical_checks([diagnostic],[plain],lock)['decode_logprob_thresholds']==rule
+    diagnostic['actual'][-1][0]=-.4
+    with pytest.raises(module.ModelNumericalFailure,match='decode logprob'):
+        module.production_numerical_checks([diagnostic],[plain],lock)
+    for invalid in [None,{},dict(max_abs=1),dict(max_abs=True,mean_abs=1,p99_abs=1),
+                    dict(max_abs=float('inf'),mean_abs=1,p99_abs=1),
+                    dict(max_abs=1,mean_abs=-1,p99_abs=1)]:
+        lock['correctness']['decode_logprob_tolerances']=invalid
+        with pytest.raises(ValueError,match='calibrated tolerances'):
+            module.production_logprob_tolerances(lock)
+
+
+def test_production_original_scores_each_observed_sequence_without_free_generation():
+    module,lock,diagnostic,plain=production_fixture()
+    diagnostic['tokens']=[10,20,30,41,42]
+    requests=[]
+    def request(port,path,body):
+        assert port==10002 and path=='generate'
+        assert body['sampling_params']==dict(temperature=0,max_new_tokens=1,ignore_eos=True)
+        tokens=body['input_ids'];requests.append(tokens)
+        scores=[-1.,-2.,-.4,-.3]
+        rows=[[None,tokens[0]]]+[[v,t] for v,t in zip(scores,tokens[1:])]
+        return {'meta_info':dict(input_token_logprobs=rows,
+            input_top_logprobs=[None]+[[[-.1,99]] for _ in scores])}
+    result=module.production_references(10002,[diagnostic],[plain],request)
+    assert requests==[[10,20,30,41,42],[10,20,30,40,50]]
+    assert [row[1] for row in diagnostic['reference_rows']]==diagnostic['tokens']
+    assert result==[diagnostic['reference']['values']]
+    assert 'reference_tokens' not in diagnostic and 'reference_tokens' not in plain
+
+
+def test_production_original_reference_preserves_concurrent_batch_and_result_order():
+    import threading
+    module,lock,diagnostic,plain=production_fixture()
+    samples=[dict(tokens=[10,20,30+i],input_tokens=[10,20],output_length=1,
+                  check_kind='trace_batch',concurrency=4) for i in range(4)]
+    barrier=threading.Barrier(4)
+    def request(port,path,body):
+        barrier.wait(timeout=5)
+        tokens=body['input_ids'];value=-float(tokens[-1])
+        return {'meta_info':dict(input_token_logprobs=[[None,10],[-1.,20],[value,tokens[-1]]],
+            input_top_logprobs=[None,[[-1.,20]],[[-1.,99]]])}
+    module.production_references(1,samples,[],request)
+    assert [item['reference']['values'][-1] for item in samples]==[-30.,-31.,-32.,-33.]
+    assert [[r[1] for r in item['reference_rows']] for item in samples]==[item['tokens'] for item in samples]
+    with pytest.raises(module.ModelNumericalFailure,match='batch coverage'):
+        module.production_references(1,samples[:3],[],request)
 
 
 def test_vllm_derived_capacity_is_retained_but_not_a_configured_override():

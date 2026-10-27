@@ -106,7 +106,12 @@ the trusted launcher passes the same root to the executor. Submitted paths must
 remain within that checkout and outside its task templates, without following symlinks. Files are read through open directory descriptors
 and bounded before being copied into the trusted action directory. A disconnected
 caller cancels its active action; container removal is confirmed before the next
-GPU action starts. Requests retain their original deadline while queued.
+GPU action starts. Cleanup retries transient removal or inspection failures for
+up to 90 seconds and records each attempt in the action's `cleanup_evidence.json`.
+A failed removal command alone does not establish whether a container remains;
+only a successful exact-name query showing absence permits further GPU work.
+Lingering or unknown container state blocks subsequent actions. Requests retain
+their original deadline while queued.
 
 Leftover worker processes invalidate performance for any task. Serving also
 requires a successful process sweep; an unavailable or failed sweep blocks
@@ -296,19 +301,23 @@ Whole-model acceptance retains a fixed, attributed 64-question GSM8K regression
 subset, with a locked absolute accuracy floor and maximum loss against a fresh
 uninjected original-image reference. This is not the full Magpie/lm-eval suite.
 Short prompt/decode samples and one full concurrent batch using the scored
-workload's input/output lengths compare input-prefix logprobs under identical
-token prefixes against the locked numerical threshold. Generated continuations are
-retained as diagnostics because divergent tokens have different contexts and
-cannot be compared pointwise. Baseline calibration must pass before search;
+workload's input/output lengths compare logprobs under identical token prefixes
+against the locked numerical thresholds. Independent free-running continuations
+can diverge and cannot be compared pointwise. The production numerical and quality
+policies instead teacher-force each actual continuation on the uninjected
+original server, in both request modes and with the declared batch concurrency.
+Baseline calibration must pass before search;
 do not convert a failed candidate's required check into a diagnostic afterward.
 Both request modes are checked: logprob collection and the no-logprob path used
 by scoring. For the latter, every generated token in the small task must be an
 FP32 reference argmax within the same locked logprob tolerance. Teacher forcing
 checks all generated positions even when a near tie changes the continuation.
 The FP8 production-quality task permits normal differences in generated text.
-It scores each actual no-logprob continuation by teacher forcing on the separate
-original server, and bounds per-case maximum, mean and 99th-percentile greedy
-regret. Input-prefix logprob differences have separate per-case bounds on the
+It scores each actual continuation by teacher forcing on the separate original
+server, and bounds per-case maximum, mean and 99th-percentile greedy regret in
+both request modes. The diagnostic mode also compares every returned decode
+logprob with the original score for that exact token and prefix. All logprobs
+must be finite and nonpositive. Input-prefix logprob differences have separate per-case bounds on the
 same three statistics. These limits live in `correctness.production_tolerances`
 in the protected runtime lock and apply equally to original and candidate runs.
 They must be calibrated on repeated unmodified runs before search, then checked
@@ -316,6 +325,14 @@ with held-out original runs and deliberately incorrect implementations. They are
 not an FP32 oracle or proof of equivalence for every possible fusion. Missing,
 misaligned or nonfinite probabilities still fail. No case can dilute another
 case's error by contributing many easy tokens.
+
+`correctness.decode_logprob_tolerances` may declare independently calibrated
+`max_abs`, `mean_abs` and `p99_abs` bounds for the decode logprob comparison.
+Without that optional mapping, the existing input-prefix absolute error bounds
+apply to decode too; an older profile does not bypass the new check. The initial
+unmodified baseline must pass all checks before optimization. Calibrate any
+model-specific decode bounds on original-only runs before search and verify
+them on a held-out original run. Do not adjust them to accept a candidate.
 
 The fixed answer-accuracy subset remains an additional regression gate. Its
 minimum accuracy, allowed drop, sample count and answer parser remain task-owned;
@@ -438,6 +455,12 @@ a run or resume. It declares:
   comparisons and teacher forcing of actual candidate continuations, without
   imposing one answer dataset on every model. FP32-capable models can instead
   use `transformers_fp32`.
+- Archive-backed `client_runtime.review_sources` may map up to 16 relative
+  Python/shell source paths inside that immutable archive to SHA-256 digests.
+  Validation evidence includes these exact native timer/phase implementations,
+  bound to the executed archive, without importing or changing them. The limit
+  is 256 KiB per file and 512 KiB combined. This is useful when an AgentX driver
+  runs from a prepared interpreter rather than the benchmark shell recipe.
 - ATOM images without a full logprob API expose actual generated IDs through
   the reporting adapter, with exact prompt-ID and completion-count checks. It
   never re-tokenizes decoded text. Bind one text policy before optimization:
@@ -454,6 +477,9 @@ a run or resume. It declares:
   responses and computation are unchanged by the reporting adapter.
 - Optional `limits` and action/final-reserve budgets appropriate to actual model
   startup and measurement cost. Do not shrink them after search begins.
+  The client timeout must exceed the complete fixed AgentX replay duration;
+  materialization rejects a shorter or equal budget before starting GPU work.
+  Leave additional time for startup and native replay drain.
 - Optional `measurement_num_prompts` can **increase** the native text/media
   sample count during baseline preparation. This makes tiny profiling examples
   usable for a stable measurement window. It cannot reduce the original count,
@@ -538,6 +564,9 @@ probes do not qualify image kernels.
 AgentX profiles contain the resolved canonical `agentx.launch_spec` (literal
 `argv`, `env`, `health_path`), its `recipe_fingerprint`, and `agentx.client`
 (literal `argv` and `env`) captured from the pinned native replay preparation.
+Readiness requires a successful HTTP status at `health_path`; empty or plain-text
+health responses are valid. Inference responses still require their complete
+structured outputs, numerical checks and runtime identity evidence.
 The client must run the `inferencex-agentx-mvp` scenario for the canonical duration,
 not fast/diagnostic mode. Use `{model}`, `{client}`, `{root}`, `{port}` and
 `{assets}` placeholders for evaluator-owned paths/endpoints. Preinstall client
@@ -551,14 +580,51 @@ An optional prepared `client_runtime` also supports `{client_python}` in the
 canonical replay argv, for example a pinned runtime running `-m aiperf`.
 
 The AgentX `request_manifest` fixes `dataset_sha256`, `duration_s` and trace turns
-(`requests`: unique `id` as `trace-id:turn-index`, exact `input_tokens` and
-`output_tokens`). `correctness.trace_probe_indices` selects protected trace shapes
-for model numerical checks. All replayed profiling records are checked against
+(`requests`: unique `id` as `conversation-id:turn-index`, exact `input_tokens` and
+`output_tokens` by default). If `input_tokens` instead counts the native loader's
+reconstruction budget, bind `input_token_policy: native_reconstruction` before
+qualification. The pinned loader decodes synthetic token blocks into chat text;
+BPE re-encoding and chat formatting can produce either fewer or more wire tokens.
+These are different count domains, not an error tolerance. This explicit policy
+requires `--use-server-token-count`, checks native usage against both reported
+input/output sequence lengths, and keeps output lengths exact. Results preserve
+the nominal reconstruction budgets separately from actual wire input counts.
+The protected corpus, native client, configuration, accepted native scenario
+verdict and absence of skipped/error work bind request construction; wire counts
+alone do not prove that the HTTP payloads match the intended corpus. Independent
+review must retain this coverage limit. Never apply this policy to excuse modified
+client inputs or truncate requests. Keep the default exact policy when the
+manifest describes complete wire requests. Qualify the policy against the fixed
+client and tokenizer before search. The policy is protected and included in
+the measurement identity. Preserve the complete native conversation ID, including
+subagent and flattened-branch suffixes such as `::sa:child` and `::fa:001`;
+these identify distinct agents, not interchangeable replay sessions.
+The complete turn list stays in the protected runtime lock. Action results bind
+its SHA-256 and turn count instead of repeating the whole corpus in every
+measurement and review record; exact per-request checks still use that list.
+`correctness.trace_probe_indices` selects protected serial trace shapes for
+model numerical checks. `correctness.trace_batch_indices` selects one additional
+complete batch with the scored session concurrency; each index fixes a trace
+turn's input and output lengths. Freeze this selection before baseline
+calibration and search. Both logprob and ordinary no-logprob generation exercise
+the concurrent batch and compare against a fresh original server. These probes
+sample model computation; they do not validate every stateful trajectory or
+every output in the timed replay. Independent candidate review must retain that
+coverage limit. All replayed profiling records are checked against
 the turn manifest, with exact integer token counts and no failed or cancelled
 requests. A completed record must explicitly report `was_cancelled: false`;
 matching token counts cannot turn a cancelled request into completed work.
+Native end-of-window credit cancellations do not become completed requests;
+preserve their shutdown logs and reconcile the accepted native export with all
+completed rows. Throughput uses the native observation start/end timestamps,
+including initial idle time and terminal grace/drain time, rather than only the
+first-request/last-response span. Native token totals and throughput must agree
+with the independently summed completed records and that observation window.
 Native aggregate completion/error counters must agree with those records; missing
 rows and context-overflow skips cannot silently change the measured workload.
+The native export must also identify the canonical scenario and explicitly mark
+the submission valid, without invalid-reason tags; matching counters alone cannot
+override a rejected native run.
 Warmup records remain diagnostic. Fixed-duration replay intentionally permits
 more completed requests when faster; the corpus, replay command, session
 concurrency and measurement duration must remain the same. No token total is

@@ -41,6 +41,15 @@ regret bound. Both check every probed generated token; neither claims engine
 logprob equivalence. Failed checks never switch policies. The FP32 policy
 requires the complete reference model to fit the declared evaluation hardware.
 
+For native trace workloads, read `request_manifest.input_token_policy` in the
+protected lock. Under `native_reconstruction`, nominal input lengths count the
+loader's token budget before decoded text is re-encoded and chat-formatted;
+actual wire counts can be larger or smaller. The fixed native client controls
+request construction, actual usage counters must agree, and output lengths
+remain exact. Counts alone do not independently verify every HTTP payload.
+Trace throughput retains the native phase observation window, including idle
+and terminal drain time; cancelled work never counts as a completed request.
+
 Run task-owned checks with:
 
 ```bash
