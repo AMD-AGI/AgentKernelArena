@@ -199,6 +199,12 @@ def _evaluate_fixture(monkeypatch, modules, fixture, *, fault=None):
     torch, loader, evaluator = modules.torch, modules.loader, modules.evaluator
     timed_class = _load("_moe_cpu_timed_run", ROOT / "src/tools/perf/aka_benchmark.py").TimedRun
     calls, replays, checked = [], [], []
+    native_verifications = []
+    native_identity = {"test_stub": "baseline_native_identity"}
+
+    def verify_baseline_native():
+        native_verifications.append(None)
+        return native_identity
 
     def compute(hidden, _w1, _w2, routing_weight, routing_ids, **_kwargs):
         return (hidden.float() + routing_weight.sum(dim=1, keepdim=True)
@@ -255,7 +261,8 @@ def _evaluate_fixture(monkeypatch, modules, fixture, *, fault=None):
     monkeypatch.setattr(evaluator, "candidate_callable", lambda: candidate)
     monkeypatch.setattr(loader, "load_case", lambda *_args, **_kwargs: fixture.payload)
     monkeypatch.setitem(sys.modules, "cases", loader)
-    monkeypatch.setitem(sys.modules, "runtime", SimpleNamespace(verify_runtime=lambda: {}))
+    monkeypatch.setitem(sys.modules, "runtime", SimpleNamespace(
+        verify_runtime=lambda: {}, verify_baseline_native=verify_baseline_native))
     monkeypatch.setitem(sys.modules, "reference", SimpleNamespace(
         reference=reference, compare_output=compare, check_output=check,
         check_reference_controls=lambda *_args: {}))
@@ -269,7 +276,8 @@ def _evaluate_fixture(monkeypatch, modules, fixture, *, fault=None):
     monkeypatch.setitem(sys.modules, "aiter.fused_moe", fused_moe)
     data = {"cases": [fixture.case], "numerical_contract": {},
             "timing": {"warmup": 1, "repetition": 3, "target_ms": 1.0, "max_graph_repeats": 8}}
-    return SimpleNamespace(data=data, calls=calls, replays=replays, checked=checked)
+    return SimpleNamespace(data=data, calls=calls, replays=replays, checked=checked,
+                           native_verifications=native_verifications, native_identity=native_identity)
 
 
 @pytest.mark.parametrize("role", ["baseline", "candidate"])
@@ -277,7 +285,7 @@ def _evaluate_fixture(monkeypatch, modules, fixture, *, fault=None):
 def test_performance_uses_same_timed_unit_with_new_values(monkeypatch, modules, replay_case, role, method):
     replay_case.case["params"]["benchmark_method"] = method
     state = _evaluate_fixture(monkeypatch, modules, replay_case)
-    rows, _ = modules.evaluator.run_action(role, "performance", state.data)
+    rows, metadata = modules.evaluator.run_action(role, "performance", state.data)
     assert rows[0]["status"] == "PASS"
     assert rows[0]["execution_time_ms"] == 0.25
     assert len(state.calls) == (1 if method == "cuda_graph" else 3)
@@ -285,6 +293,11 @@ def test_performance_uses_same_timed_unit_with_new_values(monkeypatch, modules, 
     assert state.replays == state.calls[:1] * 2
     assert not modules.torch.equal(state.checked[0], state.checked[-1])
     assert "current_value_replay" in rows[0]["metadata"]
+    assert len(state.native_verifications) == (1 if role == "baseline" else 0)
+    if role == "baseline":
+        assert metadata["baseline_native_identity"] is state.native_identity
+    else:
+        assert "baseline_native_identity" not in metadata
 
 
 @pytest.mark.parametrize("fault", ["stale", "sample_slack", "replay_slack", "sample_weight", "replay_weight"])
