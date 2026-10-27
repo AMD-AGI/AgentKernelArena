@@ -117,8 +117,10 @@ All retained tasks use schema v2 and the shared loader/evaluator/validator.
 New tasks must use that contract and implement its task-owned actions; adding a
 field to YAML alone does not implement the associated behavior.
 
-- Paths in an isolated task must resolve within the task directory. Do not use
-  absolute paths, undeclared downloads, or external repositories.
+- Task source, commands, and logical input paths must resolve within the task
+  directory. Explicit immutable runtime data may use the task guide's declared
+  read-only asset contract; this does not allow escaping source paths,
+  undeclared downloads, or external repositories.
 - Command fields in `config.yaml` are lists. Commands must exit nonzero on
   failure and honor their declared timeouts.
 - Compilation checks must actually compile or syntax-check the target.

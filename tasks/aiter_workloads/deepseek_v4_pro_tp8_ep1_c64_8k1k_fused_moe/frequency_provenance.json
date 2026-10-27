@@ -1,0 +1,33 @@
+{
+  "accounting_aggregate_sha256": "1c6d4dacf78356883a98c5f3573271c8ec748a5776400e49a086ef3b451b3a0d",
+  "capture": {
+    "reference": "capture_binding.json",
+    "sha256": "761faac1b276904d5064569d37f894a6c8d01f44226e5b59cbb34ae2b28d5638"
+  },
+  "case_counts": [
+    {
+      "count": 64,
+      "served": {
+        "active_requests": 1,
+        "live_rows": 8192,
+        "padded_rows": 8192,
+        "phase": "prefill"
+      },
+      "test_case_id": "prefill_m8192"
+    },
+    {
+      "count": 1024,
+      "served": {
+        "active_requests": 64,
+        "live_rows": 64,
+        "padded_rows": 64,
+        "phase": "decode"
+      },
+      "test_case_id": "decode_m64"
+    }
+  ],
+  "enrolled_for_scoring": true,
+  "statement": "Attach each per-site frequency once to its primary phase; current_value_replay supplies correctness coverage with no additional timing/frequency weight.",
+  "status": "measured",
+  "unit": "Executed public fused_moe calls at rank0 layer3 over the complete scored accounting05 request window; warmup excluded"
+}

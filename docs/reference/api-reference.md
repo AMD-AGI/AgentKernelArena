@@ -297,6 +297,7 @@ Each task produces a `task_result.yaml` in its workspace:
 | `base_execution_time` | Baseline runtime in ms |
 | `best_optimized_execution_time` | Best optimized runtime in ms |
 | `speedup_ratio` | Speedup over baseline |
+| `performance_aggregation` | Workload-weighted kernel scoring: method, case weights, `baseline_total_time_ms`, `candidate_total_time_ms`, canonical `task_spec_sha256`, and optional `workloads` path/content hash; ordinary execution-time fields remain diagnostic means |
 | `baseline_benchmark_methods` | Timing methods observed while measuring the baseline |
 | `optimized_benchmark_methods` | Timing methods observed while measuring the optimized kernel |
 | `benchmark_method_consistent` | Whether baseline and optimized timing methods matched |
@@ -361,11 +362,14 @@ For a single case, `s = baseline_time / candidate_time`. Equivalently, let
 less than `baseline_time / 1.05` (about 95.24% of the baseline time) to score
 above zero. Exactly `1.05×` still scores `0`.
 
-For multi-case tasks, `s` is the evaluator's arithmetic mean of matched per-case
-speedups. Apply the formula **once to that mean**; do not average per-case
-rewards or divide the two aggregate timing fields. This retains the existing
-aggregation contract, so a positive task score does not guarantee every case
-improved.
+For multi-case kernel tasks, `s` defaults to the evaluator's arithmetic mean of
+matched per-case speedups. Tasks that explicitly declare
+`evaluation.aggregation.method: weighted_total_time` instead use
+`sum(n_i * baseline_ms_i) / sum(n_i * candidate_ms_i)`, where fixed positive
+`n_i` values represent workload frequencies. Apply the reward formula **once to
+the resulting ratio**; do not average per-case rewards or divide the two
+diagnostic timing means. A positive task score does not guarantee every case
+improved. Weighted local time is not a measured end-to-end serving speedup.
 
 #### Adjusting the curve
 

@@ -1,0 +1,2447 @@
+{
+  "accounting_aggregate_sha256": "1c6d4dacf78356883a98c5f3573271c8ec748a5776400e49a086ef3b451b3a0d",
+  "assembly_record_ref": {
+    "artifact_name": "ASSEMBLY_RECORD.json",
+    "sha256": "1cee8b849c94cb4ddee8231ee4b3581e6e16070db7f1a0428ad0479a9acea28d",
+    "size_bytes": 71394
+  },
+  "assembly_result_ref": {
+    "artifact_name": "RESULT.json",
+    "sha256": "edcae4fe589cf9c7f8c3e9441ae3085850ff6d9dff1cc3e56f08784a31037177"
+  },
+  "exported_cases": [
+    {
+      "count": 64,
+      "dtype": "bfloat16",
+      "inputs": {
+        "call_kwargs": {
+          "activation": "silu",
+          "doweight_stage1": false,
+          "gate_mode": "interleave",
+          "hidden_pad": 0,
+          "intermediate_pad": 0,
+          "quant_type": "per_1x32",
+          "swiglu_limit": 10.0
+        },
+        "current_value_replay": {
+          "path": "prefill_1.pt",
+          "sha256": "6fd8cdc6cfd3fb721da1e312f0aef0ef903a003cfce82610eb36e24f3019deac"
+        },
+        "input_weight_storages_disjoint": true,
+        "path": "prefill_0.pt",
+        "sha256": "f583f780b2dec6aed34ef8c5336fc74a0180d295d5cdeae4fa71dc1f454dbfc7",
+        "tensor_attributes": {
+          "w1": {
+            "is_shuffled": true
+          },
+          "w2": {
+            "is_shuffled": true
+          }
+        },
+        "weights": {
+          "path": "weights.pt",
+          "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e"
+        }
+      },
+      "params": {
+        "benchmark_method": "cuda_event_fallback",
+        "phase": "prefill",
+        "tensors": {
+          "hidden_states": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              8192,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 117440512,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "topk_ids": {
+            "dtype": "torch.int32",
+            "shape": [
+              8192,
+              6
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 196608,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "topk_weight": {
+            "dtype": "torch.float32",
+            "shape": [
+              8192,
+              6
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 196608,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "w1": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 1056964608,
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          },
+          "w1_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 66060288,
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          },
+          "w2": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 528482304,
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          },
+          "w2_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 44040192,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "shape": [
+        8192,
+        7168,
+        384,
+        384,
+        6
+      ],
+      "test_case_id": "prefill_m8192"
+    },
+    {
+      "count": 1024,
+      "dtype": "bfloat16",
+      "inputs": {
+        "call_kwargs": {
+          "activation": "silu",
+          "doweight_stage1": false,
+          "gate_mode": "interleave",
+          "hidden_pad": 0,
+          "intermediate_pad": 0,
+          "quant_type": "per_1x32",
+          "swiglu_limit": 10.0
+        },
+        "current_value_replay": {
+          "path": "decode_1.pt",
+          "sha256": "fa31adfbba4ab57993cef717534ae517d4ee51c98164c51b156a7dc9df5aa543"
+        },
+        "input_weight_storages_disjoint": true,
+        "path": "decode_0.pt",
+        "sha256": "4c16194927bd5c4b862e679c49c05a312e0ae163598ff15088ea25752eddbee8",
+        "tensor_attributes": {
+          "w1": {
+            "is_shuffled": true
+          },
+          "w2": {
+            "is_shuffled": true
+          }
+        },
+        "weights": {
+          "path": "weights.pt",
+          "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e"
+        }
+      },
+      "params": {
+        "benchmark_method": "cuda_graph",
+        "phase": "decode",
+        "tensors": {
+          "hidden_states": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              64,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 917504,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "topk_ids": {
+            "dtype": "torch.int32",
+            "shape": [
+              64,
+              6
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 1536,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "topk_weight": {
+            "dtype": "torch.float32",
+            "shape": [
+              64,
+              6
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 1536,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "w1": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 1056964608,
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          },
+          "w1_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 66060288,
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          },
+          "w2": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 528482304,
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          },
+          "w2_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 44040192,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "shape": [
+        64,
+        7168,
+        384,
+        384,
+        6
+      ],
+      "test_case_id": "decode_m64"
+    }
+  ],
+  "format": "aiter_workload_capture_binding_v1",
+  "limitations": [
+    "Measured frequencies come from accounting05; diagnostic capture counts are not substituted.",
+    "CPU assembly checks authentic input seals, metadata, canonical recovery and byte roundtrip; it does not establish oracle-output separation or exact GPU graph replay.",
+    "No all-layer or end-to-end performance claim; current-owned historical measurement_valid fields remain preserved in source receipts."
+  ],
+  "metadata_join_ref": {
+    "artifact_name": "LINEAR_MOE_CAPTURE02_METADATA_JOIN_01.json",
+    "sha256": "a8cf683e88ded6089f78af4f9df8ecb0a9ea11756df6d355ff2d79502260b6ba"
+  },
+  "pair_identities": [
+    {
+      "activation_ref": {
+        "path": "/joined/moe-four-state/prefill_0.pt",
+        "sha256": "f583f780b2dec6aed34ef8c5336fc74a0180d295d5cdeae4fa71dc1f454dbfc7",
+        "size_bytes": 117835745
+      },
+      "case_fields": {
+        "dtype": "bfloat16",
+        "inputs": {
+          "call_kwargs": {
+            "activation": "silu",
+            "doweight_stage1": false,
+            "gate_mode": "interleave",
+            "hidden_pad": 0,
+            "intermediate_pad": 0,
+            "quant_type": "per_1x32",
+            "swiglu_limit": 10.0
+          },
+          "input_weight_storages_disjoint": true,
+          "tensor_attributes": {
+            "w1": {
+              "is_shuffled": true
+            },
+            "w2": {
+              "is_shuffled": true
+            }
+          }
+        },
+        "params": {
+          "tensors": {
+            "hidden_states": {
+              "dtype": "torch.bfloat16",
+              "shape": [
+                8192,
+                7168
+              ],
+              "storage_group": 0,
+              "storage_nbytes": 117440512,
+              "storage_offset": 0,
+              "stride": [
+                7168,
+                1
+              ]
+            },
+            "topk_ids": {
+              "dtype": "torch.int32",
+              "shape": [
+                8192,
+                6
+              ],
+              "storage_group": 2,
+              "storage_nbytes": 196608,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "topk_weight": {
+              "dtype": "torch.float32",
+              "shape": [
+                8192,
+                6
+              ],
+              "storage_group": 1,
+              "storage_nbytes": 196608,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "w1": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                768,
+                3584
+              ],
+              "storage_group": 3,
+              "storage_nbytes": 1056964608,
+              "storage_offset": 0,
+              "stride": [
+                2752512,
+                3584,
+                1
+              ]
+            },
+            "w1_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                294912,
+                224
+              ],
+              "storage_group": 5,
+              "storage_nbytes": 66060288,
+              "storage_offset": 0,
+              "stride": [
+                224,
+                1
+              ]
+            },
+            "w2": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                7168,
+                192
+              ],
+              "storage_group": 4,
+              "storage_nbytes": 528482304,
+              "storage_offset": 0,
+              "stride": [
+                1376256,
+                192,
+                1
+              ]
+            },
+            "w2_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                2752512,
+                16
+              ],
+              "storage_group": 6,
+              "storage_nbytes": 44040192,
+              "storage_offset": 0,
+              "stride": [
+                16,
+                1
+              ]
+            }
+          }
+        },
+        "shape": [
+          8192,
+          7168,
+          384,
+          384,
+          6
+        ]
+      },
+      "phase": "prefill",
+      "point_ref": {
+        "carrier": {
+          "caller": "model.layers.3.mlp",
+          "format": "selected_prepared_tensors_v1",
+          "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.carrier.pt",
+          "sha256": "4cecdc8119469da9a7ec548691fbbb59133652caac1846443cb36bf11a11dae8",
+          "size_bytes": 1695552221,
+          "storage_bytes": 1695547392,
+          "task_enrollment_eligible": false
+        },
+        "copied_storage_bytes": 117833728,
+        "export_index": 1,
+        "format": "selected_point_raw_storages_v1",
+        "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_prefill_first",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.input.eager32.pt",
+        "payload_coverage": "selected_point_only",
+        "phase": "input",
+        "plan_pair": "moe_r0_l3_prefill_first",
+        "sha256": "8b5c64071cc126df8960963268c0b9ffdc518cd8243f57695d4e9f953b3b31ae",
+        "size_bytes": 117838433,
+        "task_enrollment_eligible": false
+      },
+      "prepared_carrier_ref": {
+        "caller": "model.layers.3.mlp",
+        "format": "selected_prepared_tensors_v1",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.carrier.pt",
+        "sha256": "4cecdc8119469da9a7ec548691fbbb59133652caac1846443cb36bf11a11dae8",
+        "size_bytes": 1695552221,
+        "storage_bytes": 1695547392,
+        "task_enrollment_eligible": false
+      },
+      "prepared_references": {
+        "w1": {
+          "argument": "w1",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_nbytes": 1056964608,
+          "storage_offset": 0,
+          "stride": [
+            2752512,
+            3584,
+            1
+          ],
+          "tensor": "experts.w13_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          }
+        },
+        "w1_scale": {
+          "argument": "w1_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            294912,
+            224
+          ],
+          "storage_nbytes": 66060288,
+          "storage_offset": 0,
+          "stride": [
+            224,
+            1
+          ],
+          "tensor": "experts.w13_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          }
+        },
+        "w2": {
+          "argument": "w2",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_nbytes": 528482304,
+          "storage_offset": 0,
+          "stride": [
+            1376256,
+            192,
+            1
+          ],
+          "tensor": "experts.w2_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          }
+        },
+        "w2_scale": {
+          "argument": "w2_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_nbytes": 44040192,
+          "storage_offset": 0,
+          "stride": [
+            16,
+            1
+          ],
+          "tensor": "experts.w2_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "sample": {
+        "event_index": 32,
+        "graph_id": null,
+        "phase": "input",
+        "reference": {
+          "carrier": {
+            "caller": "model.layers.3.mlp",
+            "format": "selected_prepared_tensors_v1",
+            "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.carrier.pt",
+            "sha256": "4cecdc8119469da9a7ec548691fbbb59133652caac1846443cb36bf11a11dae8",
+            "size_bytes": 1695552221,
+            "storage_bytes": 1695547392,
+            "task_enrollment_eligible": false
+          },
+          "copied_storage_bytes": 117833728,
+          "export_index": 1,
+          "format": "selected_point_raw_storages_v1",
+          "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_prefill_first",
+          "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.input.eager32.pt",
+          "payload_coverage": "selected_point_only",
+          "phase": "input",
+          "plan_pair": "moe_r0_l3_prefill_first",
+          "sha256": "8b5c64071cc126df8960963268c0b9ffdc518cd8243f57695d4e9f953b3b31ae",
+          "size_bytes": 117838433,
+          "task_enrollment_eligible": false
+        },
+        "served": {
+          "active_requests": 1,
+          "live_rows": 8192,
+          "padded_rows": 8192,
+          "phase": "prefill"
+        },
+        "site": {
+          "call": {
+            "args": [],
+            "kwargs": {
+              "a1_scale": null,
+              "a2_scale": null,
+              "activation": {
+                "name": "Silu",
+                "type": "module_aiter_core.ActivationType",
+                "value": 0
+              },
+              "bias1": null,
+              "bias2": null,
+              "doweight_stage1": false,
+              "expert_mask": null,
+              "gate_mode": "interleave",
+              "hidden_pad": 0,
+              "hidden_states": {
+                "device": "cuda",
+                "dtype": "torch.bfloat16",
+                "shape": [
+                  8192,
+                  7168
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  7168,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "intermediate_pad": 0,
+              "quant_type": {
+                "name": "per_1x32",
+                "type": "module_aiter_core.QuantType",
+                "value": 3
+              },
+              "swiglu_limit": 10.0,
+              "topk_ids": {
+                "device": "cuda",
+                "dtype": "torch.int32",
+                "shape": [
+                  8192,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "topk_weight": {
+                "device": "cuda",
+                "dtype": "torch.float32",
+                "shape": [
+                  8192,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  768,
+                  3584
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  2752512,
+                  3584,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  294912,
+                  224
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  224,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  7168,
+                  192
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  1376256,
+                  192,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  2752512,
+                  16
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  16,
+                  1
+                ],
+                "type": "tensor"
+              }
+            },
+            "supplied_parameters": [
+              "a1_scale",
+              "a2_scale",
+              "activation",
+              "bias1",
+              "bias2",
+              "doweight_stage1",
+              "expert_mask",
+              "gate_mode",
+              "hidden_pad",
+              "hidden_states",
+              "intermediate_pad",
+              "quant_type",
+              "swiglu_limit",
+              "topk_ids",
+              "topk_weight",
+              "w1",
+              "w1_scale",
+              "w2",
+              "w2_scale"
+            ]
+          },
+          "caller": "model.layers.3.mlp",
+          "family": "fused_moe",
+          "immutable_inputs": {},
+          "input_binding_status": "metadata_only_pending_payload_export",
+          "layer": 3,
+          "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+          "owner_type": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+          "public_symbol": "aiter.fused_moe.fused_moe",
+          "source": {
+            "caller": {
+              "class": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+              "file": "/sgl-workspace/sglang/python/sglang/srt/models/deepseek_v2.py",
+              "sha256": "1578dd16dd71b78b95d4a5625f22a152fbdb6822ac6b38a4f24d106464c2831f"
+            },
+            "public": {
+              "callable": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "first_line": 1084,
+                "qualname": "fused_moe",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "definition": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "symbol": "aiter.fused_moe.fused_moe"
+            }
+          },
+          "task_enrollment_eligible": false
+        },
+        "slot": null
+      },
+      "state": 0,
+      "weights_ref": {
+        "path": "/joined/moe-four-state/weights.pt",
+        "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e",
+        "size_bytes": 3380087949
+      }
+    },
+    {
+      "activation_ref": {
+        "path": "/joined/moe-four-state/prefill_1.pt",
+        "sha256": "6fd8cdc6cfd3fb721da1e312f0aef0ef903a003cfce82610eb36e24f3019deac",
+        "size_bytes": 117835745
+      },
+      "case_fields": {
+        "dtype": "bfloat16",
+        "inputs": {
+          "call_kwargs": {
+            "activation": "silu",
+            "doweight_stage1": false,
+            "gate_mode": "interleave",
+            "hidden_pad": 0,
+            "intermediate_pad": 0,
+            "quant_type": "per_1x32",
+            "swiglu_limit": 10.0
+          },
+          "input_weight_storages_disjoint": true,
+          "tensor_attributes": {
+            "w1": {
+              "is_shuffled": true
+            },
+            "w2": {
+              "is_shuffled": true
+            }
+          }
+        },
+        "params": {
+          "tensors": {
+            "hidden_states": {
+              "dtype": "torch.bfloat16",
+              "shape": [
+                8192,
+                7168
+              ],
+              "storage_group": 0,
+              "storage_nbytes": 117440512,
+              "storage_offset": 0,
+              "stride": [
+                7168,
+                1
+              ]
+            },
+            "topk_ids": {
+              "dtype": "torch.int32",
+              "shape": [
+                8192,
+                6
+              ],
+              "storage_group": 2,
+              "storage_nbytes": 196608,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "topk_weight": {
+              "dtype": "torch.float32",
+              "shape": [
+                8192,
+                6
+              ],
+              "storage_group": 1,
+              "storage_nbytes": 196608,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "w1": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                768,
+                3584
+              ],
+              "storage_group": 3,
+              "storage_nbytes": 1056964608,
+              "storage_offset": 0,
+              "stride": [
+                2752512,
+                3584,
+                1
+              ]
+            },
+            "w1_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                294912,
+                224
+              ],
+              "storage_group": 5,
+              "storage_nbytes": 66060288,
+              "storage_offset": 0,
+              "stride": [
+                224,
+                1
+              ]
+            },
+            "w2": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                7168,
+                192
+              ],
+              "storage_group": 4,
+              "storage_nbytes": 528482304,
+              "storage_offset": 0,
+              "stride": [
+                1376256,
+                192,
+                1
+              ]
+            },
+            "w2_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                2752512,
+                16
+              ],
+              "storage_group": 6,
+              "storage_nbytes": 44040192,
+              "storage_offset": 0,
+              "stride": [
+                16,
+                1
+              ]
+            }
+          }
+        },
+        "shape": [
+          8192,
+          7168,
+          384,
+          384,
+          6
+        ]
+      },
+      "phase": "prefill",
+      "point_ref": {
+        "copied_storage_bytes": 117833728,
+        "export_index": 1,
+        "format": "selected_point_raw_storages_v1",
+        "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_prefill_second",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_second.input.eager549.pt",
+        "payload_coverage": "selected_point_only",
+        "phase": "input",
+        "plan_pair": "moe_r0_l3_prefill_second",
+        "sha256": "f2c1c75cf2e4e9cba80e73c8274ada4127515afe99efa1ff04964c23cf8a76e4",
+        "size_bytes": 117838433,
+        "task_enrollment_eligible": false
+      },
+      "prepared_carrier_ref": {
+        "caller": "model.layers.3.mlp",
+        "format": "selected_prepared_tensors_v1",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.carrier.pt",
+        "sha256": "4cecdc8119469da9a7ec548691fbbb59133652caac1846443cb36bf11a11dae8",
+        "size_bytes": 1695552221,
+        "storage_bytes": 1695547392,
+        "task_enrollment_eligible": false
+      },
+      "prepared_references": {
+        "w1": {
+          "argument": "w1",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_nbytes": 1056964608,
+          "storage_offset": 0,
+          "stride": [
+            2752512,
+            3584,
+            1
+          ],
+          "tensor": "experts.w13_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          }
+        },
+        "w1_scale": {
+          "argument": "w1_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            294912,
+            224
+          ],
+          "storage_nbytes": 66060288,
+          "storage_offset": 0,
+          "stride": [
+            224,
+            1
+          ],
+          "tensor": "experts.w13_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          }
+        },
+        "w2": {
+          "argument": "w2",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_nbytes": 528482304,
+          "storage_offset": 0,
+          "stride": [
+            1376256,
+            192,
+            1
+          ],
+          "tensor": "experts.w2_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          }
+        },
+        "w2_scale": {
+          "argument": "w2_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_nbytes": 44040192,
+          "storage_offset": 0,
+          "stride": [
+            16,
+            1
+          ],
+          "tensor": "experts.w2_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "sample": {
+        "event_index": 549,
+        "graph_id": null,
+        "phase": "input",
+        "reference": {
+          "copied_storage_bytes": 117833728,
+          "export_index": 1,
+          "format": "selected_point_raw_storages_v1",
+          "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_prefill_second",
+          "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_second.input.eager549.pt",
+          "payload_coverage": "selected_point_only",
+          "phase": "input",
+          "plan_pair": "moe_r0_l3_prefill_second",
+          "sha256": "f2c1c75cf2e4e9cba80e73c8274ada4127515afe99efa1ff04964c23cf8a76e4",
+          "size_bytes": 117838433,
+          "task_enrollment_eligible": false
+        },
+        "served": {
+          "active_requests": 1,
+          "live_rows": 8192,
+          "padded_rows": 8192,
+          "phase": "prefill"
+        },
+        "site": {
+          "call": {
+            "args": [],
+            "kwargs": {
+              "a1_scale": null,
+              "a2_scale": null,
+              "activation": {
+                "name": "Silu",
+                "type": "module_aiter_core.ActivationType",
+                "value": 0
+              },
+              "bias1": null,
+              "bias2": null,
+              "doweight_stage1": false,
+              "expert_mask": null,
+              "gate_mode": "interleave",
+              "hidden_pad": 0,
+              "hidden_states": {
+                "device": "cuda",
+                "dtype": "torch.bfloat16",
+                "shape": [
+                  8192,
+                  7168
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  7168,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "intermediate_pad": 0,
+              "quant_type": {
+                "name": "per_1x32",
+                "type": "module_aiter_core.QuantType",
+                "value": 3
+              },
+              "swiglu_limit": 10.0,
+              "topk_ids": {
+                "device": "cuda",
+                "dtype": "torch.int32",
+                "shape": [
+                  8192,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "topk_weight": {
+                "device": "cuda",
+                "dtype": "torch.float32",
+                "shape": [
+                  8192,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  768,
+                  3584
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  2752512,
+                  3584,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  294912,
+                  224
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  224,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  7168,
+                  192
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  1376256,
+                  192,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  2752512,
+                  16
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  16,
+                  1
+                ],
+                "type": "tensor"
+              }
+            },
+            "supplied_parameters": [
+              "a1_scale",
+              "a2_scale",
+              "activation",
+              "bias1",
+              "bias2",
+              "doweight_stage1",
+              "expert_mask",
+              "gate_mode",
+              "hidden_pad",
+              "hidden_states",
+              "intermediate_pad",
+              "quant_type",
+              "swiglu_limit",
+              "topk_ids",
+              "topk_weight",
+              "w1",
+              "w1_scale",
+              "w2",
+              "w2_scale"
+            ]
+          },
+          "caller": "model.layers.3.mlp",
+          "family": "fused_moe",
+          "immutable_inputs": {},
+          "input_binding_status": "metadata_only_pending_payload_export",
+          "layer": 3,
+          "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+          "owner_type": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+          "public_symbol": "aiter.fused_moe.fused_moe",
+          "source": {
+            "caller": {
+              "class": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+              "file": "/sgl-workspace/sglang/python/sglang/srt/models/deepseek_v2.py",
+              "sha256": "1578dd16dd71b78b95d4a5625f22a152fbdb6822ac6b38a4f24d106464c2831f"
+            },
+            "public": {
+              "callable": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "first_line": 1084,
+                "qualname": "fused_moe",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "definition": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "symbol": "aiter.fused_moe.fused_moe"
+            }
+          },
+          "task_enrollment_eligible": false
+        },
+        "slot": null
+      },
+      "state": 1,
+      "weights_ref": {
+        "path": "/joined/moe-four-state/weights.pt",
+        "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e",
+        "size_bytes": 3380087949
+      }
+    },
+    {
+      "activation_ref": {
+        "path": "/joined/moe-four-state/decode_0.pt",
+        "sha256": "4c16194927bd5c4b862e679c49c05a312e0ae163598ff15088ea25752eddbee8",
+        "size_bytes": 922593
+      },
+      "case_fields": {
+        "dtype": "bfloat16",
+        "inputs": {
+          "call_kwargs": {
+            "activation": "silu",
+            "doweight_stage1": false,
+            "gate_mode": "interleave",
+            "hidden_pad": 0,
+            "intermediate_pad": 0,
+            "quant_type": "per_1x32",
+            "swiglu_limit": 10.0
+          },
+          "input_weight_storages_disjoint": true,
+          "tensor_attributes": {
+            "w1": {
+              "is_shuffled": true
+            },
+            "w2": {
+              "is_shuffled": true
+            }
+          }
+        },
+        "params": {
+          "tensors": {
+            "hidden_states": {
+              "dtype": "torch.bfloat16",
+              "shape": [
+                64,
+                7168
+              ],
+              "storage_group": 0,
+              "storage_nbytes": 917504,
+              "storage_offset": 0,
+              "stride": [
+                7168,
+                1
+              ]
+            },
+            "topk_ids": {
+              "dtype": "torch.int32",
+              "shape": [
+                64,
+                6
+              ],
+              "storage_group": 2,
+              "storage_nbytes": 1536,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "topk_weight": {
+              "dtype": "torch.float32",
+              "shape": [
+                64,
+                6
+              ],
+              "storage_group": 1,
+              "storage_nbytes": 1536,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "w1": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                768,
+                3584
+              ],
+              "storage_group": 3,
+              "storage_nbytes": 1056964608,
+              "storage_offset": 0,
+              "stride": [
+                2752512,
+                3584,
+                1
+              ]
+            },
+            "w1_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                294912,
+                224
+              ],
+              "storage_group": 5,
+              "storage_nbytes": 66060288,
+              "storage_offset": 0,
+              "stride": [
+                224,
+                1
+              ]
+            },
+            "w2": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                7168,
+                192
+              ],
+              "storage_group": 4,
+              "storage_nbytes": 528482304,
+              "storage_offset": 0,
+              "stride": [
+                1376256,
+                192,
+                1
+              ]
+            },
+            "w2_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                2752512,
+                16
+              ],
+              "storage_group": 6,
+              "storage_nbytes": 44040192,
+              "storage_offset": 0,
+              "stride": [
+                16,
+                1
+              ]
+            }
+          }
+        },
+        "shape": [
+          64,
+          7168,
+          384,
+          384,
+          6
+        ]
+      },
+      "phase": "decode",
+      "point_ref": {
+        "copied_storage_bytes": 920576,
+        "export_index": 1,
+        "format": "selected_point_raw_storages_v1",
+        "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_decode_first_second",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_decode_first_second.input.replay1.pt",
+        "payload_coverage": "selected_point_only",
+        "phase": "input",
+        "plan_pair": "moe_r0_l3_decode_first_second",
+        "sha256": "40c99fe9ce91d371d012fd800c22acdab4fab6c9ef794250f2a56af1c71f49e3",
+        "size_bytes": 925281,
+        "task_enrollment_eligible": false
+      },
+      "prepared_carrier_ref": {
+        "caller": "model.layers.3.mlp",
+        "format": "selected_prepared_tensors_v1",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.carrier.pt",
+        "sha256": "4cecdc8119469da9a7ec548691fbbb59133652caac1846443cb36bf11a11dae8",
+        "size_bytes": 1695552221,
+        "storage_bytes": 1695547392,
+        "task_enrollment_eligible": false
+      },
+      "prepared_references": {
+        "w1": {
+          "argument": "w1",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_nbytes": 1056964608,
+          "storage_offset": 0,
+          "stride": [
+            2752512,
+            3584,
+            1
+          ],
+          "tensor": "experts.w13_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          }
+        },
+        "w1_scale": {
+          "argument": "w1_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            294912,
+            224
+          ],
+          "storage_nbytes": 66060288,
+          "storage_offset": 0,
+          "stride": [
+            224,
+            1
+          ],
+          "tensor": "experts.w13_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          }
+        },
+        "w2": {
+          "argument": "w2",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_nbytes": 528482304,
+          "storage_offset": 0,
+          "stride": [
+            1376256,
+            192,
+            1
+          ],
+          "tensor": "experts.w2_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          }
+        },
+        "w2_scale": {
+          "argument": "w2_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_nbytes": 44040192,
+          "storage_offset": 0,
+          "stride": [
+            16,
+            1
+          ],
+          "tensor": "experts.w2_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "sample": {
+        "event_index": 1,
+        "graph_id": "FullCudaGraphBackend#7ee10e7f0110:{\"attention_variant\":null,\"size\":64,\"stream_idx\":null,\"variant_label\":null}",
+        "phase": "input",
+        "reference": {
+          "copied_storage_bytes": 920576,
+          "export_index": 1,
+          "format": "selected_point_raw_storages_v1",
+          "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_decode_first_second",
+          "path": "/evaluation/payloads/rank0/moe_r0_l3_decode_first_second.input.replay1.pt",
+          "payload_coverage": "selected_point_only",
+          "phase": "input",
+          "plan_pair": "moe_r0_l3_decode_first_second",
+          "sha256": "40c99fe9ce91d371d012fd800c22acdab4fab6c9ef794250f2a56af1c71f49e3",
+          "size_bytes": 925281,
+          "task_enrollment_eligible": false
+        },
+        "served": {
+          "active_requests": 64,
+          "live_rows": 64,
+          "padded_rows": 64,
+          "phase": "decode"
+        },
+        "site": {
+          "call": {
+            "args": [],
+            "kwargs": {
+              "a1_scale": null,
+              "a2_scale": null,
+              "activation": {
+                "name": "Silu",
+                "type": "module_aiter_core.ActivationType",
+                "value": 0
+              },
+              "bias1": null,
+              "bias2": null,
+              "doweight_stage1": false,
+              "expert_mask": null,
+              "gate_mode": "interleave",
+              "hidden_pad": 0,
+              "hidden_states": {
+                "device": "cuda",
+                "dtype": "torch.bfloat16",
+                "shape": [
+                  64,
+                  7168
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  7168,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "intermediate_pad": 0,
+              "quant_type": {
+                "name": "per_1x32",
+                "type": "module_aiter_core.QuantType",
+                "value": 3
+              },
+              "swiglu_limit": 10.0,
+              "topk_ids": {
+                "device": "cuda",
+                "dtype": "torch.int32",
+                "shape": [
+                  64,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "topk_weight": {
+                "device": "cuda",
+                "dtype": "torch.float32",
+                "shape": [
+                  64,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  768,
+                  3584
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  2752512,
+                  3584,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  294912,
+                  224
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  224,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  7168,
+                  192
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  1376256,
+                  192,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  2752512,
+                  16
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  16,
+                  1
+                ],
+                "type": "tensor"
+              }
+            },
+            "supplied_parameters": [
+              "a1_scale",
+              "a2_scale",
+              "activation",
+              "bias1",
+              "bias2",
+              "doweight_stage1",
+              "expert_mask",
+              "gate_mode",
+              "hidden_pad",
+              "hidden_states",
+              "intermediate_pad",
+              "quant_type",
+              "swiglu_limit",
+              "topk_ids",
+              "topk_weight",
+              "w1",
+              "w1_scale",
+              "w2",
+              "w2_scale"
+            ]
+          },
+          "caller": "model.layers.3.mlp",
+          "family": "fused_moe",
+          "immutable_inputs": {},
+          "input_binding_status": "metadata_only_pending_payload_export",
+          "layer": 3,
+          "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+          "owner_type": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+          "public_symbol": "aiter.fused_moe.fused_moe",
+          "source": {
+            "caller": {
+              "class": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+              "file": "/sgl-workspace/sglang/python/sglang/srt/models/deepseek_v2.py",
+              "sha256": "1578dd16dd71b78b95d4a5625f22a152fbdb6822ac6b38a4f24d106464c2831f"
+            },
+            "public": {
+              "callable": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "first_line": 1084,
+                "qualname": "fused_moe",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "definition": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "symbol": "aiter.fused_moe.fused_moe"
+            }
+          },
+          "task_enrollment_eligible": false
+        },
+        "slot": 31
+      },
+      "state": 0,
+      "weights_ref": {
+        "path": "/joined/moe-four-state/weights.pt",
+        "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e",
+        "size_bytes": 3380087949
+      }
+    },
+    {
+      "activation_ref": {
+        "path": "/joined/moe-four-state/decode_1.pt",
+        "sha256": "fa31adfbba4ab57993cef717534ae517d4ee51c98164c51b156a7dc9df5aa543",
+        "size_bytes": 922593
+      },
+      "case_fields": {
+        "dtype": "bfloat16",
+        "inputs": {
+          "call_kwargs": {
+            "activation": "silu",
+            "doweight_stage1": false,
+            "gate_mode": "interleave",
+            "hidden_pad": 0,
+            "intermediate_pad": 0,
+            "quant_type": "per_1x32",
+            "swiglu_limit": 10.0
+          },
+          "input_weight_storages_disjoint": true,
+          "tensor_attributes": {
+            "w1": {
+              "is_shuffled": true
+            },
+            "w2": {
+              "is_shuffled": true
+            }
+          }
+        },
+        "params": {
+          "tensors": {
+            "hidden_states": {
+              "dtype": "torch.bfloat16",
+              "shape": [
+                64,
+                7168
+              ],
+              "storage_group": 0,
+              "storage_nbytes": 917504,
+              "storage_offset": 0,
+              "stride": [
+                7168,
+                1
+              ]
+            },
+            "topk_ids": {
+              "dtype": "torch.int32",
+              "shape": [
+                64,
+                6
+              ],
+              "storage_group": 2,
+              "storage_nbytes": 1536,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "topk_weight": {
+              "dtype": "torch.float32",
+              "shape": [
+                64,
+                6
+              ],
+              "storage_group": 1,
+              "storage_nbytes": 1536,
+              "storage_offset": 0,
+              "stride": [
+                6,
+                1
+              ]
+            },
+            "w1": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                768,
+                3584
+              ],
+              "storage_group": 3,
+              "storage_nbytes": 1056964608,
+              "storage_offset": 0,
+              "stride": [
+                2752512,
+                3584,
+                1
+              ]
+            },
+            "w1_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                294912,
+                224
+              ],
+              "storage_group": 5,
+              "storage_nbytes": 66060288,
+              "storage_offset": 0,
+              "stride": [
+                224,
+                1
+              ]
+            },
+            "w2": {
+              "dtype": "torch.float4_e2m1fn_x2",
+              "shape": [
+                384,
+                7168,
+                192
+              ],
+              "storage_group": 4,
+              "storage_nbytes": 528482304,
+              "storage_offset": 0,
+              "stride": [
+                1376256,
+                192,
+                1
+              ]
+            },
+            "w2_scale": {
+              "dtype": "torch.float8_e8m0fnu",
+              "shape": [
+                2752512,
+                16
+              ],
+              "storage_group": 6,
+              "storage_nbytes": 44040192,
+              "storage_offset": 0,
+              "stride": [
+                16,
+                1
+              ]
+            }
+          }
+        },
+        "shape": [
+          64,
+          7168,
+          384,
+          384,
+          6
+        ]
+      },
+      "phase": "decode",
+      "point_ref": {
+        "copied_storage_bytes": 920576,
+        "export_index": 2,
+        "format": "selected_point_raw_storages_v1",
+        "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_decode_first_second",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_decode_first_second.input.replay2.pt",
+        "payload_coverage": "selected_point_only",
+        "phase": "input",
+        "plan_pair": "moe_r0_l3_decode_first_second",
+        "sha256": "fdb6dd361b1c79d317fdd5a3a606618c1d02ade6bf2530f12dd25e2d782aa866",
+        "size_bytes": 925281,
+        "task_enrollment_eligible": false
+      },
+      "prepared_carrier_ref": {
+        "caller": "model.layers.3.mlp",
+        "format": "selected_prepared_tensors_v1",
+        "path": "/evaluation/payloads/rank0/moe_r0_l3_prefill_first.carrier.pt",
+        "sha256": "4cecdc8119469da9a7ec548691fbbb59133652caac1846443cb36bf11a11dae8",
+        "size_bytes": 1695552221,
+        "storage_bytes": 1695547392,
+        "task_enrollment_eligible": false
+      },
+      "prepared_references": {
+        "w1": {
+          "argument": "w1",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            768,
+            3584
+          ],
+          "storage_nbytes": 1056964608,
+          "storage_offset": 0,
+          "stride": [
+            2752512,
+            3584,
+            1
+          ],
+          "tensor": "experts.w13_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          }
+        },
+        "w1_scale": {
+          "argument": "w1_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w13_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            294912,
+            224
+          ],
+          "storage_nbytes": 66060288,
+          "storage_offset": 0,
+          "stride": [
+            224,
+            1
+          ],
+          "tensor": "experts.w13_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          }
+        },
+        "w2": {
+          "argument": "w2",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float4_e2m1fn_x2",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight",
+          "sealed": true,
+          "shape": [
+            384,
+            7168,
+            192
+          ],
+          "storage_nbytes": 528482304,
+          "storage_offset": 0,
+          "stride": [
+            1376256,
+            192,
+            1
+          ],
+          "tensor": "experts.w2_weight",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          }
+        },
+        "w2_scale": {
+          "argument": "w2_scale",
+          "attributes": {},
+          "caller": "model.layers.3.mlp",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e8m0fnu",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.3.mlp:experts.w2_weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            2752512,
+            16
+          ],
+          "storage_nbytes": 44040192,
+          "storage_offset": 0,
+          "stride": [
+            16,
+            1
+          ],
+          "tensor": "experts.w2_weight_scale_inv",
+          "version": 0,
+          "view": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "sample": {
+        "event_index": 2,
+        "graph_id": "FullCudaGraphBackend#7ee10e7f0110:{\"attention_variant\":null,\"size\":64,\"stream_idx\":null,\"variant_label\":null}",
+        "phase": "input",
+        "reference": {
+          "copied_storage_bytes": 920576,
+          "export_index": 2,
+          "format": "selected_point_raw_storages_v1",
+          "pair_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:moe_r0_l3_decode_first_second",
+          "path": "/evaluation/payloads/rank0/moe_r0_l3_decode_first_second.input.replay2.pt",
+          "payload_coverage": "selected_point_only",
+          "phase": "input",
+          "plan_pair": "moe_r0_l3_decode_first_second",
+          "sha256": "fdb6dd361b1c79d317fdd5a3a606618c1d02ade6bf2530f12dd25e2d782aa866",
+          "size_bytes": 925281,
+          "task_enrollment_eligible": false
+        },
+        "served": {
+          "active_requests": 64,
+          "live_rows": 64,
+          "padded_rows": 64,
+          "phase": "decode"
+        },
+        "site": {
+          "call": {
+            "args": [],
+            "kwargs": {
+              "a1_scale": null,
+              "a2_scale": null,
+              "activation": {
+                "name": "Silu",
+                "type": "module_aiter_core.ActivationType",
+                "value": 0
+              },
+              "bias1": null,
+              "bias2": null,
+              "doweight_stage1": false,
+              "expert_mask": null,
+              "gate_mode": "interleave",
+              "hidden_pad": 0,
+              "hidden_states": {
+                "device": "cuda",
+                "dtype": "torch.bfloat16",
+                "shape": [
+                  64,
+                  7168
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  7168,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "intermediate_pad": 0,
+              "quant_type": {
+                "name": "per_1x32",
+                "type": "module_aiter_core.QuantType",
+                "value": 3
+              },
+              "swiglu_limit": 10.0,
+              "topk_ids": {
+                "device": "cuda",
+                "dtype": "torch.int32",
+                "shape": [
+                  64,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "topk_weight": {
+                "device": "cuda",
+                "dtype": "torch.float32",
+                "shape": [
+                  64,
+                  6
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  6,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  768,
+                  3584
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  2752512,
+                  3584,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w1_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  294912,
+                  224
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  224,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2": {
+                "device": "cuda",
+                "dtype": "torch.float4_e2m1fn_x2",
+                "shape": [
+                  384,
+                  7168,
+                  192
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  1376256,
+                  192,
+                  1
+                ],
+                "type": "tensor"
+              },
+              "w2_scale": {
+                "device": "cuda",
+                "dtype": "torch.float8_e8m0fnu",
+                "shape": [
+                  2752512,
+                  16
+                ],
+                "storage_offset": 0,
+                "stride": [
+                  16,
+                  1
+                ],
+                "type": "tensor"
+              }
+            },
+            "supplied_parameters": [
+              "a1_scale",
+              "a2_scale",
+              "activation",
+              "bias1",
+              "bias2",
+              "doweight_stage1",
+              "expert_mask",
+              "gate_mode",
+              "hidden_pad",
+              "hidden_states",
+              "intermediate_pad",
+              "quant_type",
+              "swiglu_limit",
+              "topk_ids",
+              "topk_weight",
+              "w1",
+              "w1_scale",
+              "w2",
+              "w2_scale"
+            ]
+          },
+          "caller": "model.layers.3.mlp",
+          "family": "fused_moe",
+          "immutable_inputs": {},
+          "input_binding_status": "metadata_only_pending_payload_export",
+          "layer": 3,
+          "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+          "owner_type": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+          "public_symbol": "aiter.fused_moe.fused_moe",
+          "source": {
+            "caller": {
+              "class": "sglang.srt.models.deepseek_v2.DeepseekV2MoE",
+              "file": "/sgl-workspace/sglang/python/sglang/srt/models/deepseek_v2.py",
+              "sha256": "1578dd16dd71b78b95d4a5625f22a152fbdb6822ac6b38a4f24d106464c2831f"
+            },
+            "public": {
+              "callable": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "first_line": 1084,
+                "qualname": "fused_moe",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "definition": {
+                "file": "/opt/aiter-2cb/aiter/fused_moe.py",
+                "sha256": "cf4f9f354512ed5578c45bbf042166157fd58c08960419d561c2993fd659b33c"
+              },
+              "symbol": "aiter.fused_moe.fused_moe"
+            }
+          },
+          "task_enrollment_eligible": false
+        },
+        "slot": 31
+      },
+      "state": 1,
+      "weights_ref": {
+        "path": "/joined/moe-four-state/weights.pt",
+        "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e",
+        "size_bytes": 3380087949
+      }
+    }
+  ],
+  "payload_aggregate_sha256": "b1c7a5493e885b355a6d8c5034a67e751d0ad5e880e6587bfa867ff3e25a43e4",
+  "sampling": {
+    "correctness": "second_scored_prefill_and_second_decode_replay_same_caller_prepared_weights_and_call_geometry",
+    "timing": "first_scored_prefill_and_first_decode_replay_at_selected_site",
+    "timing_sample_changes_after_results": false,
+    "warmup_included": false
+  },
+  "scope": "rank0 layer3 public fused_moe call; external expert selection and TP collective excluded; selected-site proxy only",
+  "selection": {
+    "caller": "model.layers.3.mlp",
+    "generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+    "layer": 3,
+    "rank": 0
+  },
+  "status": "authentic_inputs_joined_pending_native_qualification"
+}

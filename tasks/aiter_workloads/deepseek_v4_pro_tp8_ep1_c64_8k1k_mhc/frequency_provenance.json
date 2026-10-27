@@ -1,0 +1,33 @@
+{
+  "status": "measured",
+  "enrolled_for_scoring": true,
+  "unit": "executed public calls at rank0 layer0 attention-to-FFN mHC boundary over one complete scored W1 request window; warmup excluded",
+  "statement": "Counts come from accounting05; payload diagnostic capture frequency does not replace them. The 1024 decode count is observed, not inferred from requested output tokens.",
+  "case_counts": [
+    {
+      "test_case_id": "prefill_m8192",
+      "count": 64,
+      "served": {
+        "active_requests": 1,
+        "live_rows": 8192,
+        "padded_rows": 8192,
+        "phase": "prefill"
+      }
+    },
+    {
+      "test_case_id": "decode_m64",
+      "count": 1024,
+      "served": {
+        "active_requests": 64,
+        "live_rows": 64,
+        "padded_rows": 64,
+        "phase": "decode"
+      }
+    }
+  ],
+  "accounting_aggregate_sha256": "1c6d4dacf78356883a98c5f3573271c8ec748a5776400e49a086ef3b451b3a0d",
+  "capture": {
+    "reference": "capture_binding.json",
+    "sha256": "93de7f8f68146edc3d133819f5d1fc68349bc56daf4ac32fc8e17325baad582e"
+  }
+}

@@ -228,6 +228,7 @@ harness; do not put a family-specific numerical tolerance in the common schema.
 | --- | --- | --- |
 | `evaluation.runner` | Nonempty argv list | Common command prefix; the framework appends the role/action arguments in the next section. |
 | `evaluation.workloads` | Optional relative file path | Case data consumed by the runner. Existing JSON/JSONL data can stay in its current format. Omit when the runner constructs its cases. |
+| `evaluation.aggregation` | Optional mapping | Opt into workload-weighted total time for kernel tasks; see below. Omit to retain the arithmetic mean of case speedups. |
 | `evaluation.timeout_s` | Positive integer, default `3600` | Total deadline for each action, including all commands in that action. |
 | `evaluation.task` | Optional action mapping | Overrides for `validate-task`: `commands` and/or `timeout_s`. |
 | `evaluation.baseline.<action>` | Optional action mapping | Overrides for baseline `compile`, `correctness`, or `performance`. |
@@ -291,7 +292,7 @@ Each source `exclude` is a path relative to that source root, including its
 descendants. It is not a basename pattern: `jit` does not exclude `aiter/jit`.
 Exclude disposable runtime caches explicitly while retaining required source.
 
-All other task paths are relative to the task workspace root after setup.
+Task source, command and logical input paths are relative to the task workspace root after setup.
 Reject absolute paths, traversal, and symlink resolutions escaping that root.
 Keep directory components when installing generated candidates: a declaration
 of `source/kernel.py` must not be installed as root-level `kernel.py`.
@@ -302,6 +303,28 @@ Repository destinations also count toward paths: `upstream/src/kernel.hip`
 always refers to that path from the workspace root, never an implicitly changed
 repository working directory. Source destinations must not overwrite task
 configuration or harness files.
+
+Large immutable input carriers can be declared as explicit read-only runtime
+dependencies instead of copied into every workspace. A task-owned workload file
+may map its relative logical input names to exact container-visible paths,
+SHA256 digests and byte sizes. The task runner must implement that declaration:
+verify the canonical regular file and read-only mount, reject local shadows and
+unlisted paths, and hash the same opened file before loading it. Case bindings
+must agree with the declared digests. Keep references, source, configuration and
+candidate paths inside the task; this exception applies only to explicitly
+declared immutable data. Do not use writable hardlinks, escaping symlinks,
+ambient environment variables or undeclared host checkout paths.
+
+The operator must provide the declared files on read-only mounts without
+exposing a writable alias. This is a runtime prerequisite, like the task's
+installed baseline dependencies, not a new core `config.yaml` field or an
+automatic mount/download feature. Use the same inputs for every agent and role.
+For the native GEAK adapter, include those external files in its existing
+`runtime_artifacts` declaration as well. GPU task validation must exercise the
+actual mounted-input route before that task is qualified. The AITER fixed
+workload tasks implement this optional mapping as
+`workloads.json:runtime_binding.input_assets`; tasks without it retain ordinary
+bundled input resolution.
 
 Exports run through common framework post-processing after final evaluation.
 `ARENA_FINAL_RESULT_PATH` retains its existing name and points to the
@@ -403,8 +426,9 @@ fresh legacy output to this envelope and preserve failure exit codes.
 The framework records config/source identities, actual environment, action,
 command, exit status, and tool evidence. Commands never author or overwrite
 `task_result.yaml` or `validation_report.yaml`. Scores and speedup aggregation
-remain in the centralized evaluator; defining v2 must not silently change the
-existing scoring formula. See the [result reference](../reference/api-reference.md#result-schema-task_resultyaml)
+remain in the centralized evaluator; v2 retains the existing scoring formula
+and default aggregation unless the task explicitly declares an alternative.
+See the [result reference](../reference/api-reference.md#result-schema-task_resultyaml)
 and [benchmark methodology](../reference/benchmark-methodology.md).
 
 The `validate-task` report must include `metadata.candidate_state` with
@@ -418,6 +442,75 @@ During final evaluation, successful compilation and correctness evidence bind
 to the same candidate source content subsequently measured. A source change
 invalidates earlier checks and requires compilation/correctness again. Command
 logs and failure evidence are retained outside the candidate workspace.
+
+### Fixed-workload kernel objectives
+
+A workload-specific task can opt into a ratio of weighted total times:
+
+```yaml
+evaluation:
+  runner: [python3, evaluate.py]
+  workloads: workload.json
+  aggregation:
+    method: weighted_total_time
+    case_weights:
+      prefill_case: 1
+      decode_case: 384
+```
+
+These illustrative weights are invocation counts or proportional frequencies,
+fixed before search. They must be positive finite numbers and cover **exactly**
+the performance-case IDs declared by `validate-task`. Correctness-only cases
+are not weighted; omit their `performance` check instead of assigning zero.
+The framework rejects missing or extra weights before
+baseline measurement or agent launch, and rechecks them when a session resumes.
+The score uses `sum(weight * baseline_ms) / sum(weight * candidate_ms)` with
+complete case, input, correctness, and timing-method checks. Weights embedded
+only in a workload JSON file do not opt into aggregation; declare them above.
+
+An optional `aggregation.source: {path: frequency_provenance.json, sha256: ...}`
+binds the weights to a task-relative derivation record. Use the file's actual
+64-character SHA-256 digest. The record should identify the workload, case-ID
+mapping, profile or generator evidence, and method used to obtain frequencies.
+The framework protects that file and checks its captured content hash before
+baseline work and on resume; the result retains the source reference. This
+binding establishes provenance, not that an arbitrary frequency estimate is
+scientifically valid. Workload-derived benchmark tasks should provide it.
+
+Keep the task agent-neutral: place workload settings, case data, frequency
+provenance, references and the pinned upstream baseline in protected task files.
+Agent/model selection belongs in the run configuration. The task's
+`config.yaml` and `ARENA_TASK_CONTEXT.task_config` are agent-visible and include
+the complete aggregation declaration. The shared v2 prompt also renders the
+weighted objective and fixed weights explicitly, independent of the selected
+agent. The runner should use fresh data draws
+under the same frozen workload/input policy for independent validation.
+
+For example, an AITER task for a particular serving configuration must bind the
+model/checkpoint and precision, runtime and AITER revision, TP/EP and other
+parallelism, request generator, scheduler, hardware, and the dispatched
+operation or complete region. Select cases and frequencies from that workload;
+an upstream test sweep or tuning CSV does not establish call frequency. Record
+the actual installed implementation and dispatch, and measure a fresh baseline.
+Assert compatible hardware and complete case execution rather than treating a
+zero exit code or silent skip as successful validation.
+
+The objective is an operation/region time proxy. It does not establish an
+end-to-end throughput gain. If fusion or another reorganization changes
+internal calls, measure complete equivalent work, including preparation and
+observable state updates. Preserve the external workload, not the original
+internal launch list. Confirm workload benefit through a full integration run
+under the same serving settings; see [the e2e guide](e2e-kernel-tasks.md).
+
+`performance_aggregation` in `task_result.yaml` retains the method, weights,
+weighted totals, canonical task-spec hash and the protected workload file's
+path/content hash when declared. Existing aggregate execution-time fields remain unweighted
+diagnostic means. Serving tasks retain their separate paired measurement
+policy and cannot declare this kernel aggregation. The current held-out
+**shape-injection** evaluator rejects weighted tasks: changing a case's shape
+does not establish that its old frequency applies. Use fresh data under the
+fixed task contract, or define a separately bound workload task with its own
+cases and frequencies.
 
 ## Initial task validation and final candidate evaluation
 

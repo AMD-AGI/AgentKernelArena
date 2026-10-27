@@ -104,6 +104,12 @@ def evaluate_task_v2(original_workspace: Path, output_workspace: Path,
                       original_run_speedup_ratio=run_result["speedup_ratio"],
                       original_run_score=run_result["score"])
         spec = load_task_spec(original_workspace / "config.yaml", task_id=task_id)
+        if spec.aggregation is not None:
+            raise ValueError(
+                "Shape-injection held-out evaluation cannot reuse workload case weights. "
+                "Use fresh data under the fixed task contract, or a separately bound "
+                "workload task with its own cases and frequencies."
+            )
         session = TaskSession.load(spec, original_workspace, state, logger)
         if not (state / "runtime_identity.json").is_file():
             raise ValueError("Original run has no captured scoring runtime identity")

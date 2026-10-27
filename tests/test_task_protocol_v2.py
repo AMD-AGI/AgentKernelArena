@@ -84,6 +84,30 @@ def test_manifest_prevents_both_sides_omitting_the_same_case():
             expected.validate(result)
 
 
+def test_aggregation_weights_cover_only_performance_cases():
+    expected = CaseManifest.from_result(parse(envelope("task", "validate-task", [
+        case("one", checks=["correctness", "performance"]),
+        case("correctness_only", checks=["correctness"]),
+        case("two", checks=["correctness", "performance"]),
+    ])))
+    expected.validate_aggregation(None)
+    expected.validate_aggregation({"method": "weighted_total_time", "case_weights": {"two": 2, "one": 1}})
+    with pytest.raises(TaskProtocolError, match="extra=.*correctness_only"):
+        expected.validate_aggregation({"method": "weighted_total_time", "case_weights": {
+            "one": 1, "two": 2, "correctness_only": 1,
+        }})
+
+
+@pytest.mark.parametrize("weights, error", [
+    ({"one": 1}, "missing=.*two"),
+    ({"one": 1, "two": 1, "extra": 1}, "extra=.*extra"),
+    ({"one": 1, "replacement": 1}, "missing=.*two.*extra=.*replacement"),
+])
+def test_aggregation_cannot_omit_or_replace_performance_cases(weights, error):
+    with pytest.raises(TaskProtocolError, match=error):
+        manifest().validate_aggregation({"method": "weighted_total_time", "case_weights": weights})
+
+
 @pytest.mark.parametrize("identity", [{"shape": [3, 2]}, {"dtype": "float16"}, {"params": {"transpose": True}}])
 def test_case_id_cannot_hide_a_changed_workload(identity):
     rows = [case("one"), case("two")]

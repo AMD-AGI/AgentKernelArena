@@ -1,4 +1,5 @@
 """Agent-independent instructions rendered from the shared task declaration."""
+import json
 from pathlib import Path
 import shlex
 
@@ -45,6 +46,13 @@ def build_task_prompt(spec: TaskSpec, workspace: Path, *, target_gpu: str,
             target = f":{entry.symbol}" if entry.symbol else ""
             lines.append(f"- {entry.file}{target} ({entry.kind})")
     lines.append(f"\nPerformance baseline: {spec.baseline.kind}")
+    if spec.aggregation is not None:
+        lines.extend([
+            "Search objective: weighted_total_time = sum(case_weight * baseline_ms) / sum(case_weight * candidate_ms).",
+            "Optimize this ratio across all declared performance cases. Per-case speedup means are diagnostics.",
+            "The objective and fixed frequencies are in the protected config.yaml and ARENA_TASK_CONTEXT task_config:",
+            json.dumps(spec.aggregation, sort_keys=True),
+        ])
     if spec.baseline.source_files:
         lines.append("Read-only baseline source material: " + ", ".join(spec.baseline.source_files))
     if spec.baseline.correctness_policy == "diagnostic":

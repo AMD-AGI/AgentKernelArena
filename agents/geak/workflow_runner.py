@@ -358,6 +358,28 @@ def _finite_number(value: Any) -> bool:
         return False
 
 
+def _positive_finite_number(value: Any) -> bool:
+    try:
+        return type(value) in (int, float) and math.isfinite(value) and value > 0
+    except OverflowError:
+        return False
+
+
+def _valid_weighted_aggregation(value: dict[str, Any], *metrics: str) -> bool:
+    if "aggregation" not in value:
+        return True
+    aggregation = value["aggregation"]
+    if not isinstance(aggregation, dict) or aggregation.get("method") != "weighted_total_time":
+        return False
+    weights = aggregation.get("case_weights")
+    return (
+        isinstance(weights, dict) and bool(weights)
+        and all(isinstance(name, str) and name.strip() and _positive_finite_number(weight)
+                for name, weight in weights.items())
+        and all(_positive_finite_number(value.get(metric)) for metric in metrics)
+    )
+
+
 def _matches_pinned_patch(value: Any, eval_dir: Path) -> bool:
     return isinstance(value, str) and value == str(eval_dir / "final_patch.diff")
 
@@ -384,6 +406,7 @@ def _valid_workflow_return(
         matches
         and isinstance(status, str)
         and _finite_number(value.get("final_geomean"))
+        and _valid_weighted_aggregation(value, "final_weighted", "final_speedup")
         and isinstance(value.get("final_patch"), str)
         and patch_contract_ok
         and (
@@ -402,6 +425,7 @@ def _valid_director_validation(
         and value.get("validation_status") in {"accepted", "flagged"}
         and value.get("correctness") in {"pass", "fail"}
         and _finite_number(value.get("director_verified_speedup_geomean"))
+        and _valid_weighted_aggregation(value, "director_verified_speedup_weighted")
         and value.get("applied_to_original") in {"true", "false"}
         and isinstance(value.get("final_patch"), str)
     )
@@ -1110,6 +1134,7 @@ def normalize_result(
         eval_dir,
         require_pinned_patch=True,
     ):
+        workflow_contract_invalid |= isinstance(workflow_return, dict) and "aggregation" in workflow_return
         workflow_return = {}
     validation = _read_json(eval_dir / "director_validation.json") or {}
 
@@ -1120,12 +1145,20 @@ def normalize_result(
     ).lower()
     correctness = str(validation.get("correctness") or "unknown").lower()
     workload_aligned = workflow_return.get("workload_aligned") is True
-    weighted = _number(validation.get("director_verified_speedup_weighted"))
+    aggregation_declared = "aggregation" in validation or "aggregation" in workflow_return
+    aggregation = validation.get("aggregation", workflow_return.get("aggregation"))
+    aggregation_consistent = not aggregation_declared or (
+        "aggregation" in validation
+        and (not workflow_return or workflow_return.get("aggregation") == aggregation)
+    )
+    raw_weighted = validation.get("director_verified_speedup_weighted")
+    weighted = (_number(raw_weighted)
+                if not aggregation_declared or _positive_finite_number(raw_weighted) else None)
     geomean = _number(validation.get("director_verified_speedup_geomean"))
     workflow_speedup = _number(workflow_return.get("final_speedup"))
     speedup = (
         weighted
-        if workload_aligned and weighted is not None
+        if aggregation_declared or (workload_aligned and weighted is not None)
         else (geomean if geomean is not None else workflow_speedup)
     )
 
@@ -1137,7 +1170,7 @@ def normalize_result(
     ).lower()
     accepted = validation_status == "accepted" and correctness == "pass"
     gained = speedup is not None and speedup > 1.0
-    director_valid = _valid_director_validation(validation, eval_dir)
+    director_valid = _valid_director_validation(validation, eval_dir) and aggregation_consistent
     primary_metric_valid = speedup is not None
     patch_applied_ok = (not require_applied) or applied_to_original == "true"
     if (
@@ -1162,7 +1195,9 @@ def normalize_result(
     else:
         status = "error"
 
-    if not director_valid and validation_status in {"accepted", "flagged"}:
+    if not aggregation_consistent:
+        reason = "GEAK workflow and Director aggregation declarations differ"
+    elif not director_valid and validation_status in {"accepted", "flagged"}:
         reason = "GEAK Director artifact is missing or invalid"
     elif workflow_contract_invalid:
         reason = "GEAK workflow return artifact is present but invalid"
@@ -1193,6 +1228,7 @@ def normalize_result(
         "eval_dir": str(eval_dir),
         "validation_status": validation_status,
         "correctness": correctness,
+        **({"aggregation": aggregation} if aggregation_declared else {}),
         "workload_aligned": workload_aligned,
         "final_speedup": speedup,
         "final_geomean": geomean,

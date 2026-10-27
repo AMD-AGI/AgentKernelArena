@@ -63,6 +63,10 @@ else:
             # Deliberately synthetic device timing: protocol test only.
             row.update(execution_time_ms=2.0 if role == "baseline" else 4.0,
                        benchmark_method="cuda_graph")
+            if Path("probe.json").exists():
+                timings = json.loads(Path("probe.json").read_text()).get("timings", {})
+                row["execution_time_ms"] = timings.get(role, {}).get(
+                    row["test_case_id"], row["execution_time_ms"])
 result = {"protocol": "arena-eval-v1", "role": role, "action": action,
           "status": status, "cases": rows, "metadata": metadata}
 if status == "FAIL":
@@ -97,7 +101,7 @@ sys.exit(0 if status == "PASS" else 1)
 def task_factory(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
     def create(language="hip", state="implemented", baseline="provided", probe=None, tree=False,
-               scoped=False, initial_language=None):
+               scoped=False, initial_language=None, aggregation=None):
         root = tmp_path / (language + "-" + state + "-" + baseline)
         root.mkdir()
         for directory in ("scripts", "source/nested", "source/helpers", "reference"):
@@ -116,6 +120,8 @@ def task_factory(tmp_path, monkeypatch):
                                              ["source/nested/implementation.py", "source/helpers/math.py"])},
                   "baseline": {"kind": baseline, "source_files": ["reference/value.txt"]},
                   "evaluation": {"runner": ["python3", "scripts/runner.py"], "timeout_s": 5}}
+        if aggregation is not None:
+            config["evaluation"]["aggregation"] = aggregation
         if scoped:
             config["candidate"]["editable"][0] = {"path": "source/nested/implementation.py",
                                                     "scope": "symbols", "symbols": ["compute"],
@@ -149,7 +155,41 @@ def task_factory(tmp_path, monkeypatch):
     return create
 
 
-@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+def test_weighted_bridge_uses_workload_total_and_preserves_geomean(task_factory, capsys):
+    from agents.geak.bridge import main
+
+    aggregation = {"method": "weighted_total_time", "case_weights": {"small": 1, "wide": 10}}
+    bridge = task_factory(aggregation=aggregation, probe={"timings": {
+        "baseline": {"small": 1.0, "wide": 10.0},
+        "candidate": {"small": 0.1, "wide": 20.0},
+    }})
+    root = bridge.eval_dir / "workspace"
+    measured = bridge.check(root, performance=True)
+    assert measured["aggregation"] == aggregation
+    assert measured["speedup_weighted"] == pytest.approx(101 / 200.1)
+    assert measured["speedup_weighted"] < 1 < measured["speedup_geomean"]
+    assert measured["speedup_geomean"] == pytest.approx(5 ** 0.5)
+    assert measured["speedup_arithmetic"] == pytest.approx(5.25)
+    assert measured["baseline_weighted_total_ms"] == 101
+    assert measured["optimized_weighted_total_ms"] == 200.1
+    assert [(row["count"], row["weight"]) for row in measured["per_case"]] == [(1, 1), (10, 100)]
+    assert main(["--job", str(bridge.job_path), "validate", "--workspace", str(root)]) == 0
+    capsys.readouterr()
+    director = json.loads((bridge.eval_dir / "director_validation.json").read_text())
+    assert director["director_verified_speedup_weighted"] == measured["speedup_weighted"]
+    assert director["director_verified_speedup_geomean"] == measured["speedup_geomean"]
+    assert director["aggregation"] == aggregation
+
+
+def test_legacy_bridge_keeps_geomean_without_weighted_objective(task_factory):
+    bridge = task_factory()
+    measured = bridge.check(bridge.eval_dir / "workspace", performance=True)
+    assert measured["speedup_geomean"] == 0.5
+    assert "aggregation" not in measured
+    assert "speedup_weighted" not in measured
+
+
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl", "gpu"])
 @pytest.mark.parametrize("state,baseline", [("implemented", "initial_candidate"),
                                            ("implemented", "provided"), ("unimplemented", "provided")])
 def test_languages_states_baselines_and_nested_delivery(task_factory, language, state, baseline):
@@ -176,6 +216,19 @@ def test_wrong_candidate_never_replaced_by_baseline(task_factory):
     with pytest.raises(Exception, match="candidate.correctness"):
         bridge.deliver(bridge.eval_dir / "workspace")
     assert (bridge.context.workspace / "source/nested/implementation.py").read_text() == "value = 7\n"
+
+
+@pytest.mark.parametrize("language", ["hip", "gpu"])
+def test_serving_measurements_require_a_separate_adapter(task_factory, tmp_path, language):
+    bridge = task_factory(language)
+    raw = bridge.context.raw
+    raw["task_config"]["evaluation"]["measurement"] = {
+        "kind": "serving", "runtime_lock": "runtime-lock.json", "pairs": 3,
+    }
+    context_path = tmp_path / "serving-context.json"
+    write_json(context_path, raw)
+    with pytest.raises(ValueError, match="serving measurements require a separate adapter"):
+        TaskContext.load(context_path)
 
 
 @pytest.mark.parametrize("probe", [{"action": "correctness", "drop_case": True},
@@ -645,7 +698,7 @@ def upstream():
     return path
 
 
-@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl", "gpu"])
 @pytest.mark.parametrize("state", ["implemented", "unimplemented"])
 def test_pinned_upstream_preparation(task_factory, upstream, language, state):
     bridge = task_factory(language, state)
@@ -772,7 +825,7 @@ def test_engine_and_knowledge_copy_deadlines(task_factory, upstream, monkeypatch
     assert not (bridge.root / "engine_identity.json").exists()
 
 
-@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl", "gpu"])
 @pytest.mark.parametrize("state", ["implemented", "unimplemented"])
 def test_actual_geak_dispatcher_and_lane_run_on_cpu(task_factory, upstream, tmp_path, language, state):
     node = os.environ.get("GEAK_TEST_NODE") or shutil.which("node")
@@ -794,6 +847,9 @@ const globals = {
     const label = options.label;
     calls.push(label);
     if (!prompt.includes('Arena task contract')) throw Error('missing task contract');
+    if (input.engine_args.target_language === 'gpu' &&
+        !prompt.includes("The target 'gpu' means the task permits GPU implementation backends"))
+      throw Error('missing backend-neutral GPU contract');
     if (options.model !== 'explicit-model') throw Error('wrong child model');
     if (label.startsWith('author:')) return {authored: true, correctness: 'pass'};
     if (label === 'tech_lead:analyze') return {kernel_type:'arbitrary', roadmap_summary:'probe'};
@@ -847,3 +903,95 @@ def test_initial_language_translation_uses_author_mode(task_factory, upstream):
     engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
     assert engine["engine_args"]["mode"] == "author"
     assert engine["engine_args"]["target_language"] == "flydsl"
+
+
+@pytest.mark.parametrize("declared", [False, True])
+@pytest.mark.parametrize("director_weighted", [False, True])
+def test_native_lane_uses_declared_objective_without_geomean_fallback(
+        task_factory, upstream, tmp_path, declared, director_weighted):
+    from agents.geak.workflow_runner import _valid_workflow_return
+
+    node = os.environ.get("GEAK_TEST_NODE") or shutil.which("node")
+    if not node:
+        pytest.skip("Node required for the real GEAK JavaScript interface probe")
+    aggregation = {"method": "weighted_total_time", "case_weights": {"small": 1, "wide": 10}}
+    bridge = task_factory(aggregation=aggregation if declared else None)
+    bridge.job["options"]["budget"] = 3
+    bridge.job["deadline_epoch"] = 0
+    engine = prepare_engine(upstream, bridge, python=sys.executable, options=bridge.job["options"])
+    args = engine["engine_args"]
+    if declared:
+        assert args["arena_aggregation"] == aggregation
+        assert [(row["count"], row["weight"]) for row in args["workload"]] == [(1, 2), (10, 20)]
+        assert args["arena_benchmark"]["baseline_weighted_total_ms"] == 22
+        assert "Never put the weighted ratio into a geomean field" in (
+            bridge.eval_dir / "COMMANDMENT.md").read_text()
+    else:
+        assert "arena_aggregation" not in args and "workload" not in args
+    probe = tmp_path / "weighted-lane.js"
+    probe.write_text(r'''
+const fs = require('fs');
+const input = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+const commits = [];
+const globals = {
+  phase: () => {}, log: () => {},
+  agent: async (prompt, options) => {
+    const label = options.label;
+    if (label === 'tech_lead:analyze') return {kernel_type:'arbitrary', roadmap_summary:'probe'};
+    if (label.includes('profile_engineer')) return {bottleneck:'unknown',top_opportunities:[]};
+    if (label.startsWith('tech_lead:plan')) return {stop:false,directions:
+      ['geometric','workload','missing'].map(id => ({id,specialty:'compute'}))};
+    if (label.startsWith('eng ')) {
+      if (label.includes('missing')) return {status:'ok',speedup_geomean:99};
+      return {status:'ok',speedup_geomean:label.includes('geometric') ? 4 : 1.2,
+              speedup_weighted:label.includes('geometric') ? 1.1 : 2};
+    }
+    if (label.startsWith('verify ')) {
+      if (label.includes('missing')) return {status:'verified',correctness:'pass',verified_geomean:99};
+      return {status:'verified',correctness:'pass',verified_geomean:label.includes('geometric') ? 4 : 1.2,
+              verified_weighted:label.includes('geometric') ? 1.1 : 2};
+    }
+    if (label.startsWith('integrate ')) return {attempted:true,conclusion:'improved',
+      best:{geomean:100,patch_file:'/synthetic-integrated.diff'}};
+    if (label.startsWith('commit ')) { commits.push(prompt); return {committed:true}; }
+    if (label === 'tech_lead:report') return {final_patch:input.engine.engine_args.eval_dir+'/final_patch.diff',
+      final_speedup_geomean:1.2,final_speedup_weighted:2};
+    if (label === 'director:validate') return {validation_status:'accepted',correctness:'pass',
+      director_verified_speedup_geomean:1.2,
+      ...(input.director_weighted ? {director_verified_speedup_weighted:2} : {})};
+    return {};
+  },
+  parallel: async thunks => Promise.all(thunks.map(t => t())),
+  pipeline: async (items, ...stages) => Promise.all(items.map(async item => {
+    let value = item; for (const stage of stages) value = await stage(value); return value;
+  })),
+  budget: {spent:()=>0,remaining:()=>Infinity}
+};
+async function run(script, args) {
+  const body=fs.readFileSync(script,'utf8').replace(/^export const meta/m,'const meta');
+  const context={...globals,args,workflow:async (ref,a)=>run(ref.scriptPath,a)};
+  return new Function(...Object.keys(context), 'return (async()=>{'+body+'})();')(...Object.values(context));
+}
+run(input.engine.script_path,input.engine.args).then(result=>{
+  console.log(JSON.stringify({result,commits}));
+}).catch(error=>{console.error(error);process.exit(1);});
+''')
+    handoff = tmp_path / "weighted-engine.json"
+    write_json(handoff, {"engine": engine, "director_weighted": director_weighted})
+    completed = subprocess.run([node, str(probe), str(handoff)], text=True,
+                               capture_output=True, timeout=10)
+    assert completed.returncode == 0, completed.stderr
+    output = json.loads(completed.stdout)
+    assert len(output["commits"]) == 1
+    winner = "engineer workload (2.00x)" if declared else "integrated (100.00x)"
+    assert f"winner: {winner}" in output["commits"][0]
+    returned = output["result"]
+    assert returned["final_geomean"] == 1.2
+    if declared:
+        assert returned["aggregation"] == aggregation
+        assert returned["final_speedup"] == (2 if director_weighted else None)
+        assert _valid_workflow_return(returned, bridge.eval_dir) is director_weighted
+    else:
+        assert "aggregation" not in returned
+        assert returned["final_speedup"] == 1.2
+        assert _valid_workflow_return(returned, bridge.eval_dir)

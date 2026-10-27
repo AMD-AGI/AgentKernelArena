@@ -266,6 +266,41 @@ fallback for another. The evaluator records method sets, per-case mismatch
 details, and `benchmark_method_consistent` in `task_result.yaml`. All
 `benchmark_*` metadata survives the baseline/optimized YAML round trip.
 
+## Fixed-workload aggregation
+
+Kernel tasks default to the arithmetic mean of per-case speedups. A task may
+explicitly declare `evaluation.aggregation.method: weighted_total_time` and a
+`case_weights` mapping to optimize the total cost of a fixed workload:
+
+```text
+speedup_ratio = sum_i frequency_i * baseline_ms_i
+               --------------------------------
+               sum_i frequency_i * candidate_ms_i
+```
+
+The same positive finite frequencies apply to both implementations and must
+cover exactly the protected performance manifest. They are occurrence counts
+or proportional frequencies, not baseline time shares multiplied by latency.
+All case-identity, correctness, and per-pair timing-method requirements still
+apply. Missing, renamed, duplicated, invalid, or skipped cases cannot be
+omitted to improve this ratio. Broader correctness cases can remain outside the
+performance objective.
+
+Report frequency provenance and freeze it before candidate results are known.
+`performance_aggregation` preserves the method, weights, weighted totals, task
+specification hash and declared workload file's protected content hash;
+the ordinary execution-time fields remain unweighted diagnostic means. The
+current held-out shape-injection workflow refuses this mode because new shapes
+need their own workload binding, even if they reuse existing case IDs.
+
+Weighted operation time is a local proxy. Overlap, communication, scheduling,
+changed batching, and different internal call counts can change the effect on
+serving performance. Permit equivalent fusion/decomposition and measure the
+complete admitted region, including any new preparation and state updates.
+Final workload benefit requires a full integration measurement with the same
+external requests, model, runtime, hardware and correctness/quality contract.
+See [task authoring](../how-to/add-task.md#fixed-workload-kernel-objectives).
+
 ## Serving wall-clock measurement
 
 Tasks that declare `evaluation.measurement.kind: serving` do not time a kernel.

@@ -23,9 +23,11 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.harness_guard import WorkspaceSnapshot, verify_workspace_harness
+from src.measurement import measurement_kind
 from src.task_execution import TaskExecutionError, run_action
 from src.task_protocol import CaseManifest, RESULT_PREFIX, parse_command_result
 from src.task_spec import TaskSpec, resolve_task_path
+from src.testcases import TestCaseResult, weighted_total_time
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -66,8 +68,10 @@ class TaskContext:
         if not isinstance(raw, dict) or type(raw.get("version")) is not int or raw["version"] != 1:
             raise ValueError("GEAK requires ARENA_TASK_CONTEXT version 1")
         spec = TaskSpec.from_mapping(raw["task_config"], task_id=raw["task_id"])
-        if spec.candidate.language not in {"hip", "triton", "flydsl"}:
-            raise ValueError("GEAK supports declared hip, triton, and flydsl candidates")
+        if spec.candidate.language not in {"hip", "triton", "flydsl", "gpu"}:
+            raise ValueError("GEAK supports declared hip, triton, flydsl, and gpu candidates")
+        if measurement_kind(spec.to_mapping()) != "kernel":
+            raise ValueError("GEAK supports kernel measurements; serving measurements require a separate adapter")
         workspace = Path(raw["workspace"]).resolve(strict=True)
         baseline = Path(raw["baseline_workspace"]).resolve(strict=True)
         if (not workspace.is_dir() or not baseline.is_dir() or
@@ -328,8 +332,24 @@ class Bridge:
                          "optimized_ms": row["execution_time_ms"],
                          "speedup": base["execution_time_ms"] / row["execution_time_ms"]})
         geomean = math.exp(sum(math.log(row["speedup"]) for row in rows) / len(rows))
-        return {"correctness": "pass", "per_case": rows, "speedup_geomean": geomean,
-                "speedup_arithmetic": sum(row["speedup"] for row in rows) / len(rows)}
+        measured = {"correctness": "pass", "per_case": rows, "speedup_geomean": geomean,
+                    "speedup_arithmetic": sum(row["speedup"] for row in rows) / len(rows)}
+        aggregation = self.spec.aggregation
+        if aggregation is not None:
+            weights = aggregation["case_weights"]
+            totals = {key: weighted_total_time([
+                TestCaseResult(row["name"], execution_time_ms=row[key]) for row in rows
+            ], weights) for key in ("baseline_ms", "optimized_ms")}
+            speedup = totals["baseline_ms"] / totals["optimized_ms"]
+            if not math.isfinite(speedup) or speedup <= 0:
+                raise ValueError("Invalid weighted workload speedup")
+            measured.update(aggregation=aggregation, speedup_weighted=speedup,
+                            baseline_weighted_total_ms=totals["baseline_ms"],
+                            optimized_weighted_total_ms=totals["optimized_ms"])
+            for row in rows:
+                row.update(count=weights[row["name"]],
+                           weight=weights[row["name"]] * row["baseline_ms"])
+        return measured
 
     def deliver(self, candidate: Path) -> dict:
         root = self.candidate_root(candidate)
@@ -385,6 +405,8 @@ def main(argv: list[str] | None = None) -> int:
                       "director_verified_speedup_arithmetic": result["speedup_arithmetic"],
                       "timing_basis": "arena_public_runner",
                       "final_patch": str(bridge.eval_dir / "final_patch.diff")}
+            if "aggregation" in result:
+                result["director_verified_speedup_weighted"] = result["speedup_weighted"]
             write_json(bridge.eval_dir / "director_validation.json", result)
         print("GEAK_ARENA_RESULT=" + json.dumps(result, allow_nan=False))
         return 0

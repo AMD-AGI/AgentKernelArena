@@ -1,0 +1,399 @@
+{
+  "binding_status": "frozen",
+  "workload": {
+    "model": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+    "model_revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+    "tp": 8,
+    "ep": 1,
+    "dp": 1,
+    "concurrency": 64,
+    "input_tokens": 8192,
+    "output_tokens": 1024,
+    "num_prompts": 64,
+    "request_seed": 42,
+    "server_seed": 379165553,
+    "request_rate": "inf",
+    "temperature": 0.0,
+    "random_range_ratio": 1.0,
+    "dataset_repository": "anon8231489123/ShareGPT_Vicuna_unfiltered",
+    "dataset_file": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "dataset_sha256": "35f0e213ce091ed9b9af2a1f0755e9d39f9ccec34ab281cd4ca60d70f6479ba4",
+    "serving_runtime": "sglang 0.5.20 (94602c9c2b7cbdb8efd5c52802dac6a1c180089e)",
+    "chunked_prefill_size": 8192,
+    "max_running_requests": 64,
+    "decode_cuda_graph_buckets": [
+      1,
+      2,
+      4,
+      8,
+      12,
+      16,
+      24,
+      32,
+      40,
+      48,
+      56,
+      64
+    ],
+    "prefill_graph": "eager",
+    "server_environment": {
+      "SGLANG_USE_AITER": "1",
+      "AITER_BF16_FP8_MOE_BOUND": "0",
+      "SGLANG_DSV4_FP4_EXPERTS": "true",
+      "SGLANG_HACK_FLASHMLA_BACKEND": "unified_kv_triton"
+    },
+    "server_environment_unset": [
+      "SGLANG_DSV4_UNIFIED_KV_FP8",
+      "SGLANG_SHARED_EXPERT_TP1",
+      "SGLANG_OPT_MOE_QUANT_ONCE"
+    ],
+    "server_flags": [
+      "--disable-shared-experts-fusion",
+      "--disable-radix-cache"
+    ],
+    "environment_note": "Families are conditional on this environment. The attention backend env selects the wq_b input form: with unified_kv_triton and SGLANG_DSV4_UNIFIED_KV_FP8 unset, prefill wq_b is bf16in and decode wq_b is fp8in. SGLANG_SHARED_EXPERT_TP1 would change the shared-expert geometry and SGLANG_OPT_MOE_QUANT_ONCE the shared gate_up input form; both default False and are absent from the W1 server records. Shared-expert fusion (disabled) would remove the shared gate_up/down families. A capture must freeze all of these values.",
+    "input_mode": "token_ids"
+  },
+  "runtime_environment": {},
+  "cases": [
+    {
+      "test_case_id": "prefill_m8192_n2048_k7168_fp8in",
+      "shape": [
+        8192,
+        2048,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "phase": "prefill",
+        "m": 8192,
+        "n": 2048,
+        "k": 7168,
+        "input_form": "fp8",
+        "layers": "model.layers.0.self_attn.wqkv_a (fused wq_a + wkv) on rank 0 only; activation quant fused into RMSNorm outside the call",
+        "calls_per_forward": 1,
+        "sglang_call_sites": [
+          "sglang python/sglang/srt/models/deepseek_v4.py:705-731 (ReplicatedLinear 7168 -> 1536+512)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:2452-2480 (layer 0: hc_pre returns norm_fused False, then _fused_rmsnorm_fp8_quant gives x_quant)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:443-462 (_fused_rmsnorm_fp8_quant, transpose_scale)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:1430-1433 (wqkv_a(x_quant))",
+          "sglang python/sglang/srt/layers/quantization/fp8.py:1089-1118 (input_scale=x[1])"
+        ],
+        "benchmark_method": "cuda_event_fallback",
+        "tensors": {
+          "x": {
+            "shape": [
+              8192,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 58720256,
+            "storage_group": 0
+          },
+          "x_scale": {
+            "shape": [
+              8192,
+              56
+            ],
+            "stride": [
+              1,
+              8192
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 1835008,
+            "storage_group": 1
+          },
+          "weight": {
+            "shape": [
+              2048,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 14680064,
+            "storage_group": 2
+          },
+          "weight_scale": {
+            "shape": [
+              16,
+              56
+            ],
+            "stride": [
+              56,
+              1
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 3584,
+            "storage_group": 3
+          }
+        },
+        "inputs": "Captured public-call tensors; second authentic state for correctness only"
+      },
+      "inputs": {
+        "path": "inputs/prefill_m8192_n2048_k7168_fp8in.pt",
+        "sha256": "6ce600464c87e3b08a22473c667de978d30386ab530b53025a49b44dc095ab0f",
+        "current_value_replay": {
+          "path": "inputs/prefill_m8192_n2048_k7168_fp8in.current.pt",
+          "sha256": "5449f31029a1fe86d1b598ce26bd0e8c22ef1cbb3af561661dfcd184266dbf64"
+        }
+      }
+    },
+    {
+      "test_case_id": "decode_m64_n2048_k7168_fp8in",
+      "shape": [
+        64,
+        2048,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "phase": "decode",
+        "m": 64,
+        "n": 2048,
+        "k": 7168,
+        "input_form": "fp8",
+        "layers": "model.layers.0.self_attn.wqkv_a (fused wq_a + wkv) on rank 0 only; activation quant fused into RMSNorm outside the call",
+        "calls_per_forward": 1,
+        "sglang_call_sites": [
+          "sglang python/sglang/srt/models/deepseek_v4.py:705-731 (ReplicatedLinear 7168 -> 1536+512)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:2452-2480 (layer 0: hc_pre returns norm_fused False, then _fused_rmsnorm_fp8_quant gives x_quant)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:443-462 (_fused_rmsnorm_fp8_quant, transpose_scale)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:1430-1433 (wqkv_a(x_quant))",
+          "sglang python/sglang/srt/layers/quantization/fp8.py:1089-1118 (input_scale=x[1])"
+        ],
+        "benchmark_method": "cuda_graph",
+        "tensors": {
+          "x": {
+            "shape": [
+              64,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 458752,
+            "storage_group": 0
+          },
+          "x_scale": {
+            "shape": [
+              64,
+              56
+            ],
+            "stride": [
+              1,
+              64
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 14336,
+            "storage_group": 1
+          },
+          "weight": {
+            "shape": [
+              2048,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 14680064,
+            "storage_group": 2
+          },
+          "weight_scale": {
+            "shape": [
+              16,
+              56
+            ],
+            "stride": [
+              56,
+              1
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 3584,
+            "storage_group": 3
+          }
+        },
+        "inputs": "Captured public-call tensors; second authentic state for correctness only"
+      },
+      "inputs": {
+        "path": "inputs/decode_m64_n2048_k7168_fp8in.pt",
+        "sha256": "1724cfc5b5b109cc2e289de4fd00e9eb9567f2ec7b5ed884fe618ad1a48893bc",
+        "current_value_replay": {
+          "path": "inputs/decode_m64_n2048_k7168_fp8in.current.pt",
+          "sha256": "06176e3389bfb7c1fbe5e1123e32926b9c3c3cbc51189c43893da6e7c529e0da"
+        }
+      }
+    }
+  ],
+  "numerical_contract": {
+    "binding_status": "frozen",
+    "reference_kind": "fp32_dequantized_matmul",
+    "activation_quant": "per_1x128_floored_amax_times_inverse_fp8_max_fp32_scale",
+    "fp8_dtype": "float8_e4m3fn",
+    "fp8_max": 448.0,
+    "block_size": 128,
+    "weight_layout": "aiter_shuffle_weight_16x16",
+    "x_scale_layout": "fp32_m_by_k_div_128_column_major",
+    "output_dtype": "bfloat16",
+    "evidence": [
+      "aiter op_tests/test_gemm_a8w8_blockscale.py:32-58 (run_torch: fp32 dequantized F.linear reference) and :151-159 (bpreshuffle checked with checkAllclose defaults), sha256 6b3745c8e79260e85dc54c558127d60c7d54cb65a707ec2368bddb4e18f3b2ea",
+      "aiter aiter/test_common.py:520-524 (checkAllclose rtol=1e-2, atol=1e-2; upstream additionally tolerates up to 5% mismatches, which this task does not)",
+      "aiter aiter/ops/quant.py:367-387 (get_hip_quant per_1x128 = per_group_quant_hip, group 128) and :446-509 (fp32 scale, transpose_scale -> column-major scale bytes)",
+      "aiter csrc/kernels/quant_kernels.cu:231 (fp32 1/fp8_max), :289 (amax seeded with kAmaxFloor), :359 (scale = amax * 1/fp8_max), :416 (fp32 reciprocal 1/scale on gfx950), transposed scale index y*rows+x, sha256 cd72eac4300bbb446da66287f97bb585e0bd469cfc0b76743aa5baaa567915a5",
+      "aiter csrc/include/quant_amax_floor.h:18 (kAmaxFloor = 1e-10f), sha256 6e215e84e2831fb19a6238ba0b661480b6fa9fe8183e0aa65f7430595888bd54",
+      "aiter csrc/include/aiter_opus_plus.h:40-60 (fp32 multiply by 1/scale, v_med3 clamp to +-448, v_cvt_pk_fp8_f32), sha256 859e9b16e7c1b65e9b4609d4a0a6e00b9694526b60e6489fbc66989496f91401",
+      "aiter aiter/utility/dtypes.py:11 (gfx950 fp8 = torch.float8_e4m3fn)",
+      "aiter aiter/ops/shuffle.py:149-205 (shuffle_weight layout (16,16) for 1-byte elements)",
+      "sglang python/sglang/srt/layers/quantization/fp8.py:634 (weight_scale_inv fp32 for fp8 block quant) and :783-799 (shuffle_weight(layer.weight, (16, 16)) at load)"
+    ],
+    "acceptance": {
+      "method": "allclose",
+      "rtol": 0.01,
+      "atol": 0.01
+    }
+  },
+  "timing": {
+    "warmup": 10,
+    "repetition": 100,
+    "target_ms": 1.0,
+    "max_graph_repeats": 1000
+  },
+  "frequency_provenance": "frequency_provenance.json",
+  "excluded_calls": [
+    {
+      "call": "every other fp8 block-scaled linear (wqkv_a in layers 1-60, attention and indexer wq_b, wo_b, shared gate_up_proj and down_proj)",
+      "reason": "this task binds one measured site, layer-0 wqkv_a on rank 0, as captured; other sites need their own captured inputs and counts and are not pooled into this one",
+      "source": [
+        "workloads.json call_site; capture_binding.json"
+      ]
+    },
+    {
+      "call": "attention wo_a",
+      "reason": "skip_aiter_bpreshuffle=True; served by the e8m0 mxscale batched GEMM, a different operation",
+      "source": [
+        "sglang python/sglang/srt/models/deepseek_v4.py:743-778",
+        "sglang python/sglang/srt/models/deepseek_v4.py:1977-1990"
+      ]
+    },
+    {
+      "call": "compressor wkv_gate and indexer weights_proj",
+      "reason": "built without an fp8 quant config (bf16 linears)",
+      "source": [
+        "sglang python/sglang/srt/models/deepseek_v4.py:976-1009",
+        "sglang python/sglang/srt/layers/attention/dsv4/compressor.py:364-370",
+        "sglang python/sglang/srt/layers/attention/dsv4/indexer.py:1051-1057"
+      ]
+    },
+    {
+      "call": "routed experts",
+      "reason": "fp4 experts in the separate fused_moe task",
+      "source": [
+        "tasks/aiter_workloads/deepseek_v4_pro_tp8_ep1_c64_8k1k_fused_moe"
+      ]
+    },
+    {
+      "call": "router gate, lm_head, embeddings",
+      "reason": "not fp8 block-quantized linears (INFERRED, not traced line-by-line)",
+      "source": []
+    },
+    {
+      "call": "RMSNorm+fp8 quant producing the decode wq_b and layer-0 wqkv_a inputs; clamp+SiLU-mul+fp8 quant producing the shared down_proj input",
+      "reason": "fused producer ops issued before the linear; this task starts from their fp8 output (input_form fp8)",
+      "source": [
+        "sglang python/sglang/srt/models/deepseek_v4.py:443-462",
+        "sglang python/sglang/srt/models/deepseek_v4.py:2452-2480",
+        "sglang python/sglang/srt/models/deepseek_v2.py:391-427"
+      ]
+    }
+  ],
+  "missing_bindings": [],
+  "source_policy": "Two captured states per phase of the selected rank-0 layer-0 site. Primary states carry measured per-site weights; second states add correctness coverage only. No synthetic inputs or saved optimized kernels are enrolled.",
+  "runtime_binding": {
+    "input_assets": {
+      "inputs/prefill_m8192_n2048_k7168_fp8in.pt": {
+        "path": "/opt/aka-inputs/w1-linear-r0-l0/prefill_first/inputs/prefill_m8192_n2048_k7168_fp8in.pt",
+        "sha256": "6ce600464c87e3b08a22473c667de978d30386ab530b53025a49b44dc095ab0f",
+        "size_bytes": 75241245
+      },
+      "inputs/prefill_m8192_n2048_k7168_fp8in.current.pt": {
+        "path": "/opt/aka-inputs/w1-linear-r0-l0/prefill_second/inputs/prefill_m8192_n2048_k7168_fp8in.pt",
+        "sha256": "5449f31029a1fe86d1b598ce26bd0e8c22ef1cbb3af561661dfcd184266dbf64",
+        "size_bytes": 75241245
+      },
+      "inputs/decode_m64_n2048_k7168_fp8in.pt": {
+        "path": "/opt/aka-inputs/w1-linear-r0-l0/decode_first/inputs/decode_m64_n2048_k7168_fp8in.pt",
+        "sha256": "1724cfc5b5b109cc2e289de4fd00e9eb9567f2ec7b5ed884fe618ad1a48893bc",
+        "size_bytes": 15159069
+      },
+      "inputs/decode_m64_n2048_k7168_fp8in.current.pt": {
+        "path": "/opt/aka-inputs/w1-linear-r0-l0/decode_second/inputs/decode_m64_n2048_k7168_fp8in.pt",
+        "sha256": "06176e3389bfb7c1fbe5e1123e32926b9c3c3cbc51189c43893da6e7c529e0da",
+        "size_bytes": 15159069
+      }
+    },
+    "image_ref": "sha256:1a82b6109081355b0c9b90db108349206e5fc969eed71754b96ee6919dd3fbd5",
+    "build_evidence": {
+      "path": "runtime_binding/build_evidence.json",
+      "sha256": "71c0da970b3dc9d6ee9513d2bd5b0511810041b347baca91045dd9e63a658ac0"
+    },
+    "dispatch_environment": {
+      "AITER_AOT_IMPORT": null,
+      "AITER_CONFIG_GEMM_A8W8_BLOCKSCALE_BPRESHUFFLE": null,
+      "AITER_DISABLE_KERNARG_PRELOAD": null,
+      "AITER_ENABLE_EXPERIMENTAL": null,
+      "AITER_JIT_DIR": "/opt/aka-native/w1-linear/aiter-jit",
+      "AITER_META_DIR": null,
+      "AITER_REBUILD": null,
+      "AITER_TRITON_ONLY": null,
+      "CK_DIR": null,
+      "CU_NUM": null,
+      "ENABLE_CK": null,
+      "FLYDSL_RUNTIME_CACHE_DIR": "/opt/aka-native/w1-linear/aiter-jit/flydsl-runtime",
+      "GPU_ARCHS": "gfx950",
+      "HIP_KITTENS_DIR": null,
+      "OPUS_GEN_CO_DIR": null
+    },
+    "native_identity": {
+      "manifest": {
+        "path": "runtime_binding/native_identity.json",
+        "sha256": "89e81c2ed5fb60178127f6b4621ca52cbc9a4c9c296792d18bfa013f1d36d527"
+      },
+      "python_modules": {
+        "module_aiter_core": "module_aiter_core",
+        "module_gemm_a8w8_blockscale_bpreshuffle_cktile": "module_gemm_a8w8_blockscale_bpreshuffle_cktile"
+      }
+    }
+  },
+  "call_site": {
+    "rank": 0,
+    "layer": 0,
+    "caller": "model.layers.0.self_attn.wqkv_a",
+    "scope": "One selected site; no extrapolation to other linears or ranks."
+  }
+}

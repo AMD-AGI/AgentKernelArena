@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "scope": "Observed scoring runtime, four-state whole-call calibration, selected installed/materialized source bytes and produced JIT cache identities. No timing, framework task qualification, internal kernel/table-row selection or loaded-memory attestation.",
+  "image_ref": "sha256:1a82b6109081355b0c9b90db108349206e5fc969eed71754b96ee6919dd3fbd5",
+  "aiter_revision": "2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0",
+  "aiter_version": "0.1.1.dev1+g2cb3d1758",
+  "torch": {
+    "hip_version": "7.2.26015",
+    "version": "2.11.0+rocm7.2"
+  },
+  "gpu": {
+    "architecture": "gfx950",
+    "gcnArchName": "gfx950:sramecc+:xnack-",
+    "major": 9,
+    "minor": 5,
+    "multi_processor_count": 256,
+    "name": "AMD Instinct MI350X",
+    "total_memory": 270566162432,
+    "uuid": "32353837-3838-6339-6434-313938316261",
+    "visible_device_index": 0,
+    "warp_size": 64
+  },
+  "dispatch_environment": {
+    "AITER_AOT_IMPORT": null,
+    "AITER_CONFIG_GEMM_A8W8_BLOCKSCALE_BPRESHUFFLE": null,
+    "AITER_DISABLE_KERNARG_PRELOAD": null,
+    "AITER_ENABLE_EXPERIMENTAL": null,
+    "AITER_JIT_DIR": "/opt/aka-native/w1-linear/aiter-jit",
+    "AITER_META_DIR": null,
+    "AITER_REBUILD": null,
+    "AITER_TRITON_ONLY": null,
+    "CK_DIR": null,
+    "CU_NUM": null,
+    "ENABLE_CK": null,
+    "FLYDSL_RUNTIME_CACHE_DIR": "/opt/aka-native/w1-linear/aiter-jit/flydsl-runtime",
+    "GPU_ARCHS": "gfx950",
+    "HIP_KITTENS_DIR": null,
+    "OPUS_GEN_CO_DIR": null
+  },
+  "selected_source_sha256": {
+    "aiter/ops/gemm_op_a8w8.py": "58b7b559bcb06d7956a25a8974dfa924f1f1c457fbf2415a020e45ebf5f2cdd3",
+    "aiter/ops/quant.py": "ef517795ec59df4df0300ae5806dfb607b08f66336abc2a360865763c7abd9cc",
+    "aiter/ops/shuffle.py": "7831eb1e0a2b8e5e10d900e973b03e27d2e265a84b555f358b8f8be8f487b54a",
+    "aiter/ops/enum.py": "16151d2f452be7a12e040f6f4ee4c1e7852c2f8922b4c7d30065f71ca02f2ecc",
+    "aiter/utility/dtypes.py": "f396ae17e1f11957af76ac43110939a229dfba4c2d1a07808c9e0d67559a3117",
+    "aiter/jit/core.py": "671a3baad3861933afa95f074e6e934e29dacf78e110228cd5d5d373aeff2bcc",
+    "aiter/test_common.py": "ab6fca8ff0c159869ac12016caf852efab8eba458f9f5381b9f2ad3aa5e58032",
+    "aiter/configs/a8w8_blockscale_bpreshuffle_tuned_gemm.csv": "c17a747be9084ec40d1d47a16336bb8d5a1164ebba32335a5e4dcf986d01ab35",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_dsv3.csv": "8ec8ffce960716cbee8703af38c656c59a28687237eb3bf9f75aef95e5f2bf43",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_dsv4.csv": "bc66e73b9ee62f5dd18c3e1aee2b27645e6059674272bbd96f46a7c2e0723f7f",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_glm5.2.csv": "77e54d26fa0f4958dd0ca4956084ec62c1c0a5dea3d78e543827dca2e6bc9170",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_mm2.5.csv": "d296fc99faaa65fd77db4793e85ddc6ac49924fdd6317d8210917849ff6fa795",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_qwen3.5_397b.csv": "65246705468a77baacc29af9831825efdbba78b8aab5e324d484463f4ddfea97",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_qwen38_27b.csv": "57aad6cb735fec7709f8bef5bb6d11b1c201ab607705052869116acc99109d30",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_qwen3_14b.csv": "21ad7bbc93b1c8944ebfd8aec4b076f19df8f6d52428be34dde102f54e71e679",
+    "aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_qwen3_235b.csv": "dfb9933ad00ffc913f1488f507658c632d6949ee34276dc2fb7f2dda9c5b59f5",
+    "aiter/configs/model_configs/dsv4_a8w8_blockscale_bpreshuffle_tuned_gemm.csv": "6005999f566cf303ec8622575a1b18a6d61840af499e2cbf97421f01615ba724",
+    "aiter/configs/model_configs/glm5_a8w8_blockscale_bpreshuffle_tuned_gemm.csv": "26eecd1fc45eddccfc78046fa8b9c42c1796a753ae502f1e1baaae44bec566c4"
+  },
+  "native_artifacts": {
+    "module_aiter_core": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_aiter_core",
+      "path": "/opt/aka-native/w1-linear/aiter-jit/module_aiter_core.so",
+      "reported_path": "/opt/aka-native/w1-linear/aiter-jit/module_aiter_core.so",
+      "sha256": "b48535c7340ec02e4a85bc6c6781beefd6b219f89d34559b58fcc5672cfcc11d",
+      "size_bytes": 661064,
+      "status": "identified"
+    },
+    "module_gemm_a8w8_blockscale_bpreshuffle_cktile": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_gemm_a8w8_blockscale_bpreshuffle_cktile",
+      "path": "/opt/aka-native/w1-linear/aiter-jit/module_gemm_a8w8_blockscale_bpreshuffle_cktile.so",
+      "reported_path": "/opt/aka-native/w1-linear/aiter-jit/module_gemm_a8w8_blockscale_bpreshuffle_cktile.so",
+      "sha256": "4b47fdecbb134497b338950479907df5a4479ffd049877949538f2ff5a87ebba",
+      "size_bytes": 77922208,
+      "status": "identified"
+    }
+  },
+  "produced_build_files": {
+    "aiter-jit/module_aiter_core.so": {
+      "size_bytes": 661064,
+      "sha256": "b48535c7340ec02e4a85bc6c6781beefd6b219f89d34559b58fcc5672cfcc11d"
+    },
+    "aiter-jit/build/module_aiter_core/build/module_aiter_core.so": {
+      "size_bytes": 661064,
+      "sha256": "b48535c7340ec02e4a85bc6c6781beefd6b219f89d34559b58fcc5672cfcc11d"
+    },
+    "aiter-jit/build/module_aiter_core/build/build.ninja": {
+      "size_bytes": 2873,
+      "sha256": "a1d718da0f20272706d5afc306546abf56a499305b578aac4addaa897f891be9"
+    },
+    "aiter-jit/module_gemm_a8w8_blockscale_bpreshuffle_cktile.so": {
+      "size_bytes": 77922208,
+      "sha256": "4b47fdecbb134497b338950479907df5a4479ffd049877949538f2ff5a87ebba"
+    },
+    "aiter-jit/build/module_gemm_a8w8_blockscale_bpreshuffle_cktile/build/module_gemm_a8w8_blockscale_bpreshuffle_cktile.so": {
+      "size_bytes": 77922208,
+      "sha256": "4b47fdecbb134497b338950479907df5a4479ffd049877949538f2ff5a87ebba"
+    },
+    "aiter-jit/build/module_gemm_a8w8_blockscale_bpreshuffle_cktile/build/build.ninja": {
+      "size_bytes": 30528,
+      "sha256": "1066e46d634aa6674155da05594b8cad198f53938d34c34f746eaf67cfae9f21"
+    }
+  },
+  "calibration": {
+    "record_status": "OBSERVED_UNBOUND",
+    "four_state_checks_status": "PASS",
+    "case_ids": [
+      "prefill_m8192_n2048_k7168_fp8in",
+      "decode_m64_n2048_k7168_fp8in"
+    ],
+    "states_per_case": 2,
+    "timing_performed": false,
+    "public_calls": [
+      {
+        "callable": "scripts/evaluate.py:baseline_linear",
+        "input_form": "fp8",
+        "internal_dispatch": "UNOBSERVED",
+        "scope": "Whole public baseline invocation; no kernel, tuned-row or device-code selection attestation",
+        "state": "first",
+        "status": "RETURNED_AND_SYNCHRONIZED",
+        "test_case_id": "prefill_m8192_n2048_k7168_fp8in",
+        "upstream_public_callable": "aiter.gemm_a8w8_blockscale_bpreshuffle"
+      },
+      {
+        "callable": "scripts/evaluate.py:baseline_linear",
+        "input_form": "fp8",
+        "internal_dispatch": "UNOBSERVED",
+        "scope": "Whole public baseline invocation; no kernel, tuned-row or device-code selection attestation",
+        "state": "second",
+        "status": "RETURNED_AND_SYNCHRONIZED",
+        "test_case_id": "prefill_m8192_n2048_k7168_fp8in",
+        "upstream_public_callable": "aiter.gemm_a8w8_blockscale_bpreshuffle"
+      },
+      {
+        "callable": "scripts/evaluate.py:baseline_linear",
+        "input_form": "fp8",
+        "internal_dispatch": "UNOBSERVED",
+        "scope": "Whole public baseline invocation; no kernel, tuned-row or device-code selection attestation",
+        "state": "first",
+        "status": "RETURNED_AND_SYNCHRONIZED",
+        "test_case_id": "decode_m64_n2048_k7168_fp8in",
+        "upstream_public_callable": "aiter.gemm_a8w8_blockscale_bpreshuffle"
+      },
+      {
+        "callable": "scripts/evaluate.py:baseline_linear",
+        "input_form": "fp8",
+        "internal_dispatch": "UNOBSERVED",
+        "scope": "Whole public baseline invocation; no kernel, tuned-row or device-code selection attestation",
+        "state": "second",
+        "status": "RETURNED_AND_SYNCHRONIZED",
+        "test_case_id": "decode_m64_n2048_k7168_fp8in",
+        "upstream_public_callable": "aiter.gemm_a8w8_blockscale_bpreshuffle"
+      }
+    ]
+  },
+  "retained_evidence": {
+    "CONFIG.json": {
+      "sha256": "d8d1067f72a3738230abdcfa8de714b8bf211a5e78268a1968babb2c5180f4b1",
+      "size_bytes": 13438
+    },
+    "SOURCE_REVIEW.json": {
+      "sha256": "8631cf5a3fe5e16a73c83d22a7e02af3208a1a5b6d1867564f9280c64bd1bc44",
+      "size_bytes": 1193
+    },
+    "LINEAR_NATIVE_CALIBRATION_OBSERVED_01.json": {
+      "sha256": "701dba61ea5af50af56bc5bdcb7a3689529b0a54f9637dbe00a6084572c8bcb0",
+      "size_bytes": 37292
+    },
+    "PRODUCED_NATIVE_CACHE_INVENTORY_01.json": {
+      "sha256": "1b3b4e97718f209223d1ab387f24d1ecac725dfc13f53d9be6e3a4e1f58b0f95",
+      "size_bytes": 181080
+    },
+    "DURABLE_NATIVE_CACHE_01/COPY_INDEX.json": {
+      "sha256": "46f74467651a339a132b29a336d37617a1573c536e1ad7d05490b540d7eea2ab",
+      "size_bytes": 193839
+    }
+  },
+  "prospective_binding": "This task now requires exactly the two observed loaded extension modules and the already pinned default/model table source bytes. The calibration record retains its original OBSERVED_UNBOUND status and original build_evidence=UNBOUND; this binding is derived from that observation plus the separately retained produced-cache inventory."
+}

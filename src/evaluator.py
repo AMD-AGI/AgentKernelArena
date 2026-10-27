@@ -8,6 +8,8 @@ This module provides standardized evaluation of optimized kernels:
 - Performance measurement
 - Baseline measurement for speedup calculation
 """
+import hashlib
+import json
 import logging
 import math
 import yaml
@@ -24,6 +26,7 @@ from .testcases import (
     calculate_average_speedup,
     collect_benchmark_methods,
     save_performance_results,
+    weighted_total_time,
 )
 
 if TYPE_CHECKING:
@@ -195,7 +198,8 @@ def evaluate_kernel(
     # 1. Compilation check
     log.info("Step 1: Checking compilation...")
     if task_session is None:
-        if task_config.get("schema_version") == 2:
+        if (task_config.get("schema_version") == 2
+                or "aggregation" in task_config.get("evaluation", {})):
             raise ValueError("V2 evaluation requires the framework TaskSession and original case manifest")
         pass_compilation, comp_error = evaluate_compilation(workspace, task_config, logger)
     else:
@@ -444,13 +448,31 @@ def evaluate_kernel(
                     if "serving_measurement" in results:
                         avg_speedup = results["serving_measurement"]["speedup_ratio"]
                     else:
+                        aggregation = task_session.spec.aggregation if task_session else None
+                        weights = aggregation["case_weights"] if aggregation else None
                         avg_speedup = calculate_average_speedup(
                             valid_baseline_cases, valid_optimized_cases, logger,
                             require_complete_match=True,
+                            case_weights=weights,
                         )
+                        if aggregation and avg_speedup > 0:
+                            results["performance_aggregation"] = {
+                                **aggregation,
+                                "task_spec_sha256": hashlib.sha256(json.dumps(
+                                    task_session.spec.to_mapping(), sort_keys=True,
+                                    separators=(",", ":"), allow_nan=False,
+                                ).encode()).hexdigest(),
+                                "baseline_total_time_ms": weighted_total_time(valid_baseline_cases, weights),
+                                "candidate_total_time_ms": weighted_total_time(valid_optimized_cases, weights),
+                            }
+                            workloads = task_session.spec.to_mapping()["evaluation"].get("workloads")
+                            if workloads:
+                                results["performance_aggregation"]["workloads"] = {
+                                    "path": workloads, "sha256": task_session.harness.digests[workloads],
+                                }
                     if avg_speedup > 0:
                         results['average_speedup'] = avg_speedup
-                        log.info(f"Average speedup: {avg_speedup:.2f}x")
+                        log.info(f"Task speedup: {avg_speedup:.2f}x")
                     else:
                         error_msg = (
                             "Cannot calculate speedup because baseline and optimized "
@@ -657,7 +679,7 @@ def write_task_result(
         'tool_policy_satisfied': evaluation_results.get('tool_policy_satisfied', True),
         'base_execution_time': avg_baseline_time,  # Average baseline time
         'best_optimized_execution_time': optimized_time,  # Average optimized time
-        'speedup_ratio': avg_speedup,  # Average speedup across test cases
+        'speedup_ratio': avg_speedup,  # Task-declared aggregation of matched cases
         'baseline_benchmark_methods': baseline_methods,
         'optimized_benchmark_methods': optimized_methods,
         'benchmark_method_consistent': benchmark_method_consistent,
@@ -677,6 +699,7 @@ def write_task_result(
         'baseline_correctness', 'agent_execution', 'framework_error',
         'evaluated_candidate_sources', 'candidate_source_error', 'serving_measurement', 'measurement_kind',
         'process_sweep', 'candidate_verification', 'pass_verification',
+        'performance_aggregation',
     ):
         if field in evaluation_results:
             task_result[field] = evaluation_results[field]

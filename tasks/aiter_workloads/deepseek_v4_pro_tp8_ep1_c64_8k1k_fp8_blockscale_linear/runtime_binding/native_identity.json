@@ -1,0 +1,39 @@
+{
+  "artifacts": {
+    "module_aiter_core": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_aiter_core",
+      "path": "/opt/aka-native/w1-linear/aiter-jit/module_aiter_core.so",
+      "reported_path": "/opt/aka-native/w1-linear/aiter-jit/module_aiter_core.so",
+      "sha256": "b48535c7340ec02e4a85bc6c6781beefd6b219f89d34559b58fcc5672cfcc11d",
+      "size_bytes": 661064,
+      "status": "identified"
+    },
+    "module_gemm_a8w8_blockscale_bpreshuffle_cktile": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_gemm_a8w8_blockscale_bpreshuffle_cktile",
+      "path": "/opt/aka-native/w1-linear/aiter-jit/module_gemm_a8w8_blockscale_bpreshuffle_cktile.so",
+      "reported_path": "/opt/aka-native/w1-linear/aiter-jit/module_gemm_a8w8_blockscale_bpreshuffle_cktile.so",
+      "sha256": "4b47fdecbb134497b338950479907df5a4479ffd049877949538f2ff5a87ebba",
+      "size_bytes": 77922208,
+      "status": "identified"
+    }
+  },
+  "declared_artifact_set_complete": true,
+  "limits": {
+    "max_artifact_bytes": 1073741824,
+    "max_total_bytes": 2147483648
+  },
+  "required": {
+    "module_aiter_core": "python_extension",
+    "module_gemm_a8w8_blockscale_bpreshuffle_cktile": "python_extension"
+  },
+  "schema_version": 1,
+  "scope": "Declared on-disk artifacts only; no dispatch, execution, memory-image, or build-provenance attestation."
+}

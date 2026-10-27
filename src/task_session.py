@@ -174,6 +174,7 @@ class TaskSession:
                 session.task_evidence = session.results[key]
                 if parsed.passed:
                     session.manifest = CaseManifest.from_result(parsed)
+                    session._validate_aggregation()
             elif session.manifest is not None:
                 session.manifest.validate(parsed)
         report_path = state_directory / "initial_validation.json"
@@ -185,6 +186,16 @@ class TaskSession:
                 session._verify_saved_initial_validation(report)
             session.initial_validation = report
         return session
+
+    def _validate_aggregation(self) -> None:
+        aggregation = self.spec.aggregation
+        if self.manifest is None:
+            raise TaskExecutionError("Aggregation requires captured task manifest evidence")
+        self.manifest.validate_aggregation(aggregation)
+        source = aggregation.get("source") if aggregation else None
+        if source and (self.harness is None
+                       or self.harness.digests.get(source["path"]) != source["sha256"].lower()):
+            raise TaskExecutionError(f"Aggregation frequency source digest mismatch: {source['path']}")
 
     def _verify_saved_initial_validation(self, report: InitialValidation) -> None:
         if self.manifest is None or self.task_evidence is None or not self.task_evidence.result.passed:
@@ -275,6 +286,7 @@ class TaskSession:
                 raise TaskExecutionError(task.result.reason or "Task validation failed")
             self._verify_initial_state(task)
             self.manifest = CaseManifest.from_result(task.result)
+            self._validate_aggregation()
             for action in ("compile", "correctness", "performance"):
                 result = self._execute("baseline", action, phase).result
                 accepted = result.passed

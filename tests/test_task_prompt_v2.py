@@ -53,6 +53,20 @@ def test_missing_declared_instructions_cannot_silently_disappear(tmp_path):
         build_task_prompt(spec, tmp_path, target_gpu="MI355X")
 
 
+def test_every_agent_gets_the_declared_workload_objective_in_shared_prompt(tmp_path):
+    data = config()
+    data.pop("instructions")
+    data["evaluation"]["aggregation"] = {
+        "method": "weighted_total_time", "case_weights": {"rare": 1, "frequent": 100},
+    }
+    spec = TaskSpec.from_mapping(data, task_id="suite/workload")
+    prompt = build_task_prompt(spec, tmp_path, target_gpu="MI355X")
+    assert "sum(case_weight * baseline_ms) / sum(case_weight * candidate_ms)" in prompt
+    assert '"rare": 1' in prompt and '"frequent": 100' in prompt
+    assert "Per-case speedup means are diagnostics" in prompt
+    assert "ARENA_TASK_CONTEXT" in prompt
+
+
 def test_serving_bundle_prompt_is_model_wide_with_optional_profiling():
     from pathlib import Path
     from src.task_spec import load_task_spec

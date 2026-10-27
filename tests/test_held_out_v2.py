@@ -25,9 +25,15 @@ RUNNER_WITH_SHAPES = RUNNER.replace(
 
 
 def completed(tmp_path, *, empty=False, diagnostic=False, event=False, bad_heldout=False,
-              mutation=False, missing_case=False):
+              mutation=False, missing_case=False, weighted=False):
     path = package(tmp_path, empty=empty, provided=4 if diagnostic else 3 if empty else None,
                    diagnostic=diagnostic)
+    if weighted:
+        config = yaml.safe_load(path.read_text())
+        config["evaluation"]["aggregation"] = {
+            "method": "weighted_total_time", "case_weights": {"one": 3},
+        }
+        path.write_text(yaml.safe_dump(config))
     text = RUNNER_WITH_SHAPES
     if bad_heldout:
         text = text.replace('value != 3', '(value != 3 or role == "candidate" and case["shape"] == [3])')
@@ -56,6 +62,15 @@ def completed(tmp_path, *, empty=False, diagnostic=False, event=False, bad_heldo
 def shapes(shape=3):
     return {"injections": [{"file": "workload.json", "find_marker": "raw_replace",
                             "old_code": '[2]', "replacement_code": f'[{shape}]'}]}
+
+
+def test_new_shapes_cannot_silently_inherit_workload_frequencies(tmp_path):
+    workspace, task_dir = completed(tmp_path, weighted=True)
+    result = evaluate(workspace, task_dir)
+    assert result["generalization_status"] == "evaluation_error"
+    assert "cannot reuse workload case weights" in result["error"]
+    assert result["speedup_ratio"] == result["score"] == 0
+    assert not (tmp_path / "heldout" / "actions").exists()
 
 
 def evaluate(workspace, task_dir, output=None, injections=None):

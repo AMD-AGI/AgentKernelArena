@@ -35,7 +35,13 @@ def test_rocmbench_has_one_registered_flip_and_no_old_classification():
     assert not (TASKS / "triton2triton/rocmbench/easy/test_triton_flip/config.yaml").exists()
     assert not get_task_config(str(TASKS), "instruction2triton")
     serving = get_task_config(str(TASKS), "e2e")
-    assert len(get_task_config(str(TASKS))) == 436 + len(serving)
+    aiter_workloads = get_task_config(str(TASKS), "aiter_workloads")
+    assert set(aiter_workloads) == {
+        "aiter_workloads/deepseek_v4_pro_tp8_ep1_c64_8k1k_fp8_blockscale_linear",
+        "aiter_workloads/deepseek_v4_pro_tp8_ep1_c64_8k1k_fused_moe",
+        "aiter_workloads/deepseek_v4_pro_tp8_ep1_c64_8k1k_mhc",
+    }
+    assert len(get_task_config(str(TASKS))) == 436 + len(serving) + len(aiter_workloads)
 
 
 @pytest.mark.parametrize("name", [

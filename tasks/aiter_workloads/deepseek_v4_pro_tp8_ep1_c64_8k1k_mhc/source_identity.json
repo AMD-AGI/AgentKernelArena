@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/ROCm/aiter",
+  "revision": "2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0",
+  "aiter_files": {
+    "aiter/ops/mhc.py": "8f30a4e38752dec1a081b26d26443bbe10b299e886e5fe4d68d39bf920bcbcc9",
+    "aiter/jit/core.py": "671a3baad3861933afa95f074e6e934e29dacf78e110228cd5d5d373aeff2bcc",
+    "aiter/jit/utils/chip_info.py": "e1311aead8a1297d47d4e44e954020cdd46c5231ae6ec7b23f57f27ea9e5ab28",
+    "aiter/jit/utils/torch_guard.py": "1adf6a04dc4ca40dfd458e10ab7f46c3ba3482912807222821ec47079fbb795e"
+  },
+  "reference_sources": {
+    "op_tests/test_mhc.py": "cd3c0c844ae7abb4da0fb7f9553ee6bbc001798ed669a0ffbef459c8c62b386e",
+    "aiter/test_common.py": "ab6fca8ff0c159869ac12016caf852efab8eba458f9f5381b9f2ad3aa5e58032",
+    "csrc/kernels/mhc_kernels.cu": "706e681f883a8f80c6564b8e1cf282ae746c410c99b1e74b8cd6b2cb2b77acba"
+  },
+  "scope": "aiter_files are checked at runtime in both the materialized upstream tree and the installed package. reference_sources record where the copied reference and tolerances come from and the native kernel source; the installed native module identity is covered only by the bound runtime build evidence."
+}

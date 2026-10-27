@@ -1,0 +1,76 @@
+{
+  "artifacts": {
+    "aiter.jit.core.__mds.module_aiter_core": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_aiter_core",
+      "path": "/opt/aka-native/w1-moe/aiter-jit/module_aiter_core.so",
+      "reported_path": "/opt/aka-native/w1-moe/aiter-jit/module_aiter_core.so",
+      "sha256": "e02e91c9b99b05a6625b3f95f86c677f942d54bedd3eb9f5d49e4546f0faab5d",
+      "size_bytes": 661064,
+      "status": "identified"
+    },
+    "aiter.jit.core.__mds.module_moe_opus": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_moe_opus",
+      "path": "/opt/aka-native/w1-moe/aiter-jit/module_moe_opus.so",
+      "reported_path": "/opt/aka-native/w1-moe/aiter-jit/module_moe_opus.so",
+      "sha256": "d59062541cbba9dc68474d347a79f56230bf2eb1de0fc55d71b3c0068e9b2069",
+      "size_bytes": 1936944,
+      "status": "identified"
+    },
+    "aiter.jit.core.__mds.module_moe_sorting_opus": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_moe_sorting_opus",
+      "path": "/opt/aka-native/w1-moe/aiter-jit/module_moe_sorting_opus.so",
+      "reported_path": "/opt/aka-native/w1-moe/aiter-jit/module_moe_sorting_opus.so",
+      "sha256": "02ad813c3694e60230e5570c3e941ca4cbd13cfdc65bc4a033adc30431de7ada",
+      "size_bytes": 1115600,
+      "status": "identified"
+    },
+    "aiter.jit.core.__mds.module_quant": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_quant",
+      "path": "/opt/aka-native/w1-moe/aiter-jit/module_quant.so",
+      "reported_path": "/opt/aka-native/w1-moe/aiter-jit/module_quant.so",
+      "sha256": "6cbd81cfe5ad55dea7350e46b6d96e3c8fe7491b0337f416507afce73b7956ce",
+      "size_bytes": 5365792,
+      "status": "identified"
+    },
+    "flydsl_stage1_cache": {
+      "evidence_kind": "explicit_runtime_cache_file_path",
+      "format_check": "not_checked",
+      "kind": "runtime_cache",
+      "path": "/opt/aka-native/w1-moe/aiter-jit/flydsl-runtime/launch_mixed_moe_gemm1_c282e31afd80ddece21a5754ed6cb5ee/71eb26065acb32b6.pkl",
+      "reported_path": "/opt/aka-native/w1-moe/aiter-jit/flydsl-runtime/launch_mixed_moe_gemm1_c282e31afd80ddece21a5754ed6cb5ee/71eb26065acb32b6.pkl",
+      "sha256": "4c6bd689cfb5a78108e6b1606ecb9a0e34e065347eaead8b41ed5c44d9c67f17",
+      "size_bytes": 7133,
+      "status": "identified"
+    }
+  },
+  "declared_artifact_set_complete": true,
+  "limits": {
+    "max_artifact_bytes": 1073741824,
+    "max_total_bytes": 2147483648
+  },
+  "required": {
+    "aiter.jit.core.__mds.module_aiter_core": "python_extension",
+    "aiter.jit.core.__mds.module_moe_opus": "python_extension",
+    "aiter.jit.core.__mds.module_moe_sorting_opus": "python_extension",
+    "aiter.jit.core.__mds.module_quant": "python_extension",
+    "flydsl_stage1_cache": "runtime_cache"
+  },
+  "schema_version": 1,
+  "scope": "Declared on-disk artifacts only; no dispatch, execution, memory-image, or build-provenance attestation."
+}
