@@ -244,6 +244,84 @@ make docker-setup-flydsl
 
 This is a no-op when the image already provides FlyDSL.
 
+## Pinned AITER and FlyDSL on SGLang 0.5.20
+
+For the fixed-workload AITER setup, build from the public **SGLang 0.5.20 /
+ROCm 7.2** image below. It contains Torch `2.11.0+rocm7.2`, FlyDSL `0.3.2`
+and an older AITER revision. The recipe installs upstream AITER
+`2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0`, its pinned Composable Kernel
+submodule `96afae1d54fc79c26857de7e1683b0dde1ff3c6f`, and FlyDSL `0.4.0`.
+It uses public sources, so it does not require access to a locally retained
+research image. Select this base explicitly; the runner's `gfx950` default is
+a different SGLang 0.5.20 / ROCm 10 image.
+
+Save the following as `Dockerfile.aiter` in a separate build directory:
+
+```dockerfile
+FROM lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96
+USER root
+ENV AITER_USE_SYSTEM_TRITON=1 PREBUILD_KERNELS=0
+WORKDIR /opt
+RUN git clone https://github.com/ROCm/aiter.git /opt/aka-aiter-src \
+    && git -C /opt/aka-aiter-src checkout --detach 2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0 \
+    && git -C /opt/aka-aiter-src submodule update --init --recursive \
+    && test "$(git -C /opt/aka-aiter-src/3rdparty/composable_kernel rev-parse HEAD)" = \
+       96afae1d54fc79c26857de7e1683b0dde1ff3c6f
+# Explicit build/runtime prerequisites; keep the base ROCm Torch and Triton.
+RUN /opt/venv/bin/python -m pip install --no-cache-dir --no-deps --no-build-isolation \
+    setuptools==79.0.1 setuptools-scm==10.2.3 vcs-versioning==2.4.1 \
+    wheel==0.48.0 packaging==26.2 ninja==1.13.2 pybind11==3.0.4 \
+    psutil==7.2.2 pandas==3.0.3 einops==0.8.2 flydsl==0.4.0
+# Replace the base image's older editable AITER registration.
+RUN /opt/venv/bin/python -m pip uninstall -y amd-aiter aiter \
+    && /opt/venv/bin/python -m pip install --no-cache-dir --no-deps --no-build-isolation \
+       --editable /opt/aka-aiter-src
+# Fresh writable caches for the host UID used by the runner.
+RUN rm -rf /tmp/aiter_configs && install -d -m 1777 /tmp/aiter_configs
+ENV AITER_JIT_DIR=/tmp/aka-aiter-jit \
+    FLYDSL_RUNTIME_CACHE_DIR=/tmp/aka-flydsl-runtime
+WORKDIR /
+RUN /opt/venv/bin/python -c 'from importlib.util import find_spec; from importlib.metadata import version; from pathlib import Path; assert Path(find_spec("aiter").origin).resolve() == Path("/opt/aka-aiter-src/aiter/__init__.py"); assert version("flydsl") == "0.4.0"; assert version("torch") == "2.11.0+rocm7.2"; assert version("triton") == "3.7.0+amd.rocm7.2.0.git89002410"'
+```
+
+These prerequisites cover the pinned AITER `pyproject.toml` and `setup.py`,
+including `vcs-versioning`; setuptools remains below Torch's `<82` limit.
+`--no-deps`, `--no-build-isolation` and `AITER_USE_SYSTEM_TRITON=1` preserve the
+base Torch/Triton installation. `PREBUILD_KERNELS=0` defers native kernel builds
+to later use. The source-origin check runs outside either AITER source tree.
+The cache setup is explicit because the runner's automatic cache overrides
+apply only to its known image references.
+
+Build the image, then select it through the existing runner from the
+AgentKernelArena checkout:
+
+```bash
+docker build --tag aka-aiter:2cb3d175-flydsl0.4.0 - < Dockerfile.aiter
+# From the AgentKernelArena repository:
+AKA_DOCKER_IMAGE=aka-aiter:2cb3d175-flydsl0.4.0 make docker-shell
+```
+
+Installation belongs in the image build: `docker-shell` runs as the host UID,
+while `/opt/venv` is root-owned and disables pip's `--user` mode.
+`make docker-setup-flydsl` only installs a missing package; it leaves an existing
+FlyDSL `0.3.2` installation unchanged. Record the built image identity and use an
+immutable image reference for experiments.
+
+**Qualification scope:** the three published `tasks/aiter_workloads/` packages
+currently bind image
+`sha256:1a82b6109081355b0c9b90db108349206e5fc969eed71754b96ee6919dd3fbd5`
+and specific installed source, dispatch settings and native artifacts. A fresh
+build above has a different runtime identity and does not satisfy those frozen
+bindings. A maintainer preparing a separately versioned task/runtime must retain
+fresh runtime, source, build and native-artifact bindings, then run
+`task_validator` on compatible GPU hardware through
+`make docker-run CONFIG=<validator-config>`. Follow
+[Task definition, schema, and authoring](../how-to/add-task.md#how-to-add-or-modify-a-task)
+and require a fresh framework-finalized `validation_report.yaml` with
+`overall_status: PASS`. Runtime rebinding is task-authoring work; optimizing
+agents continue to edit only their declared candidate paths. Package installation
+alone does not establish task correctness, native dispatch or measured performance.
+
 ## Configure authentication and providers
 
 Cursor, Claude Code, and Codex reuse their host CLI authentication. A normal run

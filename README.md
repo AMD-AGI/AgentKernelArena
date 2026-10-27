@@ -229,6 +229,10 @@ FlyDSL tasks require FlyDSL in the container. The pinned image may already provi
 make docker-setup-flydsl
 ```
 
+For fixed-workload AITER tasks, see the [pinned AITER and FlyDSL setup](docs/install/install.md#pinned-aiter-and-flydsl-on-sglang-0520)
+for AITER `2cb3d175`, FlyDSL `0.4.0` and the public SGLang `0.5.20` / ROCm `7.2`
+base, including the separate qualification required for a newly built runtime.
+
 Performance timing helpers are maintained in `src/tools/perf/` and materialized into run workspaces. See [src/tools/perf/README.md](src/tools/perf/README.md) before changing task timing code.
 
 For detailed installation and compatibility information, see [docs/install/install.md](docs/install/install.md) and [docs/reference/compatibility-matrix.md](docs/reference/compatibility-matrix.md).
