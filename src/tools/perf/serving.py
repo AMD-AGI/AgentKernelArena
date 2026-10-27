@@ -6,6 +6,7 @@ prepared by the host, and mounted read-only; no downloads occur during scoring.
 from __future__ import annotations
 
 import argparse
+import copy
 from concurrent.futures import ThreadPoolExecutor
 import gc
 import hashlib
@@ -14,6 +15,7 @@ import math
 import os
 from pathlib import Path
 import random
+import re
 import shlex
 import shutil
 import signal
@@ -152,6 +154,8 @@ def logprob_error(tokens, expected, rows):
     actual = [float(row[0]) for row in rows[1:]]
     if not all(math.isfinite(v) for v in [*actual, *expected]):
         raise ModelNumericalFailure('Model logprob values must be finite')
+    if any(v > 0 for v in [*actual, *expected]):
+        raise ModelNumericalFailure('Model logprob values must be nonpositive')
     return max(abs(a-b) for a,b in zip(actual, expected))
 
 
@@ -175,13 +179,13 @@ def generation_sample(port, tokens, output_length, request_fn=None, *, return_lo
     return dict(tokens=sequence, actual=rows)
 
 
-def model_check_plan(config, lock, prompts):
+def model_check_plan(config, lock, prompts, *, params=None):
     """Keep short smoke cases and cover one full batch of the scored workload."""
     if not prompts or any(not tokens for tokens in prompts):
         raise ValueError('Model correctness prompts must contain tokens')
     smoke = dict(kind='smoke', concurrency=1, inputs=prompts,
                  outputs=[lock['correctness']['output_tokens']] * len(prompts))
-    params = identity(config)['params']
+    params = identity(config)['params'] if params is None else params
     count = params['concurrency']
     inputs = params.get('input_lens', [params.get('input_tokens')] * count)[:count]
     outputs = params.get('output_lens', [params.get('output_tokens_per_request')] * count)[:count]
@@ -258,8 +262,24 @@ def error_statistics(values):
                 p99=ordered[math.ceil(.99 * len(ordered)) - 1], count=len(values))
 
 
+def production_logprob_tolerances(lock):
+    """An explicit decode budget, or the existing stricter prefix error budget.
+
+    Both are frozen before search. An older binding never silently disables
+    decode comparison; its initial baseline must also satisfy these bounds.
+    """
+    prefix = production_tolerances(lock)
+    rule = lock['correctness'].get('decode_logprob_tolerances')
+    if 'decode_logprob_tolerances' not in lock['correctness']:
+        return {name+'_abs': prefix['prefix_'+name+'_abs'] for name in ('max', 'mean', 'p99')}
+    if (not isinstance(rule, dict) or set(rule) != {'max_abs', 'mean_abs', 'p99_abs'}
+            or any(type(v) not in (int, float) or not math.isfinite(v) or v <= 0 for v in rule.values())):
+        raise ValueError('Decode logprob comparison requires complete finite calibrated tolerances')
+    return rule
+
+
 def production_teacher_reference(port, sample, request_fn):
-    """Score every actual no-logprob continuation on the independent original.
+    """Score every actual continuation on the independent original.
 
     FP8 prefill and recurrent decode need not be bit-identical. The locked
     production policy bounds this difference; it is not an FP32 oracle.
@@ -280,14 +300,52 @@ def production_teacher_reference(port, sample, request_fn):
     best = [float(top[0][0]) for top in tops[1:]]
     if not all(math.isfinite(v) for v in values + best):
         raise ModelNumericalFailure('Original teacher-forcing values must be finite')
+    if any(v > 0 for v in values + best):
+        raise ModelNumericalFailure('Original teacher-forcing logprobs must be nonpositive')
     return dict(values=values, best=best)
+
+
+def production_references(port, diagnostics, plain_samples, request_fn):
+    """Use the original to score the exact tokens observed in both API modes.
+
+    Independently generated continuations can have different prefixes. Their
+    logprobs cannot replace a reference for the actual diagnostic decode.
+    """
+    for samples in (diagnostics, plain_samples):
+        start = 0
+        while start < len(samples):
+            first = samples[start]
+            concurrency = first.get('concurrency', 1)
+            if type(concurrency) is not int or concurrency <= 0:
+                raise ModelNumericalFailure('Original reference concurrency must be positive')
+            end = start+1
+            while (end < len(samples) and samples[end].get('check_kind') == first.get('check_kind')
+                    and samples[end].get('concurrency', 1) == concurrency):
+                end += 1
+            group = samples[start:end]
+            if concurrency > 1 and len(group) != concurrency:
+                raise ModelNumericalFailure('Original reference batch coverage changed')
+            with ThreadPoolExecutor(max_workers=concurrency) as pool:
+                references = list(pool.map(
+                    lambda item: production_teacher_reference(port, item, request_fn), group))
+            for sample, reference in zip(group, references):
+                sample['reference'] = reference
+            start = end
+    references = []
+    for item in diagnostics:
+        values = item['reference']['values']
+        item['reference_rows'] = [[None, item['tokens'][0]]] + [
+            [value, token] for value, token in zip(values, item['tokens'][1:])]
+        references.append(values)
+    return references
 
 
 def production_numerical_checks(diagnostics, plain_samples, lock):
     rule = production_tolerances(lock)
+    logprob_rule = production_logprob_tolerances(lock)
     if not diagnostics or len(diagnostics) != len(plain_samples):
         raise ModelNumericalFailure('Model comparison sample coverage changed')
-    prefix, decode = [], []
+    prefix, decode, diagnostic_decode, decode_logprobs = [], [], [], []
     for item, plain in zip(diagnostics, plain_samples):
         tokens = item['input_tokens']
         if plain['input_tokens'] != tokens:
@@ -299,24 +357,48 @@ def production_numerical_checks(diagnostics, plain_samples, lock):
         logprob_error(tokens, expected, rows)
         prefix.append(error_statistics([abs(float(row[0]) - value)
             for row, value in zip(rows[1:], expected)]))
+        reference = item.get('reference', {})
+        values, best = reference.get('values', []), reference.get('best', [])
+        sequence, length = item.get('tokens', []), item.get('output_length')
+        if (type(length) is not int or length <= 0 or sequence[:len(tokens)] != tokens
+                or len(sequence) != len(tokens) + length or len(values) != len(sequence)-1
+                or len(best) != len(values)):
+            raise ModelNumericalFailure('Diagnostic decode reference coverage changed')
+        logprob_error(sequence, values, item['actual'])
+        if not all(math.isfinite(v) and v <= 0 for v in best):
+            raise ModelNumericalFailure('Diagnostic decode reference logprobs must be finite and nonpositive')
+        start = len(tokens)-1
+        decode_logprobs.append(error_statistics([abs(float(row[0])-value)
+            for row, value in zip(item['actual'][len(tokens):], values[start:])]))
+        diagnostic_decode.append(error_statistics([max(0., b-v)
+            for v, b in zip(values[start:], best[start:])]))
         values, best = plain['reference']['values'], plain['reference']['best']
         start = len(tokens) - 1
         if (len(values) != len(plain['tokens']) - 1 or len(best) != len(values)
                 or len(values) - start != plain['output_length']):
             raise ModelNumericalFailure('No-logprob reference coverage changed')
-        if not all(math.isfinite(v) for v in values + best):
-            raise ModelNumericalFailure('No-logprob reference contains nonfinite values')
+        if not all(math.isfinite(v) and v <= 0 for v in values + best):
+            raise ModelNumericalFailure('No-logprob reference contains nonfinite or positive values')
         decode.append(error_statistics([max(0., b - v)
             for v, b in zip(values[start:], best[start:])]))
     # Bound every case, not only an average diluted by thousands of easy tokens.
-    for label, cases, suffix in (('prefix', prefix, 'abs'), ('decode', decode, 'regret')):
+    for label, cases, suffix in (('prefix', prefix, 'abs'), ('decode', decode, 'regret'),
+                                 ('diagnostic_decode', diagnostic_decode, 'regret')):
         for index, metrics in enumerate(cases):
             for metric in ('max', 'mean', 'p99'):
-                if metrics[metric] > rule[f'{label}_{metric}_{suffix}']:
+                policy = 'decode' if label == 'diagnostic_decode' else label
+                if metrics[metric] > rule[f'{policy}_{metric}_{suffix}']:
                     raise ModelNumericalFailure(
                         f'Model {label} case {index} {metric} error exceeds the locked threshold: '
-                        f'{metrics[metric]} > {rule[f"{label}_{metric}_{suffix}"]}')
-    return dict(prefix_cases=prefix, decode_cases=decode, thresholds=rule)
+                        f'{metrics[metric]} > {rule[f"{policy}_{metric}_{suffix}"]}')
+    for index, metrics in enumerate(decode_logprobs):
+        for metric in ('max', 'mean', 'p99'):
+            if metrics[metric] > logprob_rule[metric+'_abs']:
+                raise ModelNumericalFailure(
+                    f'Model decode logprob case {index} {metric} error exceeds the locked threshold: '
+                    f'{metrics[metric]} > {logprob_rule[metric+"_abs"]}')
+    return dict(prefix_cases=prefix, decode_cases=decode, diagnostic_decode_cases=diagnostic_decode,
+                decode_logprob_cases=decode_logprobs, thresholds=rule, decode_logprob_thresholds=logprob_rule)
 
 
 def request(port, path, value=None, *, timeout=120):
@@ -351,12 +433,34 @@ def deadline_client(timeout_s):
 def prepare_client(lock):
     source = ROOT / 'runtime' / 'inferencex' / lock['dependencies']['inferencex']['subdirectory']
     dest = ROOT / 'client'
-    shutil.copytree(source, dest)
-    for script in (ROOT / 'runtime/magpie/Magpie/scripts/benchmark').glob('*.sh'):
-        shutil.copy2(script, dest / 'benchmarks' / script.name)
+    if not dest.exists():
+        shutil.copytree(source, dest)
+        for script in (ROOT / 'runtime/magpie/Magpie/scripts/benchmark').glob('*.sh'):
+            shutil.copy2(script, dest / 'benchmarks' / script.name)
+        if lock.get('catalog_version'):
+            from _aka_serving_scenarios import compose_client
+            compose_client(dest, lock, ROOT/'scripts/_aka_serving_request_plan.py')
     scripts = {str(p.relative_to(dest)): digest(p) for p in (dest / 'benchmarks').glob('*.sh')}
     if scripts != lock['benchmark_scripts']:
         raise ValueError('Composed benchmark scripts differ from runtime lock')
+    if lock.get('catalog_version'):
+        from _aka_serving_scenarios import composed_script
+        expected = {str(p.relative_to(source)): digest(p) for p in source.rglob('*')
+                    if p.is_file() and '__pycache__' not in p.parts}
+        for script in (ROOT/'runtime/magpie/Magpie/scripts/benchmark').glob('*.sh'):
+            expected['benchmarks/'+script.name] = digest(script)
+        if lock['scenario'] == 'multimodal':
+            name = 'benchmarks/'+lock['benchmark_script']
+            path = ROOT/'runtime/magpie/Magpie/scripts/benchmark'/lock['benchmark_script']
+            expected[name] = hashlib.sha256(composed_script(path.read_bytes(), name, lock)).hexdigest()
+        elif lock['scenario'] == 'text':
+            name = 'infx/bench_serving/benchmark_serving.py'
+            expected[name] = hashlib.sha256(composed_script((source/name).read_bytes(), name, lock)).hexdigest()
+            expected['infx/bench_serving/_aka_request_plan.py'] = digest(ROOT/'scripts/_aka_serving_request_plan.py')
+        actual = {str(p.relative_to(dest)): digest(p) for p in dest.rglob('*')
+                  if p.is_file() and '__pycache__' not in p.parts}
+        if actual != expected:
+            raise ValueError('Timed client source tree differs from pinned runtime sources')
     return dest
 
 
@@ -445,12 +549,23 @@ def server_log_tail(path):
         return stream.read().decode(errors='replace')
 
 
+def readiness_probe(port, path, *, timeout):
+    # Native health endpoints may return an empty or plain-text 2xx response.
+    # JSON parsing remains mandatory for actual inference in request().
+    with urllib.request.urlopen(f'http://127.0.0.1:{port}/{path}', timeout=timeout) as response:
+        if not 200 <= response.status < 300:
+            raise OSError(f'Serving health endpoint returned HTTP {response.status}')
+
+
 def start_server(config, limits, *, install_kernel=True):
     port = serving_port()
     env = dict(os.environ)
     env.update({key: str(value) for key, value in config['envs'].items()})
     env.update(AKA_INSTALL_KERNEL='1' if install_kernel else '0', PYTHONPATH=str(ROOT / 'scripts'),
                NO_PROXY='127.0.0.1,localhost,0.0.0.0', no_proxy='127.0.0.1,localhost,0.0.0.0')
+    checks = sys.modules.get('checks')
+    if hasattr(checks, 'server_environment'):
+        env.update(checks.server_environment(config, port, install_kernel))
     command, ready_endpoint = launch_command(config, port)
     label = 'server' if install_kernel else 'reference_server'
     (ROOT / (label + '_command.json')).write_text(json.dumps(command))
@@ -467,7 +582,7 @@ def start_server(config, limits, *, install_kernel=True):
             if 'address already in use' in tail.lower():
                 raise RuntimeError('Serving port bind failed: ' + tail)
             try:
-                request(port, ready_endpoint, timeout=min(5, max(0.001, deadline - time.monotonic())))
+                readiness_probe(port, ready_endpoint, timeout=min(5, max(0.001, deadline - time.monotonic())))
                 return process, port, log
             except (OSError, ValueError):
                 time.sleep(min(1, max(0, deadline - time.monotonic())))
@@ -503,13 +618,87 @@ def runtime_identity(lock_digest, calls):
         actual = call.get('server_settings')
         if not isinstance(actual, dict) or not actual:
             raise ValueError('A server rank did not expose effective launch settings')
-        settings.append({k:v for k,v in actual.items() if k not in ('port', 'nccl_port', 'grpc_port')})
+        stable = {k:v for k,v in actual.items()
+                  if k not in ('port', 'nccl_port', 'grpc_port', '_runtime_instance_id')}
+        if call.get('backend') == 'vllm' and isinstance(stable.get('cache_config'), dict):
+            # Derived allocator capacity can change with an implementation's
+            # workspace footprint. Keep it in raw rank evidence; configured
+            # overrides, block size and cache precision remain compared.
+            stable['cache_config'] = {k:v for k,v in stable['cache_config'].items()
+                                     if k not in ('num_gpu_blocks', 'num_cpu_blocks')}
+        if call.get('backend') in {'vllm', 'atom'} and isinstance(stable.get('compilation_config'), dict):
+            # Source changes legitimately alter these init=False observations.
+            # Preserve them in raw rank evidence, while comparing all configured
+            # compilation/graph/backend/custom-op switches unchanged.
+            derived = {'compilation_time'}
+            if call['backend'] == 'vllm':
+                derived.update(('traced_files', 'encoder_compilation_time',
+                                'enabled_custom_ops', 'disabled_custom_ops'))
+            stable['compilation_config'] = {k:v for k,v in stable['compilation_config'].items() if k not in derived}
+            inputs = call.get('configuration_inputs')
+            if isinstance(inputs, dict) and isinstance(inputs.get('compilation_cache_dir'), str):
+                # Native vLLM resolves the empty cache input to a directory keyed
+                # by traced source. Compare its root and configured input, while
+                # retaining the complete effective path in raw rank evidence.
+                stable['_configuration_inputs'] = dict(inputs)
+                cache = Path(stable['compilation_config'].get('cache_dir', ''))
+                if (inputs['compilation_cache_dir'] == '' and cache.parent.name == 'torch_compile_cache'
+                        and re.fullmatch(r'[0-9a-f]{10}', cache.name)):
+                    stable['compilation_config']['cache_dir'] = str(cache.parent/'<source-key>')
+        if call.get('backend') == 'atom' and isinstance(stable.get('parallel_config'), dict):
+            # Native ATOM fills these transport-only fields at startup. Retain
+            # raw addresses and ports in rank evidence, not model configuration
+            # equality. DP/TP/EP/PP, master address/port and frozen env remain.
+            stable['parallel_config'] = {k:v for k,v in stable['parallel_config'].items()
+                if k not in ('control_address', 'pp_meta_addrs', 'pp_token_addr',
+                             'pp_kv_status_addr', 'data_parallel_base_port')}
+        settings.append(stable)
         # Keep the raw run identifier in the audit log, but not in configuration
         # equality: the framework generates a new diagnostic ID on every start.
         environment.append({k:v for k,v in call['runtime_settings'].items() if k != 'SGLANG_RUN_ID'})
     fingerprint = hashlib.sha256(json.dumps(dict(lock=lock_digest, settings=settings,
         rank_settings=environment), sort_keys=True).encode()).hexdigest()
     return fingerprint, settings
+
+
+def fp32_token_checks(samples, lock):
+    """Teacher-force every actual native token on the independent FP32 model.
+
+    Unlike exact production-token equality, this explicitly locked policy accepts
+    near-tied greedy choices within the declared log-probability regret bound.
+    It never invents engine logprobs or falls back after a failed comparison.
+    """
+    if not samples or any(item.get('return_logprob') is not False for item in samples):
+        raise ModelNumericalFailure('Native token reference requires actual no-logprob samples')
+    reference = model_reference([item['tokens'] for item in samples], with_best=True)
+    if len(reference) != len(samples):
+        raise ModelNumericalFailure('Native token reference has incomplete request coverage')
+    for item, expected in zip(samples, reference):
+        item['reference'] = expected
+    # Preserve continuations and reference values even if the numeric gate fails.
+    (ROOT/'no_logprob_correctness.json').write_text(json.dumps(samples, indent=2))
+    errors = [greedy_reference_error(item, item['reference'], lock['correctness']['model_logprob_atol'])
+              for item in samples]
+    return dict(policy='transformers_fp32_tokens', samples=len(samples),
+                generated_tokens_checked=sum(item['output_length'] for item in samples),
+                max_greedy_regret=max(errors), logprob_checks=False, reference_dtype='float32')
+
+
+def exact_token_checks(samples, reference):
+    """Compare every native token and request shape, without re-tokenizing text."""
+    if not samples or len(samples) != len(reference):
+        raise ModelNumericalFailure('Native token reference has incomplete request coverage')
+    checked = 0
+    for item, expected in zip(samples, reference):
+        for key in ('input_tokens', 'output_length', 'check_kind', 'concurrency', 'tokens'):
+            if item.get(key) != expected.get(key):
+                raise ModelNumericalFailure('Native token output differs from the original serving reference: ' + key)
+        if item.get('return_logprob') is not False or expected.get('return_logprob') is not False:
+            raise ModelNumericalFailure('Native token reference must exercise the actual no-logprob path')
+        checked += item['output_length']
+        item['reference_tokens'] = expected['tokens']
+    return dict(policy='exact_native_tokens', samples=len(samples), generated_tokens_checked=checked,
+                logprob_checks=False)
 
 
 def evaluate(args, config, lock, limits):
@@ -519,6 +708,12 @@ def evaluate(args, config, lock, limits):
     bundle = Bundle(ROOT, lock)
     bundle.check_sources()
     row = identity(config)
+    import checks
+    if lock.get('catalog_version') and lock['scenario'] == 'text' and args.action != 'compile':
+        # The initial manifest and all later actions must bind the same realized
+        # native requests, not add identity fields after the baseline was locked.
+        row = checks.workload_identity(config, lock, limits, row)
+    args.case_identity = copy.deepcopy(row)
     if args.action == 'validate-task':
         if digest(ROOT / 'benchmark.yaml') != lock['workload_sha256']:
             raise ValueError('Workload configuration differs from lock')
@@ -530,10 +725,14 @@ def evaluate(args, config, lock, limits):
     if args.action == 'compile':
         # Syntax/import checks for every submitted entrypoint. GPU JIT paths
         # are compiled and executed by the mandatory model correctness action.
-        from _aka_serving_bundle import effective_function
+        import checks
+        prepared = checks.prepare_runtime(lock) if hasattr(checks, 'prepare_runtime') else {}
+        from _aka_serving_bundle import effective_function, original_sources
+        originals = original_sources(bundle)  # Freeze the image before candidate imports.
         for patch in bundle.patches:
             effective_function(ROOT, lock, patch['module'], patch['symbol'])
-        return [], dict(**bundle.check_sources(), gpu_execution='required_by_correctness')
+        return [], dict(**bundle.check_sources(), **prepared, gpu_execution='required_by_correctness',
+                        original_compute_sources=originals)
     metadata = {}
     diagnostics = []
     reference_kind = lock['correctness'].get('model_reference', 'transformers_fp32')
@@ -541,11 +740,13 @@ def evaluate(args, config, lock, limits):
         metadata['operator_cases'] = operator_checks(lock)
         (ROOT / 'operator_correctness.json').write_text(json.dumps(metadata['operator_cases'], indent=2))
         prompts = model_inputs(lock)
-        plan = model_check_plan(config, lock, prompts)
+        plan = (model_check_plan(config, lock, prompts, params=row['params'])
+                if lock.get('catalog_version') and lock['scenario'] == 'text'
+                else model_check_plan(config, lock, prompts))
         metadata['model_coverage'] = [dict(kind=group['kind'], concurrency=group['concurrency'],
             return_logprob=mode,
             input_lengths=[len(tokens) for tokens in group['inputs']], output_lengths=group['outputs'])
-            for mode in (True, False) for group in plan]
+            for mode in ((False,) if reference_kind in {'production_tokens', 'transformers_tokens'} else (True, False)) for group in plan]
         (ROOT / 'correctness_coverage.json').write_text(json.dumps(metadata['model_coverage'], indent=2))
     client = None
     if args.action == 'performance':
@@ -557,12 +758,17 @@ def evaluate(args, config, lock, limits):
     try:
         if args.action == 'correctness':
             correctness_request = deadline_client(limits['client_timeout_s'])
-            diagnostics = generation_checks(port, plan, correctness_request)
+            diagnostics = ([] if reference_kind in {'production_tokens', 'transformers_tokens'} else
+                           generation_checks(port, plan, correctness_request))
             plain_samples = generation_checks(port, plan, correctness_request, return_logprob=False)
             (ROOT / 'no_logprob_correctness.json').write_text(json.dumps(plain_samples, indent=2))
             if reference_kind == 'production_quality':
                 import quality
                 candidate_quality = quality.run(port, lock, correctness_request, 'candidate')
+        elif hasattr(__import__('checks'), 'performance'):
+            import checks
+            row, extra = checks.performance(config, lock, limits, client, port, row)
+            metadata.update(extra)
         else:
             env = dict(os.environ)
             env.update({key: str(value) for key,value in config['envs'].items()})
@@ -598,8 +804,10 @@ def evaluate(args, config, lock, limits):
             from _aka_measurement import validate_serving_case
             validate_serving_case(row)
             measurement = yaml.safe_load((ROOT/'config.yaml').read_text())['evaluation']['measurement']
-            if row['metrics']['p99_tpot_ms'] > measurement.get('max_p99_tpot_ms', float('inf')):
-                raise ValueError('Serving tail latency exceeded the task limit')
+            if 'max_p99_tpot_ms' in measurement:
+                latency = row['metrics'].get('p99_tpot_ms')
+                if latency is None or latency > measurement['max_p99_tpot_ms']:
+                    raise ValueError('Serving tail latency is missing or exceeded the task limit')
         metadata['rank_calls'] = sorted(audit(lock), key=lambda row: (row['rank'], row['function']))
         # Read the actual ServerArgs in every worker, without mixing the HTTP
         # server's volatile scheduler counters into the workload identity.
@@ -610,32 +818,49 @@ def evaluate(args, config, lock, limits):
     finally:
         stop_server(process, log)
     if args.action == 'correctness':
+        if reference_kind == 'transformers_tokens':
+            metadata['native_token_checks'] = fp32_token_checks(plain_samples, lock)
+            return [row], metadata
+        if reference_kind == 'production_tokens':
+            if lock['correctness'].get('token_match') != 'exact':
+                raise ValueError('Native token comparison requires its locked exact-equality policy')
+            reference_process, reference_port, reference_log = start_server(config, limits, install_kernel=False)
+            try:
+                plain_reference = generation_checks(reference_port, plan,
+                    deadline_client(limits['client_timeout_s']), return_logprob=False)
+                (ROOT/'original_token_reference.json').write_text(json.dumps(plain_reference, indent=2))
+                metadata['native_token_checks'] = exact_token_checks(plain_samples, plain_reference)
+            finally:
+                stop_server(reference_process, reference_log)
+            (ROOT/'no_logprob_correctness.json').write_text(json.dumps(plain_samples, indent=2))
+            (ROOT/'original_token_reference.json').write_text(json.dumps(plain_reference, indent=2))
+            return [row], metadata
         # Compare against a separate implementation with task-declared semantics.
-        if reference_kind in ('production_serving', 'production_quality'):
-            # Repeat identical prompt/decode shapes in the frozen image. FP8
-            # prefill and recurrent decode need not agree exactly; the quality
-            # reference also teacher-forces each actual continuation below and
-            # applies its separately calibrated numerical bounds.
+        if reference_kind in ('production_serving', 'production_quality', 'production_numerical'):
+            # The uninjected original scores the actual observed prefixes. Its
+            # prefill and recurrent decode can differ numerically, so the task
+            # freezes independently calibrated comparison bounds before search.
             reference_process, reference_port, reference_log = start_server(config, limits, install_kernel=False)
             try:
                 reference = []
                 reference_request = deadline_client(limits['client_timeout_s'])
-                reference_samples = generation_checks(reference_port, plan, reference_request)
-                plain_reference = generation_checks(reference_port, plan, reference_request, return_logprob=False)
-                for item, sample in zip(plain_samples, plain_reference):
-                    item['reference_tokens'] = sample['tokens']
-                for item, sample in zip(diagnostics, reference_samples):
-                    rows = sample['actual']
-                    values = [float(row[0]) for row in rows[1:]]
-                    item['reference_tokens'] = sample['tokens']
-                    item['reference_rows'] = rows
-                    reference.append(values)
-                if reference_kind == 'production_quality':
+                if reference_kind in ('production_quality', 'production_numerical'):
                     production_tolerances(lock)
-                    for item in plain_samples:
-                        item['reference'] = production_teacher_reference(
-                            reference_port, item, reference_request)
-                    reference_quality = quality.run(reference_port, lock, reference_request, 'reference')
+                    production_logprob_tolerances(lock)
+                    reference = production_references(reference_port, diagnostics, plain_samples, reference_request)
+                    metadata['model_reference_mode'] = 'teacher_forced_actual_continuations'
+                    if reference_kind == 'production_quality':
+                        reference_quality = quality.run(reference_port, lock, reference_request, 'reference')
+                else:
+                    reference_samples = generation_checks(reference_port, plan, reference_request)
+                    plain_reference = generation_checks(reference_port, plan, reference_request, return_logprob=False)
+                    for item, sample in zip(plain_samples, plain_reference):
+                        item['reference_tokens'] = sample['tokens']
+                    for item, sample in zip(diagnostics, reference_samples):
+                        rows = sample['actual']
+                        item['reference_tokens'] = sample['tokens']
+                        item['reference_rows'] = rows
+                        reference.append([float(row[0]) for row in rows[1:]])
             finally:
                 stop_server(reference_process, reference_log)
         elif reference_kind == 'transformers_fp32':
@@ -655,9 +880,11 @@ def evaluate(args, config, lock, limits):
         elif reference_kind == 'production_serving' and any(
                 item['tokens'] != item['reference_tokens'] for item in plain_samples):
             raise ModelNumericalFailure('No-logprob generated tokens differ from the original serving reference')
+        if reference_kind == 'production_numerical':
+            metadata['production_numerical_checks'] = production_numerical_checks(diagnostics, plain_samples, lock)
+            return [row], metadata
         if reference_kind == 'production_quality':
-            # Keep independent generated sequences as diagnostics. Normal FP8
-            # variation is checked against a frozen per-case numerical policy,
+            # Normal variation is bounded on both actual continuations,
             # alongside answer accuracy and the independent operator oracle.
             calibration = args.role == 'baseline' and os.environ.get('ARENA_EVAL_PHASE') == 'task_validation'
             (ROOT / 'accuracy_report.json').write_text(json.dumps(dict(
@@ -671,8 +898,6 @@ def evaluate(args, config, lock, limits):
                 label = 'Baseline calibration failed' if calibration else 'Candidate model quality failed'
                 raise ModelQualityFailure(label + ': ' + str(exc)) from exc
             metadata['baseline_calibration'] = calibration
-            metadata['model_divergent_sequences'] = sum(
-                item['tokens'] != item['reference_tokens'] for item in diagnostics)
             return [row], metadata
         if reference_kind == 'production_serving':
             # Fail closed on divergent greedy continuations: logprobs under
@@ -721,7 +946,7 @@ def main():
         # mask the original correctness failure as a manifest mismatch.
         if config is not None and args.action in ('correctness', 'performance'):
             try:
-                row = identity(config)
+                row = copy.deepcopy(getattr(args, 'case_identity', None)) or identity(config)
                 row.update(status='FAIL', reason=report['reason'])
                 report['cases'] = [row]
             except Exception:

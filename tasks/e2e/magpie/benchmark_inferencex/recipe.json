@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_inferencex",
+  "upstream_path": "examples/benchmarks/benchmark_inferencex.yaml",
+  "sha256": "46937bbf2d2e3f2b79592e9aeb745214279c51b1aa5604395f2b5414cea19a92",
+  "source": "upstream.yaml"
+}

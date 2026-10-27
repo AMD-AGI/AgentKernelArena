@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_r9700_qwen35_9b_mm_single_user",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_r9700_qwen35_9b_mm_single_user.yaml",
+  "sha256": "c747f41aa62fe5b5a7a8d9f11efc75cb32e318e8a8d115384a382daf672a627c",
+  "source": "upstream.yaml"
+}

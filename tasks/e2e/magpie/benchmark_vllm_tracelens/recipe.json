@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_tracelens",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_tracelens.yaml",
+  "sha256": "d2dcd88fa1398130279f9b6c71bb280e9ee92d670ede11ac8b02730c3369fe26",
+  "source": "upstream.yaml"
+}

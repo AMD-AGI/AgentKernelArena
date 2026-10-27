@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_sglang_client_only",
+  "upstream_path": "examples/benchmarks/benchmark_sglang_client_only.yaml",
+  "sha256": "dec3d620f1c8bf7d1e23233d0ed76fd4b6eb4fe7790a1dd9e77a7d63b5146c39",
+  "source": "upstream.yaml"
+}

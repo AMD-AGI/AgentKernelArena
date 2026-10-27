@@ -48,6 +48,10 @@ def test_review_reads_frozen_sources_and_preserves_original(tmp_path):
     measured = result(session)
     def backend(prompt, root, settings, logger):
         assert 'UNTRUSTED' in prompt
+        assert 'every compute kernel used by the model' in prompt
+        assert 'separate unit test for each' in prompt
+        assert 'valid general implementation' in prompt
+        assert 'Missing evidence or unclear generality is\nINCONCLUSIVE' in prompt
         assert 'return 3' in (root/'baseline/kernel.py').read_text()
         assert 'return 1 + 2' in (root/'candidate/kernel.py').read_text()
         assert json.loads((root/'evaluation.json').read_text()) == measured
@@ -186,3 +190,23 @@ def test_review_final_object_may_have_one_complete_fence(monkeypatch,tmp_path,pa
         assert backend.review(*args)=={'ok': True}
     else:
         with pytest.raises(ValueError): backend.review(*args)
+
+
+def test_review_includes_trusted_original_runtime_source(tmp_path):
+    from types import SimpleNamespace
+    import hashlib
+    session=create(tmp_path)
+    text='def compute(x):\n    return x + 1\n'
+    command=dict(original_compute_sources=[dict(module='runtime.compute',module_source=text,
+        module_sha256=hashlib.sha256(text.encode()).hexdigest())])
+    session.results[('candidate_evaluation','candidate','compile')]=SimpleNamespace(
+        result=SimpleNamespace(to_mapping=lambda:dict(metadata={'commands':[command]})))
+    def backend(prompt,root,settings,logger):
+        assert (root/'runtime_originals/runtime/compute.py').read_text()==text
+        assert 'execution.json' in prompt
+        return draft(root)
+    report=verify_candidate(session,result(session),{},logging.getLogger(__name__),backend=backend)
+    assert report['status']=='PASS',report
+    command['original_compute_sources'][0]['module_sha256']='0'*64
+    report=verify_candidate(session,result(session),{},logging.getLogger(__name__),backend=backend)
+    assert report['status']=='ERROR' and 'digest' in report['error']

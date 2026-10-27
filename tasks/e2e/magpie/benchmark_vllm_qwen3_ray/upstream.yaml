@@ -1,0 +1,49 @@
+# Ray Remote Benchmark Configuration Example
+# ============================================
+# Benchmark vLLM with Qwen3-8B on a Ray cluster with AMD MI300X GPUs.
+# Tasks are dispatched to GPU workers via ray.remote() — no Dashboard needed.
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_qwen3_ray.yaml
+#
+# Prerequisites:
+#   - A running Ray cluster with GPU worker nodes
+#   - Shared NFS storage on worker nodes for HF model cache
+#
+# Tested on:
+#   - Ray 2.54.0, vLLM 0.16.0rc3, ROCm 7.0, 1x MI300X (309 GB HBM)
+#   - Results: ~8000 tok/s throughput at concurrency=64
+
+benchmark:
+  framework: vllm
+  model: Qwen/Qwen3-8B
+  precision: bf16
+  run_mode: ray
+  gpu_arch: gfx950
+
+  envs:
+    TP: 1
+    CONC: 64
+    ISL: 1024
+    OSL: 128
+    RANDOM_RANGE_RATIO: 1
+    MAX_MODEL_LEN: 4096
+
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+
+  gap_analysis:
+    enabled: false
+
+  ray_config:
+    # "auto" for head-node, or "ray://<ip>:10001" for remote
+    cluster_address: "auto"
+    shared_storage_path: "/shared_nfs/magpie"
+    entrypoint_num_gpus: 1
+    entrypoint_num_cpus: 32
+    install_magpie: false
+
+  timeout_seconds: 3600

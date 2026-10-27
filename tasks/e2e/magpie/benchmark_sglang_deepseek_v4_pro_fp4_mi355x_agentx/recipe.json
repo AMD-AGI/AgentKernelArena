@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_sglang_deepseek_v4_pro_fp4_mi355x_agentx",
+  "upstream_path": "examples/benchmarks/benchmark_sglang_deepseek_v4_pro_fp4_mi355x_agentx.yaml",
+  "sha256": "7c148030268781a6f58107d0c60e2e191ad023b5b83d9d09cc1056ab1c7fc868",
+  "source": "upstream.yaml"
+}

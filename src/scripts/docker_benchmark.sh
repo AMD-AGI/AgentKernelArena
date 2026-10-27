@@ -90,6 +90,8 @@ Environment overrides:
   AKA_DOCKER_IMAGE        Absolute Docker image override.
   AKA_DOCKER_PRIVILEGED   1 (default) retains the existing privileged runtime;
                          0 uses Docker's default capabilities, seccomp, IPC and network.
+  AKA_DOCKER_NETWORK      Optional worker network: host, bridge or none, independently
+                         of privileged mode. Unset preserves the existing network.
   AKA_GPU_ARCH            GPU arch override for shell/smoke, or run configs without target_gpu_model.
   AKA_DOCKER_IMAGE_<ARCH> Per-arch image override, e.g. AKA_DOCKER_IMAGE_GFX950=...
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
@@ -313,7 +315,8 @@ serving_runtime_metadata() {
     [[ -f "$config_path" ]] || die "Run config not found: $config"
     ensure_runtime_image || return 1
     docker run --rm --network=none --read-only --user "$(id -u):$(id -g)" \
-        -e PYTHONDONTWRITEBYTECODE=1 -e PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
+        -e PYTHONDONTWRITEBYTECODE=1 -e AKA_SERVING_METADATA_READONLY=1 \
+        -e PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
         -v "$HOST_ROOT:/workspace:ro" -v "$config_path:/run/aka-run-config.yaml:ro" \
         -w /workspace --entrypoint python3 "$SELECTED_IMAGE" \
         -m src.serving_runtime "$mode" --config /run/aka-run-config.yaml "$@"
@@ -344,15 +347,19 @@ select_runtime_for_config() {
 
 SERVING_RUNTIME_DIR=""
 SERVING_RUNTIME_PID=""
+SERVING_TASK_TEMPLATE_DIR=""
+SERVING_RECIPE_TASKS=""
 
 start_serving_runtime() {
     local config="$1" image
     image="$(serving_runtime_metadata image "$config")" || return 1
     [[ -n "$image" ]] || return 0
     require_serving_host_python
+    SERVING_RECIPE_TASKS="$(serving_runtime_metadata recipe-tasks "$config")" || return 1
     SERVING_RUNTIME_DIR="$(mktemp -d /tmp/aka-serving.XXXXXX)"
     # Artifacts are retained, including failed action evidence.
     local artifacts="${AKA_SERVING_ARTIFACT_ROOT:-$HOST_HOME/.local/state/aka-serving}/$(basename "$SERVING_RUNTIME_DIR")"
+    SERVING_TASK_TEMPLATE_DIR="$artifacts/templates"
     mkdir -p "$artifacts"
     (cd "$HOST_ROOT" && exec "$SERVING_PYTHON" -m src.serving_runtime serve --config "$config" \
         --socket "$SERVING_RUNTIME_DIR/eval.sock" --artifacts "$artifacts" \
@@ -374,6 +381,22 @@ stop_serving_runtime() {
         wait "$SERVING_RUNTIME_PID" 2>/dev/null || true
         SERVING_RUNTIME_PID=""
     fi
+    SERVING_RECIPE_TASKS=""
+    SERVING_TASK_TEMPLATE_DIR=""
+}
+
+append_serving_task_mounts() {
+    [[ -n "${SERVING_RUNTIME_DIR:-}" ]] || return 0
+    local serving_task_id serving_template
+    while IFS= read -r serving_task_id; do
+        [[ -n "$serving_task_id" ]] || continue
+        [[ "$serving_task_id" =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ \
+            && "/$serving_task_id/" != *"/../"* && "/$serving_task_id/" != *"/./"* ]] \
+            || die "Invalid prepared serving task ID"
+        serving_template="${SERVING_TASK_TEMPLATE_DIR:?recipe template root is missing}/$serving_task_id"
+        [[ -f "$serving_template/config.yaml" ]] || die "Prepared serving task is missing: $serving_task_id"
+        docker_args+=(-v "$serving_template:$CONTAINER_WORKDIR/tasks/$serving_task_id:ro")
+    done <<<"${SERVING_RECIPE_TASKS:-}"
 }
 
 assign_serial_gpu_group() {
@@ -1225,11 +1248,16 @@ build_docker_args() {
 
     case "${AKA_DOCKER_PRIVILEGED:-1}" in
         1)
-            docker_args+=(--ipc=host --network=host --privileged
+            docker_args+=(--ipc=host --privileged
                 --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE --security-opt=seccomp=unconfined)
             ;;
         0) ;;
         *) die "AKA_DOCKER_PRIVILEGED must be 0 or 1" ;;
+    esac
+    case "${AKA_DOCKER_NETWORK:-}" in
+        "") [[ "${AKA_DOCKER_PRIVILEGED:-1}" != 1 ]] || docker_args+=(--network=host) ;;
+        host|bridge|none) docker_args+=("--network=$AKA_DOCKER_NETWORK") ;;
+        *) die "AKA_DOCKER_NETWORK must be host, bridge or none" ;;
     esac
     docker_args+=(
         --user "${HOST_UID}:${HOST_GID}"
@@ -1423,6 +1451,9 @@ build_docker_args() {
     else
         add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
     fi
+    # Keep normal discovery and session behavior unchanged. Mount only selected
+    # host-frozen recipe packages, read-only, after their parent checkout mount.
+    append_serving_task_mounts
     # A scoring container receives the per-worker Unix-socket directory and its
     # dedicated report tree. Tool images, credentials, Docker access, and the
     # rest of the experiments/workspace tree never enter a sidecar writable.

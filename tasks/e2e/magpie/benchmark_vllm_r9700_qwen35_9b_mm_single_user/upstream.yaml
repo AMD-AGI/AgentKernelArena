@@ -1,0 +1,49 @@
+# Run this first; the server is reused by the maximum-throughput config.
+benchmark:
+  framework: vllm
+  model: Qwen/Qwen3.5-9B
+  precision: bf16
+  run_mode: docker
+  gpu_arch: gfx1201
+  runner_type: gfx12
+
+  envs:
+    TARGET_GPU_TYPE: r9700
+    TP: 1
+    PORT: 8888
+    CONC: 1
+    ISL: 512
+    OSL: 128
+    NUM_PROMPTS: 10
+    RANDOM_RANGE_RATIO: 0.0
+    REQUEST_RATE: "inf"
+    MM_BASE_ITEMS_PER_REQUEST: 1
+    MM_ITEMS_RANGE_RATIO: 0.0
+    MM_LIMIT_IMAGES: 3
+    MM_LIMIT_VIDEOS: 0
+    MM_IMAGE_HEIGHT: 256
+    MM_IMAGE_WIDTH: 256
+    MM_IMAGE_NUM_FRAMES: 1
+    SEED: 42
+    MAX_MODEL_LEN: 4096
+    GPU_MEMORY_UTILIZATION: 0.9
+    VLLM_ROCM_USE_AITER: 0
+    EXTRA_VLLM_ARGS: "--dtype bfloat16"
+    RUN_EVAL: "false"
+
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+
+  gap_analysis:
+    enabled: false
+
+  docker_image: "rocm/vllm:rocm10.0.0_ubuntu24.04_py3.14_pytorch_2.12.0_vllm_0.27.0"
+  benchmark_script: "vllm_gfx12_mm.sh"
+  server_lifecycle:
+    enabled: true
+    cleanup: false
+    server_ready_timeout_s: 600
+  timeout_seconds: 1800

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_amd_mini_max_3_mxfp4",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_amd_mini_max_3_mxfp4.yaml",
+  "sha256": "3cfdade91a5689328b0b04669dad8a2774cb9767eb95960c1bd907957312d725",
+  "source": "upstream.yaml"
+}

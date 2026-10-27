@@ -808,6 +808,18 @@ See [e2e task setup, budget and evidence requirements](e2e-kernel-tasks.md).
 Imported benchmark YAML without a task `config.yaml` is catalog data and is not
 an executable or qualified task.
 
+A serving recipe may additionally declare a relative `measurement.recipe`
+descriptor. It still has its own schema-v2 task directory, implementation
+boundary and protected original workload. Before starting the agent, the
+host-owned Docker runner combines it with the run config's explicit
+`serving_runtime.bindings` entry and prepares a complete immutable package through
+the shared adapter. The prepared package replaces the recipe directory only in
+the container view, read-only; it does not modify committed tasks. Its evaluator
+and inputs are task-local and self-contained. An unresolved recipe is never a
+passing task or an optimization-time setup action. The runtime lock and recipe
+descriptor must be outside editable paths. Task qualification applies to the
+exact prepared model/image/hardware binding, not merely the recipe declaration.
+
 ## Migration
 
 ### Current runtime versus the selected contract

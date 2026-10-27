@@ -25,6 +25,7 @@ _ORIGINALS = {}
 _ACTIVE = None
 _SUFFIXES = {'.py', '.json', '.h', '.hpp', '.cuh', '.cpp', '.cc', '.cu', '.hip'}
 _NAME = re.compile(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*\Z')
+_COMPUTE_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\Z')
 
 
 def source_files(root: Path, *, max_bytes: int, max_files: int = 256) -> dict[str, Path]:
@@ -68,22 +69,30 @@ class Bundle:
         if not isinstance(manifest, dict) or set(manifest) != {'version', 'patches'} or type(manifest['version']) is not int or manifest['version'] != 1:
             raise ValueError('Invalid kernel replacement manifest')
         self.patches = manifest['patches']
-        if not isinstance(self.patches, list) or not 1 <= len(self.patches) <= 128:
-            raise ValueError('Declare between 1 and 128 compute replacements')
+        minimum = 0 if declaration.get('allow_empty') is True else 1
+        if not isinstance(self.patches, list) or not minimum <= len(self.patches) <= 128:
+            raise ValueError(f'Declare between {minimum} and 128 compute replacements')
         seen = set()
+        whole_model = declaration.get('scope') == 'whole_model'
         for patch in self.patches:
             if not isinstance(patch, dict) or set(patch) != {'module', 'symbol', 'file', 'callable'}:
                 raise ValueError('Invalid compute replacement fields')
-            if any(not isinstance(patch[k], str) or not _NAME.fullmatch(patch[k])
+            names = _COMPUTE_NAME if whole_model else _NAME
+            if any(not isinstance(patch[k], str) or not names.fullmatch(patch[k])
                    for k in ('module', 'symbol', 'callable')):
                 raise ValueError('Invalid compute replacement name')
             if not any(patch['module'] == prefix or patch['module'].startswith(prefix + '.')
                        for prefix in declaration['module_prefixes']):
                 raise ValueError('Replacement target is outside the declared compute modules')
-            if any(part.startswith(('set_', 'enable_', 'disable_', 'load_', 'save_', 'register_')) or part.endswith('_config')
-                   for part in patch['symbol'].split('.')):
+            if any(patch['module'] == prefix or patch['module'].startswith(prefix + '.')
+                   for prefix in declaration.get('protected_modules', [])):
+                raise ValueError('Evaluator configuration observation modules are protected')
+            if not whole_model and any(part.startswith(('set_', 'enable_', 'disable_', 'load_', 'save_', 'register_')) or part.endswith('_config')
+                                       for part in patch['symbol'].split('.')):
                 raise ValueError('Configuration mutations are not compute replacements')
-            if patch['module'].startswith('sglang.srt.models.') and not patch['symbol'].split('.')[-1].startswith('forward'):
+            if (declaration.get('scope') != 'whole_model'
+                    and patch['module'].startswith('sglang.srt.models.')
+                    and not patch['symbol'].split('.')[-1].startswith('forward')):
                 raise ValueError('Model replacements must use a forward compute boundary')
             path = PurePosixPath(patch['file'])
             if path.is_absolute() or '..' in path.parts or path.as_posix() not in self.files or path.suffix != '.py':
@@ -98,10 +107,16 @@ class Bundle:
     def check_sources(self):
         # Deliberately allow numerical libraries and kernel dispatch glue. Do not
         # turn this into a mandatory profiler or a Triton-only task.
-        libraries = {'torch', 'triton', 'aiter', 'sgl_kernel', 'math', 'typing',
+        libraries = {'torch', 'triton', 'aiter', 'sgl_kernel', 'flydsl', 'wave_lang', 'math', 'typing',
                      'functools', 'dataclasses', 'collections', 'itertools', 'enum', 'operator', '__future__'}
         forbidden = {'open', 'eval', 'exec', 'compile', '__import__', 'globals', 'locals',
                      'vars', 'getattr', 'setattr', 'delattr', 'breakpoint'}
+        whole_model = self.lock['candidate_bundle'].get('scope') == 'whole_model'
+        if whole_model:
+            # Model/fusion helpers may own tensor state and dispatch through
+            # attributes. Scope/semantics are mandatory independent-review gates;
+            # lexical setter bans would also reject real KV-cache kernels.
+            forbidden -= {'vars', 'getattr', 'setattr', 'delattr'}
         runtime = {'os', 'sys', 'subprocess', 'environ', 'socket', 'pathlib', 'shutil',
                    'builtins', 'ctypes', 'importlib', 'multiprocessing', 'set_default_dtype',
                    'set_default_device', 'manual_seed', 'set_num_threads', 'set_grad_enabled'}
@@ -125,10 +140,10 @@ class Bundle:
                             raise ValueError('Undeclared implementation dependency: ' + module)
                 if isinstance(node, ast.Name) and (node.id in forbidden or node.id.startswith('__')):
                     raise ValueError('Kernel source accesses protected runtime state')
-                if isinstance(node, ast.Attribute) and (node.attr in runtime or node.attr.startswith(
-                        ('__', 'set_', 'enable_', 'disable_'))):
+                if isinstance(node, ast.Attribute) and (node.attr in runtime or (
+                        not whole_model and node.attr.startswith(('__', 'set_', 'enable_', 'disable_')))):
                     raise ValueError('Kernel source accesses protected runtime state')
-                if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                if not whole_model and isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del)):
                     raise ValueError('Use the replacement manifest instead of mutating runtime attributes')
         return dict(bundle_sha256=self.digest, source_hashes=self.hashes, replacements=self.patches)
 
@@ -189,28 +204,58 @@ def load_extension(name: str, sources: list[str]):
                 extra_cflags=['-O3'], extra_cuda_cflags=['-O3'], verbose=False)
 
 
-def record(bundle, function, *, observer=False):
+def record(bundle, function, *, observer=False, model=None, execution='direct_call', configuration_inputs=None):
     import dataclasses
     import torch
-    from sglang.srt.server_args import get_global_server_args
     evidence = dict(pid=os.getpid(), rank=torch.distributed.get_rank() if torch.distributed.is_initialized() else 0,
-                    function=function, bundle_sha256=bundle.digest, observer=observer)
+                    function=function, bundle_sha256=bundle.digest, observer=observer,
+                    backend=bundle.lock.get('framework', 'sglang'), execution=execution)
     if observer:
-        evidence.update(server_settings=dataclasses.asdict(get_global_server_args()),
+        if configuration_inputs is not None:
+            evidence['configuration_inputs'] = configuration_inputs
+        if bundle.lock.get('framework'):
+            from _aka_serving_backends import runtime_settings
+            settings = runtime_settings(bundle.lock, model)
+        else:
+            from sglang.srt.server_args import get_global_server_args
+            settings = dataclasses.asdict(get_global_server_args())
+        evidence.update(server_settings=settings,
             runtime_settings={k: v for k, v in sorted(os.environ.items()) if k.startswith(
                 ('SGLANG_', 'VLLM_', 'HIP_', 'ROCR_', 'HSA_', 'RCCL_', 'NCCL_', 'CUDA_',
-                 'AITER_', 'TORCH_', 'PYTORCH_', 'FLYDSL_', 'AMD_'))})
+                 'AITER_', 'TORCH_', 'PYTORCH_', 'FLYDSL_', 'AMD_', 'ATOM_',
+                 'FLASH_ATTENTION_', 'GPU_MAX_HW_QUEUES'))})
     with (bundle.task / 'rank_calls.jsonl').open('a') as stream:
         stream.write(json.dumps(evidence) + '\n')
 
 
 def instrument(bundle, function, label, *, observer=False):
     seen = set()
+    torch = sys.modules.get('torch')
+    compiler = getattr(torch, 'compiler', None)
+    compiled_mark = None
+    if not observer and compiler is not None:
+        def mark_trace():
+            if os.getpid() not in seen:
+                record(bundle, label, execution='compiled_trace')
+                seen.add(os.getpid())
+        # This records tracing separately from GPU execution. The enclosing
+        # model call still has to execute and pass the per-rank audit. Metadata
+        # I/O must not become part of the compiled compute graph or break it.
+        compiled_mark = torch._dynamo.assume_constant_result(mark_trace)
     @functools.wraps(function)
     def call(*args, **kwargs):
+        inputs = None
+        if observer and bundle.lock.get('framework') in {'vllm', 'atom'} and os.getpid() not in seen:
+            from _aka_serving_backends import runtime_inputs
+            inputs = runtime_inputs(bundle.lock, args[0])
         result = function(*args, **kwargs)
-        if os.getpid() not in seen:
-            record(bundle, label, observer=observer)
+        if compiled_mark is not None and compiler.is_compiling():
+            compiled_mark()
+        elif os.getpid() not in seen:
+            if observer and bundle.lock.get('framework') in {'vllm', 'atom'}:
+                record(bundle, label, observer=True, model=args[0], configuration_inputs=inputs)
+            else:
+                record(bundle, label, observer=observer)
             seen.add(os.getpid())
         return result
     return call
@@ -222,7 +267,18 @@ def install(task: Path, lock: dict):
     bundle.check_sources()
     _ACTIVE = bundle
     observer = lock['candidate_bundle']['observer']
-    modules = {p['module'] for p in bundle.patches} | {observer['module']}
+    generic_observer = observer.get('kind') == 'model_classes'
+    modules = {p['module'] for p in bundle.patches}
+    if generic_observer:
+        names = observer.get('classes')
+        if not isinstance(names, list) or not names or any(not isinstance(n, str) or not n for n in names):
+            raise ValueError('Model observer requires explicit architecture class names')
+    else:
+        modules.add(observer['module'])
+
+    def observes(name):
+        return generic_observer and any(name == prefix or name.startswith(prefix + '.')
+            for prefix in bundle.lock['candidate_bundle']['module_prefixes'])
 
     def apply(module):
         patches = [p for p in bundle.patches if p['module'] == module.__name__]
@@ -245,21 +301,54 @@ def install(task: Path, lock: dict):
             elif isinstance(descriptor, classmethod):
                 replacement = classmethod(replacement)
             setattr(parent, parts[-1], replacement)
-        if module.__name__ == observer['module']:
+        if not generic_observer and module.__name__ == observer['module']:
             parts = observer['symbol'].split('.')
             parent = resolve(module, '.'.join(parts[:-1])) if len(parts) > 1 else module
             target = getattr(parent, parts[-1])
             setattr(parent, parts[-1], instrument(bundle, target, 'model_forward', observer=True))
+        elif generic_observer:
+            entrypoint = observer.get('entrypoint', 'forward')
+            if entrypoint not in {'forward', '__call__'}:
+                raise ValueError('Unsupported model execution observation boundary')
+            for name in observer['classes']:
+                cls = vars(module).get(name)
+                if inspect.isclass(cls) and cls.__module__ == module.__name__ and callable(getattr(cls, 'forward', None)):
+                    # vLLM compiles forward; observe its enclosing call without
+                    # tracing file/config inspection into the compute graph.
+                    target = getattr(cls, entrypoint)
+                    setattr(cls, entrypoint, instrument(bundle, target, 'model_forward', observer=True))
 
     class Finder(importlib.abc.MetaPathFinder):
+        resolving = set()
         def find_spec(self, fullname, path=None, target=None):
-            if fullname not in modules:
+            if fullname not in modules and not observes(fullname):
                 return None
-            spec = importlib.machinery.PathFinder.find_spec(fullname, path, target)
+            if fullname in self.resolving:
+                return None
+            # Runtime images commonly install engines as editable packages.
+            # Their top-level package is resolved by an editable meta finder,
+            # not PathFinder. Preserve that import mechanism before wrapping it.
+            self.resolving.add(fullname)
+            try:
+                spec = None
+                for finder in tuple(sys.meta_path):
+                    if finder is self or not hasattr(finder, 'find_spec'):
+                        continue
+                    spec = finder.find_spec(fullname, path, target)
+                    if spec is not None:
+                        break
+            finally:
+                self.resolving.remove(fullname)
             if spec is None or spec.loader is None:
-                raise ImportError('Declared compute module unavailable: ' + fullname)
+                # Namespace/optional packages should retain normal import
+                # behavior. Missing required target/model calls fail the audit.
+                return spec
             loader = spec.loader
             class Loader(importlib.abc.Loader):
+                def __getattr__(self, name):
+                    # python -m and importlib.resources use optional loader
+                    # interfaces in addition to exec_module. Preserve them.
+                    return getattr(loader, name)
                 def create_module(self, spec):
                     return loader.create_module(spec)
                 def exec_module(self, module):
@@ -268,7 +357,7 @@ def install(task: Path, lock: dict):
             spec.loader = Loader()
             return spec
     sys.meta_path.insert(0, Finder())
-    for name in sorted(modules & sys.modules.keys()):
+    for name in sorted(n for n in sys.modules if n in modules or observes(n)):
         apply(sys.modules[name])
     return bundle
 
@@ -279,10 +368,72 @@ def effective_function(task: Path, lock: dict, module: str, symbol: str):
     bundle = Bundle(task, lock)
     _ACTIVE = bundle
     original_module = importlib.import_module(module)
-    function = resolve(original_module, symbol)
+    function = original_target(original_module, symbol)
     _ORIGINALS[(module, symbol)] = function
     patch = next((p for p in bundle.patches if (p['module'], p['symbol']) == (module, symbol)), None)
     return bundle.function(patch) if patch else function
+
+
+def original_target(module, symbol):
+    parts = symbol.split('.')
+    parent = resolve(module, '.'.join(parts[:-1])) if len(parts) > 1 else module
+    descriptor = inspect.getattr_static(parent, parts[-1])
+    return descriptor.__func__ if isinstance(descriptor, (classmethod, staticmethod)) else getattr(parent, parts[-1])
+
+
+def original_sources(bundle):
+    """Expose pinned image compute source to the independent semantic reviewer.
+
+    An empty baseline manifest otherwise contains no implementation to compare
+    against. Native/builtin targets are identified explicitly when Python source
+    is unavailable; the reviewer must treat missing evidence as uncertainty.
+    """
+    result, total, modules = [], 0, {}
+    def module_text(name):
+        nonlocal total
+        module = importlib.import_module(name)
+        path = inspect.getsourcefile(module)
+        if not path:
+            raise TypeError('Module has no inspectable Python source')
+        text = Path(path).read_text()
+        value = hashlib.sha256(text.encode()).hexdigest()
+        if name in modules:
+            if modules[name] != value:
+                raise ValueError('Original module changed while freezing review evidence')
+            return None, value
+        total += len(text.encode())
+        if total > 4*1024*1024:
+            raise ValueError('Original compute source exceeds review budget')
+        modules[name] = value
+        return text, value
+    for patch in bundle.patches:
+        module = importlib.import_module(patch['module'])
+        target = original_target(module, patch['symbol'])
+        _ORIGINALS[(patch['module'], patch['symbol'])] = target
+        defining = getattr(target, '__module__', None) or patch['module']
+        row = dict(module=patch['module'], symbol=patch['symbol'], defining_module=defining)
+        try:
+            lines, start = inspect.getsourcelines(target)
+            source = ''.join(lines)
+            total += len(source.encode())
+            if total > 4*1024*1024:
+                raise ValueError('Original compute source exceeds review budget')
+            row.update(source=source, start_line=start,
+                sha256=hashlib.sha256(source.encode()).hexdigest())
+        except (OSError, TypeError):
+            row['source_unavailable'] = True
+        for name, prefix in [(patch['module'], 'module'), (defining, 'defining_module')]:
+            if prefix == 'defining_module' and name == patch['module']:
+                continue
+            try:
+                text, value = module_text(name)
+                row[prefix+'_sha256'] = value
+                if text is not None:
+                    row[prefix+'_source'] = text
+            except (ImportError, OSError, TypeError, UnicodeError):
+                row[prefix+'_source_unavailable'] = True
+        result.append(row)
+    return result
 
 
 def audit(task: Path, lock: dict):
@@ -291,6 +442,10 @@ def audit(task: Path, lock: dict):
     if not calls or any(row.get('bundle_sha256') != bundle.digest for row in calls):
         raise ValueError('Server loaded a different kernel bundle')
     observers = [row for row in calls if row.get('observer') is True]
+    if any(row.get('execution', 'direct_call') != 'direct_call' for row in observers):
+        raise ValueError('Compilation alone is not model execution evidence')
+    if any(row.get('execution', 'direct_call') not in {'direct_call', 'compiled_trace'} for row in calls):
+        raise ValueError('Unknown compute observation type')
     if {row['rank'] for row in observers} != set(range(lock['gpu_count'])):
         raise ValueError('Missing model execution evidence for a tensor-parallel rank')
     if len(observers) != lock['gpu_count']:
@@ -298,7 +453,7 @@ def audit(task: Path, lock: dict):
     expected = {p['module'] + ':' + p['symbol'] for p in bundle.patches}
     actual = {row['function'] for row in calls if not row.get('observer')}
     if actual != expected:
-        raise ValueError('A declared compute replacement was not executed')
-    if any(row['server_settings'].get('random_seed') != lock['server_seed'] for row in observers):
+        raise ValueError('A declared compute replacement was not executed or traced')
+    if 'server_seed' in lock and any(row['server_settings'].get('random_seed') != lock['server_seed'] for row in observers):
         raise ValueError('A server rank changed the locked random seed')
     return calls

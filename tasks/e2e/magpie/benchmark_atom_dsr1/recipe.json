@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_atom_dsr1",
+  "upstream_path": "examples/benchmarks/benchmark_atom_dsr1.yaml",
+  "sha256": "64c8e144ef63c187bba6c4367d4c9a98463e19c7443d3c1cc2d5f2208f50b796",
+  "source": "upstream.yaml"
+}

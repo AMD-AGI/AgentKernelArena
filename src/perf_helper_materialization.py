@@ -30,6 +30,13 @@ NATIVE_HIP_DRIVER = Path("scripts/native/benchmark_driver.hip")
 NATIVE_HIP_INCLUDE = '#include "hip_graph_benchmark.hpp"'
 NATIVE_HIP_MATERIALIZED = Path("scripts/native/hip_graph_benchmark.hpp")
 
+SERVING_RECIPE_RUNNER_STUB = '''"""The Docker runner prepares this recipe before any task action executes."""
+raise RuntimeError(
+    "This serving recipe has no prepared runtime. Select it with the normal Docker "
+    "runner and declare its immutable binding in serving_runtime.bindings."
+)
+'''
+
 MARK_START = (
     "# >>> AKA-GENERATED: shared CUDA-graph benchmark helpers - "
     "edit src/tools/perf/vllm_cuda_graph_block.py then run `make sync-perf-helpers` >>>"
@@ -495,6 +502,10 @@ def materialize_perf_helpers_in_workspace(
                           (root / "src/measurement.py").read_text(), materialized)
         _materialize_file(serving.parent / "_aka_serving_bundle.py",
                           (root / "src/tools/perf/serving_bundle.py").read_text(), materialized)
+        if '_aka_serving_backends' in serving.read_text():
+            for name in ('serving_backends', 'serving_scenarios', 'serving_request_plan'):
+                _materialize_file(serving.parent / ('_aka_' + name + '.py'),
+                                  (root / 'src/tools/perf' / (name + '.py')).read_text(), materialized)
 
     _materialize_native_helper(workspace, root, materialized)
 

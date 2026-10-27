@@ -11,7 +11,7 @@ Run this script after adding tasks or changing marker/stub structure:
     python src/tools/sync_perf_helpers.py            # apply
     python src/tools/sync_perf_helpers.py --check     # verify source stubs (CI-friendly)
 
-Four supported benchmark entrypoint families:
+Supported benchmark entrypoint families:
   1. Every */rocmbench/**/performance_utils_pytest.py should be the committed
      stub from src.perf_helper_materialization. setup_workspace() replaces it.
   2. Every triton2triton/vllm/*/scripts/task_runner.py should contain the
@@ -21,9 +21,14 @@ Four supported benchmark entrypoint families:
      copies the canonical module beside the configured entrypoint.
   4. Native HIP benchmark drivers include ``hip_graph_benchmark.hpp``;
      setup_workspace() copies the canonical header beside the driver.
+  5. Serving clients use the canonical clean-action serving implementation.
+  6. Serving recipes have a hash-pinned workload and an exact bootstrap stub;
+     host preparation supplies their immutable serving client before execution.
+     This family is audited separately and is not a GPU qualification claim.
 """
 import argparse
 import pathlib
+import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -34,6 +39,7 @@ from src.perf_helper_materialization import (  # noqa: E402
     NATIVE_HIP_DRIVER,
     NATIVE_HIP_INCLUDE,
     ROCMBENCH_HELPER_STUB,
+    SERVING_RECIPE_RUNNER_STUB,
     VLLM_HELPER_STUB_BLOCK,
     configured_performance_entrypoints,
     image_kernel_targets,
@@ -41,6 +47,21 @@ from src.perf_helper_materialization import (  # noqa: E402
     rocmbench_targets,
     vllm_targets,
 )
+from src.serving_task_preparation import recipe_identity
+
+
+def _serving_recipe(task: pathlib.Path, root: pathlib.Path) -> bool:
+    """Audit a deferred serving entrypoint, without calling it GPU-qualified."""
+    try:
+        task_id = task.relative_to(root/'tasks').as_posix()
+        recipe_identity(task, task_id)
+        config = (task/'config.yaml').read_text()
+        return ((task/'scripts/evaluate.py').read_text() == SERVING_RECIPE_RUNNER_STUB
+                and re.search(r'^schema_version: 2\s*$', config, re.MULTILINE) is not None
+                and re.search(r'^\s+kind: serving\s*$', config, re.MULTILINE) is not None
+                and re.search(r'^\s+recipe: recipe.json\s*$', config, re.MULTILINE) is not None)
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int], list[str]]:
@@ -51,7 +72,7 @@ def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int]
     task_dirs = sorted(path.parent for path in (root / "tasks").rglob("config.yaml"))
     for task in task_dirs:
         entrypoints = configured_performance_entrypoints(task)
-        family = None
+        family = 'serving_recipe' if _serving_recipe(task, root) else None
 
         native_driver = task / NATIVE_HIP_DRIVER
         if native_driver.is_file() and NATIVE_HIP_INCLUDE in native_driver.read_text():

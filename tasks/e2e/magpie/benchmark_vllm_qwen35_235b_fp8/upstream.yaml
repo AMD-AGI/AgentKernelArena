@@ -1,0 +1,46 @@
+# vLLM Benchmark Configuration Example
+# =====================================
+# This example shows how to benchmark vLLM with Qwen3-Next-80B-A3B-Instruct model.
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_qwen35_235b_fp8.yaml
+#
+# Prerequisites:
+#   - Docker with GPU support
+#   - HuggingFace token (HF_TOKEN) for gated models
+
+benchmark:
+  framework: vllm
+  model: Qwen/Qwen3-235B-A22B-FP8
+  precision: fp8
+  run_mode: docker
+
+  # Environment variables
+  envs:
+    TP: 2
+    CONC: 16
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 1
+    MAX_MODEL_LEN: 2248 # ISL + OSL + 200
+    EXTRA_VLLM_ARGS: "--no-enable-prefix-caching"
+        
+    # AMD performance flags
+    VLLM_ROCM_USE_AITER: 1
+    
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+
+  # if torch_profiler is disabled, gap_analysis is not supported
+  gap_analysis:
+    enabled: true
+    top_k: 100
+    find_kernel_sources: true
+
+  docker_image: "vllm/vllm-openai-rocm:v0.19.1"
+  benchmark_script: "vllm_mi355x.sh"
+
+  timeout_seconds: 3600

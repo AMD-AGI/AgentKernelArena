@@ -1,0 +1,47 @@
+# vLLM Benchmark Configuration Example
+# =====================================
+# This example shows how to benchmark vLLM with Qwen3-Next-80B-A3B-Instruct model.
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_glm51_fp8.yaml
+#
+# Prerequisites:
+#   - Docker with GPU support
+#   - HuggingFace token (HF_TOKEN) for gated models
+
+benchmark:
+  framework: vllm
+  model: zai-org/GLM-5.1-FP8
+  precision: fp8
+  run_mode: docker
+
+  # Environment variables
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 1
+    MAX_MODEL_LEN: 2248 # ISL + OSL + 200
+    EXTRA_VLLM_ARGS: "--no-enable-prefix-caching --tool-call-parser glm47 --reasoning-parser glm45 --enable-auto-tool-choice"
+        
+    # AMD performance flags
+    VLLM_ROCM_USE_AITER: 1
+    
+  profiler:
+    torch_profiler:
+      enabled: true
+    system_profiler:
+      enabled: false
+
+  gap_analysis:
+    enabled: true
+    top_k: 100
+    find_kernel_sources: true
+
+  # AITER has ZeroDivisionError bug with GLM-5.1 (pa_mqa_logits.py line 198)
+  # BUG ID: https://github.com/vllm-project/vllm/issues/39303
+  docker_image: "vllm/vllm-openai-rocm:nightly"
+  benchmark_script: "vllm_mi355x.sh"
+
+  timeout_seconds: 3600

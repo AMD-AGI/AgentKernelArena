@@ -188,6 +188,16 @@ for elevated in --privileged --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE \
 done
 assert_has 'ROCR_VISIBLE_DEVICES=2' "${args[@]}"
 assert_has "$(id -u):$(id -g)" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=0 AKA_DOCKER_NETWORK=host)
+assert_has --network=host "${args[@]}"
+assert_not_has --privileged "${args[@]}"
+assert_not_has --cap-add=SYS_ADMIN "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_NETWORK=none)
+assert_has --network=none "${args[@]}"
+assert_not_has --network=host "${args[@]}"
+if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_NETWORK=invalid >/dev/null; then
+    fail "invalid worker network was accepted"
+fi
 if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=invalid >/dev/null; then
     fail "invalid privilege mode was accepted"
 fi

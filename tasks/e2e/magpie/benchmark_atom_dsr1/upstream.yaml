@@ -1,0 +1,68 @@
+# Atom Benchmark Configuration Example
+# =====================================
+# This example shows how to benchmark Atom with DeepSeek-R1 model.
+#
+# Atom exposes an OpenAI-compatible HTTP server at
+# atom.entrypoints.openai_server and is wire-compatible with vLLM, so
+# the bench client reuses --backend vllm under the hood.
+#
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_atom_dsr1.yaml
+#
+# Prerequisites:
+#   - The `atom` Python package importable in the runtime environment
+#   - HuggingFace token (HF_TOKEN) for gated models
+#
+# Known limitations:
+#   - Single-node only. atom upstream has no multi-node TP wiring; the
+#     cross-node Ray branch in Magpie/remote/tasks.py logs a
+#     "single-node only" warning and skips arg injection.
+#
+# Profiling: set PROFILE=1 (or torch_profiler.enabled: true below) and
+# the launch script passes --torch-profiler-dir to atom. Traces land
+# under $ATOM_TORCH_PROFILER_DIR (or $WORKSPACE_DIR/torch_trace) as
+# rank_<N>/*.pt.trace.json.gz.
+
+benchmark:
+  framework: atom
+  model: /shared_nfs/Llamas/huggingface/DeepSeek-R1-0528
+  precision: fp8
+  run_mode: local
+
+  # Environment variables
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 128
+    OSL: 128
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 4090
+    # EXTRA_ATOM_ARGS: "--your-atom-flag value"
+
+  # Profiler configuration (set torch_profiler.enabled: true to capture
+  # traces via atom's --torch-profiler-dir; see header comment).
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+
+  gap_analysis:
+    enabled: false
+    trace_start_pct: 50
+    trace_end_pct: 80
+    top_k: 20
+
+  # Optional: Automatically selects idle GPU(s) before launching. Enabled by default;
+  # uncomment to override (see docs/how-to/benchmarking/benchmark.md#automatic-gpu-selection).
+  # gpu_selection:
+  #   auto: true
+  #   min_free_memory_gb: 8.0
+  #   count: null              # null -> use envs.TP
+  #   candidates: [0, 1, 2, 3] # whitelist physical GPU ids
+
+  # Will auto-clone InferenceX if not specified
+  # inferencex_path: ""
+
+  # Timeout (DeepSeek-R1 needs time to load)
+  timeout_seconds: 3600

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_gptoss_120b",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_gptoss_120b.yaml",
+  "sha256": "4a784dfa2c768cda1200127169cc9577b9fd0e6a600404e3f96eee4bd0a5daf6",
+  "source": "upstream.yaml"
+}

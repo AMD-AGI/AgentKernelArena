@@ -450,6 +450,9 @@ def test_v2_prompt_excludes_task_instructions_and_uses_no_family_policy(tmp_path
     assert "An entrypoint name alone is not sufficient evidence" in policy
     assert "A candidate may not narrow the original scored unit" in policy
     assert "A semantic FAIL blocks task acceptance" in policy
+    assert "do not require an exhaustive operator inventory" in policy
+    assert "cannot waive a numerical failure" in policy
+    assert "pinned production image" in policy
 
 
 def test_large_guard_is_indexed_without_discarding_trusted_evidence(tmp_path):

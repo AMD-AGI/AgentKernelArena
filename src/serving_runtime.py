@@ -29,6 +29,59 @@ from .measurement import lock_limits, measurement_kind
 from .task_spec import load_task_spec, resolve_task_path
 from .tasks import get_task_config
 
+_CLEANUP_TIMEOUT_S = 90.0
+_CLEANUP_POLL_S = 0.25
+
+
+def _remove_action_container(name: str, evidence: Path) -> dict:
+    """Bound removal retries and prove absence even if the rm client failed.
+
+    Killing the attached Docker client does not synchronously remove its
+    container. A timed-out removal command may still have taken effect; only
+    a successful, empty exact-name query establishes that another GPU action
+    may start. Unknown or lingering state remains a failure.
+    """
+    started = time.monotonic()
+    deadline = started + _CLEANUP_TIMEOUT_S
+    proof = {"container": name, "status": "IN_PROGRESS", "attempts": []}
+    def save_proof():
+        # The action container can write its task mount. Never follow a link
+        # it may have left at the host-owned evidence filename.
+        temporary = evidence.with_name(evidence.name + "." + uuid.uuid4().hex + ".tmp")
+        with temporary.open("x") as handle:
+            json.dump(proof, handle, indent=2)
+            handle.write("\n")
+        temporary.replace(evidence)
+    while not proof["attempts"] or time.monotonic() < deadline:
+        attempt = {}
+        for action, argv in (
+            ("remove", ["docker", "rm", "-f", name]),
+            ("inspect", ["docker", "ps", "-aq", "--filter", f"name=^/{name}$"]),
+        ):
+            try:
+                result = subprocess.run(argv, capture_output=True, text=True,
+                    timeout=min(30 if action == "remove" else 5,
+                                max(0.1, deadline - time.monotonic())))
+                attempt[action] = {"returncode": result.returncode,
+                    "stdout": result.stdout[-1024:], "stderr": result.stderr[-1024:]}
+            except (OSError, subprocess.SubprocessError) as exc:
+                attempt[action] = {"error": f"{type(exc).__name__}: {exc}"}
+        proof["attempts"].append(attempt)
+        inspected = attempt["inspect"]
+        if inspected.get("returncode") == 0 and not inspected["stdout"].strip():
+            proof["status"] = "PASS"
+        proof["elapsed_s"] = time.monotonic() - started
+        save_proof()
+        if proof["status"] == "PASS":
+            return proof
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(_CLEANUP_POLL_S, remaining))
+    proof["status"] = "FAIL"
+    proof["elapsed_s"] = time.monotonic() - started
+    save_proof()
+    raise RuntimeError("Serving container absence could not be established")
+
 
 def validate_runtime_lock(lock: dict) -> None:
     if type(lock.get("version")) is not int or lock["version"] != 1:
@@ -53,11 +106,28 @@ def selected_serving_tasks(config_path: Path, root: Path) -> dict:
     tasks = {}
     for selector in config.get("tasks", []):
         tasks.update(get_task_config(str(root / "tasks"), None if selector == "all" else selector))
+    declarations = {task_id: yaml.safe_load(Path(path).read_text())
+                    for task_id, path in tasks.items()}
+    serving = {task_id for task_id, data in declarations.items() if measurement_kind(data) == 'serving'}
+    if serving and len(serving) != len(tasks):
+        raise ValueError("Run serving tasks separately from kernel tasks")
     selected = {}
     for task_id, path in tasks.items():
-        data = yaml.safe_load(Path(path).read_text())
-        if measurement_kind(data) != "serving":
+        data = declarations[task_id]
+        if task_id not in serving:
             continue
+        load_task_spec(Path(path), task_id=task_id)
+        if data['evaluation']['measurement'].get('recipe') is not None:
+            from .serving_task_preparation import binding_paths, prepare_recipe_task
+            bindings = binding_paths(config, config_path)
+            if task_id not in bindings:
+                raise ValueError(f"Serving recipe {task_id} requires an immutable binding in "
+                                 "serving_runtime.bindings; see docs/how-to/e2e-kernel-tasks.md")
+            cache = Path(os.environ.get('AKA_SERVING_TASK_CACHE', str(Path.home()/'.cache/aka-serving-tasks')))
+            source = prepare_recipe_task(Path(path).parent, data, task_id, bindings[task_id],
+                                         cache=cache, root=root)
+            path = source/'config.yaml'
+            data = yaml.safe_load(path.read_text())
         spec = load_task_spec(Path(path), task_id=task_id)
         lock_path = resolve_task_path(Path(path).parent, data["evaluation"]["measurement"]["runtime_lock"], must_exist=True)
         lock = json.loads(lock_path.read_text())
@@ -71,6 +141,16 @@ def selected_serving_tasks(config_path: Path, root: Path) -> dict:
     if len({v[2]["image"] for v in selected.values()}) > 1:
         raise ValueError("Selected serving tasks require different runtime images; split the experiment")
     return selected
+
+
+def selected_recipe_task_ids(config_path: Path, root: Path) -> list[str]:
+    """Only recipe directories need an evaluator-owned prepared-package mount."""
+    config = yaml.safe_load(config_path.read_text())
+    tasks = {}
+    for selector in config.get('tasks', []):
+        tasks.update(get_task_config(str(root/'tasks'), None if selector == 'all' else selector))
+    return sorted(task_id for task_id, path in tasks.items()
+                  if yaml.safe_load(Path(path).read_text()).get('evaluation', {}).get('measurement', {}).get('recipe'))
 
 
 def gpu_groups(config: dict, available: list[str]) -> list[list[str]]:
@@ -125,6 +205,8 @@ def runtime_mounts(runtime: Path, lock: dict) -> list[str]:
         if not source.is_dir():
             raise ValueError('Runtime dependency must be a directory')
         mounts.extend(["-v", f"{source}:/task/runtime/{name}:ro"])
+    if lock.get('assets'):
+        mounts.extend(['-v', f"{(runtime/'assets').resolve(strict=True)}:/task/assets:ro"])
     return mounts
 
 
@@ -225,7 +307,8 @@ class CleanExecutor:
                         dst.write_bytes(read_file_at(source_fd, edit.path, max_bytes=limit))
                 verify_workspace_harness(snapshot, discard_added=False)
         check_request()
-        identity = {key: lock[key] for key in ("model", "dependencies")}
+        from .prepare_serving_runtime import asset_identity
+        identity = asset_identity(lock)
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         runtime = self.model_cache / key
         self.runtime_verifier.verify(runtime, identity)
@@ -245,7 +328,8 @@ class CleanExecutor:
                    "-e", "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl", "-e", "PYTHONPYCACHEPREFIX=/tmp/pycache",
                    "-e", f"ROCR_VISIBLE_DEVICES={self.devices}",
                    "-e", "HIP_VISIBLE_DEVICES=" + ",".join(map(str, range(lock["gpu_count"]))),
-                   "-e", f"ARENA_EVAL_PHASE={phase}", lock["image"], *declared.commands[0]]
+                   "-e", f"ARENA_EVAL_PHASE={phase}",
+                   "--entrypoint", declared.commands[0][0], lock["image"], *declared.commands[0][1:]]
         device_groups = {path.stat().st_gid for path in [Path("/dev/kfd"), *Path("/dev/dri").glob("render*")] if path.exists()}
         for group in sorted(device_groups):
             command[2:2] = ["--group-add", str(group)]
@@ -285,13 +369,7 @@ class CleanExecutor:
             return response
         finally:
             try:
-                subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=30)
-                # --rm may have removed it already; prove absence, rather than
-                # interpreting either rm exit code as successful cleanup.
-                remaining = subprocess.run(["docker", "ps", "-aq", "--filter", f"name=^/{container_name}$"],
-                                           capture_output=True, text=True, timeout=30, check=True)
-                if remaining.stdout.strip():
-                    raise RuntimeError("Serving container remained after cleanup")
+                _remove_action_container(container_name, directory / "cleanup_evidence.json")
                 self.active_container = None
             except Exception as exc:
                 self.cleanup_error = "Serving cleanup failed; refusing further GPU actions"
@@ -324,7 +402,7 @@ def request_handler(executor):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["config-image", "image", "groups", "verifier", "serve"])
+    parser.add_argument("mode", choices=["config-image", "image", "groups", "verifier", "recipe-tasks", "serve"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--container-root", default="/workspace")
@@ -347,6 +425,9 @@ def main():
             print(",".join(group))
         return
     tasks = selected_serving_tasks(args.config, args.root)
+    if args.mode == 'recipe-tasks':
+        print('\n'.join(selected_recipe_task_ids(args.config, args.root)))
+        return
     if args.mode == 'verifier':
         from .candidate_verification import policy
         if config.get('agent', {}).get('template') != 'task_validator':

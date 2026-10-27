@@ -1,0 +1,27 @@
+schema_version: 2
+description: Improve fixed-workload whole-model throughput using general GPU kernel
+  implementations or fusion. Preserve all model semantics, precision, parallelism,
+  serving options and request data.
+candidate:
+  language: gpu
+  initial_state: implemented
+  editable:
+  - path: source
+    scope: tree
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+evaluation:
+  runner:
+  - python3
+  - scripts/evaluate.py
+  workloads: upstream.yaml
+  timeout_s: 14400
+  measurement:
+    kind: serving
+    runtime_lock: runtime.lock.json
+    pairs: 3
+    minimum_speedup_ratio: 1.05
+    recipe: recipe.json
+instructions:
+- README.md

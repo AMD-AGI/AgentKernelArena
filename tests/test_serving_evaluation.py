@@ -67,7 +67,7 @@ def test_serving_bind_failure_cleans_up_even_if_parent_alive(serving_adapter, tm
         cleaned.append(proc)
         log.close()
     monkeypatch.setattr(module, 'stop_server', stop)
-    monkeypatch.setattr(module, 'request', lambda *args, **kwargs: pytest.fail('must not probe a conflicting server'))
+    monkeypatch.setattr(module, 'readiness_probe', lambda *args, **kwargs: pytest.fail('must not probe a conflicting server'))
     with pytest.raises(RuntimeError, match='Serving port bind failed'):
         module.start_server({'envs': {}}, {'server_startup_timeout_s': 600})
     assert cleaned == [process]
@@ -90,12 +90,48 @@ def test_serving_readiness_requests_share_startup_deadline(serving_adapter, tmp_
     def stop(proc, log):
         cleaned.append(proc)
         log.close()
-    monkeypatch.setattr(module, 'request', request)
+    monkeypatch.setattr(module, 'readiness_probe', request)
     monkeypatch.setattr(module, 'stop_server', stop)
     with pytest.raises(TimeoutError, match='Model startup exceeded 8 seconds'):
         module.start_server({'envs': {}}, {'server_startup_timeout_s': 8})
     assert timeouts == [5, 2]
     assert now == [8] and len(cleaned) == 1
+
+
+@pytest.mark.parametrize('body', [b'', b'OK', b'{"status":"ready"}'])
+def test_serving_readiness_accepts_successful_http_without_a_json_body(serving_adapter, tmp_path, monkeypatch, body):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    import threading
+    module = serving_adapter
+    class Health(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *args):
+            pass
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Health)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    process = SimpleNamespace(poll=lambda: None)
+    monkeypatch.setattr(module, 'ROOT', tmp_path)
+    monkeypatch.setattr(module, 'serving_port', lambda: server.server_port)
+    monkeypatch.setattr(module, 'launch_command', lambda *args: (['server'], 'health'))
+    monkeypatch.setattr(module.subprocess, 'Popen', lambda *args, **kwargs: process)
+    monkeypatch.setattr(module, 'stop_server', lambda process, log: log.close())
+    try:
+        actual, port, log = module.start_server({'envs': {}}, {'server_startup_timeout_s': 1})
+        log.close()
+        assert actual is process and port == server.server_port
+        if body != b'{"status":"ready"}':
+            # Model API replies still require valid JSON; accepting empty health
+            # responses cannot weaken inference or numerical result parsing.
+            with pytest.raises(ValueError):
+                module.request(port, 'health', timeout=1)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(2)
 
 
 def test_nonroot_image_path_preserves_tools_and_missing_tool_semantics(tmp_path, monkeypatch):
@@ -625,11 +661,12 @@ def test_runtime_identity_ignores_only_transport_and_diagnostic_ids():
     spec = importlib.util.spec_from_file_location('serving_adapter',ROOT/'src/tools/perf/serving.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    calls = [dict(server_settings=dict(port=10000,tp_size=1),
+    calls = [dict(server_settings=dict(port=10000,tp_size=1,_runtime_instance_id='instance-a'),
                   runtime_settings=dict(SGLANG_RUN_ID='run-a',SGLANG_USE_AITER='1'))]
     initial = module.runtime_identity('locked',calls)[0]
     calls[0]['server_settings']['port'] = 20000
     calls[0]['runtime_settings']['SGLANG_RUN_ID'] = 'run-b'
+    calls[0]['server_settings']['_runtime_instance_id'] = 'instance-b'
     assert module.runtime_identity('locked',calls)[0] == initial
     calls[0]['runtime_settings']['SGLANG_USE_AITER'] = '0'
     assert module.runtime_identity('locked',calls)[0] != initial
@@ -1031,7 +1068,9 @@ def test_evaluator_runs_requested_complete_pairs_after_correctness(tmp_path, mon
     assert result["serving_measurement"]["pair_count_override"] == override
 
 
-def test_model_quality_failure_keeps_manifest_identity_and_category(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize('prepared',[False,True])
+@pytest.mark.parametrize('category',['model_quality','model_numerical'])
+def test_model_failure_keeps_manifest_identity_and_category(tmp_path, monkeypatch, capsys, prepared, category):
     import sys
     import shutil
     from src.tools.perf import serving
@@ -1044,13 +1083,19 @@ def test_model_quality_failure_keeps_manifest_identity_and_category(tmp_path, mo
     monkeypatch.delenv('AKA_SERVING_SOCKET',raising=False)
     monkeypatch.setattr(sys,'argv',['evaluate.py','candidate','correctness'])
     def fail(*args):
-        raise serving.ModelQualityFailure('Candidate model quality failed: accuracy regression')
+        if prepared:
+            row=serving.identity(args[1])
+            row['params']['request_plan_sha256']='a'*64
+            args[0].case_identity=row
+        error=serving.ModelQualityFailure if category=='model_quality' else serving.ModelNumericalFailure
+        raise error('Candidate model failed: accuracy regression')
     monkeypatch.setattr(serving,'evaluate',fail)
     assert serving.main()==1
     parsed=parse_command_result(capsys.readouterr().out,role='candidate',action='correctness',returncode=1,measurement='serving')
     assert not parsed.passed
     assert len(parsed.cases)==1 and parsed.cases[0]['status']=='FAIL'
-    assert parsed.metadata['failure_category']=='model_quality'
+    assert parsed.metadata['failure_category']==category
+    if prepared: assert parsed.cases[0]['params']['request_plan_sha256']=='a'*64
     assert 'accuracy regression' in parsed.reason
 
 
@@ -1086,8 +1131,10 @@ def production_fixture():
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     lock={'correctness':{'production_tolerances':dict(prefix_max_abs=.5,prefix_mean_abs=.2,
         prefix_p99_abs=.5,decode_max_regret=.5,decode_mean_regret=.2,decode_p99_regret=.5)}}
-    diagnostic=dict(input_tokens=[10,20,30],actual=[[None,10],[-1.1,20],[-2.1,30]],
-        reference_rows=[[None,10],[-1.,20],[-2.,30]])
+    diagnostic=dict(input_tokens=[10,20,30],tokens=[10,20,30,40,50],output_length=2,
+        actual=[[None,10],[-1.1,20],[-2.1,30],[-.42,40],[-.29,50]],
+        reference_rows=[[None,10],[-1.,20],[-2.,30],[-.4,40],[-.3,50]],
+        reference=dict(values=[-1.,-2.,-.4,-.3],best=[-1.,-2.,-.3,-.2]))
     plain=dict(input_tokens=[10,20,30],tokens=[10,20,30,40,50],output_length=2,
         reference=dict(values=[-1.,-2.,-.4,-.3],best=[-1.,-2.,-.3,-.2]))
     return module,lock,diagnostic,plain
@@ -1098,6 +1145,9 @@ def test_production_normal_variation_retains_per_case_bounds():
     result=module.production_numerical_checks([diagnostic],[plain],lock)
     assert result['prefix_cases'][0]['mean']==pytest.approx(.1)
     assert result['decode_cases'][0]['max']==pytest.approx(.1)
+    assert result['decode_logprob_cases'][0]['max']==pytest.approx(.02)
+    assert result['decode_logprob_cases'][0]['count']==2
+    assert result['diagnostic_decode_cases'][0]['max']==pytest.approx(.1)
     assert result['thresholds']==lock['correctness']['production_tolerances']
 
 
@@ -1134,3 +1184,233 @@ def test_production_teacher_reference_scores_actual_continuation():
         return {'meta_info':dict(input_token_logprobs=[[None,10],[-1,20],[-2,30],[-.4,40],[-.3,50]],
             input_top_logprobs=[None,[[-1,20]],[[-2,30]],[[-.3,41]],[[-.2,51]]])}
     assert module.production_teacher_reference(1,plain,request)==plain['reference']
+
+
+@pytest.mark.parametrize('value',[1000.,-1000.,-.99,float('nan'),float('inf')])
+def test_production_diagnostic_decode_probabilities_are_independently_checked(value):
+    module,lock,diagnostic,plain=production_fixture()
+    diagnostic['actual'][-1][0]=value
+    with pytest.raises(module.ModelNumericalFailure):
+        module.production_numerical_checks([diagnostic],[plain],lock)
+
+
+@pytest.mark.parametrize('corruption',['missing_reference','missing_probability','missing_best',
+    'missing_token','wrong_decode_id','wrong_prompt','wrong_output_length','positive_reference','bad_choice'])
+def test_production_diagnostic_decode_requires_complete_aligned_reference(corruption):
+    module,lock,diagnostic,plain=production_fixture()
+    if corruption=='missing_reference':diagnostic.pop('reference')
+    if corruption=='missing_probability':diagnostic['reference']['values'].pop()
+    if corruption=='missing_best':diagnostic['reference']['best'].pop()
+    if corruption=='missing_token':diagnostic['actual'].pop()
+    if corruption=='wrong_decode_id':diagnostic['actual'][-1][1]=51
+    if corruption=='wrong_prompt':diagnostic['tokens'][0]=11
+    if corruption=='wrong_output_length':diagnostic['output_length']=3
+    if corruption=='positive_reference':diagnostic['reference']['values'][-1]=1.
+    if corruption=='bad_choice':
+        diagnostic['reference']['values'][-1]=-4.
+        diagnostic['actual'][-1][0]=-4.
+    with pytest.raises(module.ModelNumericalFailure):
+        module.production_numerical_checks([diagnostic],[plain],lock)
+
+
+def test_production_diagnostic_logprob_errors_cannot_be_diluted_by_other_cases():
+    module,lock,diagnostic,plain=production_fixture()
+    diagnostics=[copy.deepcopy(diagnostic) for _ in range(100)]
+    plains=[copy.deepcopy(plain) for _ in range(100)]
+    diagnostics[-1]['actual'][-1][0]=-4.
+    with pytest.raises(module.ModelNumericalFailure,match='decode logprob case 99'):
+        module.production_numerical_checks(diagnostics,plains,lock)
+
+
+def test_production_decode_logprob_policy_is_explicit_or_uses_existing_prefix_bounds():
+    module,lock,diagnostic,plain=production_fixture()
+    assert module.production_logprob_tolerances(lock)==dict(max_abs=.5,mean_abs=.2,p99_abs=.5)
+    rule=dict(max_abs=.03,mean_abs=.03,p99_abs=.03)
+    lock['correctness']['decode_logprob_tolerances']=rule
+    assert module.production_numerical_checks([diagnostic],[plain],lock)['decode_logprob_thresholds']==rule
+    diagnostic['actual'][-1][0]=-.4
+    with pytest.raises(module.ModelNumericalFailure,match='decode logprob'):
+        module.production_numerical_checks([diagnostic],[plain],lock)
+    for invalid in [None,{},dict(max_abs=1),dict(max_abs=True,mean_abs=1,p99_abs=1),
+                    dict(max_abs=float('inf'),mean_abs=1,p99_abs=1),
+                    dict(max_abs=1,mean_abs=-1,p99_abs=1)]:
+        lock['correctness']['decode_logprob_tolerances']=invalid
+        with pytest.raises(ValueError,match='calibrated tolerances'):
+            module.production_logprob_tolerances(lock)
+
+
+def test_production_original_scores_each_observed_sequence_without_free_generation():
+    module,lock,diagnostic,plain=production_fixture()
+    diagnostic['tokens']=[10,20,30,41,42]
+    requests=[]
+    def request(port,path,body):
+        assert port==10002 and path=='generate'
+        assert body['sampling_params']==dict(temperature=0,max_new_tokens=1,ignore_eos=True)
+        tokens=body['input_ids'];requests.append(tokens)
+        scores=[-1.,-2.,-.4,-.3]
+        rows=[[None,tokens[0]]]+[[v,t] for v,t in zip(scores,tokens[1:])]
+        return {'meta_info':dict(input_token_logprobs=rows,
+            input_top_logprobs=[None]+[[[-.1,99]] for _ in scores])}
+    result=module.production_references(10002,[diagnostic],[plain],request)
+    assert requests==[[10,20,30,41,42],[10,20,30,40,50]]
+    assert [row[1] for row in diagnostic['reference_rows']]==diagnostic['tokens']
+    assert result==[diagnostic['reference']['values']]
+    assert 'reference_tokens' not in diagnostic and 'reference_tokens' not in plain
+
+
+def test_production_original_reference_preserves_concurrent_batch_and_result_order():
+    import threading
+    module,lock,diagnostic,plain=production_fixture()
+    samples=[dict(tokens=[10,20,30+i],input_tokens=[10,20],output_length=1,
+                  check_kind='trace_batch',concurrency=4) for i in range(4)]
+    barrier=threading.Barrier(4)
+    def request(port,path,body):
+        barrier.wait(timeout=5)
+        tokens=body['input_ids'];value=-float(tokens[-1])
+        return {'meta_info':dict(input_token_logprobs=[[None,10],[-1.,20],[value,tokens[-1]]],
+            input_top_logprobs=[None,[[-1.,20]],[[-1.,99]]])}
+    module.production_references(1,samples,[],request)
+    assert [item['reference']['values'][-1] for item in samples]==[-30.,-31.,-32.,-33.]
+    assert [[r[1] for r in item['reference_rows']] for item in samples]==[item['tokens'] for item in samples]
+    with pytest.raises(module.ModelNumericalFailure,match='batch coverage'):
+        module.production_references(1,samples[:3],[],request)
+
+
+def test_vllm_derived_capacity_is_retained_but_not_a_configured_override():
+    from src.tools.perf.serving import runtime_identity
+    calls=[dict(backend='vllm',server_settings=dict(model_config={'dtype':'float16'},
+        cache_config={'num_gpu_blocks':100,'num_cpu_blocks':0,'num_gpu_blocks_override':None,
+                      'block_size':16,'cache_dtype':'fp8'}),runtime_settings={})]
+    expected=runtime_identity('lock',calls)[0]
+    calls[0]['server_settings']['cache_config']['num_gpu_blocks']=101
+    assert runtime_identity('lock',calls)[0]==expected
+    assert calls[0]['server_settings']['cache_config']['num_gpu_blocks']==101
+    for name,value in [('num_gpu_blocks_override',102),('block_size',32),('cache_dtype','float16')]:
+        changed=copy.deepcopy(calls)
+        changed[0]['server_settings']['cache_config'][name]=value
+        assert runtime_identity('lock',changed)[0]!=expected
+
+
+def test_vllm_compilation_observations_are_retained_without_treating_sources_as_flags():
+    from src.tools.perf.serving import runtime_identity
+    config=dict(mode=3,custom_ops=['all'],pass_config={'fuse_allreduce_rms':False},
+        traced_files=['original.py'],compilation_time=10.0,encoder_compilation_time=0.0,
+        enabled_custom_ops={'rms_norm':24},disabled_custom_ops={})
+    calls=[dict(backend='vllm',server_settings=dict(compilation_config=config),runtime_settings={})]
+    fingerprint=runtime_identity('lock',calls)[0]
+    config.update(traced_files=['original.py','new_fusion.py'],compilation_time=20.0,
+                  enabled_custom_ops={'rms_norm':12})
+    assert runtime_identity('lock',calls)[0]==fingerprint
+    assert config['traced_files']==['original.py','new_fusion.py']
+    for key,value in [('mode',2),('custom_ops',[]),('pass_config',{'fuse_allreduce_rms':True})]:
+        changed=copy.deepcopy(calls);changed[0]['server_settings']['compilation_config'][key]=value
+        assert runtime_identity('lock',changed)[0]!=fingerprint
+
+
+def test_vllm_auto_cache_source_key_keeps_configured_input_root_and_flags():
+    from src.tools.perf.serving import runtime_identity
+    cache='/tmp/.cache/vllm/torch_compile_cache/'
+    calls=[dict(backend='vllm',observer=True,configuration_inputs={'compilation_cache_dir':''},
+        server_settings=dict(model_config={'dtype':'float16'},compilation_config=dict(
+            cache_dir=cache+'aaaaaaaaaa',mode=3,backend='inductor',cudagraph_mode=[2,1],custom_ops=['none'])),
+        runtime_settings={})]
+    expected=runtime_identity('lock',calls)[0]
+    calls[0]['server_settings']['compilation_config']['cache_dir']=cache+'bbbbbbbbbb'
+    assert runtime_identity('lock',calls)[0]==expected
+    assert calls[0]['server_settings']['compilation_config']['cache_dir']==cache+'bbbbbbbbbb'
+    for key,value in [('mode',0),('backend','eager'),('cudagraph_mode',[]),('custom_ops',['all']),
+                      ('cache_dir','/other/torch_compile_cache/bbbbbbbbbb')]:
+        changed=copy.deepcopy(calls);changed[0]['server_settings']['compilation_config'][key]=value
+        assert runtime_identity('lock',changed)[0]!=expected
+    changed=copy.deepcopy(calls);changed[0]['configuration_inputs']['compilation_cache_dir']=cache+'bbbbbbbbbb'
+    assert runtime_identity('lock',changed)[0]!=expected
+    changed=copy.deepcopy(calls);changed[0]['server_settings']['model_config']['dtype']='bfloat16'
+    assert runtime_identity('lock',changed)[0]!=expected
+
+
+@pytest.mark.parametrize('configured', [None,'/explicit/cache'])
+def test_vllm_cache_without_auto_provenance_or_with_override_stays_exact(configured):
+    from src.tools.perf.serving import runtime_identity
+    calls=[dict(backend='vllm',observer=True,server_settings=dict(compilation_config=dict(
+        cache_dir='/tmp/.cache/vllm/torch_compile_cache/aaaaaaaaaa')),runtime_settings={})]
+    if configured is not None:
+        calls[0]['configuration_inputs']=dict(compilation_cache_dir=configured)
+    expected=runtime_identity('lock',calls)[0]
+    calls[0]['server_settings']['compilation_config']['cache_dir']='/tmp/.cache/vllm/torch_compile_cache/bbbbbbbbbb'
+    assert runtime_identity('lock',calls)[0]!=expected
+
+
+def test_native_fp32_reference_accepts_near_ties_and_retains_wrong_token_evidence(serving_adapter, tmp_path, monkeypatch):
+    module=serving_adapter
+    monkeypatch.setattr(module,'ROOT',tmp_path)
+    samples=[dict(tokens=[1,2,3],input_tokens=[1],output_length=2,return_logprob=False),
+             dict(tokens=[1,4,5],input_tokens=[1],output_length=2,return_logprob=False)]
+    references=[dict(values=[-.02,-.03],best=[0.,0.]),dict(values=[-.01,-.04],best=[0.,0.])]
+    calls=[]
+    def reference(sequences,*,with_best):
+        calls.append((sequences,with_best))
+        return copy.deepcopy(references)
+    monkeypatch.setattr(module,'model_reference',reference)
+    lock={'correctness':{'model_logprob_atol':.1}}
+    result=module.fp32_token_checks(copy.deepcopy(samples),lock)
+    assert result['generated_tokens_checked']==4 and result['max_greedy_regret']==pytest.approx(.04)
+    assert result['reference_dtype']=='float32' and result['logprob_checks'] is False
+    assert calls==[([[1,2,3],[1,4,5]],True)]
+    references[1]['values'][1]=-5.
+    with pytest.raises(module.ModelNumericalFailure,match='reference argmax'):
+        module.fp32_token_checks(copy.deepcopy(samples),lock)
+    evidence=json.loads((tmp_path/'no_logprob_correctness.json').read_text())
+    assert evidence[1]['tokens']==[1,4,5] and evidence[1]['reference']['values'][1]==-5.
+    references.pop()
+    with pytest.raises(module.ModelNumericalFailure,match='incomplete request coverage'):
+        module.fp32_token_checks(copy.deepcopy(samples),lock)
+    with pytest.raises(module.ModelNumericalFailure,match='actual no-logprob samples'):
+        module.fp32_token_checks([{**samples[0],'return_logprob':True}],lock)
+
+
+def test_atom_runtime_identity_keeps_compute_settings_and_raw_transport_evidence():
+    from src.tools.perf.serving import runtime_identity
+    config=dict(compilation_config=dict(compilation_time=1,cache_dir='/tmp/.cache/atom/torch_compile_cache/aaaaaaaaaa',
+        mode=3,custom_ops=['all']),parallel_config=dict(tensor_parallel_size=4,pipeline_parallel_size=1,
+        data_parallel_size=1,data_parallel_master_port=29500,enable_expert_parallel=False,
+        control_address='ipc:///tmp/one',data_parallel_base_port=12345))
+    calls=[dict(backend='atom',server_settings=config,runtime_settings={},configuration_inputs={'compilation_cache_dir':''})]
+    fingerprint=runtime_identity('lock',calls)[0]
+    config['compilation_config'].update(compilation_time=2,cache_dir='/tmp/.cache/atom/torch_compile_cache/bbbbbbbbbb')
+    config['parallel_config'].update(control_address='ipc:///tmp/two',data_parallel_base_port=54321)
+    assert runtime_identity('lock',calls)[0]==fingerprint
+    assert config['parallel_config']['control_address']=='ipc:///tmp/two'
+    for key,value in [('tensor_parallel_size',8),('pipeline_parallel_size',2),('data_parallel_size',2),
+                      ('enable_expert_parallel',True),('data_parallel_master_port',30000)]:
+        changed=copy.deepcopy(calls);changed[0]['server_settings']['parallel_config'][key]=value
+        assert runtime_identity('lock',changed)[0]!=fingerprint
+    for key,value in [('mode',0),('custom_ops',[]),('cache_dir','/explicit/cache')]:
+        changed=copy.deepcopy(calls);changed[0]['server_settings']['compilation_config'][key]=value
+        assert runtime_identity('lock',changed)[0]!=fingerprint
+    changed=copy.deepcopy(calls);changed[0]['runtime_settings']['ATOM_DP_BASE_PORT']='12345'
+    assert runtime_identity('lock',changed)[0]!=fingerprint
+
+
+def test_initial_catalog_manifest_already_binds_realized_native_requests(serving_adapter,tmp_path,monkeypatch):
+    import sys
+    module=serving_adapter
+    monkeypatch.setattr(module,'ROOT',tmp_path)
+    workload=tmp_path/'benchmark.yaml';workload.write_text('immutable fixture')
+    calls=[]
+    def workload_identity(config,lock,limits,row):
+        calls.append('prepared')
+        row['params'].update(request_plan_sha256='a'*64,input_lens=[129])
+        row['params'].pop('input_tokens',None)
+        return row
+    monkeypatch.setitem(sys.modules,'checks',SimpleNamespace(source_policy=lambda:None,workload_identity=workload_identity))
+    bundle=SimpleNamespace(digest='empty',check_sources=lambda:{})
+    monkeypatch.setitem(sys.modules,'_aka_serving_bundle',SimpleNamespace(Bundle=lambda *args:bundle))
+    config=dict(precision='bf16',envs=dict(NUM_PROMPTS=1,CONC=1,TP=1,ISL=128,OSL=128))
+    lock=dict(catalog_version=1,scenario='text',workload_sha256=module.digest(workload),initial_bundle_sha256='empty')
+    args=SimpleNamespace(action='validate-task')
+    rows,_=module.evaluate(args,config,lock,{})
+    assert calls==['prepared']
+    assert rows[0]['params']['request_plan_sha256']=='a'*64
+    assert rows[0]['params']['input_lens']==[129] and 'input_tokens' not in rows[0]['params']
+    rows[0]['params']['input_lens'][0]=1
+    assert args.case_identity['params']['input_lens']==[129]
