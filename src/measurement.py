@@ -6,8 +6,27 @@ import statistics
 import hashlib
 import json
 
-DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback", "cuda_graph_cold_weights"})
+DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback", "cuda_graph_cold_weights",
+                            "cuda_graph_cold_cache"})
 SERVING_METHOD = "serving_wall_clock"
+
+COLD_CACHE_POLICY = {
+    "benchmark_cache_policy": "read_only_eviction_before_each_invocation",
+    "benchmark_cache_flush_in_timing": False,
+    "benchmark_effective_repeats": 1,
+    "benchmark_metric": "gpu_event_graph_span",
+}
+
+
+def cold_cache_identity(metadata: dict) -> tuple:
+    """Validated cache/timing identity; method name alone cannot establish fairness."""
+    for key, expected in COLD_CACHE_POLICY.items():
+        if type(metadata.get(key)) is not type(expected) or metadata[key] != expected:
+            raise ValueError(f"cold-cache timing requires {key}={expected!r}")
+    nbytes = metadata.get("benchmark_cache_flush_bytes")
+    if type(nbytes) is not int or nbytes <= 0 or nbytes % 16384:
+        raise ValueError("cold-cache timing requires a positive eviction size divisible by 16384")
+    return tuple(metadata[key] for key in COLD_CACHE_POLICY) + (nbytes,)
 
 # Serving runtime limits a task may tighten or relax in its runtime lock. The
 # adapter is materialized beside the task, so this table is the single source

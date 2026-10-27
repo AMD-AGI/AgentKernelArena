@@ -219,6 +219,16 @@ the listed cases alone does not establish those properties.
    concrete evidence. Missing replay validation alone is WARN; identified wrong
    results, asymmetric work, or a bypass are FAIL. Review representative nontrivial
    inputs, routing/divergence/stateful behavior, aliasing, and output writes.
+   cuda_graph_cold_cache still replays a captured graph and requires that review.
+   Trace preparation followed by a read-only eviction sweep, then same-stream
+   GPU Events around exactly one complete operator graph replay. Eviction must
+   be outside timing and use the same declared byte count and cache policy for
+   both roles. Inspect benchmark_cache_policy, benchmark_cache_flush_bytes,
+   benchmark_cache_flush_in_timing, benchmark_effective_repeats and benchmark_metric
+   in actual case metadata. Input/reference work after eviction can rewarm the
+   operands; reject it. This method cannot substitute warm replay or Event fallback.
+   cuda_graph_cold_weights is a separate graph policy, not equivalent cold-cache
+   evidence; neither graph policy qualifies for the event-only N/A exception.
    Set each boolean review field true/false/null from evidence. The framework fills
    case counts and timing methods. Supply actual Event fallback reasons if used.
    workload_symmetric reviews the protected harness contract for both roles:

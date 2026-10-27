@@ -651,7 +651,7 @@ def _benchmark_method_mismatches(
     """
 
     mismatches: List[Dict[str, Any]] = []
-    from .measurement import DEVICE_METHODS, SERVING_METHOD
+    from .measurement import DEVICE_METHODS, SERVING_METHOD, cold_cache_identity
     comparable_methods = DEVICE_METHODS | {SERVING_METHOD}
     for base_case, opt_case in matched_cases:
         base_metadata = base_case.metadata or {}
@@ -671,11 +671,18 @@ def _benchmark_method_mismatches(
             base_method not in comparable_methods
             or opt_method not in comparable_methods
         )
+        cache_policy_mismatch = False
+        if base_method == opt_method == "cuda_graph_cold_cache":
+            try:
+                cache_policy_mismatch = cold_cache_identity(base_metadata) != cold_cache_identity(opt_metadata)
+            except ValueError:
+                cache_policy_mismatch = True
         if (
             base_method == opt_method
             and not mixed_aggregate
             and not missing_or_unknown
             and not task_reported_mismatch
+            and not cache_policy_mismatch
         ):
             continue
         mismatch = {
@@ -686,6 +693,8 @@ def _benchmark_method_mismatches(
         }
         if task_reported_mismatch:
             mismatch['reason'] = 'task_reported_method_mismatch'
+        elif cache_policy_mismatch:
+            mismatch['reason'] = 'cold_cache_policy_mismatch'
         elif mixed_aggregate:
             mismatch['reason'] = 'ambiguous_mixed_aggregate'
         elif missing_or_unknown:
