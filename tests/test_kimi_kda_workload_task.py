@@ -117,6 +117,115 @@ def test_prepare_restores_whole_pool_and_poison_output(modules):
     assert torch.isnan(payload["kwargs"]["out"]).all()
 
 
+@pytest.mark.parametrize("padding", [0, 4])
+def test_remap_preserves_request_state_and_public_storage(modules, padding):
+    cases = modules["cases"]
+    payload = cases.make_case(small_case(padding), device="cpu")
+    kw = payload["kwargs"]
+    original = cases.snapshot(payload)
+    old_indices = kw["ssm_state_indices"].clone().long()
+    old_state = kw["initial_state"][old_indices].clone()
+    pristine = payload["pristine"].view(payload["slots"], payload["stride"])
+    old_pristine_state = pristine[old_indices, :payload["plane"]].clone()
+    cases.remap_state_slots(payload, 73)
+    new_indices = kw["ssm_state_indices"].long()
+    assert not torch.isin(new_indices, old_indices).any()
+    assert new_indices.unique().numel() == old_indices.numel()
+    assert all(cases.tensor_identity(kw[name]) == identity
+               for name, identity in original["identities"].items())
+    assert torch.equal(kw["initial_state"][new_indices], old_state)
+    assert torch.equal(pristine[new_indices, :payload["plane"]], old_pristine_state)
+    assert (kw["initial_state"][old_indices] == 1e30).all()
+    rows = payload["raw"].view(payload["slots"], payload["stride"])
+    old_rows = original["raw"].view_as(rows)
+    assert torch.equal(rows[:, payload["plane"]:], old_rows[:, payload["plane"]:])
+    assert payload["unused"][old_indices].all()
+    assert not payload["unused"][new_indices].any()
+    cases.prepare(payload)
+    assert torch.equal(rows[new_indices, :payload["plane"]], old_pristine_state)
+
+
+@pytest.mark.parametrize("cache_routing", [False, True])
+def test_consecutive_calls_reject_cached_routing(modules, monkeypatch, cache_routing):
+    cases, ref, evaluator = (modules[name] for name in ("cases", "reference", "evaluate"))
+    original_make = cases.make_case
+    holder = {}
+
+    def make_cpu(case, seed):
+        holder["payload"] = original_make(case, seed, device="cpu")
+        holder["indices"] = holder["payload"]["kwargs"]["ssm_state_indices"].clone()
+        return holder["payload"]
+
+    monkeypatch.setattr(cases, "make_case", make_cpu)
+    monkeypatch.setattr(torch.cuda, "synchronize", lambda: None)
+
+    def call(**kwargs):
+        view = dict(holder["payload"], kwargs=dict(kwargs))
+        if cache_routing:
+            view["kwargs"]["ssm_state_indices"] = holder["indices"]
+        return oracle_call(ref, view)
+
+    if cache_routing:
+        with pytest.raises(AssertionError):
+            evaluator.check_case(call, small_case(4), seed=42, limit=0.005)
+    else:
+        result = evaluator.check_case(call, small_case(4), seed=42, limit=0.005)
+        assert len(result["state_transitions"]) == 3
+
+
+@pytest.mark.parametrize("cache_routing", [False, True])
+def test_exact_replay_rejects_captured_routing_values(modules, monkeypatch, cache_routing):
+    cases, ref, evaluator = (modules[name] for name in ("cases", "reference", "evaluate"))
+    original_make = cases.make_case
+    holder = {}
+
+    def make_cpu(case, seed):
+        holder["payload"] = original_make(case, seed, device="cpu")
+        return holder["payload"]
+
+    monkeypatch.setattr(cases, "make_case", make_cpu)
+
+    class TimedRun:
+        after_sample = None
+
+        def rerun(self):
+            self.prepare()
+            return self.replay()
+
+    def fake_benchmark(fn, *, warmup, repetition, target_ms, max_graph_repeats,
+                       use_cuda_graph, prepare_fn, timed_run):
+        payload = holder["payload"]
+        routing = payload["kwargs"]["ssm_state_indices"]
+        captured_indices = routing.clone()
+        captured_identity = cases.tensor_identity(routing)
+
+        def replay():
+            assert cases.tensor_identity(routing) == captured_identity
+            if cache_routing:
+                view = dict(payload, kwargs=dict(payload["kwargs"],
+                                                 ssm_state_indices=captured_indices))
+                return oracle_call(ref, view)
+            return fn()
+
+        timed_run.prepare, timed_run.replay = prepare_fn, replay
+        for _ in range(repetition):
+            prepare_fn()
+            timed_run.after_sample(replay())
+        return [1.0] * repetition, {"benchmark_method": "cuda_graph", "benchmark_effective_repeats": 1}
+
+    monkeypatch.setitem(sys.modules, "_aka_benchmark", types.SimpleNamespace(
+        TimedRun=TimedRun, benchmark_cuda_graph_or_events_samples=fake_benchmark))
+    call = lambda **kwargs: oracle_call(ref, holder["payload"])
+    timing = {"warmup": 1, "repetition": 3, "target_ms": 1.0}
+    if cache_routing:
+        with pytest.raises(AssertionError):
+            evaluator.measure_case(call, small_case(4), timing, 0.005)
+    else:
+        _, _, metrics = evaluator.measure_case(call, small_case(4), timing, 0.005)
+        assert metrics["checked_timed_samples"] == 3
+        assert metrics["fresh_value_graph_replay"]["untouched_state_bytes_equal"]
+
+
 @pytest.mark.parametrize("wrong_timed_state", [False, True])
 def test_measure_checks_every_sample_before_reset(modules, monkeypatch, wrong_timed_state):
     cases, ref, evaluator = (modules[name] for name in ("cases", "reference", "evaluate"))

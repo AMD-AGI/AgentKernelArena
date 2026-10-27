@@ -112,16 +112,18 @@ def selected_callable(role):
 
 def check_case(call, case, *, seed, limit):
     import torch
-    from cases import make_case, refresh_operands, snapshot
+    from cases import make_case, refresh_operands, remap_state_slots, snapshot
     from reference import check_result, expected
 
     payload = make_case(case, seed)
     measurements = []
-    # The second call consumes the first call's state, with changed operands.
+    # The second call consumes the first call's state in different pool slots,
+    # with changed operands and routing values in the same public buffers.
     # A constant output or a candidate that silently resets state cannot pass.
     for step in range(2):
         if step:
             refresh_operands(payload, seed + 1)
+            remap_state_slots(payload, seed + 2)
         payload["kwargs"]["out"].fill_(float("nan"))
         before, gold = snapshot(payload), expected(payload)
         result = call(**payload["kwargs"])
@@ -140,7 +142,7 @@ def check_case(call, case, *, seed, limit):
 
 def measure_case(call, case, timing, limit):
     from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
-    from cases import make_case, prepare, refresh_operands, snapshot
+    from cases import make_case, prepare, refresh_operands, remap_state_slots, snapshot
     from reference import check_result, expected
 
     payload = make_case(case, 42)
@@ -167,9 +169,10 @@ def measure_case(call, case, timing, limit):
     if any(not math.isfinite(value) or value <= 0 for value in samples):
         raise AssertionError("Invalid device timing")
     # Preserve the timed graph and buffer addresses. Change both operands and
-    # the incoming state, then validate replay of that exact captured unit.
+    # the incoming state and routing, then replay that exact captured unit.
     refresh_operands(payload, 43)
     payload["pristine"].mul_(0.25)
+    remap_state_slots(payload, 44)
     prepare(payload)
     current_before, current_gold = snapshot(payload), expected(payload)
     current = check_result(payload, timed.rerun(), current_gold, current_before, limit=limit)

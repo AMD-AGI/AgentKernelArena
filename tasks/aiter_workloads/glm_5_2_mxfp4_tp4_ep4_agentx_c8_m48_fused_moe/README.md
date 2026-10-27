@@ -171,10 +171,10 @@ The task exposes all seven schema-v2 actions through `scripts/evaluate.py`:
 `validate-task`, and `baseline`/`candidate` with `compile`, `correctness`, or
 `performance`. Failures exit nonzero and produce one `ARENA_EVAL_RESULT` envelope.
 Compilation calls the selected function and synchronizes so JIT compilation and
-execution errors are observed. Native correctness and a framework-finalized
-`task_validator` PASS are still required before PR submission. The current
-package is source-prepared and native-unqualified; CPU checks establish neither
-GPU correctness nor timing.
+execution errors are observed. Require native correctness and a framework-finalized
+`task_validator` PASS for the exact task and runtime before PR submission.
+Retain the reports with the tested source and runtime identities; CPU checks
+establish neither GPU correctness nor timing.
 
 Upstream source attribution: ROCm/AITER quantization and MoE reference helpers
 are MIT licensed; the FlyDSL mixed-MoE fused epilogue is Apache-2.0, Copyright

@@ -23,6 +23,32 @@ def refresh_operands(payload, seed):
                                     device=tensor.device, generator=gen)).log())
 
 
+def remap_state_slots(payload, seed):
+    """Move each request's state and change routing in the existing index tensor.
+
+    This preparation is outside the public call and all timing. Previously
+    active rows become sentinels so a cached read of the old routing cannot
+    accidentally consume the same state. Physical-slot padding is preserved.
+    """
+    import torch
+
+    indices = payload["kwargs"]["ssm_state_indices"]
+    previous = indices.long()
+    available = payload["unused"].nonzero().flatten()
+    gen = torch.Generator(device=indices.device).manual_seed(seed)
+    order = torch.randperm(available.numel(), device=indices.device, generator=gen)
+    selected = available[order[:indices.numel()]]
+    if selected.numel() != indices.numel():
+        raise ValueError("Not enough unused slots to change every request's routing")
+    for name in ("raw", "pristine"):
+        planes = payload[name].view(payload["slots"], payload["stride"])[:, :payload["plane"]]
+        planes[selected] = planes[previous]
+        planes[previous] = 1e30
+    indices.copy_(selected)
+    payload["unused"].fill_(True)
+    payload["unused"][selected] = False
+
+
 def make_case(case, seed=42, *, device="cuda"):
     import torch
 

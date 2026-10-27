@@ -63,7 +63,10 @@ output and updated state against it. Each sequence must have RMS relative error
 below 0.005, matching the upstream decode limit while applying it per sequence.
 NaN/Inf, wrong output/state aliasing, changed inputs, changed unselected slots
 or changed padding fail. Correctness uses seeded and fresh draws, consecutive
-state transitions with changed operands, and zero incoming state.
+state transitions with changed operands and routing, and zero incoming state.
+Between calls the harness moves each request's state to a different pool slot
+and updates the existing index tensor in place. Old slots become sentinels;
+the incoming request state and physical-slot padding are preserved.
 
 The canonical Arena graph benchmark times one complete public call per replay.
 Its `prepare_fn` restores incoming state and poisons output **outside** every
@@ -71,7 +74,7 @@ sample's device interval; the helper forces one logical call per replay when
 preparation is supplied. Both roles use 10 warmups and 100 samples. Every timed
 sample's outputs and complete observable state are checked after its end event
 and before the next restoration. The same captured graph must also work after
-inputs and incoming state change in place. Graph failure is a failure, not an
+inputs, incoming state and routing change in place. Graph failure is a failure, not an
 unreported change of timing method. Restoration is test isolation, not part of
 the serving operation. Any candidate-required copies/resets remain inside the
 candidate call and its measured cost.
