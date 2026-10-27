@@ -13,9 +13,11 @@ discarded rather than treated as tampering; see ``verify_workspace_harness``.
 from __future__ import annotations
 
 import ast
+from collections import Counter
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 from typing import Iterable
 
 import yaml
@@ -62,6 +64,10 @@ class WorkspaceSnapshot:
     digests: dict[str, str]
     task_spec: TaskSpec | None = None
     initial_symbols: dict[str, frozenset[str]] = field(default_factory=dict)
+    # Runtime-patching sites of each editable Python file and library operator
+    # calls of each editable C++/HIP file before the agent ran; None when an
+    # older snapshot did not record them.
+    initial_patching: dict[str, dict[str, int]] | None = None
 
 
 _V2_OUTPUT_NAMES = {
@@ -239,6 +245,123 @@ def _config_factory_body_allowed(node: ast.FunctionDef, bindings: dict[str, str]
     return True
 
 
+def _launch_configuration_allowed(node: ast.FunctionDef, bindings: dict[str, str],
+                                  bound_names: set[str]) -> bool:
+    """Keep declared launch configuration functions on plain metadata and data.
+
+    The protected caller supplies scalar/container metadata, never tensors or
+    user-defined objects. Unlike legacy definition-time factories, these helpers
+    cannot read global objects or call protected functions: even an apparently
+    passive subscript can invoke a helper's __class_getitem__ or __getitem__.
+    """
+    if node.decorator_list:
+        return False
+    args = node.args
+    parameters = [*args.posonlyargs, *args.args, *args.kwonlyargs,
+                  *([args.vararg] if args.vararg else []),
+                  *([args.kwarg] if args.kwarg else [])]
+    locals_ = {arg.arg for arg in parameters}
+    locals_.update(item.id for item in ast.walk(node)
+                   if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Store))
+    imports = {key: value for key, value in bindings.items() if key not in locals_}
+    builtins = {"min", "max", "abs", "bool", "int", "float", "len"} - (
+        bound_names | set(bindings) | locals_)
+
+    def literal(value: ast.AST | None) -> bool:
+        if isinstance(value, ast.Constant):
+            return type(value.value) in (str, bytes, int, float, bool, type(None))
+        if isinstance(value, (ast.Tuple, ast.List, ast.Set)):
+            return all(literal(item) for item in value.elts)
+        if isinstance(value, ast.Dict):
+            return all(key is not None and literal(key) and literal(item)
+                       for key, item in zip(value.keys, value.values))
+        return (isinstance(value, ast.UnaryOp) and isinstance(value.op, (ast.UAdd, ast.USub))
+                and literal(value.operand))
+
+    def annotation(value: ast.AST | None) -> bool:
+        if value is None or (isinstance(value, ast.Constant)
+                             and (value.value is None or isinstance(value.value, str))):
+            return True
+        return (isinstance(value, ast.Name)
+                and value.id in {"bool", "int", "float", "str", "bytes", "dict", "list", "tuple", "set"}
+                and value.id not in bound_names | set(bindings))
+
+    if (not all(literal(value) for value in [*args.defaults, *args.kw_defaults] if value is not None)
+            or not all(annotation(value) for value in [node.returns, *[arg.annotation for arg in parameters]])):
+        return False
+
+    def expression(value: ast.AST | None, available: set[str]) -> bool:
+        if isinstance(value, ast.Constant):
+            return literal(value)
+        if isinstance(value, ast.Name):
+            return value.id in available
+        if isinstance(value, (ast.Tuple, ast.List, ast.Set)):
+            return all(expression(item, available) for item in value.elts)
+        if isinstance(value, ast.Dict):
+            return all(key is not None and expression(key, available) and expression(item, available)
+                       for key, item in zip(value.keys, value.values))
+        if isinstance(value, ast.BinOp):
+            return (isinstance(value.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv,
+                                         ast.Mod, ast.Pow, ast.LShift, ast.RShift,
+                                         ast.BitOr, ast.BitAnd, ast.BitXor))
+                    and expression(value.left, available) and expression(value.right, available))
+        if isinstance(value, ast.UnaryOp):
+            return (isinstance(value.op, (ast.UAdd, ast.USub, ast.Not, ast.Invert))
+                    and expression(value.operand, available))
+        if isinstance(value, ast.BoolOp):
+            return all(expression(item, available) for item in value.values)
+        if isinstance(value, ast.Compare):
+            return expression(value.left, available) and all(
+                expression(item, available) for item in value.comparators)
+        if isinstance(value, ast.IfExp):
+            return all(expression(item, available) for item in (value.test, value.body, value.orelse))
+        if isinstance(value, ast.Subscript):
+            return expression(value.value, available) and expression(value.slice, available)
+        if isinstance(value, ast.Slice):
+            return all(item is None or expression(item, available)
+                       for item in (value.lower, value.upper, value.step))
+        if isinstance(value, ast.Call):
+            safe = ((isinstance(value.func, ast.Name) and value.func.id in builtins)
+                    or _qualified_import(value.func, imports) in _LAUNCH_LAMBDA_CALLS)
+            return (safe and all(expression(item, available) for item in value.args)
+                    and all(item.arg is not None and expression(item.value, available)
+                            for item in value.keywords))
+        return False
+
+    def block(statements: list[ast.stmt], available: set[str]) -> tuple[set[str], bool] | None:
+        available = set(available)
+        falls_through = True
+        for statement in statements:
+            if isinstance(statement, ast.Return):
+                if not expression(statement.value, available):
+                    return None
+                falls_through = False
+            elif isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+                if (not all(isinstance(target, ast.Name) for target in targets)
+                        or not expression(statement.value, available)
+                        or (isinstance(statement, ast.AnnAssign) and not annotation(statement.annotation))):
+                    return None
+                available.update(target.id for target in targets)
+            elif isinstance(statement, ast.If):
+                if not expression(statement.test, available):
+                    return None
+                yes, no = block(statement.body, available), block(statement.orelse, available)
+                if yes is None or no is None:
+                    return None
+                continuing = [names for names, continues in (yes, no) if continues]
+                if continuing:
+                    available = set.intersection(*continuing)
+                else:
+                    falls_through = False
+            elif not (isinstance(statement, ast.Pass)
+                      or (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant))):
+                return None
+        return available, falls_through
+
+    return block(node.body, {arg.arg for arg in parameters}) is not None
+
+
 def _validate_editable_definition(node: ast.AST, bindings: dict[str, str], *,
                                   initial_names: frozenset[str], definition_names: set[str],
                                   configuration_factories: set[str],
@@ -384,8 +507,8 @@ def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]
     for name in edit.configuration_symbols:
         node = functions.get(name)
         if (node is None or node.decorator_list
-                or not _config_factory_body_allowed(node, bindings, protected_functions,
-                                                    set(initial_names) | definition_names)):
+                or not _launch_configuration_allowed(node, bindings,
+                                                     set(initial_names) | definition_names)):
             raise RuntimeError(f"Protected test/harness policy rejected {path.name}: configuration "
                                f"symbol {name!r} must be an undecorated function that only builds "
                                "configuration data")
@@ -419,6 +542,346 @@ def _v2_digests(root: Path, spec: TaskSpec, paths: Iterable[str],
         else:
             result[relative] = _sha256(path)
     return result
+
+
+# Ways Python code can rewrite other code at run time. A kernel, its launcher and
+# their helpers need none of them, and a candidate that adds one can make
+# protected code (a launcher, a reference, the timing loop) run differently
+# from how it reads. A site the task's own starting file has stays allowed.
+_REFLECTIVE_CALLS = frozenset({"globals", "vars", "setattr", "delattr", "exec", "eval", "__import__"})
+_REFLECTIVE_IMPORTS = frozenset({"sys._getframe", "inspect.currentframe", "inspect.stack",
+                                 "inspect.getouterframes", "importlib.import_module", "importlib.reload"})
+_REFLECTIVE_ATTRIBUTES = frozenset({"__code__", "__globals__", "__closure__", "__builtins__", "__dict__",
+                                    "__setattr__", "__delattr__", "f_back", "f_code", "f_globals",
+                                    "f_locals", "f_builtins", "tb_frame", "gi_frame"})
+
+
+def _store_targets(node: ast.AST):
+    if isinstance(node, (ast.Tuple, ast.List)):
+        for item in node.elts:
+            yield from _store_targets(item)
+    elif isinstance(node, ast.Starred):
+        yield from _store_targets(node.value)
+    else:
+        yield node
+
+
+def runtime_patching_sites(source: str) -> Counter:
+    """Count the constructs in ``source`` through which code can patch other code."""
+    tree = ast.parse(source)
+    # Function-local imports bind modules too.
+    bindings = _import_bindings(ast.Module(body=[node for node in ast.walk(tree)
+                                                 if isinstance(node, (ast.Import, ast.ImportFrom))],
+                                           type_ignores=[]))
+    sites = Counter()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            qualified = _qualified_import(node.func, bindings)
+            builtin = (node.func.id if isinstance(node.func, ast.Name)
+                       and node.func.id in _REFLECTIVE_CALLS else None)
+            if qualified and qualified.startswith("builtins."):
+                name = qualified.removeprefix("builtins.")
+                if name in _REFLECTIVE_CALLS:
+                    builtin = name
+            if builtin:
+                # Qualified calls and imported aliases have the same identity
+                # as their bare builtin spelling in both initial/current code.
+                sites[f"calls {builtin}()"] += 1
+            elif qualified in _REFLECTIVE_IMPORTS:
+                sites[f"calls {qualified}()"] += 1
+        elif isinstance(node, ast.Attribute) and node.attr in _REFLECTIVE_ATTRIBUTES:
+            sites[f"reads .{node.attr}"] += 1
+        elif isinstance(node, ast.Global):
+            sites.update(f"rebinds module {name}" for name in node.names if name in bindings)
+        if isinstance(node, (ast.Assign, ast.Delete)):
+            targets = node.targets
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            targets = [node.target]
+        else:
+            continue
+        for target in (item for raw in targets for item in _store_targets(raw)):
+            depth, root = 0, target
+            while isinstance(root, (ast.Attribute, ast.Subscript)):
+                depth += isinstance(root, ast.Attribute)
+                root = root.value
+            if not isinstance(root, ast.Name):
+                continue
+            if target is root:
+                if node in tree.body and root.id in bindings:
+                    sites[f"rebinds module {root.id}"] += 1
+            elif root.id in bindings or (depth >= 2 and root.id not in {"self", "cls"}):
+                # A chain like `t.Tensor.contiguous` reaches a module through an alias.
+                sites[f"assigns {ast.unparse(target)}"] += 1
+    return sites
+
+
+# A C++/HIP candidate is measured as the kernels it writes, so handing the
+# operator to a prebuilt library kernel measures that library instead. Only
+# calls the task's own starting file lacks are refused.
+_CXX_SUFFIXES = frozenset({".hip", ".cu", ".cuh", ".cpp", ".cc", ".cxx", ".h", ".hh", ".hpp"})
+_LIBRARY_OPERATORS = re.compile(
+    r"\b(?:hipblas|rocblas|tensile|miopen)\w*|\bat::cuda::blas::\w+"
+    r"|\b(?:at|torch)::(?:nn::functional::|native::)?(?:matmul|mm|bmm|addmm|baddbmm|addbmm|mv|addmv|dot|vdot"
+    r"|linear|einsum|softmax|log_softmax|_softmax|logsumexp|cross_entropy|cross_entropy_loss|nll_loss\w*"
+    r"|rms_norm|layer_norm|native_layer_norm|group_norm|batch_norm|norm|mean|sum)\b",
+    re.IGNORECASE)
+_CALL_PUNCTUATION = re.compile(r"[\s(]")
+_CXX_MEMBERS = frozenset({"matmul", "mm", "bmm", "addmm", "baddbmm", "mv", "addmv", "dot",
+                          "softmax", "log_softmax", "logsumexp", "mean", "sum", "norm"})
+_CXX_RAW_STRING = re.compile(r'(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(')
+_CXX_TENSOR_FACTORIES = frozenset({"Tensor", "tensor", "empty", "empty_like", "empty_strided",
+                                   "zeros", "zeros_like", "ones", "ones_like", "full", "full_like",
+                                   "rand", "rand_like", "randn", "randn_like", "arange", "from_blob"})
+_CXX_TENSOR_VIEWS = frozenset({"contiguous", "clone", "reshape", "view", "permute", "transpose",
+                               "t", "to", "float", "half", "bfloat16", "detach", "unsqueeze",
+                               "squeeze", "select", "slice", "flatten", "narrow", "expand", "expand_as"})
+
+
+def _cxx_code(source: str) -> str:
+    """Mask comments and literals without interpreting comment markers in strings."""
+    # C++ removes line continuations before recognizing comments and tokens.
+    source = re.sub(r"\\\r?\n", "", source)
+    result = list(source)
+
+    def mask(start, end):
+        result[start:end] = ["\n" if c == "\n" else " " for c in source[start:end]]
+
+    i = 0
+    while i < len(source):
+        start = i
+        raw = _CXX_RAW_STRING.match(source, i)
+        if raw:
+            end = source.find(")" + raw[1] + '"', raw.end())
+            i = len(source) if end < 0 else end + len(raw[1]) + 2
+        elif source.startswith("//", i):
+            i = source.find("\n", i + 2)
+            while i >= 0 and source[max(0, i - 2):i].endswith(("\\", "\\\r")):
+                i = source.find("\n", i + 1)
+            i = len(source) if i < 0 else i
+        elif source.startswith("/*", i):
+            end = source.find("*/", i + 2)
+            i = len(source) if end < 0 else end + 2
+        elif source[i] in {'"', "'"}:
+            # An apostrophe inside a numeric literal is a digit separator.
+            beginning = i
+            while beginning and (source[beginning - 1].isalnum() or source[beginning - 1] in "_.'"):
+                beginning -= 1
+            if source[i] == "'" and beginning < i and source[beginning].isdigit():
+                i += 1
+                continue
+            quote = source[i]
+            i += 1
+            while i < len(source):
+                if source[i] == "\\":
+                    i += 2
+                elif source[i] == quote:
+                    i += 1
+                    break
+                else:
+                    i += 1
+        else:
+            i += 1
+            continue
+        mask(start, min(i, len(source)))
+    return "".join(result)
+
+
+def _cxx_tensor_member_sites(code: str) -> Counter:
+    """Recognize member operators on declared/inferred Tensor receivers.
+
+    Ordinary custom-type methods are not library calls by spelling alone. This
+    is a structural check, not a C++ type checker; task correctness and semantic
+    review still own the complete implementation-dependency contract.
+    """
+    tokens = re.findall(r"[A-Za-z_]\w*|::|->|[^\s]", code)
+    pairs, stack = {}, []
+    for i, token in enumerate(tokens):
+        if token in "([{":
+            stack.append(i)
+        elif token in {")", "]", "}"} and stack and \
+                tokens[stack[-1]] == {")": "(", "]": "[", "}": "{"}[token]:
+            opening = stack.pop()
+            pairs[i], pairs[opening] = opening, i
+    blocks = [(i, end) for i, end in pairs.items() if tokens[i] == "{" and i < end]
+    parameters = []
+    for start, end in blocks:
+        if start and tokens[start - 1] == ")" and start - 1 in pairs:
+            begin = pairs[start - 1]
+            if begin and tokens[begin - 1] not in {"if", "for", "while", "switch", "catch"}:
+                parameters.append((begin, start, end))
+
+    def region(index):
+        signatures = [(start, end) for begin, start, end in parameters if begin < index < start]
+        scopes = signatures or [(start, end) for start, end in blocks if start < index < end]
+        return max(scopes, default=(-1, len(tokens)), key=lambda pair: pair[0])
+
+    aliases = set(re.findall(r"\busing\s+([A-Za-z_]\w*)\s*=\s*(?:at|torch)::Tensor\s*;", code))
+    aliases.update(re.findall(r"\btypedef\s+(?:at|torch)::Tensor\s+([A-Za-z_]\w*)\s*;", code))
+    if re.search(r"\busing\s+(?:(?:at|torch)::Tensor|namespace\s+(?:at|torch))\s*;", code):
+        aliases.add("Tensor")
+    custom_types = set(re.findall(r"\b(?:struct|class)\s+([A-Za-z_]\w*)", code))
+    custom_types.update({"float", "double", "int", "bool", "char", "short", "long"})
+    bindings = []
+
+    def tensor(name, index):
+        active = [binding for binding in bindings
+                  if binding[0] == name and binding[1] < index < binding[2] and binding[3] < index]
+        return bool(active) and max(active, key=lambda binding: (binding[1], binding[3]))[4]
+
+    for i, token in enumerate(tokens):
+        qualified = tokens[i:i + 3] in (["torch", "::", "Tensor"], ["at", "::", "Tensor"])
+        if qualified or token in aliases | custom_types:
+            j = i + (3 if qualified else 1)
+            while j < len(tokens) and tokens[j] in {"const", "&", "*"}:
+                j += 1
+            if j < len(tokens) and re.fullmatch(r"[A-Za-z_]\w*", tokens[j]) and \
+                    (j + 1 == len(tokens) or tokens[j + 1] != "("):
+                bindings.append((tokens[j], *region(j), j, qualified or token in aliases))
+        if token == "=" and i and re.fullmatch(r"[A-Za-z_]\w*", tokens[i - 1]):
+            end = next((j for j in range(i + 1, len(tokens)) if tokens[j] == ";"), len(tokens))
+            expression = tokens[i + 1:end]
+            torch_value = (len(expression) >= 3 and expression[:2] in (["torch", "::"], ["at", "::"])
+                           and expression[2] in _CXX_TENSOR_FACTORIES)
+            alias = (expression and tensor(expression[0], i) and
+                     (len(expression) == 1 or expression[1] not in {".", "->"} or
+                      len(expression) > 2 and expression[2] in _CXX_TENSOR_VIEWS))
+            arithmetic = (expression and expression[0] == "(" and
+                          any(value in {"+", "-", "*", "/"} for value in expression) and
+                          any(tensor(value, i) for value in expression))
+            bindings.append((tokens[i - 1], *region(i), i - 1,
+                             bool(torch_value or alias or arithmetic or tensor(tokens[i - 1], i))))
+
+    sites = Counter()
+    for i in range(1, len(tokens) - 2):
+        if tokens[i] not in {".", "->"} or tokens[i + 1] not in _CXX_MEMBERS or tokens[i + 2] != "(":
+            continue
+        j = i - 1
+        while j >= 0 and tokens[j] not in {";", "{", "}", "=", ",", "return"}:
+            if tokens[j] in {")", "]"} and j in pairs:
+                j = pairs[j]
+            j -= 1
+        if any(tensor(value, i) for value in tokens[j + 1:i]):
+            sites["calls ." + tokens[i + 1]] += 1
+    return sites
+
+
+def library_delegation_sites(source: str) -> Counter:
+    """Count identifiable library calls, excluding comments/literal contents."""
+    code = _cxx_code(source)
+    code = re.sub(r"\s*::\s*", "::", code)
+    sites = Counter("calls " + _CALL_PUNCTUATION.sub("", match.group(0)).lower()
+                    for match in _LIBRARY_OPERATORS.finditer(code))
+    sites.update(_cxx_tensor_member_sites(code))
+    return sites
+
+
+# The same holds for the host code of a Triton candidate once its launcher is
+# editable: the launcher could return a PyTorch or library result instead of
+# launching the candidate's kernels. Bodies of @triton.jit functions are skipped;
+# they cannot call these, and tl.* names are Triton's own.
+_PY_LIBRARY_ATTRIBUTES = frozenset({
+    "matmul", "mm", "bmm", "addmm", "baddbmm", "addbmm", "addmv", "mv", "einsum", "tensordot",
+    "chain_matmul", "multi_dot", "linear", "bilinear", "softmax", "log_softmax", "_softmax",
+    "scaled_dot_product_attention", "_scaled_mm", "_int_mm",
+    "Linear", "Bilinear", "Softmax", "LogSoftmax", "MultiheadAttention",
+})
+_PY_LIBRARY_MODULES = ("torch.ops", "torch._C", "aiter", "flash_attn", "xformers", "vllm", "sgl_kernel",
+                       "hipblaslt", "transformer_engine", "apex")
+
+
+def _is_library_module(qualified: str | None) -> bool:
+    return bool(qualified) and any(qualified == name or qualified.startswith(name + ".")
+                                   for name in _PY_LIBRARY_MODULES)
+
+
+def _host_nodes(tree: ast.AST):
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        yield node
+        if _is_triton_jit_function(node):
+            stack.extend(node.decorator_list)
+        else:
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def python_library_sites(source: str) -> Counter:
+    """Count the uses of PyTorch or library operators in the host code of Python ``source``."""
+    tree = ast.parse(source)
+    bindings = _import_bindings(ast.Module(body=[node for node in ast.walk(tree)
+                                                 if isinstance(node, (ast.Import, ast.ImportFrom))],
+                                           type_ignores=[]))
+    sites = Counter()
+    counted = set()
+    for node in _host_nodes(tree):
+        if id(node) in counted:
+            continue
+        if isinstance(node, ast.Attribute):
+            qualified = _qualified_import(node, bindings)
+            if qualified and qualified.split(".")[0] == "triton":
+                continue
+            if node.attr in _PY_LIBRARY_ATTRIBUTES or _is_library_module(qualified):
+                sites[f"delegates to {qualified or '.' + node.attr}"] += 1
+                inner = node.value
+                while isinstance(inner, ast.Attribute):
+                    counted.add(id(inner))
+                    inner = inner.value
+                counted.add(id(inner))
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            qualified = bindings.get(node.id)
+            if qualified and qualified.split(".")[0] != "triton" and (
+                    qualified.rsplit(".", 1)[-1] in _PY_LIBRARY_ATTRIBUTES or _is_library_module(qualified)):
+                sites[f"delegates to {qualified}"] += 1
+        elif isinstance(node, (ast.BinOp, ast.AugAssign)) and isinstance(node.op, ast.MatMult):
+            sites["delegates to @"] += 1
+        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"
+              and node.args and (_qualified_import(node.args[0], bindings) or "").split(".")[0]
+              in {"torch", *(name.split(".")[0] for name in _PY_LIBRARY_MODULES)}):
+            sites[f"delegates to getattr({ast.unparse(node.args[0])}, ...)"] += 1
+    return sites
+
+
+def _patching_sites_of(path: Path, language: str | None = None) -> Counter | None:
+    try:
+        if path.suffix == ".py":
+            source = path.read_text(encoding="utf-8")
+            sites = runtime_patching_sites(source)
+            if language == "triton":
+                sites.update(python_library_sites(source))
+            return sites
+        if path.suffix in _CXX_SUFFIXES:
+            return library_delegation_sites(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, SyntaxError):
+        # The task's own compile action reports an unreadable candidate.
+        pass
+    return None
+
+
+def _reject_added_patching(relative: str, current: Counter, initial: Counter) -> None:
+    added = sorted(set((current - initial).elements()))
+    if not added:
+        return
+    delegation = [site for site in added if Path(relative).suffix != ".py" or site.startswith("delegates to ")]
+    if delegation:
+        raise RuntimeError(f"Protected test/harness policy rejected {relative}: it adds library operator calls "
+                           f"({'; '.join(delegation[:6])}); a candidate must compute the operator in kernels it "
+                           "defines, not in BLAS, MIOpen or PyTorch operators")
+    raise RuntimeError(f"Protected test/harness policy rejected {relative}: it adds runtime patching "
+                       f"({'; '.join(added[:6])}); a candidate may not rewrite modules, frames or "
+                       "other code at run time")
+
+
+def _editable_checked_files(root: Path, spec: TaskSpec) -> list[str]:
+    files = []
+    for edit in spec.candidate.editable:
+        if edit.scope == "tree":
+            files.extend(path.relative_to(root).as_posix() for path in sorted((root / edit.path).rglob("*"))
+                         if (path.suffix == ".py" or path.suffix in _CXX_SUFFIXES) and path.is_file()
+                         and not set(path.relative_to(root).parts) & _V2_RUNTIME_DIRS)
+        elif (Path(edit.path).suffix == ".py" or Path(edit.path).suffix in _CXX_SUFFIXES) \
+                and (root / edit.path).is_file():
+            files.append(edit.path)
+    return files
 
 
 def _is_protected_path(rel: Path) -> bool:
@@ -707,6 +1170,15 @@ def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
         }
     return {
         "enforced_during_optimization": True,
+        "candidate_source_policy": {
+            "enabled": snapshot.initial_patching is not None,
+            "comparison": "per_file_initial_site_counts",
+            "python_runtime_patching": "bare_qualified_and_import_aliased_calls",
+            "cxx_library_delegation": "library_symbols_and_identifiable_tensor_receivers",
+            "cxx_custom_members": "allowed_without_library_receiver_identity",
+            "cxx_literals_and_comments": "excluded_from_operator_detection",
+            "triton_host_library_operators": "rejected_when_added",
+        },
         "protected_paths": sorted(snapshot.digests),
         "editable_entrypoint_targets": {
             path: list(edit.symbols) for path, edit in scopes.items()
@@ -752,7 +1224,9 @@ def snapshot_workspace_harness(
         if missing:
             raise RuntimeError(f"Task inputs missing before agent execution: {missing}")
         digests = _v2_digests(root, spec, protected, initial_symbols)
-        return WorkspaceSnapshot(root, digests, spec, initial_symbols)
+        patching = {relative: dict(sites) for relative in _editable_checked_files(root, spec)
+                    if (sites := _patching_sites_of(root / relative, spec.candidate.language)) is not None}
+        return WorkspaceSnapshot(root, digests, spec, initial_symbols, patching)
     task_inputs = (
         _task_input_paths(root, Path(task_root)) if task_root is not None else set()
     )
@@ -807,6 +1281,12 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None, *, discar
 
     if discarded:
         current = _scan()
+
+    if snapshot.task_spec is not None and snapshot.initial_patching is not None:
+        for relative in _editable_checked_files(snapshot.root, snapshot.task_spec):
+            sites = _patching_sites_of(snapshot.root / relative, snapshot.task_spec.candidate.language)
+            if sites is not None:
+                _reject_added_patching(relative, sites, Counter(snapshot.initial_patching.get(relative, {})))
 
     modified = sorted(
         rel for rel, digest in before.items()

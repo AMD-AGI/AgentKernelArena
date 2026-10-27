@@ -195,8 +195,9 @@ def _candidate(value: Any) -> CandidateSpec:
         if type(helpers) is not bool:
             raise TaskConfigError("allow_new_helpers must be a boolean")
         configuration = edit.get("configuration_symbols", [])
-        if (not isinstance(configuration, list) or len(configuration) != len(set(configuration))
-                or any(not isinstance(s, str) or s not in symbols for s in configuration)):
+        if (not isinstance(configuration, list)
+                or any(not isinstance(s, str) or s not in symbols for s in configuration)
+                or len(configuration) != len(set(configuration))):
             raise TaskConfigError("configuration_symbols must be unique names listed in symbols")
         if scope == "symbols":
             if not symbols or len(symbols) != len(set(symbols)):

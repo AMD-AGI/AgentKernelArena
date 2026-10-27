@@ -297,9 +297,11 @@ def test_real_guard_rejects_module_host_policy_and_oracle_mutations(tmp_path,row
 
 
 @pytest.mark.parametrize('row',TASKS,ids=lambda r:r['task'].split('/')[-1])
-def test_identical_actual_gate_payload_old_guard_accepts_new_guard_rejects(tmp_path,row):
+def test_identical_actual_gate_payload_is_rejected_with_either_editable_scope(tmp_path,row):
+    # A whole-file scope admits the statement; the runtime-patching rule still refuses the reassigned gate.
     root,old=copy_workspace(tmp_path/'old',row,legacy=True);source=root/row['source']
-    source.write_text(source.read_text()+'\n'+source_payload(row));verify_workspace_harness(old,discard_added=False)
+    source.write_text(source.read_text()+'\n'+source_payload(row))
+    with pytest.raises(RuntimeError,match='runtime patching'):verify_workspace_harness(old,discard_added=False)
     current,new=copy_workspace(tmp_path/'new',row);source=current/row['source']
     source.write_text(source.read_text()+'\n'+source_payload(row))
     with pytest.raises(RuntimeError):verify_workspace_harness(new,discard_added=False)
