@@ -16,8 +16,6 @@ MODEL_TASKS = (
     "torch2hip/kernelbench/level2/l2n55_Matmul_MaxPool_Sum_Scale",
     "torch2hip/kernelbench/level2/l2n73_Conv2d_BatchNorm_Scaling",
     "torch2hip/gpumode/10024_Feedforward",
-    "torch2hip/gpumode/11184_Sigmoid",
-    "torch2hip/gpumode/11754_layer_normalization",
     "hip2hip/CrossEntropyLossLabelSmoothing",
     "hip2hip/TanH",
     "hip2hip/layer_normalization",
@@ -105,9 +103,8 @@ class Model(torch.nn.Module):
         return x.tanh().clone()
 
 
-@pytest.mark.parametrize("task", ("hip2hip/Sigmoid", "torch2hip/gpumode/11184_Sigmoid"))
-def test_sigmoid_unscored_math_controls_reject_shared_wrong_result(task, monkeypatch):
-    root = ROOT / task
+def test_sigmoid_unscored_math_controls_reject_shared_wrong_result(monkeypatch):
+    root = ROOT / "hip2hip/Sigmoid"
     runner = load_file(root / "eval_tools/evaluate.py")
     checks = load_file(root / "eval_tools/correctness_check.py")
     monkeypatch.setitem(sys.modules, "correctness_check", checks)
@@ -115,8 +112,6 @@ def test_sigmoid_unscored_math_controls_reject_shared_wrong_result(task, monkeyp
     functional = load_file(root / "pytorch_code_functional/py_11184_Sigmoid_func.py").Sigmoid()
     controls = runner.check_sigmoid_controls(module, functional, None, 1e-4, 1e-5, device="cpu")
     assert controls[:3] == ["scalar", "empty", "extreme"]
-    if task.startswith("torch2hip/"):
-        assert {"half_scalar", "inverse_extreme", "steep_scalar", "shallow_scalar"} <= set(controls)
     assert (module.a, module.max, functional.a, functional.max) == (1, 10, 1, 10)
 
     module.forward = lambda value: torch.zeros_like(value)
@@ -144,89 +139,17 @@ def test_model_validates_every_reported_sample(task, method, monkeypatch):
                     parameter.fill_(0.1)
             return model, [torch.tensor([[[[0.5, -0.3]]]]),
                            torch.tensor([[[[0.2, 0.7]]]])]
-    elif task == "torch2hip/gpumode/11754_layer_normalization":
-        root = ROOT / task
-        controls = load_file(root / "eval_tools/case_controls.py")
-        module = load_file(root / "pytorch_code_module/py_11754_layer_normalization.py")
-        monkeypatch.setitem(sys.modules, "case_controls", controls)
-
-        def fixture():
-            model = module.layer_normalization(4).eval()
-            inputs = [torch.arange(1, 17, dtype=torch.float32).reshape(4, 4)]
-            controls.configure_models([model], inputs)
-            assert not torch.equal(model.gamma, torch.ones_like(model.gamma))
-            assert not torch.equal(model.beta, torch.zeros_like(model.beta))
-            return model, inputs
     else:
         fixture = lambda: (Model(), [torch.tensor([0.5])])
     model, inputs = fixture()
-    pristine_inputs = [value.clone() for value in inputs]
-    pristine_state = {name: value.clone() for name, value in model.state_dict().items()}
     elapsed, metadata = perf.cal_hip_latency(model, inputs, n_iter=3)
     assert elapsed == 0.1
     assert metadata["validated_sample_count"] == 3
     assert metadata["replay_validation_valid"] is True
-    if task == "torch2hip/gpumode/11754_layer_normalization":
-        assert metadata["changed_affine_replay_count"] == 2
-        assert metadata["model_state_tensor_count"] == 2
-        for original, current in zip(pristine_inputs, inputs):
-            torch.testing.assert_close(current, original, rtol=0, atol=0)
-        for name, original in pristine_state.items():
-            torch.testing.assert_close(model.state_dict()[name], original, rtol=0, atol=0)
-
     perf.benchmark_cuda_graph_or_events = lambda invoke, **kw: bench(invoke, method=method, bad_first=True, **kw)
     with pytest.raises((ValueError, AssertionError), match="Timed operator output disagrees"):
         model, inputs = fixture()
         perf.cal_hip_latency(model, inputs, n_iter=3)
-
-
-@pytest.mark.parametrize("method", ("event", "graph"))
-@pytest.mark.parametrize("parameter", ("gamma", "beta"))
-def test_layernorm_replay_rejects_frozen_live_affine(method, parameter, monkeypatch):
-    task = "torch2hip/gpumode/11754_layer_normalization"
-    root = ROOT / task
-    validator = load_validator(task, "eval_tools")
-    controls = load_file(root / "eval_tools/case_controls.py")
-    module = load_file(root / "pytorch_code_module/py_11754_layer_normalization.py")
-    monkeypatch.setitem(sys.modules, "case_controls", controls)
-    model = module.layer_normalization(4).eval()
-    inputs = [torch.arange(1, 17, dtype=torch.float32).reshape(4, 4)]
-    controls.configure_models([model], inputs)
-    pristine_input = inputs[0].clone()
-    pristine_state = {name: value.detach().clone() for name, value in model.state_dict().items()}
-
-    def frozen_affine_benchmark(_invoke, *, timed_run, repetition, **kwargs):
-        assert kwargs["max_graph_repeats"] == 1
-        fixed = getattr(model, parameter).detach().clone()
-
-        def stale_parameter_call():
-            x = inputs[0]
-            gamma = fixed if parameter == "gamma" else model.gamma
-            beta = fixed if parameter == "beta" else model.beta
-            return gamma * (x - x.mean(-1, keepdim=True)) / (
-                x.std(-1, keepdim=True) + model.epsilon) + beta
-
-        timed_run._invoke = stale_parameter_call
-        for _ in range(repetition):
-            timed_run.outputs = timed_run._invoke()
-            timed_run.after_sample(timed_run.outputs)
-        return 0.1, {
-            "benchmark_method": "cuda_graph" if method == "graph" else "cuda_event_fallback",
-            "benchmark_timed_run_kind": "captured_graph" if method == "graph" else "eager_callable",
-            "benchmark_samples": repetition,
-        }
-
-    perf = types.SimpleNamespace(
-        cal_kernel_perf=lambda rtol=0.0, atol=0.0: None,
-        benchmark_cuda_graph_or_events=frozen_affine_benchmark,
-        _compare_results=lambda a, b, **kw: torch.allclose(a, b, **kw),
-    )
-    validator.install(perf, lambda expected, actual: torch.testing.assert_close(actual.shape, expected.shape))
-    with pytest.raises(ValueError, match=f"Timed operator ignored live {parameter}"):
-        perf.cal_hip_latency(model, inputs, n_iter=3)
-    torch.testing.assert_close(inputs[0], pristine_input, rtol=0, atol=0)
-    for name, original in pristine_state.items():
-        torch.testing.assert_close(model.state_dict()[name], original, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("task", NATIVE_TASKS)

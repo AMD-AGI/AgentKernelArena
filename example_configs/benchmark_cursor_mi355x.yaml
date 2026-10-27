@@ -2,7 +2,7 @@
 # Agent & Task Configuration
 # ============================================================================
 
-# Curated 54-task benchmark example for Cursor Agent on MI355X (gfx950).
+# Curated 46-task benchmark example for Cursor Agent on MI355X (gfx950).
 # For a first run, use one of the quickstart_claude_*.yaml examples instead.
 
 # Agent Template Selection
@@ -68,17 +68,9 @@ tasks:
   - triton2triton/rocmbench/hard/gemm
   - triton2triton/rocmbench/hard/moe_gemm
 
-  # torch2hip: 10 tasks
-  - torch2hip/gpumode/1001_NormalAttention_dot
+  # torch2hip: 2 tasks
   - torch2hip/gpumode/10024_Feedforward
-  - torch2hip/gpumode/1003_NormalAttention_embedded_gaussian
-  - torch2hip/gpumode/10082_SoftmaxModule
   - torch2hip/gpumode/10099_Gather
-  - torch2hip/gpumode/10190_FusedLeakyReLU
-  - torch2hip/gpumode/10456_MultiHeadAttention
-  - torch2hip/gpumode/11754_layer_normalization
-  - torch2hip/gpumode/14539_GELU
-  - torch2hip/gpumode/16636_SiLU
 
   # Distinct ROCmBench tasks retained from the former instruction selection: 4
   - triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel

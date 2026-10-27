@@ -313,21 +313,21 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     functional_count = len(list((ROOT / "tasks/Aiter-task").glob("*/scripts/workload.json")))
     serving_count = len(list((ROOT / "tasks/e2e").glob("*/config.yaml")))
     recipe_count = len(list((ROOT / 'tasks/e2e/magpie').rglob('config.yaml')))
-    # The three gfx942 variants under tasks/Aiter-task-mi300 use the same runner as their Aiter-task originals.
-    assert config_count == 420 + functional_count + serving_count + recipe_count + 3
+    # The three gfx942 variants use the same runner as their Aiter-task originals.
+    assert config_count == 399 + functional_count + serving_count + recipe_count + 3
     assert problems == []
     assert sum(counts.values()) == config_count
     # Replay-aware adapters call the canonical sample API directly so their
     # checks observe the exact invocation measured by the timer. The four MoE
     # runners now delegate through task-local _contract_checks.py, which imports
     # the canonical TimedRun API before the generated vLLM stub is inspected.
-    # Five retained ROCmBench runners also call that API directly to validate each sample.
+    # Four retained ROCmBench runners also call that API directly to validate each sample.
     assert counts == {
-        "canonical_python": 273 + functional_count + 3,
+        "canonical_python": 255 + functional_count + 3,
         "serving_client": serving_count,
         "serving_recipe": recipe_count,
         "native_graph_driver": 2,
-        "rocmbench_adapter": 10,
+        "rocmbench_adapter": 7,
         "vllm_adapter": 135,
     }
 

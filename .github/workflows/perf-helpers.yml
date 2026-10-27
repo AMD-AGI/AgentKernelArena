@@ -19,6 +19,12 @@ permissions:
 jobs:
   unit-and-helper-audit:
     runs-on: ubuntu-latest
+    env:
+      # Small CPU reference operations spend more time coordinating thread
+      # pools than computing. Keep nested BLAS/OpenMP pools single-threaded.
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +44,13 @@ jobs:
       - name: Run benchmark helper audit
         run: make check-perf-helpers
       - name: Run CPU and mock unit tests
-        run: python -m pytest -q tests --durations=25
+        run: python -m pytest -q tests --durations=25 --junitxml=test-results.xml
+      - name: Upload test timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpu-test-results
+          path: test-results.xml
+          if-no-files-found: ignore
       - name: Compile Python sources
         run: python -m compileall -q src tasks tests
