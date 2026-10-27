@@ -64,6 +64,10 @@ complete serving workload, including checking that the selected code executes.
 Use the [pinned SGLang0.5.20, AITER and FlyDSL setup](../install/install.md#pinned-aiter-and-flydsl-on-sglang-0520).
 The new tasks target gfx950. A freshly built image needs its own qualification;
 matching the dependency versions is not a GPU test result.
+MI350X also reports gfx950, but its measurements must identify MI350X explicitly.
+Matching the architecture string does not establish equal timing, bandwidth or
+performance limits between MI350X and MI355X. Keep comparisons on the same
+recorded hardware and use a run configuration with its actual model name.
 
 The maintained scenario validation config selects the four new model tasks:
 

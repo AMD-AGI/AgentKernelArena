@@ -13,6 +13,9 @@ the input of a row-parallel down projection to `K=12288/8=1536`; `N=4096`.
 The first dense MLP down projection is not excluded by the checkpoint's FP8
 quantization configuration. This public configuration revision was selected
 for the new benchmark; the old serving checkpoint revision remains unknown.
+This task covers one selected projection. The configuration has three dense
+layers among 45 main-model layers; this is not coverage of every layer or a
+measurement of their share of serving time.
 
 | Case | A | Canonical B | Weight |
 | --- | --- | --- | ---: |
@@ -24,6 +27,10 @@ The scenario processes one complete prefill chunk per request, followed by
 decoding require different cases and weights. `frequency_provenance.json`
 records this derivation. The objective is the ratio of weighted total baseline
 time to weighted total candidate time, not the mean of the two speedups.
+Speculative decoding is disabled in this declared scenario. The model config's
+`num_nextn_predict_layers=1` does not establish whether the historical server
+enabled MTP/EAGLE; that runtime setting remains unverified. An enabled
+speculative path needs separately derived cases.
 
 ## Public operation and freedom
 
@@ -45,6 +52,14 @@ backends. Preserve the public signature and numerical semantics. The installed
 upstream package, references, cases, policies and evaluation scripts are
 protected. No agent or model is required by the task.
 
+At the pinned revision, source/table review finds no tuned FP32-scale
+bpreshuffle row for N4096/K1536. The upstream fallback is default CK for both
+selected M values. Record the observed baseline dispatch with qualification;
+the table lookup alone is not a measured speedup or proof of a device kernel.
+An improvement from choosing a tile, library instance or dispatch is tuning.
+A claim of structural discovery additionally needs evidence of a changed
+computational organization and its realization.
+
 ## Values, correctness and timing
 
 Fresh operands follow the upstream test's roles with an explicit generated
@@ -64,9 +79,12 @@ graph for decode, with 10 warmups and 100 samples. Every timed sample's output
 is checked outside its timed interval. After timing, dynamic values are changed
 in the same public buffers and the actual retained callable/graph is replayed
 against a recomputed reference. This tests current-value dependence.
+The timing split is part of the scenario: variable prefill launches use the
+eager path, while the fixed full decode batch uses graph replay. It is not a
+claim that the historical server's graph coverage has been reconstructed.
 
 The standard seven actions are provided by `scripts/evaluate.py`. Use the
-documented [SGLang/AITER/FlyDSL runtime](../../../docs/install/install.md#pinned-aiter-and-flydsl-on-sglang-0520)
+documented [SGLang/AITER/FlyDSL runtime](https://github.com/AMD-AGI/AgentKernelArena/blob/8a5a6981522eb65369a02b3569292d0612a53727/docs/install/install.md#pinned-aiter-and-flydsl-on-sglang-0520)
 and the ordinary Arena `task_validator` workflow. GPU qualification must cover
 these exact sources and cases; CPU checks do not establish it. The historical
 serving runtime contained overlays, so current serving dispatch and end-to-end

@@ -10,6 +10,8 @@ MiniMax M3 TP8, concurrency 64, input 8192/output 1024 settings. Its case weight
 are declared modeling assumptions, not measured scheduler frequencies.
 The task measures a single projection on one rank. It does not establish
 whole-MLP performance, workload coverage, or serving throughput improvement.
+Only one selected dense projection is measured; its result is not the fraction
+of time spent in dense layers across the 60-layer main model.
 
 ## Workload and shape derivation
 
@@ -61,6 +63,9 @@ inside the timed call. Code compilation and shape-only launch setup may be
 cached. Do not cache input values or outputs between calls, read protected
 reference/input code from the candidate, change dispatch tables, or alter the
 reference, numerical rule, cases or timing policy.
+The callable cannot express a candidate-specific one-time serving weight
+preparation step. Such an integration requires a separate task boundary and
+measurement of its amortization; its cost cannot disappear from this task.
 
 ## Inputs, correctness and timing
 
