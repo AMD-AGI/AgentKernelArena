@@ -228,14 +228,14 @@ def _discover_tasks(tasks: list[str]) -> dict[str, str]:
         raise ValueError("No task selectors were configured")
 
     if "all" in tasks:
-        discovered = get_task_config()
+        discovered = get_task_config(tasks_root=str(Path(__file__).resolve().parent / "tasks"))
         if not discovered:
             raise ValueError("Task selector 'all' matched no task configs")
         return discovered
 
     task_config_dict: dict[str, str] = {}
     for category in tasks:
-        discovered = get_task_config(category=category)
+        discovered = get_task_config(tasks_root=str(Path(__file__).resolve().parent / "tasks"), category=category)
         if not discovered:
             raise ValueError(
                 f"Configured task selector {category!r} matched no task configs"

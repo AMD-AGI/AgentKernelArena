@@ -3,6 +3,7 @@ from contextlib import redirect_stdout
 import io
 import json
 import logging
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from unittest.mock import patch
 
 import yaml
 
-from main import _build_context, run_task, should_run_task_for_platform
+from main import _build_context, _discover_tasks, run_task, should_run_task_for_platform
 from src.tools.agent_cost import report_agent_usage
 from agents.task_validator.report_schema import (
     CHECK_NAMES,
@@ -20,6 +21,35 @@ from agents.task_validator.report_schema import (
 )
 from src.module_registration import AgentType
 from src.preprocessing import get_task_workspace_path
+
+
+class TaskDiscoveryTests(unittest.TestCase):
+    def test_discovery_uses_repository_catalog_from_another_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            repository = root / "repository"
+            evaluation = root / "evaluation"
+            expected = {}
+            for task_id in ("example/selected", "example/other"):
+                config = repository / "tasks" / task_id / "config.yaml"
+                config.parent.mkdir(parents=True)
+                config.write_text("schema_version: 2\n")
+                expected[task_id] = str(config)
+            decoy = evaluation / "tasks/example/selected/config.yaml"
+            decoy.parent.mkdir(parents=True)
+            decoy.write_text("schema_version: 2\n")
+
+            original_cwd = Path.cwd()
+            try:
+                os.chdir(evaluation)
+                with patch("main.__file__", str(repository / "main.py")):
+                    self.assertEqual(_discover_tasks(["all"]), expected)
+                    self.assertEqual(
+                        _discover_tasks(["example/selected"]),
+                        {"example/selected": expected["example/selected"]},
+                    )
+            finally:
+                os.chdir(original_cwd)
 
 
 class TaskValidatorWorkspaceTests(unittest.TestCase):
