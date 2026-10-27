@@ -485,7 +485,10 @@ def _v2_symbol_digest(path: Path, edit: EditScope, initial_names: frozenset[str]
     # editable target or newly introduced helper is not a protected factory.
     protected_functions = (set(functions) & initial_names) - set(edit.symbols)
     configuration_factories = set(protected_functions)
-    for name in (set(functions) & initial_names & set(edit.symbols)) - entrypoint_symbols:
+    # Declared launch helpers receive plain metadata only from protected callers.
+    # Do not let editable decorators invoke them with arbitrary host objects.
+    for name in ((set(functions) & initial_names & set(edit.symbols))
+                 - entrypoint_symbols - set(edit.configuration_symbols)):
         if _config_factory_body_allowed(functions[name], bindings, protected_functions,
                                         set(initial_names) | definition_names):
             configuration_factories.add(name)

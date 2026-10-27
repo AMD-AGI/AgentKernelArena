@@ -193,7 +193,10 @@ configuration data, literal collections, arithmetic and branches. Unshadowed
 function calls, arbitrary attributes, callbacks and comprehensions are rejected;
 defaults must be literal data and annotations use simple builtin types or
 strings. The protected caller must supply plain scalar/container metadata and
-validate the returned configuration before launch. Every editable Python file,
+validate the returned configuration before launch. Declared launch helpers are
+not definition-time factories and cannot be called from editable compiler
+decorators, which could supply arbitrary objects instead of metadata.
+Every editable Python file,
 whatever its scope, also may not add runtime patching: calls to `globals()`,
 `vars()`, `setattr`/`delattr`, `exec`/`eval`/`__import__` (including qualified
 `builtins` calls and imported aliases), `importlib` or frame

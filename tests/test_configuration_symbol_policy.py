@@ -4,9 +4,14 @@ These structural checks use the public workspace guard without importing an
 editable candidate or requiring Triton/GPU execution.
 """
 
+import ast
+from pathlib import Path
+import shutil
+
 import pytest
 
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
+from src.task_spec import load_task_spec
 from test_harness_guard_v2 import LAUNCH_RETURN, launch_workspace
 
 
@@ -143,4 +148,35 @@ def test_branch_local_data_must_be_definitely_assigned(tmp_path):
         "    return {'BLOCK': block, 'num_warps': 4}\n",
     ))
     with pytest.raises(RuntimeError, match="configuration symbol"):
+        verify_workspace_harness(before, discard_added=False)
+
+
+def test_bmm_launch_configuration_cannot_be_used_as_a_definition_time_factory(tmp_path):
+    """An editable decorator must not supply helper objects to the scalar caller."""
+    original = Path(__file__).resolve().parents[1] / 'tasks/triton2triton/vllm/triton_bmm'
+    root = tmp_path / 'task'
+    shutil.copytree(original, root, ignore=shutil.ignore_patterns('__pycache__', 'build'))
+    spec = load_task_spec(root / 'config.yaml', task_id='triton2triton/vllm/triton_bmm')
+    before = snapshot_workspace_harness(root, task_spec=spec)
+    source = root / 'source/triton_bmm.py'
+    tree = ast.parse(source.read_text())
+    config = next(node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and node.name == '_launch_config')
+    tree.body.remove(config)
+    # This is valid pure-data code when the protected caller supplies its normal
+    # scalar metadata. An editable definition-time caller could pass a class.
+    config.body.insert(1, ast.parse("if dtype_name == 'probe':\n    probe = m[0]\n").body[0])
+    kernel = next(node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and node.name == 'bmm_kernel')
+    kernel.decorator_list = [ast.parse(
+        "triton.jit(do_not_specialize=["
+        "_launch_config('probe', 1, ConfigProbe, 16, 16)['num_stages']])",
+        mode='eval',
+    ).body]
+    index = tree.body.index(kernel)
+    tree.body[index:index] = [ast.parse(CONFIG_PROBE).body[0], config]
+    source.write_text(ast.unparse(ast.fix_missing_locations(tree)))
+    # Reject it structurally, without importing candidate code or triggering its
+    # __class_getitem__ during decorator evaluation.
+    with pytest.raises(RuntimeError, match='Unapproved definition-time factory'):
         verify_workspace_harness(before, discard_added=False)
