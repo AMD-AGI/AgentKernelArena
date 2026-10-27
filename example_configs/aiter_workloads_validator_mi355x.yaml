@@ -1,0 +1,12 @@
+# Config-derived upstream AITER scenarios. GPU qualification is per task.
+# Use the pinned AITER/FlyDSL image documented in docs/how-to/aiter-workloads.md.
+agent:
+  template: task_validator
+tasks:
+  - aiter_workloads/glm_5_2_mxfp4_tp4_ep4_agentx_c8_m48_fused_moe
+  - aiter_workloads/glm53_flash_tp8_c64_8k1k_fp8_mlp_down
+  - aiter_workloads/kimi_k3_tp8_c64_8k1k_kda_decode
+  - aiter_workloads/minimax_m3_tp8_c64_8k1k_bf16_mlp_down
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

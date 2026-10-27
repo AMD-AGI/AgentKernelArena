@@ -1,0 +1,28 @@
+{
+  "aiter_files": {
+    "aiter/__init__.py": "09a24e51741b4390e2780c1b1c23f71d77908454b83018297e881b963aa9f2c9",
+    "aiter/ops/triton/__init__.py": "bdd1d4cbaa0b0e94f08f62176c0a649d2200be91303c03be06737a19c9a5e58a",
+    "aiter/ops/triton/_gluon_kernels/common/utils.py": "2ae528aae54ae916c0d7a2550c79cc5cc26b71eed0366c3f12d50d943df0dcab",
+    "aiter/ops/triton/_gluon_kernels/gfx950/attention/kda_decode.py": "0b821a371175b27ac1c264d007861792d35fc082e651b04de5117897e76ea1e7",
+    "aiter/ops/triton/_triton_kernels/rope/rope.py": "8ef195e239fc1955372de6774bcb1a8e092b453f188bafc5b6cd567c90d2b178",
+    "aiter/ops/triton/attention/kda.py": "85598b56695bc0d6174758b6b29aaa17bc7bbf8e0964ec826df480544652666f",
+    "aiter/ops/triton/configs/gfx950/gluon/attention/kda_decode/DEFAULT.json": "dfcc287004a292ae9d6a687d73c784aa312e87680a11935f1c784a588023266c",
+    "aiter/ops/triton/utils/_triton/arch_info.py": "fb4fb0c4c015232ee7a7b2a693b17ad3b59cbcb402c9a9d3207a1cf996588922",
+    "aiter/ops/triton/utils/_triton/kernel_repr.py": "3067c6d38078ffe9c119ca5407f83b280ef4f4d794659dfbcc2fdf6c9152cdca",
+    "aiter/ops/triton/utils/config_utils.py": "3e4d6d300dfce8545b116e7201df426130f25dc32783b47722956a60102982cd",
+    "aiter/ops/triton/utils/logger.py": "1199a4044a8a27de0822e11bb702d409a02bd766f668fd81bb8167d47ab9b9ba"
+  },
+  "input_source": {
+    "sha256": "6e9eef37898aba93141d57b9d595d7203204666d952d1103c0ae72e7ca97a396",
+    "upstream_path": "op_tests/triton_tests/attention/test_kda.py"
+  },
+  "model_config_sha256": "9710e121a58d03ac92c8d6da287a19541994319afbbe6d6202af001ffd379213",
+  "model_config_url": "https://huggingface.co/moonshotai/Kimi-K3/resolve/9f62e4e9fffbd0a83ddd60e1c209d828994b3569/config.json",
+  "reference": {
+    "sha256": "833afc0aff4cfd97064c02ff86eb1bd79962f5b1a255e83e62205c879cf1b231",
+    "upstream_path": "op_tests/triton_tests/utils/kda_ref.py"
+  },
+  "repository": "https://github.com/ROCm/aiter",
+  "revision": "2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0",
+  "scope": "Selected source/config identity, not a native compiled-artifact or serving-engagement attestation."
+}

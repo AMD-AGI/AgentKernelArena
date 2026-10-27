@@ -1,0 +1,36 @@
+{
+  "status": "configuration_derived_scenario",
+  "case_weights": {
+    "prefill_m8192_n4096_k1536": 64,
+    "decode_m64_n4096_k1536": 1024
+  },
+  "derivation": {
+    "prefill": "64 requests x one 8192-token chunk at one selected local MLP down GEMM site",
+    "decode": "1024 generated tokens x one full 64-request decode batch at that same site"
+  },
+  "observed_call_counts": false,
+  "scope": "Selected-site proxy under the explicitly fixed batching scenario; not a measured live scheduler trace, layer-wide aggregate or serving gain.",
+  "workload": {
+    "tp": 8,
+    "ep": null,
+    "ep_scope": "Not recorded; this dense local projection does not depend on expert parallelism.",
+    "concurrency": 64,
+    "requests": 64,
+    "input_tokens": 8192,
+    "output_tokens": 1024,
+    "context_length": 9218,
+    "seed": 42,
+    "scheduler_policy": "Declared fixed-batch scenario: one full 8192-token prefill per request, then 1024 full batches of 64 one-token decode calls. No speculative decoding in this scenario.",
+    "recorded_settings_source": {
+      "historical_run": "glm-final-capture-v4-194841",
+      "description": "Recorded GLM5.3-Flash workload settings; old saved kernel programs, fixtures, case lists and timings are not imported.",
+      "historical_runtime": "SGLang 0.5.20 with 18 overlays; equivalence to the new AITER runtime is unverified."
+    }
+  },
+  "model": {
+    "repository": "zai-org/GLM-5.3-Flash",
+    "revision": "46a050bec13002ad29ee795c16e61cf4fa3c4a9c",
+    "config_sha256": "bb8f01c42cb92a52ca72e65afb4d5bd8d11aef083cd210e8de25dfb904f23e9f",
+    "revision_scope": "Public configuration pin selected for this new benchmark; historical serving checkpoint revision was not recovered."
+  }
+}

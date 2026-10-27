@@ -1,0 +1,97 @@
+{
+  "cases": [
+    {
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "benchmark_method": "cuda_graph",
+        "bias": false,
+        "k": 1536,
+        "m": 8192,
+        "n": 6144,
+        "transpose_weight": true
+      },
+      "shape": [
+        8192,
+        6144,
+        1536
+      ],
+      "test_case_id": "prefill_m8192"
+    },
+    {
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "benchmark_method": "cuda_graph",
+        "bias": false,
+        "k": 1536,
+        "m": 64,
+        "n": 6144,
+        "transpose_weight": true
+      },
+      "shape": [
+        64,
+        6144,
+        1536
+      ],
+      "test_case_id": "decode_m64"
+    }
+  ],
+  "input_generation": {
+    "checkpoint_weights": false,
+    "distribution": "upstream_normal_bf16",
+    "prepared_tensor_values_may_be_cached": false,
+    "seeds": [
+      42,
+      1042
+    ]
+  },
+  "operation": {
+    "bias": false,
+    "includes_all_reduce": false,
+    "k": 1536,
+    "n": 6144,
+    "output_dtype": "bfloat16",
+    "site": "language_model.model.layers.0.mlp.down_proj"
+  },
+  "timing": {
+    "max_graph_repeats": 1000,
+    "repetition": 100,
+    "target_ms": 1.0,
+    "warmup": 10
+  },
+  "tolerance": {
+    "atol": 0.01,
+    "rtol": 0.01
+  },
+  "workload": {
+    "concurrency": 64,
+    "context_length": 9218,
+    "dataset_file": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "dataset_repository": "anon8231489123/ShareGPT_Vicuna_unfiltered",
+    "dataset_revision": "192ab2185289094fc556ec8ce5ce1e8e587154ca",
+    "dataset_sha256": "35f0e213ce091ed9b9af2a1f0755e9d39f9ccec34ab281cd4ca60d70f6479ba4",
+    "ep": null,
+    "ep_scope": "Not specified in saved server arguments; this dense tensor-parallel projection does not depend on expert parallelism.",
+    "historical_runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "input_tokens": 8192,
+    "model": "amd/MiniMax-M3-MXFP4",
+    "model_config_sha256": "927ca3a58eb765bd250fc57202908d34879c3e193d64de7af809a95b1fe5bd47",
+    "model_revision": "b83d14e3d64bf373a207f3c2a7e9f0b0f1e7fc3a",
+    "num_prompts": 64,
+    "output_tokens": 1024,
+    "recorded_attention_backend": "triton",
+    "recorded_dtype": "bfloat16",
+    "recorded_kv_cache_dtype": "bfloat16",
+    "recorded_quantization": "quark MXFP4, group_size32, E8M0 scales, explicit per-layer exemptions",
+    "recorded_request_generation": "native random ShareGPT sampling, random-range-ratio1, infinite request rate, tokenize-prompt",
+    "request_seed": 42,
+    "tp": 8
+  }
+}

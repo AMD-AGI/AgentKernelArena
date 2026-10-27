@@ -1,0 +1,106 @@
+{
+  "model": {
+    "repository": "zai-org/GLM-5.3-Flash",
+    "revision": "46a050bec13002ad29ee795c16e61cf4fa3c4a9c",
+    "config_sha256": "bb8f01c42cb92a52ca72e65afb4d5bd8d11aef083cd210e8de25dfb904f23e9f",
+    "revision_scope": "Public configuration pin selected for this new benchmark; historical serving checkpoint revision was not recovered."
+  },
+  "workload": {
+    "tp": 8,
+    "ep": null,
+    "ep_scope": "Not recorded; this dense local projection does not depend on expert parallelism.",
+    "concurrency": 64,
+    "requests": 64,
+    "input_tokens": 8192,
+    "output_tokens": 1024,
+    "context_length": 9218,
+    "seed": 42,
+    "scheduler_policy": "Declared fixed-batch scenario: one full 8192-token prefill per request, then 1024 full batches of 64 one-token decode calls. No speculative decoding in this scenario.",
+    "recorded_settings_source": {
+      "historical_run": "glm-final-capture-v4-194841",
+      "description": "Recorded GLM5.3-Flash workload settings; old saved kernel programs, fixtures, case lists and timings are not imported.",
+      "historical_runtime": "SGLang 0.5.20 with 18 overlays; equivalence to the new AITER runtime is unverified."
+    }
+  },
+  "operator": {
+    "site": "model.layers.0.mlp.down_proj",
+    "boundary": "Public gemm_a8w8_blockscale_bpreshuffle on already quantized activation and load-time preshuffled weight; activation quantization and row-parallel all-reduce are outside.",
+    "shape_derivation": "N=hidden_size=4096; K=intermediate_size/TP=12288/8=1536. The site is absent from modules_to_not_convert in the pinned FP8 configuration.",
+    "current_serving_dispatch_verified": false
+  },
+  "input_policy": {
+    "kind": "fresh_generated",
+    "seed": 42,
+    "replay_seed": 104729,
+    "x_and_canonical_weight": "Uniform[-2,2] converted to E4M3FN, independently drawn",
+    "x_scale": "FP32 powers of two with integer exponents [-4,0], column-major [M,K/128]",
+    "weight_scale": "FP32 powers of two with integer exponents [-7,-2], row-major [N/128,K/128]",
+    "origin": "Parameterization of upstream test_gemm_a8w8_blockscale operand roles; exact distributions are task assumptions, not captured checkpoint values."
+  },
+  "timing": {
+    "warmup": 10,
+    "repetition": 100,
+    "target_ms": 1.0,
+    "max_graph_repeats": 1000
+  },
+  "cases": [
+    {
+      "test_case_id": "prefill_m8192_n4096_k1536",
+      "shape": [
+        8192,
+        4096,
+        1536
+      ],
+      "dtype": "float8_e4m3fn",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "phase": "prefill",
+        "output_dtype": "bfloat16",
+        "x_scale_dtype": "float32",
+        "weight_scale_dtype": "float32",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "x_scale_stride": [
+          1,
+          8192
+        ],
+        "weight_layout": "aiter_shuffle_weight_16x16",
+        "benchmark_method": "cuda_event_fallback"
+      }
+    },
+    {
+      "test_case_id": "decode_m64_n4096_k1536",
+      "shape": [
+        64,
+        4096,
+        1536
+      ],
+      "dtype": "float8_e4m3fn",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "phase": "decode",
+        "output_dtype": "bfloat16",
+        "x_scale_dtype": "float32",
+        "weight_scale_dtype": "float32",
+        "weight_block_size": [
+          128,
+          128
+        ],
+        "x_scale_stride": [
+          1,
+          64
+        ],
+        "weight_layout": "aiter_shuffle_weight_16x16",
+        "benchmark_method": "cuda_graph"
+      }
+    }
+  ]
+}

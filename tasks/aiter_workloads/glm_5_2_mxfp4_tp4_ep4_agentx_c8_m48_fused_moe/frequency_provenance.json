@@ -1,0 +1,15 @@
+{
+  "schema": "aiter.per-call-objective/1",
+  "status": "config_derived_per_call",
+  "observed_workload_frequency": false,
+  "case_weights": {
+    "local_ep4_m48": 1
+  },
+  "unit": "one complete rank-local public fused_moe invocation",
+  "derivation": "One selected M48 scenario has one measured invocation. No inference is made from AgentX concurrency, speculative acceptance, or upstream CSV row counts.",
+  "source": {
+    "path": "workload_source.json",
+    "sha256": "e3c14a34158adc54cb88846de4823475f5eaf7a050f09e46a918118b29274dd3"
+  },
+  "scope": "A per-call optimization proxy for one chosen operator configuration; no deployment weighted total or end-to-end gain."
+}

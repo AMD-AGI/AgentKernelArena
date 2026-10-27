@@ -1,0 +1,49 @@
+schema_version: 2
+description: >-
+  Optimize the upstream AITER BF16 dense MLP down projection for MiniMax M3
+  MXFP4, TP8, concurrency64, input8192/output1024. The checkpoint explicitly
+  exempts this first-layer projection from Quark. N6144/K1536 and the two-case
+  batching objective are configuration-derived; weights are not measured
+  scheduler frequencies. The following tensor-parallel all-reduce is outside
+  this rank-local GEMM. GPU task-validator qualification remains required.
+kernel_identity:
+  logical_operator: minimax_m3_dense_mlp_down_rank_local
+  source_owner: aiter
+instructions: [README.md]
+platform_support:
+  required_arch: gfx950
+candidate:
+  language: gpu
+  initial_language: gpu
+  initial_state: implemented
+  editable:
+    - {path: source, scope: tree}
+  entrypoints:
+    - {file: source/kernel.py, kind: function, symbol: mlp_down}
+baseline:
+  kind: provided
+  language: gpu
+  correctness_policy: required
+  source_files:
+    - upstream/aiter/tuned_gemm.py
+    - upstream/aiter/ops/gemm_op_a16w16.py
+workspace:
+  sources:
+    - kind: git
+      url: https://github.com/ROCm/aiter.git
+      revision: 2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0
+      destination: upstream
+  setup:
+    - [python3, scripts/runtime.py]
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: workloads.json
+  timeout_s: 3600
+  aggregation:
+    method: weighted_total_time
+    case_weights:
+      prefill_m8192: 64
+      decode_m64: 1024
+    source:
+      path: frequency_provenance.json
+      sha256: 738b510ecf31bedcc0d69d55e27def72487e5f372563b337f5f94a1c25849b2e
