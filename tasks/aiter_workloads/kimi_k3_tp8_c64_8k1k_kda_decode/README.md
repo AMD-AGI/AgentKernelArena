@@ -67,6 +67,8 @@ state transitions with changed operands and routing, and zero incoming state.
 Between calls the harness moves each request's state to a different pool slot
 and updates the existing index tensor in place. Old slots become sentinels;
 the incoming request state and physical-slot padding are preserved.
+This remapping exercises the declared graph-input contract; its frequency in
+the recorded serving workload is unknown.
 
 The canonical Arena graph benchmark times one complete public call per replay.
 Its `prepare_fn` restores incoming state and poisons output **outside** every
