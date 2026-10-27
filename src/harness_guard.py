@@ -450,8 +450,16 @@ def runtime_patching_sites(source: str) -> Counter:
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             qualified = _qualified_import(node.func, bindings)
-            if isinstance(node.func, ast.Name) and node.func.id in _REFLECTIVE_CALLS:
-                sites[f"calls {node.func.id}()"] += 1
+            builtin = (node.func.id if isinstance(node.func, ast.Name)
+                       and node.func.id in _REFLECTIVE_CALLS else None)
+            if qualified and qualified.startswith("builtins."):
+                name = qualified.removeprefix("builtins.")
+                if name in _REFLECTIVE_CALLS:
+                    builtin = name
+            if builtin:
+                # Qualified calls and imported aliases have the same identity
+                # as their bare builtin spelling in both initial/current code.
+                sites[f"calls {builtin}()"] += 1
             elif qualified in _REFLECTIVE_IMPORTS:
                 sites[f"calls {qualified}()"] += 1
         elif isinstance(node, ast.Attribute) and node.attr in _REFLECTIVE_ATTRIBUTES:
@@ -488,18 +496,156 @@ _LIBRARY_OPERATORS = re.compile(
     r"\b(?:hipblas|rocblas|tensile|miopen)\w*|\bat::cuda::blas::\w+"
     r"|\b(?:at|torch)::(?:nn::functional::|native::)?(?:matmul|mm|bmm|addmm|baddbmm|addbmm|mv|addmv|dot|vdot"
     r"|linear|einsum|softmax|log_softmax|_softmax|logsumexp|cross_entropy|cross_entropy_loss|nll_loss\w*"
-    r"|rms_norm|layer_norm|native_layer_norm|group_norm|batch_norm|norm|mean|sum)\b"
-    r"|\.(?:matmul|mm|bmm|addmm|baddbmm|mv|addmv|dot|softmax|log_softmax|logsumexp|mean|sum|norm)\s*\(",
+    r"|rms_norm|layer_norm|native_layer_norm|group_norm|batch_norm|norm|mean|sum)\b",
     re.IGNORECASE)
-_CXX_COMMENTS = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
 _CALL_PUNCTUATION = re.compile(r"[\s(]")
+_CXX_MEMBERS = frozenset({"matmul", "mm", "bmm", "addmm", "baddbmm", "mv", "addmv", "dot",
+                          "softmax", "log_softmax", "logsumexp", "mean", "sum", "norm"})
+_CXX_RAW_STRING = re.compile(r'(?:u8|u|U|L)?R"([^\s()\\]{0,16})\(')
+_CXX_TENSOR_FACTORIES = frozenset({"Tensor", "tensor", "empty", "empty_like", "empty_strided",
+                                   "zeros", "zeros_like", "ones", "ones_like", "full", "full_like",
+                                   "rand", "rand_like", "randn", "randn_like", "arange", "from_blob"})
+_CXX_TENSOR_VIEWS = frozenset({"contiguous", "clone", "reshape", "view", "permute", "transpose",
+                               "t", "to", "float", "half", "bfloat16", "detach", "unsqueeze",
+                               "squeeze", "select", "slice", "flatten", "narrow", "expand", "expand_as"})
+
+
+def _cxx_code(source: str) -> str:
+    """Mask comments and literals without interpreting comment markers in strings."""
+    # C++ removes line continuations before recognizing comments and tokens.
+    source = re.sub(r"\\\r?\n", "", source)
+    result = list(source)
+
+    def mask(start, end):
+        result[start:end] = ["\n" if c == "\n" else " " for c in source[start:end]]
+
+    i = 0
+    while i < len(source):
+        start = i
+        raw = _CXX_RAW_STRING.match(source, i)
+        if raw:
+            end = source.find(")" + raw[1] + '"', raw.end())
+            i = len(source) if end < 0 else end + len(raw[1]) + 2
+        elif source.startswith("//", i):
+            i = source.find("\n", i + 2)
+            while i >= 0 and source[max(0, i - 2):i].endswith(("\\", "\\\r")):
+                i = source.find("\n", i + 1)
+            i = len(source) if i < 0 else i
+        elif source.startswith("/*", i):
+            end = source.find("*/", i + 2)
+            i = len(source) if end < 0 else end + 2
+        elif source[i] in {'"', "'"}:
+            # An apostrophe inside a numeric literal is a digit separator.
+            beginning = i
+            while beginning and (source[beginning - 1].isalnum() or source[beginning - 1] in "_.'"):
+                beginning -= 1
+            if source[i] == "'" and beginning < i and source[beginning].isdigit():
+                i += 1
+                continue
+            quote = source[i]
+            i += 1
+            while i < len(source):
+                if source[i] == "\\":
+                    i += 2
+                elif source[i] == quote:
+                    i += 1
+                    break
+                else:
+                    i += 1
+        else:
+            i += 1
+            continue
+        mask(start, min(i, len(source)))
+    return "".join(result)
+
+
+def _cxx_tensor_member_sites(code: str) -> Counter:
+    """Recognize member operators on declared/inferred Tensor receivers.
+
+    Ordinary custom-type methods are not library calls by spelling alone. This
+    is a structural check, not a C++ type checker; task correctness and semantic
+    review still own the complete implementation-dependency contract.
+    """
+    tokens = re.findall(r"[A-Za-z_]\w*|::|->|[^\s]", code)
+    pairs, stack = {}, []
+    for i, token in enumerate(tokens):
+        if token in "([{":
+            stack.append(i)
+        elif token in {")", "]", "}"} and stack and \
+                tokens[stack[-1]] == {")": "(", "]": "[", "}": "{"}[token]:
+            opening = stack.pop()
+            pairs[i], pairs[opening] = opening, i
+    blocks = [(i, end) for i, end in pairs.items() if tokens[i] == "{" and i < end]
+    parameters = []
+    for start, end in blocks:
+        if start and tokens[start - 1] == ")" and start - 1 in pairs:
+            begin = pairs[start - 1]
+            if begin and tokens[begin - 1] not in {"if", "for", "while", "switch", "catch"}:
+                parameters.append((begin, start, end))
+
+    def region(index):
+        signatures = [(start, end) for begin, start, end in parameters if begin < index < start]
+        scopes = signatures or [(start, end) for start, end in blocks if start < index < end]
+        return max(scopes, default=(-1, len(tokens)), key=lambda pair: pair[0])
+
+    aliases = set(re.findall(r"\busing\s+([A-Za-z_]\w*)\s*=\s*(?:at|torch)::Tensor\s*;", code))
+    aliases.update(re.findall(r"\btypedef\s+(?:at|torch)::Tensor\s+([A-Za-z_]\w*)\s*;", code))
+    if re.search(r"\busing\s+(?:(?:at|torch)::Tensor|namespace\s+(?:at|torch))\s*;", code):
+        aliases.add("Tensor")
+    custom_types = set(re.findall(r"\b(?:struct|class)\s+([A-Za-z_]\w*)", code))
+    custom_types.update({"float", "double", "int", "bool", "char", "short", "long"})
+    bindings = []
+
+    def tensor(name, index):
+        active = [binding for binding in bindings
+                  if binding[0] == name and binding[1] < index < binding[2] and binding[3] < index]
+        return bool(active) and max(active, key=lambda binding: (binding[1], binding[3]))[4]
+
+    for i, token in enumerate(tokens):
+        qualified = tokens[i:i + 3] in (["torch", "::", "Tensor"], ["at", "::", "Tensor"])
+        if qualified or token in aliases | custom_types:
+            j = i + (3 if qualified else 1)
+            while j < len(tokens) and tokens[j] in {"const", "&", "*"}:
+                j += 1
+            if j < len(tokens) and re.fullmatch(r"[A-Za-z_]\w*", tokens[j]) and \
+                    (j + 1 == len(tokens) or tokens[j + 1] != "("):
+                bindings.append((tokens[j], *region(j), j, qualified or token in aliases))
+        if token == "=" and i and re.fullmatch(r"[A-Za-z_]\w*", tokens[i - 1]):
+            end = next((j for j in range(i + 1, len(tokens)) if tokens[j] == ";"), len(tokens))
+            expression = tokens[i + 1:end]
+            torch_value = (len(expression) >= 3 and expression[:2] in (["torch", "::"], ["at", "::"])
+                           and expression[2] in _CXX_TENSOR_FACTORIES)
+            alias = (expression and tensor(expression[0], i) and
+                     (len(expression) == 1 or expression[1] not in {".", "->"} or
+                      len(expression) > 2 and expression[2] in _CXX_TENSOR_VIEWS))
+            arithmetic = (expression and expression[0] == "(" and
+                          any(value in {"+", "-", "*", "/"} for value in expression) and
+                          any(tensor(value, i) for value in expression))
+            bindings.append((tokens[i - 1], *region(i), i - 1,
+                             bool(torch_value or alias or arithmetic or tensor(tokens[i - 1], i))))
+
+    sites = Counter()
+    for i in range(1, len(tokens) - 2):
+        if tokens[i] not in {".", "->"} or tokens[i + 1] not in _CXX_MEMBERS or tokens[i + 2] != "(":
+            continue
+        j = i - 1
+        while j >= 0 and tokens[j] not in {";", "{", "}", "=", ",", "return"}:
+            if tokens[j] in {")", "]"} and j in pairs:
+                j = pairs[j]
+            j -= 1
+        if any(tensor(value, i) for value in tokens[j + 1:i]):
+            sites["calls ." + tokens[i + 1]] += 1
+    return sites
 
 
 def library_delegation_sites(source: str) -> Counter:
-    """Count the library operator calls in C++/HIP ``source``, ignoring comments."""
-    code = _CXX_COMMENTS.sub(" ", source)
-    return Counter("calls " + _CALL_PUNCTUATION.sub("", match.group(0)).lower()
-                   for match in _LIBRARY_OPERATORS.finditer(code))
+    """Count identifiable library calls, excluding comments/literal contents."""
+    code = _cxx_code(source)
+    code = re.sub(r"\s*::\s*", "::", code)
+    sites = Counter("calls " + _CALL_PUNCTUATION.sub("", match.group(0)).lower()
+                    for match in _LIBRARY_OPERATORS.finditer(code))
+    sites.update(_cxx_tensor_member_sites(code))
+    return sites
 
 
 # The same holds for the host code of a Triton candidate once its launcher is
@@ -896,6 +1042,15 @@ def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
         }
     return {
         "enforced_during_optimization": True,
+        "candidate_source_policy": {
+            "enabled": snapshot.initial_patching is not None,
+            "comparison": "per_file_initial_site_counts",
+            "python_runtime_patching": "bare_qualified_and_import_aliased_calls",
+            "cxx_library_delegation": "library_symbols_and_identifiable_tensor_receivers",
+            "cxx_custom_members": "allowed_without_library_receiver_identity",
+            "cxx_literals_and_comments": "excluded_from_operator_detection",
+            "triton_host_library_operators": "rejected_when_added",
+        },
         "protected_paths": sorted(snapshot.digests),
         "editable_entrypoint_targets": {
             path: list(edit.symbols) for path, edit in scopes.items()

@@ -329,12 +329,16 @@ HYPERLOOM_ROOT=/path/to/Hyperloom make docker-run CONFIG=<forge-run-config>
 For `forge` runs the runner mounts `HYPERLOOM_ROOT` read-only, provisions the
 agent backend's CLI and authentication (Claude Code unless the run sets
 `agent.agent_backend: codex`), forwards Claude credentials by name as for GEAK,
-and prepends `.aka-pyuserbase/forge-engine/<Python cache tag>` to `PYTHONPATH`,
-since an image upgrade can change the Python ABI. Setup installs the
-committed `HEAD` of `HYPERLOOM_ROOT` there with `pip install --target`, from an
-exported copy because setuptools builds in tree. It records the revision in
-`.aka-hyperloom-revision` and warns that uncommitted changes are not installed.
-Run and preflight repeat the install only when that revision changes, then
+and prepends `.aka-pyuserbase/forge-engine/<Python cache tag>/<image key>/<revision>`
+to `PYTHONPATH`. The host fixes the committed revision before preflight and
+worker startup. Setup exports that exact revision and installs it with
+`pip install --target` into a private staging directory, then publishes the
+complete installation atomically under a per-revision lock. Python ABI, container
+image identity and engine revision each select a separate immutable directory;
+another run cannot replace an active campaign's engine. Existing installations
+and older cache layouts are retained. `.aka-hyperloom-revision` and
+`.aka-forge-runtime.json` record the installed identity. Uncommitted changes are
+not installed. Run and preflight reuse a complete matching installation, then
 require `agents/forge/engine.py --arena-probe` to pass. Outside Docker, install
 into the interpreter directly:
 
@@ -344,7 +348,7 @@ python3 agents/forge/engine.py --arena-probe
 ```
 
 The checked dependency metadata requires Python 3.10+, Click, PyYAML, Anthropic,
-Claude Agent SDK and OpenAI Codex SDK. `torch` is deliberately supplied by the
+Claude Agent SDK and Codex SDK. `torch` is deliberately supplied by the
 ROCm image; do not install an arbitrary PyPI Torch wheel over it. FlyDSL must be
 present for FlyDSL tasks. Provider authentication must be available to the
 selected backend; existing authentication environment values are preserved.

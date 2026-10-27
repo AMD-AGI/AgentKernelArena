@@ -121,6 +121,50 @@ def test_runtime_patching_the_task_already_had_stays_allowed(tmp_path):
     verify_workspace_harness(replace(before, initial_patching=None))
 
 
+@pytest.mark.parametrize("statement", [
+    "import builtins; builtins.setattr(math, 'pi', 3)",
+    "import builtins as b; b.delattr(math, 'pi')",
+    "from builtins import setattr as change; change(math, 'pi', 3)",
+    "from builtins import exec as run; run('import math; math.pi = 3')",
+    "import builtins; builtins.exec('import math; math.pi = 3')",
+    "import builtins; builtins.eval('1 + 2')",
+    "import builtins; builtins.globals()",
+    "import builtins; builtins.vars(math)",
+    "import builtins; builtins.__import__('math')",
+])
+def test_qualified_and_aliased_reflection_is_rejected_by_real_guard(tmp_path, statement):
+    root, source = workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(source.read_text().replace('def compute(): return 1',
+                      'def compute():\n    ' + statement + '\n    return 1'))
+    with pytest.raises(RuntimeError, match='adds runtime patching'):
+        verify_workspace_harness(before)
+
+
+def test_existing_reflective_call_has_one_identity_across_spellings(tmp_path):
+    root, source = workspace(tmp_path)
+    source.write_text(source.read_text().replace('def compute(): return 1',
+                      "def compute():\n    setattr(math, 'pi', 3)\n    return 1"))
+    before = snapshot_workspace_harness(root)
+    source.write_text(source.read_text().replace("setattr(math, 'pi', 3)",
+                      "__import__('builtins').setattr(math, 'pi', 3)"))
+    with pytest.raises(RuntimeError, match='runtime patching'):
+        verify_workspace_harness(before)
+    source.write_text("import math\nimport builtins as b\n"
+                      "def compute():\n    b.setattr(math, 'pi', 3)\n    return 1\n")
+    verify_workspace_harness(before)
+
+
+def test_effective_guard_describes_source_policy_and_old_snapshot_limit(tmp_path):
+    root, _ = workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    policy = describe_workspace_harness(root, snapshot=before)['candidate_source_policy']
+    assert policy['enabled'] is True
+    assert policy['cxx_custom_members'] == 'allowed_without_library_receiver_identity'
+    assert describe_workspace_harness(root, snapshot=replace(before, initial_patching=None))[
+        'candidate_source_policy']['enabled'] is False
+
+
 HIP_KERNEL = """#include <torch/extension.h>
 // A reference could call at::matmul(a, b); this file does not.
 torch::Tensor forward(torch::Tensor a, torch::Tensor b) {
@@ -170,6 +214,83 @@ def test_library_calls_the_hip_task_already_had_stay_allowed(tmp_path):
     verify_workspace_harness(before)
     source.write_text(HIP_KERNEL.replace("at::bmm(a, b);", "at::bmm(a, b);\n    auto again = at::bmm(b, a);"))
     with pytest.raises(RuntimeError, match=r"adds library operator calls \(calls at::bmm\)"):
+        verify_workspace_harness(before)
+
+
+@pytest.mark.parametrize('prefix', [
+    'const char* label = "https://local"; ',
+    'const char* label = "/* not a comment */"; ',
+    'const char* label = "escaped \\\" // still a string"; ',
+    'const char* label = R"tag(// quotes " and /* markers)tag"; ',
+    "char quote = '\"'; ",
+    "constexpr int block = 1'024; ",
+    "constexpr int block = 0xAB'CD'EF; ",
+])
+def test_literal_contents_do_not_hide_following_library_calls(tmp_path, prefix):
+    root, source = hip_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(HIP_KERNEL.replace('    return out;\n',
+                      '    ' + prefix + 'return at::matmul(a, b);\n'))
+    with pytest.raises(RuntimeError, match='adds library operator calls'):
+        verify_workspace_harness(before)
+
+
+@pytest.mark.parametrize('call', ['at :: matmul(a, b)', 'at::mat' + '\\\n' + 'mul(a, b)',
+                                  'at /* boundary */ :: matmul(a, b)'])
+def test_cpp_spacing_comments_and_line_splicing_do_not_hide_library_calls(tmp_path, call):
+    root, source = hip_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(HIP_KERNEL.replace('    return out;\n', '    return ' + call + ';\n'))
+    with pytest.raises(RuntimeError, match='adds library operator calls'):
+        verify_workspace_harness(before)
+
+
+def test_library_names_in_literals_and_comments_are_not_calls(tmp_path):
+    root, source = hip_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(HIP_KERNEL + '\nconst char* text = "rocblas_sgemm(a, b)";\n'
+                      'const char* raw = R"tag(at::matmul(a, b); // ignored)tag";\n'
+                      '/* torch::mm(a, b); */\n// at::matmul(a, b);\n')
+    verify_workspace_harness(before)
+
+
+@pytest.mark.parametrize('name', ['sum', 'mean', 'dot', 'norm', 'mm'])
+def test_custom_cpp_members_are_not_library_operators(tmp_path, name):
+    root, source = hip_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    # Reuse the Tensor parameter's name in a separate custom-type function.
+    source.write_text(HIP_KERNEL + f'''
+struct Accumulator {{
+    float x, y;
+    float {name}() const {{ return x + y; }}
+}};
+float own_operation(Accumulator a) {{ return a.{name}(); }}
+''')
+    verify_workspace_harness(before)
+
+
+def test_custom_cpp_receiver_can_shadow_a_tensor_in_a_nested_scope(tmp_path):
+    root, source = hip_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(HIP_KERNEL + '''
+struct Accumulator { float sum() const { return 1; } };
+void own_operation(at::Tensor a) { { Accumulator a; a.sum(); } }
+struct Tensor { float sum() const { return 1; } };
+float custom_tensor(Tensor a) { return a.sum(); }
+''')
+    verify_workspace_harness(before)
+
+
+@pytest.mark.parametrize('expression', [
+    'auto copy = a.contiguous(); return copy.sum();',
+    'auto copy = torch::empty_like(a); return copy.mean();',
+    'return (a * a).sum();',
+])
+def test_inferred_tensor_members_still_refuse_library_delegation(tmp_path, expression):
+    root, source = hip_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(HIP_KERNEL.replace('    return out;\n', '    ' + expression + '\n'))
+    with pytest.raises(RuntimeError, match='adds library operator calls'):
         verify_workspace_harness(before)
 
 

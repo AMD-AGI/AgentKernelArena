@@ -1173,8 +1173,13 @@ HYPERLOOM_CHECKOUT="$TEST_HOME/hyperloom"
 FORGE_CONFIG="$TEST_HOME/forge-config.yaml"
 FORGE_PREFIX="$TEST_HOME/forge-node"
 FORGE_HOME="$TEST_HOME/forge-home"
-FORGE_ENGINE_PYTHONPATH="AKA_FORGE_ENGINE_PATH=/workspace/.aka-pyuserbase/forge-engine"
+FORGE_ENGINE_PYTHONPATH="AKA_FORGE_ENGINE_CACHE=/workspace/.aka-pyuserbase/forge-engine"
 mkdir -p "$HYPERLOOM_CHECKOUT" "$FORGE_PREFIX/bin" "$FORGE_HOME/.claude" "$FORGE_HOME/.codex"
+git init -q "$HYPERLOOM_CHECKOUT"
+printf 'committed\n' > "$HYPERLOOM_CHECKOUT/marker.txt"
+git -C "$HYPERLOOM_CHECKOUT" add marker.txt
+git -C "$HYPERLOOM_CHECKOUT" -c user.email=t@example.com -c user.name=t commit -q -m fixture
+forge_revision="$(git -C "$HYPERLOOM_CHECKOUT" rev-parse HEAD)"
 touch "$FORGE_PREFIX/bin/node" "$FORGE_PREFIX/bin/claude" "$FORGE_PREFIX/bin/codex" "$FORGE_HOME/.claude.json"
 HYPERLOOM_CHECKOUT="$(realpath -e "$HYPERLOOM_CHECKOUT")"
 printf 'agent:\n  template: forge\n' > "$FORGE_CONFIG"
@@ -1188,6 +1193,8 @@ assert_has "$FORGE_PREFIX:/opt/claude-node:ro" "${args[@]}"
 assert_has "$HYPERLOOM_CHECKOUT:$HYPERLOOM_CHECKOUT:ro" "${args[@]}"
 assert_has "HYPERLOOM_ROOT=$HYPERLOOM_CHECKOUT" "${args[@]}"
 assert_has "$FORGE_ENGINE_PYTHONPATH" "${args[@]}"
+assert_has "AKA_FORGE_ENGINE_REVISION=$forge_revision" "${args[@]}"
+assert_has "AKA_FORGE_ENGINE_IMAGE_ID=sha256:pinned-image-id" "${args[@]}"
 assert_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
 assert_not_has "ANTHROPIC_AUTH_TOKEN=dummy-token-value" "${args[@]}"
 assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
@@ -1227,51 +1234,23 @@ done
 combined_pythonpath="$(env \
     AGENT_KERNEL_ARENA_WORKDIR="$ROOT" \
     AGENT_KERNEL_ARENA_ISOLATED_HOME=0 \
-    AKA_FORGE_ENGINE_PATH=/runtime/forge-engine \
+    AKA_FORGE_ENGINE_CACHE=/runtime/forge-engine \
+    AKA_FORGE_ENGINE_REVISION="$forge_revision" \
+    AKA_FORGE_ENGINE_IMAGE_ID=sha256:pinned-image-id \
     PYTHONPATH=/runtime/image-aiter \
     bash -c "$bootstrap_script" _ python3 -c 'import os; print(os.environ["PYTHONPATH"])')"
-[[ "$combined_pythonpath" == "/runtime/forge-engine/$python_abi:/runtime/image-aiter" ]] \
+forge_image_key="$(python3 -c 'import hashlib; print(hashlib.sha256(b"sha256:pinned-image-id").hexdigest())')"
+[[ "$combined_pythonpath" == "/runtime/forge-engine/$python_abi/$forge_image_key/$forge_revision:/runtime/image-aiter" ]] \
     || fail "Forge bootstrap lost the image's Python import path"
 
-# The engine install takes only committed Hyperloom code, skips an unchanged
-# revision, and reinstalls when HEAD moves. A fake python records pip calls.
-FAKE_FORGE_BIN="$TEST_HOME/fake-forge-bin"
-FAKE_PYTHON_LOG="$TEST_HOME/fake-forge-python.log"
-FORGE_TARGET="$TEST_HOME/forge-engine"
-HYPERLOOM_REPO="$TEST_HOME/hyperloom-repo"
-mkdir -p "$FAKE_FORGE_BIN"
-cat > "$FAKE_FORGE_BIN/python" <<'SH'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$FAKE_PYTHON_LOG"
-if [[ "$1 $2 $3 $4" == "-m pip install --target" ]]; then
-    mkdir -p "$5"
-    cp -r "${6%"[forge]"}/." "$5/installed-source"
+# The installer has independent regression coverage for exact exports,
+# simultaneous setup, failed installs, and running campaigns on older revisions.
+# Direct internal invocation must not silently resolve a different HEAD.
+if env -u AKA_FORGE_ENGINE_REVISION -u AKA_FORGE_ENGINE_IMAGE_ID \
+    HYPERLOOM_ROOT="$HYPERLOOM_CHECKOUT" \
+    bash "$RUNNER" _container_setup_forge >/dev/null 2>&1; then
+    fail "Forge setup accepted an unpinned runtime"
 fi
-SH
-chmod +x "$FAKE_FORGE_BIN/python"
-git init -q "$HYPERLOOM_REPO"
-printf 'committed\n' > "$HYPERLOOM_REPO/marker.txt"
-git -C "$HYPERLOOM_REPO" add marker.txt
-git -C "$HYPERLOOM_REPO" -c user.email=t@example.com -c user.name=t commit -q -m one
-printf 'uncommitted\n' > "$HYPERLOOM_REPO/marker.txt"
-run_forge_setup() {
-    env PATH="$FAKE_FORGE_BIN:$PATH" FAKE_PYTHON_LOG="$FAKE_PYTHON_LOG" \
-        HYPERLOOM_ROOT="$HYPERLOOM_REPO" AKA_FORGE_ENGINE_PATH="$FORGE_TARGET" \
-        bash "$RUNNER" _container_setup_forge > /dev/null 2>&1
-}
-forge_installs() { grep -c -- '^-m pip install' "$FAKE_PYTHON_LOG"; }
-run_forge_setup || fail "forge engine setup failed"
-[[ "$(cat "$FORGE_TARGET/.aka-hyperloom-revision")" == "$(git -C "$HYPERLOOM_REPO" rev-parse HEAD)" ]] \
-    || fail "forge setup did not record the installed Hyperloom revision"
-[[ "$(cat "$FORGE_TARGET/installed-source/marker.txt")" == committed ]] \
-    || fail "forge setup installed uncommitted Hyperloom changes"
-grep -q -- '^agents/forge/engine.py --arena-probe' "$FAKE_PYTHON_LOG" \
-    || fail "forge setup skipped the engine probe"
-run_forge_setup || fail "forge engine setup failed on an installed revision"
-[[ "$(forge_installs)" == 1 ]] || fail "forge setup reinstalled an unchanged revision"
-git -C "$HYPERLOOM_REPO" -c user.email=t@example.com -c user.name=t commit -q -am two
-run_forge_setup || fail "forge engine setup failed after a new commit"
-[[ "$(forge_installs)" == 2 ]] || fail "forge setup kept a stale Hyperloom revision"
 
 # Evaluation-tool sidecars have a deliberately narrower security boundary than
 # the scoring container: no network, no credentials, no privileged mode, and

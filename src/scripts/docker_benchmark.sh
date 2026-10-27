@@ -31,6 +31,8 @@ GEAK_RUNTIME=0
 # Forge templates likewise normalize to their agent backend's CLI; this flag
 # selects the Hyperloom mount, engine install and credential forwarding.
 FORGE_RUNTIME=0
+FORGE_SOURCE_ROOT=""
+FORGE_ENGINE_REVISION=""
 # quality_loop keeps the repository checkout read-only in the agent container.
 # Only these host-validated, run-specific subdirectories are over-mounted rw.
 QUALITY_LOOP_ARTIFACT_REL=""
@@ -530,6 +532,14 @@ configure_forge_runtime() {
     case "$(read_agent_template "$config")" in
         forge|forge_operator2flydsl) FORGE_RUNTIME=1 ;;
     esac
+    [[ "$FORGE_RUNTIME" != 1 ]] || pin_forge_source
+}
+
+pin_forge_source() {
+    [[ -n "${HYPERLOOM_ROOT:-}" ]] || die "Forge runs need HYPERLOOM_ROOT naming the pinned checkout"
+    FORGE_SOURCE_ROOT="$(realpath -e "$HYPERLOOM_ROOT")" || die "HYPERLOOM_ROOT does not exist"
+    FORGE_ENGINE_REVISION="$(git -C "$FORGE_SOURCE_ROOT" rev-parse HEAD)" \
+        || die "HYPERLOOM_ROOT is not a committed Git checkout"
 }
 
 # Read one scalar under the run config's top-level agent mapping (best-effort).
@@ -1272,10 +1282,18 @@ build_docker_args() {
         docker_args+=(-e "AKA_GEAK_SDK_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/geak-sdk")
     fi
     # Hyperloom[forge] is installed the same way from the pinned checkout
-    # (see container_setup_forge), under the same per-ABI subdirectory, and
-    # prepended only for Forge runs.
+    # (see container_setup_forge), isolated by interpreter, image and revision,
+    # and prepended only for Forge runs.
     if [[ "$FORGE_RUNTIME" == "1" ]]; then
-        docker_args+=(-e "AKA_FORGE_ENGINE_PATH=${CONTAINER_WORKDIR}/.aka-pyuserbase/forge-engine")
+        local forge_image_id
+        forge_image_id="$(docker image inspect --format '{{.Id}}' "$SELECTED_IMAGE")" \
+            || die "Could not resolve the Forge runtime image identity"
+        [[ -n "$forge_image_id" ]] || die "Forge runtime image identity is empty"
+        docker_args+=(
+            -e "AKA_FORGE_ENGINE_CACHE=${CONTAINER_WORKDIR}/.aka-pyuserbase/forge-engine"
+            -e "AKA_FORGE_ENGINE_REVISION=$FORGE_ENGINE_REVISION"
+            -e "AKA_FORGE_ENGINE_IMAGE_ID=$forge_image_id"
+        )
     fi
 
     # Explicit DeepSeek runs alone receive these provider variables. Pass names,
@@ -1491,12 +1509,9 @@ build_docker_args() {
 
     # The pinned Hyperloom checkout is the Forge engine's install source and
     # stays read-only; container_setup_forge refuses a run without it.
-    if [[ "$FORGE_RUNTIME" == "1" && -n "${HYPERLOOM_ROOT:-}" ]]; then
-        local hyperloom_root
-        hyperloom_root="$(realpath -e "$HYPERLOOM_ROOT" 2>/dev/null)" && [[ -d "$hyperloom_root" ]] \
-            || die "HYPERLOOM_ROOT is not a directory: $HYPERLOOM_ROOT"
-        add_mount "$hyperloom_root" "$hyperloom_root" ro
-        docker_args+=(-e "HYPERLOOM_ROOT=$hyperloom_root")
+    if [[ "$FORGE_RUNTIME" == "1" ]]; then
+        add_mount "$FORGE_SOURCE_ROOT" "$FORGE_SOURCE_ROOT" ro
+        docker_args+=(-e "HYPERLOOM_ROOT=$FORGE_SOURCE_ROOT")
     fi
 
     # The base image lacks the GNU `time` binary and the container runs as a
@@ -1517,7 +1532,7 @@ docker_exec() {
     local interactive="${1:-0}"
     shift
     build_docker_args "$interactive"
-    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export AKA_GEAK_SDK_PATH="${AKA_GEAK_SDK_PATH}/$(python -c "import sys; print(sys.implementation.cache_tag)")"; export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ -n "${AKA_FORGE_ENGINE_PATH:-}" ]]; then export AKA_FORGE_ENGINE_PATH="${AKA_FORGE_ENGINE_PATH}/$(python -c "import sys; print(sys.implementation.cache_tag)")"; export PYTHONPATH="${AKA_FORGE_ENGINE_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AKA_ROCM_SDK_CORE_RUNTIME:-0}" == "1" ]]; then sdk_library_path="$(python src/scripts/rocm_sdk_runtime.py --print-library-path)" && export LD_LIBRARY_PATH="$sdk_library_path" && mkdir -p /tmp/aka-runtime-bin && ln -sf "$AGENT_KERNEL_ARENA_WORKDIR/src/scripts/rocm_sdk_runtime.py" /tmp/aka-runtime-bin/rocprofv3 && export PATH="/tmp/aka-runtime-bin:$PATH"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
+    docker "${docker_args[@]}" -lc 'cd "$AGENT_KERNEL_ARENA_WORKDIR" && if [[ -n "${AKA_GEAK_SDK_PATH:-}" ]]; then export AKA_GEAK_SDK_PATH="${AKA_GEAK_SDK_PATH}/$(python -c "import sys; print(sys.implementation.cache_tag)")"; export PYTHONPATH="${AKA_GEAK_SDK_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ -n "${AKA_FORGE_ENGINE_CACHE:-}" ]]; then AKA_FORGE_ENGINE_PATH="$(python src/scripts/forge_runtime.py path --cache "$AKA_FORGE_ENGINE_CACHE" --revision "$AKA_FORGE_ENGINE_REVISION" --image-id "$AKA_FORGE_ENGINE_IMAGE_ID")" || exit; export AKA_FORGE_ENGINE_PATH; export PYTHONPATH="${AKA_FORGE_ENGINE_PATH}${PYTHONPATH:+:$PYTHONPATH}"; fi && if [[ "${AKA_ROCM_SDK_CORE_RUNTIME:-0}" == "1" ]]; then sdk_library_path="$(python src/scripts/rocm_sdk_runtime.py --print-library-path)" && export LD_LIBRARY_PATH="$sdk_library_path" && mkdir -p /tmp/aka-runtime-bin && ln -sf "$AGENT_KERNEL_ARENA_WORKDIR/src/scripts/rocm_sdk_runtime.py" /tmp/aka-runtime-bin/rocprofv3 && export PATH="/tmp/aka-runtime-bin:$PATH"; fi && if [[ "${AGENT_KERNEL_ARENA_ISOLATED_HOME:-0}" == "1" ]]; then bash src/scripts/docker_benchmark.sh _container_prepare_worker_home; fi && exec "$@"' _ "$@"
 }
 
 extract_config_name() {
@@ -1886,24 +1901,15 @@ copy_worker_state() {
 # exactly the installed code. Uncommitted changes are never installed.
 container_setup_forge() {
     [[ -n "${HYPERLOOM_ROOT:-}" ]] || die "Forge runs need HYPERLOOM_ROOT naming the pinned Hyperloom checkout"
-    local target="${AKA_FORGE_ENGINE_PATH:-${PYTHONUSERBASE:-$PWD/.aka-pyuserbase}/forge-engine/$(python -c 'import sys; print(sys.implementation.cache_tag)')}"
-    local marker="$target/.aka-hyperloom-revision"
-    local revision source
-    revision="$(git -C "$HYPERLOOM_ROOT" rev-parse HEAD)" || die "HYPERLOOM_ROOT is not a git checkout: $HYPERLOOM_ROOT"
+    [[ -n "${AKA_FORGE_ENGINE_REVISION:-}" && -n "${AKA_FORGE_ENGINE_IMAGE_ID:-}" ]] \
+        || die "Forge setup requires the host-pinned revision and image identity"
     if [[ -n "$(git -C "$HYPERLOOM_ROOT" status --porcelain --untracked-files=no)" ]]; then
-        warn "HYPERLOOM_ROOT has uncommitted changes; installing committed revision $revision only"
+        warn "HYPERLOOM_ROOT has uncommitted changes; installing committed revision $AKA_FORGE_ENGINE_REVISION only"
     fi
-    if [[ -f "$marker" && "$(cat "$marker")" == "$revision" ]]; then
-        echo "hyperloom=$revision already installed in $target"
-        return 0
-    fi
-    source="$(mktemp -d)"
-    git -C "$HYPERLOOM_ROOT" archive HEAD | tar -x -C "$source"
-    rm -rf "$target"
-    python -m pip install --target "$target" "${source}[forge]"
-    rm -rf "$source"
-    printf '%s\n' "$revision" > "$marker"
-    echo "hyperloom=$revision installed in $target"
+    python src/scripts/forge_runtime.py install --cache "$AKA_FORGE_ENGINE_CACHE" \
+        --revision "$AKA_FORGE_ENGINE_REVISION" --image-id "$AKA_FORGE_ENGINE_IMAGE_ID" \
+        --source "$HYPERLOOM_ROOT"
+    echo "hyperloom=$AKA_FORGE_ENGINE_REVISION installed in $AKA_FORGE_ENGINE_PATH"
 }
 
 container_check_forge() {
@@ -2356,6 +2362,7 @@ case "${1:-}" in
     setup-forge)
         select_runtime_for_host
         FORGE_RUNTIME=1
+        pin_forge_source
         REQUIRED_AGENTS=""
         AGENTS_STRICT=0
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_setup_forge
