@@ -89,7 +89,8 @@ def test_raw_file_metadata_corresponds_to_byte_protection(tmp_path):
     assert policy == {
         "digest_mode": "sha256_bytes",
         "digest": hashlib.sha256(runner.read_bytes()).hexdigest(),
-        "editable_symbols": [], "allow_new_helpers": False, "initial_top_level_names": [],
+        "editable_symbols": [], "allow_new_helpers": False, "configuration_symbols": [],
+        "initial_top_level_names": [],
         "definition_policy": "byte_protected", "allowed_compiler_decorators": [],
     }
     runner.write_text(runner.read_text() + "# even a byte-only change is protected\n")

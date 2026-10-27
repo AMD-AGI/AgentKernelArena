@@ -84,7 +84,7 @@ def test_sweep_taint_never_reaches_performance_or_aggregation(tmp_path, monkeypa
     assert report["candidate_accepted"] is not blocked
     assert ("performance" in actions) is not blocked
     assert report["speedup_ratio"] == (0 if blocked else 2)
-    assert report["score"] == (0 if blocked else pytest.approx(0.689202437604511))
+    assert report["score"] == (0 if blocked else pytest.approx(0.475))
     assert report["benchmark_method_consistent"] is not blocked
     if blocked:
         assert "Process sweep" in report["speedup_calculation_error_message"]
@@ -93,7 +93,7 @@ def test_sweep_taint_never_reaches_performance_or_aggregation(tmp_path, monkeypa
     summary = json.loads((workspace.parent / "reports/task_type_breakdown.json").read_text())["overall"]
     assert summary["valid_speedup_count"] == (0 if blocked else 1)
     assert summary["speedup_gt_1_count"] == (0 if blocked else 1)
-    assert read_report(workspace)["score"] == (0 if blocked else pytest.approx(0.689202437604511))
+    assert read_report(workspace)["score"] == (0 if blocked else pytest.approx(0.475))
 
 
 def test_complete_pipeline_keeps_baseline_and_evaluates_after_agent_error(tmp_path):

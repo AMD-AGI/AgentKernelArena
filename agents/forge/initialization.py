@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
@@ -74,10 +75,52 @@ def _save(path, value):
     temporary.replace(path)
 
 
+def _new_path_patterns(spec, root: Path) -> list[str]:
+    """Authorize new files only in declared trees and existing directories."""
+    patterns = []
+    for scope in spec.candidate.editable:
+        if scope.scope != "tree":
+            continue
+        tree = resolve_task_path(root, scope.path, must_exist=True)
+        for directory in [tree, *sorted(path for path in tree.rglob("*") if path.is_dir())]:
+            relative = directory.relative_to(root).as_posix()
+            resolve_task_path(root, relative, must_exist=True)
+            patterns.append(relative + "/*")
+    return patterns
+
+
+def _make_initialization_agent(config, *, new_path_patterns=(), **options):
+    """Bind either published implementer API without dropping gate settings."""
+    from kernelforge.orchestrator import agent
+
+    if "setup" not in inspect.signature(agent.make_agent_fn).parameters:
+        return agent.make_agent_fn(config=config, **options)
+    from kernelforge.loop.gate_settings import GateMeasurement
+
+    task_keys = ("program_md", "kernel_backend_name", "profiling_enabled", "task_type",
+                 "source_files", "target_functions", "extra_protected_paths")
+    session_keys = ("session_timeout_sec", "permission_mode", "insession_gate")
+    task = agent.ImplementerTask(**{key: options.pop(key) for key in task_keys},
+                                 commit_new_paths=list(new_path_patterns))
+    session = agent.SessionOptions(**{key: options.pop(key) for key in session_keys})
+    timeout = options.pop("validation_timeout_sec")
+    measurement = GateMeasurement(
+        driver_script=options.pop("driver_script"),
+        interposed_driver_path=options.pop("interposed_driver_path"),
+        correctness_only=options.pop("correctness_only"),
+        stage_timeout_sec=timeout, bench_timeout_sec=timeout,
+    )
+    usage = options.pop("usage")
+    if options:
+        raise ValueError(f"Unmapped Forge implementer settings: {sorted(options)}")
+    return agent.make_agent_fn(config=config,
+                              setup=agent.ImplementerSetup(task=task, measurement=measurement, session=session),
+                              usage=usage)
+
+
 async def initialize(plan: dict) -> dict:
     # Caller checks the pinned upstream before entering this phase.
     from kernelforge.config import Config
-    from kernelforge.orchestrator.agent import make_agent_fn
     from kernelforge.tracker.usage import UsageAccumulator
     from agents.forge.program import program_text
 
@@ -114,7 +157,8 @@ async def initialize(plan: dict) -> dict:
                 kwargs["agent_model"] = settings["model"]
             config = Config.from_env(**kwargs)
             files = candidate_files(spec, root)
-            agent = make_agent_fn(config=config, program_md=program_text(plan, initialize=True),
+            agent = _make_initialization_agent(config=config, new_path_patterns=_new_path_patterns(spec, root),
+                program_md=program_text(plan, initialize=True),
                 kernel_backend_name=spec.candidate.language, usage=usage,
                 insession_gate=True, correctness_only=True,
                 driver_script=str(root / "arena_forge_driver.py"),
@@ -177,6 +221,8 @@ async def initialize(plan: dict) -> dict:
 
 def prepare_loop(plan: dict, argv: list[str]) -> list[str]:
     """Refresh the full source bundle after initialization, then run one loop."""
+    from kernelforge import cli
+    from agents.forge.adapter import engine_budget_hours
     from agents.forge.program import program_text
     if not argv or argv[0] != "forge-loop":
         raise ValueError("Initialization must be followed by forge-loop")
@@ -185,6 +231,13 @@ def prepare_loop(plan: dict, argv: list[str]) -> list[str]:
     files = candidate_files(context.spec, root)
     argv = list(argv)
     argv[argv.index("--source-files") + 1] = ",".join(map(str, files.values()))
+    # Initialization has already spent part of this campaign's budget.
+    argv[argv.index("--max-hours") + 1] = str(engine_budget_hours(plan))
+    if any(parameter.name == "deadline_unix" for parameter in cli.main.commands["forge-loop"].params):
+        if "--deadline-unix" in argv:
+            argv[argv.index("--deadline-unix") + 1] = str(plan["deadline_unix"])
+        else:
+            argv += ["--deadline-unix", str(plan["deadline_unix"])]
     # Keep the program in the already tracked root. Only the adapter writes it.
     Path(plan["program"]).write_text(program_text(plan))
     _git(root, "add", "--", Path(plan["program"]).relative_to(root).as_posix())

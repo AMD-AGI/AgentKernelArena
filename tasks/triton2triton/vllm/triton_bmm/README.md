@@ -49,17 +49,24 @@ imports, initialization, host dispatch and pointer preparation remain protected,
 along with the existing numerical checks and benchmark protocol. The structural
 guard enforces this boundary; it does not isolate arbitrary Python execution.
 
-The protected wrapper also fixes the launch configuration: the grid and the tile
-sizes, `num_warps` and `num_stages` it passes at launch. Optimization notes above
-that mention tuning those values refer to the original whole-file contract; under
-this boundary, optimize the kernel bodies and implementation helpers instead.
+### Tunable launch configuration
+
+`_launch_config(dtype_name, batch, m, n, k)` is also editable. It returns the
+`bmm_kernel` tile sizes (`BLOCK_SIZE_M`, `BLOCK_SIZE_N`, `BLOCK_SIZE_K`),
+`num_warps` and `num_stages`, and may branch on the dtype name or problem size.
+Its body may only build this configuration data; the harness guard rejects other
+host code in it. The protected wrapper requires exactly these five integer keys,
+tile sizes that are powers of two in [16, 256], `num_warps` in {1, 2, 4, 8, 16}
+and `num_stages` in [1, 4], and derives the grid from the returned tiles. The
+initial values are the original ones: 128/128/32 tiles, 8 warps and 2 stages for
+16-bit dtypes, and 64/64/32 tiles, 4 warps and 2 stages for float32.
 
 
 ### Correctness-only domain controls
 
 The protected `bmm_triton` wrapper defines the public domain. It accepts two
 3-D tensors with matching batch and inner dimensions and one shared dtype:
-float16, bfloat16 or float32, the only keys of its launch-configuration table.
+float16, bfloat16 or float32, the only dtypes it accepts.
 It forwards all six operand strides to the kernel without copying, so
 transposed, offset, padded, element-strided and batch-broadcast (stride-0)
 views are valid inputs. It always allocates a new contiguous `(B, M, N)` output
@@ -70,7 +77,7 @@ Eleven unscored `control-domain-*` rows (`case_index` 20000-20010, checks
 `[correctness]`) come from the protected `_domain_controls.py` table; the
 adapter verifies that table and these rows against `workloads.json`. They cover
 bfloat16 and float32 as well as float16, and B, M, N and K values that are not
-multiples of the wrapper tiles (128/128/32 for 16-bit dtypes, 64/64/32 for
+multiples of the initial tiles (128/128/32 for 16-bit dtypes, 64/64/32 for
 float32), including `M = K = 1` and other small odd shapes. Operand layouts
 include transposed A, B or both, a batch-inner `(M, B, K).transpose(0, 1)` view,
 offset views of padded storage, element stride 2, batch stride 2 and a

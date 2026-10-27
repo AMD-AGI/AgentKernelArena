@@ -158,7 +158,11 @@ candidate:
 
 A mapping's `scope` is `file`, `symbols`, or `tree`. `symbols` requires a nonempty
 symbol list; `allow_new_helpers` defaults to `false` and applies only to
-implementation helpers under a symbol-scoped boundary. `tree` permits an
+implementation helpers under a symbol-scoped boundary. `configuration_symbols`
+optionally names a subset of `symbols`, never an entrypoint, that only builds
+configuration data, for example a `_launch_config` helper returning tile sizes,
+`num_warps` and `num_stages`. Protected code may call such a helper and must
+validate what it returns before use. `tree` permits an
 implementation subtree, not its tests or build/evaluation policy. Broad tree
 access must not override a protected harness path. Generated build artifacts
 are not editable source declarations.
@@ -180,7 +184,40 @@ protected function definitions. Existing editable non-entrypoint configuration
 helpers must pass a restricted body check: configuration data/local assignments,
 returns, and branches using protected predicates or supported configuration
 operations. Initial aliases, kernel entrypoints, and newly introduced factories
-do not gain permission to run at definition time. The guard reports its
+do not gain permission to run at definition time. Symbols listed in
+`configuration_symbols` use a stricter launch-time policy: they must stay
+undecorated functions whose values come only from metadata parameters, local
+configuration data, literal collections, arithmetic and branches. Unshadowed
+`min`, `max`, `abs`, `bool`, `int`, `float`, `len`, `triton.cdiv` and
+`triton.next_power_of_2` calls are allowed. Global objects, helper/protected
+function calls, arbitrary attributes, callbacks and comprehensions are rejected;
+defaults must be literal data and annotations use simple builtin types or
+strings. The protected caller must supply plain scalar/container metadata and
+validate the returned configuration before launch. Declared launch helpers are
+not definition-time factories and cannot be called from editable compiler
+decorators, which could supply arbitrary objects instead of metadata.
+Every editable Python file,
+whatever its scope, also may not add runtime patching: calls to `globals()`,
+`vars()`, `setattr`/`delattr`, `exec`/`eval`/`__import__` (including qualified
+`builtins` calls and imported aliases), `importlib` or frame
+inspection (`sys._getframe`, `inspect.currentframe`), reads of code-object and
+frame internals (`__code__`, `__globals__`, `f_back`, ...), assignments to an
+imported module or object (`torch.Tensor.contiguous = ...`) or through an
+attribute chain (`t.Tensor.contiguous = ...`), and rebinding an imported name.
+Every editable C/C++/HIP file may not add identifiable library operator calls
+outside comments and string/character literals: hipBLAS, hipBLASLt, rocBLAS,
+Tensile or MIOpen calls, and the
+ATen/torch matrix products, softmax, losses, norms and reductions a task asks
+the candidate to implement (`at::matmul`, `torch::mm`, `at::layer_norm`,
+member operators such as `.bmm(`, `.softmax(` and `.sum(` on declared or inferred
+Tensor receivers). Same-named members on custom C++ types remain allowed.
+Receiver inference covers explicit Tensor declarations, aliases, standard
+Tensor factories and simple Tensor-derived expressions; it is not a C++ type
+checker. Semantic review still checks the full dependency contract. The host
+code of a Triton candidate, outside
+its `@triton.jit` functions, may not add PyTorch or library operators either
+(`torch.matmul`, `F.softmax`, `x @ w`, `torch.ops.*`, `aiter`, `flash_attn`, ...).
+Sites the starting file already has stay allowed. The guard reports its
 effective policy in the validator context. It is a structural integrity check,
 not isolation of arbitrary Python code; reference/test manipulation remains
 forbidden and subject to semantic review.

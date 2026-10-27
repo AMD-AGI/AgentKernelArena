@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 # Power-family scoring; see docs/reference/api-reference.md#scoring.
-SCORE_POWER = 0.5
+SCORE_POWER = 1.0
 SCORE_SPEEDUP_THRESHOLD = 1.05
 
 
@@ -56,8 +56,9 @@ def score(
     Calculate a bounded power-family score for a correct, comparable candidate.
 
     The score is ``max(0, 1 - SCORE_SPEEDUP_THRESHOLD / speedup) ** SCORE_POWER``.
-    Defaults use the concave square-root curve and require more than 1.05x
-    speedup for a positive score. Compilation/correctness failures and invalid
+    Defaults use the linear curve (power 1), which scores the fraction of
+    runtime saved beyond the threshold, and require more than 1.05x speedup
+    for a positive score. Compilation/correctness failures and invalid
     performance comparisons receive zero, with no partial-credit bonuses.
 
     Args:

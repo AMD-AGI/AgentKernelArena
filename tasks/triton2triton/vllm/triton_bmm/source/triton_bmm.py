@@ -101,6 +101,44 @@ def bmm_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
+def _launch_config(dtype_name, batch, m, n, k):
+    """Return the bmm_kernel tile sizes, num_warps and num_stages.
+
+    Tune these values, optionally per dtype or problem size. The protected
+    wrapper validates them and derives the grid from the tile sizes.
+    """
+    if dtype_name == "float32":
+        return {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32,
+                "num_stages": 2, "num_warps": 4}
+    return {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32,
+            "num_stages": 2, "num_warps": 8}
+
+
+_DTYPE_NAMES = {torch.bfloat16: "bfloat16", torch.float16: "float16", torch.float32: "float32"}
+_TILE_KEYS = ("BLOCK_SIZE_M", "BLOCK_SIZE_N", "BLOCK_SIZE_K")
+
+
+def _checked_launch_config(cfg):
+    """Accept only tile sizes, num_warps and num_stages within supported bounds."""
+    expected = set(_TILE_KEYS) | {"num_warps", "num_stages"}
+    if not isinstance(cfg, dict) or set(cfg) != expected:
+        raise ValueError(f"Launch configuration must set exactly {sorted(expected)}")
+    checked = {}
+    for key in sorted(expected):
+        value = cfg[key]
+        if type(value) is not int:
+            raise ValueError(f"Launch setting {key} must be an int")
+        checked[key] = value
+    for key in _TILE_KEYS:
+        if not (16 <= checked[key] <= 256 and checked[key] & (checked[key] - 1) == 0):
+            raise ValueError(f"{key} must be a power of two in [16, 256]")
+    if checked["num_warps"] not in (1, 2, 4, 8, 16):
+        raise ValueError("num_warps must be 1, 2, 4, 8 or 16")
+    if not 1 <= checked["num_stages"] <= 4:
+        raise ValueError("num_stages must be in [1, 4]")
+    return checked
+
+
 def bmm_triton(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """Wrapper for batched matrix multiplication kernel."""
     assert a.ndim == 3 and b.ndim == 3, "Inputs must be 3D"
@@ -114,31 +152,7 @@ def bmm_triton(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     c = torch.empty((B_size, M, N), device=a.device, dtype=dtype)
 
-    configs = {
-        torch.bfloat16: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 32,
-            "num_stages": 2,
-            "num_warps": 8,
-        },
-        torch.float16: {
-            "BLOCK_SIZE_M": 128,
-            "BLOCK_SIZE_N": 128,
-            "BLOCK_SIZE_K": 32,
-            "num_stages": 2,
-            "num_warps": 8,
-        },
-        torch.float32: {
-            "BLOCK_SIZE_M": 64,
-            "BLOCK_SIZE_N": 64,
-            "BLOCK_SIZE_K": 32,
-            "num_stages": 2,
-            "num_warps": 4,
-        },
-    }
-
-    cfg = configs[dtype]
+    cfg = _checked_launch_config(_launch_config(_DTYPE_NAMES[dtype], B_size, M, N, K))
     grid = (
         B_size,
         triton.cdiv(M, cfg["BLOCK_SIZE_M"]) * triton.cdiv(N, cfg["BLOCK_SIZE_N"]),
