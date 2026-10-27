@@ -1,0 +1,146 @@
+{
+  "binding_status": "config_derived_scenario",
+  "cases": [
+    {
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "benchmark_method": "cuda_graph",
+        "beta_sigmoid_in_kernel": true,
+        "g_beta_parameter_dtype": "float32",
+        "gate_in_kernel": true,
+        "lower_bound": -5.0,
+        "phase": "decode",
+        "qk_l2norm": true,
+        "qkv_dtype": "bfloat16",
+        "scale": 0.08838834764831845,
+        "state_dtype": "float32",
+        "state_indices": "64 unique permuted slots",
+        "state_layout": "V-first",
+        "state_padding_floats": 0,
+        "state_slots": 192,
+        "tokens_per_sequence": 1
+      },
+      "shape": [
+        64,
+        1,
+        12,
+        128
+      ],
+      "test_case_id": "decode_b64_t1"
+    },
+    {
+      "checks": [
+        "correctness"
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "benchmark_method": null,
+        "beta_sigmoid_in_kernel": true,
+        "g_beta_parameter_dtype": "float32",
+        "gate_in_kernel": true,
+        "lower_bound": -5.0,
+        "phase": "decode",
+        "qk_l2norm": true,
+        "qkv_dtype": "bfloat16",
+        "scale": 0.08838834764831845,
+        "state_dtype": "float32",
+        "state_indices": "64 unique permuted slots",
+        "state_layout": "V-first",
+        "state_padding_floats": 128,
+        "state_slots": 192,
+        "tokens_per_sequence": 1
+      },
+      "shape": [
+        64,
+        1,
+        12,
+        128
+      ],
+      "test_case_id": "decode_b64_t1_padded"
+    }
+  ],
+  "frequency_provenance": "frequency_provenance.json",
+  "input_policy": {
+    "A_log": "log(U[1,16))",
+    "kind": "upstream_generated",
+    "not_claimed": "actual learned parameters, captured activations, or exact state after the recorded 8192-token prefixes",
+    "provenance": "op_tests/triton_tests/attention/test_kda.py:97-119,548-574",
+    "q_k_v_raw_beta": "U[0,1)",
+    "raw_g_dt_bias_state": "N(0,1)",
+    "seed_for_performance": 42,
+    "unused_state_sentinel": 1e+30
+  },
+  "numerical_contract": {
+    "coverage": [
+      "seeded draw",
+      "fresh draw",
+      "two consecutive transitions with changed operands",
+      "zero initial state",
+      "padded state storage",
+      "every timed sample",
+      "same captured graph with changed current values"
+    ],
+    "error_rule": "RMS(actual-reference)/(RMS(reference)+1e-8), independently for each sequence, output and state",
+    "max_sequence_rms_ratio": 0.005,
+    "reference": "scripts/kda_ref.py:chunk_kda_ref",
+    "state_rule": "updated slots numerical; every byte in unselected slots and padding exactly preserved; all read-only inputs preserved; caller buffers retained"
+  },
+  "operation": {
+    "entrypoint": "aiter.ops.triton.attention.kda.fused_recurrent_kda",
+    "excluded": [
+      "projection",
+      "short convolution",
+      "output gate/norm",
+      "prefill",
+      "MoE",
+      "communication"
+    ],
+    "included": [
+      "q/k L2 normalization",
+      "bounded raw-gate transform",
+      "raw-beta sigmoid",
+      "recurrent state decay/update",
+      "output and state writes"
+    ],
+    "local_heads_derivation": "text_config.linear_attn_config.num_heads / TP = 96 / 8 = 12",
+    "original_serving_family": "FLA KDA; current AITER integration not verified",
+    "site_scope": "one KDA layer at one rank",
+    "upstream_revision": "2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0"
+  },
+  "qualification": {
+    "gpu_validator": "required, not run during task authoring",
+    "scoring_runtime": "runtime versions and source hashes checked and emitted at execution",
+    "serving_integration": "unverified"
+  },
+  "timing": {
+    "max_graph_repeats": 1,
+    "method": "cuda_graph",
+    "repetition": 100,
+    "target_ms": 1.0,
+    "warmup": 10
+  },
+  "workload": {
+    "concurrency": 64,
+    "context_limit": 9218,
+    "dcp": null,
+    "ep": null,
+    "input_tokens": 8192,
+    "model": "moonshotai/Kimi-K3",
+    "model_config_sha256": "9710e121a58d03ac92c8d6da287a19541994319afbbe6d6202af001ffd379213",
+    "model_revision": "9f62e4e9fffbd0a83ddd60e1c209d828994b3569",
+    "num_requests": 64,
+    "original_aiter_version": "0.1.21.dev48+g4ad998328.d20260918",
+    "original_run_id": "kimi-actual-v4-no-stack-194550",
+    "original_runtime_image": "docker.io/lmsysorg/sglang@sha256:3a78acc9d6c191f1a12c7c67631657580f06af3af562c9ee6d88282a71ec5e96",
+    "output_tokens": 1024,
+    "request_generator": "recorded SGLang random dataset with ShareGPT prompt sampling, range ratio 1, request rate inf; no HTTP-body replay claim",
+    "request_seed": 42,
+    "scenario": "fully admitted 64-request decode; one token per sequence per call",
+    "serving_dtype": "bfloat16",
+    "tp": 8
+  }
+}

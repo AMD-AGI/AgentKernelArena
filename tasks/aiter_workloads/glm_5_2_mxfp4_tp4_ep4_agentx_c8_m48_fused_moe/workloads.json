@@ -1,0 +1,80 @@
+{
+  "schema": "aiter.fixed-workload/1",
+  "binding_status": "frozen_config_derived_per_call",
+  "workload_source": {
+    "path": "workload_source.json",
+    "sha256": "e3c14a34158adc54cb88846de4823475f5eaf7a050f09e46a918118b29274dd3"
+  },
+  "runtime": {
+    "purpose": "The documented SGLang0.5.20/AITER2cb3d175/FlyDSL0.4.0 stack is the intended qualification runtime. This image is a reference, not a mandatory digest; actual image and device require their own GLM task-validator PASS.",
+    "dispatch_environment": {
+      "AITER_ONLINE_TUNE": null,
+      "AITER_BYPASS_TUNE_CONFIG": null,
+      "AITER_FLYDSL_FORCE": null,
+      "AITER_MXMOE_FALLBACK": null
+    },
+    "expected_dispatch": {
+      "stage1": "flydsl_moe1_afp4_wfp4_bf16_t32x128x256_w2_fp4",
+      "stage2": "flydsl_moe2_afp4_wfp4_bf16_t32x128x256_atomic_bnt2",
+      "block_m": 32,
+      "fuse_quant": "fp4"
+    },
+    "reference_image": "sha256:1a82b6109081355b0c9b90db108349206e5fc969eed71754b96ee6919dd3fbd5"
+  },
+  "cases": [
+    {
+      "test_case_id": "local_ep4_m48",
+      "shape": [
+        48,
+        6144,
+        2048,
+        65,
+        9
+      ],
+      "dtype": "bfloat16",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "ep_rank": 0,
+        "input_seed": 17,
+        "fresh_seed": 29,
+        "weight_seed": 0,
+        "benchmark_method": "cuda_graph",
+        "input_policy": "upstream_style_normal_mxfp4_with_global_top8_plus_shared"
+      }
+    }
+  ],
+  "input_policy": {
+    "hidden_and_expert_weights": "independent seeded BF16 standard normal values, following upstream test_moe_2stage",
+    "weight_quantization": "per_1x32_f4_quant Even mode2 E8M0, packed nearest-even E2M1; weight (16,16) preshuffle and e8m0 scale shuffle",
+    "routing": "FP32 standard-normal global256 logits; softmax, unique top8, renormalize selected8; append global shared expert256 with coefficient1",
+    "shared_coefficient_scope": "Synthetic local-call policy; not an inferred serving coefficient or collective normalization.",
+    "ep_mask": "rank0 routed IDs0..63 plus shared ID256; global-to-local cumulative binary map",
+    "fresh_state": "seed29 replaces all activation/routing values in the existing public storages; same prepared weights",
+    "quantization_scope": "Generated weight values follow the checkpoint-declared EVEN format policy. Runtime activation quantization is the pinned public fused_moe path, which differs from the checkpoint input_tensors EVEN declaration."
+  },
+  "numerical_contract": {
+    "reference": "independent FP32 PyTorch dequantization and two projections; FP32 SiLU*up goes directly into the selected fused-stage1 MXFP4 quantization",
+    "activation_scale": "input: E8M0 ceil_pow2(amax/6) per32; intermediate: exponent(((amax_f32_bits+0x400000)&0xFF800000))-2, clamped at E8M0 code0",
+    "activation_value_rounding": "E2M1 round-to-nearest-even",
+    "activation": "silu(gate)*up",
+    "gate_layout": "separated",
+    "output": "complete local BF16[M,H] result including zero contribution from remote experts",
+    "route_weight_application": "stage2",
+    "acceptance": {
+      "method": "elementwise_allclose_or_normalized_difference",
+      "rtol": 0.01,
+      "atol": 0.01,
+      "max_normalized_difference": 0.001
+    }
+  },
+  "timing": {
+    "warmup": 10,
+    "repetition": 100,
+    "target_ms": 1.0,
+    "max_graph_repeats": 1000
+  },
+  "qualification_status": "source_prepared_native_unqualified"
+}
