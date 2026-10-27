@@ -292,7 +292,7 @@ Each source `exclude` is a path relative to that source root, including its
 descendants. It is not a basename pattern: `jit` does not exclude `aiter/jit`.
 Exclude disposable runtime caches explicitly while retaining required source.
 
-All other task paths are relative to the task workspace root after setup.
+Task source, command and logical input paths are relative to the task workspace root after setup.
 Reject absolute paths, traversal, and symlink resolutions escaping that root.
 Keep directory components when installing generated candidates: a declaration
 of `source/kernel.py` must not be installed as root-level `kernel.py`.
@@ -303,6 +303,28 @@ Repository destinations also count toward paths: `upstream/src/kernel.hip`
 always refers to that path from the workspace root, never an implicitly changed
 repository working directory. Source destinations must not overwrite task
 configuration or harness files.
+
+Large immutable input carriers can be declared as explicit read-only runtime
+dependencies instead of copied into every workspace. A task-owned workload file
+may map its relative logical input names to exact container-visible paths,
+SHA256 digests and byte sizes. The task runner must implement that declaration:
+verify the canonical regular file and read-only mount, reject local shadows and
+unlisted paths, and hash the same opened file before loading it. Case bindings
+must agree with the declared digests. Keep references, source, configuration and
+candidate paths inside the task; this exception applies only to explicitly
+declared immutable data. Do not use writable hardlinks, escaping symlinks,
+ambient environment variables or undeclared host checkout paths.
+
+The operator must provide the declared files on read-only mounts without
+exposing a writable alias. This is a runtime prerequisite, like the task's
+installed baseline dependencies, not a new core `config.yaml` field or an
+automatic mount/download feature. Use the same inputs for every agent and role.
+For the native GEAK adapter, include those external files in its existing
+`runtime_artifacts` declaration as well. GPU task validation must exercise the
+actual mounted-input route before that task is qualified. The AITER fixed
+workload tasks implement this optional mapping as
+`workloads.json:runtime_binding.input_assets`; tasks without it retain ordinary
+bundled input resolution.
 
 Exports run through common framework post-processing after final evaluation.
 `ARENA_FINAL_RESULT_PATH` retains its existing name and points to the

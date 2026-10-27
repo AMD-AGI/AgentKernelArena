@@ -1,0 +1,48 @@
+schema_version: 2
+description: >-
+  Optimize the complete upstream AITER mhc_fused_post_pre call (DeepSeek V4
+  manifold hyper-connection post+pre boundary) for DeepSeek V4 Pro, TP8 EP1,
+  concurrency64, input8192/output1024, one prefill and one decode case.
+  Cases and frequencies are captured at the rank0 layer0 attention-to-FFN
+  boundary. The scoring runtime is pinned and the native upstream baseline
+  is calibrated; framework task-validator qualification remains required.
+kernel_identity:
+  logical_operator: deepseek_v4_pro_mhc_post_pre_boundary
+  source_owner: aiter
+instructions: [README.md]
+platform_support:
+  required_arch: gfx950
+candidate:
+  language: gpu
+  initial_language: gpu
+  initial_state: implemented
+  editable:
+    - {path: source, scope: tree}
+  entrypoints:
+    - {file: source/kernel.py, kind: function, symbol: mhc_fused_post_pre}
+baseline:
+  kind: provided
+  language: gpu
+  correctness_policy: required
+  source_files: [upstream/aiter/ops/mhc.py, upstream/csrc/kernels/mhc_kernels.cu]
+workspace:
+  sources:
+    - kind: git
+      url: https://github.com/ROCm/aiter.git
+      revision: 2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0
+      destination: upstream
+  setup:
+    - [python3, scripts/runtime.py]
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: workloads.json
+  timeout_s: 3600
+  # Measured calls at the selected rank0 layer0 site; warmup excluded.
+  aggregation:
+    method: weighted_total_time
+    case_weights:
+      prefill_m8192: 64
+      decode_m64: 1024
+    source:
+      path: frequency_provenance.json
+      sha256: c3133f86a08db6c9b822878c7f9233b5e6f69153270660d27f5dac6095779322

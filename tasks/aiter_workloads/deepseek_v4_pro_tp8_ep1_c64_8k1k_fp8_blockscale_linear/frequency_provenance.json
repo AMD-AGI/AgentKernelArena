@@ -1,0 +1,33 @@
+{
+  "status": "measured",
+  "enrolled_for_scoring": true,
+  "unit": "Executed public linear calls at rank0 layer0 wqkv_a over the complete scored accounting05 request window; warmup excluded",
+  "accounting_aggregate_sha256": "1c6d4dacf78356883a98c5f3573271c8ec748a5776400e49a086ef3b451b3a0d",
+  "statement": "Attach each per-site frequency once to its primary phase; current_value_replay adds correctness coverage with no additional timing/frequency weight.",
+  "capture": {
+    "reference": "capture_binding.json",
+    "sha256": "1dae0fe29559a837c9833c59701c45b17f45f9384031d8e171a7b84528021875"
+  },
+  "case_counts": [
+    {
+      "test_case_id": "prefill_m8192_n2048_k7168_fp8in",
+      "count": 64,
+      "served": {
+        "active_requests": 1,
+        "live_rows": 8192,
+        "padded_rows": 8192,
+        "phase": "prefill"
+      }
+    },
+    {
+      "test_case_id": "decode_m64_n2048_k7168_fp8in",
+      "count": 1024,
+      "served": {
+        "active_requests": 64,
+        "live_rows": 64,
+        "padded_rows": 64,
+        "phase": "decode"
+      }
+    }
+  ]
+}

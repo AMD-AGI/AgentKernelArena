@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "scope": "Observed scoring runtime and JIT baseline build with explicit native-pool architecture; selected installed/materialized sources and on-disk extension identity. No graph timing, full-task qualification or end-to-end performance claim.",
+  "image_ref": "sha256:1a82b6109081355b0c9b90db108349206e5fc969eed71754b96ee6919dd3fbd5",
+  "aiter_revision": "2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0",
+  "aiter_version": "0.1.1.dev1+g2cb3d1758",
+  "torch": {
+    "hip_version": "7.2.26015",
+    "version": "2.11.0+rocm7.2"
+  },
+  "gpu": {
+    "architecture": "gfx950",
+    "gcnArchName": "gfx950:sramecc+:xnack-",
+    "major": 9,
+    "minor": 5,
+    "multi_processor_count": 256,
+    "name": "AMD Instinct MI350X",
+    "total_memory": 270566162432,
+    "uuid": "31613166-3062-6434-3538-623138396438",
+    "visible_device_index": 0,
+    "warp_size": 64
+  },
+  "dispatch_environment": {
+    "AITER_AOT_IMPORT": null,
+    "AITER_DISABLE_KERNARG_PRELOAD": null,
+    "AITER_ENABLE_EXPERIMENTAL": null,
+    "AITER_JIT_DIR": "/opt/aka-native/w1-mhc/aiter-jit",
+    "AITER_META_DIR": null,
+    "AITER_REBUILD": null,
+    "AITER_TRITON_ONLY": null,
+    "CK_DIR": null,
+    "CU_NUM": null,
+    "ENABLE_CK": null,
+    "FLYDSL_RUNTIME_CACHE_DIR": "/opt/aka-native/w1-mhc/aiter-jit/flydsl-runtime",
+    "GPU_ARCHS": "gfx950",
+    "HIP_KITTENS_DIR": null,
+    "OPUS_GEN_CO_DIR": null
+  },
+  "selected_source_sha256": {
+    "aiter/jit/core.py": "671a3baad3861933afa95f074e6e934e29dacf78e110228cd5d5d373aeff2bcc",
+    "aiter/jit/utils/chip_info.py": "e1311aead8a1297d47d4e44e954020cdd46c5231ae6ec7b23f57f27ea9e5ab28",
+    "aiter/jit/utils/torch_guard.py": "1adf6a04dc4ca40dfd458e10ab7f46c3ba3482912807222821ec47079fbb795e",
+    "aiter/ops/mhc.py": "8f30a4e38752dec1a081b26d26443bbe10b299e886e5fe4d68d39bf920bcbcc9"
+  },
+  "native_artifacts": {
+    "module_mhc": {
+      "evidence_kind": "python_module_file_attribute",
+      "format_check": "elf_magic",
+      "kind": "python_extension",
+      "loader_type": "ExtensionFileLoader",
+      "module_name": "module_mhc",
+      "path": "/opt/aka-native/w1-mhc/aiter-jit/module_mhc.so",
+      "reported_path": "/opt/aka-native/w1-mhc/aiter-jit/module_mhc.so",
+      "sha256": "4611ebb8bd82f3579de2c13288ef4ae598edf0c6c83aba3446658254130a0722",
+      "size_bytes": 5119568,
+      "status": "identified"
+    }
+  },
+  "calibration": {
+    "status": "PASS",
+    "case_ids": [
+      "prefill_m8192",
+      "decode_m64"
+    ],
+    "states_per_case": 2,
+    "timing_performed": false
+  },
+  "retained_evidence": {
+    "STAGING_AND_PLAN.json": {
+      "sha256": "2059f9552cc52cfeaafcf4293f1d0cf56f633fe8f4f546f149c99da0accfcae6",
+      "size_bytes": 8454
+    },
+    "CONFIG.json": {
+      "sha256": "e8bfb38c9c96c15abb104e61312cc70be6fd4905bcb4f623b000f62f9c789d6e",
+      "size_bytes": 7442
+    },
+    "PLAN.json": {
+      "sha256": "d03b6c2ea7db9af9a2d9a64c00e59fc296394653696a4a06c1393984b1afa170",
+      "size_bytes": 12965
+    },
+    "SOURCE_REVIEW.json": {
+      "sha256": "c1dc0be032946d7066ac3a5750afe4cbc2f84a64b240afb49ec11a6673b67097",
+      "size_bytes": 1205
+    },
+    "NATIVE_CALIBRATION_ACQUISITION.json": {
+      "sha256": "4307420913c7170fd75a7ac331adc41034825f1c82c59bd4ad5fa650d34950b7",
+      "size_bytes": 19857
+    },
+    "FINAL/evaluation/MHC_NATIVE_CALIBRATION.json": {
+      "sha256": "f1a137b4fb56579a86be62bf8077ba49ac4f7dcb7bb1d0d31cfb2180bf4f82b9",
+      "size_bytes": 13866
+    },
+    "FINAL/evaluation/session/stderr.log": {
+      "sha256": "fb77f2febc27dece982a47d5f8915ce211125820fe7c5e1f767a384581949953",
+      "size_bytes": 678
+    }
+  },
+  "prior_calibration_sha256": "7ea967af9977c9ac5ce8a7eef5cf75de5de336176064b95587472d37cff7ebb1",
+  "prospective_runtime_change": "GPU_ARCHS is explicitly gfx950 for the native GPU pool. Both authentic states/cases revalidated; prior run preserved."
+}

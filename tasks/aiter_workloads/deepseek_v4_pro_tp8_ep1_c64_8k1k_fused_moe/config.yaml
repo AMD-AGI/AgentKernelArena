@@ -2,8 +2,8 @@ schema_version: 2
 description: >-
   Optimize the complete upstream AITER fused_moe call for DeepSeek V4 Pro,
   TP8 EP1, concurrency64, input8192/output1024. Public inputs already include
-  selected expert IDs and weights. Workload binding is pending; validation
-  rejects the empty manifest until actual cases and numerical policy are frozen.
+  selected expert IDs and weights. Two authentic rank-0, layer-3 cases and
+  measured frequencies define the protected workload objective.
 kernel_identity:
   logical_operator: deepseek_v4_pro_whole_fused_moe
   source_owner: aiter
@@ -35,5 +35,11 @@ evaluation:
   runner: [python3, scripts/evaluate.py]
   workloads: workloads.json
   timeout_s: 3600
-  # Add weighted_total_time and its measured case weights/provenance only when
-  # the workload is bound. The runner rejects a bound task without this method.
+  aggregation:
+    method: weighted_total_time
+    case_weights:
+      prefill_m8192: 64
+      decode_m64: 1024
+    source:
+      path: frequency_provenance.json
+      sha256: 796b99862d6feb833f9dd2008dd599093e25751a8cc8334e87fb805d8506c60d

@@ -1,0 +1,628 @@
+{
+  "format": "aiter_workload_capture_binding_v1",
+  "scope": "Rank0 layer0 wqkv_a public linear call; one-site proxy.",
+  "accounting_aggregate_sha256": "1c6d4dacf78356883a98c5f3573271c8ec748a5776400e49a086ef3b451b3a0d",
+  "payload_aggregate_sha256": "b1c7a5493e885b355a6d8c5034a67e751d0ad5e880e6587bfa867ff3e25a43e4",
+  "payload_acquisition_sha256": "56e202e0a2b27fa82a2b82c3ee8cbdefbee74beb594f417001a98fbf06a14c35",
+  "cpu_join_result_sha256": "bc87cce309bacc2fd0318575d463e8c918f9dffee4b9090a8be95d108fe8cc32",
+  "join_records": {
+    "prefill_first": {
+      "sha256": "54968ec364f6f3b2e27da56df5250dbddd56987e62fe7ab16199c37b6dff64d7",
+      "size_bytes": 4007
+    },
+    "prefill_second": {
+      "sha256": "5bd891b74d629eb63395059816859132653aa4ed4e44e2cb0311724d099d237a",
+      "size_bytes": 4392
+    },
+    "decode_first": {
+      "sha256": "448ef1a4eded0139264af3e0ef5c0c3bbb892e930ad7ca3ab12048e3a471d653",
+      "size_bytes": 4269
+    },
+    "decode_second": {
+      "sha256": "89090e9d33d334853cdf3901fa348dfaea749156edb46a091ce7281e68a74f36",
+      "size_bytes": 4493
+    }
+  },
+  "sampling": {
+    "timing": "first_scored_occurrence_per_observed_stratum",
+    "correctness": "next_scored_same_variant_manifest_and_prepared_weights",
+    "warmup_included": false
+  },
+  "captured_sources": {
+    "prefill_first": {
+      "caller": "model.layers.0.self_attn.wqkv_a",
+      "carrier": {
+        "exported_by": "linear_r0_l0_prefill_first",
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_prefill_first.carrier.pt",
+        "sha256": "ac23625cc8dbfe2c478a8080fb83a6f8afc27b5c57189fdb44b5585301b3a530"
+      },
+      "event_index": 1,
+      "graph_id": null,
+      "layer": 0,
+      "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+      "pair": "linear_r0_l0_prefill_first",
+      "point": {
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_prefill_first.input.eager1.pt",
+        "sha256": "0943299f7a566523ac310ed4be67d815f0b8378f169939633c0c00df9773d916"
+      },
+      "rank": 0,
+      "run_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02",
+      "seals": {
+        "weight": {
+          "argument": "weight",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e4m3fn",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight",
+          "sealed": true,
+          "shape": [
+            2048,
+            7168
+          ],
+          "storage_nbytes": 14680064,
+          "storage_offset": 0,
+          "stride": [
+            7168,
+            1
+          ],
+          "tensor": "weight",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float8_e4m3fn",
+            "shape": [
+              2048,
+              7168
+            ],
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          }
+        },
+        "weight_scale": {
+          "argument": "weight_scale",
+          "attributes": {},
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            16,
+            56
+          ],
+          "storage_nbytes": 3584,
+          "storage_offset": 0,
+          "stride": [
+            56,
+            1
+          ],
+          "tensor": "weight_scale_inv",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float32",
+            "shape": [
+              16,
+              56
+            ],
+            "storage_offset": 0,
+            "stride": [
+              56,
+              1
+            ]
+          }
+        }
+      },
+      "served": {
+        "active_requests": 1,
+        "live_rows": 8192,
+        "padded_rows": 8192,
+        "phase": "prefill"
+      },
+      "weight_attributes": {
+        "is_shuffled": true
+      },
+      "window_id": "w1-linear-moe-payload-20261027-02"
+    },
+    "prefill_second": {
+      "caller": "model.layers.0.self_attn.wqkv_a",
+      "carrier": {
+        "exported_by": "linear_r0_l0_prefill_first",
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_prefill_first.carrier.pt",
+        "sha256": "ac23625cc8dbfe2c478a8080fb83a6f8afc27b5c57189fdb44b5585301b3a530"
+      },
+      "event_index": 518,
+      "graph_id": null,
+      "layer": 0,
+      "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+      "pair": "linear_r0_l0_prefill_second",
+      "point": {
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_prefill_second.input.eager518.pt",
+        "sha256": "80a9e6810aecfe3e04325d8035b063fa1093ad6377a3f3a2c3a865da4a36f2c4"
+      },
+      "rank": 0,
+      "run_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02",
+      "seals": {
+        "weight": {
+          "argument": "weight",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e4m3fn",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight",
+          "sealed": true,
+          "shape": [
+            2048,
+            7168
+          ],
+          "storage_nbytes": 14680064,
+          "storage_offset": 0,
+          "stride": [
+            7168,
+            1
+          ],
+          "tensor": "weight",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float8_e4m3fn",
+            "shape": [
+              2048,
+              7168
+            ],
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          }
+        },
+        "weight_scale": {
+          "argument": "weight_scale",
+          "attributes": {},
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            16,
+            56
+          ],
+          "storage_nbytes": 3584,
+          "storage_offset": 0,
+          "stride": [
+            56,
+            1
+          ],
+          "tensor": "weight_scale_inv",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float32",
+            "shape": [
+              16,
+              56
+            ],
+            "storage_offset": 0,
+            "stride": [
+              56,
+              1
+            ]
+          }
+        }
+      },
+      "served": {
+        "active_requests": 1,
+        "live_rows": 8192,
+        "padded_rows": 8192,
+        "phase": "prefill"
+      },
+      "weight_attributes": {
+        "is_shuffled": true
+      },
+      "window_id": "w1-linear-moe-payload-20261027-02"
+    },
+    "decode_first": {
+      "caller": "model.layers.0.self_attn.wqkv_a",
+      "carrier": {
+        "exported_by": "linear_r0_l0_prefill_first",
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_prefill_first.carrier.pt",
+        "sha256": "ac23625cc8dbfe2c478a8080fb83a6f8afc27b5c57189fdb44b5585301b3a530"
+      },
+      "event_index": 1,
+      "graph_id": "FullCudaGraphBackend#7ee10e7f0110:{\"attention_variant\":null,\"size\":64,\"stream_idx\":null,\"variant_label\":null}",
+      "layer": 0,
+      "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+      "pair": "linear_r0_l0_decode_first_second",
+      "point": {
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_decode_first_second.input.replay1.pt",
+        "sha256": "3faa5161732365b35118a2582d8e7ff1957b47806da8edb77ee518985fbf6b60"
+      },
+      "rank": 0,
+      "run_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02",
+      "seals": {
+        "weight": {
+          "argument": "weight",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e4m3fn",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight",
+          "sealed": true,
+          "shape": [
+            2048,
+            7168
+          ],
+          "storage_nbytes": 14680064,
+          "storage_offset": 0,
+          "stride": [
+            7168,
+            1
+          ],
+          "tensor": "weight",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float8_e4m3fn",
+            "shape": [
+              2048,
+              7168
+            ],
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          }
+        },
+        "weight_scale": {
+          "argument": "weight_scale",
+          "attributes": {},
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            16,
+            56
+          ],
+          "storage_nbytes": 3584,
+          "storage_offset": 0,
+          "stride": [
+            56,
+            1
+          ],
+          "tensor": "weight_scale_inv",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float32",
+            "shape": [
+              16,
+              56
+            ],
+            "storage_offset": 0,
+            "stride": [
+              56,
+              1
+            ]
+          }
+        }
+      },
+      "served": {
+        "active_requests": 64,
+        "live_rows": 64,
+        "padded_rows": 64,
+        "phase": "decode"
+      },
+      "weight_attributes": {
+        "is_shuffled": true
+      },
+      "window_id": "w1-linear-moe-payload-20261027-02"
+    },
+    "decode_second": {
+      "caller": "model.layers.0.self_attn.wqkv_a",
+      "carrier": {
+        "exported_by": "linear_r0_l0_prefill_first",
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_prefill_first.carrier.pt",
+        "sha256": "ac23625cc8dbfe2c478a8080fb83a6f8afc27b5c57189fdb44b5585301b3a530"
+      },
+      "event_index": 2,
+      "graph_id": "FullCudaGraphBackend#7ee10e7f0110:{\"attention_variant\":null,\"size\":64,\"stream_idx\":null,\"variant_label\":null}",
+      "layer": 0,
+      "model_generation": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1",
+      "pair": "linear_r0_l0_decode_first_second",
+      "point": {
+        "path": "/evaluation/payloads/rank0/linear_r0_l0_decode_first_second.input.replay2.pt",
+        "sha256": "b5097da132fd3547916778947333121139e4b80ce3b2f1a1216681ec6fce1079"
+      },
+      "rank": 0,
+      "run_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02",
+      "seals": {
+        "weight": {
+          "argument": "weight",
+          "attributes": {
+            "is_shuffled": true
+          },
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float8_e4m3fn",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight",
+          "sealed": true,
+          "shape": [
+            2048,
+            7168
+          ],
+          "storage_nbytes": 14680064,
+          "storage_offset": 0,
+          "stride": [
+            7168,
+            1
+          ],
+          "tensor": "weight",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float8_e4m3fn",
+            "shape": [
+              2048,
+              7168
+            ],
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          }
+        },
+        "weight_scale": {
+          "argument": "weight_scale",
+          "attributes": {},
+          "caller": "model.layers.0.self_attn.wqkv_a",
+          "device": "cuda:0",
+          "dtype": "torch.float32",
+          "seal_id": "geak-aiter-w1-linear-moe-payload-b08-20261027-02:rank0:g1:model.layers.0.self_attn.wqkv_a:weight_scale_inv",
+          "sealed": true,
+          "shape": [
+            16,
+            56
+          ],
+          "storage_nbytes": 3584,
+          "storage_offset": 0,
+          "stride": [
+            56,
+            1
+          ],
+          "tensor": "weight_scale_inv",
+          "version": 1,
+          "view": {
+            "dtype": "torch.float32",
+            "shape": [
+              16,
+              56
+            ],
+            "storage_offset": 0,
+            "stride": [
+              56,
+              1
+            ]
+          }
+        }
+      },
+      "served": {
+        "active_requests": 64,
+        "live_rows": 64,
+        "padded_rows": 64,
+        "phase": "decode"
+      },
+      "weight_attributes": {
+        "is_shuffled": true
+      },
+      "window_id": "w1-linear-moe-payload-20261027-02"
+    }
+  },
+  "exported_cases": [
+    {
+      "test_case_id": "prefill_m8192_n2048_k7168_fp8in",
+      "shape": [
+        8192,
+        2048,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "phase": "prefill",
+        "m": 8192,
+        "n": 2048,
+        "k": 7168,
+        "input_form": "fp8",
+        "layers": "model.layers.0.self_attn.wqkv_a (fused wq_a + wkv) on rank 0 only; activation quant fused into RMSNorm outside the call",
+        "calls_per_forward": 1,
+        "sglang_call_sites": [
+          "sglang python/sglang/srt/models/deepseek_v4.py:705-731 (ReplicatedLinear 7168 -> 1536+512)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:2452-2480 (layer 0: hc_pre returns norm_fused False, then _fused_rmsnorm_fp8_quant gives x_quant)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:443-462 (_fused_rmsnorm_fp8_quant, transpose_scale)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:1430-1433 (wqkv_a(x_quant))",
+          "sglang python/sglang/srt/layers/quantization/fp8.py:1089-1118 (input_scale=x[1])"
+        ],
+        "benchmark_method": "cuda_event_fallback",
+        "tensors": {
+          "x": {
+            "shape": [
+              8192,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 58720256,
+            "storage_group": 0
+          },
+          "x_scale": {
+            "shape": [
+              8192,
+              56
+            ],
+            "stride": [
+              1,
+              8192
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 1835008,
+            "storage_group": 1
+          },
+          "weight": {
+            "shape": [
+              2048,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 14680064,
+            "storage_group": 2
+          },
+          "weight_scale": {
+            "shape": [
+              16,
+              56
+            ],
+            "stride": [
+              56,
+              1
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 3584,
+            "storage_group": 3
+          }
+        },
+        "inputs": "Captured public-call tensors; second authentic state for correctness only"
+      },
+      "inputs": {
+        "path": "inputs/prefill_m8192_n2048_k7168_fp8in.pt",
+        "sha256": "6ce600464c87e3b08a22473c667de978d30386ab530b53025a49b44dc095ab0f",
+        "current_value_replay": {
+          "path": "inputs/prefill_m8192_n2048_k7168_fp8in.current.pt",
+          "sha256": "5449f31029a1fe86d1b598ce26bd0e8c22ef1cbb3af561661dfcd184266dbf64"
+        }
+      },
+      "count": 64
+    },
+    {
+      "test_case_id": "decode_m64_n2048_k7168_fp8in",
+      "shape": [
+        64,
+        2048,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "params": {
+        "phase": "decode",
+        "m": 64,
+        "n": 2048,
+        "k": 7168,
+        "input_form": "fp8",
+        "layers": "model.layers.0.self_attn.wqkv_a (fused wq_a + wkv) on rank 0 only; activation quant fused into RMSNorm outside the call",
+        "calls_per_forward": 1,
+        "sglang_call_sites": [
+          "sglang python/sglang/srt/models/deepseek_v4.py:705-731 (ReplicatedLinear 7168 -> 1536+512)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:2452-2480 (layer 0: hc_pre returns norm_fused False, then _fused_rmsnorm_fp8_quant gives x_quant)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:443-462 (_fused_rmsnorm_fp8_quant, transpose_scale)",
+          "sglang python/sglang/srt/models/deepseek_v4.py:1430-1433 (wqkv_a(x_quant))",
+          "sglang python/sglang/srt/layers/quantization/fp8.py:1089-1118 (input_scale=x[1])"
+        ],
+        "benchmark_method": "cuda_graph",
+        "tensors": {
+          "x": {
+            "shape": [
+              64,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 458752,
+            "storage_group": 0
+          },
+          "x_scale": {
+            "shape": [
+              64,
+              56
+            ],
+            "stride": [
+              1,
+              64
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 14336,
+            "storage_group": 1
+          },
+          "weight": {
+            "shape": [
+              2048,
+              7168
+            ],
+            "stride": [
+              7168,
+              1
+            ],
+            "dtype": "torch.float8_e4m3fn",
+            "storage_offset": 0,
+            "storage_nbytes": 14680064,
+            "storage_group": 2
+          },
+          "weight_scale": {
+            "shape": [
+              16,
+              56
+            ],
+            "stride": [
+              56,
+              1
+            ],
+            "dtype": "torch.float32",
+            "storage_offset": 0,
+            "storage_nbytes": 3584,
+            "storage_group": 3
+          }
+        },
+        "inputs": "Captured public-call tensors; second authentic state for correctness only"
+      },
+      "inputs": {
+        "path": "inputs/decode_m64_n2048_k7168_fp8in.pt",
+        "sha256": "1724cfc5b5b109cc2e289de4fd00e9eb9567f2ec7b5ed884fe618ad1a48893bc",
+        "current_value_replay": {
+          "path": "inputs/decode_m64_n2048_k7168_fp8in.current.pt",
+          "sha256": "06176e3389bfb7c1fbe5e1123e32926b9c3c3cbc51189c43893da6e7c529e0da"
+        }
+      },
+      "count": 1024
+    }
+  ],
+  "limits": "CPU input joins and capture provenance do not establish native correctness, separation of the two outputs, timing or optimization benefit."
+}

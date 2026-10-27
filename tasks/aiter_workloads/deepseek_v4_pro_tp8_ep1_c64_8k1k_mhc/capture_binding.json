@@ -1,0 +1,933 @@
+{
+  "format": "aiter_workload_capture_binding_v1",
+  "status": "authentic_inputs_joined_pending_native_qualification",
+  "scope": "rank0 layer0 attention-output-to-FFN-input mHC boundary; one-site proxy",
+  "selection_rule_sha256": "887e35f1c836198a9edcdc36ce843d8711b770909a51c9741bceb31833e145e2",
+  "selection_sha256": "c255b64fbdc1d7a41eced8942fac556bb3332f8ae27610592d3b1bd26892a773",
+  "accounting_aggregate_sha256": "1c6d4dacf78356883a98c5f3573271c8ec748a5776400e49a086ef3b451b3a0d",
+  "payload_aggregate_sha256": "8664dcabe24e6cb8cb4dcf64f4e47360aad6f249adad0bf9901a26b92a4fb5a4",
+  "join_output_index_sha256": "4a5bea8a8d02853cb2107b5c5641db2cbc3a65615b68d443075e9220c3fab4af",
+  "sampling": {
+    "timing": "first_scored_occurrence_per_observed_stratum",
+    "correctness": "next_scored_same_variant_manifest_and_prepared_weights",
+    "warmup_included": false,
+    "timing_sample_changes_after_results": false
+  },
+  "exported_cases": [
+    {
+      "test_case_id": "prefill_m8192",
+      "shape": [
+        8192,
+        4,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "phase": "prefill",
+        "m": 8192,
+        "benchmark_method": "cuda_event_fallback",
+        "upstream_path_at_pin": "m >= MHC_FUSED_POST_PRE_M_UPPER_BOUND[gfx950]=1024: mhc_post then mhc_pre (aiter/ops/mhc.py:1058-1081)",
+        "inputs": "captured public-call tensors; second authentic state for correctness only",
+        "tensors": {
+          "comb_res_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              8192,
+              4,
+              4
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 524288,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              4,
+              1
+            ]
+          },
+          "fn": {
+            "dtype": "torch.float32",
+            "shape": [
+              24,
+              28672
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 2752512,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              1
+            ]
+          },
+          "hc_base": {
+            "dtype": "torch.float32",
+            "shape": [
+              24
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 96,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "hc_scale": {
+            "dtype": "torch.float32",
+            "shape": [
+              3
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 12,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "layer_input": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              8192,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 117440512,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "norm_weight": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              7168
+            ],
+            "storage_group": 7,
+            "storage_nbytes": 14336,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "post_layer_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              8192,
+              4
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 131072,
+            "storage_offset": 0,
+            "stride": [
+              4,
+              1
+            ]
+          },
+          "residual_in": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              8192,
+              4,
+              7168
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 469762048,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              7168,
+              1
+            ]
+          }
+        },
+        "call_site": {
+          "rank": 0,
+          "layer": 0,
+          "caller": "model.layers.0",
+          "boundary": "attention_output_to_ffn_input"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "inputs": {
+        "path": "inputs/prefill_m8192.pt",
+        "sha256": "91c4011f1ca821588b267dd83590c5c9a418fa23fa76ed6b7f6bc7c1ab996dab",
+        "current_value_replay": {
+          "path": "inputs/prefill_m8192.current.pt",
+          "sha256": "9e47a6bf2b73d8b0630698afdc471834f4f2bbeb8da3ff84426e3455307b6330"
+        }
+      },
+      "count": 64,
+      "capture_points": [
+        {
+          "state": "timing",
+          "join_record_sha256": "55485ccdfd2781edc2d3e1f8bf894939cf7a0781b1764a49e5343b53ef8e89ea",
+          "input_sha256": "91c4011f1ca821588b267dd83590c5c9a418fa23fa76ed6b7f6bc7c1ab996dab",
+          "source": {
+            "caller": "model.layers.0",
+            "carrier": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_prefill_first.carrier.pt",
+              "sha256": "3674dcac0c350a8dcc1003722a76998d0c4e93aa4eaab3a4fece74013787c526"
+            },
+            "event_index": 4,
+            "fn_tensor": "hc_ffn_fn",
+            "graph_id": null,
+            "layer": 0,
+            "model_generation": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1",
+            "pair": "mhc_r0_l0_ffn_prefill_first",
+            "point": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_prefill_first.input.eager4.pt",
+              "sha256": "89dda4b6ddc0241a61e8e17782f60c535906d0e65207f5a61fa8b143b5efa786"
+            },
+            "rank": 0,
+            "run_id": "geak-aiter-w1-mhc-payload-b08-20261027-01",
+            "seals": {
+              "fn": {
+                "argument": "fn",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_fn",
+                "sealed": true,
+                "shape": [
+                  24,
+                  28672
+                ],
+                "storage_nbytes": 2752512,
+                "storage_offset": 0,
+                "stride": [
+                  28672,
+                  1
+                ],
+                "tensor": "hc_ffn_fn",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24,
+                    28672
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    28672,
+                    1
+                  ]
+                }
+              },
+              "hc_base": {
+                "argument": "hc_base",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_base",
+                "sealed": true,
+                "shape": [
+                  24
+                ],
+                "storage_nbytes": 96,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_base",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "hc_scale": {
+                "argument": "hc_scale",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_scale",
+                "sealed": true,
+                "shape": [
+                  3
+                ],
+                "storage_nbytes": 12,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_scale",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    3
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "norm_weight": {
+                "argument": "norm_weight",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.bfloat16",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:post_attention_layernorm.weight",
+                "sealed": true,
+                "shape": [
+                  7168
+                ],
+                "storage_nbytes": 14336,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "post_attention_layernorm.weight",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.bfloat16",
+                  "shape": [
+                    7168
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              }
+            },
+            "served": {
+              "active_requests": 1,
+              "live_rows": 8192,
+              "padded_rows": 8192,
+              "phase": "prefill"
+            },
+            "window_id": "w1-mhc-payload-20261027-01"
+          }
+        },
+        {
+          "state": "correctness",
+          "join_record_sha256": "959e0dae7ee7ca9b624e7be4011323228ac6b561a1512d00d7d5910ca7c69d0f",
+          "input_sha256": "9e47a6bf2b73d8b0630698afdc471834f4f2bbeb8da3ff84426e3455307b6330",
+          "source": {
+            "caller": "model.layers.0",
+            "carrier": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_prefill_first.carrier.pt",
+              "sha256": "3674dcac0c350a8dcc1003722a76998d0c4e93aa4eaab3a4fece74013787c526"
+            },
+            "event_index": 521,
+            "fn_tensor": "hc_ffn_fn",
+            "graph_id": null,
+            "layer": 0,
+            "model_generation": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1",
+            "pair": "mhc_r0_l0_ffn_prefill_second",
+            "point": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_prefill_second.input.eager521.pt",
+              "sha256": "5695bdc2aa4d1763b843f1610b036272aebf205269d7c4e391d8db024fe543eb"
+            },
+            "rank": 0,
+            "run_id": "geak-aiter-w1-mhc-payload-b08-20261027-01",
+            "seals": {
+              "fn": {
+                "argument": "fn",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_fn",
+                "sealed": true,
+                "shape": [
+                  24,
+                  28672
+                ],
+                "storage_nbytes": 2752512,
+                "storage_offset": 0,
+                "stride": [
+                  28672,
+                  1
+                ],
+                "tensor": "hc_ffn_fn",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24,
+                    28672
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    28672,
+                    1
+                  ]
+                }
+              },
+              "hc_base": {
+                "argument": "hc_base",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_base",
+                "sealed": true,
+                "shape": [
+                  24
+                ],
+                "storage_nbytes": 96,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_base",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "hc_scale": {
+                "argument": "hc_scale",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_scale",
+                "sealed": true,
+                "shape": [
+                  3
+                ],
+                "storage_nbytes": 12,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_scale",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    3
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "norm_weight": {
+                "argument": "norm_weight",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.bfloat16",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:post_attention_layernorm.weight",
+                "sealed": true,
+                "shape": [
+                  7168
+                ],
+                "storage_nbytes": 14336,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "post_attention_layernorm.weight",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.bfloat16",
+                  "shape": [
+                    7168
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              }
+            },
+            "served": {
+              "active_requests": 1,
+              "live_rows": 8192,
+              "padded_rows": 8192,
+              "phase": "prefill"
+            },
+            "window_id": "w1-mhc-payload-20261027-01"
+          }
+        }
+      ]
+    },
+    {
+      "test_case_id": "decode_m64",
+      "shape": [
+        64,
+        4,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "phase": "decode",
+        "m": 64,
+        "benchmark_method": "cuda_graph",
+        "upstream_path_at_pin": "m < 1024: fused mhc_fused_post_pre_gemm_sqrsum + mhc_pre_big_fuse_rmsnorm (aiter/ops/mhc.py:1156-1230)",
+        "inputs": "captured public-call tensors; second authentic state for correctness only",
+        "tensors": {
+          "comb_res_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              64,
+              4,
+              4
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              4,
+              1
+            ]
+          },
+          "fn": {
+            "dtype": "torch.float32",
+            "shape": [
+              24,
+              28672
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 2752512,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              1
+            ]
+          },
+          "hc_base": {
+            "dtype": "torch.float32",
+            "shape": [
+              24
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 96,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "hc_scale": {
+            "dtype": "torch.float32",
+            "shape": [
+              3
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 12,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "layer_input": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              64,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 917504,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "norm_weight": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              7168
+            ],
+            "storage_group": 7,
+            "storage_nbytes": 14336,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "post_layer_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              64,
+              4
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 1024,
+            "storage_offset": 0,
+            "stride": [
+              4,
+              1
+            ]
+          },
+          "residual_in": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              64,
+              4,
+              7168
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 3670016,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              7168,
+              1
+            ]
+          }
+        },
+        "call_site": {
+          "rank": 0,
+          "layer": 0,
+          "caller": "model.layers.0",
+          "boundary": "attention_output_to_ffn_input"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "inputs": {
+        "path": "inputs/decode_m64.pt",
+        "sha256": "c93e06f20a65dfe3235481a281bf2776bcb5f55df584b885efc9670748a2fb0f",
+        "current_value_replay": {
+          "path": "inputs/decode_m64.current.pt",
+          "sha256": "756044b5fe1eaf1a10be0b379cf6ef8182a9de1e0dc891d2416387d271e2d680"
+        }
+      },
+      "count": 1024,
+      "capture_points": [
+        {
+          "state": "timing",
+          "join_record_sha256": "0e06d0fba7b1a27823c10617e797e91369013a60000fd56c0ab87f6f7637c1eb",
+          "input_sha256": "c93e06f20a65dfe3235481a281bf2776bcb5f55df584b885efc9670748a2fb0f",
+          "source": {
+            "caller": "model.layers.0",
+            "carrier": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_prefill_first.carrier.pt",
+              "sha256": "3674dcac0c350a8dcc1003722a76998d0c4e93aa4eaab3a4fece74013787c526"
+            },
+            "event_index": 1,
+            "fn_tensor": "hc_ffn_fn",
+            "graph_id": "FullCudaGraphBackend#7f2e53581700:{\"attention_variant\":null,\"size\":64,\"stream_idx\":null,\"variant_label\":null}",
+            "layer": 0,
+            "model_generation": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1",
+            "pair": "mhc_r0_l0_ffn_decode_first_second",
+            "point": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_decode_first_second.input.replay1.pt",
+              "sha256": "e8ecec2a4694136ff8999de1f82a85c4d39c80c4d214be7df1ceb6745e9d6920"
+            },
+            "rank": 0,
+            "run_id": "geak-aiter-w1-mhc-payload-b08-20261027-01",
+            "seals": {
+              "fn": {
+                "argument": "fn",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_fn",
+                "sealed": true,
+                "shape": [
+                  24,
+                  28672
+                ],
+                "storage_nbytes": 2752512,
+                "storage_offset": 0,
+                "stride": [
+                  28672,
+                  1
+                ],
+                "tensor": "hc_ffn_fn",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24,
+                    28672
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    28672,
+                    1
+                  ]
+                }
+              },
+              "hc_base": {
+                "argument": "hc_base",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_base",
+                "sealed": true,
+                "shape": [
+                  24
+                ],
+                "storage_nbytes": 96,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_base",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "hc_scale": {
+                "argument": "hc_scale",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_scale",
+                "sealed": true,
+                "shape": [
+                  3
+                ],
+                "storage_nbytes": 12,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_scale",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    3
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "norm_weight": {
+                "argument": "norm_weight",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.bfloat16",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:post_attention_layernorm.weight",
+                "sealed": true,
+                "shape": [
+                  7168
+                ],
+                "storage_nbytes": 14336,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "post_attention_layernorm.weight",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.bfloat16",
+                  "shape": [
+                    7168
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              }
+            },
+            "served": {
+              "active_requests": 64,
+              "live_rows": 64,
+              "padded_rows": 64,
+              "phase": "decode"
+            },
+            "window_id": "w1-mhc-payload-20261027-01"
+          }
+        },
+        {
+          "state": "correctness",
+          "join_record_sha256": "df02656212ad1359bfe175356b34cc2314970b688779c41dcceb7e08d62a6d5c",
+          "input_sha256": "756044b5fe1eaf1a10be0b379cf6ef8182a9de1e0dc891d2416387d271e2d680",
+          "source": {
+            "caller": "model.layers.0",
+            "carrier": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_prefill_first.carrier.pt",
+              "sha256": "3674dcac0c350a8dcc1003722a76998d0c4e93aa4eaab3a4fece74013787c526"
+            },
+            "event_index": 2,
+            "fn_tensor": "hc_ffn_fn",
+            "graph_id": "FullCudaGraphBackend#7f2e53581700:{\"attention_variant\":null,\"size\":64,\"stream_idx\":null,\"variant_label\":null}",
+            "layer": 0,
+            "model_generation": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1",
+            "pair": "mhc_r0_l0_ffn_decode_first_second",
+            "point": {
+              "path": "/evaluation/payloads/rank0/mhc_r0_l0_ffn_decode_first_second.input.replay2.pt",
+              "sha256": "b15215a4f9cd172241bf8ffab6773451bd25a6e6a3513116118eecef762af568"
+            },
+            "rank": 0,
+            "run_id": "geak-aiter-w1-mhc-payload-b08-20261027-01",
+            "seals": {
+              "fn": {
+                "argument": "fn",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_fn",
+                "sealed": true,
+                "shape": [
+                  24,
+                  28672
+                ],
+                "storage_nbytes": 2752512,
+                "storage_offset": 0,
+                "stride": [
+                  28672,
+                  1
+                ],
+                "tensor": "hc_ffn_fn",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24,
+                    28672
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    28672,
+                    1
+                  ]
+                }
+              },
+              "hc_base": {
+                "argument": "hc_base",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_base",
+                "sealed": true,
+                "shape": [
+                  24
+                ],
+                "storage_nbytes": 96,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_base",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    24
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "hc_scale": {
+                "argument": "hc_scale",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.float32",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:hc_ffn_scale",
+                "sealed": true,
+                "shape": [
+                  3
+                ],
+                "storage_nbytes": 12,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "hc_ffn_scale",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.float32",
+                  "shape": [
+                    3
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              },
+              "norm_weight": {
+                "argument": "norm_weight",
+                "attributes": {},
+                "caller": "model.layers.0",
+                "device": "cuda:0",
+                "dtype": "torch.bfloat16",
+                "seal_id": "geak-aiter-w1-mhc-payload-b08-20261027-01:rank0:g1:model.layers.0:post_attention_layernorm.weight",
+                "sealed": true,
+                "shape": [
+                  7168
+                ],
+                "storage_nbytes": 14336,
+                "storage_offset": 0,
+                "stride": [
+                  1
+                ],
+                "tensor": "post_attention_layernorm.weight",
+                "version": 0,
+                "view": {
+                  "dtype": "torch.bfloat16",
+                  "shape": [
+                    7168
+                  ],
+                  "storage_offset": 0,
+                  "stride": [
+                    1
+                  ]
+                }
+              }
+            },
+            "served": {
+              "active_requests": 64,
+              "live_rows": 64,
+              "padded_rows": 64,
+              "phase": "decode"
+            },
+            "window_id": "w1-mhc-payload-20261027-01"
+          }
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Measured counts describe the selected site, not all mHC layers or ranks.",
+    "Capture and byte-preserving joins do not establish numerical qualification.",
+    "Historical current-owned measurement_valid=false is preserved; request/accounting success and resource settlement are separate evidence."
+  ]
+}

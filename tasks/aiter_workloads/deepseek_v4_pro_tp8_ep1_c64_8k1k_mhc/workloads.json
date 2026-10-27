@@ -1,0 +1,446 @@
+{
+  "binding_status": "frozen",
+  "workload": {
+    "model": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+    "model_revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+    "serving": "SGLang 0.5.20, commit 94602c9c2b7cbdb8efd5c52802dac6a1c180089e",
+    "tp": 8,
+    "ep": 1,
+    "dp": 1,
+    "concurrency": 64,
+    "input_tokens": 8192,
+    "output_tokens": 1024,
+    "input_mode": "token_ids",
+    "num_prompts": 64,
+    "request_seed": 42,
+    "server_seed": 379165553,
+    "request_rate": "inf",
+    "temperature": 0.0,
+    "random_range_ratio": 1.0,
+    "chunked_prefill_size": 8192,
+    "max_running_requests": 64,
+    "prefill_graph": "eager",
+    "decode_graph": "cuda_graph (buckets <= 64)",
+    "serving_environment": {
+      "SGLANG_USE_AITER": "1"
+    },
+    "gpu_arch": "gfx950",
+    "dataset_repository": "anon8231489123/ShareGPT_Vicuna_unfiltered",
+    "dataset_file": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "dataset_sha256": "35f0e213ce091ed9b9af2a1f0755e9d39f9ccec34ab281cd4ca60d70f6479ba4"
+  },
+  "runtime_environment": {},
+  "call_site": {
+    "callable": "aiter.ops.mhc.mhc_fused_post_pre (keyword call; force_fused, w_preshuffle_bf16, res_preshuffle, backend left at defaults)",
+    "sglang": [
+      "python/sglang/srt/models/deepseek_common/amd/deepseek_v4_fused_mhc.py:257-271",
+      "python/sglang/srt/models/deepseek_v4.py:2389-2420 (cross-layer, hc_attn_*, input_layernorm)",
+      "python/sglang/srt/models/deepseek_v4.py:2490-2510 (attention-to-FFN, hc_ffn_*, post_attention_layernorm)"
+    ],
+    "outputs": "(post_mix fp32 [m,4,1], comb_mix fp32 [m,4,4], layer_input_out bf16 [m,7168], next_residual bf16 [m,4,7168]); all contiguous",
+    "selected": {
+      "rank": 0,
+      "layer": 0,
+      "caller": "model.layers.0",
+      "boundary": "attention_output_to_ffn_input"
+    }
+  },
+  "cases": [
+    {
+      "test_case_id": "prefill_m8192",
+      "shape": [
+        8192,
+        4,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "phase": "prefill",
+        "m": 8192,
+        "benchmark_method": "cuda_event_fallback",
+        "upstream_path_at_pin": "m >= MHC_FUSED_POST_PRE_M_UPPER_BOUND[gfx950]=1024: mhc_post then mhc_pre (aiter/ops/mhc.py:1058-1081)",
+        "inputs": "captured public-call tensors; second authentic state for correctness only",
+        "tensors": {
+          "comb_res_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              8192,
+              4,
+              4
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 524288,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              4,
+              1
+            ]
+          },
+          "fn": {
+            "dtype": "torch.float32",
+            "shape": [
+              24,
+              28672
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 2752512,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              1
+            ]
+          },
+          "hc_base": {
+            "dtype": "torch.float32",
+            "shape": [
+              24
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 96,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "hc_scale": {
+            "dtype": "torch.float32",
+            "shape": [
+              3
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 12,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "layer_input": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              8192,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 117440512,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "norm_weight": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              7168
+            ],
+            "storage_group": 7,
+            "storage_nbytes": 14336,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "post_layer_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              8192,
+              4
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 131072,
+            "storage_offset": 0,
+            "stride": [
+              4,
+              1
+            ]
+          },
+          "residual_in": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              8192,
+              4,
+              7168
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 469762048,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              7168,
+              1
+            ]
+          }
+        },
+        "call_site": {
+          "rank": 0,
+          "layer": 0,
+          "caller": "model.layers.0",
+          "boundary": "attention_output_to_ffn_input"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "inputs": {
+        "path": "inputs/prefill_m8192.pt",
+        "sha256": "91c4011f1ca821588b267dd83590c5c9a418fa23fa76ed6b7f6bc7c1ab996dab",
+        "current_value_replay": {
+          "path": "inputs/prefill_m8192.current.pt",
+          "sha256": "9e47a6bf2b73d8b0630698afdc471834f4f2bbeb8da3ff84426e3455307b6330"
+        }
+      }
+    },
+    {
+      "test_case_id": "decode_m64",
+      "shape": [
+        64,
+        4,
+        7168
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "phase": "decode",
+        "m": 64,
+        "benchmark_method": "cuda_graph",
+        "upstream_path_at_pin": "m < 1024: fused mhc_fused_post_pre_gemm_sqrsum + mhc_pre_big_fuse_rmsnorm (aiter/ops/mhc.py:1156-1230)",
+        "inputs": "captured public-call tensors; second authentic state for correctness only",
+        "tensors": {
+          "comb_res_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              64,
+              4,
+              4
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 4096,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              4,
+              1
+            ]
+          },
+          "fn": {
+            "dtype": "torch.float32",
+            "shape": [
+              24,
+              28672
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 2752512,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              1
+            ]
+          },
+          "hc_base": {
+            "dtype": "torch.float32",
+            "shape": [
+              24
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 96,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "hc_scale": {
+            "dtype": "torch.float32",
+            "shape": [
+              3
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 12,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "layer_input": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              64,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 917504,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "norm_weight": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              7168
+            ],
+            "storage_group": 7,
+            "storage_nbytes": 14336,
+            "storage_offset": 0,
+            "stride": [
+              1
+            ]
+          },
+          "post_layer_mix": {
+            "dtype": "torch.float32",
+            "shape": [
+              64,
+              4
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 1024,
+            "storage_offset": 0,
+            "stride": [
+              4,
+              1
+            ]
+          },
+          "residual_in": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              64,
+              4,
+              7168
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 3670016,
+            "storage_offset": 0,
+            "stride": [
+              28672,
+              7168,
+              1
+            ]
+          }
+        },
+        "call_site": {
+          "rank": 0,
+          "layer": 0,
+          "caller": "model.layers.0",
+          "boundary": "attention_output_to_ffn_input"
+        }
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "inputs": {
+        "path": "inputs/decode_m64.pt",
+        "sha256": "c93e06f20a65dfe3235481a281bf2776bcb5f55df584b885efc9670748a2fb0f",
+        "current_value_replay": {
+          "path": "inputs/decode_m64.current.pt",
+          "sha256": "756044b5fe1eaf1a10be0b379cf6ef8182a9de1e0dc891d2416387d271e2d680"
+        }
+      }
+    }
+  ],
+  "numerical_contract": {
+    "reference_kind": "aiter_op_tests_mhc_post_pre_ref",
+    "hc_mult": 4,
+    "hidden_size": 7168,
+    "call_kwargs": {
+      "rms_eps": 1e-06,
+      "hc_pre_eps": 1e-06,
+      "hc_sinkhorn_eps": 1e-06,
+      "hc_post_mult_value": 2.0,
+      "sinkhorn_repeat": 20,
+      "norm_eps": 1e-06
+    },
+    "acceptance": {
+      "method": "allclose",
+      "outputs": {
+        "post_mix": {
+          "rtol": 0.01,
+          "atol": 0.01
+        },
+        "comb_mix": {
+          "rtol": 0.01,
+          "atol": 0.01
+        },
+        "layer_input_out": {
+          "rtol": 0.01,
+          "atol": 0.01
+        },
+        "next_residual": {
+          "rtol": 0.01,
+          "atol": 0.01
+        }
+      },
+      "note": "Elementwise torch.testing.assert_close on every element; stricter than the upstream checkAllclose, which tolerates up to 5% mismatches (tol_err_ratio=0.05)."
+    },
+    "evidence": [
+      "aiter op_tests/test_mhc.py:683-690, 365-429, 735-766 (reference)",
+      "aiter op_tests/test_mhc.py:840-846 (constants), 937-950 (all four outputs compared)",
+      "aiter aiter/test_common.py:520-525 (checkAllclose rtol=atol=1e-2)",
+      "sglang deepseek_v4.py:235 _MHC_POST_MULT_VALUE=2.0; model config hc_eps=1e-6, rms_norm_eps=1e-6, hc_sinkhorn_iters=20, hc_mult=4, hidden_size=7168"
+    ]
+  },
+  "timing": {
+    "warmup": 10,
+    "repetition": 100,
+    "target_ms": 1.0,
+    "max_graph_repeats": 1000
+  },
+  "frequency_provenance": "frequency_provenance.json",
+  "missing_bindings": [],
+  "source_policy": "Upstream AITER starting program; actual W1 public-call inputs at the selected rank0 layer0 site. No synthetic case is enrolled.",
+  "runtime_binding": {
+    "input_assets": {
+      "inputs/prefill_m8192.pt": {
+        "path": "/opt/aka-inputs/w1-mhc-r0-l0/prefill_first/inputs/prefill_m8192.pt",
+        "sha256": "91c4011f1ca821588b267dd83590c5c9a418fa23fa76ed6b7f6bc7c1ab996dab",
+        "size_bytes": 590627981
+      },
+      "inputs/prefill_m8192.current.pt": {
+        "path": "/opt/aka-inputs/w1-mhc-r0-l0/prefill_second/inputs/prefill_m8192.pt",
+        "sha256": "9e47a6bf2b73d8b0630698afdc471834f4f2bbeb8da3ff84426e3455307b6330",
+        "size_bytes": 590627981
+      },
+      "inputs/decode_m64.pt": {
+        "path": "/opt/aka-inputs/w1-mhc-r0-l0/decode_first/inputs/decode_m64.pt",
+        "sha256": "c93e06f20a65dfe3235481a281bf2776bcb5f55df584b885efc9670748a2fb0f",
+        "size_bytes": 7362701
+      },
+      "inputs/decode_m64.current.pt": {
+        "path": "/opt/aka-inputs/w1-mhc-r0-l0/decode_second/inputs/decode_m64.pt",
+        "sha256": "756044b5fe1eaf1a10be0b379cf6ef8182a9de1e0dc891d2416387d271e2d680",
+        "size_bytes": 7362701
+      }
+    },
+    "image_ref": "sha256:1a82b6109081355b0c9b90db108349206e5fc969eed71754b96ee6919dd3fbd5",
+    "build_evidence": {
+      "path": "runtime_binding/build_evidence.json",
+      "sha256": "be8416fb27aeab0a71e10e5abedbc46799764835c4bcd0208c82e0711e88e497"
+    },
+    "dispatch_environment": {
+      "AITER_AOT_IMPORT": null,
+      "AITER_DISABLE_KERNARG_PRELOAD": null,
+      "AITER_ENABLE_EXPERIMENTAL": null,
+      "AITER_JIT_DIR": "/opt/aka-native/w1-mhc/aiter-jit",
+      "AITER_META_DIR": null,
+      "AITER_REBUILD": null,
+      "AITER_TRITON_ONLY": null,
+      "CK_DIR": null,
+      "CU_NUM": null,
+      "ENABLE_CK": null,
+      "FLYDSL_RUNTIME_CACHE_DIR": "/opt/aka-native/w1-mhc/aiter-jit/flydsl-runtime",
+      "GPU_ARCHS": "gfx950",
+      "HIP_KITTENS_DIR": null,
+      "OPUS_GEN_CO_DIR": null
+    },
+    "native_identity": {
+      "manifest": {
+        "path": "runtime_binding/native_identity.json",
+        "sha256": "c570e1f206fdd8197cbba2aceeebba4bce4a85fe775bbac31e4b36625dd41172"
+      },
+      "python_modules": {
+        "module_mhc": "module_mhc"
+      }
+    }
+  }
+}

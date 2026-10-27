@@ -1,35 +1,447 @@
 {
-  "binding_status": "pending_profile_and_numerical_contract",
-  "workload": {
-    "model": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
-    "model_revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
-    "tp": 8,
-    "ep": 1,
-    "concurrency": 64,
-    "input_tokens": 8192,
-    "output_tokens": 1024,
-    "num_prompts": 64,
-    "request_seed": 42,
-    "server_seed": 379165553,
-    "request_rate": "inf",
-    "temperature": 0.0,
-    "random_range_ratio": 1.0,
-    "dataset_repository": "anon8231489123/ShareGPT_Vicuna_unfiltered",
-    "dataset_file": "ShareGPT_V3_unfiltered_cleaned_split.json",
-    "dataset_sha256": "35f0e213ce091ed9b9af2a1f0755e9d39f9ccec34ab281cd4ca60d70f6479ba4"
+  "binding_status": "frozen",
+  "cases": [
+    {
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "inputs": {
+        "call_kwargs": {
+          "activation": "silu",
+          "doweight_stage1": false,
+          "gate_mode": "interleave",
+          "hidden_pad": 0,
+          "intermediate_pad": 0,
+          "quant_type": "per_1x32",
+          "swiglu_limit": 10.0
+        },
+        "current_value_replay": {
+          "path": "prefill_1.pt",
+          "sha256": "6fd8cdc6cfd3fb721da1e312f0aef0ef903a003cfce82610eb36e24f3019deac"
+        },
+        "input_weight_storages_disjoint": true,
+        "path": "prefill_0.pt",
+        "sha256": "f583f780b2dec6aed34ef8c5336fc74a0180d295d5cdeae4fa71dc1f454dbfc7",
+        "tensor_attributes": {
+          "w1": {
+            "is_shuffled": true
+          },
+          "w2": {
+            "is_shuffled": true
+          }
+        },
+        "weights": {
+          "path": "weights.pt",
+          "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e"
+        }
+      },
+      "params": {
+        "benchmark_method": "cuda_event_fallback",
+        "phase": "prefill",
+        "tensors": {
+          "hidden_states": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              8192,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 117440512,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "topk_ids": {
+            "dtype": "torch.int32",
+            "shape": [
+              8192,
+              6
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 196608,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "topk_weight": {
+            "dtype": "torch.float32",
+            "shape": [
+              8192,
+              6
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 196608,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "w1": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 1056964608,
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          },
+          "w1_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 66060288,
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          },
+          "w2": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 528482304,
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          },
+          "w2_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 44040192,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "shape": [
+        8192,
+        7168,
+        384,
+        384,
+        6
+      ],
+      "test_case_id": "prefill_m8192"
+    },
+    {
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "dtype": "bfloat16",
+      "inputs": {
+        "call_kwargs": {
+          "activation": "silu",
+          "doweight_stage1": false,
+          "gate_mode": "interleave",
+          "hidden_pad": 0,
+          "intermediate_pad": 0,
+          "quant_type": "per_1x32",
+          "swiglu_limit": 10.0
+        },
+        "current_value_replay": {
+          "path": "decode_1.pt",
+          "sha256": "fa31adfbba4ab57993cef717534ae517d4ee51c98164c51b156a7dc9df5aa543"
+        },
+        "input_weight_storages_disjoint": true,
+        "path": "decode_0.pt",
+        "sha256": "4c16194927bd5c4b862e679c49c05a312e0ae163598ff15088ea25752eddbee8",
+        "tensor_attributes": {
+          "w1": {
+            "is_shuffled": true
+          },
+          "w2": {
+            "is_shuffled": true
+          }
+        },
+        "weights": {
+          "path": "weights.pt",
+          "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e"
+        }
+      },
+      "params": {
+        "benchmark_method": "cuda_graph",
+        "phase": "decode",
+        "tensors": {
+          "hidden_states": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+              64,
+              7168
+            ],
+            "storage_group": 0,
+            "storage_nbytes": 917504,
+            "storage_offset": 0,
+            "stride": [
+              7168,
+              1
+            ]
+          },
+          "topk_ids": {
+            "dtype": "torch.int32",
+            "shape": [
+              64,
+              6
+            ],
+            "storage_group": 2,
+            "storage_nbytes": 1536,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "topk_weight": {
+            "dtype": "torch.float32",
+            "shape": [
+              64,
+              6
+            ],
+            "storage_group": 1,
+            "storage_nbytes": 1536,
+            "storage_offset": 0,
+            "stride": [
+              6,
+              1
+            ]
+          },
+          "w1": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              768,
+              3584
+            ],
+            "storage_group": 3,
+            "storage_nbytes": 1056964608,
+            "storage_offset": 0,
+            "stride": [
+              2752512,
+              3584,
+              1
+            ]
+          },
+          "w1_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              294912,
+              224
+            ],
+            "storage_group": 5,
+            "storage_nbytes": 66060288,
+            "storage_offset": 0,
+            "stride": [
+              224,
+              1
+            ]
+          },
+          "w2": {
+            "dtype": "torch.float4_e2m1fn_x2",
+            "shape": [
+              384,
+              7168,
+              192
+            ],
+            "storage_group": 4,
+            "storage_nbytes": 528482304,
+            "storage_offset": 0,
+            "stride": [
+              1376256,
+              192,
+              1
+            ]
+          },
+          "w2_scale": {
+            "dtype": "torch.float8_e8m0fnu",
+            "shape": [
+              2752512,
+              16
+            ],
+            "storage_group": 6,
+            "storage_nbytes": 44040192,
+            "storage_offset": 0,
+            "stride": [
+              16,
+              1
+            ]
+          }
+        }
+      },
+      "shape": [
+        64,
+        7168,
+        384,
+        384,
+        6
+      ],
+      "test_case_id": "decode_m64"
+    }
+  ],
+  "frequency_provenance": "frequency_provenance.json",
+  "missing_bindings": [],
+  "numerical_contract": {
+    "a1_quantizer": "aiter.ops.quant.per_1x32_f8_scale_f8_quant",
+    "a2_quantizer": "aiter.ops.quant.per_1x32_f8_scale_f8_quant",
+    "acceptance": {
+      "atol": 0.01,
+      "max_logits_diff": 0.001,
+      "method": "aiter_checked_whole_call_v1",
+      "rtol": 0.01
+    },
+    "activation": "silu",
+    "binding_status": "frozen",
+    "doweight_stage1": false,
+    "evidence": [
+      "upstream/op_tests/test_moe_2stage.py at AITER 2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0: independent staged a8w4 reference recipe.",
+      "The checked-call rule (rtol=atol=0.01, no mismatches or D<=0.001) and staged quantization/rounding policy were fixed before capture02 and native task measurements.",
+      "capture_binding.json binds the actual rank-0 model.layers.3.mlp calls, four dynamic input states, prepared weights and canonical conversion evidence; frequency_provenance.json binds the separate complete accounting run."
+    ],
+    "gate_mode": "interleave",
+    "hidden_pad": 0,
+    "intermediate_pad": 0,
+    "output_dtype": "bfloat16",
+    "reference_kind": "aiter_torch_stages_a8w4",
+    "stage1_dtype": "bfloat16",
+    "swiglu_limit": 10.0,
+    "weight_layout": "aiter_a16w4_gate_up_interleaved"
+  },
+  "runtime_binding": {
+    "build_evidence": {
+      "path": "runtime_binding/build_evidence.json",
+      "sha256": "a5173108b66e9eed65386ad8216fadab7f114634e1cbc40c6a2cabda1b2bf635"
+    },
+    "dispatch_environment": {
+      "AITER_BF16_FP8_MOE_BOUND": "0",
+      "AITER_BYPASS_TUNE_CONFIG": null,
+      "AITER_CONFIG_FMOE": null,
+      "AITER_FLYDSL_FORCE": null,
+      "AITER_FLYDSL_STAGE2_FP8": null,
+      "AITER_FORCE_A8W4": null,
+      "AITER_JIT_DIR": "/opt/aka-native/w1-moe/aiter-jit",
+      "AITER_KSPLIT": null,
+      "AITER_META_DIR": null,
+      "AITER_MOE_A8W4_BYPASS_QUANT": null,
+      "AITER_MOE_SORT_BACKEND": null,
+      "AITER_MXFP4_INTERMEDIATE": null,
+      "AITER_MXMOE_FALLBACK": null,
+      "AITER_ONLINE_TUNE": null,
+      "AITER_OPUS_STAGE2_FP8": null,
+      "AITER_ROOT_DIR": "/opt/aka-native/w1-moe/aiter-jit/cpp_itfs",
+      "AITER_SITUV2_A4W4": null,
+      "AITER_SITUV2_A4W4_FP8_INTER": null,
+      "AITER_SITUV2_A8W4": null,
+      "AITER_USE_CK_MOE_SORTING": null,
+      "AITER_USE_FLYDSL_MOE_SORTING": null,
+      "AITER_USE_NT": null,
+      "AITER_XBFLOAT16": null,
+      "CK_DIR": null,
+      "FLYDSL_AUTOTUNE_CACHE_DIR": "/opt/aka-native/w1-moe/aiter-jit/flydsl-autotune",
+      "FLYDSL_RUNTIME_CACHE_DIR": "/opt/aka-native/w1-moe/aiter-jit/flydsl-runtime",
+      "GPTOSS_SWIGLU_MXFP4_BF16_BOUND": null,
+      "OPUS_GEN_CO_DIR": null
+    },
+    "image_ref": "sha256:1a82b6109081355b0c9b90db108349206e5fc969eed71754b96ee6919dd3fbd5",
+    "input_assets": {
+      "decode_0.pt": {
+        "path": "/opt/aka-inputs/w1-moe-r0-l3/decode_0.pt",
+        "sha256": "4c16194927bd5c4b862e679c49c05a312e0ae163598ff15088ea25752eddbee8",
+        "size_bytes": 922593
+      },
+      "decode_1.pt": {
+        "path": "/opt/aka-inputs/w1-moe-r0-l3/decode_1.pt",
+        "sha256": "fa31adfbba4ab57993cef717534ae517d4ee51c98164c51b156a7dc9df5aa543",
+        "size_bytes": 922593
+      },
+      "prefill_0.pt": {
+        "path": "/opt/aka-inputs/w1-moe-r0-l3/prefill_0.pt",
+        "sha256": "f583f780b2dec6aed34ef8c5336fc74a0180d295d5cdeae4fa71dc1f454dbfc7",
+        "size_bytes": 117835745
+      },
+      "prefill_1.pt": {
+        "path": "/opt/aka-inputs/w1-moe-r0-l3/prefill_1.pt",
+        "sha256": "6fd8cdc6cfd3fb721da1e312f0aef0ef903a003cfce82610eb36e24f3019deac",
+        "size_bytes": 117835745
+      },
+      "weights.pt": {
+        "path": "/opt/aka-inputs/w1-moe-r0-l3/weights.pt",
+        "sha256": "71e81f9e53b61d5d95200de99d0160cc947a880008e490b6ed7c1c63b4065a1e",
+        "size_bytes": 3380087949
+      }
+    },
+    "native_identity": {
+      "manifest": {
+        "path": "runtime_binding/native_identity.json",
+        "sha256": "e8871980e196d6b5523deaa3ac696ecff4f0003afa1ab58a9b2987153f3bafa7"
+      },
+      "python_modules": {
+        "aiter.jit.core.__mds.module_aiter_core": "module_aiter_core",
+        "aiter.jit.core.__mds.module_moe_opus": "module_moe_opus",
+        "aiter.jit.core.__mds.module_moe_sorting_opus": "module_moe_sorting_opus",
+        "aiter.jit.core.__mds.module_quant": "module_quant"
+      },
+      "runtime_cache_paths": {
+        "flydsl_stage1_cache": "/opt/aka-native/w1-moe/aiter-jit/flydsl-runtime/launch_mixed_moe_gemm1_c282e31afd80ddece21a5754ed6cb5ee/71eb26065acb32b6.pkl"
+      }
+    }
   },
   "runtime_environment": {
     "AITER_BF16_FP8_MOE_BOUND": "0"
   },
-  "cases": [],
-  "numerical_contract": null,
-  "timing": null,
-  "frequency_provenance": null,
-  "missing_bindings": [
-    "Actual pinned-runtime call cases, payloads, routing/layout/state coverage and workload invocation frequencies.",
-    "Frozen A1/A2 quantization, intermediate rounding, output/state and numerical acceptance.",
-    "Common complete-call timing policy and fresh upstream native baseline."
-  ],
   "source_policy": "New input payloads must be reproduced from this workload and declared through the protected input carrier. No old saved kernel fixtures, case lists or timings are enrolled.",
-  "runtime_binding": null
+  "timing": {
+    "max_graph_repeats": 1000,
+    "repetition": 100,
+    "target_ms": 1.0,
+    "warmup": 10
+  },
+  "workload": {
+    "concurrency": 64,
+    "dataset_file": "ShareGPT_V3_unfiltered_cleaned_split.json",
+    "dataset_repository": "anon8231489123/ShareGPT_Vicuna_unfiltered",
+    "dataset_sha256": "35f0e213ce091ed9b9af2a1f0755e9d39f9ccec34ab281cd4ca60d70f6479ba4",
+    "ep": 1,
+    "input_mode": "token_ids",
+    "input_tokens": 8192,
+    "model": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+    "model_revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+    "num_prompts": 64,
+    "output_tokens": 1024,
+    "random_range_ratio": 1.0,
+    "request_rate": "inf",
+    "request_seed": 42,
+    "server_seed": 379165553,
+    "temperature": 0.0,
+    "tp": 8
+  }
 }
