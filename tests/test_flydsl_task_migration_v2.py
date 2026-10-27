@@ -8512,16 +8512,18 @@ def test_a8w8_production_baseline_uses_one_consistent_reduction_policy():
 ])
 def test_batched_int8_rejects_comparator_state_bypass_before_import(tmp_path, source):
     task = ROOT / 'tasks/torch2flydsl/batched_gemm_a8w8_kernel'
+    task = Path(shutil.copytree(task, tmp_path / 'task'))
     runtime = module(task / 'task_runtime.py')
-    candidate = tmp_path / 'kernel.py'
+    candidate = task / 'probe.py'
     candidate.write_text('import flydsl\n' + source + '\n')
-    with pytest.raises(ValueError, match='Protected|introspection'):
+    with pytest.raises(ValueError, match='Protected|introspection|Candidate cannot|Dynamic sys attribute lookup'):
         runtime.check_dependencies([candidate], final_language=True)
 
 
 def test_batched_int8_allows_ordinary_kernel_preparation_dependencies(tmp_path):
-    runtime = module(ROOT / 'tasks/torch2flydsl/batched_gemm_a8w8_kernel/task_runtime.py')
-    candidate = tmp_path / 'kernel.py'
+    task = Path(shutil.copytree(ROOT / 'tasks/torch2flydsl/batched_gemm_a8w8_kernel', tmp_path / 'task'))
+    runtime = module(task / 'task_runtime.py')
+    candidate = task / 'probe.py'
     candidate.write_text('import flydsl.compiler as flyc\nimport torch\nimport math\nimport sys\nlimit = sys.maxsize\n')
     runtime.check_dependencies([candidate], final_language=True)
 
@@ -8542,18 +8544,20 @@ def test_batched_int8_allows_ordinary_kernel_preparation_dependencies(tmp_path):
     'def helper(): pass\nhelper.__globals__["TOL"] = 1e9',
 ])
 def test_hgemm_rejects_oracle_mutation_before_import(tmp_path, source):
-    runtime = module(ROOT / 'tasks/torch2flydsl/hgemm_kernel/task_runtime.py')
-    candidate = tmp_path / 'kernel.py'
+    task = Path(shutil.copytree(ROOT / 'tasks/torch2flydsl/hgemm_kernel', tmp_path / 'task'))
+    runtime = module(task / 'task_runtime.py')
+    candidate = task / 'probe.py'
     candidate.write_text('import flydsl\n' + source + '\n')
-    with pytest.raises(ValueError, match='Protected|introspection'):
+    with pytest.raises(ValueError, match='Protected|introspection|Candidate cannot|Dynamic sys attribute lookup'):
         runtime.check_dependencies([candidate], final_language=True)
 
 
 def test_hgemm_retains_local_compilation_cache_and_initial_kernel(tmp_path):
     task = ROOT / 'tasks/torch2flydsl/hgemm_kernel'
+    task = Path(shutil.copytree(task, tmp_path / 'task'))
     runtime = module(task / 'task_runtime.py')
     runtime.check_dependencies([task / 'kernel.py'], final_language=True)
-    candidate = tmp_path / 'kernel.py'
+    candidate = task / 'probe.py'
     candidate.write_text('import flydsl\ndef run(exe):\n    cf = getattr(exe, "_cf", None)\n    exe._cf = cf\n')
     runtime.check_dependencies([candidate], final_language=True)
 
@@ -10786,6 +10790,9 @@ _PORTED_EVALUATOR_STATE_ADDED_SHA256 = {
     'closure': 'e8d7662da6d422dddad55064bb8c69f5bec3aae23d7f15a6cc41ae31fadc1951',
 }
 _PORTED_EVALUATOR_STATE_PRIOR_POLICY = {'triton2flydsl/aiter/gemm_a8w8'}
+# These main-branch restrictions predate the port and must survive its inverse.
+_PORTED_INHERITED_FORBIDDEN = {'torch2flydsl/batched_gemm_a8w8_kernel',
+                               'torch2flydsl/hgemm_kernel'}
 _PORTED_EVALUATOR_STATE_RUNTIME_SHA256 = {'flydsl2flydsl/blockscale_preshuffle_gemm_kernel': ('flydsl',
                                                      'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
                                                      '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
@@ -10829,8 +10836,8 @@ _PORTED_EVALUATOR_STATE_RUNTIME_SHA256 = {'flydsl2flydsl/blockscale_preshuffle_g
                                               'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
                                               '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
  'torch2flydsl/batched_gemm_a8w8_kernel': ('closure',
-                                           'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
-                                           '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
+                                           '8a38479f60d1edf2d854d51bbaf9829d539ea20520b30735b26141196815dcec',
+                                           '3d01ff6a4aca06a1b833dcfc3708bb3e0f2562737e52b329d40c55c668a9ad5c'),
  'torch2flydsl/batched_gemm_bf16_kernel': ('flydsl',
                                            'd801dcf2b2cce46fbc600d1b34370cba20b954277f9c43bcaad6d6f1cfafc8f5',
                                            '207aca9f31d46b5ca2710fbf2ef79fddd10065ddd201233f8bf26434c8b5a538'),
@@ -10880,8 +10887,8 @@ _PORTED_EVALUATOR_STATE_RUNTIME_SHA256 = {'flydsl2flydsl/blockscale_preshuffle_g
                                        'd3e10506652397ed0a0adeda91dc1a19673a421dc0b376d0a4021dd4df364347',
                                        '4be8ed131bed33978adfa4a0b5b471469a6b7362bc5f55ee6215452d7c907507'),
  'torch2flydsl/hgemm_kernel': ('flydsl',
-                               '86896d50d3437cb10c1f49e6550ba5539f98a01a38cb89912d5e9361ece44745',
-                               '56689b728c28ab228390fce6ad1b475c37bbdd0c94f359a44227c6078191e5a6'),
+                               '0d4502d67df41f409ef193e59b10e50a55a370f19ddd062714e2807ae7280301',
+                               '82e7141af763b2888e63091a0dc26f0c754db72de0105fcc86e3d4febef39afa'),
  'torch2flydsl/jagged_dense_bmm_kernel': ('closure',
                                           '2ab97a4c768078303c2a72e1b1e660619df76200763c77b15060ec383c4d498a',
                                           '6dc44218b252101b484305aa107c7da23f9bea04bd45377adfc3817e370eeb2c'),
@@ -11022,6 +11029,12 @@ def _ported_evaluator_state_bytes(task, raw):
         (ast.FunctionDef, name) for name in _PORTED_EVALUATOR_STATE_ADDED[family]], task
     text = text[:start] + text[end:]
     for reviewed, previous, policy in _PORTED_EVALUATOR_STATE_EDITS[family]:
+        if task in _PORTED_INHERITED_FORBIDDEN:
+            inherited = ', "inspect", "gc", "builtins", "importlib"'
+            reviewed = reviewed.replace(_PORTED_FORBIDDEN + ', "_aka_benchmark"}\n',
+                                        _PORTED_FORBIDDEN + ', "_aka_benchmark"' + inherited + '}\n')
+            previous = previous.replace(_PORTED_FORBIDDEN + '}\n',
+                                        _PORTED_FORBIDDEN + inherited + '}\n')
         assert text.count(reviewed) == 1, (task, reviewed)
         if not (policy and task in _PORTED_EVALUATOR_STATE_PRIOR_POLICY):
             text = text.replace(reviewed, previous, 1)
@@ -11140,6 +11153,20 @@ def test_every_flydsl_runtime_has_one_reviewed_evaluator_state_inverse():
         source = (ROOT / 'tasks' / task / 'task_runtime.py').read_text()
         assert 'check_candidate_control_plane(tree)' in source and '"_aka_benchmark"' in source, task
         _review_hardening_bytes(ROOT / 'tasks' / task / 'task_runtime.py')
+
+
+@pytest.mark.parametrize('task', sorted(_PORTED_INHERITED_FORBIDDEN))
+@pytest.mark.parametrize('name', ['inspect', 'gc', 'builtins', 'importlib'])
+def test_port_inverse_preserves_main_introspection_restrictions(task, name, monkeypatch):
+    source = (ROOT / 'tasks' / task / 'task_runtime.py').read_text()
+    literal = ', "' + name + '"'
+    assert literal in source
+    weakened = source.replace(literal, '', 1).encode()
+    family, _, before = _PORTED_EVALUATOR_STATE_RUNTIME_SHA256[task]
+    monkeypatch.setitem(_PORTED_EVALUATOR_STATE_RUNTIME_SHA256, task,
+                        (family, hashlib.sha256(weakened).hexdigest(), before))
+    with pytest.raises(AssertionError):
+        _ported_evaluator_state_bytes(task, weakened)
 
 
 @pytest.mark.parametrize('task', ['flydsl2flydsl/rmsnorm_kernel', 'triton2flydsl/aiter/mha',

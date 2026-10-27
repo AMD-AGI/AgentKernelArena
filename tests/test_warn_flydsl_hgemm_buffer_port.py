@@ -3,12 +3,32 @@
 import ast
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Optional
+
+import pytest
 
 
 BUFFER_OPS = (
     Path(__file__).resolve().parents[1]
     / "tasks/torch2flydsl/hgemm_kernel/hgemm_kernel_ops/buffer_ops.py"
 )
+
+
+@pytest.mark.parametrize('shape,width,expected', [
+    ((2, 3), 16, 12), ((7, 2), 32, 56), ((2, 0), 16, 0),
+    ((-1, 3), 16, None), ((2, 3), None, None), ((2, 3), 4, None),
+])
+def test_static_buffer_byte_extent_preserves_width_and_unknown_cases(shape, width, expected):
+    compatibility = BUFFER_OPS.parents[1] / 'flydsl_compat/buffer_ops.py'
+    tree = ast.parse(compatibility.read_text())
+    function = next(node for node in ast.walk(tree)
+                    if isinstance(node, ast.FunctionDef) and node.name == '_num_records_from_memref_type')
+    metadata = SimpleNamespace(shape=shape, element_type=(
+        SimpleNamespace() if width is None else SimpleNamespace(width=width)))
+    namespace = dict(Optional=Optional, ir=SimpleNamespace(MemRefType=lambda value: value),
+                     _unwrap_value=lambda value: value, memref_val=SimpleNamespace(type=metadata))
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(compatibility), 'exec'), namespace)
+    assert namespace['_num_records_from_memref_type']() == expected
 
 
 def test_integer_widths_use_matching_mlir_offset_conversion():

@@ -12,7 +12,8 @@ Current ROCDL load/store operations receive the same cache-policy bits through
 their `aux` attribute instead of a removed SSA operand. Vector unwrapping uses
 the current signature while retaining the surrounding MLIR location context.
 
-The bundled `meta.py` selects caller frames for MLIR locations with
-`traceback.walk_stack` instead of reading frame-link attributes, so the helper
-passes the candidate evaluator-state checks. It selects the same frame and
-builds the same locations as the original loop.
+The bundled `meta.py` uses `traceback.extract_stack` for MLIR debug locations,
+without retaining frames or importing `inspect` into the candidate dependency
+closure. It preserves the selected caller's filename, line and source label;
+debug columns consistently use zero. Kernel arithmetic and benchmark policy
+are unchanged.

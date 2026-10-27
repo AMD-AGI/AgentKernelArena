@@ -216,17 +216,8 @@ def test_shipped_initial_sources_pass_the_evaluator_state_checks(task):
                                final_language=cfg["candidate"].get("initial_language") == "flydsl")
 
 
-COMPAT_META = sorted((ROOT / "tasks/flydsl2flydsl").glob("*/flydsl_compat/meta.py"))
-ORIGINAL_FRAME_WALK = """    frame = inspect.currentframe()
-    for _ in range(depth + 1):
-        if frame is not None:
-            frame = frame.f_back
-"""
-CURRENT_FRAME_WALK = """    frame = inspect.currentframe()
-    if frame is not None:
-        # Select the same frame as following the caller link depth + 1 times.
-        frame = next(itertools.islice(traceback.walk_stack(frame), depth + 1, None), (None,))[0]
-"""
+COMPAT_META = sorted(path for family in ("flydsl2flydsl", "torch2flydsl", "triton2flydsl")
+                     for path in (ROOT / "tasks" / family).rglob("flydsl_compat/meta.py"))
 
 
 def test_vendored_caller_location_selects_the_original_frame(monkeypatch):
@@ -257,9 +248,9 @@ def test_vendored_caller_location_selects_the_original_frame(monkeypatch):
     mlir.ir = types.SimpleNamespace(Location=Location, Value=type("Value", (), {}))
     monkeypatch.setitem(sys.modules, "flydsl", types.ModuleType("flydsl"))
     monkeypatch.setitem(sys.modules, "flydsl._mlir", mlir)
-    assert len(COMPAT_META) == 6 and len({path.read_bytes() for path in COMPAT_META}) == 1
+    assert len(COMPAT_META) == 13 and len({path.read_bytes() for path in COMPAT_META}) == 1
     source = COMPAT_META[0].read_text()
-    assert source.count(CURRENT_FRAME_WALK) == 1 and ".f_back" not in source
+    assert "import inspect" not in source and ".f_back" not in source
 
     def load(name, text):
         module = types.ModuleType(name)
@@ -267,10 +258,23 @@ def test_vendored_caller_location_selects_the_original_frame(monkeypatch):
         return module
 
     current = load("compat_meta_current", source)
-    original = load("compat_meta_original", source.replace(CURRENT_FRAME_WALK, ORIGINAL_FRAME_WALK))
+
+    def original_location(depth=1):
+        # Independent reference: the original frame walk, with the declared
+        # portable line-level column policy applied to both implementations.
+        frame = inspect.currentframe()
+        for _ in range(depth + 1):
+            if frame is not None:
+                frame = frame.f_back
+        if frame is None:
+            return Location.unknown()
+        info = inspect.getframeinfo(frame)
+        line = info.positions.lineno if hasattr(info, "positions") else info.lineno
+        label = " ".join(ln.strip() for ln in info.code_context) if info.code_context else info.function
+        return Location.name(label, childLoc=Location.file(info.filename, line, 0))
 
     def site(depth):
-        return current._caller_location(depth=depth).value, original._caller_location(depth=depth).value
+        return current._caller_location(depth=depth).value, original_location(depth=depth).value
 
     for depth in (1, 2, 3, 10_000):
         selected, expected = site(depth)

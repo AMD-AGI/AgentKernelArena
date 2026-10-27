@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2025 FlyDSL Project Contributors
 
-import inspect
-import itertools
 import traceback
 from functools import wraps
 
@@ -33,24 +31,14 @@ def _flatten_args(args, kwargs):
 
 
 def _caller_location(depth=1):
-    """Build an MLIR Location from the Python call-site *depth* frames up."""
-    frame = inspect.currentframe()
-    if frame is not None:
-        # Select the same frame as following the caller link depth + 1 times.
-        frame = next(itertools.islice(traceback.walk_stack(frame), depth + 1, None), (None,))[0]
-    if frame is None:
+    """Build a line-level MLIR location without retaining Python frame objects."""
+    limit = max(1, depth + 2)
+    stack = traceback.extract_stack(limit=limit)
+    if len(stack) < limit:
         return ir.Location.unknown()
-
-    info = inspect.getframeinfo(frame)
-    pos = getattr(info, "positions", None)
-    line = pos.lineno if pos is not None else info.lineno
-    col = (pos.col_offset or 0) if pos is not None else 0
-    file_loc = ir.Location.file(info.filename, line, col)
-
-    if info.code_context:
-        label = " ".join(ln.strip() for ln in info.code_context)
-    else:
-        label = info.function
+    info = stack[0]
+    file_loc = ir.Location.file(info.filename, info.lineno, 0)
+    label = info.line.strip() if info.line else info.name
     return ir.Location.name(label, childLoc=file_loc)
 
 

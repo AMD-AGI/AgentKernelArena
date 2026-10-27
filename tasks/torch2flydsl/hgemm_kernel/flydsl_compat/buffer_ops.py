@@ -284,7 +284,7 @@ class BufferResourceDescriptor:
                     return None
                 # Compute element size in bytes (scalar element type).
                 elem_t = mt.element_type
-                elem_bits = getattr(elem_t, "width", None)
+                elem_bits = elem_t.width if hasattr(elem_t, "width") else None
                 if elem_bits is None:
                     return None
                 elem_bytes = int(elem_bits) // 8
