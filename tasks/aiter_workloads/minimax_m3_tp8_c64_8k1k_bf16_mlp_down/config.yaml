@@ -25,6 +25,7 @@ baseline:
   language: gpu
   correctness_policy: required
   source_files:
+    - scripts/baseline.py
     - upstream/aiter/tuned_gemm.py
     - upstream/aiter/ops/gemm_op_a16w16.py
 workspace:

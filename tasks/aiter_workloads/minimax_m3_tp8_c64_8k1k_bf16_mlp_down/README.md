@@ -49,7 +49,8 @@ not enrolled.
 
 Implement `source/kernel.py::mlp_down(x, weight)` and return
 `(x.float() @ weight.float().T).to(torch.bfloat16)` numerically, using an available
-GPU backend. Both inputs are contiguous BF16 tensors on the same GPU. The
+GPU backend. Both inputs are contiguous BF16 tensors on the same GPU, including
+views whose starting address is not 16-byte aligned. The
 output must have shape `[M,6144]`, BF16 dtype and the same device. Inputs are
 read-only. There is no bias, scale tensor, activation or residual addition.
 
@@ -82,6 +83,9 @@ shape, dtype, device, finiteness and unchanged inputs are also checked. Both
 operands are replaced in their existing storage for a second correctness draw.
 For performance, that check replays the actual measured graph, detecting stale
 activation, weight and output caches.
+Correctness also covers unaligned activation and weight views separately and
+together at both shapes, with new values replayed through each captured graph.
+These layout checks do not add invocation weights to the fixed workload score.
 
 Both roles use the same canonical graph timing helper, 10 warmup calls,
 100 reported samples and a 1 ms target. All reported samples and the measured
@@ -95,6 +99,11 @@ selected per-case dispatch. Runtime checks bind the installed Python sources
 and complete BF16 tuned-table source set to the pinned materialized AITER tree.
 Compiled native artifacts and performance still require qualification in the
 chosen runtime; these source checks do not certify them.
+To satisfy the decode FlyDSL kernel's alignment requirement, the protected
+baseline and initial candidate copy each operand whose pointer is not 16-byte aligned.
+Those copies execute inside the callable and its captured graph; preparation is
+charged whenever needed. Aligned scored inputs take the original upstream call
+without copying, and neither path changes upstream kernel selection.
 
 ## Evaluation
 

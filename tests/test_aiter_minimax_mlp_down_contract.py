@@ -138,3 +138,85 @@ def test_candidate_imports_relative_helpers_and_dataclasses(tmp_path):
         cwd=task, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("role", ["baseline", "candidate"])
+@pytest.mark.parametrize("offsets", [(0, 0), (1, 0), (0, 1), (1, 1), (7, 3)])
+def test_upstream_alignment_preparation_uses_current_values(monkeypatch, role, offsets):
+    torch = pytest.importorskip("torch")
+    inputs = load_script("inputs")
+    oracle = load_script("reference")
+    values = inputs.make_inputs({"shape": [2, 5, 3]}, 42, device="cpu", offsets=offsets)
+    observed = []
+
+    def upstream(x, weight):
+        assert x.data_ptr() % 16 == weight.data_ptr() % 16 == 0
+        observed.append((x, weight))
+        return oracle.reference(x, weight)
+
+    aiter = types.ModuleType("aiter")
+    aiter.__path__ = []
+    monkeypatch.setitem(sys.modules, "aiter", aiter)
+    monkeypatch.setitem(sys.modules, "aiter.tuned_gemm", types.SimpleNamespace(gemm_a16w16=upstream))
+    if role == "baseline":
+        operation = load_script("baseline").mlp_down
+    else:
+        spec = importlib.util.spec_from_file_location("minimax_initial", TASK / "source/kernel.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        operation = module.mlp_down
+    for iteration in range(2):
+        if iteration:
+            for old, fresh in zip(values, inputs.make_inputs({"shape": [2, 5, 3]}, 1042, device="cpu")):
+                old.copy_(fresh)
+        frozen = inputs.snapshot_inputs(values)
+        assert torch.equal(operation(*values), oracle.reference(*values))
+        inputs.check_inputs_unchanged(frozen)
+        for original, dispatched in zip(values, observed[-1]):
+            assert (original.data_ptr() == dispatched.data_ptr()) == (original.data_ptr() % 16 == 0)
+
+
+def test_unaligned_storage_prefix_is_read_only():
+    torch = pytest.importorskip("torch")
+    inputs = load_script("inputs")
+    values = inputs.make_inputs({"shape": [2, 5, 3]}, 42, device="cpu", offsets=(1, 1))
+    assert all(value.is_contiguous() and value.data_ptr() % 16 == 2 for value in values)
+    frozen = inputs.snapshot_inputs(values)
+    values[0].as_strided((1,), (1,), storage_offset=0).zero_()
+    with pytest.raises(AssertionError, match="inputs must remain unchanged"):
+        inputs.check_inputs_unchanged(frozen)
+
+
+@pytest.mark.parametrize("stale_operand", [None, 0, 1])
+def test_unaligned_graph_checks_reject_stale_preparation(monkeypatch, stale_operand):
+    pytest.importorskip("torch")
+    for name in ("contract", "inputs", "reference", "runtime"):
+        monkeypatch.setitem(sys.modules, name, load_script(name))
+    runner = load_script("evaluate")
+    inputs = load_script("inputs")
+    monkeypatch.setattr(runner, "make_inputs", lambda case, seed, **kwargs:
+                        inputs.make_inputs(case, seed, device="cpu", **kwargs))
+    captures = []
+
+    def capture(launch, warmup):
+        captures.append(warmup)
+        return launch
+
+    monkeypatch.setattr(runner, "capture_replay", capture)
+    prepared = {}
+
+    def operation(x, weight):
+        values = [x, weight]
+        if stale_operand is not None:
+            key = id(values[stale_operand])
+            prepared.setdefault(key, values[stale_operand].clone())
+            values[stale_operand] = prepared[key]
+        return runner.reference(*values)
+
+    data = load_script("contract").load_contract()
+    if stale_operand is None:
+        result = runner.check_unaligned(operation, {"shape": [2, 5, 3]}, data)
+        assert len(result) == len(captures) == 3
+    else:
+        with pytest.raises(AssertionError):
+            runner.check_unaligned(operation, {"shape": [2, 5, 3]}, data)

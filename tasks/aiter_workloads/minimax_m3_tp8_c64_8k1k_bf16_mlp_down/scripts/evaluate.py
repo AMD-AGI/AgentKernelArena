@@ -32,6 +32,51 @@ def candidate():
     return module.mlp_down
 
 
+def capture_replay(launch, warmup):
+    """Capture an additional correctness-only graph, without reporting timing."""
+    import torch
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(warmup):
+            launch()
+    stream.synchronize()
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.stream(stream), torch.cuda.graph(graph):
+        output = launch()
+    torch.cuda.synchronize()
+
+    def replay():
+        graph.replay()
+        return output
+
+    return replay
+
+
+def check_unaligned(operation, case, data):
+    """Check each operand alone and together, including current-value replay."""
+    results = {}
+    for offsets in ((1, 0), (0, 1), (1, 1)):
+        values = make_inputs(case, data["input_generation"]["seeds"][0], offsets=offsets)
+        launch = lambda: operation(*values)
+        expected = reference(*values)
+        frozen = snapshot_inputs(values)
+        check_output(launch(), expected, data["tolerance"])
+        replay = capture_replay(launch, data["timing"]["warmup"])
+        check_output(replay(), expected, data["tolerance"])
+        check_inputs_unchanged(frozen)
+        alternate = make_inputs(case, data["input_generation"]["seeds"][1])
+        for current, fresh in zip(values, alternate):
+            current.copy_(fresh)
+        frozen = snapshot_inputs(values)
+        expected = reference(*values)
+        metrics = check_output(replay(), expected, data["tolerance"])
+        check_inputs_unchanged(frozen)
+        results[f"x_offset{offsets[0]}_weight_offset{offsets[1]}"] = metrics
+    return results
+
+
 def run_action(role, action, data):
     import torch
 
@@ -45,7 +90,7 @@ def run_action(role, action, data):
         metadata.update(candidate_state="implemented", frequency_kind="config_derived_fixed_batching_scenario")
         return [dict(case, status="PASS") for case in data["cases"]], metadata
     if role == "baseline":
-        from aiter.tuned_gemm import gemm_a16w16 as operation
+        from baseline import mlp_down as operation
     else:
         operation = candidate()
     rows = []
@@ -89,6 +134,8 @@ def run_action(role, action, data):
         frozen = snapshot_inputs(values)
         row.setdefault("metrics", {})["current_value_replay"] = check_output(replay(), expected, data["tolerance"])
         check_inputs_unchanged(frozen)
+        if action == "correctness":
+            row["metrics"]["unaligned_view_replay"] = check_unaligned(operation, case, data)
         if role == "baseline":
             from aiter.tuned_gemm import get_GEMM_A16W16_config
 

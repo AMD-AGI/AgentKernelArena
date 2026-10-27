@@ -6,7 +6,7 @@ The same draws, layouts and tensor lifetime apply to both evaluation roles.
 """
 
 
-def make_inputs(case, seed, *, device="cuda"):
+def make_inputs(case, seed, *, device="cuda", offsets=(0, 0)):
     import torch
 
     m, n, k = case["shape"]
@@ -15,11 +15,22 @@ def make_inputs(case, seed, *, device="cuda"):
     # Keep the prepared site's weight draw equal across the two M cases.
     weight_generator = torch.Generator(device=device).manual_seed(seed + 1_000_000)
     weight = torch.randn((n, k), generator=weight_generator, device=device, dtype=torch.bfloat16)
-    return x, weight
+    values = []
+    for value, offset in zip((x, weight), offsets):
+        if offset:
+            storage = torch.full((value.numel() + offset,), -32768.0,
+                                 dtype=value.dtype, device=device)
+            view = storage[offset:].view(value.shape)
+            view.copy_(value)
+            value = view
+        values.append(value)
+    return tuple(values)
 
 
 def snapshot_inputs(values):
-    return [(value, value.clone(), value.shape, value.stride(), value.dtype,
+    return [(value, value.as_strided((value.untyped_storage().nbytes() // value.element_size(),),
+                                    (1,), storage_offset=0).clone(),
+             value.shape, value.stride(), value.dtype,
              value.device, value.data_ptr(), value.storage_offset(),
              value.untyped_storage().nbytes()) for value in values]
 
@@ -31,5 +42,5 @@ def check_inputs_unchanged(snapshots):
         if (value.shape != shape or value.stride() != stride or value.dtype != dtype
                 or value.device != device or value.data_ptr() != pointer
                 or value.storage_offset() != offset or value.untyped_storage().nbytes() != nbytes
-                or not torch.equal(value, before)):
+                or not torch.equal(value.as_strided(before.shape, (1,), storage_offset=0), before)):
             raise AssertionError("Public GEMM inputs must remain unchanged")
