@@ -1,7 +1,7 @@
 # BF16 GEMM in FlyDSL, MI300X (gfx942) variant
 
-This task is the gfx942 variant of `tasks/Aiter-task/gemm_a16w16_nt_n2048_k2048`. The workload, inputs, reference, comparator, timing
-and baseline entry are unchanged. Three things differ:
+This task is the gfx942 variant of `tasks/Aiter-task/gemm_a16w16_nt_n2048_k2048`. The workload, inputs, reference, comparator
+and baseline entry are preserved. The platform, starting candidate, numerical policy and timing differ:
 
 1. **Platform.** `config.yaml` requires `gfx942` and `scripts/evaluate.py` checks for it. The runtime image is
    `docker.io/primussafe/sglang:v0.5.18-rocm720-mi35x-aiter-dbd8bf5-flydsl032-20260921`: AITER `dbd8bf5bd624120197a7a26780a8c72201824f0f`, FlyDSL 0.3.2, ROCm PyTorch built for gfx942 and
@@ -10,13 +10,22 @@ and baseline entry are unchanged. Three things differ:
    AITER's split-K HGEMM kernel (`aiter/ops/flydsl/kernels/splitk_hgemm.py` at the commit above) with the helper
    modules it imports joined into one file, so that it passes the import guard. `build_gemm_a16w16_nt_n2048_k2048_module` launches it with one
    configuration for M <= 32 and one for larger M. The agent optimizes this kernel in FlyDSL instead of writing one
-   from an empty module. `evaluate.py`'s initial-state check follows the state `config.yaml` declares. Measured on
-   MI300X on 2026-10-22, its mean case speedup over the baseline below is 0.55.
+   from an empty module. `evaluate.py`'s initial-state check follows the state `config.yaml` declares. Under the historical warm-graph protocol on
+   MI300X on 2026-10-22, its mean case speedup over the baseline below was 0.55.
 3. **Baseline dispatch.** On gfx942, `aiter.tuned_gemm.gemm_a16w16` finds no tuned entry for MI300X (its tuned
    tables are for gfx950). Measured on 2026-10-22, it dispatched to torch (hipBLASLt) for every case. Speedups are against that dispatch,
    not against gfx950's production selection, so they are not comparable with gfx950 results.
 
-The original task's description follows, with the two sentences that no longer hold updated.
+4. **Numerical policy.** Baseline correctness and measured-output checks are required on gfx942, just as
+   candidate checks are. Historical gfx950 numerical exceptions do not apply to this platform.
+5. **Measurement.** Both roles use `cuda_graph_cold_cache`: a read-only 1 GiB sweep precedes each single-operator
+   graph replay, outside its GPU Event interval. The declared 20 warmups, 100 samples and all 13 cases are retained.
+   The older `target_ms` workload field remains for source compatibility but does not batch cold-cache replays.
+
+The 2026-10-22 initial-validation measurements used warm graph timing. They are retained as historical context,
+not cold-cache performance or qualification evidence. This migration changes benchmark identity; remeasure
+baseline and candidate and require a fresh framework-finalized `task_validator` PASS for the exact source/image.
+Do not compare the old ratios with cold-cache results or relabel them as cold-cache measurements.
 
 Implement `out = a @ b.T`. The fixed `n`, `k`, seed and all variable `m` cases
 are in the declared workload JSON. Inputs `a` are `[m, k]` BF16 and `b` are
@@ -38,33 +47,15 @@ or relative tolerance (BF16: 0.01 absolute **or** 0.01 relative). Candidate and
 replayed candidate must meet that same rule; it is never calibrated against
 baseline errors. FP32 intermediate reduction is generally needed.
 
-The baseline policy is explicit in this task's `config.yaml`. A historical
-upstream report in commit `bfe1ef1e0b4f2b391f426de31387c3a703d08eb5`
-(2026-09-14, MI355X/gfx950) states that 9 of 17 GEMM tasks failed on 64 of
-221 points, but does not enumerate those nine tasks or provide a complete
-per-case artifact. This is a family-level report, not evidence that all 17
-tasks fail, nor a prediction about another runtime image.
+The baseline policy in this gfx942 task's `config.yaml` is `required`. Baseline and candidate numerical
+correctness and actual measured replay outputs must pass their original comparison; neither has a numerical
+exception. Runtime failures, input mutation, wrong shape/dtype/device and nonfinite outputs also fail.
 
-Commit `329bc9861f7199c4df4d6fc0fc0eb16353cfe995` specifically identifies
-`gemm_a16w16_nt_n4096_k2048` among tasks rejected by reference replay checking,
-and reports repeat-call disagreements at `m_1` and `m_8`. That historical
-report supports a diagnostic policy for the named task only; the aggregate
-count alone cannot establish a known deviation for any other task. Subsequent
-task-specific GPU evidence is recorded, where available, in the "Production
-baseline numerical evidence" section below. The current policy and its evidence
-are declared in this task's `config.yaml`; do not infer them from the historical
-family-wide count. Tasks with `correctness_policy: required` must pass baseline
-correctness, while `diagnostic` retains only the documented numerical exception.
-
-These commit messages are provenance, not fresh GPU validation. The actual
-runtime must record every case's comparison, executed baseline source hash,
-package versions and dispatch. A passing comparison is always reported PASS.
-A mismatch is reported FAIL with its real evidence; only a completed finite
-`numerical_mismatch` may use the configured diagnostic exception. Crashes,
-shape/dtype errors and nonfinite outputs never qualify. The baseline's timed
-output check keeps its full verdict under `metadata.timed_output_correctness`. Unknown deviations need
-GPU evidence and a justified policy update, not automatic reclassification.
-Candidate correctness and candidate replay have no diagnostic exception.
+The original gfx950 task records family-level history in commits
+`bfe1ef1e0b4f2b391f426de31387c3a703d08eb5` and
+`329bc9861f7199c4df4d6fc0fc0eb16353cfe995`, plus any task-specific evidence below.
+Those records concern different hardware/runtime identities and do not authorize a gfx942 diagnostic waiver.
+Actual runs record every case's comparison, executed baseline source hash, package versions and dispatch.
 
 ## Task contract
 
@@ -136,7 +127,7 @@ Each command emits exactly one `ARENA_EVAL_RESULT=` JSON line and exits nonzero
 on failure. All case rows retain the same ID, shape, dtype and semantic params.
 `validate-task` enumerates the complete protected manifest before executing any
 candidate. It checks dependencies, inputs and reference validity; in framework
-`task_validation` phase it verifies the actual initial stub and reports
+`task_validation` phase it verifies the declared implemented builder and reports
 `metadata.candidate_state`. Compilation executes each specialization, including
 lazy JIT compilation on its first launch. Correctness uses the task's original
 comparison, independently for the requested role. On each GEMM case, the same
@@ -149,29 +140,26 @@ candidate, missing
 builder or `NotImplementedError` always fails candidate actions, in both phases;
 only the framework can defer candidate checks for an initially empty task.
 
-Both roles use the materialized canonical `_aka_benchmark.py` helper with the
-unchanged workload warmup, repetition and target duration. Preparation and input
-allocation occur outside timing; the timed callable is the complete operator
-invocation, including its device work and output/scratch use. Graph timing is
-preferred; event fallback is recorded and the framework checks that baseline
-and candidate timing methods match. Each sample times one logical invocation;
-calls are never batched into one capture. Before each sample, outside timing,
-the call-varying operand `a` is overwritten in place with one of several
-draws from the bundle's initializer, while the weight `b` stays fixed. Draw seeds come from the operating system when
-the case is timed. After the samples, the timed unit runs once over each of
-several further draws it has never read, timed like a sample, and the fastest
-of those may take at most `UNSEEN_DRAW_MARGIN` (in `scripts/task_measure.py`)
-times the reported mean. The outputs of randomly chosen reported samples and
-of every unseen-draw invocation are compared, with the original comparator,
-against the reference on the draw each one consumed. Before replacing a draw,
-the task checks the live activation and fixed weight byte for byte against the
-previous invocation's expected inputs. It also checks the final reported and
-final unseen invocations before either result can be accepted. These checks run
-outside the device timing interval for both roles; they cover warmup and capture
-invocations as well as all reported and unseen replays. The extra input reads can
-affect cache and pacing between samples, so earlier timing reports are not
-directly comparable. Input mutation, nonfinite output, missing work or runtime
-failures cannot be treated as numerical diagnostics.
+Both roles use `ReadOnlyCacheFlush` and `benchmark_cuda_graph_cold_cache_samples` from the materialized
+canonical `_aka_benchmark.py`. Each case allocates one initialized 1 GiB eviction buffer outside capture and
+timing. Every invocation follows the same stream order: prepare inputs and inspect previous read-only buffers,
+read the eviction buffer, start the GPU Event, replay one complete operator graph, end the Event, then observe
+its output. Eviction, input preparation, oracle work and compilation are outside timing. Capture failure fails
+closed; there is no warm replay, batching, Event-only or CPU-clock fallback. `torch.cuda.empty_cache()` is not
+used as data-cache eviction. The reported value is the arithmetic mean of the 100 raw GPU Event samples;
+`metadata.samples_ms` retains them, and cache policy/size and the one-invocation graph identity accompany each row.
+Baseline and candidate must report the same cold-cache identity.
+
+Before each sample, the call-varying operand `a` is overwritten with one of several draws from the bundle's
+initializer, while `b` stays fixed. Draw seeds are selected from operating-system entropy when timing begins.
+After the samples, the same captured graph is replayed over further unseen draws with the same preparation
+and eviction policy. The fastest unseen invocation must take at most `UNSEEN_DRAW_MARGIN` times the reported
+mean. Outputs of randomly selected reported samples and every unseen invocation are compared with the original
+reference on the draw each one consumed. Before replacing a draw, the task checks the live activation and fixed
+weight byte for byte against their previous expected inputs. Final reported and unseen invocations are checked
+before acceptance too. These checks cover warmup/capture, reported samples and unseen reruns, and happen before
+the next eviction sweep. Input mutation, nonfinite output, missing work and runtime failures always fail.
+Historical warm-cache timings and gfx950 results are not comparable with this benchmark identity.
 No timing from an instrumented sanitizer build may become an official score.
 
 A task does not require any agent-specific driver or environment variable.

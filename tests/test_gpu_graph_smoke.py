@@ -45,6 +45,45 @@ def test_stateful_graph_replay_restores_input_before_each_sample() -> None:
     assert torch.equal(state, pristine * 1.5)
 
 
+def test_cold_cache_sweep_and_changed_input_measured_graph_outputs() -> None:
+    from src.tools.perf.aka_benchmark import (
+        ReadOnlyCacheFlush, TimedRun, benchmark_cuda_graph_cold_cache_samples,
+    )
+    flush = ReadOnlyCacheFlush()
+    x = torch.empty(4096, device="cuda")
+    output = torch.empty_like(x)
+    draw = 0
+
+    def prepare():
+        nonlocal draw
+        draw += 1
+        x.fill_(draw)
+        output.fill_(float("nan"))
+
+    def operation():
+        torch.mul(x, 2, out=output)
+        return output
+
+    def check(value):
+        torch.testing.assert_close(value, torch.full_like(x, draw * 2))
+
+    timed = TimedRun()
+    timed.after_sample = check
+    samples, metadata = benchmark_cuda_graph_cold_cache_samples(
+        operation, cache_flush=flush, warmup=2, repetition=5,
+        prepare_fn=prepare, timed_run=timed)
+    assert len(samples) == 5 and all(t > 0 for t in samples)
+    assert metadata["benchmark_method"] == "cuda_graph_cold_cache"
+    assert metadata["benchmark_cache_flush_bytes"] == 1 << 30
+    assert metadata["benchmark_effective_repeats"] == 1
+    assert torch.count_nonzero(flush._cache) == 0
+    assert torch.count_nonzero(flush._sums) == 0
+    check(timed.outputs)
+    check(timed.rerun())
+    assert timed.rerun_ms() > 0
+    check(timed.outputs)
+
+
 def test_timed_run_distinguishes_graph_replay_from_explicit_events(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

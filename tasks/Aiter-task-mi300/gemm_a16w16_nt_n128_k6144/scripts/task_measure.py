@@ -195,10 +195,9 @@ class RotatingDraws:
     depends on. The draws come from ``task_inputs.call_varying_draws``, so the
     weights stay fixed across samples the way a deployment holds them.
 
-    Supplying a preparation callback is also how the benchmark is told to
-    capture a single logical invocation per replay rather than batching as many
-    as fill ``target_ms`` and dividing by the count. ``time_case`` asserts the
-    count it gets rather than trusting this.
+    The canonical cold-cache helper captures a single logical invocation per
+    replay. ``time_case`` also checks the reported count; it never batches calls
+    to fill the legacy workload ``target_ms`` duration.
 
     ``serve`` makes the next preparation load a given draw instead of the next
     one in the rotation, so an invocation over a draw of the caller's choosing
@@ -368,7 +367,8 @@ def verify_timed_cost(unseen_ms, execution_time_ms):
 
 
 def time_case(case, *, role, launch=None, baseline_diagnostic=False):
-    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
+    from _aka_benchmark import (ReadOnlyCacheFlush, TimedRun,
+                                benchmark_cuda_graph_cold_cache_samples)
 
     inputs = task_inputs.build_case_inputs(case)
     call = case_call(inputs, role=role, launch=launch)
@@ -382,13 +382,20 @@ def time_case(case, *, role, launch=None, baseline_diagnostic=False):
     checks = SampleChecks(rotation, checked)
     timed = TimedRun()
     timed.after_sample = checks
-    execution_time_ms, timing = benchmark_cuda_graph_or_events(
-        call, warmup=task_inputs.BENCH_WARMUP,
+    # Prepare and check inputs before the canonical read-only eviction sweep.
+    # The sweep is allocated once outside capture/timing and also precedes each
+    # unseen-draw rerun through TimedRun's bound captured graph.
+    cache_flush = ReadOnlyCacheFlush(1 << 30, device=inputs["a"].device)
+    samples_ms, timing = benchmark_cuda_graph_cold_cache_samples(
+        call, cache_flush=cache_flush, warmup=task_inputs.BENCH_WARMUP,
         repetition=task_inputs.BENCH_REPETITION,
-        target_ms=task_inputs.BENCH_TARGET_MS,
         prepare_fn=rotation, timed_run=timed)
-    protocol = {"timing": timing, "timed_draw_seeds": timed_seeds,
-                "unseen_draw_seeds": unseen_seeds, "checked_samples": checked}
+    execution_time_ms = math.fsum(samples_ms) / len(samples_ms)
+    # Keep cache identity at row.metadata for the shared parser/pairing checks;
+    # the nested helper metadata and unmodified samples remain available too.
+    protocol = {**timing, "timing": timing, "samples_ms": samples_ms,
+                "timed_draw_seeds": timed_seeds, "unseen_draw_seeds": unseen_seeds,
+                "checked_samples": checked}
     repeats = timing.get("benchmark_effective_repeats")
     if repeats != 1:
         return {"status": "FAIL", "failure_kind": "timing_protocol",

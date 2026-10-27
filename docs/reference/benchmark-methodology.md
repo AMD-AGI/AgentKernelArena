@@ -19,6 +19,24 @@ Native HIP benchmark drivers use the equivalent implementation in
 
 ## Canonical Python API
 
+For new or materially revised kernel benchmarks, use the executable
+[cold-cache graph reference](../../src/tools/perf/examples/cold_cache_graph/README.md).
+Its `ReadOnlyCacheFlush` uses a reusable initialized 1 GiB read sweep, after input
+preparation and before the start Event of every single-operator graph replay.
+The resulting `cuda_graph_cold_cache` metric is an Event graph span with eviction
+excluded. It is distinct from the legacy warm `cuda_graph` method below, profiler
+kernel-duration sums and `cuda_graph_cold_weights` rotation. Explicit migrations
+need fresh paired measurements and GPU qualification; this addition does not
+change historical task policies or scores.
+
+Cold-cache performance case rows must put the returned timing metadata under
+`metadata`, with `benchmark_method` and `execution_time_ms` on the case row.
+The protocol checks the cache policy, metric, one invocation per replay and
+eviction byte count; comparison rejects differing or missing cache identities.
+The reference's paired utility preserves raw samples and reports a geometric
+mean speedup with a paired-round 95% percentile-bootstrap interval. It is a
+diagnostic comparison, not a replacement for task correctness or Arena scoring.
+
 The common mean-time interface is:
 
 ```python
@@ -241,6 +259,8 @@ Benchmark methods are then compared **per matched case**:
 - graph versus event fallback is retained as timing data but produces no
   speedup;
 - cold-weight graph (`cuda_graph_cold_weights`) is comparable only with cold-weight graph;
+- cold-cache graph (`cuda_graph_cold_cache`) is comparable only with the same
+  cold-cache method, metric, eviction policy and eviction byte count;
 - different shapes may use different methods, provided each matched
   baseline/optimized pair uses the same exact method.
 
@@ -253,7 +273,7 @@ alternate Event baseline.
 
 Missing or unknown method metadata is not comparable and produces no speedup;
 every scored case must explicitly identify `cuda_graph`,
-`cuda_event_fallback` or `cuda_graph_cold_weights`.
+`cuda_event_fallback`, `cuda_graph_cold_weights` or `cuda_graph_cold_cache`.
 
 An aggregate `mixed:...` method string is never scored, even when the baseline
 and optimized strings are identical. It records only a set of methods and loses
