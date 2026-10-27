@@ -297,9 +297,11 @@ def test_real_guard_rejects_module_host_policy_and_oracle_mutations(tmp_path,row
 
 
 @pytest.mark.parametrize('row',TASKS,ids=lambda r:r['task'].split('/')[-1])
-def test_identical_actual_gate_payload_old_guard_accepts_new_guard_rejects(tmp_path,row):
+def test_identical_actual_gate_payload_is_rejected_with_either_editable_scope(tmp_path,row):
+    # A whole-file scope admits the statement; the runtime-patching rule still refuses the reassigned gate.
     root,old=copy_workspace(tmp_path/'old',row,legacy=True);source=root/row['source']
-    source.write_text(source.read_text()+'\n'+source_payload(row));verify_workspace_harness(old,discard_added=False)
+    source.write_text(source.read_text()+'\n'+source_payload(row))
+    with pytest.raises(RuntimeError,match='runtime patching'):verify_workspace_harness(old,discard_added=False)
     current,new=copy_workspace(tmp_path/'new',row);source=current/row['source']
     source.write_text(source.read_text()+'\n'+source_payload(row))
     with pytest.raises(RuntimeError):verify_workspace_harness(new,discard_added=False)
@@ -308,8 +310,12 @@ def test_identical_actual_gate_payload_old_guard_accepts_new_guard_rejects(tmp_p
 @pytest.mark.parametrize('row',TASKS,ids=lambda r:r['task'].split('/')[-1])
 def test_all_original_device_functions_are_declared_and_host_definitions_protected(row):
     root=ROOT/'tasks'/row['task'];spec=load_task_spec(root/'config.yaml',task_id=row['task']);edit,=spec.candidate.editable
-    assert edit.scope=='symbols'and list(edit.symbols)==row['symbols']and edit.allow_new_helpers is True
-    assert all(e.symbol in row['symbols']for e in spec.candidate.entrypoints)
     source=ast.parse((root/row['source']).read_text())
+    # A tunable launch configuration is the only editable host definition: an
+    # undecorated `_launch_config` declared after the device functions.
+    launch=[n for n in source.body if isinstance(n,ast.FunctionDef)and n.name=='_launch_config']
+    assert all(not n.decorator_list for n in launch)
+    assert edit.scope=='symbols'and list(edit.symbols)==row['symbols']+[n.name for n in launch]and edit.allow_new_helpers is True
+    assert all(e.symbol in row['symbols']for e in spec.candidate.entrypoints)
     actual=[n.name for n in source.body if isinstance(n,ast.FunctionDef)and any('triton.jit'in ast.unparse(d)for d in n.decorator_list)]
     assert actual==row['symbols']

@@ -364,7 +364,7 @@ tasks:
 
 Every normal optimization task produces `task_result.yaml` with compilation and correctness status, baseline and optimized times, speedup, timing-method metadata, and the final score.
 
-The score uses the power family with **`p = 0.5`** (square root):
+The score uses the power family with **`p = 1`** (linear):
 
 ```text
 score = max(0, 1 - speedup_threshold / speedup_ratio) ** p
@@ -378,13 +378,17 @@ must be more than 5% faster to earn a positive score:
 | Speedup | Score |
 | --- | ---: |
 | At or below 1.05× | 0 |
-| 1.1× | 0.2132 |
-| 1.2× | 0.3536 |
-| 2× | 0.6892 |
+| 1.1× | 0.0455 |
+| 1.2× | 0.1250 |
+| 2× | 0.4750 |
 
-Scores are bounded between `0` and `1`. The concave curve gives modest qualifying
-improvements more credit than a linear curve. A zero score does not imply a
-correctness failure; compilation, correctness, and acceptance have separate fields.
+Scores are bounded between `0` and `1`. With the linear curve, the score is the
+fraction of runtime saved beyond the threshold, `1 - candidate_time /
+(baseline_time / 1.05)`, and its slope stays finite just above the cutoff, so
+timing noise moves near-threshold scores only slightly. Over a set of tasks that
+all score above zero, the mean score is `1 - 1.05 / H`, where `H` is their
+harmonic-mean speedup. A zero score does not imply a correctness failure;
+compilation, correctness, and acceptance have separate fields.
 
 To adjust the curve, edit `SCORE_POWER` in [`src/score.py`](src/score.py): `0.5`
 is concave, `1.0` is linear, and `2.0` is convex. Edit

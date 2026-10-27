@@ -143,7 +143,7 @@ def test_review_gate_controls_final_acceptance_and_exports(tmp_path, monkeypatch
     assert saved['candidate_accepted'] is accepted
     assert bool(saved['exports']) is accepted
     assert saved['speedup_ratio'] == (2 if accepted else 0)
-    assert saved['score'] == (pytest.approx(0.689202437604511) if accepted else 0)
+    assert saved['score'] == (pytest.approx(0.475) if accepted else 0)
 
 
 def test_backend_uses_read_only_tools_and_never_exposes_shell(monkeypatch, tmp_path):

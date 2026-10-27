@@ -202,6 +202,19 @@ if run_shell_args AKA_GPU_ARCH=gfx950 AKA_DOCKER_PRIVILEGED=invalid >/dev/null; 
     fail "invalid privilege mode was accepted"
 fi
 
+# exec runs one command in the runtime with the requested GPU, no agent CLI and
+# no forwarded credentials, and refuses an empty command.
+mapfile -t args < <(env HOME="$TEST_HOME" AKA_GPU_ARCH=gfx950 AKA_VISIBLE_GPU=3 \
+    ANTHROPIC_AUTH_TOKEN=exec-must-not-receive-this \
+    bash "$RUNNER" exec python3 -c 'print("screen")' 2>/dev/null)
+assert_has 'ROCR_VISIBLE_DEVICES=3' "${args[@]}"
+assert_has 'print("screen")' "${args[@]}"
+assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+assert_not_has "-it" "${args[@]}"
+if env HOME="$TEST_HOME" AKA_GPU_ARCH=gfx950 bash "$RUNNER" exec >/dev/null 2>&1; then
+    fail "exec without a command was accepted"
+fi
+
 # Sanitizer sidecars accept the scoring runtime only when the selected reference
 # and the known manifest reference resolve to the same immutable local config ID,
 # and launch that ID rather than a mutable tag. An alias to identical content is
@@ -1138,6 +1151,15 @@ assert_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
 assert_not_has "ANTHROPIC_AUTH_TOKEN=dummy-token-value" "${args[@]}"
 assert_has "ANTHROPIC_BASE_URL" "${args[@]}"
 
+# A gateway that authenticates with a subscription header gets it by name too.
+mapfile -t args < <(run_check_args \
+    "$GEAK_HOME" \
+    "$GEAK_CONFIG" \
+    AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    ANTHROPIC_CUSTOM_HEADERS="Ocp-Apim-Subscription-Key: dummy-subscription")
+assert_has "ANTHROPIC_CUSTOM_HEADERS" "${args[@]}"
+assert_not_has "ANTHROPIC_CUSTOM_HEADERS=Ocp-Apim-Subscription-Key: dummy-subscription" "${args[@]}"
+
 # A plain ANTHROPIC_API_KEY (e.g. api.anthropic.com auth) is likewise forwarded.
 mapfile -t args < <(env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_BASE_URL \
     HOME="$GEAK_HOME" AKA_GPU_ARCH=gfx950 AKA_NODE_PREFIX="$GEAK_PREFIX" \
@@ -1152,6 +1174,93 @@ mapfile -t args < <(env -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPI
     bash "$RUNNER" check-agents --config_name "$GEAK_CONFIG" 2>/dev/null)
 assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
 assert_not_has "ANTHROPIC_API_KEY" "${args[@]}"
+
+# A forge config provisions its agent backend's CLI (Claude unless the run sets
+# agent_backend: codex), mounts the pinned Hyperloom checkout read-only, forwards
+# Claude credentials by name, and prepends the installed engine. Other agents
+# never receive the checkout, and setup-forge receives no credentials.
+HYPERLOOM_CHECKOUT="$TEST_HOME/hyperloom"
+FORGE_CONFIG="$TEST_HOME/forge-config.yaml"
+FORGE_PREFIX="$TEST_HOME/forge-node"
+FORGE_HOME="$TEST_HOME/forge-home"
+FORGE_ENGINE_PYTHONPATH="AKA_FORGE_ENGINE_CACHE=/workspace/.aka-pyuserbase/forge-engine"
+mkdir -p "$HYPERLOOM_CHECKOUT" "$FORGE_PREFIX/bin" "$FORGE_HOME/.claude" "$FORGE_HOME/.codex"
+git init -q "$HYPERLOOM_CHECKOUT"
+printf 'committed\n' > "$HYPERLOOM_CHECKOUT/marker.txt"
+git -C "$HYPERLOOM_CHECKOUT" add marker.txt
+git -C "$HYPERLOOM_CHECKOUT" -c user.email=t@example.com -c user.name=t commit -q -m fixture
+forge_revision="$(git -C "$HYPERLOOM_CHECKOUT" rev-parse HEAD)"
+touch "$FORGE_PREFIX/bin/node" "$FORGE_PREFIX/bin/claude" "$FORGE_PREFIX/bin/codex" "$FORGE_HOME/.claude.json"
+HYPERLOOM_CHECKOUT="$(realpath -e "$HYPERLOOM_CHECKOUT")"
+printf 'agent:\n  template: forge\n' > "$FORGE_CONFIG"
+mapfile -t args < <(run_check_args \
+    "$FORGE_HOME" "$FORGE_CONFIG" \
+    AKA_NODE_PREFIX="$FORGE_PREFIX" \
+    HYPERLOOM_ROOT="$HYPERLOOM_CHECKOUT" \
+    ANTHROPIC_AUTH_TOKEN=dummy-token-value)
+assert_has "claude_code" "${args[@]}"
+assert_has "$FORGE_PREFIX:/opt/claude-node:ro" "${args[@]}"
+assert_has "$HYPERLOOM_CHECKOUT:$HYPERLOOM_CHECKOUT:ro" "${args[@]}"
+assert_has "HYPERLOOM_ROOT=$HYPERLOOM_CHECKOUT" "${args[@]}"
+assert_has "$FORGE_ENGINE_PYTHONPATH" "${args[@]}"
+assert_has "AKA_FORGE_ENGINE_REVISION=$forge_revision" "${args[@]}"
+assert_has "AKA_FORGE_ENGINE_IMAGE_ID=sha256:pinned-image-id" "${args[@]}"
+assert_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+assert_not_has "ANTHROPIC_AUTH_TOKEN=dummy-token-value" "${args[@]}"
+assert_not_has "$GEAK_SDK_PYTHONPATH" "${args[@]}"
+printf 'agent:\n  template: forge\n  agent_backend: codex\n' > "$FORGE_CONFIG"
+mapfile -t args < <(run_check_args \
+    "$FORGE_HOME" "$FORGE_CONFIG" \
+    AKA_NODE_PREFIX="$FORGE_PREFIX" \
+    HYPERLOOM_ROOT="$HYPERLOOM_CHECKOUT")
+assert_has "codex" "${args[@]}"
+assert_not_has "claude_code" "${args[@]}"
+mapfile -t args < <(run_check_args \
+    "$GEAK_HOME" "$GEAK_CONFIG" \
+    AKA_NODE_PREFIX="$GEAK_PREFIX" \
+    HYPERLOOM_ROOT="$HYPERLOOM_CHECKOUT")
+assert_not_has "HYPERLOOM_ROOT=$HYPERLOOM_CHECKOUT" "${args[@]}"
+assert_not_has "$FORGE_ENGINE_PYTHONPATH" "${args[@]}"
+mapfile -t args < <(
+    env \
+        HOME="$TEST_HOME" \
+        AKA_GPU_ARCH=gfx950 \
+        HYPERLOOM_ROOT="$HYPERLOOM_CHECKOUT" \
+        ANTHROPIC_AUTH_TOKEN=setup-must-not-receive-this \
+        bash "$RUNNER" setup-forge 2>/dev/null
+)
+assert_has "_container_setup_forge" "${args[@]}"
+assert_has "$HYPERLOOM_CHECKOUT:$HYPERLOOM_CHECKOUT:ro" "${args[@]}"
+assert_has "$FORGE_ENGINE_PYTHONPATH" "${args[@]}"
+assert_not_has "ANTHROPIC_AUTH_TOKEN" "${args[@]}"
+
+# The container bootstrap prepends the installed engine to the image's path.
+for ((bootstrap_index=0; bootstrap_index<${#args[@]}; bootstrap_index++)); do
+    if [[ "${args[$bootstrap_index]}" == "-lc" ]]; then
+        bootstrap_script="${args[$((bootstrap_index+1))]}"
+        break
+    fi
+done
+combined_pythonpath="$(env \
+    AGENT_KERNEL_ARENA_WORKDIR="$ROOT" \
+    AGENT_KERNEL_ARENA_ISOLATED_HOME=0 \
+    AKA_FORGE_ENGINE_CACHE=/runtime/forge-engine \
+    AKA_FORGE_ENGINE_REVISION="$forge_revision" \
+    AKA_FORGE_ENGINE_IMAGE_ID=sha256:pinned-image-id \
+    PYTHONPATH=/runtime/image-aiter \
+    bash -c "$bootstrap_script" _ python3 -c 'import os; print(os.environ["PYTHONPATH"])')"
+forge_image_key="$(python3 -c 'import hashlib; print(hashlib.sha256(b"sha256:pinned-image-id").hexdigest())')"
+[[ "$combined_pythonpath" == "/runtime/forge-engine/$python_abi/$forge_image_key/$forge_revision:/runtime/image-aiter" ]] \
+    || fail "Forge bootstrap lost the image's Python import path"
+
+# The installer has independent regression coverage for exact exports,
+# simultaneous setup, failed installs, and running campaigns on older revisions.
+# Direct internal invocation must not silently resolve a different HEAD.
+if env -u AKA_FORGE_ENGINE_REVISION -u AKA_FORGE_ENGINE_IMAGE_ID \
+    HYPERLOOM_ROOT="$HYPERLOOM_CHECKOUT" \
+    bash "$RUNNER" _container_setup_forge >/dev/null 2>&1; then
+    fail "Forge setup accepted an unpinned runtime"
+fi
 
 # Evaluation-tool sidecars have a deliberately narrower security boundary than
 # the scoring container: no network, no credentials, no privileged mode, and

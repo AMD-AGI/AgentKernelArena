@@ -90,6 +90,16 @@ entering the ordinary performance search:
    expertise prompt, normal configured provider/model, real SDK session execution,
    workspace guard and correctness-only in-session gate. The task instructions,
    evaluator and declared entrypoints supply the implementation contract.
+   Both the keyword interface and the grouped `ImplementerSetup` interface are
+   supported, preserving the same protected paths, correctness gate and session
+   limit. The grouped gate receives the validation limit for both stage and
+   benchmark timeouts.
+   For grouped engines, new helper files are allowed inside declared trees in
+   directories present at session startup. That engine's nonrecursive new-file
+   allowlist rejects helpers in newly created directories; Arena does not widen
+   the allowlist outside the task's declared trees.
+   After initialization, the loop receives the remaining campaign budget and,
+   when supported by its CLI, the same absolute deadline.
 3. After each session, independently run candidate compile and complete
    correctness through the same public runner. A provider's text or gate flag
    cannot substitute for that check. Feed concrete failures and partial code into
@@ -318,16 +328,37 @@ checks that both commands still take the options the adapter builds.
 only as a library. It refuses anything else.
 
 Upstream owns its GPU DSL/compiler support and SDKs. Install the `forge` extra in
-the GPU runtime environment (it also pulls the agent SDK dependencies):
+the GPU runtime environment (it also pulls the agent SDK dependencies). Through
+Docker, name the pinned checkout on the host:
 
 ```bash
-# HYPERLOOM_ROOT names the separately mounted/pinned checkout in the container.
+HYPERLOOM_ROOT=/path/to/Hyperloom make docker-setup-forge
+HYPERLOOM_ROOT=/path/to/Hyperloom make docker-run CONFIG=<forge-run-config>
+```
+
+For `forge` runs the runner mounts `HYPERLOOM_ROOT` read-only, provisions the
+agent backend's CLI and authentication (Claude Code unless the run sets
+`agent.agent_backend: codex`), forwards Claude credentials by name as for GEAK,
+and prepends `.aka-pyuserbase/forge-engine/<Python cache tag>/<image key>/<revision>`
+to `PYTHONPATH`. The host fixes the committed revision before preflight and
+worker startup. Setup exports that exact revision and installs it with
+`pip install --target` into a private staging directory, then publishes the
+complete installation atomically under a per-revision lock. Python ABI, container
+image identity and engine revision each select a separate immutable directory;
+another run cannot replace an active campaign's engine. Existing installations
+and older cache layouts are retained. `.aka-hyperloom-revision` and
+`.aka-forge-runtime.json` record the installed identity. Uncommitted changes are
+not installed. Run and preflight reuse a complete matching installation, then
+require `agents/forge/engine.py --arena-probe` to pass. Outside Docker, install
+into the interpreter directly:
+
+```bash
 python3 -m pip install "${HYPERLOOM_ROOT}[forge]"
 python3 agents/forge/engine.py --arena-probe
 ```
 
 The checked dependency metadata requires Python 3.10+, Click, PyYAML, Anthropic,
-Claude Agent SDK and OpenAI Codex SDK. `torch` is deliberately supplied by the
+Claude Agent SDK and Codex SDK. `torch` is deliberately supplied by the
 ROCm image; do not install an arbitrary PyPI Torch wheel over it. FlyDSL must be
 present for FlyDSL tasks. Provider authentication must be available to the
 selected backend; existing authentication environment values are preserved.

@@ -288,10 +288,14 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
     assert manifest['migration']['original_harness_sha256'] == hashlib.sha256(before.encode()).hexdigest()
     for edit in spec.candidate.editable:
         source = task/edit.path
+        # Undo only reviewed launch-configuration moves first; every check
+        # below then compares the previously reviewed source bytes.
+        from reviewed_contract_history import historical_triton_launch_config_file
+        source_text = historical_triton_launch_config_file(source.relative_to(ROOT).as_posix(), source.read_text())
         original = subprocess.check_output(['git','show',f'{BASE}:{source.relative_to(ROOT).as_posix()}'],cwd=ROOT)
         if task.name == 'triton_decode_attn_grouped_stage1':
             from reviewed_contract_history import historical_attention_sampling_file
-            restored = historical_attention_sampling_file(source.relative_to(ROOT).as_posix(), source.read_text())
+            restored = historical_attention_sampling_file(source.relative_to(ROOT).as_posix(), source_text)
             assert restored.encode() == original
             continue
         if task.name == 'triton_topk_log_softmax':
@@ -338,7 +342,7 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             # 32-assignment tile, including top-k 33/65 tails. The dedicated
             # boundary tests reject truncation. The wrapper adds the tile count
             # and normalizes strided inputs; retain every other source byte.
-            current = source.read_text()
+            current = source_text
             before_tree, after_tree = ast.parse(original), ast.parse(current)
             before_kernel = next(n for n in before_tree.body
                                  if isinstance(n, ast.FunctionDef) and n.name == 'pack_bitmatrix')
@@ -385,7 +389,7 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
         if task.name == 'triton_ssd_bmm':
             # Only remove the causal early return that skipped legitimate
             # full-matrix output tiles. All remaining source stays byte-exact.
-            current = source.read_bytes()
+            current = source_text.encode()
             assert hashlib.sha256(current).hexdigest() == (
                 '421143d84f536ca07fff4e70837e9ff7518751e2b9509294d4f6d865bb7a67c3')
             old = (b'    if IS_CAUSAL:\n'
@@ -396,7 +400,7 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
         if task.name == 'triton_fla_l2norm':
             # Conditional v8 pin: the new wide-row kernel and its sole wrapper
             # dispatch are the complete reviewed delta; GPU proof is pending.
-            current = source.read_bytes()
+            current = source_text.encode()
             assert hashlib.sha256(current).hexdigest() == (
                 'c6b03db7c1dda337dd2f0c60261070f9b4d11a31b436bc2a73a5675f1aa166a4')
             old_tree, new_tree = ast.parse(original), ast.parse(current)
@@ -430,7 +434,7 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
         if task.name == 'triton_kda_gate':
             # Preserve the entire historical JIT and public wrapper AST except
             # the three reviewed view normalizations before flat pointer reads.
-            current = source.read_bytes()
+            current = source_text.encode()
             assert hashlib.sha256(current).hexdigest() == (
                 '227cb972264fa01bb0029edd4eaf096e18aab9ff84a29f25cc0e4b66ec1e8ec1')
             old_tree, new_tree = ast.parse(original), ast.parse(current)
@@ -456,7 +460,7 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             # remain identical. Only four wrapper-side view normalizations
             # admit valid noncontiguous inputs; scored contiguous calls keep
             # their original pointers and device work.
-            current = source.read_bytes()
+            current = source_text.encode()
             assert hashlib.sha256(current).hexdigest() == (
                 'e92eab87cb20d42421b3c67c050bb14a9bef2fa3eb7df92c9318439b42f4f93b')
             old_tree, new_tree = ast.parse(original), ast.parse(current)
@@ -477,7 +481,7 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             # Keep the kernel, wrapper signature/decorators, and all other
             # source AST at their original identities; the focused stride
             # controls reject an implementation that ignores either operand.
-            current = source.read_bytes()
+            current = source_text.encode()
             assert hashlib.sha256(current).hexdigest() == (
                 'c65a20b3878c2a520cf37645ae4d18d95cff4d0202c4399bb263833485fe4913')
             old_tree, new_tree = ast.parse(original), ast.parse(current)
@@ -502,7 +506,7 @@ def test_vllm_v2_preserves_all_original_cases_checks_sources_and_helpers(path):
             new_wrapper.body = [node for node in new_wrapper.body if node not in copies]
             assert ast.dump(new_tree, include_attributes=False) == ast.dump(old_tree, include_attributes=False)
             continue
-        assert source.read_bytes() == original
+        assert source_text.encode() == original
     assert 'Evaluation contract' in (task/'README.md').read_text()
 
 

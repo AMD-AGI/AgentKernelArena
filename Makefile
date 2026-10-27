@@ -6,7 +6,7 @@
 
 SHELL := /bin/bash
 
-.PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak \
+.PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak docker-setup-forge \
         slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
         check-docker-runner check-slurm-runner check-evaluator check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
@@ -34,6 +34,7 @@ help:
 	@echo "                         Use SIKL_BUILDER_ARGS='resume --run-id ...' to resume"
 	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak agent)"
+	@echo "make docker-setup-forge  - Install Hyperloom[forge] from HYPERLOOM_ROOT's HEAD (for the forge agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
 	@echo "make check-slurm-runner - Check Slurm/Spur resource and Docker handoff arguments"
 	@echo ""
@@ -169,6 +170,11 @@ docker-setup-flydsl:
 # the selected image does not ship it. Needed by the geak agent.
 docker-setup-geak:
 	@$(DOCKER_RUNNER) setup-geak
+
+# Install Hyperloom[forge] from the committed HEAD of HYPERLOOM_ROOT into the
+# mounted pip user-base. Run and preflight repeat it when that revision changes.
+docker-setup-forge:
+	@$(DOCKER_RUNNER) setup-forge
 
 check-docker-runner:
 	@bash tests/test_docker_benchmark.sh

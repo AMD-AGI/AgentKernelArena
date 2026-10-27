@@ -3,6 +3,7 @@ import math
 import pytest
 import yaml
 
+import src.score as score_module
 from src.score import resolve_speedup_ratio, score, task_result_scoring
 
 
@@ -67,10 +68,16 @@ def test_explicit_speedup_without_method_metadata_gets_no_performance_points():
     ) == 0.0
 
 
+def test_default_scoring_constants_are_linear_with_5_percent_cutoff():
+    assert score_module.SCORE_POWER == 1.0
+    assert score_module.SCORE_SPEEDUP_THRESHOLD == 1.05
+
+
 @pytest.mark.parametrize("speedup,expected", [
-    (1.0, 0.0), (1.05, 0.0), (1.25, 0.4), (2.0, 0.689202437604511),
+    (1.0, 0.0), (1.05, 0.0), (1.1, 1 / 22), (1.2, 0.125), (1.25, 0.16), (2.0, 0.475),
 ])
-def test_default_square_root_score(speedup, expected):
+def test_default_linear_score(speedup, expected):
+    # 1 - 1.05/1.1 = 1/22 ~ 0.0455; 1 - 1.05/1.2 = 0.125; 1 - 1.05/2 = 0.475.
     assert score(True, True, 100.0, 100.0 / speedup, speedup, True) == pytest.approx(expected)
 
 
@@ -89,7 +96,7 @@ def test_score_requires_boolean_method_consistency(consistent):
     assert score(True, True, 100.0, 50.0, 2.0, consistent) == 0.0
 
 
-@pytest.mark.parametrize("power,expected", [(1.0, 0.16), (2.0, 0.0256)])
+@pytest.mark.parametrize("power,expected", [(0.5, 0.4), (1.0, 0.16), (2.0, 0.0256)])
 def test_power_constant_selects_curve(monkeypatch, power, expected):
     monkeypatch.setattr("src.score.SCORE_POWER", power)
     assert score(True, True, 100.0, 80.0, 1.25, True) == pytest.approx(expected)
@@ -99,7 +106,7 @@ def test_speedup_threshold_constant_changes_cutoff(monkeypatch):
     monkeypatch.setattr("src.score.SCORE_SPEEDUP_THRESHOLD", 1.2)
     assert score(True, True, 100.0, 90.0, 1.1, True) == 0.0
     assert score(True, True, 100.0, 100.0 / 1.2, 1.2, True) == 0.0
-    assert score(True, True, 100.0, 80.0, 1.25, True) == pytest.approx(0.2)
+    assert score(True, True, 100.0, 80.0, 1.25, True) == pytest.approx(0.04)
 
 
 @pytest.mark.parametrize("name", ["SCORE_POWER", "SCORE_SPEEDUP_THRESHOLD"])
@@ -132,5 +139,5 @@ def test_task_result_scores_explicit_mean_speedup_and_preserves_measurements(tmp
 
     calculated = task_result_scoring(str(tmp_path))
 
-    assert calculated == pytest.approx(0.5477225575051661)
+    assert calculated == pytest.approx(0.3)
     assert yaml.safe_load(result_file.read_text()) == {**result, "score": calculated}
