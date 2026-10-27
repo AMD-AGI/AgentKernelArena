@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "sglang_mi355x/benchmark_sglang_qwen3_coder_480b_a35b_fp8",
+  "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_qwen3_coder_480b_a35b_fp8.yaml",
+  "sha256": "eddea8945502305b41ba4dda87e867fd73626e738ac78b1e73587927f2539b0c",
+  "source": "upstream.yaml"
+}

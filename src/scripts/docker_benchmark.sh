@@ -315,7 +315,8 @@ serving_runtime_metadata() {
     [[ -f "$config_path" ]] || die "Run config not found: $config"
     ensure_runtime_image || return 1
     docker run --rm --network=none --read-only --user "$(id -u):$(id -g)" \
-        -e PYTHONDONTWRITEBYTECODE=1 -e PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
+        -e PYTHONDONTWRITEBYTECODE=1 -e AKA_SERVING_METADATA_READONLY=1 \
+        -e PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
         -v "$HOST_ROOT:/workspace:ro" -v "$config_path:/run/aka-run-config.yaml:ro" \
         -w /workspace --entrypoint python3 "$SELECTED_IMAGE" \
         -m src.serving_runtime "$mode" --config /run/aka-run-config.yaml "$@"
@@ -346,15 +347,19 @@ select_runtime_for_config() {
 
 SERVING_RUNTIME_DIR=""
 SERVING_RUNTIME_PID=""
+SERVING_TASK_TEMPLATE_DIR=""
+SERVING_RECIPE_TASKS=""
 
 start_serving_runtime() {
     local config="$1" image
     image="$(serving_runtime_metadata image "$config")" || return 1
     [[ -n "$image" ]] || return 0
     require_serving_host_python
+    SERVING_RECIPE_TASKS="$(serving_runtime_metadata recipe-tasks "$config")" || return 1
     SERVING_RUNTIME_DIR="$(mktemp -d /tmp/aka-serving.XXXXXX)"
     # Artifacts are retained, including failed action evidence.
     local artifacts="${AKA_SERVING_ARTIFACT_ROOT:-$HOST_HOME/.local/state/aka-serving}/$(basename "$SERVING_RUNTIME_DIR")"
+    SERVING_TASK_TEMPLATE_DIR="$artifacts/templates"
     mkdir -p "$artifacts"
     (cd "$HOST_ROOT" && exec "$SERVING_PYTHON" -m src.serving_runtime serve --config "$config" \
         --socket "$SERVING_RUNTIME_DIR/eval.sock" --artifacts "$artifacts" \
@@ -376,6 +381,22 @@ stop_serving_runtime() {
         wait "$SERVING_RUNTIME_PID" 2>/dev/null || true
         SERVING_RUNTIME_PID=""
     fi
+    SERVING_RECIPE_TASKS=""
+    SERVING_TASK_TEMPLATE_DIR=""
+}
+
+append_serving_task_mounts() {
+    [[ -n "${SERVING_RUNTIME_DIR:-}" ]] || return 0
+    local serving_task_id serving_template
+    while IFS= read -r serving_task_id; do
+        [[ -n "$serving_task_id" ]] || continue
+        [[ "$serving_task_id" =~ ^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$ \
+            && "/$serving_task_id/" != *"/../"* && "/$serving_task_id/" != *"/./"* ]] \
+            || die "Invalid prepared serving task ID"
+        serving_template="${SERVING_TASK_TEMPLATE_DIR:?recipe template root is missing}/$serving_task_id"
+        [[ -f "$serving_template/config.yaml" ]] || die "Prepared serving task is missing: $serving_task_id"
+        docker_args+=(-v "$serving_template:$CONTAINER_WORKDIR/tasks/$serving_task_id:ro")
+    done <<<"${SERVING_RECIPE_TASKS:-}"
 }
 
 assign_serial_gpu_group() {
@@ -1430,6 +1451,9 @@ build_docker_args() {
     else
         add_mount "$HOST_ROOT" "$CONTAINER_WORKDIR"
     fi
+    # Keep normal discovery and session behavior unchanged. Mount only selected
+    # host-frozen recipe packages, read-only, after their parent checkout mount.
+    append_serving_task_mounts
     # A scoring container receives the per-worker Unix-socket directory and its
     # dedicated report tree. Tool images, credentials, Docker access, and the
     # rest of the experiments/workspace tree never enter a sidecar writable.

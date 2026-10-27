@@ -106,11 +106,28 @@ def selected_serving_tasks(config_path: Path, root: Path) -> dict:
     tasks = {}
     for selector in config.get("tasks", []):
         tasks.update(get_task_config(str(root / "tasks"), None if selector == "all" else selector))
+    declarations = {task_id: yaml.safe_load(Path(path).read_text())
+                    for task_id, path in tasks.items()}
+    serving = {task_id for task_id, data in declarations.items() if measurement_kind(data) == 'serving'}
+    if serving and len(serving) != len(tasks):
+        raise ValueError("Run serving tasks separately from kernel tasks")
     selected = {}
     for task_id, path in tasks.items():
-        data = yaml.safe_load(Path(path).read_text())
-        if measurement_kind(data) != "serving":
+        data = declarations[task_id]
+        if task_id not in serving:
             continue
+        load_task_spec(Path(path), task_id=task_id)
+        if data['evaluation']['measurement'].get('recipe') is not None:
+            from .serving_task_preparation import binding_paths, prepare_recipe_task
+            bindings = binding_paths(config, config_path)
+            if task_id not in bindings:
+                raise ValueError(f"Serving recipe {task_id} requires an immutable binding in "
+                                 "serving_runtime.bindings; see docs/how-to/e2e-kernel-tasks.md")
+            cache = Path(os.environ.get('AKA_SERVING_TASK_CACHE', str(Path.home()/'.cache/aka-serving-tasks')))
+            source = prepare_recipe_task(Path(path).parent, data, task_id, bindings[task_id],
+                                         cache=cache, root=root)
+            path = source/'config.yaml'
+            data = yaml.safe_load(path.read_text())
         spec = load_task_spec(Path(path), task_id=task_id)
         lock_path = resolve_task_path(Path(path).parent, data["evaluation"]["measurement"]["runtime_lock"], must_exist=True)
         lock = json.loads(lock_path.read_text())
@@ -124,6 +141,16 @@ def selected_serving_tasks(config_path: Path, root: Path) -> dict:
     if len({v[2]["image"] for v in selected.values()}) > 1:
         raise ValueError("Selected serving tasks require different runtime images; split the experiment")
     return selected
+
+
+def selected_recipe_task_ids(config_path: Path, root: Path) -> list[str]:
+    """Only recipe directories need an evaluator-owned prepared-package mount."""
+    config = yaml.safe_load(config_path.read_text())
+    tasks = {}
+    for selector in config.get('tasks', []):
+        tasks.update(get_task_config(str(root/'tasks'), None if selector == 'all' else selector))
+    return sorted(task_id for task_id, path in tasks.items()
+                  if yaml.safe_load(Path(path).read_text()).get('evaluation', {}).get('measurement', {}).get('recipe'))
 
 
 def gpu_groups(config: dict, available: list[str]) -> list[list[str]]:
@@ -375,7 +402,7 @@ def request_handler(executor):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["config-image", "image", "groups", "verifier", "serve"])
+    parser.add_argument("mode", choices=["config-image", "image", "groups", "verifier", "recipe-tasks", "serve"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--container-root", default="/workspace")
@@ -398,6 +425,9 @@ def main():
             print(",".join(group))
         return
     tasks = selected_serving_tasks(args.config, args.root)
+    if args.mode == 'recipe-tasks':
+        print('\n'.join(selected_recipe_task_ids(args.config, args.root)))
+        return
     if args.mode == 'verifier':
         from .candidate_verification import policy
         if config.get('agent', {}).get('template') != 'task_validator':

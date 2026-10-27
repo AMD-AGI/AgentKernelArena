@@ -1,0 +1,49 @@
+# SGLang client-only benchmark against an externally managed server.
+# ===================================================================
+#
+# Magpie does not start or stop the inference server in this mode. Start an
+# OpenAI-compatible server separately, make it reachable from this host, and
+# set BENCHMARK_BASE_URL below. The Magpie built-in wrapper detects that value
+# and runs only the InferenceX benchmark client.
+#
+# BENCHMARK_BASE_URL should contain only the scheme, host, and port. The
+# benchmark endpoint defaults to /v1/completions.
+#
+# Usage:
+#   python -m Magpie benchmark \
+#     --benchmark-config examples/benchmarks/benchmark_sglang_client_only.yaml
+
+benchmark:
+  framework: sglang
+  model: Qwen/Qwen3-Next-80B-A3B-Instruct-FP8
+  precision: fp8
+  run_mode: docker
+  docker_image: "your-client-image:version"
+
+  # Use a Magpie built-in script: native InferenceX benchmark scripts do not
+  # necessarily support BENCHMARK_BASE_URL or client-only execution.
+  benchmark_script: "sglang_mi355x.sh"
+  timeout_seconds: 3600
+
+  envs:
+    # Address of the externally managed OpenAI-compatible inference server.
+    BENCHMARK_BASE_URL: "http://server-host-or-ip:8888"
+
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    NUM_PROMPTS: 320
+    RANDOM_RANGE_RATIO: 1
+
+    # For a chat-only endpoint, uncomment both settings:
+    # MAGPIE_BENCHMARK_BACKEND: "openai-chat"
+    # MAGPIE_BENCHMARK_ENDPOINT: "/v1/chat/completions"
+
+  # Server-side profiling is unavailable when Magpie does not own the server.
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false

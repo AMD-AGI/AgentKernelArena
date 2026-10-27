@@ -1,0 +1,43 @@
+# AgentX framework trace capture for diagnosis, not performance comparison.
+# Usage:
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_sglang_deepseek_v4_pro_fp4_mi355x_agentx_profile.yaml
+# Requires a profiler-capable SGLang image. GPU execution is not yet validated.
+# Magpie waits for AIPerf's profiling phase, captures a bounded number of
+# framework steps, and waits for every rank's trace before cleaning up.
+# Three captures share one server and one replay client. The 200-second pause
+# starts only after all traces from the preceding capture have finished.
+# The count is reduced automatically to fit the replay (canonical default 3600s).
+# Completed traces remain; actual capture/flush/server/client errors still fail.
+# Per-capture traces: torch_trace/<capture_id>/profile_001/, profile_002/, ...
+# Per-capture TraceLens reports: profile_001/, profile_002/, ... in the workspace.
+# Results are benchmark_valid=false and publishable=false, including when
+# capture succeeds. Use the unprofiled AgentX example for candidate decisions.
+
+benchmark:
+  framework: sglang
+  model: deepseek-ai/DeepSeek-V4-Pro-0813
+  precision: fp4
+  run_mode: docker
+  agentx: enable
+  envs:
+    CONC: 32
+  docker_image: lmsysorg/sglang-rocm:v0.5.20-rocm720-mi35x-20260926
+  profiler:
+    torch_profiler:
+      enabled: true
+      num_steps: 20
+      num_profiles: 3
+      interval_seconds: 200
+      start_seconds: 0  # From measurement start, excluding warmup; must be < duration.
+      # To collect one mid-replay window, use num_profiles: 1 and start_seconds: 1800.
+      detailed_annotations: false
+      # Opt in only with a framework instrumented for annotation/shape discovery
+      # (and graph profiling when graphs are enabled). Magpie probes capabilities
+      # and configures the framework; this example remains usable with stock traces.
+      capture_timeout_seconds: 300
+      flush_timeout_seconds: 1800
+    tracelens:
+      enabled: true
+      analysis_mode: pytorch
+      auto_patch_runtime: false
+      export_format: csv

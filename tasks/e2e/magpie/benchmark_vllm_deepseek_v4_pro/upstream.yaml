@@ -1,0 +1,46 @@
+# vLLM Benchmark Configuration for deepseek-ai/DeepSeek-V4-Pro
+# ============================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_deepseek_v4_pro.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_deepseek_v4_pro.yaml --run-mode local
+#
+# Uses Magpie generic script vllm_mi355x.sh. The script supplies
+# --tensor-parallel-size, --gpu-memory-utilization, --max-model-len, and
+# --trust-remote-code from the envs below.
+
+benchmark:
+  framework: vllm
+  model: deepseek-ai/DeepSeek-V4-Pro
+  precision: fp8
+  run_mode: docker
+
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 8192
+    GPU_MEMORY_UTILIZATION: "0.90"
+    EXTRA_VLLM_ARGS: '--enable-auto-tool-choice --reasoning-parser deepseek_v4 --tool-call-parser deepseek_v4 --compilation-config {"mode":3,"cudagraph_mode":"FULL_DECODE_ONLY"}'
+
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "vllm/vllm-openai-rocm:nightly"
+  # hf_cache_path: ""
+  benchmark_script: "vllm_mi355x.sh"
+  timeout_seconds: 7200
+
+  gap_analysis:
+    enabled: true
+    top_k: 100
+    find_kernel_sources: true

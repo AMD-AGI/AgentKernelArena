@@ -21,6 +21,7 @@ import tempfile
 import yaml
 
 from .measurement import lock_limits, trace_input_token_policy
+from .perf_helper_materialization import SERVING_RECIPE_RUNNER_STUB
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / 'tasks/e2e/magpie/catalog.json'
@@ -311,6 +312,83 @@ def _command(spec, label):
         raise ValueError(label + ' requires literal environment values')
 
 
+def task_config(*, gpu_arch=None, timeout_s=14400, recipe=None):
+    """One v2 contract for authored recipes and their prepared runtime packages."""
+    config = dict(schema_version=2, description='Improve fixed-workload whole-model throughput using '
+        'general GPU kernel implementations or fusion. Preserve all model semantics, precision, '
+        'parallelism, serving options and request data.',
+        candidate=dict(language='gpu', initial_state='implemented', editable=[dict(path='source', scope='tree')]),
+        baseline=dict(kind='initial_candidate', correctness_policy='required'))
+    if gpu_arch is not None:
+        config['platform_support'] = dict(required_arch=gpu_arch)
+    config['evaluation'] = dict(runner=['python3', 'scripts/evaluate.py'],
+        workloads='upstream.yaml' if recipe else 'benchmark.yaml', timeout_s=timeout_s,
+        measurement=dict(kind='serving', runtime_lock='runtime.lock.json', pairs=3, minimum_speedup_ratio=1.05))
+    if recipe is not None:
+        config['evaluation']['measurement']['recipe'] = recipe
+    config['instructions'] = ['README.md']
+    return config
+
+
+def recipe_task_files(catalog, entry, *, root=ROOT):
+    """Small, discoverable task packages; evaluator implementation stays shared."""
+    describe(entry)
+    descriptor = dict(version=1, kind='magpie', repository=catalog['repository'],
+        revision=catalog['revision'], id=entry['id'], upstream_path=entry['upstream_path'],
+        sha256=entry['sha256'], source='upstream.yaml')
+    return {
+        'config.yaml': yaml.safe_dump(task_config(recipe='recipe.json'), sort_keys=False).encode(),
+        'recipe.json': json_bytes(descriptor),
+        'upstream.yaml': entry['source'].encode(),
+        'README.md': (root/'src/tools/perf/catalog_instructions.md').read_bytes(),
+        'MAGPIE_LICENSE': (root/'tasks/e2e/MAGPIE_LICENSE').read_bytes(),
+        'source/patches.json': json_bytes({'version': 1, 'patches': []}),
+        'scripts/evaluate.py': SERVING_RECIPE_RUNNER_STUB.encode(),
+    }
+
+
+def export_tasks(catalog, destination: Path, *, check=False, update=False, root=ROOT):
+    """Install all first-class task directories, refusing to overwrite local edits."""
+    destination = Path(destination)
+    expected = {}
+    for entry in catalog['entries']:
+        # load_catalog already checks IDs; retain containment for programmatic callers.
+        if _recipe_id(entry['upstream_path']) != entry['id']:
+            raise ValueError('Inconsistent recipe identity')
+        for name, body in recipe_task_files(catalog, entry, root=root).items():
+            relative = Path(entry['id'])/name
+            if relative.is_absolute() or '..' in relative.parts:
+                raise ValueError('Recipe task path escapes its destination')
+            expected[relative] = body
+    missing = []
+    for relative, body in expected.items():
+        path = destination/relative
+        parents = [destination, *(destination/Path(*relative.parts[:i])
+                                 for i in range(1, len(relative.parts)))]
+        if path.is_symlink() or any(parent.is_symlink() for parent in parents):
+            raise ValueError('Recipe task files must not use symlinks: ' + str(relative))
+        if path.exists():
+            if not path.is_file():
+                raise ValueError('Recipe task differs from its generated declaration: ' + str(relative))
+            if path.read_bytes() != body:
+                if not update or check:
+                    raise ValueError('Recipe task differs from its generated declaration: ' + str(relative))
+                missing.append((path, body))
+        else:
+            missing.append((path, body))
+    actual = {path.parent.relative_to(destination).as_posix()
+              for path in destination.rglob('config.yaml')} if destination.exists() else set()
+    if actual - {entry['id'] for entry in catalog['entries']}:
+        raise ValueError('Unexpected task directories exist in the recipe destination')
+    if check and missing:
+        raise ValueError('Recipe task declarations are missing; run export-tasks')
+    if not check:
+        for path, body in missing:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(body)
+    return len(catalog['entries'])
+
+
 def materialize(catalog, recipe_id, binding, destination: Path, *, root=ROOT):
     """Generate one complete v2 task; never overwrite a task or experiment."""
     entries = {e['id']: e for e in catalog['entries']}
@@ -389,16 +467,7 @@ def materialize(catalog, recipe_id, binding, destination: Path, *, root=ROOT):
         hashes = {'patches.json': sha256((task / 'source/patches.json').read_bytes())}
         lock['initial_bundle_sha256'] = sha256(json.dumps(hashes, sort_keys=True).encode())
         _write_json(task / 'runtime.lock.json', lock)
-        config = dict(schema_version=2, description='Improve fixed-workload whole-model throughput using '
-            'general GPU kernel implementations or fusion. Preserve all model semantics, precision, '
-            'parallelism, serving options and request data.',
-            candidate=dict(language='gpu', initial_state='implemented', editable=[dict(path='source', scope='tree')]),
-            baseline=dict(kind='initial_candidate', correctness_policy='required'),
-            platform_support=dict(required_arch=binding['gpu_arch']),
-            evaluation=dict(runner=['python3', 'scripts/evaluate.py'], workloads='benchmark.yaml',
-                timeout_s=binding.get('action_timeout_s', 14400),
-                measurement=dict(kind='serving', runtime_lock='runtime.lock.json', pairs=3, minimum_speedup_ratio=1.05)),
-            instructions=['README.md'])
+        config = task_config(gpu_arch=binding['gpu_arch'], timeout_s=binding.get('action_timeout_s', 14400))
         (task / 'config.yaml').write_text(yaml.safe_dump(config, sort_keys=False))
         required = ['correctness.json']
         if binding['correctness']['model_reference'] == 'production_quality':
@@ -494,6 +563,11 @@ def main():
     update.add_argument('--checkout', type=Path, required=True)
     listing = commands.add_parser('list')
     listing.add_argument('--json', action='store_true')
+    export = commands.add_parser('export-tasks')
+    export.add_argument('--output', type=Path, default=ROOT/'tasks/e2e/magpie')
+    export_mode = export.add_mutually_exclusive_group()
+    export_mode.add_argument('--check', action='store_true')
+    export_mode.add_argument('--update', action='store_true', help='Explicitly replace generated declaration files after review')
     make = commands.add_parser('materialize')
     make.add_argument('--id', required=True)
     make.add_argument('--binding', type=Path, required=True)
@@ -515,6 +589,9 @@ def main():
             info = describe(entry)
             print(json.dumps(info, ensure_ascii=False) if args.json else '\t'.join(str(info[k]) for k in
                 ('id', 'framework', 'scenario', 'model', 'qualification')))
+    elif args.command == 'export-tasks':
+        count = export_tasks(load_catalog(args.catalog), args.output, check=args.check, update=args.update)
+        print(f"{'Checked' if args.check else 'Exported'} {count} task directories")
     elif args.command == 'materialize':
         path = materialize(load_catalog(args.catalog), args.id, json.loads(args.binding.read_text()), args.output)
         print(path)

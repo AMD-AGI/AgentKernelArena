@@ -1,0 +1,45 @@
+# vLLM Benchmark Configuration for moonshotai/Kimi-K2.6 (W4A16 FlyDSL)
+# =====================================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_kimi_k2_6_w4a16_flydsl.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_vllm_kimi_k2_6_w4a16_flydsl.yaml --run-mode local
+#
+# This follows the MI350X/MI355X gfx950 FlyDSL W4A16 MoE recipe. Do not use
+# this config for amd/Kimi-K2.6-MXFP4; vLLM rejects FlyDSL for MXFP4 MoE.
+
+benchmark:
+  framework: vllm
+  model: moonshotai/Kimi-K2.6
+  precision: w4a16
+
+  envs:
+    TP: 8
+    CONC: 32
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 0.8
+    MAX_MODEL_LEN: 131072
+    VLLM_ROCM_USE_AITER: "1"
+    VLLM_ROCM_QUICK_REDUCE_QUANTIZATION: INT4
+    EXTRA_VLLM_ARGS: '--block-size 1 --enable-auto-tool-choice --tool-call-parser kimi_k2 --mm-encoder-tp-mode data --moe-backend flydsl --disable-custom-all-reduce --max-cudagraph-capture-size 64 --compilation-config {"pass_config":{"fuse_allreduce_rms":false}}'
+
+  profiler:
+    torch_profiler:
+      enabled: false
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "vllm/vllm-openai-rocm:nightly"
+  # hf_cache_path: ""
+  benchmark_script: "vllm_mi355x.sh"
+  timeout_seconds: 3600
+
+  gap_analysis:
+    enabled: true
+    top_k: 100
+    find_kernel_sources: true

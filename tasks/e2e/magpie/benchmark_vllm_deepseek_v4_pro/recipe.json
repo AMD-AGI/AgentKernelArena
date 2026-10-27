@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_deepseek_v4_pro",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_deepseek_v4_pro.yaml",
+  "sha256": "b2f55575415324a959d5c04005a6d4d0b7c711ff7683038269ee629f54b9c698",
+  "source": "upstream.yaml"
+}

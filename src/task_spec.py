@@ -262,9 +262,11 @@ def _actions(value: Any) -> tuple[ActionSpec, ...]:
         "runner", "workloads", "timeout_s", "task", "baseline", "candidate", "measurement",
     })
     if "measurement" in obj:
-        m = _mapping(obj["measurement"], "evaluation.measurement", {"kind", "runtime_lock", "pairs", "max_p99_tpot_ms", "minimum_speedup_ratio"})
+        m = _mapping(obj["measurement"], "evaluation.measurement", {"kind", "runtime_lock", "pairs", "max_p99_tpot_ms", "minimum_speedup_ratio", "recipe"})
         _choice(m.get("kind"), ("serving",), "measurement.kind")
         relative_path(m.get("runtime_lock"), "measurement.runtime_lock")
+        if "recipe" in m:
+            relative_path(m["recipe"], "measurement.recipe")
         if type(m.get("pairs")) is not int or not 3 <= m["pairs"] <= 100:
             raise TaskConfigError("Serving measurements require 3 to 100 fixed A/B pairs")
         threshold = m.get("minimum_speedup_ratio", 1.0)
@@ -386,6 +388,10 @@ class TaskSpec:
         protected = {"config.yaml", "README.md", *obj.get("instructions", [])}
         if "workloads" in obj["evaluation"]:
             protected.add(obj["evaluation"]["workloads"])
+        measurement = obj['evaluation'].get('measurement', {})
+        for field in ('runtime_lock', 'recipe'):
+            if field in measurement:
+                protected.add(measurement[field])
         # Read-only baseline material must not overlap editable candidate files.
         # initial_candidate has an independent frozen snapshot instead.
         for path in protected | set(baseline.source_files):

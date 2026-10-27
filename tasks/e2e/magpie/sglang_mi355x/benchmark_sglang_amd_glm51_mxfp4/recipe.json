@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "sglang_mi355x/benchmark_sglang_amd_glm51_mxfp4",
+  "upstream_path": "examples/benchmarks/sglang_mi355x/benchmark_sglang_amd_glm51_mxfp4.yaml",
+  "sha256": "12323b84ef030c98116de28cbcd175197deb87ee847d0b458cd9a844c9f48312",
+  "source": "upstream.yaml"
+}

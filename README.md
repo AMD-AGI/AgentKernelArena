@@ -13,7 +13,7 @@ The platform provides:
 - **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, DeepSeek Harness, GEAK-based agents, or custom agents through a shared interface.
 - **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
 - **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
-- **Fixed-workload serving tasks**: Evaluate model-wide kernel changes and fusion with pinned settings, fresh paired measurements and independent candidate review. The reusable [Magpie catalog](tasks/e2e/magpie/README.md) binds more workloads through shared adapters; see [the e2e guide](docs/how-to/e2e-kernel-tasks.md).
+- **Fixed-workload serving tasks**: Evaluate model-wide kernel changes and fusion with pinned settings, fresh paired measurements and independent candidate review. Each imported [Magpie workload](tasks/e2e/magpie/README.md) has its own selectable task directory; shared adapters prepare its immutable runtime before agent execution. See [the e2e guide](docs/how-to/e2e-kernel-tasks.md).
 - **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
 - **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
 - **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.

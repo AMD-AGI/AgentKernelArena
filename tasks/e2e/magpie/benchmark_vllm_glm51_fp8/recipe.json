@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_glm51_fp8",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_glm51_fp8.yaml",
+  "sha256": "b918e3935ce31bce49bb7a0bbe87b71c593eeefaeaa9905ce97ad90655e25916",
+  "source": "upstream.yaml"
+}

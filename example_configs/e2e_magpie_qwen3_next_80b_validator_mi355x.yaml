@@ -1,10 +1,13 @@
-# Materialize this catalog entry with an immutable runtime binding first.
+# Prepare the immutable runtime binding first; task preparation is automatic.
 # See docs/how-to/e2e-kernel-tasks.md#magpie-workload-catalog.
 agent:
   template: task_validator
   backend: codex
 tasks:
   - e2e/magpie/sglang_mi355x/benchmark_sglang_qwen3_next_80b_fp8
+serving_runtime:
+  bindings:
+    e2e/magpie/sglang_mi355x/benchmark_sglang_qwen3_next_80b_fp8: ../../runtime-bindings/sglang-qwen3-next-80b.json
 resources:
   gpu_groups: [[0, 1, 2, 3]]
 budget:

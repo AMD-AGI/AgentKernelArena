@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_kimi_k2_ray",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_kimi_k2_ray.yaml",
+  "sha256": "bb9f292e7eb6d17133fe658aba6af4e2282422110634b01fb6ab96c4628f341d",
+  "source": "upstream.yaml"
+}

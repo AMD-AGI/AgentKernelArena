@@ -1,0 +1,32 @@
+# SGLang AgentX Benchmark Configuration for deepseek-ai/DeepSeek-V4-Pro-0813
+# ======================================================================
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmarks/benchmark_sglang_deepseek_v4_pro_fp4_mi355x_agentx.yaml
+#
+# Magpie auto-clones InferenceX at 408c015be4b22d14c69518643609669405507077.
+# TP, speculative decoding, KV offload, and CPU DRAM settings come from its
+# single-node YAML recipe. Magpie owns the server; InferenceX owns replay.
+# Input lengths and target output lengths come from the trace dataset.
+# Omit ISL, OSL, and RANDOM_RANGE_RATIO; AgentX ignores them with a warning.
+# CONC sets the number of active agent session trees, including their subagents.
+# Choose a concurrency point supported by the selected InferenceX recipe.
+
+benchmark:
+  framework: sglang
+  model: deepseek-ai/DeepSeek-V4-Pro-0813
+  precision: fp4
+  run_mode: docker
+
+  # Run the canonical AgentX benchmark.
+  agentx: enable
+
+  envs:
+    CONC: 32  # Active session trees, not a fixed number of HTTP requests.
+
+  # For a non-publishable test, replace `agentx: enable` with:
+  # agentx:
+  #   enabled: true
+  #   mode: fast
+
+  docker_image: lmsysorg/sglang-rocm:v0.5.20-rocm720-mi35x-20260926

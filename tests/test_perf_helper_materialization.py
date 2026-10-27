@@ -312,7 +312,8 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
 
     functional_count = len(list((ROOT / "tasks/Aiter-task").glob("*/scripts/workload.json")))
     serving_count = len(list((ROOT / "tasks/e2e").glob("*/config.yaml")))
-    assert config_count == 420 + functional_count + serving_count
+    recipe_count = len(list((ROOT / 'tasks/e2e/magpie').rglob('config.yaml')))
+    assert config_count == 420 + functional_count + serving_count + recipe_count
     assert problems == []
     assert sum(counts.values()) == config_count
     # Replay-aware adapters call the canonical sample API directly so their
@@ -323,6 +324,7 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     assert counts == {
         "canonical_python": 273 + functional_count,
         "serving_client": serving_count,
+        "serving_recipe": recipe_count,
         "native_graph_driver": 2,
         "rocmbench_adapter": 10,
         "vllm_adapter": 135,

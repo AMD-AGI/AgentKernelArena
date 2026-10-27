@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_local_reuse",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_local_reuse.yaml",
+  "sha256": "a36f5c632a9b8f6dc3757f1745498a992da565182a9aca01c1e3ecf73eefd2cd",
+  "source": "upstream.yaml"
+}

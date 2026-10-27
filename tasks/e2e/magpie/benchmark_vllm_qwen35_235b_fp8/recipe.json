@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_vllm_qwen35_235b_fp8",
+  "upstream_path": "examples/benchmarks/benchmark_vllm_qwen35_235b_fp8.yaml",
+  "sha256": "a871e0fdacc2e07417132a3d4d2cf5f4149bd59aadb693daf14663e48d7caa8b",
+  "source": "upstream.yaml"
+}

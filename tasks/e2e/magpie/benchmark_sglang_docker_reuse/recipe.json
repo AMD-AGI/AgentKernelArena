@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "magpie",
+  "repository": "https://github.com/AMD-AGI/Magpie",
+  "revision": "6a1ee26f9053363d3750b43e3d5afb5d1c4ce84e",
+  "id": "benchmark_sglang_docker_reuse",
+  "upstream_path": "examples/benchmarks/benchmark_sglang_docker_reuse.yaml",
+  "sha256": "438f39cc82b4e74b7d0bdd44114d66da69557a22ff11be65c3c211521619bd52",
+  "source": "upstream.yaml"
+}

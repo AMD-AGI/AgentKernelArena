@@ -1,0 +1,49 @@
+# vLLM Benchmark Configuration for openai/gpt-oss-20b (FP4, MI355X)
+# ==================================================================
+#
+# Model: 20.9B params (3.6B active), MoE 32 experts top-4, 24 layers,
+#        GQA 64Q/8KV, hidden_size 2880, MXFP4 (~16GB VRAM)
+#
+# Usage (Docker - default):
+#   python -m Magpie benchmark --benchmark-config examples/benchmark_vllm_gptoss_20b.yaml
+#
+# Usage (Local - run directly on host, e.g. inside a pod):
+#   python -m Magpie benchmark --benchmark-config examples/benchmark_vllm_gptoss_20b.yaml --run-mode local
+
+benchmark:
+  framework: vllm
+  model: openai/gpt-oss-20b
+  precision: fp4
+
+  envs:
+    TP: 1
+    CONC: 64
+    ISL: 1024
+    OSL: 1024
+    RANDOM_RANGE_RATIO: 1
+    MAX_MODEL_LEN: 2248  # ISL + OSL + 200
+    EXTRA_VLLM_ARGS: "--no-enable-prefix-caching --block-size 64"
+    VLLM_LOGGING_LEVEL: "WARNING"
+
+    # MI300X performance flags (supplements vllm_mi300x.sh defaults)
+    VLLM_ROCM_USE_AITER: 1
+    VLLM_ROCM_USE_AITER_MHA: 0
+    VLLM_ROCM_USE_AITER_UNIFIED_ATTENTION: 1
+
+  profiler:
+    torch_profiler:
+      enabled: true
+    system_profiler:
+      enabled: false
+    tracelens:
+      enabled: false
+
+  docker_image: "vllm/vllm-openai-rocm:v0.19.1"
+  benchmark_script: "vllm_mi300x.sh"
+
+  gap_analysis:
+    enabled: true
+    top_k: 100
+    find_kernel_sources: true
+
+  timeout_seconds: 2700
