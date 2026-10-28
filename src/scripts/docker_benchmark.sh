@@ -79,8 +79,8 @@ Usage:
   src/scripts/docker_benchmark.sh build-eval-tool-images
 
 Default run config:
-  example_configs/quickstart_claude_mi300.yaml (MI300/MI300X).
-  On another GPU, pass --config_name with a matching run configuration.
+  example_configs/quickstart_claude_mi300.yaml (generic MI300-series target).
+  Pass a model-specific run config for the matching hardware profile.
   Optional docker_image in the run config pins that run's image. Environment
   image overrides take precedence over the config, then architecture defaults.
 

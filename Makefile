@@ -8,7 +8,7 @@ SHELL := /bin/bash
 
 .PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak docker-setup-forge \
         slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
-        check-docker-runner check-slurm-runner check-evaluator check-held-out check-visualization \
+        check-docker-runner check-slurm-runner check-evaluator check-gpu-architecture check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
         sync-perf-helpers check-perf-helpers materialize-perf-workspace \
         materialize-perf-task cleanup-works install-cursor-agent
@@ -25,7 +25,7 @@ help:
 	@echo "make docker-build-rdna4  - Prebuild/rebuild gfx1201 runtime (also builds on first use)"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
 	@echo "make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1 - Run an experiment across one worker container per GPU"
-	@echo "                         Default CONFIG is the MI300/MI300X Claude quickstart"
+	@echo "                         Default CONFIG is the generic MI300-series Claude quickstart"
 	@echo "                         On other GPUs, pass a matching CONFIG explicitly"
 	@echo "                         Images: gfx942->mi30x, gfx950->mi35x, gfx1201->local RDNA4 build"
 	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
@@ -47,6 +47,7 @@ help:
 	@echo "make slurm-submit CONFIG=config_codex_mi355x_spur.yaml - Submit a one-GPU batch run"
 	@echo "make slurm-parallel-submit CONFIG=... - Submit an 8-GPU, one-worker-per-GPU run"
 	@echo "make check-evaluator     - Run centralized evaluator unit tests"
+	@echo "make check-gpu-architecture - Check model profiles and architecture prompts"
 	@echo "make check-held-out      - Run held-out module unit tests"
 	@echo "make visualization-run   - Build and serve the local comparison dashboard"
 	@echo "make check-visualization - Run visualization module unit tests"
@@ -184,6 +185,9 @@ check-slurm-runner:
 
 check-evaluator:
 	@python3 -m unittest discover -s tests -p 'test_evaluator_*.py'
+
+check-gpu-architecture:
+	@python3 -m unittest discover -s tests -p 'test_gpu_architecture.py'
 
 check-held-out:
 	@python3 -m unittest discover -s tests -p 'test_held_out.py'

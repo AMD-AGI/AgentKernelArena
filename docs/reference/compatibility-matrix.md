@@ -20,6 +20,12 @@ The following hardware configurations are supported and tested.
 | MI355X | 10.0 (Bundled in the selected SGLang image.) | `target_gpu_model: MI355X` |
 | RDNA4 (`gfx1201`, 16 GB tested) | Pinned in the [RDNA4 recipe](../../docker/rdna4/Dockerfile) | `target_gpu_model: RDNA4`; HIP/Triton task runtime checks, with limits in the [recipe guide](../../docker/rdna4/README.md). |
 
+Model-specific prompt profiles and Claude quickstarts are also available for
+MI300A (`gfx942`). This is configuration coverage; this change does not establish
+physical MI300A GPU qualification. `MI300` remains a generic fallback and `MI325`
+remains an alias for MI325X. Runtime routing shares the existing `gfx942` image;
+individual task and runtime qualification still applies.
+
 ## Software requirements
 
 The following software versions are required or verified.

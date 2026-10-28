@@ -11,6 +11,12 @@ This topic summarizes the features available in each AgentKernelArena release. F
 
 ## Unreleased
 
+- Added shared CDNA 3 (`gfx942`) architecture guidance with separate MI300X,
+  MI325X and MI300A hardware profiles and quickstarts. Generic `MI300` no
+  longer assumes MI300X topology or memory limits; the `MI325` alias remains
+  supported. This adds model-specific configuration and prompt coverage;
+  physical GPU qualification remains task- and runtime-specific.
+
 - Retired five ROCmBench primitive tasks (`test_reverse_range`,
   `test_triton_swizzle2d`, `test_random_int`, `test_randn`, `test_kernel_sub`)
   and 16 `torch2hip/gpumode` generation tasks whose PyTorch references and
