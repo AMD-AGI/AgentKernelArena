@@ -92,3 +92,17 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+## Initial baseline numerical implementation
+
+The baseline uses a two-component MXFP4 expansion for the rotated Q/K operands.
+Each component has E2M1 values and E8M0 scales. Four feature contractions compute
+`(Q0 + Q1) @ (K0 + K1).T`, retaining the first quantization residual instead of
+changing the reference or the numerical gates. Conversion uses nearest-even
+rounding and a shared scale derived from the block maximum. Zero V blocks avoid
+0/0 during FP8 conversion. External shapes, BF16 I/O, seeds, selected flags and
+both numerical acceptance rules are unchanged. This increases internal work and
+storage, so it defines a new baseline identity requiring fresh measurements of
+both roles; old measurements cannot establish a speedup against this baseline.
+The declared wrapper remains the task interface. Internal quantized Q/K feature
+widths include the residual expansion and need not equal the external head size.

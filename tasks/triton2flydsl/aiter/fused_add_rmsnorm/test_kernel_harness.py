@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged, require_tensor_contract, allclose_output, verify_timed_pair
+from scripts.replay_checks import nonuniform_input_probes, check_reused_calls, scaled_input_probes, require_unchanged, require_tensor_contract, allclose_output, verify_timed_pair
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -78,24 +78,27 @@ def _make_inputs(M, N, dtype, device="cuda"):
     return x, residual, weight
 
 
-def _torch_rmsnorm(x, g, out_dtype):
+def _torch_rmsnorm(x, g, out_dtype, epsilon=EPS):
     import torch
 
     N = x.shape[1]
     x_f32 = x.float()
     g_f32 = g.float()
     mean_square = torch.sum(x_f32 * x_f32, dim=-1) * (1.0 / N)
-    rsigma = torch.rsqrt(mean_square + EPS)
+    rsigma = torch.rsqrt(mean_square + epsilon)
     out = x_f32 * rsigma.unsqueeze(1) * g_f32
     return out.to(out_dtype)
 
 
-def _run_kernel(mod, x, residual, weight):
+def _run_kernel(mod, x, residual, weight, epsilon=EPS):
     import torch
 
     out = torch.empty_like(x)
     residual_out = torch.empty_like(x)
-    mod.rmsnorm2d_fwd_with_add(out, x, residual, residual_out, weight, EPS)
+    returned = mod.rmsnorm2d_fwd_with_add(out, x, residual, residual_out, weight, epsilon)
+    require_tensor_contract(returned, out)
+    if returned.data_ptr() != out.data_ptr():
+        raise AssertionError("Fused add RMSNorm must return its caller-provided output")
     return out, residual_out
 
 
@@ -123,17 +126,14 @@ def _pair_replay_validator(x, residual, weight):
         summed = x + residual
         return _torch_rmsnorm(summed, weight, x.dtype), summed
     expected = reference()
-    def perturb():
-        x.neg_()
-        residual.neg_()
     def compare(actual, expected):
         _checked_pair_output(actual, x)
         for value, ref in zip(actual, expected):
             allclose_output(value, ref, atol=1e-2, rtol=1e-2)
     def validate(timed):
         return verify_timed_pair(timed, inputs=inputs, originals=originals,
-                                 expected=expected, perturb=perturb,
-                                 reference=reference, compare=compare)
+                                 expected=expected, perturb=(lambda: x.fill_(1024.0), lambda: (x.fill_(0.5 * EPS ** 0.5), residual.fill_(0.5 * EPS ** 0.5))) + scaled_input_probes(x, residual, factors=(0.5, 1e-4)) + scaled_input_probes(weight) + (lambda: (x.mul_(1e-4), residual.mul_(1e-4)),),
+                                 reference=reference, compare=compare, single_invocations=2)
     return validate
 
 
@@ -165,6 +165,36 @@ def run_correctness(verbose=True):
                     out, ref_out, atol=1e-2, rtol=1e-2
                 ) and torch.allclose(residual_out, ref_res, atol=1e-2, rtol=1e-2)
                 ok = finite and close
+                if ok:
+                    def oracle_repeat():
+                        summed = x + residual
+                        return _torch_rmsnorm(summed, weight, x.dtype), summed
+                    def compare_repeat(actual, wanted):
+                        _checked_pair_output(actual, x)
+                        for output, expected in zip(actual, wanted):
+                            allclose_output(output, expected, atol=1e-2, rtol=1e-2)
+                    check_reused_calls(lambda: _run_kernel(mod, x, residual, weight),
+                        initial_output=(out, residual_out), inputs=protected_inputs, originals=originals,
+                        perturbations=nonuniform_input_probes(x, residual, weight) +
+                            (lambda: (x.fill_(0.5 * EPS ** 0.5), residual.fill_(0.5 * EPS ** 0.5)),
+                             lambda: (x.fill_(512.0), residual.fill_(512.0))),
+                        reference=oracle_repeat, compare=compare_repeat,
+                        poison=lambda outputs: [output.fill_(float('nan')) for output in outputs])
+                if ok:
+                    try:
+                        x.fill_(0.0015)
+                        residual.fill_(0.0015)
+                        live = (x.clone(), residual.clone(), weight.clone())
+                        summed = x + residual
+                        wanted = (_torch_rmsnorm(summed, weight, x.dtype, epsilon=1e-3), summed)
+                        actual = _run_kernel(mod, x, residual, weight, epsilon=1e-3)
+                        require_unchanged(protected_inputs, live)
+                        _checked_pair_output(actual, x)
+                        for output, expected in zip(actual, wanted):
+                            allclose_output(output, expected, atol=1e-2, rtol=1e-2)
+                    finally:
+                        for value, original in zip(protected_inputs, originals):
+                            value.copy_(original)
                 if verbose:
                     print(
                         f"  {'PASS' if ok else 'FAIL'}: {tag} "

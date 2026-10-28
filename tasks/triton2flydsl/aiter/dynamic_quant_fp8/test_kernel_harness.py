@@ -30,7 +30,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged
+from scripts.replay_checks import nonuniform_input_probes, check_single_invocations, require_unchanged
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -128,7 +128,7 @@ def _reference_quant(x, qdtype, mode, scale=None):
     return (x * (1 / scale_ref[:, None])).to(qdtype), scale_ref
 
 
-def _checked_quant_output(out, qx, x, qdtype, scale=None, scale_out=None):
+def _checked_quant_output(out, qx, x, qdtype, scale=None, scale_out=None, *, expected_scale_shape=None):
     import torch
     for value in (out, qx):
         if not isinstance(value, torch.Tensor) or value.shape != x.shape or value.dtype != qdtype or value.device != x.device:
@@ -138,6 +138,10 @@ def _checked_quant_output(out, qx, x, qdtype, scale=None, scale_out=None):
     if not torch.equal(out.contiguous().view(torch.uint8), qx.contiguous().view(torch.uint8)):
         raise AssertionError("Quantizer did not populate its caller-provided output")
     if scale_out is not None:
+        if not isinstance(scale_out, torch.Tensor) or scale_out.dtype != torch.float32 or scale_out.device != x.device:
+            raise AssertionError("Caller scale dtype/device contract mismatch")
+        if expected_scale_shape is not None and tuple(scale_out.shape) != tuple(expected_scale_shape):
+            raise AssertionError("Quantizer changed the caller scale shape")
         if not isinstance(scale, torch.Tensor) or scale.shape != scale_out.shape or scale.dtype != torch.float32 or scale.device != x.device:
             raise AssertionError("Quantizer scale shape/dtype/device contract mismatch")
         if not bool(torch.isfinite(scale).all()) or not torch.equal(scale, scale_out):
@@ -149,10 +153,10 @@ def _compare_token_outputs(pair, expected, qx, x, scale_out, dtype):
     if not isinstance(pair, (tuple, list)) or len(pair) != 2:
         raise AssertionError("Dynamic quantizer must return output and scale")
     out, scale = pair
-    _checked_quant_output(out, qx, x, dtype, scale, scale_out)
     ref, ref_scale = expected
-    # Preserve the original dynamic per-token value and scale tolerances.
-    if not torch.allclose(out.float(), ref.float(), atol=1e-1, rtol=1e-1) or not torch.allclose(scale, ref_scale, atol=1e-1, rtol=1e-1):
+    _checked_quant_output(out, qx, x, dtype, scale, scale_out, expected_scale_shape=ref_scale.shape)
+    # Value rounding retains its original gate; FP32 scales use a scale-specific relative gate.
+    if not torch.allclose(out.float(), ref.float(), atol=1e-1, rtol=1e-1) or not torch.allclose(scale, ref_scale, atol=1e-7, rtol=1e-4):
         raise AssertionError("Numerical mismatch: dynamic per-token quantizer values/scales")
 
 
@@ -162,20 +166,71 @@ def _verify_quant_timed(timed, qx, x, scale_out, dtype, originals, expected):
         raise RuntimeError("Benchmark did not expose measured quantizer outputs")
     require_unchanged((x,), originals)
     _compare_token_outputs(timed.outputs, expected, qx, x, scale_out, dtype)
-    try:
+    def original_probe():
         x.neg_().mul_(0.5)
-        changed = (x.clone(),)
-        reference = _reference_quant(x, dtype, "dyn_token")
-        nan_byte = 128 if dtype == torch.float8_e4m3fnuz else 127
-        qx.view(torch.uint8).fill_(nan_byte)
-        scale_out.fill_(float("nan"))
-        result = timed.rerun()
-        require_unchanged((x,), changed)
-        _compare_token_outputs(result, reference, qx, x, scale_out, dtype)
-    finally:
-        x.copy_(originals[0])
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    for change in (original_probe,) + nonuniform_input_probes(*(x,)):
+        try:
+            change()
+            changed = (x.clone(),)
+            reference = _reference_quant(x, dtype, "dyn_token")
+            nan_byte = 128 if dtype == torch.float8_e4m3fnuz else 127
+            check_single_invocations(timed, count=2, inputs=(x,), expected=reference,
+                compare=lambda actual, wanted: _compare_token_outputs(actual, wanted, qx, x, scale_out, dtype),
+                poison=lambda output: (qx.view(torch.uint8).fill_(nan_byte), scale_out.fill_(float("nan"))))
+            # Isolated captures must not prime the scored graph cache.
+            x.copy_(originals[0])
+            check_single_invocations(timed, count=2, inputs=(x,), expected=_reference_quant(x, dtype, "dyn_token"),
+                compare=lambda actual, wanted: _compare_token_outputs(actual, wanted, qx, x, scale_out, dtype),
+                poison=lambda output: (qx.view(torch.uint8).fill_(nan_byte), scale_out.fill_(float("nan"))))
+            change()
+            qx.view(torch.uint8).fill_(nan_byte)
+            scale_out.fill_(float("nan"))
+            result = timed.rerun()
+            require_unchanged((x,), changed)
+            _compare_token_outputs(result, reference, qx, x, scale_out, dtype)
+        finally:
+            x.copy_(originals[0])
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS", "single_invocations_per_probe": 2, "restored_input_single_invocations_per_probe": 2,
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
+def _check_repeated_quant(mod, mode, x, qdtype, qx, scale):
+    import torch
+    original = x.clone()
+    scale_shape = tuple(scale.shape)
+    fixed_scale = scale.clone() if mode == 'static' else None
+    probes = (lambda: x.copy_(x.flip(-1)),) + nonuniform_input_probes(x)
+    if mode == 'static':
+        probes += (lambda: scale.mul_(2.0),)
+    try:
+        for change in probes:
+            x.copy_(original)
+            if fixed_scale is not None:
+                scale.copy_(fixed_scale)
+            change()
+            declared_scale = scale.clone() if fixed_scale is not None else None
+            wanted, wanted_scale = _reference_quant(x, qdtype, mode, declared_scale)
+            changed = x.clone()
+            qx.view(torch.uint8).fill_(128 if qdtype in (torch.int8, torch.float8_e4m3fnuz) else 127)
+            if mode == 'static':
+                actual = mod.static_per_tensor_quant_fp8_i8(qx, x, scale)
+                require_unchanged((x, scale), (changed, declared_scale))
+                _checked_quant_output(actual, qx, x, qdtype)
+                torch.testing.assert_close(actual.float(), wanted.float(), atol=1e-2, rtol=1e-2)
+            else:
+                # Atomic per-tensor reduction requires zero-initialized scale.
+                scale.zero_() if mode == 'dyn_tensor' else scale.fill_(float('nan'))
+                entry = (mod.dynamic_per_tensor_quant_fp8_i8 if mode == 'dyn_tensor'
+                         else mod.dynamic_per_token_quant_fp8_i8)
+                actual, actual_scale = entry(qx, x, scale)
+                require_unchanged((x,), (changed,))
+                _checked_quant_output(actual, qx, x, qdtype, actual_scale, scale, expected_scale_shape=scale_shape)
+                torch.testing.assert_close(actual.float(), wanted.float(), atol=1e-1, rtol=1e-1)
+                torch.testing.assert_close(actual_scale.reshape(-1), wanted_scale.reshape(-1), atol=1e-7, rtol=1e-4)
+    finally:
+        x.copy_(original)
+        if fixed_scale is not None:
+            scale.copy_(fixed_scale)
 
 
 def _check(mode, mod, M, N, qdtype, verbose):
@@ -196,6 +251,8 @@ def _check(mode, mod, M, N, qdtype, verbose):
             out.to(torch.float32), ref.to(torch.float32), atol=1e-2, rtol=1e-2
         )
         finite = bool(torch.isfinite(out.to(torch.float32)).all().item())
+        if finite and close:
+            _check_repeated_quant(mod, mode, x, qdtype, qx, scale)
         return finite and close, finite, close
     elif mode == "dyn_tensor":
         x = torch.randn((M, N), dtype=torch.bfloat16, device="cuda")
@@ -205,15 +262,17 @@ def _check(mode, mod, M, N, qdtype, verbose):
         originals = (x.clone(),)
         out, s = mod.dynamic_per_tensor_quant_fp8_i8(qx, x, scale_out)
         require_unchanged((x,), originals)
-        _checked_quant_output(out, qx, x, qdtype, s, scale_out)
+        _checked_quant_output(out, qx, x, qdtype, s, scale_out, expected_scale_shape=(1,))
         torch.cuda.synchronize()
         s_close = torch.allclose(
-            s, torch.tensor([scale_ref], device="cuda"), atol=1e-1, rtol=1e-1
+            s, torch.tensor([scale_ref], device="cuda"), atol=1e-7, rtol=1e-4
         )
         v_close = torch.allclose(
             out.to(torch.float32), ref.to(torch.float32), atol=1e-1, rtol=1e-1
         )
         finite = bool(torch.isfinite(out.to(torch.float32)).all().item())
+        if finite and s_close and v_close:
+            _check_repeated_quant(mod, mode, x, qdtype, qx, scale_out)
         return finite and s_close and v_close, finite, (s_close and v_close)
     else:  # dyn_token
         x = torch.rand((M, N), dtype=torch.bfloat16, device="cuda")
@@ -223,13 +282,15 @@ def _check(mode, mod, M, N, qdtype, verbose):
         originals = (x.clone(),)
         out, s = mod.dynamic_per_token_quant_fp8_i8(qx, x, scale_out)
         require_unchanged((x,), originals)
-        _checked_quant_output(out, qx, x, qdtype, s, scale_out)
+        _checked_quant_output(out, qx, x, qdtype, s, scale_out, expected_scale_shape=(M,))
         torch.cuda.synchronize()
-        s_close = torch.allclose(s, scale_ref, atol=1e-1, rtol=1e-1)
+        s_close = torch.allclose(s, scale_ref, atol=1e-7, rtol=1e-4)
         v_close = torch.allclose(
             out.to(torch.float32), ref.to(torch.float32), atol=1e-1, rtol=1e-1
         )
         finite = bool(torch.isfinite(out.to(torch.float32)).all().item())
+        if finite and s_close and v_close:
+            _check_repeated_quant(mod, mode, x, qdtype, qx, scale_out)
         return finite and s_close and v_close, finite, (s_close and v_close)
 
 
@@ -262,6 +323,8 @@ def run_correctness(verbose=True):
                     failures.append(tag)
                     if verbose:
                         print(f"  FAIL: {tag} - {str(e)[:160]}")
+
+    run_domain_controls(mod)
 
     total = len(TEST_SHAPES) * len(modes) * len(qdtypes)
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{total})"
@@ -340,3 +403,19 @@ if __name__ == "__main__":
     else:
         run_benchmark()
         sys.exit(0)
+
+
+def run_domain_controls(mod):
+    """Signed per-token INT8 must use absmax and emit nonzero accurate scales."""
+    import torch
+    # Negative magnitude dominates the positive max in every row.
+    x = torch.tensor([[-4., .5, 1., -2.], [.25, -8., 2., 1.]],
+                     device="cuda", dtype=torch.bfloat16)
+    original = x.clone()
+    expected = _reference_quant(x, torch.int8, "dyn_token")
+    qx = torch.empty_like(x, dtype=torch.int8)
+    scale = torch.full((2,), float("nan"), device=x.device)
+    actual = mod.dynamic_per_token_quant_fp8_i8(qx, x, scale)
+    require_unchanged((x,), (original,))
+    _compare_token_outputs(actual, expected, qx, x, scale, torch.int8)
+    print("Unscored signed INT8 absmax controls: PASS")

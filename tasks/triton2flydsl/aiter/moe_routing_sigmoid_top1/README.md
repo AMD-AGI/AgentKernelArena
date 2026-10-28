@@ -83,3 +83,8 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+
+## Additional correctness controls
+
+Additional unscored GPU controls exercise the documented 3D activation representation, with and without a shared expert, against the same flattened logical reference.

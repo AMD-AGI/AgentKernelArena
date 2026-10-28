@@ -18,7 +18,7 @@ import time
 import argparse
 import importlib.util
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -154,15 +154,12 @@ def _attention_replay_validator(q, k, v, bsl, bseq, cfg):
     inputs = (q, k, v, bsl, bseq)
     originals = tuple(x.clone() for x in inputs)
     expected = reference(q, k, v, cfg)
-    def perturb():
-        # V changes output while preserving attention logits, shapes and dtype.
-        v.neg_()
     def replay_reference():
         return reference(q, k, v, cfg)
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=replay_reference, compare=_compare_attention_output)
+                                expected=expected, perturb=scaled_input_probes(q, k, v),
+                                reference=replay_reference, compare=_compare_attention_output, single_invocations=2)
     return validate
 
 
@@ -185,12 +182,12 @@ def run_correctness():
             o.fill_(float("nan"))
             protected_inputs = (q, k, v, bsl, bseq)
             originals = tuple(v.clone() for v in protected_inputs)
+            ref = reference(q, k, v, cfg)
             _retry_oom(lambda: mod.context_attention_fwd(
                 q, k, v, o, bsl, bseq, max_len, is_causal=cfg["causal"]))
             torch.cuda.synchronize()
             require_unchanged(protected_inputs, originals)
             _checked_attention_output(o, q)
-            ref = reference(q, k, v, cfg)
             finite = bool(torch.isfinite(o).all().item())
             diff = (o.float() - ref.float()).abs().max().item()
             denom = ref.float().abs().max().item()
@@ -200,6 +197,16 @@ def run_correctness():
             passed = finite and (frac >= 0.999 or rel <= 1e-2)
             details.append({"shape_id": i + 1, "shape": sh, "max_diff": diff,
                             "rel": rel, "frac": frac, "passed": passed})
+            if passed:
+                for factor in (0.0, 0.5, 2.0):
+                    scale = factor / (cfg['d'] ** 0.5)
+                    wanted = reference(q, k, v, cfg, sm_scale=scale)
+                    o.fill_(float('nan'))
+                    _retry_oom(lambda: mod.context_attention_fwd(q, k, v, o, bsl, bseq,
+                        max_len, is_causal=cfg['causal'], sm_scale=scale))
+                    require_unchanged(protected_inputs, originals)
+                    _checked_attention_output(o, q)
+                    _compare_attention_output(o, wanted)
             if not passed:
                 return False, (f"Shape {i+1} {sh}: max_diff={diff:.4e} "
                                f"rel={rel:.4e} frac={frac:.5f} "

@@ -77,7 +77,17 @@ class StubQualityLoop(QualityLoop):
                 (workspace / path.name).write_bytes(path.read_bytes())
         report = self.reports.pop(0)
         (workspace / "validation_report.yaml").write_text(yaml.safe_dump(report))
+        self._validation_manifests[workspace] = ({
+            "test_case_id": "fixture", "shape": [1], "dtype": "int32",
+            "params": {}, "checks": ["correctness", "performance"],
+        },)
         return workspace, report
+
+    def _review_repair(self, task_id, original, workspace, findings):
+        # Workflow-only fixture; actual reviewer tampering and closure are
+        # exercised separately against the controller implementation.
+        return dict(accepted=True, contract_preserved=True, scoring_preserved=True,
+                    resolved_findings=list(findings), summary="CPU workflow fixture")
 
     def _optimize_once(self, task_id, task_dir, stage_dir):
         stage_dir.mkdir(parents=True, exist_ok=True)
@@ -176,7 +186,7 @@ class QualityLoopTests(unittest.TestCase):
                 }
             )
 
-        with self.assertRaisesRegex(ValueError, "exactly one repair"):
+        with self.assertRaisesRegex(ValueError, "integer from 1 to 3"):
             QualityLoopConfig.from_dict(
                 {
                     "target_gpu_model": "MI300",

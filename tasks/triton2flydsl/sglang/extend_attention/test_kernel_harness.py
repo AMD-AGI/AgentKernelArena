@@ -18,7 +18,7 @@ import time
 import argparse
 import importlib.util
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run, verify_timed_pair
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run, verify_timed_pair
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -194,13 +194,17 @@ def _extend_replay_validator(inputs, cfg):
     def oracle():
         return reference(q, k, v, kb, vb, kvi, cfg)
     expected = oracle()
-    def perturb():
-        v.neg_()
-        vb.neg_()
+    def repeated_prefix_indices():
+        # Arbitrary in-range cache gathers may reuse physical entries. Keep the
+        # first index unchanged but make later addresses observably necessary.
+        q.zero_(); k.zero_(); kb.zero_(); v.zero_(); vb.zero_()
+        vb[0].fill_(1.0)
+        kvi[::2] = 0
+    gather_probes = ((lambda: kvi.copy_((kvi + 1) % kb.shape[0])), repeated_prefix_indices) if kvi.numel() else ()
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=oracle, compare=_compare_extend_output)
+                                expected=expected, perturb=(lambda: (q.fill_(1.0), k.fill_(65536.0), kb.fill_(65536.0), v.fill_(2.0), vb.fill_(2.0)),) + scaled_input_probes(q, k, v, kb, vb) + gather_probes,
+                                reference=oracle, compare=_compare_extend_output, single_invocations=2)
     return validate
 
 

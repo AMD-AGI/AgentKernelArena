@@ -156,9 +156,11 @@ def cdiv_fn(x, y):
 @triton.jit
 def apply_softcap(S, x):
     Sdiv = S / x
-    p1 = tl.math.exp2(Sdiv)
-    p2 = tl.math.exp2(-Sdiv)
-    return x * (p1 - p2) / (p1 + p2)
+    # Equivalent exp2 softcap with a nonpositive exponent: avoid inf/inf
+    # for large finite scores while preserving the existing log2 scaling.
+    tail = tl.math.exp2(-2.0 * tl.abs(Sdiv))
+    magnitude = (1.0 - tail) / (1.0 + tail)
+    return x * tl.where(Sdiv >= 0.0, magnitude, -magnitude)
 
 
 @triton.jit

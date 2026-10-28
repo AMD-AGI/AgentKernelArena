@@ -62,7 +62,7 @@ Validates:
 
 import os
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import verify_topk_timed_run, require_topk_output
+from scripts.replay_checks import require_unchanged, verify_topk_timed_run, require_topk_output
 
 DTYPE_FP32 = torch.float32
 DTYPE_FP16 = torch.float16
@@ -121,6 +121,7 @@ def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
     # bf16/f16 precision boundaries (both vLLM and FlyDSL pick a different
     # near-tie expert than fp32-softmax does).
     gating_dev = gating_fp32.to(torch_dtype).contiguous()
+    gating_original = gating_dev.clone()
     gating_for_ref = gating_dev.to(DTYPE_FP32)
 
     # --- PyTorch reference ---
@@ -141,8 +142,34 @@ def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
             stream=torch.cuda.current_stream(),
         )
 
+    for _ in range(3):
+        topk_weights_dev.fill_(float("nan"))
+        topk_indices_dev.fill_(-1)
+        token_expert_indices_dev.fill_(-1)
+        kernel_launch()
+        torch.cuda.synchronize()
+        require_unchanged(gating_dev, gating_original)
+        require_topk_output((topk_weights_dev, topk_indices_dev, token_expert_indices_dev),
+                            gating_dev, topk, dtype_str, renormalize, reference_topk)
+
+    # Exercise stability and changed, non-invariant inputs in every public dtype.
+    for change in (lambda: gating_dev.add_(1000.0), lambda: gating_dev.neg_(),
+                   lambda: gating_dev.mul_(4.0)):
+        try:
+            gating_dev.copy_(gating_original)
+            change()
+            changed = gating_dev.clone()
+            topk_weights_dev.fill_(float("nan"))
+            topk_indices_dev.fill_(-1)
+            token_expert_indices_dev.fill_(-1)
+            kernel_launch()
+            torch.cuda.synchronize()
+            require_unchanged(gating_dev, changed)
+            require_topk_output((topk_weights_dev, topk_indices_dev, token_expert_indices_dev),
+                                gating_dev, topk, dtype_str, renormalize, reference_topk)
+        finally:
+            gating_dev.copy_(gating_original)
     kernel_launch()
-    torch.cuda.synchronize()
 
     _, avg_us = run_perftest(
         kernel_launch,
@@ -159,6 +186,7 @@ def run_test(num_tokens, num_experts, topk, dtype_str, renormalize=True):
     if flydsl_gpu_us is not None:
         print(f"[Perf] FlyDSL topk_gating_softmax gpu: {flydsl_gpu_us:.1f} us")
 
+    require_unchanged(gating_dev, gating_original)
     require_topk_output((topk_weights_dev, topk_indices_dev, token_expert_indices_dev),
                         gating_dev, topk, dtype_str, renormalize, reference_topk)
 
@@ -441,7 +469,7 @@ def arena_benchmark(warmup=10, iters=100):
             kernel_launch, warmup=0, repetition=iters, timed_run=timed,
         )
         bench_meta.update(verify_topk_timed_run(
-            timed, gating_dev, original, topk, dtype_str, True, reference_topk,
+            timed, gating_dev, original, topk, dtype_str, True, reference_topk, single_invocations=2,
         ))
         latencies.append(ms)
         report_cases.append(

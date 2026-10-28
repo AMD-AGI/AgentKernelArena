@@ -87,6 +87,44 @@ def _action_check(evaluated: dict, role: str, action: str) -> dict:
     return check
 
 
+def _event_case_fallback_reason(row: Mapping) -> str | None:
+    """Read captured flat/nested timing evidence without resolving conflicts away.
+
+    Task-owned protocol adapters use both layouts. These fields come from the
+    parsed command envelope, never the model's review. N/A applies only to graph
+    replay; all other numerical and benchmark review gates remain mandatory.
+    """
+    metadata = row.get("metadata", {})
+    if not isinstance(metadata, Mapping):
+        return None
+    timing = metadata.get("device_timing", {})
+    if not isinstance(timing, Mapping):
+        return None
+    if "device_timing" in metadata and timing.get("benchmark_method") != "cuda_event_fallback":
+        return None
+    containers = (row, metadata, timing)
+    if row.get("status") != "PASS" or row.get("benchmark_method") != "cuda_event_fallback":
+        return None
+    if any(c["benchmark_method"] != "cuda_event_fallback" for c in containers
+           if "benchmark_method" in c):
+        return None
+    if any(c["benchmark_method_consistent"] is not True for c in containers
+           if "benchmark_method_consistent" in c):
+        return None
+    reasons = [c["benchmark_fallback_reason"] for c in containers
+               if "benchmark_fallback_reason" in c]
+    if (not reasons or any(not isinstance(r, str) or not r.strip() for r in reasons)
+            or len(set(reasons)) != 1):
+        return None
+    checked = [c["timed_output_checked"] for c in containers if "timed_output_checked" in c]
+    verdicts = [c["timed_output_correctness"] for c in containers
+                if "timed_output_correctness" in c]
+    if ((not checked and not verdicts) or any(v is not True for v in checked)
+            or any(v != "PASS" for v in verdicts)):
+        return None
+    return reasons[0]
+
+
 def _replay_validation_applicability(evaluated: dict) -> dict:
     """Only complete, measured event-only actions can make graph replay N/A.
 
@@ -121,21 +159,8 @@ def _replay_validation_applicability(evaluated: dict) -> dict:
         return applicability
     reasons = set()
     for row in cases:
-        metadata = row.get("metadata", {})
-        timing = metadata.get("device_timing", {})
-        reason = timing.get("benchmark_fallback_reason") if isinstance(timing, dict) else None
-        if (row.get("status") != "PASS"
-                or row.get("benchmark_method") != "cuda_event_fallback"
-                or not isinstance(timing, dict)
-                or timing.get("benchmark_method") != "cuda_event_fallback"
-                or not isinstance(reason, str) or not reason.strip()
-                or metadata.get("timed_output_checked") is not True
-                or any("benchmark_method" in container
-                       and container["benchmark_method"] != "cuda_event_fallback"
-                       for container in (row, metadata, timing))
-                or any("benchmark_method_consistent" in container
-                       and container["benchmark_method_consistent"] is not True
-                       for container in (row, metadata, timing))):
+        reason = _event_case_fallback_reason(row)
+        if reason is None:
             applicability["reason"] = (
                 "Every measured case needs consistent explicit event timing, a fallback reason, "
                 "and validation of its measured output."

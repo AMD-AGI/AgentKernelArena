@@ -93,3 +93,9 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+Every scored Event sample is checked against its independent expected output
+after end-event synchronization, outside the measured interval. The reported
+checked-sample count must equal the original sample count for both roles. These
+checks can affect between-sample cache cadence; compare only freshly qualified
+baseline and candidate results using this same source and validation policy.

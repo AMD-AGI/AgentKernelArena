@@ -202,6 +202,24 @@ reference timing path. Judgment-heavy WARN/FAIL results include source-line or r
 case evidence; genuinely unavailable evidence is reported as WARN rather than inferred
 as a failure.
 
+The controller also checks that the semantic reviewer leaves the initial
+candidate and captured action/context JSON unchanged. Frozen Python modules
+also retain their import identity: newly added same-name packages or native
+extension modules are rejected before evaluation, even when the original `.py`
+file is unchanged. Rejected shadow paths are preserved for inspection rather
+than imported or silently deleted. Editing a candidate after
+its GPU checks invalidates the review even if the protected harness still matches.
+Reviewers should identify a concrete in-domain wrong behavior and retain the
+terminal result of any additional diagnostic, distinguishing executed probes
+from source-only findings. Task-specific regression controls should exercise the
+implementation and the actual measured/replayed path, not just the oracle.
+
+For explicit Event-only measurements, the validator accepts the maintained flat
+timing metadata and nested `device_timing` layouts from captured command evidence.
+Both require a consistent Event method, a nonempty fallback reason and successful
+validation of the measured output. Missing or contradictory fields do not grant
+graph-replay N/A. N/A does not override any independent semantic WARN/FAIL.
+
 ## Result template
 
 A validated task's **compile → correctness → performance** flow must produce results
@@ -229,3 +247,24 @@ score: 0.0
 For the full author checklist and self-containedness rules, see
 `agents/task_validator/README.md` in the repository and
 [Add a task](add-task.md).
+
+
+Grouped graph replay can allow incomplete logical calls to accumulate a correct
+final buffer. Supplemental `TimedRun.single_invocation(before_replay=poison)`
+controls use fresh one-call captures (or one original eager call for explicit
+Event timing). The callback poisons the fresh graph's actual output buffers after
+capture, before replay. Check the first changed-input call before grouped replay
+can refresh stale state, and compare at least two calls independently. These
+checks are unscored, retain the original graph and sampling policy, and supplement
+numerical checks on the actual scored output and replay. Independent nonuniform
+input changes can distinguish stale quantized codes that uniform rescaling
+preserves; task-valid numerical boundary inputs address specific arithmetic
+omissions without loosening the original numerical rule.
+
+For explicit Event tasks, a last-output check cannot establish correctness of
+earlier scored calls. Task-owned `TimedRun.after_sample` callbacks can check each
+actual output after its end-event synchronization, with the independent expected
+value bound before timing. The repaired GEMM tasks record the number of checked
+samples and require it to match the unchanged sample count. Validation between
+samples can affect cache cadence; qualify both roles with the new source and
+do not present old and new scores as an optimization comparison.

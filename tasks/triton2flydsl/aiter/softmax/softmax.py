@@ -109,6 +109,10 @@ def softmax(x):
     Returns:
         torch.Tensor: Output with same shape as x, softmax applied along last dimension.
     """
+    # The kernel accepts a row stride; pack non-unit column strides explicitly.
+    # Existing contiguous scored inputs take the unchanged no-copy path.
+    if x.stride(1) != 1:
+        x = x.contiguous()
     n_rows, n_cols = x.shape
 
     MAX_FUSED_SIZE = 65536 // x.element_size()

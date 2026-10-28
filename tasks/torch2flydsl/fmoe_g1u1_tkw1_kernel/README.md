@@ -5,16 +5,14 @@ Implement or optimize fmoe_g1u1_tkw1 in FlyDSL, preserving all task inputs, outp
 The candidate starts **unimplemented**. The runner explicitly selects the provided baseline before loading any candidate source. An empty candidate is allowed only at initial task validation.
 The original harness's primary implementation timing is retained; additional
 reference/operator timings are diagnostic only. `test_kernel_harness.py` defines
-the exact dispatch and allocation boundary for this task. The provided path uses
-the task-local PyTorch model or installed AITER operator specified there, with its
+the exact dispatch and allocation boundary for this task. The provided path uses the protected task-local GPU implementation, with the
 original graph/event policy. `model.py` is protected reference/source material;
 its presence alone does not select the performance baseline.
 
 There are 3 declared cases in `cases.json`. All original dimensions,
 parameter variants, seeds, tolerances, numerical metrics, output checks, warmups
-and repetition counts remain in the protected harness. It validates the PyTorch
-reference against the original independent AITER comparison wherever that check
-was present. Small independent known-answer and negative-output controls in
+and repetition counts remain in the protected harness. It compares the provided implementation or candidate against the independent
+PyTorch reference. Small independent known-answer and negative-output controls in
 `scripts/reference_controls.py` supplement the full GPU checks.
 
 Edit only `candidate.editable` paths from `config.yaml`. Preserve each declared
@@ -52,9 +50,8 @@ establish GPU correctness or timing support. Historical validation files predate
 this migration; the parent integration schedules fresh GPU validation.
 
 Timing begins from the same raw BF16 hidden/weight tensors and selected routing
-for both roles. The AITER baseline now quantizes and shuffles weights (and, for
-the block-scaled task, quantizes activations and prepares sorted routing) inside
-each measured call, matching the candidate's input boundary. Router logits,
+for both roles. The provided baseline quantizes activations/weights and prepares grouped routing
+inside each measured call, matching the candidate's input boundary. Router logits,
 top-k selection and the diagnostic reference's expert plan stay outside timing
 as before. This corrects the older baseline-only preprocessing exclusion; old
 kernel-only timings cannot be compared as if the timed work were unchanged.
@@ -101,3 +98,27 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+## Numerically faithful provided baseline
+
+The native one-launch baseline failed the unchanged 0.035 normalized max-error
+gate on valid changed-weight inputs. The provided baseline is now a protected
+task-local GPU implementation in `task_baseline.py`: per-row FP8
+quantization with round-to-nearest-even, stage-1 gate/up GEMMs with FP32
+accumulation, router weights applied to both projections, a BF16 intermediate,
+and the down GEMM followed by the top-k sum. `model.py` remains the independent
+PyTorch oracle; its arithmetic and the numerical gate are unchanged.
+
+Every invocation quantizes the current raw operands and recomputes current
+routing. There is no shape/seed shortcut, cached quantized weight, stored answer
+or imported reference computation. GPU preparation and scratch/output allocation
+remain inside the timed callable for both roles; router selection and oracle work
+remain outside. This changes the provided implementation and baseline identity.
+Remeasure both baseline and candidate; do not compare historical scores or claim
+an optimization from this correctness repair. The new multi-launch implementation
+has different preparation/storage costs from the former fused native kernel.
+
+`baseline.source_files` declares both `model.py` and `task_baseline.py` so the
+compile action syntax-checks the actual provided implementation. Both files and
+the calling harness are frozen; candidate import closure rejects `task_baseline`
+as a protected dependency before candidate code runs.

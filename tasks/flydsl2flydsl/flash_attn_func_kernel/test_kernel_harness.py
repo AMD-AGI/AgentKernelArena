@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import verify_timed_run, compare_output
+from scripts.replay_checks import require_unchanged, scaled_input_probes, verify_timed_run, compare_output
 
 # ============================================================================
 # GEAK bootstrap
@@ -130,10 +130,12 @@ def run_correctness(shapes=None, verbose=True):
             v_flat = v_4d.contiguous().view(-1)
             o_flat = torch.zeros_like(q_flat)
 
+            readonly = tuple(value.clone() for value in (q_flat, k_flat, v_flat))
+            ref = reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype)
             exe(q_flat, k_flat, v_flat, o_flat, B, S)
+            require_unchanged((q_flat, k_flat, v_flat), readonly)
             torch.cuda.synchronize()
 
-            ref = reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype)
             ref_flat = ref.contiguous().view(-1)
 
             tol = ATOL_BY_DTYPE.get(dtype_str, ATOL)
@@ -406,10 +408,9 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         )
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=(q_flat, k_flat, v_flat), originals=originals, expected=expected,
-            perturb=lambda: v_flat.neg_(),
+            perturb=(lambda: (q_flat.fill_(32.0), k_flat.fill_(32.0)),) + scaled_input_probes(q_flat, k_flat, v_flat),
             reference=lambda: reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype).contiguous().view(-1),
-            compare=lambda actual, ref: compare_output(actual, ref, ATOL_BY_DTYPE.get(dtype_str, ATOL)),
-        ))
+            compare=lambda actual, ref: compare_output(actual, ref, ATOL_BY_DTYPE.get(dtype_str, ATOL)), single_invocations=2))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: reference_flash_attn(q_4d, k_4d, v_4d, causal=causal).to(torch_dtype), warmup=0, repetition=iters

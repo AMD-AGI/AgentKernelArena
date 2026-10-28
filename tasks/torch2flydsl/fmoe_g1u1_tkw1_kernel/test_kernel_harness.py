@@ -8,24 +8,17 @@ router weight folded into BOTH gate and up at stage 1
 (``silu(gate*w)*(up*w)``), a fused bf16 intermediate, and a grouped down GEMM
 summed over top-k (no stage-2 reweighting). GEMMs accumulate in fp32, output bf16.
 
-Correctness compares the (b)-faithful PyTorch reference in model.py against the
-real AMD runtime op (``aiter.fused_moe_bf16_asm.asm_moe_tkw1`` ->
-``fused_moe`` per_Token, doweight_stage1) over byte-identical FP8 weight codes
-(``aiter.pertoken_quant``) plus the host-side weight shuffle the kernel needs.
+Correctness compares the independent PyTorch reference in model.py against the
+protected provided implementation. The original native one-launch comparison
+and its failing qualification are historical evidence, not a numerical waiver.
 
-Tolerance note (FP8 hardware-accumulation floor, NOT a silent loosening):
-This op is gated on the normalized worst-element error ``max|ref-gt| / max|ref|``.
-Unlike the bf16 / 128x128-blockscale MoE tasks (which meet <= 1e-2), this op
-quantizes BOTH operands of each GEMM to FP8 per-token (a single scale per full
-contraction row), so the deployed kernel's FP8 MFMA accumulation order — over
-dequant operands that are byte-identical to the reference — leaves an
-irreducible per-element gap a pure-torch fp32 reference cannot reproduce. Measured
-on gfx950 over the three shapes below: worst-element norm 0.0237-0.0283, while the
-aggregate cosine error ``1 - cos(ref, gt)`` is ~2.7e-4 (~40x under upstream's own
-0.01 fail threshold; upstream test_moe_tkw1 gates this op at rtol=0.01/atol=100).
-The gate is therefore set to the tightest honest worst-element bound ``TOL`` that
-clears the measured floor with a small margin; the cosine diagnostic is printed
-for transparency. Do not widen ``TOL`` further to force a kernel pass.
+The original normalized max-error gate TOL=0.035 is retained. It is not an
+irreducible FP8 accuracy limit. The former native one-launch baseline exceeded
+that bound on valid changed-weight inputs. The protected provided baseline now
+performs explicit FP8 per-row quantization, FP32-accumulated gate/up products,
+a BF16 stage-1 intermediate, and a BF16-by-FP8 down product. model.py remains the
+independent pure-PyTorch oracle. Both paths use the same raw values, rounding
+contract and routing semantics; no reference or tolerance is relaxed.
 
 Modes:
   --correctness     compare the model.py reference to the aiter ground truth
@@ -41,7 +34,7 @@ import sys
 import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -83,10 +76,7 @@ SHAPES = [
     {"name": "e128_t128_d5120_i1024_k2", "tokens": 128, "model_dim": 5120, "inter_dim": 1024, "experts": 128, "topk": 2},
 ]
 
-# FP8 per-token fused-MoE gate: normalized worst-element error vs the aiter op.
-# Set to the measured FP8-MFMA-accumulation floor (max observed 0.0283) plus a
-# small margin; see the module docstring tolerance note. The cosine diagnostic
-# (~2.7e-4) is the real fidelity signal.
+# Historical normalized worst-element gate, unchanged during operator repair.
 TOL = 3.5e-2
 SEED = 20260401
 
@@ -128,46 +118,34 @@ def _build_model(mmod, shape, device="cuda"):
     return model, hidden
 
 
-def _make_prepared_aiter_op(model, hidden, topk_weights, topk_ids):
-    """Prepare immutable AITER operands and return the kernel-only callable."""
-    import aiter
-    from aiter import dtypes, ActivationType
-    from aiter.fused_moe_bf16_asm import asm_moe_tkw1
-    from aiter.ops.shuffle import shuffle_weight
+from functools import lru_cache
 
-    act = (
-        ActivationType.Gelu if model.activation == "gelu" else ActivationType.Silu
-    )
-    w1_q, fc1_scale = aiter.pertoken_quant(model.w1.detach(), quant_dtype=dtypes.fp8)
-    w2_q, fc2_scale = aiter.pertoken_quant(model.w2.detach(), quant_dtype=dtypes.fp8)
-    w1_shuffled = shuffle_weight(w1_q)
-    w2_shuffled = shuffle_weight(w2_q)
 
+@lru_cache(maxsize=1)
+def _provided_implementation():
+    # Cache only immutable Python code, never inputs, quantization or outputs.
+    module = _load_module(_KERNEL_DIR, "task_baseline.py", "provided_fp8_moe")
+    if module is None:
+        raise RuntimeError("Missing protected provided MoE implementation")
+    return module
+
+
+def _make_prepared_baseline_op(model, hidden, topk_weights, topk_ids):
+    """Capture raw operands, with all GPU preparation inside each invocation."""
+    implementation = _provided_implementation()
     def device_op():
-        return asm_moe_tkw1(
-            hidden,
-            w1_shuffled,
-            w2_shuffled,
-            topk_weights,
-            topk_ids,
-            fc1_scale,
-            fc2_scale,
-            None,
-            None,
-            False,
-            None,
-            None,
-            act,
+        return implementation.fp8_moe(
+            hidden, model.w1.detach(), model.w2.detach(), topk_weights,
+            topk_ids, implementation.fp8_dtype(hidden), model.activation,
         )
-
     return device_op
 
 
-def _aiter_op(mmod, model, hidden, topk):
-    """Drive the real aiter asm_moe_tkw1 (FP8 per-token, stage-1 weighting)."""
+def _baseline_op(mmod, model, hidden, topk):
+    """Drive the provided FP8 per-token, stage-1-weighted MoE."""
     logits = model.gate(hidden)
     topk_weights, topk_ids = mmod.route_topk(logits, topk)
-    return _make_prepared_aiter_op(
+    return _make_prepared_baseline_op(
         model, hidden, topk_weights, topk_ids
     )()
 
@@ -201,8 +179,9 @@ def _compare_fmoe_output(actual, expected):
     require_tensor_contract(actual, expected)
     if not bool(torch.isfinite(actual).all() and torch.isfinite(expected).all()):
         raise AssertionError("Non-finite fused MoE output/reference")
-    if _norm_worst(expected, actual)[1] > TOL:
-        raise AssertionError("Numerical mismatch: fused MoE normalized error")
+    norm = _norm_worst(expected, actual)[1]
+    if norm > TOL:
+        raise AssertionError(f"Numerical mismatch: fused MoE normalized error={norm}, tolerance={TOL}")
 
 
 def _fmoe_inputs(model, hidden, weights=None, ids=None):
@@ -214,19 +193,41 @@ def _fmoe_replay_validator(model, hidden, weights, ids, expert_plan):
     inputs = _fmoe_inputs(model, hidden, weights, ids)
     originals = tuple(value.clone() for value in inputs)
     def reference():
+        live_plan = expert_plan if ids.equal(originals[-1]) else None
         return _checked_fmoe_output(model.forward_with_routing(
-            hidden, weights, ids, expert_plan), hidden)
+            hidden, weights, ids, live_plan), hidden)
     expected = reference()
     require_unchanged(inputs, originals)
-    def perturb():
-        hidden.neg_()
-        model.w1.neg_()
-        model.w2.mul_(0.5)
+    def perturb_routing():
+        ids.add_(1).remainder_(model.experts)
+        weights.copy_(weights.roll(1, dims=-1))
+    def concentrate(expert_start):
+        # Unique experts within each row, with every token selecting the same
+        # group: valid top-k routing whose occupancies exceed a 32-row tile.
+        import torch
+        selected = torch.arange(ids.shape[-1], device=ids.device,
+                                dtype=ids.dtype) + expert_start
+        ids.copy_(selected.unsqueeze(0).expand_as(ids))
+        weights.fill_(1.0 / ids.shape[-1])
+    def partial_group():
+        # Also cover a one-row tail beyond a 32-row tile. The remaining tokens
+        # keep a distinct valid expert group, rather than inventing bad IDs.
+        concentrate(0)
+        ids[:33].add_(model.experts - ids.shape[-1])
+    domain_probes = (
+        lambda: hidden.zero_(),
+        lambda: model.w1.zero_(),
+        lambda: model.w2.zero_(),
+        lambda: concentrate(0),
+        lambda: concentrate(model.experts - ids.shape[-1]),
+        partial_group,
+    )
     def validate(timed):
         return verify_timed_run(
             timed, inputs=inputs, originals=originals, expected=expected,
-            perturb=perturb, reference=reference, compare=_compare_fmoe_output,
-        )
+            perturb=scaled_input_probes(hidden, model.w1, model.w2, weights) + domain_probes,
+            reference=reference, compare=_compare_fmoe_output,
+            extra_perturb=perturb_routing, single_invocations=2)
     return validate
 
 
@@ -254,6 +255,8 @@ def run_correctness(verbose=True):
         assert False, "cannot load model.py"
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     failures = []
     for shape in SHAPES:
@@ -263,8 +266,8 @@ def run_correctness(verbose=True):
             with torch.no_grad():
                 ref = _checked_fmoe_output(model(hidden), hidden)
                 gt = _retry(
-                    lambda: _aiter_op(mmod, model, hidden, shape["topk"]),
-                    what="aiter asm_moe_tkw1",
+                    lambda: _baseline_op(mmod, model, hidden, shape["topk"]),
+                    what="provided FP8 MoE",
                 )
             torch.cuda.synchronize()
 
@@ -339,6 +342,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     if has_kernel:
         s0 = SHAPES[0]
@@ -356,12 +361,12 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                 has_kernel = False
                 print(
                     "SKIP: kernel.py FlyDSL target not implemented yet "
-                    "(benchmarking aiter op instead)"
+                    "(benchmarking provided op instead)"
                 )
         del model0, hidden0
         torch.cuda.empty_cache()
 
-    label = "FlyDSL" if has_kernel else "aiter"
+    label = "FlyDSL" if has_kernel else "provided"
     latencies, speedups, report = [], [], []
     print(f"{'Config':<26} {'Ref':>10} {label:>10} {'Speedup':>10}")
     print("-" * 60)
@@ -384,7 +389,7 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
                 # Quantization, shuffling and required sorting belong to every
                 # measured invocation, not a baseline-only preparation cache.
                 def device_op():
-                    return _make_prepared_aiter_op(
+                    return _make_prepared_baseline_op(
                         model, hidden, topk_weights, topk_ids
                     )()
 
@@ -503,6 +508,8 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     if has_kernel:
         s0 = SHAPES[0]
@@ -520,12 +527,12 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
                 has_kernel = False
                 print(
                     "SKIP: kernel.py FlyDSL target not implemented yet "
-                    "(benchmarking aiter op instead)"
+                    "(benchmarking provided op instead)"
                 )
         del model0, hidden0
         torch.cuda.empty_cache()
 
-    label = "FlyDSL" if has_kernel else "aiter"
+    label = "FlyDSL" if has_kernel else "provided"
     latencies, speedups, report = [], [], []
     print(f"{'Config':<26} {'Ref':>10} {label:>10} {'Speedup':>10}")
     print("-" * 60)
@@ -548,7 +555,7 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
                 # Quantization, shuffling and required sorting belong to every
                 # measured invocation, not a baseline-only preparation cache.
                 def device_op():
-                    return _make_prepared_aiter_op(
+                    return _make_prepared_baseline_op(
                         model, hidden, topk_weights, topk_ids
                     )()
 

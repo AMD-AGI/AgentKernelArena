@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+from tests.task_repair_history import reviewed_repair_source
 
 TASK = Path(__file__).resolve().parents[1] / 'tasks/flydsl2flydsl/topk_gating_softmax_kernel'
 
@@ -27,7 +28,7 @@ def _reference():
 
 def test_original_routing_cases_and_comparisons_are_retained():
     assert hashlib.sha256((TASK / 'cases.json').read_bytes()).hexdigest() == '09971067c372d872380d679b604cbbc547fe1409f0f524bb9b9a9c4c73f6cb59'
-    prefix = (TASK / 'test_kernel_harness.py').read_text().split('def arena_benchmark(', 1)[0]
+    prefix = reviewed_repair_source((TASK / 'test_kernel_harness.py').read_text(), path=TASK / 'test_kernel_harness.py').split('def arena_benchmark(', 1)[0]
     prefix = prefix.replace('from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events\n'
                             'from scripts.replay_checks import verify_topk_timed_run, require_topk_output',
                             'from _aka_benchmark import benchmark_cuda_graph_or_events')

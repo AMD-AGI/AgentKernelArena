@@ -90,3 +90,8 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+
+## Additional correctness controls
+
+In addition to the original elementwise comparison, output probabilities must be nonnegative, have row mass within 0.01 of one, and differ from the reference by at most 0.01 row L1 error. These checks remain discriminating for wide rows. Unscored peaked-input graph replays and a column-strided input control supplement the unchanged scored cases.

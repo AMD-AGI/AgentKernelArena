@@ -55,7 +55,7 @@ def require_unchanged(inputs, originals):
         raise AssertionError("Operator modified a read-only input")
 
 
-def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare):
+def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, compare, single_invocations=0):
     """Check last measured output, then perturb and replay the measured unit.
 
     A fresh ordinary correctness invocation cannot substitute for either check.
@@ -68,19 +68,92 @@ def verify_timed_run(timed, *, inputs, originals, expected, perturb, reference, 
         raise RuntimeError("Benchmark did not expose its measured invocation")
     require_unchanged(inputs, originals)
     compare(timed.outputs, expected)
-    try:
-        perturb()
-        changed = tuple(x.detach().clone() for x in inputs)
-        expected_replay = reference()
-        if not isinstance(timed.outputs, torch.Tensor):
-            raise AssertionError("Measured output must be a Tensor")
-        timed.outputs.fill_(float("nan"))
-        actual_replay = timed.rerun()
-        require_unchanged(inputs, changed)
-        compare(actual_replay, expected_replay)
-    finally:
-        # Subsequent diagnostic timings see the original declared input, too.
-        for value, original in zip(inputs, originals):
-            value.copy_(original)
+    perturbations = (perturb,) if callable(perturb) else tuple(perturb)
+    if not perturbations or not all(callable(change) for change in perturbations):
+        raise ValueError("Replay requires callable input probes")
+    perturbations += (nonuniform_input_probes(*inputs) if single_invocations else ())
+    for change in perturbations:
+        try:
+            change()
+            changed = tuple(x.detach().clone() for x in inputs)
+            expected_replay = reference()
+            if not isinstance(timed.outputs, torch.Tensor):
+                raise AssertionError("Measured output must be a Tensor")
+            check_single_invocations(timed, count=single_invocations, inputs=inputs,
+                                     expected=expected_replay, compare=compare,
+                                     poison=lambda output: output.fill_(float("nan")))
+            if single_invocations:
+                # Return to original inputs through isolated calls, then change
+                # them again before the scored graph. Fresh captures cannot prime
+                # the graph with the probed operands; grouped replay cannot hide
+                # a stale first isolated call either. All controls remain unscored.
+                for value, original in zip(inputs, originals):
+                    value.copy_(original)
+                check_single_invocations(timed, count=single_invocations, inputs=inputs,
+                                         expected=reference(), compare=compare,
+                                         poison=lambda output: output.fill_(float("nan")))
+                change()
+            timed.outputs.fill_(float("nan"))
+            actual_replay = timed.rerun()
+            require_unchanged(inputs, changed)
+            compare(actual_replay, expected_replay)
+        finally:
+            # Subsequent diagnostic timings see the original declared input, too.
+            for value, original in zip(inputs, originals):
+                value.copy_(original)
     return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+            "single_invocations_per_probe": single_invocations,
+            "restored_input_single_invocations_per_probe": single_invocations,
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}
+
+
+def check_single_invocations(timed, *, count, inputs, expected, compare, poison):
+    """Supplement exact scored replay checks with complete one-call outputs.
+
+    Two independent one-call captures expose alternating host-call omission;
+    poisoned outputs expose partial writers. This control is never scored.
+    Callers must also validate the actual measured/replayed unit separately.
+    """
+    import torch
+    if type(count) is not int or count < 0 or count == 1:
+        raise ValueError("Use zero or at least two isolated invocation checks")
+    if not count:
+        return 0
+    invoke = getattr(timed, "single_invocation", None)
+    if not callable(invoke):
+        raise RuntimeError("Collector lacks isolated logical-call support")
+    for _ in range(count):
+        snapshots = tuple(value.detach().clone() for value in inputs)
+        poison(timed.outputs)
+        actual = invoke(before_replay=poison)
+        if any(value.shape != original.shape or value.dtype != original.dtype
+               or value.device != original.device
+               or not torch.equal(value.contiguous().view(torch.uint8), original.contiguous().view(torch.uint8))
+               for value, original in zip(inputs, snapshots)):
+            raise AssertionError("Operator modified a read-only input during an isolated call")
+        compare(actual, expected)
+    return count
+
+
+def nonuniform_input_probes(*tensors):
+    """Change one floating operand's contents without just rescaling the whole.
+
+    Alternating columns retain their original magnitude while the other columns
+    are halved. This changes quantized code patterns, not just blockwise scales.
+    No RNG, layout, shape, dtype or scored workload is changed.
+    """
+    def change(value):
+        # A broadcast read-only scale can have zero strides. Change each
+        # physical element once without changing its declared view/layout.
+        target = value
+        for dim in range(value.ndim - 1, -1, -1):
+            if target.shape[dim] > 1 and target.stride(dim) == 0:
+                target = target.select(dim, 0)
+        values = target.float()
+        if target.ndim and target.shape[-1] > 1:
+            values[..., ::2] *= 0.5
+        else:
+            values *= 0.5
+        target.copy_(values.to(target.dtype))
+    return tuple(lambda value=value: change(value) for value in tensors
+                 if value.is_floating_point() and bool(value.float().ne(0).any()))

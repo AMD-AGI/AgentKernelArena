@@ -444,3 +444,24 @@ def test_validation_session_preserves_controller_request_id(tmp_path, request_id
         assert observed == [request_id]
     # The absence of semantic review still cannot authorize a PASS.
     assert report["overall_status"] == "FAIL"
+
+
+@pytest.mark.parametrize("tamper", ["candidate", "action", "new_action"])
+def test_semantic_validator_cannot_change_sources_or_recorded_actions(tmp_path, tamper):
+    from src.task_run import validate_task_session
+    session = create(tmp_path)
+    def launcher(**kwargs):
+        if tamper == "candidate":
+            (session.workspace / "kernel.py").write_text("def compute():\n    return 99\n")
+        elif tamper == "action":
+            path = next(session.state_directory.glob("action-*.json"))
+            path.write_text(path.read_text() + "\n")
+        else:
+            (session.state_directory / "action-fabricated.json").write_text("{}")
+    report = validate_task_session(session, eval_config={},
+                                   task_config_dir=str(session.workspace / "config.yaml"),
+                                   agent_launcher=launcher)
+    assert report["framework_status"] == "FAIL"
+    assert report["overall_status"] == "FAIL"
+    errors = " ".join(report["framework_errors"])
+    assert "Validator changed" in errors

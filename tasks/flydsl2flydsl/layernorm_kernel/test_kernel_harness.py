@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import verify_timed_run
+from scripts.replay_checks import require_unchanged, scaled_input_probes, verify_timed_run
 
 # ============================================================================
 # GEAK bootstrap
@@ -119,10 +119,12 @@ def run_correctness(shapes=None, verbose=True):
             output = torch.empty_like(x)
 
             launch_fn = mod.build_layernorm_module(M, N, dtype_str)
+            readonly = tuple(value.clone() for value in (x, gamma, beta))
+            ref = reference_layernorm(x, gamma, beta)
             launch_fn(x, gamma, beta, output, M)
+            require_unchanged((x, gamma, beta), readonly)
             torch.cuda.synchronize()
 
-            ref = reference_layernorm(x, gamma, beta)
             torch.testing.assert_close(output, ref, atol=ATOL, rtol=RTOL)
             results.append({"config": (M, N, dtype_str), "correct": True})
             if verbose:
@@ -365,10 +367,9 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         )
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=(x, gamma, beta), originals=originals, expected=expected,
-            perturb=lambda: x.neg_(), reference=lambda: reference_layernorm(x, gamma, beta),
+            perturb=(lambda: x.fill_(1024.0), lambda: (x.fill_(1024.0), x[:, 0].fill_(1025.0)), lambda: x.add_(1.0)) + scaled_input_probes(x, factors=(0.5, 1e-4)) + scaled_input_probes(gamma, beta), reference=lambda: reference_layernorm(x, gamma, beta),
             compare=lambda actual, ref: torch.testing.assert_close(
-                actual, ref, atol=ATOL, rtol=RTOL),
-        ))
+                actual, ref, atol=ATOL, rtol=RTOL), single_invocations=2))
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: reference_layernorm(x, gamma, beta), warmup=0, repetition=iters

@@ -26,4 +26,15 @@ def check(h):
 
 
 def performance(h):
-    return h.run_performance()
+    import json
+    from pathlib import Path
+    records = h.run_performance()
+    # Preserve raw successful and failed cases before strict protocol parsing.
+    build = Path(h.__file__).resolve().parent / "build"
+    build.mkdir(exist_ok=True)
+    (build / "raw_performance_cases.json").write_text(json.dumps(records, indent=2) + "\n")
+    failures = [f"{row.get('test_case_id')}: {row.get('benchmark_fallback_reason', 'missing/invalid timing')}"
+                for row in records if row.get("execution_time_ms", -1) <= 0]
+    if failures:
+        raise RuntimeError("Performance case failures: " + "; ".join(failures))
+    return records

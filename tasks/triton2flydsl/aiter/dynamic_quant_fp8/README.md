@@ -99,3 +99,8 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+
+## Additional correctness controls
+
+Dynamic FP32 scales use a separate relative numerical gate (`atol=1e-7`, `rtol=1e-4`); quantized-code tolerances remain unchanged. An unscored signed INT8 control distinguishes absolute-maximum scaling from positive-only maximum scaling.

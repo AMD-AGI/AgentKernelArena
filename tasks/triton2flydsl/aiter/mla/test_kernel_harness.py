@@ -20,7 +20,7 @@ import time
 import argparse
 import importlib.util
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -171,8 +171,10 @@ def _ref_masked_attention(q, k, v, scale):
     if q.shape[1] != k.shape[1]:
         k = torch.repeat_interleave(k, q.shape[1] // k.shape[1], dim=1)
         v = torch.repeat_interleave(v, q.shape[1] // v.shape[1], dim=1)
-    # GEMM at q.dtype (bf16) precision, accumulated in fp32 (matches reference).
-    attn = torch.einsum("qhd,khd->hqk", q, k).float()
+    # Retain the FP32 dot-product scores consumed by the kernel softmax.
+    # BF16 einsum output would insert an extra score-rounding stage that the
+    # implementation does not perform, rejecting otherwise correct outputs.
+    attn = torch.einsum("qhd,khd->hqk", q.float(), k.float())
     attn *= scale
     empty_mask = torch.ones(query_len, kv_len, device=q.device)
     # Bottom-right aligned causal mask (identical to torch_mla_extend).
@@ -280,18 +282,18 @@ def _mla_replay_validator(q, kv_buffer, out, cu_seqlens_q, seqused_k, block_tabl
         return torch_mla_extend(q, kv_buffer, cu_seqlens_q, seqused_k,
                                 block_table, lora, scale, o_dtype=q.dtype)
     expected = reference()
-    def perturb():
-        # Negating Q and K preserves QK logits. V is the latent K slice, so the
-        # correct output negates while page addresses and sequence lengths stay fixed.
-        q.neg_()
-        kv_buffer.neg_()
     def compare(actual, expected):
         _checked_mla_output(actual, out, q, lora)
         _compare_mla_output(actual, expected)
+    metadata_probes = ()
+    if kv_buffer.shape[0] > 1:
+        metadata_probes += (lambda: block_table.copy_((block_table + 1) % kv_buffer.shape[0]),)
+    if bool((seqused_k > 1).any()):
+        metadata_probes += (lambda: seqused_k.sub_(1).clamp_min_(1),)
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=reference, compare=compare)
+                                expected=expected, perturb=scaled_input_probes(q, kv_buffer) + metadata_probes,
+                                reference=reference, compare=compare, single_invocations=2)
     return validate
 
 

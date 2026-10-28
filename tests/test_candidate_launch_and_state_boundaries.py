@@ -4,6 +4,7 @@ These are structural checks on protected task code; they do not run kernels or
 qualify any task on a GPU.
 """
 import ast
+import hashlib
 import importlib.util
 import inspect
 from pathlib import Path
@@ -13,6 +14,7 @@ import time
 import types
 
 import pytest
+from tests.task_repair_history import reviewed_repair_source
 
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 from src.task_spec import load_task_spec
@@ -248,8 +250,17 @@ def test_vendored_caller_location_selects_the_original_frame(monkeypatch):
     mlir.ir = types.SimpleNamespace(Location=Location, Value=type("Value", (), {}))
     monkeypatch.setitem(sys.modules, "flydsl", types.ModuleType("flydsl"))
     monkeypatch.setitem(sys.modules, "flydsl._mlir", mlir)
-    assert len(COMPAT_META) == 13 and len({path.read_bytes() for path in COMPAT_META}) == 1
-    source = COMPAT_META[0].read_text()
+    # Main added an immutable native compatibility variant with column-level
+    # locations. It is outside the line-only migration exercised below; pin its
+    # original bytes rather than requiring unrelated APIs to be identical.
+    native = ROOT / "tasks/torch2flydsl/moe_a8w4_kernel/flydsl_compat/meta.py"
+    assert native in COMPAT_META
+    assert hashlib.sha256(native.read_bytes()).hexdigest() == (
+        "a54bb32cbdc7a99d05e5aec617fb6c71f500f50286d44c0c0a8f1359cc49e92e"
+    )
+    line_meta = [path for path in COMPAT_META if path != native]
+    assert len(line_meta) == 13 and len({path.read_bytes() for path in line_meta}) == 1
+    source = line_meta[0].read_text()
     assert "import inspect" not in source and ".f_back" not in source
 
     def load(name, text):
@@ -298,7 +309,8 @@ def test_gemm_a8w8_audits_actual_performance_calls(tmp_path):
     assert "audit_candidate_calls(h, performance=True)" in ast.get_source_segment(actions, performance)
     checks = (task / "scripts/candidate_checks.py").read_text()
     sibling = (ROOT / "tasks/triton2flydsl/sglang/lightning_attn/scripts/candidate_checks.py").read_text()
-    assert checks == sibling.replace("h.load_module", "h._load_source")
+    historical = reviewed_repair_source(checks, path=task / "scripts/candidate_checks.py")
+    assert historical == sibling.replace("h.load_module", "h._load_source")
     assert "def _load_source" in (task / "test_kernel_harness.py").read_text()
     root = tmp_path / "gemm_a8w8"
     shutil.copytree(task, root)

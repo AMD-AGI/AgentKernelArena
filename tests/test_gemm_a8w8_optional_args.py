@@ -97,5 +97,9 @@ def test_optional_cases_are_unscored_and_original_performance_cases_are_retained
 def test_original_reference_input_and_performance_functions_are_preserved():
     tree = ast.parse((TASK / 'test_kernel_harness.py').read_text())
     import hashlib
-    retained = {node.name: ast.dump(node) for node in tree.body if isinstance(node, ast.FunctionDef) and node.name != 'run_correctness'}
+    assert any(isinstance(node, ast.FunctionDef) and node.name == 'run_domain_controls' for node in tree.body)
+    # Added unscored INT8 controls do not replace any historical scored function.
+    retained = {node.name: ast.dump(node) for node in tree.body
+                if isinstance(node, ast.FunctionDef)
+                and node.name not in {'run_correctness', 'run_domain_controls'}}
     assert hashlib.sha256(json.dumps(retained, sort_keys=True).encode()).hexdigest() == 'fd22ede2d4eab7c81218cec1686e17ca5cab5ee594114c723fb92e10e7196e14'

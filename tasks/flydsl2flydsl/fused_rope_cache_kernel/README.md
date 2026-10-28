@@ -89,3 +89,8 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+
+## Additional correctness controls
+
+Unscored exact-graph replay changes slot mappings and introduces nonzero untouched cache state. The protected reference follows the changed mapping and checks every cache slot; all inputs and cache state are restored outside timing.

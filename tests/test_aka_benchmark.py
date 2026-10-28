@@ -1246,3 +1246,116 @@ def test_event_samples_do_not_keep_previous_output_allocation_alive(monkeypatch,
     assert len(live) == int(collect)
     if collect:
         assert timed.bound and isinstance(timed.outputs, Output)
+
+
+def test_isolated_graph_audits_capture_one_call_without_changing_scored_policy(monkeypatch):
+    helper = _load_helper(monkeypatch)
+    helper.torch.cuda.stream = lambda stream: nullcontext()
+    captures, samples, replays = [], [], []
+    value = [7]
+    class Graph:
+        def __init__(self, repeats): self.repeats = repeats
+        def replay(self): replays.append(self.repeats)
+    def capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+        captures.append(repeats)
+        if output_holder is not None: output_holder[:] = [fn()]
+        return Graph(repeats)
+    def measure(graph, stream, samples: int, calls_per_replay, **kwargs):
+        return [.1] * samples
+    monkeypatch.setattr(helper, '_capture_graph', capture)
+    monkeypatch.setattr(helper, '_graph_replay_samples', measure)
+    timed = helper.TimedRun()
+    values, metadata = helper.benchmark_cuda_graph_or_events_samples(
+        lambda: value, warmup=0, repetition=100, target_ms=1., timed_run=timed)
+    policy = dict(metadata)
+    assert metadata['benchmark_effective_repeats'] == 10
+    assert len(values) == 100
+    scored = timed.outputs
+    assert timed.single_invocation() is value
+    assert timed.single_invocation() is value
+    assert captures[-2:] == [1, 1] and replays == [1, 1]
+    assert timed.outputs is scored and metadata == policy
+    monkeypatch.setattr(helper, '_capture_graph', lambda *a, **kw: (_ for _ in ()).throw(helper._EmptyGraphCapture('skipped call')))
+    with pytest.raises(helper._EmptyGraphCapture, match='skipped call'):
+        timed.single_invocation()
+    assert timed.outputs is scored and metadata == policy
+
+
+def test_event_audit_is_exactly_one_original_call_and_rebind_clears_it(monkeypatch):
+    helper = _load_helper(monkeypatch)
+    trace = []; _event_cuda(helper, monkeypatch, trace)
+    calls = []
+    def invoke():
+        out = [len(calls)]; calls.append(out); return out
+    timed = helper.TimedRun()
+    helper.benchmark_cuda_graph_or_events_samples(invoke, warmup=0, repetition=3,
+                                                  use_cuda_graph=False, timed_run=timed)
+    scored = timed.outputs
+    assert len(calls) == 3
+    assert timed.single_invocation() is calls[-1]
+    assert len(calls) == 4 and timed.outputs is scored
+    known = []
+    timed.single_invocation(before_replay=known.append)
+    assert known == [scored] and len(calls) == 5
+    timed._bind(None, None)
+    with pytest.raises(RuntimeError, match='isolated logical invocation'):
+        timed.single_invocation()
+
+
+def test_isolated_graph_poisons_its_new_output_after_capture_before_replay(monkeypatch):
+    helper = _load_helper(monkeypatch)
+    helper.torch.cuda.stream = lambda stream: nullcontext()
+    timed = helper.TimedRun()
+    fresh, auditing = [], [False]
+    class Graph:
+        def replay(self):
+            if not auditing[0]: return
+            assert fresh[-1] == [-999]  # Must poison this allocation, not scored.
+            fresh[-1][:] = [7]
+    def capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+        if auditing[0]: assert repeats == 1
+        value = fn()
+        fresh.append(value)
+        if output_holder is not None: output_holder[:] = [value]
+        return Graph()
+    monkeypatch.setattr(helper, '_capture_graph', capture)
+    monkeypatch.setattr(helper, '_graph_replay_samples', lambda graph, stream, samples, **kw: [.1] * samples)
+    helper.benchmark_cuda_graph_or_events_samples(
+        lambda: [7], warmup=0, repetition=3, target_ms=1., timed_run=timed)
+    scored = timed.outputs
+    auditing[0] = True
+    def poison(output):
+        assert output is not scored
+        output[:] = [-999]
+    first = timed.single_invocation(before_replay=poison)
+    second = timed.single_invocation(before_replay=poison)
+    assert first == second == [7] and first is not second
+    assert timed.outputs is scored
+
+
+def test_isolated_graph_restores_stateful_input_after_output_poison(monkeypatch):
+    helper = _load_helper(monkeypatch)
+    helper.torch.cuda.stream = lambda stream: nullcontext()
+    state, trace = [3], []
+    class Graph:
+        def replay(self):
+            assert state[0] == 3
+            state[0] += 2
+            trace.append('replay')
+    def prepare():
+        state[0] = 3
+        trace.append('prepare')
+    def capture(fn, repeats, stream, prepare_fn=None, output_holder=None):
+        if output_holder is not None: output_holder[:] = [state]
+        return Graph()
+    monkeypatch.setattr(helper, '_capture_graph', capture)
+    monkeypatch.setattr(helper, '_graph_replay_samples', lambda graph, stream, samples, **kw: [.1] * samples)
+    timed = helper.TimedRun()
+    helper.benchmark_cuda_graph_or_events_samples(lambda: state, warmup=0, repetition=3,
+                                                  prepare_fn=prepare, timed_run=timed)
+    trace.clear()
+    def poison(output):
+        output[0] = -999
+        trace.append('poison')
+    assert timed.single_invocation(before_replay=poison) == [5]
+    assert trace == ['poison', 'prepare', 'replay']

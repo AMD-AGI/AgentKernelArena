@@ -24,7 +24,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
+from scripts.replay_checks import nonuniform_input_probes, scaled_input_probes, require_unchanged, verify_timed_run, allclose_output
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -113,15 +113,13 @@ def _elementwise_replay_validator(x):
     inputs = (x,)
     originals = tuple(v.clone() for v in inputs)
     expected = _torch_silu_mul(x)
-    def perturb():
-        x[..., x.shape[-1] // 2:].neg_()
     def reference():
         return _torch_silu_mul(x)
     def compare(actual, expected):
         _checked_elementwise_output(actual, x)
         allclose_output(actual, expected, atol=1e-2, rtol=1e-2)
     def validate(timed):
-        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=perturb, reference=reference, compare=compare)
+        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=(lambda: x[..., :x.shape[-1] // 2].fill_(16.0),) + scaled_input_probes(x[..., :x.shape[-1] // 2], x[..., x.shape[-1] // 2:]), reference=reference, compare=compare, single_invocations=2)
     return validate
 
 
@@ -145,6 +143,36 @@ def run_correctness(verbose=True):
                 finite = bool(torch.isfinite(y).all().item())
                 close = torch.allclose(y, ref, atol=1e-2, rtol=1e-2)
                 ok = finite and close
+                if ok:
+                    try:
+                        for change in nonuniform_input_probes(x) + (lambda: (x[..., :x.shape[-1] // 2].fill_(-12.0), x[..., x.shape[-1] // 2:].fill_(4096.0)),):
+                            for supplied_path in (False, True):
+                                x.copy_(originals[0])
+                                # Prime the other API path only on ORIGINAL input.
+                                # The tested path must compute the changed input itself.
+                                initial = _torch_silu_mul(x)
+                                if supplied_path:
+                                    primed = mod.fused_silu_mul(x)
+                                else:
+                                    primed_buffer = torch.full_like(initial, float('nan'))
+                                    primed = mod.fused_silu_mul(x, out=primed_buffer)
+                                    if primed.data_ptr() != primed_buffer.data_ptr():
+                                        raise AssertionError('SiLU ignored caller-provided output storage')
+                                require_unchanged((x,), originals)
+                                _checked_elementwise_output(primed, x)
+                                torch.testing.assert_close(primed, initial, atol=1e-2, rtol=1e-2)
+                                change()
+                                wanted = _torch_silu_mul(x)
+                                changed = x.clone()
+                                supplied = torch.full_like(wanted, float('nan')) if supplied_path else None
+                                actual = mod.fused_silu_mul(x, out=supplied) if supplied_path else mod.fused_silu_mul(x)
+                                require_unchanged((x,), (changed,))
+                                _checked_elementwise_output(actual, x)
+                                if supplied_path and actual.data_ptr() != supplied.data_ptr():
+                                    raise AssertionError('SiLU ignored caller-provided output storage')
+                                torch.testing.assert_close(actual, wanted, atol=1e-2, rtol=1e-2)
+                    finally:
+                        x.copy_(originals[0])
                 if verbose:
                     print(
                         f"  {'PASS' if ok else 'FAIL'}: {tag} "
@@ -158,6 +186,20 @@ def run_correctness(verbose=True):
                 if verbose:
                     print(f"  FAIL: {tag} - {str(e)[:160]}")
 
+    # The public wrapper accepts arbitrary leading dimensions and zero rows.
+    for dt in DTYPES:
+        for shape in ((2, 3, 8), (0, 8), (8,)):
+            try:
+                count = __import__('math').prod(shape[:-1])
+                x = _make_inputs(max(1, count), shape[-1], _torch_dtype(dt))[:count].reshape(shape)
+                original = x.clone()
+                wanted = _torch_silu_mul(x)
+                actual = mod.fused_silu_mul(x)
+                require_unchanged((x,), (original,))
+                _checked_elementwise_output(actual, x)
+                torch.testing.assert_close(actual, wanted, atol=1e-2, rtol=1e-2)
+            except Exception as exc:
+                failures.append(f'leading_shape_{dt}_{shape}: {exc}')
     total = len(TEST_SHAPES) * len(DTYPES)
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{total})"
     print(f"Status: {status}")

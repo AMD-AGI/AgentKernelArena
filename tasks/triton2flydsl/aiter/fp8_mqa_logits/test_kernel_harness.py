@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged
+from scripts.replay_checks import nonuniform_input_probes, check_single_invocations, require_unchanged
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -62,12 +62,21 @@ def _resolve_dir():
 _TASK_DIR = _resolve_dir()
 
 
+def _require_public_dtype(mod, expected):
+    if getattr(mod, 'e4m3_dtype', None) != expected:
+        raise AssertionError("Missing or incorrect public e4m3_dtype export")
+
+
 def load_module():
     entry = os.path.join(_TASK_DIR, SOURCE_FILE)
     spec = importlib.util.spec_from_file_location("fp8_mqa_logits_src", entry)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
+    import torch
+    expected = (torch.float8_e4m3fnuz if 'gfx942' in torch.cuda.get_device_properties(0).gcnArchName
+                else torch.float8_e4m3fn)
+    _require_public_dtype(mod, expected)
     return mod
 
 
@@ -97,7 +106,7 @@ def make_inputs(seq_len, seq_len_kv, num_heads, head_size, window, mod, device="
 
     gen = torch.Generator(device=device)
     gen.manual_seed(SEED)
-    e4m3 = mod.e4m3_dtype
+    e4m3 = torch.float8_e4m3fnuz if "gfx942" in torch.cuda.get_device_properties(0).gcnArchName else torch.float8_e4m3fn
 
     # Keep magnitudes small so the fp8 (e4m3) quantization of Q/KV does not
     # saturate and the Q.KV dot stays well-conditioned.
@@ -206,21 +215,36 @@ def _verify_mqa_timed(timed, inputs, originals, expected):
         raise RuntimeError("Benchmark did not expose measured MQA logits")
     require_unchanged(inputs, originals)
     _compare_mqa_output(timed.outputs, expected, inputs)
-    try:
-        # Keep FP8 data and full/causal/band windows unchanged. Scale the two
-        # positive FP32 operands so a cached output cannot satisfy the replay.
+    def original_probe():
         inputs[2].mul_(0.75)
         inputs[3].mul_(0.5)
-        changed = tuple(x.clone() for x in inputs)
-        reference = _ref_fp8_mqa_logits(*inputs)
-        timed.outputs.fill_(float("nan"))
-        actual = timed.rerun()
-        require_unchanged(inputs, changed)
-        _compare_mqa_output(actual, reference, inputs)
-    finally:
-        for value, original in zip(inputs, originals):
-            value.copy_(original)
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    def shorter_window():
+        inputs[5].copy_(inputs[5].sub(1).maximum(inputs[4]))
+    def shifted_start():
+        inputs[4].copy_(inputs[4].add(1).minimum(inputs[5]))
+    for change in (original_probe, shorter_window, shifted_start) + nonuniform_input_probes(*inputs):
+        try:
+            change()
+            changed = tuple(x.clone() for x in inputs)
+            reference = _ref_fp8_mqa_logits(*inputs)
+            check_single_invocations(timed, count=2, inputs=inputs, expected=reference,
+                compare=lambda actual, wanted: _compare_mqa_output(actual, wanted, inputs),
+                poison=lambda output: output.fill_(float("nan")))
+            # Isolated captures must not prime the scored graph cache.
+            for value, original in zip(inputs, originals):
+                value.copy_(original)
+            check_single_invocations(timed, count=2, inputs=inputs, expected=_ref_fp8_mqa_logits(*inputs),
+                compare=lambda actual, wanted: _compare_mqa_output(actual, wanted, inputs),
+                poison=lambda output: output.fill_(float("nan")))
+            change()
+            timed.outputs.fill_(float("nan"))
+            actual = timed.rerun()
+            require_unchanged(inputs, changed)
+            _compare_mqa_output(actual, reference, inputs)
+        finally:
+            for value, original in zip(inputs, originals):
+                value.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS", "single_invocations_per_probe": 2, "restored_input_single_invocations_per_probe": 2,
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}
 
 

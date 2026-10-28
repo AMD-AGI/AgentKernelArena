@@ -99,3 +99,8 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+
+## Additional correctness controls
+
+Unscored controls poison all outputs before isolated logical invocations and before at least two independently captured one-call graph audits. Each output is checked immediately, so repeated partial writes cannot accumulate into a correct final buffer. The original scored timing and sample counts remain unchanged.

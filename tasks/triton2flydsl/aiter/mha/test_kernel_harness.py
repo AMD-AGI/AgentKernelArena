@@ -19,7 +19,7 @@ import time
 import argparse
 import importlib.util
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -192,15 +192,12 @@ def _attention_replay_validator(q, k, v, scale, causal):
     inputs = (q, k, v)
     originals = tuple(x.clone() for x in inputs)
     expected = torch_mha_ref(q, k, v, scale, causal)
-    def perturb():
-        # V changes output while preserving attention logits, shapes and dtype.
-        v.neg_()
     def replay_reference():
         return torch_mha_ref(q, k, v, scale, causal)
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=replay_reference, compare=_compare_attention_output)
+                                expected=expected, perturb=(lambda: (q.fill_(4.0), k.fill_(4.0)),) + scaled_input_probes(q, k, v),
+                                reference=replay_reference, compare=_compare_attention_output, single_invocations=2)
     return validate
 
 

@@ -136,8 +136,8 @@ def _pair_replay_validator(x, w, experts, shared):
         _compare_routing_pair(actual, expected, x, experts, shared)
     def validate(timed):
         return verify_timed_pair(timed, inputs=inputs, originals=originals,
-                                 expected=expected, perturb=perturb,
-                                 reference=reference, compare=compare)
+                                 expected=expected, perturb=(perturb, lambda: x.zero_(), lambda: (x.fill_(1.0 / x.shape[1]), w.fill_(-1.0))),
+                                 reference=reference, compare=compare, single_invocations=2)
     return validate
 
 
@@ -197,6 +197,8 @@ def run_correctness(verbose=True):
             failures.append(shape["name"])
             if verbose:
                 print(f"  FAIL: {shape['name']} - {str(e)[:160]}")
+
+    run_domain_controls(mod)
 
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(TEST_SHAPES)})"
     print(f"Status: {status}")
@@ -269,3 +271,38 @@ if __name__ == "__main__":
     else:
         run_benchmark()
         sys.exit(0)
+
+
+def run_domain_controls(mod):
+    """The same logical activations in the documented three-dimensional form."""
+    import torch
+    for shared in (False, True):
+        x, w = _make_inputs(256, 2048, 16)
+        inputs = (x, w)
+        originals = tuple(value.clone() for value in inputs)
+        expected = _torch_routing_ref(x, w, 16, shared)
+        actual = mod.routing_sigmoid_top1(x.reshape(16, 16, 2048), w,
+                                          topk=1, fused_shared_experts=shared)
+        require_unchanged(inputs, originals)
+        _compare_routing_pair(actual, expected, x, 16, shared)
+        strided_weight = w.T.contiguous().T
+        protected = (x, strided_weight)
+        unchanged = tuple(value.clone() for value in protected)
+        expected = _torch_routing_ref(x, strided_weight, 16, shared)
+        actual = mod.routing_sigmoid_top1(x, strided_weight, topk=1,
+                                          fused_shared_experts=shared)
+        require_unchanged(protected, unchanged)
+        _compare_routing_pair(actual, expected, x, 16, shared)
+        # Preserve the public activation K-stride contract as well as weight
+        # strides. Odd backing columns are deliberately different sentinels.
+        backing = torch.full((x.shape[0], x.shape[1] * 2), 17.,
+                             device=x.device, dtype=x.dtype)
+        backing[:, ::2].copy_(x)
+        strided_x = backing[:, ::2]
+        saved_backing = backing.clone()
+        expected = _torch_routing_ref(strided_x, w, 16, shared)
+        actual = mod.routing_sigmoid_top1(strided_x, w, topk=1,
+                                          fused_shared_experts=shared)
+        require_unchanged((backing, w), (saved_backing, originals[1]))
+        _compare_routing_pair(actual, expected, strided_x, 16, shared)
+    print("Unscored three-dimensional routing controls: PASS")

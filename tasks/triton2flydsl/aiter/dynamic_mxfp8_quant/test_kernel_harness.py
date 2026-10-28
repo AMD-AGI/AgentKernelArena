@@ -25,7 +25,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged
+from scripts.replay_checks import nonuniform_input_probes, check_single_invocations, require_unchanged
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -131,18 +131,30 @@ def _verify_quant_timed(timed, x, originals, expected):
         raise RuntimeError("Benchmark did not expose measured quantizer outputs")
     require_unchanged((x,), originals)
     _compare_mx_pair(timed.outputs, expected, x)
-    try:
+    def original_probe():
         x.neg_().mul_(0.5)
-        changed = (x.clone(),)
-        reference = _mx_reference(x)
-        timed.outputs[0].view(torch.uint8).fill_(127)
-        timed.outputs[1].fill_(255)
-        result = timed.rerun()
-        require_unchanged((x,), changed)
-        _compare_mx_pair(result, reference, x)
-    finally:
-        x.copy_(originals[0])
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    for change in (original_probe,) + nonuniform_input_probes(*(x,)):
+        try:
+            change()
+            changed = (x.clone(),)
+            reference = _mx_reference(x)
+            check_single_invocations(timed, count=2, inputs=(x,), expected=reference,
+                compare=lambda actual, wanted: _compare_mx_pair(actual, wanted, x),
+                poison=lambda output: (output[0].view(torch.uint8).fill_(127), output[1].fill_(255)))
+            # Isolated captures must not prime the scored graph cache.
+            x.copy_(originals[0])
+            check_single_invocations(timed, count=2, inputs=(x,), expected=_mx_reference(x),
+                compare=lambda actual, wanted: _compare_mx_pair(actual, wanted, x),
+                poison=lambda output: (output[0].view(torch.uint8).fill_(127), output[1].fill_(255)))
+            change()
+            timed.outputs[0].view(torch.uint8).fill_(127)
+            timed.outputs[1].fill_(255)
+            result = timed.rerun()
+            require_unchanged((x,), changed)
+            _compare_mx_pair(result, reference, x)
+        finally:
+            x.copy_(originals[0])
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS", "single_invocations_per_probe": 2, "restored_input_single_invocations_per_probe": 2,
             "replay_inputs_perturbed": True, "replay_output_poisoned": True}
 
 
@@ -191,6 +203,8 @@ def run_correctness(verbose=True):
                 print(f"  FAIL: {tag} - {str(e)[:160]}")
 
     total = len(TEST_SHAPES)
+    run_domain_controls(mod)
+
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{total})"
     print(f"Status: {status}")
     print(f"correctness: {'pass' if not failures else 'fail'}")
@@ -263,3 +277,56 @@ if __name__ == "__main__":
     else:
         run_benchmark()
         sys.exit(0)
+
+
+def run_domain_controls(mod):
+    """Unscored public dtypes, non-power-of-two K and scale-buffer checks."""
+    import torch
+    for dtype in (torch.bfloat16, torch.float16):
+        for shape in ((3, 96), (2, 3, 160)):
+            count = __import__("math").prod(shape)
+            x = torch.linspace(-4.0, 3.0, count, device="cuda").reshape(shape).to(dtype)
+            original = x.clone()
+            expected = _mx_reference(x)
+            scale = torch.full((count // shape[-1], shape[-1] // 32), 255,
+                               dtype=torch.uint8, device=x.device)
+            actual = mod.dynamic_mxfp8_quant(x, scale=scale)
+            require_unchanged((x,), (original,))
+            _compare_mx_pair(actual, expected, x)
+            if actual[1].data_ptr() != scale.data_ptr():
+                raise AssertionError("MXFP8 ignored the supplied scale storage")
+            if not torch.equal(scale.reshape_as(expected[1]), expected[1]):
+                raise AssertionError("MXFP8 did not populate the supplied scale buffer")
+            storage = torch.full((scale.shape[0], scale.shape[1] * 2), 255,
+                                 dtype=torch.uint8, device=x.device)
+            strided_scale = storage[:, ::2]
+            actual = mod.dynamic_mxfp8_quant(x, scale=strided_scale)
+            require_unchanged((x,), (original,))
+            _compare_mx_pair(actual, expected, x)
+            if actual[1].data_ptr() != strided_scale.data_ptr():
+                raise AssertionError("MXFP8 ignored the strided caller scale storage")
+            if (not torch.equal(strided_scale, expected[1].reshape_as(strided_scale))
+                    or not bool(storage[:, 1::2].eq(255).all())):
+                raise AssertionError("MXFP8 did not honor caller scale strides")
+
+        for shape in ((3, 96), (2, 3, 160)):
+            count = __import__('math').prod(shape)
+            backing = torch.linspace(-3., 4., count * 2, device='cuda').reshape(*shape[:-1], shape[-1] * 2).to(dtype)
+            x = backing[..., ::2]
+            original = x.clone()
+            expected = _mx_reference(x)
+            actual = mod.dynamic_mxfp8_quant(x)
+            require_unchanged((x,), (original,))
+            _compare_mx_pair(actual, expected, x)
+        x = torch.zeros((2, 32), device="cuda", dtype=dtype)
+        expected = _mx_reference(x)
+        original = x.clone()
+        _compare_mx_pair(mod.dynamic_mxfp8_quant(x), expected, x)
+        require_unchanged((x,), (original,))
+    # BF16 values outside FP16's finite range must not be narrowed first.
+    x = torch.full((2, 32), 65536.0, device='cuda', dtype=torch.bfloat16)
+    original = x.clone()
+    expected = _mx_reference(x)
+    _compare_mx_pair(mod.dynamic_mxfp8_quant(x), expected, x)
+    require_unchanged((x,), (original,))
+    print("Unscored MXFP8 K=96/160, strided source and supplied scale controls: PASS")

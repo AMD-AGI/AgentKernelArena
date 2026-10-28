@@ -5,6 +5,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+from tests.task_repair_history import reviewed_repair_source
 
 ROOT = Path(__file__).resolve().parents[1] / 'tasks/flydsl2flydsl/fused_rope_cache_kernel'
 CONTRACT = {'cases': 'b15f1cce2d65a29677324f7efec84cca57a549fc88283dbbc0f40d0a39d248bb', 'harness_prefix': 'b6f99ebab957a107268286619b6c63bc1c72772033b954e4075636f7446eb013', 'operator_ast': {'kernel.py': 'db0885eade59dd325177d5ba05a14ef02d25ff1ffb1a2818b112eb0892b232b1', 'kernels/__init__.py': 'ffba730c73ed3fb7eda50ac01930a9251bca46e6e069d7fb267bc4660f06382b', 'kernels/kernels_common.py': '607c63eb01c5567a31dedb4752f17b1274f111b84eabb1b26a441574bd1b9a6a'}}
@@ -12,7 +13,7 @@ CONTRACT = {'cases': 'b15f1cce2d65a29677324f7efec84cca57a549fc88283dbbc0f40d0a39
 
 def test_original_operator_cases_and_numerical_timing_harness_preserved():
     assert hashlib.sha256((ROOT / 'cases.json').read_bytes()).hexdigest() == CONTRACT['cases']
-    prefix = (ROOT / 'test_kernel_harness.py').read_text().split('def arena_benchmark(', 1)[0]
+    prefix = reviewed_repair_source((ROOT / 'test_kernel_harness.py').read_text(), path=ROOT / 'test_kernel_harness.py').split('def arena_benchmark(', 1)[0]
     prefix = prefix.replace('from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events\n'
                             'from scripts.replay_checks import prepare_check, verify_timed_run',
                             'from _aka_benchmark import benchmark_cuda_graph_or_events')

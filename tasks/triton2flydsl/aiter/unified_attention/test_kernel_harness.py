@@ -18,7 +18,7 @@ import json
 import argparse
 import importlib.util
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -282,15 +282,19 @@ def _unified_replay_validator(q, key_cache, value_cache, out, block_table, cu_se
                               sliding_window=sliding_window if sliding_window > 0 else None,
                               soft_cap=softcap if softcap > 0 else None, causal=1)
     expected = reference()
-    def perturb():
-        value_cache.neg_()
     def compare(actual, expected):
         _checked_unified_output(actual, out, q, q.shape[-1])
         _compare_unified_output(actual, expected)
+    def softcap_boundary():
+        q[..., ::2].fill_(128.0)
+    boundary_probes = (softcap_boundary,) if softcap > 0 else ()
+    paging_probes = (lambda: block_table.copy_((block_table + 1) % key_cache.shape[0]),)
+    if block_table.shape[-1] > 1:
+        paging_probes += (lambda: block_table.copy_(block_table.flip(-1)),)
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=reference, compare=compare)
+                                expected=expected, perturb=boundary_probes + scaled_input_probes(q, key_cache, value_cache) + paging_probes,
+                                reference=reference, compare=compare, single_invocations=2)
     return validate
 
 

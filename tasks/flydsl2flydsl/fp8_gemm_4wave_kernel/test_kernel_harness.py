@@ -34,7 +34,7 @@ import tempfile
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 from scripts.replay_checks import (allclose_output, normalized_output,
-                                  require_tensor_contract, verify_timed_run)
+                                  require_tensor_contract, require_unchanged, verify_timed_run)
 
 # ============================================================================
 # Bootstrap: make `from kernels...` import work + locate kernel dirs
@@ -252,13 +252,16 @@ def run_correctness(shapes=None, verbose=True):
         try:
             seed = 1234 + i
             A, B_T, C_cand, A_scale, B_scale = _make_inputs(M, N, K, seed)
+            inputs = (A, B_T, A_scale, B_scale)
+            originals = tuple(value.clone() for value in inputs)
+            ref = _torch_reference(A, B_T, A_scale, B_scale)
             B_k = _kernel_b(cand, B_T)
 
             _compile_and_run_once(cand, flyc, A, B_k, C_cand, A_scale, B_scale, M, N)
             torch.cuda.synchronize()
 
+            require_unchanged(inputs, originals)
             actual = C_cand.float()
-            ref = _torch_reference(A, B_T, A_scale, B_scale)
             require_tensor_contract(C_cand, ref, dtype=torch.bfloat16)
             ok = torch.allclose(actual, ref, atol=ATOL, rtol=RTOL)
             max_err = (actual - ref).abs().max().item()
@@ -370,11 +373,11 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         )
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=(A, B_T, A_scale, B_scale), originals=originals,
-            expected=expected, perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
+            expected=expected, perturb=(lambda: A.copy_((-A.float()).to(A.dtype)),
+                     lambda: (A.fill_(16.0), B_T.fill_(16.0), A_scale.fill_(1.0), B_scale.fill_(1.0))),
             reference=lambda: _torch_reference(A, B_T, A_scale, B_scale),
             compare=lambda actual, ref: allclose_output(
-                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
-        ))
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16), single_invocations=2))
 
         a_f = A.float()
         b_f = B_T.float()
@@ -535,11 +538,11 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         )
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=(A, B_T, A_scale, B_scale), originals=originals,
-            expected=expected, perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
+            expected=expected, perturb=(lambda: A.copy_((-A.float()).to(A.dtype)),
+                     lambda: (A.fill_(16.0), B_T.fill_(16.0), A_scale.fill_(1.0), B_scale.fill_(1.0))),
             reference=lambda: _torch_reference(A, B_T, A_scale, B_scale),
             compare=lambda actual, ref: allclose_output(
-                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
-        ))
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16), single_invocations=2))
 
         a_f = A.float()
         b_f = B_T.float()

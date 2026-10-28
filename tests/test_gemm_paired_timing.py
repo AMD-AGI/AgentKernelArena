@@ -9,6 +9,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from tests.task_repair_history import reviewed_repair_source
 
 ROOT = Path(__file__).resolve().parents[1]
 BEFORE = {'batched_gemm_a8w8_kernel': {'arena_benchmark': '794b1125a25e7e3a0b4d255fa19e263e086b6c0d22e7c16a7d414f131b54687b',
@@ -108,7 +109,7 @@ class RemoveMeasuredOutputControls(ast.NodeTransformer):
 @pytest.mark.parametrize("function", ["run_benchmark", "arena_benchmark"])
 def test_pairing_repair_preserves_original_work_and_sampling(name, function):
     path = ROOT / "tasks/torch2flydsl" / name / "test_kernel_harness.py"
-    fn = next(n for n in ast.parse(path.read_text()).body
+    fn = next(n for n in ast.parse(reviewed_repair_source(path.read_text(), path=path)).body
               if isinstance(n, ast.FunctionDef) and n.name == function)
     fn = normalize_former_role_policy(fn)
     if name in {"batched_gemm_a8w8_kernel", "gemm_a16w8_blockscale_kernel",

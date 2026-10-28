@@ -92,3 +92,8 @@ assign or delete attributes of imported modules, read frame or function globals,
 or disable the evaluator's PyTorch dispatch mode. When the local import closure
 is resolved, a same-name `.py` module takes precedence over a namespace-package
 directory, matching Python. These structural checks are not a security sandbox.
+
+
+## Additional correctness controls
+
+The scored cases remain FP8. Additional unscored GPU controls exercise the advertised FP16 and BF16 input branches against logical-operand references; input packing remains protected evaluator preparation.

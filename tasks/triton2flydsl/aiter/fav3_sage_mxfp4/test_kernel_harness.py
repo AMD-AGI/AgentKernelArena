@@ -23,7 +23,7 @@ import json
 import argparse
 import importlib.util
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -246,12 +246,10 @@ def _sage_replay_validator(q, k, v, scale, causal):
     def oracle():
         return _attention_reference(q, k, v, scale, causal)
     expected = oracle()
-    def perturb():
-        v.neg_()
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=oracle, compare=_compare_sage_output)
+                                expected=expected, perturb=(lambda: v.fill_(1.0), lambda: q.add_(0.5)) + scaled_input_probes(q, k, v),
+                                reference=oracle, compare=_compare_sage_output, single_invocations=2)
     return validate
 
 
