@@ -17,7 +17,14 @@ from src.task_spec import load_task_spec
 
 ROOT=Path(__file__).resolve().parents[1]
 FAMILIES=("flydsl2flydsl","torch2flydsl","triton2flydsl")
-TASKS=sorted(p.parent for family in FAMILIES for p in (ROOT/"tasks"/family).rglob("config.yaml"))
+# Audit the original shared adapters and preserved cases. Later task-owned
+# runners need not implement task_runtime.py's private API. A pinned inventory
+# also prevents deleting an adapter from silently dropping its coverage.
+_MIGRATION_CORPUS = "8a0d81121aa35605ab69cf20dc3c51cbac9a7b6e"
+_MIGRATION_PATHS = subprocess.check_output(
+    ["git", "ls-tree", "-r", "--name-only", _MIGRATION_CORPUS, "--",
+     *(f"tasks/{family}" for family in FAMILIES)], cwd=ROOT, text=True).splitlines()
+TASKS=sorted((ROOT/path).parent for path in _MIGRATION_PATHS if path.endswith("/config.yaml"))
 
 
 def module(path, name="task_runtime_test"):
@@ -403,7 +410,7 @@ for arg in (False,True):
 
 def test_actual_torch_starters_and_frozen_implementations():
     implemented={"gemm_a8w8_bpreshuffle_kernel","hgemm_kernel","jagged_dense_bmm_kernel","moe_sorting_kernel","qk_norm_rope_quant_kernel"}
-    configs=sorted((ROOT/"tasks/torch2flydsl").glob("*/config.yaml"))
+    configs=sorted(task/"config.yaml" for task in TASKS if task.parent.name=="torch2flydsl")
     assert len(configs)==45
     for cp in configs:
         cfg=yaml.safe_load(cp.read_text())

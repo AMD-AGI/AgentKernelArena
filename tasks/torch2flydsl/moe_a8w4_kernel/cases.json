@@ -1,0 +1,70 @@
+{
+  "cases": [
+    {
+      "test_case_id": "kimik2_t16_e384_k8",
+      "shape": [
+        16,
+        7168,
+        256,
+        384,
+        8
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 16,
+        "model_dim": 7168,
+        "inter_dim": 256,
+        "experts": 384,
+        "topk": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "dsv4_t32_e385_k7",
+      "shape": [
+        32,
+        7168,
+        512,
+        385,
+        7
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 32,
+        "model_dim": 7168,
+        "inter_dim": 512,
+        "experts": 385,
+        "topk": 7
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ]
+    },
+    {
+      "test_case_id": "control_bf16_output_range",
+      "shape": [
+        2,
+        256,
+        256,
+        4,
+        2
+      ],
+      "dtype": "bfloat16",
+      "params": {
+        "tokens": 2,
+        "model_dim": 256,
+        "inter_dim": 256,
+        "experts": 4,
+        "topk": 2,
+        "input": "ones"
+      },
+      "checks": [
+        "correctness"
+      ]
+    }
+  ]
+}

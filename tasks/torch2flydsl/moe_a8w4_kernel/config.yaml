@@ -1,0 +1,18 @@
+schema_version: 2
+description: Optimize the supplied two-stage A8W4 MoE in FlyDSL, preserving MXFP8 activations, MXFP4 weights, routing and the 1% numerical gate.
+instructions: [README.md]
+platform_support:
+  required_arch: gfx950
+candidate:
+  language: flydsl
+  initial_state: implemented
+  editable: [kernel.py]
+  entrypoints:
+    - {file: kernel.py, kind: function, symbol: flydsl_moe_a8w4}
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: cases.json
+  timeout_s: 3600
