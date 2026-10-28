@@ -57,12 +57,23 @@ subtrees:
   entries:
     - file: reference/api-reference
       title: Configuration and API reference
+    - file: reference/agent-model-defaults
+      title: CLI defaults and dated verification
     - file: reference/benchmark-methodology
       title: Performance measurement methodology
     - file: reference/mi355x-runtime
       title: MI355X runtime and compatibility
     - url: https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html
       title: Hyperloom
+
+- caption: Historical verification
+  entries:
+    - file: reference/verification-2026-09-15
+      title: Task and agent verification record
+    - file: reference/runtime-upgrade-qualification
+      title: Earlier runtime qualification
+    - file: reference/pr107-main-integration
+      title: Task-schema integration record
 
 - caption: About
   entries:

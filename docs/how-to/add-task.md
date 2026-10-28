@@ -521,7 +521,7 @@ while an accepted candidate with a failed export is shown as `INCOMPLETE`.
   Associate each tool result with the actual candidate and covered cases/kernels.
 - Use canonical timing helpers from `src/tools/perf/`; do not hand-edit committed
   helper stubs or `AKA-GENERATED` regions. See the
-  [performance helper instructions](../../src/tools/perf/README.md).
+  [performance helper instructions](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/tools/perf/README.md).
 - Use a shared path/edit-boundary interpretation across the validator, prompt
   builder, harness guard, and agent installation path. A policy about whether a
   boundary violation stops a run is separate from declaring that boundary;
@@ -548,7 +548,7 @@ infer builder names from operator identity. A unified Forge integration can
 choose a workflow from actual candidate state and language/backend capabilities:
 an empty candidate needs generation even when its target language matches the
 baseline's; an existing candidate may be optimized or translated. The current
-[Forge integration](../../agents/forge/README.md) exposes one agent identity and
+[Forge integration](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md) exposes one agent identity and
 adapts its internal workflows to this contract. Its supported conversions and
 initialization paths require their own runtime qualification; schema support
 alone does not establish an engine capability.
@@ -763,7 +763,7 @@ exports:
    for behavioral changes. Preserve user-owned workspaces/logs, and do not commit
    generated artifacts or cloned runtime dependencies. Keep validation reports,
    build output, campaign summaries, and one-off run configs out of the task
-   package. Follow the [commit checklist](../../CONTRIBUTING.md#repository-cleanliness-before-committing)
+   package. Follow the [commit checklist](https://github.com/AMD-AGI/AgentKernelArena/blob/main/CONTRIBUTING.md#repository-cleanliness-before-committing)
    and retain qualification evidence separately from the versioned source.
 
 Example validator run config (replace the selector and choose matching hardware):

@@ -25,15 +25,15 @@ The following agents are available.
 | `cursor` | Cursor Agent CLI |
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | Codex CLI |
-| `deepseek_harness` | DeepSeek Harness headless CLI ([setup](../../agents/deepseek_harness/README.md)) |
+| `deepseek_harness` | DeepSeek Harness headless CLI ([setup](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge through the shared v2 task interface |
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
 | `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
 
-The [registry](../../src/module_registration.py) maps the legacy names
+The [registry](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/module_registration.py) maps the legacy names
 `geak_v4` to `geak` and `forge_operator2flydsl` to `forge`, with the same
-configuration and post-processing. There is no separate v1 task integration. See the [GEAK](../../agents/geak/README.md) and
-[Forge](../../agents/forge/README.md) guides for runtime requirements. Registry
+configuration and post-processing. There is no separate v1 task integration. See the [GEAK](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md) and
+[Forge](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md) guides for runtime requirements. Registry
 availability alone does not establish GPU or model qualification.
 
 Select one in a run configuration:
@@ -90,11 +90,11 @@ DeepSeek Harness supports config-selected checks and explicit
 and select one of the `quickstart_deepseek_harness_*` example configurations.
 Its preflight checks version and credential presence without contacting the
 provider. Each task uses a fresh Harness home and the standard Arena evaluator.
-See [the integration guide](../../agents/deepseek_harness/README.md) for model,
+See [the integration guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md) for model,
 endpoint, Docker, and session-isolation details.
 
 DeepSeek's run-level overrides and per-invocation budget follow
-[its integration guide](../../agents/deepseek_harness/README.md#install-and-configure).
+[its integration guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md#install-and-configure).
 It uses `reasoning_effort` rather than the other CLIs' `effort` field. Schema-v2
 agent completion and independent candidate acceptance are reported separately.
 
@@ -224,5 +224,33 @@ To integrate a custom agent:
    `src/module_registration.py`.
 3. Wire the agent into the prompt builder and post-processing handler in
    `src/module_registration.py` if it needs the standard behavior.
+4. Add `agent_config.yaml` and document the supported run-level overrides.
+   Keep provider, CLI and authentication behavior in the integration, not in
+   task files.
+5. Add Docker provisioning and preflight support when the integration needs
+   another executable or dependency. Registration alone does not install an
+   agent or make its host login available in the worker.
+6. Add focused tests and run a real task through Docker with the configured
+   agent before claiming execution support.
 
-See the development section of the repository [`README.md`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/README.md#development) for the full template.
+A minimal launcher skeleton is:
+
+```python
+# Created by OpenAI
+from agents import register_agent
+
+
+@register_agent("your_agent")
+def launch_agent(
+    eval_config: dict,
+    task_config_dir: str,
+    workspace: str,
+) -> str:
+    # Build the task prompt, invoke the agent in the workspace, and return
+    # its output. Propagate execution failures; the evaluator owns acceptance.
+    raise NotImplementedError("Implement the agent invocation")
+```
+
+Use [the registry](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/module_registration.py) and a nearby launcher as
+the interface reference. Follow [CONTRIBUTING.md](https://github.com/AMD-AGI/AgentKernelArena/blob/main/CONTRIBUTING.md) for
+architecture boundaries, regression checks and publication requirements.

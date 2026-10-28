@@ -13,6 +13,13 @@ folder and its output is multiple tasks. The resulting tasks use the shared
 provided baseline, and `arena-eval-v1` runner. They can be selected by ordinary optimization runs.
 It does not require KernelForge or a task-specific SIKL integration.
 
+The builder's configurable `output_dir` defaults to the legacy-named
+`tasks/SIKL-task/`. This is an output location for newly generated tasks; the
+bundled production-operator suite is selected separately as `Aiter-task/...`.
+Set `output_dir` in the [builder configuration](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/sikl_task_builder/agent_config.yaml)
+to choose another directory below `tasks/`. Generated task IDs follow that
+directory, and existing curated task packages must not be overwritten.
+
 ## Input and task boundaries
 
 Pass an extracted directory, not a tar file:
@@ -110,7 +117,7 @@ make docker-sikl-task-builder INPUT='/path/to/extracted bundle'
 ```
 
 The default configuration is
-[`agents/sikl_task_builder/agent_config.yaml`](../../agents/sikl_task_builder/agent_config.yaml).
+[`agents/sikl_task_builder/agent_config.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/sikl_task_builder/agent_config.yaml).
 It selects MI355X and the existing Docker image policy. Copy it to change the
 hardware, generator/validator settings, numerical policy, task selection or
 budgets, then pass `CONFIG=path/to/config.yaml`. Relative paths resolve from the

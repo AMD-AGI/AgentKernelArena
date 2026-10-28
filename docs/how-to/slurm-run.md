@@ -43,17 +43,21 @@ make slurm-smoke
 The smoke check executes GPU tensor arithmetic, synchronizes, and verifies the
 copied result. Device discovery alone does not establish a working runtime.
 
-Check the CLI and authentication selected by a run config:
+Select a maintained config matching the installed agent and physical GPU.
+These examples use the MI355X Claude Code quickstart; install and authenticate
+that CLI first, or choose another config using the [agent guide](agents.md).
+Check the selected CLI and authentication:
 
 ```bash
-make slurm-check-agents CONFIG=config_codex_mi355x_spur.yaml
+CONFIG_PATH=example_configs/quickstart_claude_mi355x.yaml
+make slurm-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Run synchronously and keep output attached to the terminal:
 
 ```bash
 make slurm-run \
-  CONFIG=config_codex_mi355x_spur.yaml \
+  CONFIG="$CONFIG_PATH" \
   RUN_ARGS="--run-suffix dev"
 ```
 
@@ -96,7 +100,7 @@ Submit a one-GPU run:
 
 ```bash
 make slurm-submit \
-  CONFIG=config_codex_mi355x_spur.yaml \
+  CONFIG="$CONFIG_PATH" \
   RUN_ARGS="--run-suffix batch"
 ```
 
@@ -118,7 +122,7 @@ Override Make variables on the command line:
 
 ```bash
 make slurm-run \
-  CONFIG=config_codex_mi355x_spur.yaml \
+  CONFIG="$CONFIG_PATH" \
   SLURM_TIME=02:00:00 \
   SLURM_CPUS=24 \
   SLURM_MEM=128G
@@ -181,7 +185,7 @@ use setup-token for runs that outlast the current login lease. Preserve failed
 run evidence and launch a new attempt after authentication is restored.
 
 DeepSeek Harness uses a read-only Node/CLI prefix and an exported API key.
-Follow [its setup guide](../../agents/deepseek_harness/README.md), including
+Follow [its setup guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md), including
 `AKA_NODE_PREFIX` when the installation is outside the detected path. The
 scheduler inherits the exported variables, and Docker forwards the key by name
 only when DeepSeek is selected. Each task creates its own `DSH_HOME`; the host's
