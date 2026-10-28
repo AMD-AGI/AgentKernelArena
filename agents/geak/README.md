@@ -222,7 +222,7 @@ environment; do not install into a shared GEAK or global environment. SDK
 interface imports were checked with the version in `requirements.txt`; the
 JavaScript probe used Node 24.19.0. These CPU checks are separate from the actual
 authenticated Workflow and Docker/GPU campaign evidence in the
-[dated verification checkpoint](../../docs/reference/verification-2026-09-15.md#agent-matrix-checkpoint).
+[dated verification checkpoint](../../docs/reference/verification-2026-09-15.md#final-agent-matrix).
 That checkpoint records five historical completed GEAK tasks with accepted
 candidates, retaining their original source/model identities. The source-39
 records lack full tool-ID/session correlation and do not qualify the later

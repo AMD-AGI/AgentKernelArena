@@ -20,7 +20,7 @@ Native HIP benchmark drivers use the equivalent implementation in
 ## Canonical Python API
 
 For new or materially revised kernel benchmarks, use the executable
-[cold-cache graph reference](../../src/tools/perf/examples/cold_cache_graph/README.md).
+[cold-cache graph reference](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/tools/perf/examples/cold_cache_graph/README.md).
 Its `ReadOnlyCacheFlush` uses a reusable initialized 1 GiB read sweep, after input
 preparation and before the start Event of every single-operator graph replay.
 The resulting `cuda_graph_cold_cache` metric is an Event graph span with eviction

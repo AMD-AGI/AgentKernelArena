@@ -24,15 +24,15 @@ The following prerequisites are required before running AgentKernelArena.
 - **Runtime image:** `gfx942` uses
   `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses
   the digest-pinned SGLang 0.5.20 / ROCm 10 image declared in
-  [`docker_benchmark.sh`](../../src/scripts/docker_benchmark.sh). The runner selects from
+  [`docker_benchmark.sh`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh). The runner selects from
   `target_gpu_model` for experiment runs and from the visible host GPU for shell
   and smoke commands.
   For `gfx1201`, the runner automatically builds the default
-  [RDNA4 runtime](../../docker/rdna4/README.md) on first use if it is missing.
+  [RDNA4 runtime](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md) on first use if it is missing.
 - **Git**
 - **Node.js 22+ and npm**, when using the alternative npm installation of Claude
   Code or another npm-installed agent CLI. DeepSeek Harness uses a dedicated
-  Node.js 24 prefix; see [its setup guide](../../agents/deepseek_harness/README.md).
+  Node.js 24 prefix; see [its setup guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md).
 - The selected agent CLI installed and authenticated on the host. The Docker
   runner provisions only the configured agent for a normal run. Codex, Claude
   Code, Cursor Agent, and DeepSeek Harness have host-CLI checks. See
@@ -56,7 +56,7 @@ architecture defaults because they do not select a run config. Config image
 overrides also disable automatic RDNA4 builds. Invalid explicit values fail
 before a container is launched.
 
-The [DeepSeek draft validator config](../../example_configs/task_validator_deepseek_drafts_mi355x.yaml)
+The [DeepSeek draft validator config](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/task_validator_deepseek_drafts_mi355x.yaml)
 pins its MI355X run to the tested ROCm 10 image. The runner supplies writable
 AITER/FlyDSL caches and AITER configuration storage for that image, which is also
 the MI355X default. Other GPU architecture defaults are unchanged.
@@ -71,7 +71,7 @@ measure baseline and candidate in the same runtime and keep older results
 associated with their original image.
 
 To roll back, select `GFX950_V0514_IMMUTABLE_IMAGE` from the
-[runner image definitions](../../src/scripts/docker_benchmark.sh) with
+[runner image definitions](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh) with
 `docker_image` or `AKA_DOCKER_IMAGE`, and start a fresh run. Evaluation tools
 also need the matching repository revision and sidecar set; the ROCm 10 tool
 profile deliberately rejects the old scoring image.
@@ -143,7 +143,7 @@ prebuilding or rebuilding after recipe changes. Explicit image overrides disable
 automatic builds; see the runtime guide for custom image handling.
 
 The smoke check requires `rocprofv3` on `gfx1201`; the CDNA profiler requirement
-is unchanged. See the [image recipe and limitations](../../docker/rdna4/README.md)
+is unchanged. See the [image recipe and limitations](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md)
 for its pinned base, non-root runtime layout, and task coverage. A successful
 smoke establishes runtime availability, not support for every task or profiler
 analysis of an optimized candidate.
@@ -180,19 +180,20 @@ installation and its alternative npm installation. See the
 for current installation alternatives.
 
 For DeepSeek Harness, follow the [pinned CLI installation and API-key
-setup](../../agents/deepseek_harness/README.md#install-and-configure). Its Node
+setup](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md#install-and-configure). Its Node
 prefix must contain both `bin/node` and `bin/dsh`; select that prefix with
 `AKA_NODE_PREFIX` when necessary. Host `~/.dsh` state is not mounted.
 
 Specialized integrations require additional runtime setup. Review
-[GEAK](../../agents/geak/README.md) or
-[Forge](../../agents/forge/README.md) before selecting one.
+[GEAK](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md) or
+[Forge](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md) before selecting one.
 
 ## Choose an example configuration
 
 Choose the configuration that matches the physical GPU and installed agent.
-The quickstart configurations each run one GELU task; the benchmark
-configuration is a longer 54-task Cursor Agent run.
+The quickstart configurations each run one GELU task. For a longer Cursor Agent
+run, use the curated task selection in
+[`benchmark_cursor_mi355x.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/benchmark_cursor_mi355x.yaml).
 
 | Configuration | Purpose |
 | --- | --- |
@@ -204,7 +205,7 @@ configuration is a longer 54-task Cursor Agent run.
 | `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | First DeepSeek Harness run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | First DeepSeek Harness run on MI355X (`gfx950`). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 46-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
 The default `make docker-run` configuration is the generic MI300-series quickstart.
 On another GPU, always pass the matching `CONFIG`; for MI355X, use
@@ -288,7 +289,7 @@ DeepSeek Harness is opt-in: select its run config or pass
 runner forwards it by environment-variable name only for DeepSeek runs.
 Its check verifies CLI version and credential presence without contacting the
 provider. Model and endpoint settings live in
-[`agents/deepseek_harness/agent_config.yaml`](../../agents/deepseek_harness/agent_config.yaml).
+[`agents/deepseek_harness/agent_config.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/agent_config.yaml).
 
 Specialized integrations read credentials and provider endpoints from their
 own environment/configuration; their documentation describes the additional
