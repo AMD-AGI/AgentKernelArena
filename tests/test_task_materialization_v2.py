@@ -460,7 +460,7 @@ def test_setup_never_leaves_background_writers(tmp_path, wait_for_child):
         while True:
             try:
                 stopped = proc.read_text().rsplit(")", 1)[1].split()[0] == "Z"
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
                 stopped = True
             if stopped or time.monotonic() >= deadline:
                 break
