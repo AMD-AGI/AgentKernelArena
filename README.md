@@ -212,14 +212,17 @@ The following configurations provide starting points for supported runtimes:
 
 | Configuration | Purpose |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | One Claude Code GELU task on MI300/MI300X (`gfx942`); use this for a first run on MI300-series hardware. |
+| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code GELU task; inspect the physical model before tuning. |
+| `example_configs/quickstart_claude_mi300x.yaml` | Claude Code GELU task with the MI300X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi325x.yaml` | Claude Code GELU task with the MI325X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi300a.yaml` | Claude Code GELU task with the MI300A hardware profile (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
 | `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | One DeepSeek Harness GELU task on MI300/MI300X; requires the pinned CLI and API key. |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | One DeepSeek Harness GELU task on MI355X; see [setup](agents/deepseek_harness/README.md). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 54-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 46-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
 
-Running `make docker-run` without `CONFIG` uses the MI300/MI300X Claude
+Running `make docker-run` without `CONFIG` uses the generic MI300-series Claude
 quickstart. On another GPU, pass the matching configuration explicitly; for
 example, use `CONFIG=example_configs/quickstart_claude_mi355x.yaml` on MI355X.
 

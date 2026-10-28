@@ -35,21 +35,22 @@ def test_rdna4_selects_destination_language_guide(model, task_type, language):
     )
 
 
-@pytest.mark.parametrize("model,arch,architecture_file", [
-    ("MI300", "gfx942", "MI300X_architecture.md"),
-    ("MI300X", "gfx942", "MI300X_architecture.md"),
-    ("MI325", "gfx942", "MI300X_architecture.md"),
-    ("MI325X", "gfx942", "MI300X_architecture.md"),
-    ("MI355X", "gfx950", "MI355X_architecture.md"),
+@pytest.mark.parametrize("model,arch,architecture_files", [
+    ("MI300", "gfx942", ["CDNA3_gfx942_architecture.md", "MI300_series_profile.md"]),
+    ("MI300X", "gfx942", ["CDNA3_gfx942_architecture.md", "MI300X_profile.md"]),
+    ("MI325", "gfx942", ["CDNA3_gfx942_architecture.md", "MI325X_profile.md"]),
+    ("MI325X", "gfx942", ["CDNA3_gfx942_architecture.md", "MI325X_profile.md"]),
+    ("MI300A", "gfx942", ["CDNA3_gfx942_architecture.md", "MI300A_profile.md"]),
+    ("MI355X", "gfx950", ["MI355X_architecture.md"]),
 ])
 @pytest.mark.parametrize("language", ["hip", "triton"])
-def test_cdna_keeps_default_language_guide(model, arch, architecture_file, language):
+def test_cdna_keeps_default_language_guide(model, arch, architecture_files, language):
     text, actual_arch = _load_cheatsheet(
         f"{language}2{language}", model, ROOT, {}, LOGGER
     )
 
     assert actual_arch == arch
-    assert text == expected_guides(architecture_file, f"{language}_cheatsheet.md")
+    assert text == expected_guides(*architecture_files, f"{language}_cheatsheet.md")
 
 
 @pytest.mark.parametrize("task_type", ["repository", "image_kernel"])

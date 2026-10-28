@@ -43,6 +43,11 @@ def _referenced_cheatsheets(config: dict) -> dict[str, str]:
         arch = arch or {}
         if arch.get("file"):
             referenced[f"architecture:{arch_name}:file"] = arch["file"]
+        files = arch.get("files", [])
+        if isinstance(files, str):
+            files = [files]
+        for index, rel in enumerate(files):
+            referenced[f"architecture:{arch_name}:files:{index}"] = rel
         for language, rel in (arch.get("knowledge_override") or {}).items():
             referenced[f"architecture:{arch_name}:knowledge_override:{language}"] = rel
     return referenced
@@ -78,7 +83,9 @@ def test_reference_collection_keeps_defaults_and_architecture_overrides():
                 "RDNA4": {
                     "file": "rdna4.md",
                     "knowledge_override": {"hip": "rdna-hip.md"},
-                }
+                },
+                "COMPOSED": {"files": ["shared.md", "profile.md"]},
+                "SINGLE": {"files": "single.md"},
             },
         }
     )
@@ -87,6 +94,9 @@ def test_reference_collection_keeps_defaults_and_architecture_overrides():
         "knowledge:hip": "default-hip.md",
         "architecture:RDNA4:file": "rdna4.md",
         "architecture:RDNA4:knowledge_override:hip": "rdna-hip.md",
+        "architecture:COMPOSED:files:0": "shared.md",
+        "architecture:COMPOSED:files:1": "profile.md",
+        "architecture:SINGLE:files:0": "single.md",
     }
 
 

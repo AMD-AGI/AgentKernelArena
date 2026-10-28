@@ -196,14 +196,17 @@ configuration is a longer 54-task Cursor Agent run.
 
 | Configuration | Purpose |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | First Claude Code run on MI300/MI300X (`gfx942`). |
+| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code GELU task; inspect the physical model before tuning. |
+| `example_configs/quickstart_claude_mi300x.yaml` | Claude Code GELU task with the MI300X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi325x.yaml` | Claude Code GELU task with the MI325X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi300a.yaml` | Claude Code GELU task with the MI300A hardware profile (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
 | `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | First DeepSeek Harness run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | First DeepSeek Harness run on MI355X (`gfx950`). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 54-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 46-task Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
-The default `make docker-run` configuration is the MI300/MI300X quickstart.
+The default `make docker-run` configuration is the generic MI300-series quickstart.
 On another GPU, always pass the matching `CONFIG`; for MI355X, use
 `example_configs/quickstart_claude_mi355x.yaml`.
 
