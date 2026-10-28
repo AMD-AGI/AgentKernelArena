@@ -32,7 +32,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
+from scripts.replay_checks import scaled_input_probes, require_unchanged, verify_timed_run, allclose_output
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -135,17 +135,19 @@ def _scaled_gemm_replay_validator(x, w, x_scale, w_scale, out_dtype):
     inputs = tuple(v for v in (x, w, x_scale, w_scale,) if v is not None)
     originals = tuple(v.clone() for v in inputs)
     expected = _torch_ref(x, w, x_scale, w_scale, out_dtype)
-    def perturb():
-        x_scale.mul_(0.5)
     def reference():
         return _torch_ref(x, w, x_scale, w_scale, out_dtype)
     def compare(actual, expected):
         _checked_scaled_gemm_output(actual, x, w, out_dtype)
         allclose_output(actual, expected, atol=0.01, rtol=0.01)
+    def mixed_sign(value):
+        current = value.float()
+        current[..., ::2].neg_()
+        value.copy_(current.to(value.dtype))
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=reference, compare=compare)
+                                expected=expected, perturb=(lambda: mixed_sign(x), lambda: mixed_sign(w)) + scaled_input_probes(x, w, factors=(-1.0,)) + scaled_input_probes(x, w, x_scale, w_scale),
+                                reference=reference, compare=compare, single_invocations=2)
     return validate
 
 

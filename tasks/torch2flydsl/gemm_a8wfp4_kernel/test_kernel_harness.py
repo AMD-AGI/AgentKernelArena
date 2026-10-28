@@ -27,7 +27,7 @@ import sys
 import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import sample_output_validator, require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -161,8 +161,10 @@ def _gemm_replay_validator(mmod, a, w):
         w.mul_(0.5)
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=reference, compare=_compare_quant_gemm_output)
+                                expected=expected, perturb=(perturb, lambda: (a.fill_(1.0), w.fill_(16.0))),
+                                reference=reference, compare=_compare_quant_gemm_output, single_invocations=2)
+    validate.sample_output = sample_output_validator(inputs=inputs, originals=originals,
+        expected=expected, compare=_compare_quant_gemm_output)
     return validate
 
 
@@ -177,6 +179,8 @@ def run_correctness(verbose=True):
 
     model = mmod.Model().to("cuda").eval()
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     failures = []
     for shape in SHAPES:
@@ -246,6 +250,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     if has_kernel:
         s0 = SHAPES[0]
@@ -287,12 +293,16 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
         use_graph = False
         event_reason = "capture_unsafe_aiter_hipblaslt"
         timed = TimedRun()
+        timed.after_sample = replay_validate.sample_output
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(a, w), warmup=0, repetition=iters,
             use_cuda_graph=use_graph, fallback_reason=event_reason,
             timed_run=timed,
         )
         kernel_bench_meta.update(replay_validate(timed))
+        if timed.after_sample.count != iters:
+            raise AssertionError("Every contributing Event sample needs a numerical check")
+        kernel_bench_meta["measured_sample_output_checks"] = timed.after_sample.count
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a.float(), w.float().transpose(0, 1)),
@@ -407,6 +417,8 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     mmod = _load_module(_KERNEL_DIR, MODEL_FILE, "torch_model")
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     if has_kernel:
         s0 = SHAPES[0]
@@ -448,12 +460,16 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
         use_graph = False
         event_reason = "capture_unsafe_aiter_hipblaslt"
         timed = TimedRun()
+        timed.after_sample = replay_validate.sample_output
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             lambda: device_op(a, w), warmup=0, repetition=iters,
             use_cuda_graph=use_graph, fallback_reason=event_reason,
             timed_run=timed,
         )
         kernel_bench_meta.update(replay_validate(timed))
+        if timed.after_sample.count != iters:
+            raise AssertionError("Every contributing Event sample needs a numerical check")
+        kernel_bench_meta["measured_sample_output_checks"] = timed.after_sample.count
 
         ref_ms, ref_bench_meta = benchmark_cuda_graph_or_events(
             lambda: torch.mm(a.float(), w.float().transpose(0, 1)),

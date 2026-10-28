@@ -17,6 +17,7 @@ baseline:
   correctness_policy: required
   source_files:
   - model.py
+  - task_baseline.py
 evaluation:
   runner:
   - python3

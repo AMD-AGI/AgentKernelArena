@@ -21,7 +21,7 @@ import time
 import argparse
 import importlib.util
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import scaled_input_probes, require_tensor_contract, require_unchanged, verify_timed_run
 
 TASK_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(TASK_DIR)
@@ -154,14 +154,12 @@ def _gr_replay_validator(x, w_gate, w_up):
     inputs = tuple(v for v in (x, w_gate, w_up,) if v is not None)
     originals = tuple(v.clone() for v in inputs)
     expected = _torch_ref(x, w_gate, w_up)
-    def perturb():
-        w_up.neg_()
     def reference():
         return _torch_ref(x, w_gate, w_up)
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
-                                expected=expected, perturb=perturb,
-                                reference=reference, compare=_compare_gr_output)
+                                expected=expected, perturb=scaled_input_probes(x, w_gate, w_up),
+                                reference=reference, compare=_compare_gr_output, single_invocations=2)
     return validate
 
 
@@ -182,6 +180,7 @@ def run_correctness():
             x, w_gate, w_up = make_test_data(M, N, K, device, dtype)
             protected_inputs = tuple(v for v in (x, w_gate, w_up,) if v is not None)
             originals = tuple(v.clone() for v in protected_inputs)
+            ref = _torch_ref(x, w_gate, w_up)
             result = _call_kernel(mod, x, w_gate, w_up)
             torch.cuda.synchronize()
             require_unchanged(protected_inputs, originals)
@@ -189,7 +188,6 @@ def run_correctness():
 
             finite = bool(torch.isfinite(result.float()).all().item())
             shape_ok = list(result.shape) == [M, N]
-            ref = _torch_ref(x, w_gate, w_up)
             close, frac, norm = _close(ref, result)
             passed = finite and shape_ok and close
             details.append({
@@ -201,6 +199,20 @@ def run_correctness():
                 "norm_err": round(norm, 5),
                 "passed": bool(passed),
             })
+            if passed:
+                backing = torch.full((M, K * 2), float('nan'), device=x.device, dtype=x.dtype)
+                strided = backing[:, ::2]
+                strided.copy_(x)
+                for zero in (False, True):
+                    if zero:
+                        strided.zero_()
+                    check_inputs = (strided, w_gate, w_up)
+                    saved = tuple(value.clone() for value in check_inputs)
+                    wanted = _torch_ref(*check_inputs)
+                    actual = _call_kernel(mod, *check_inputs)
+                    require_unchanged(check_inputs, saved)
+                    _checked_gr_output(actual, strided, N)
+                    _compare_gr_output(actual, wanted)
             if not passed:
                 if not finite:
                     reason = "non-finite output"

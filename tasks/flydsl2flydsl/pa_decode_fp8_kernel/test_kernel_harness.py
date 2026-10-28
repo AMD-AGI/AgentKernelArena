@@ -277,7 +277,7 @@ def build_ps_page_data(block_tables_list, context_lengths, block_size, device):
     return kv_page_indices, kv_indptr
 
 
-def _build_case(mod, num_heads, batch_size, query_length, quant_mode, seed=123):
+def _build_case(mod, num_heads, batch_size, query_length, quant_mode, seed=123, *, causal_control=False):
     """Set up all tensors for one PS fp8 paged-attention case. Returns a callable
     flydsl launch closure, the reference output, and a tensor to hold the result."""
     import torch
@@ -309,11 +309,25 @@ def _build_case(mod, num_heads, batch_size, query_length, quant_mode, seed=123):
     blocks_per_sequence = triton.cdiv(CONTEXT_LENGTH, BLOCK_SIZE)
     block_tables_list = [[random.randint(0, total_blocks - 1) for _ in range(blocks_per_sequence)]
                          for _ in range(batch_size)]
+    if causal_control:
+        # Unique physical pages; the last logical key must not appear earlier
+        # through a duplicated page mapping in this sensitivity control.
+        block_tables_list = [[b * max_blocks_per_sequence + j for j in range(blocks_per_sequence)]
+                             for b in range(batch_size)]
     block_tables = torch.tensor(block_tables_list, dtype=torch.int32, device=device)
 
     key_caches, value_caches = create_kv_cache(total_blocks, BLOCK_SIZE, 1, num_kv_heads,
                                                HEAD_SIZE, "auto", data_type, seed, str(device), 1)
     key_cache, value_cache = key_caches[0], value_caches[0]
+    if causal_control:
+        query.fill_(1.0)
+        key_cache.fill_(0.01)
+        value_cache.fill_(0.01)
+        offset = (CONTEXT_LENGTH - 1) % BLOCK_SIZE
+        for pages in block_tables_list:
+            last_page = pages[-1]
+            key_cache[last_page, :, :, offset, :] = 4.0
+            value_cache[last_page, :, :, offset] = 1.0
 
     if quant_mode == "per_token":
         (quantized_keys, key_scale_flat, quantized_values, value_scale_flat,
@@ -335,8 +349,7 @@ def _build_case(mod, num_heads, batch_size, query_length, quant_mode, seed=123):
     kv_page_indices, kv_indptr = build_ps_page_data(block_tables_list, context_lengths, BLOCK_SIZE, device)
     readonly = (query, quantized_keys, quantized_values, context_lengths,
                 kv_page_indices, kv_indptr, key_scale_original, value_scale_original,
-                block_tables, query_output_indptr, key_scale_flat, value_scale_flat,
-                reference_values)
+                block_tables, query_output_indptr, key_scale_flat, value_scale_flat)
     originals = tuple(x.detach().clone() for x in readonly)
     ps_metadata = mod.get_pa_metadata(query, quantized_keys, context_lengths, kv_indptr,
                                       num_query_heads, num_kv_heads)
@@ -360,7 +373,7 @@ def _build_case(mod, num_heads, batch_size, query_length, quant_mode, seed=123):
     launch.arena_originals = originals
     launch.arena_perturb = lambda: query.neg_()
     launch.arena_reference = lambda: torch_mha_extend(
-        query, quantized_keys, reference_values, block_tables, context_lengths,
+        query, quantized_keys, (quantized_values.permute(0, 1, 3, 2, 4).contiguous().view_as(reference_values) if TRANS_V else quantized_values), block_tables, context_lengths,
         query_output_indptr, key_scale_flat, value_scale_flat,
         sliding_window=SLIDING_WINDOW).to(data_type)
 
@@ -387,7 +400,7 @@ def _validate_pa_timing(timed, launch, ref):
     return verify_timed_run(
         timed, inputs=launch.arena_inputs, originals=launch.arena_originals,
         expected=ref, perturb=launch.arena_perturb,
-        reference=launch.arena_reference, compare=_compare_pa_output)
+        reference=launch.arena_reference, compare=_compare_pa_output, single_invocations=2)
 
 
 # ============================================================================
@@ -440,6 +453,19 @@ def run_correctness(shapes=None, verbose=True):
         print("-" * 62)
         status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{len(shapes)})"
         print(f"{'Status:':<22} {status}")
+
+    # The original random workload dilutes a future-key masking error below
+    # its absolute tolerance. These unscored inputs make that error observable.
+    for query_length, heads in ((1, (8, 1)), (2, (8, 1)), (4, (16, 1))):
+        for mode in ("per_token", "per_tensor"):
+            launch, out, expected = _build_case(mod, heads, 3, query_length, mode,
+                                                seed=6123, causal_control=True)
+            _validate_pa_contract(launch, out, expected)
+            launch()
+            torch.cuda.synchronize()
+            require_unchanged(launch.arena_inputs, launch.arena_originals)
+            _compare_pa_output(out, expected)
+    print("Unscored last-token and multi-token causal-mask sensitivity controls: PASS")
 
     return {
         "correct": len(failures) == 0,

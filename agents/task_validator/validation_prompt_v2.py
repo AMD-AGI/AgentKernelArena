@@ -176,6 +176,42 @@ is contradictory or unclear, report the concrete ambiguity and fail closed.
 Within the required domain, still check shape/data-dependent shortcuts, state,
 layout, boundary behavior and gaps that could accept a wrong candidate; passing
 the listed cases alone does not establish those properties.
+For an acceptance-gap finding, identify a concrete wrong behavior, why its input
+is valid under the original contract, and the exact check that would accept it.
+Distinguish source-established possibilities from executed diagnostics. For a
+diagnostic, retain its command, actual terminal exit and observed result in the
+evidence explanation; never infer execution from an asynchronous session ID.
+Inspect protected regression controls too: they must invoke the implementation
+being checked, not only show that the oracle works. Repeated-call probes should
+vary relevant operands independently at the same storage addresses; coupled sign
+changes can preserve a reduction, product or intermediate and miss stale work.
+Check one complete logical invocation before repeated calls can repair an output.
+Canonical TimedRun.single_invocation(before_replay=poison) supplies a fresh
+one-call graph for each unscored audit (one original callable invocation for
+explicit Event timing). The callback receives the fresh graph's actual output
+buffers after capture, before replay; poisoning only the older scored buffer
+does not poison a newly allocated audit output. Check the first changed-input
+call before grouped replay can refresh stale intermediates, and inspect at
+least two poisoned single-call outputs as well as the actual scored graph.
+These supplemental checks do not replace measured-output/replay validation.
+An already single-call scored graph with independently changed inputs and
+numerically checked outputs for every sample provides equivalent or stronger
+logical-call evidence. Verify that captured policy and those actual checks;
+do not demand redundant fresh captures solely because the helper name differs.
+For explicit Event timing with one call per sample, checking only the last
+output does not establish correctness of earlier calls contributing to the
+score. Inspect the task's per-sample observer or equivalent bound evidence;
+numerical checks must stay outside the start/end Event interval.
+Uniform rescaling can preserve quantized codes or an incorrect formula. Use
+task-valid non-proportional operand changes and relevant numerical boundaries
+(for example nonzero means or finite values that overflow lower-precision
+intermediates) to discriminate a specific claimed omission. These are unscored
+controls, never a change to the original precision, tolerances or timing policy.
+Expected values, semantic dtype/routing settings and numerical policy must be
+bound independently of editable candidate state before invoking the candidate.
+Normal low-precision variation remains part of the task-specific numerical rule;
+use discriminating valid inputs and wrong-result controls rather than imposing a
+universal tighter tolerance or assuming every upstream option is required.
 
 1. source_files_exist / target_symbols_found: inspect the actual initial candidate
    files and initial interface. These two checks concern only the initial candidate;

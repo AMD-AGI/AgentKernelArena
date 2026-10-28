@@ -510,3 +510,55 @@ def test_configuration_symbols_schema(tmp_path, edit, message):
     path.write_text(yaml.safe_dump(config))
     with pytest.raises(TaskConfigError, match=message):
         load_task_spec(path, task_id="t")
+
+
+@pytest.mark.parametrize('trusted', ['_aka_benchmark.py', 'evaluate.py', 'scripts/reference.py'])
+@pytest.mark.parametrize('discard_added', [False, True])
+def test_new_package_cannot_shadow_a_frozen_python_module(tmp_path, trusted, discard_added):
+    from importlib.machinery import PathFinder
+    root, _ = workspace(tmp_path)
+    module = root/trusted;module.parent.mkdir(parents=True, exist_ok=True)
+    module.write_text('VALUE = "trusted"\n')
+    snapshot = snapshot_workspace_harness(root)
+    package=module.with_suffix('');package.mkdir()
+    initializer=package/'__init__.py'
+    initializer.write_text('raise RuntimeError("must never execute")\n')
+    # This is real Python import resolution, without executing the new code.
+    found=PathFinder.find_spec(module.stem, [str(module.parent)])
+    assert found.origin == str(initializer)
+    with pytest.raises(RuntimeError, match='shadow protected modules'):
+        verify_workspace_harness(snapshot, discard_added=discard_added)
+    assert initializer.is_file() and module.read_text()=='VALUE = "trusted"\n'
+
+
+@pytest.mark.parametrize('package', [False, True])
+def test_new_native_extension_cannot_shadow_a_frozen_python_module(tmp_path, package):
+    from importlib.machinery import EXTENSION_SUFFIXES, PathFinder
+    root,_=workspace(tmp_path);module=root/'evaluate.py'
+    snapshot=snapshot_workspace_harness(root)
+    if package:
+        directory=module.with_suffix('');directory.mkdir()
+        extension=directory/('__init__'+EXTENSION_SUFFIXES[0])
+    else:extension=module.with_suffix(EXTENSION_SUFFIXES[0])
+    extension.write_bytes(b'not loaded')
+    found=PathFinder.find_spec('evaluate',[str(root)])
+    assert found.origin==str(extension)
+    with pytest.raises(RuntimeError,match='shadow protected modules'):verify_workspace_harness(snapshot)
+    assert extension.read_bytes()==b'not loaded'
+
+
+def test_namespace_directory_does_not_replace_a_frozen_module(tmp_path):
+    from importlib.machinery import PathFinder
+    root,_=workspace(tmp_path);directory=root/'evaluate';directory.mkdir()
+    snapshot=snapshot_workspace_harness(root)
+    helper=directory/'helper.py';helper.write_text('VALUE=1\n')
+    assert PathFinder.find_spec('evaluate',[str(root)]).origin==str(root/'evaluate.py')
+    verify_workspace_harness(snapshot, discard_added=False)
+    assert helper.is_file()
+
+
+def test_an_original_frozen_package_remains_usable(tmp_path):
+    root,_=workspace(tmp_path);directory=root/'evaluate';directory.mkdir()
+    (directory/'__init__.py').write_text('VALUE=1\n')
+    snapshot=snapshot_workspace_harness(root)
+    verify_workspace_harness(snapshot,discard_added=False)

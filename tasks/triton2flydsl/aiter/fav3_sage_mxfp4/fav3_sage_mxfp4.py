@@ -5,9 +5,12 @@
 #
 # Provenance: the @triton.jit attention + quant kernels (sage_fwd_mxfp4, the
 # masking helpers, sage_quant_v_kernel, the rotation/delta kernels) are ported
-# verbatim from aiter.ops.triton MXFP4 sage-attention; the host wrappers
+# originally from aiter.ops.triton MXFP4 sage-attention; the host wrappers
 # (sage_quant_mxfp4, fav3_sage_mxfp4_wrapper) and the mxfp4 downcast/upcast utils
-# are ported from the same module with all helper deps inlined.
+# originate from the same module with helper dependencies inlined.
+# Numerical repairs use nearest-even FP4 conversion, a two-component FP4
+# expansion of Q/K, and a zero-safe V quantizer. The attention dot products
+# remain E2M1/E8M0; the expansion increases internal work and storage.
 #
 # Dropped: the gluon / gfx1250 kernel path (one terse note). The block-sparse
 # kernels are kept inlined.
@@ -58,7 +61,7 @@ def pid_grid_3d(pid, num_pid_m, num_pid_n, num_pid_k):
 
 
 # ===========================================================================
-# MXFP4 downcast / upcast (verbatim from moe/quant_moe.py + its device kernels)
+# MXFP4 downcast / upcast (based on moe/quant_moe.py and its device kernels)
 # ===========================================================================
 @triton.jit
 def _get_max_quant_val(dtype: tl.constexpr):
@@ -70,6 +73,18 @@ def _get_max_quant_val(dtype: tl.constexpr):
         return 448.0
     else:
         tl.static_assert(False, f"Invalid {dtype=}")
+
+
+@triton.jit
+def _e2m1_rne_magnitude(magnitude):
+    """E2M1 magnitude codes; midpoint ties select the even code."""
+    return ((magnitude > 0.25).to(tl.uint32)
+            + (magnitude >= 0.75).to(tl.uint32)
+            + (magnitude > 1.25).to(tl.uint32)
+            + (magnitude >= 1.75).to(tl.uint32)
+            + (magnitude > 2.5).to(tl.uint32)
+            + (magnitude >= 3.5).to(tl.uint32)
+            + (magnitude > 5.0).to(tl.uint32))
 
 
 @triton.jit
@@ -94,15 +109,22 @@ def _compute_mx_quant_and_scale(
     )
     max_val = tl.max(abs_tensor, axis=2, keep_dims=True)
     dequant_scale = max_val / _get_max_quant_val(mx_tensor_dtype)
-    if DEQUANT_SCALE_ROUNDING_MODE == 0:
+    if DEQUANT_SCALE_ROUNDING_MODE == 2:
+        # E2M1 maximum power-of-two magnitude is 4. Zero blocks retain zero codes.
+        maximum_exponent = ((max_val.to(tl.uint32, bitcast=True) >> 23) & 0xFF).to(tl.int32)
+        scale_exponent = tl.maximum(0, maximum_exponent - 2)
+        dequant_scale_exponent = scale_exponent.to(tl.uint32) << 23
+        quant_scale = tl.exp2((127 - scale_exponent).to(tl.float32))
+    elif DEQUANT_SCALE_ROUNDING_MODE == 0:
         dequant_scale_exponent = (
             dequant_scale.to(tl.uint32, bitcast=True) + 0x007FFFFF
         ) & 0x7F800000
     else:
         assert DEQUANT_SCALE_ROUNDING_MODE == 1
         dequant_scale_exponent = dequant_scale.to(tl.uint32, bitcast=True) & 0x7F800000
-    dequant_scale_rounded = dequant_scale_exponent.to(tl.float32, bitcast=True)
-    quant_scale = tl.where(dequant_scale_rounded == 0, 0, 1.0 / dequant_scale_rounded)
+    if DEQUANT_SCALE_ROUNDING_MODE != 2:
+        dequant_scale_rounded = dequant_scale_exponent.to(tl.float32, bitcast=True)
+        quant_scale = tl.where(dequant_scale_rounded == 0, 0, 1.0 / dequant_scale_rounded)
 
     f32_tensor = tl.reshape(
         f32_tensor, [BLOCK_SIZE_OUT_DIM, BLOCK_SIZE_QUANT_MX_SCALE, 32]
@@ -119,26 +141,10 @@ def _compute_mx_quant_and_scale(
     if is_fp8:
         out_tensor = quant_tensor.to(mx_tensor_dtype)
     else:
-        quant_tensor = quant_tensor.to(tl.uint32, bitcast=True)
-        signs = quant_tensor & 0x80000000
-        exponents = (quant_tensor >> 23) & 0xFF
-        mantissas = quant_tensor & 0x7FFFFF
-
-        E8_BIAS = 127
-        E2_BIAS = 1
-        adjusted_exponents = tl.core.sub(
-            E8_BIAS, exponents + 1, sanitize_overflow=False
-        )
-        mantissas = tl.where(
-            exponents < E8_BIAS,
-            (0x400000 | (mantissas >> 1)) >> adjusted_exponents,
-            mantissas,
-        )
-
-        exponents = tl.maximum(exponents, E8_BIAS - E2_BIAS) - (E8_BIAS - E2_BIAS)
-
-        e2m1_tmp = tl.minimum((((exponents << 2) | (mantissas >> 21)) + 1) >> 1, 0x7)
-        e2m1_value = ((signs >> 28) | e2m1_tmp).to(tl.uint8)
+        signs = quant_tensor.to(tl.uint32, bitcast=True) & 0x80000000
+        magnitude = tl.abs(quant_tensor)
+        code = _e2m1_rne_magnitude(magnitude)
+        e2m1_value = ((signs >> 28) | code).to(tl.uint8)
 
         e2m1_value = tl.reshape(
             e2m1_value, [BLOCK_SIZE_OUT_DIM, BLOCK_SIZE_QUANT_DIM // 2, 2]
@@ -384,6 +390,7 @@ def _upcast_from_mxfp(
 class DequantScaleRoundingMode(Enum):
     ROUND_UP = 0
     ROUND_DOWN = 1
+    OCP = 2
 
 
 def downcast_to_mxfp(
@@ -532,7 +539,7 @@ def sage_quant_v_kernel(
     v = tl.load(v_input_ptrs, mask=offs_kn[:, None] < SEQLEN_K, other=0.0)
     v = v.to(tl.float32)
     v_scales = tl.load(v_scale_ptrs)
-    v_quant = v / v_scales
+    v_quant = v / tl.where(v_scales == 0.0, 1.0, v_scales)
     v_quant = v_quant.to(v_output_ptrs.dtype.element_ty)
     tl.store(v_output_ptrs, v_quant, mask=offs_kn[:, None] < SEQLEN_K)
 
@@ -930,6 +937,25 @@ def rotation_smooth_qk(
     return Q_rot, K_rot, delta_s
 
 
+
+@triton.jit
+def _fp4_residual_subtract(Source, Decoded, Residual, N: tl.constexpr, BLOCK: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    original = tl.load(Source + offsets, mask=offsets < N, other=0).to(tl.float32)
+    decoded = tl.load(Decoded + offsets, mask=offsets < N, other=0).to(tl.float32)
+    tl.store(Residual + offsets, original - decoded, mask=offsets < N)
+
+
+def _fp4_residual(value, codes, scales):
+    """Recover the residual on the GPU without changing the external operands."""
+    original = value.contiguous()
+    decoded = upcast_from_mxfp(codes, scales, dtype=value.dtype, axis=-1).contiguous()
+    residual = torch.empty_like(original)
+    size = original.numel()
+    _fp4_residual_subtract[(triton.cdiv(size, 256),)](original, decoded, residual, size, 256)
+    return residual
+
+
 def sage_quant_mxfp4(
     q,
     k,
@@ -1019,8 +1045,24 @@ def sage_quant_mxfp4(
         num_warps=8,
     )
 
-    q_fp4, q_scale = downcast_to_mxfp(q, torch.uint8, axis=-1)
-    k_fp4, k_scale = downcast_to_mxfp(k, torch.uint8, axis=-1)
+    q_fp4, q_scale = downcast_to_mxfp(q, torch.uint8, axis=-1,
+        DEQUANT_SCALE_ROUNDING_MODE=DequantScaleRoundingMode.OCP)
+    k_fp4, k_scale = downcast_to_mxfp(k, torch.uint8, axis=-1,
+        DEQUANT_SCALE_ROUNDING_MODE=DequantScaleRoundingMode.OCP)
+
+    # A two-component FP4 expansion retains both contraction operands in
+    # E2M1/E8M0. Concatenating four feature products evaluates
+    # (Q0 + Q1) @ (K0 + K1).T with the same dot_scaled attention kernel.
+    q_residual = _fp4_residual(q, q_fp4, q_scale)
+    k_residual = _fp4_residual(k, k_fp4, k_scale)
+    q1, qs1 = downcast_to_mxfp(q_residual, torch.uint8, axis=-1,
+        DEQUANT_SCALE_ROUNDING_MODE=DequantScaleRoundingMode.OCP)
+    k1, ks1 = downcast_to_mxfp(k_residual, torch.uint8, axis=-1,
+        DEQUANT_SCALE_ROUNDING_MODE=DequantScaleRoundingMode.OCP)
+    q_fp4 = torch.cat((q_fp4, q1, q_fp4, q1), dim=-1)
+    k_fp4 = torch.cat((k_fp4, k_fp4, k1, k1), dim=-1)
+    q_scale = torch.cat((q_scale, qs1, q_scale, qs1), dim=-1)
+    k_scale = torch.cat((k_scale, k_scale, ks1, ks1), dim=-1)
 
     if not return_lse:
         return q_fp4, q_scale, k_fp4, k_scale, v_fp8, v_scale, delta_s
@@ -2256,8 +2298,8 @@ class _FAv3SageMXFP4WrapperFunc(torch.autograd.Function):
         qd_mapped = map_dims(q_descale.shape, bhsd_map)
         kd_mapped = map_dims(k_descale.shape, bhsd_map)
 
-        expected_q_ds = (batch, num_q_heads, seqlen_q, head_dim // 32)
-        expected_k_ds = (batch, num_kv_heads, seqlen_k, head_dim // 32)
+        expected_q_ds = (batch, num_q_heads, seqlen_q, (2 * q_quantized.shape[-1]) // 32)
+        expected_k_ds = (batch, num_kv_heads, seqlen_k, (2 * k_quantized.shape[-1]) // 32)
 
         assert tuple(qd_mapped) == expected_q_ds, "q_descale mismatch"
         assert tuple(kd_mapped) == expected_k_ds, "k_descale mismatch"

@@ -219,3 +219,17 @@ def test_resume_cannot_recapture_modified_harness_as_original(tmp_path):
     harness.write_text(harness.read_text() + "\n# changed protected check\n")
     with pytest.raises(RuntimeError, match="Protected test/harness"):
         TaskSession.load(session.spec, session.workspace, session.state_directory)
+
+
+@pytest.mark.parametrize('resume', [False, True])
+def test_shadow_package_is_rejected_before_any_candidate_action(tmp_path, resume):
+    session=create(tmp_path)
+    assert session.validate_initial().accepted
+    if resume:session=TaskSession.load(session.spec,session.workspace,session.state_directory)
+    package=session.workspace/'evaluate';package.mkdir()
+    initializer=package/'__init__.py';initializer.write_text('raise RuntimeError("not executed")\n')
+    actions=set(session.state_directory.glob('action-*.json'))
+    with pytest.raises(RuntimeError,match='shadow protected modules'):
+        session.candidate_action('compile')
+    assert set(session.state_directory.glob('action-*.json'))==actions
+    assert initializer.is_file()

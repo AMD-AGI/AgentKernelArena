@@ -159,8 +159,8 @@ def _router_replay_validator(x, w, cfg, bias):
         _compare_router_output(actual, expected, cfg)
     def validate(timed):
         return verify_timed_pair(timed, inputs=inputs, originals=originals,
-                                 expected=expected, perturb=perturb,
-                                 reference=replay_reference, compare=compare)
+                                 expected=expected, perturb=(perturb, lambda: x.mul_(32.0)),
+                                 reference=replay_reference, compare=compare, single_invocations=2)
     return validate
 
 

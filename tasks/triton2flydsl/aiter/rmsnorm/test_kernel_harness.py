@@ -22,7 +22,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged, verify_timed_run, allclose_output
+from scripts.replay_checks import nonuniform_input_probes, check_reused_calls, scaled_input_probes, require_unchanged, verify_timed_run, allclose_output
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -113,16 +113,13 @@ def _elementwise_replay_validator(x, weight):
     inputs = (x, weight)
     originals = tuple(v.clone() for v in inputs)
     expected = _torch_rmsnorm(x, weight, x.dtype)
-    def perturb():
-        x.neg_()
-        weight.mul_(0.5)
     def reference():
         return _torch_rmsnorm(x, weight, x.dtype)
     def compare(actual, expected):
         _checked_elementwise_output(actual, x)
         allclose_output(actual, expected, atol=1e-2, rtol=1e-2)
     def validate(timed):
-        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=perturb, reference=reference, compare=compare)
+        return verify_timed_run(timed, inputs=inputs, originals=originals, expected=expected, perturb=(lambda: x.fill_(1024.0), lambda: x.fill_(EPS ** 0.5)) + scaled_input_probes(x, factors=(0.5, 1e-4)) + scaled_input_probes(weight), reference=reference, compare=compare, single_invocations=2)
     return validate
 
 
@@ -146,6 +143,13 @@ def run_correctness(verbose=True):
                 finite = bool(torch.isfinite(y).all().item())
                 close = torch.allclose(y, ref, atol=1e-2, rtol=1e-2)
                 ok = finite and close
+                if ok:
+                    check_reused_calls(lambda: mod.rms_norm(x, weight, EPS), initial_output=y,
+                        inputs=protected_inputs, originals=originals,
+                        perturbations=nonuniform_input_probes(x, weight) + (lambda: x.fill_(EPS ** 0.5), lambda: x.fill_(1024.0)),
+                        reference=lambda: _torch_rmsnorm(x, weight, x.dtype),
+                        compare=lambda actual, wanted: allclose_output(actual, wanted, atol=1e-2, rtol=1e-2),
+                        poison=lambda output: output.fill_(float('nan')))
                 if verbose:
                     print(
                         f"  {'PASS' if ok else 'FAIL'}: {tag} "

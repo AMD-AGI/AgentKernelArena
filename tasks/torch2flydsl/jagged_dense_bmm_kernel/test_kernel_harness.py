@@ -179,7 +179,7 @@ def _jagged_replay_validator(model, inputs):
     def validate(timed):
         return verify_timed_run(timed, inputs=inputs, originals=originals,
                                 expected=expected, perturb=perturb,
-                                reference=oracle, compare=_checked_jagged_output)
+                                reference=oracle, compare=_checked_jagged_output, single_invocations=2)
     return validate
 
 
@@ -210,6 +210,21 @@ def run_correctness(verbose=True):
             require_unchanged(protected_inputs, originals)
             _checked_jagged_output(out, ref)
             _check_prepared_jagged(kmod, protected_inputs, ref, shape)
+            try:
+                for value in (jagged, dense, bias):
+                    value.mul_(0.5)
+                    expected_reused = model(*protected_inputs)
+                    changed = tuple(v.clone() for v in protected_inputs)
+                    for _ in range(2):
+                        reused = kmod.flydsl_jagged_dense_bmm(*protected_inputs)
+                        require_unchanged(protected_inputs, changed)
+                        _checked_jagged_output(reused, expected_reused)
+                    for current, original in zip(protected_inputs, originals):
+                        current.copy_(original)
+            finally:
+                for current, original in zip(protected_inputs, originals):
+                    current.copy_(original)
+
             ref_f, out_f = ref.float(), out.float()
             denom = ref_f.abs().max().item()
             max_delta = (ref_f - out_f).abs().max().item()

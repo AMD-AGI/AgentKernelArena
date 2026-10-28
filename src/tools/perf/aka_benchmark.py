@@ -740,6 +740,12 @@ def benchmark_cuda_event_samples(
         # Bind only after every measured sample and its GPU timing succeeded.
         # Never obtain this value from a new untimed call after measurement.
         timed_run._bind(_rerun_eager, measured_output, _rerun_eager_timed)
+        def _single_eager(before_replay: Callable[[Any], Any] | None) -> Any:
+            if before_replay is not None:
+                before_replay(timed_run.outputs)
+            return _rerun_eager()
+
+        timed_run._single_invocation = _single_eager
     return samples
 
 
@@ -878,6 +884,13 @@ class TimedRun:
     timing, so the invocations whose time is reported are the ones checked. It
     must only read ``outputs``; it must not modify inputs or outputs.
 
+    ``single_invocation`` is a supplemental unscored audit. Ordinary graph
+    collectors capture exactly one logical call into a new graph on every audit;
+    explicit Event collectors execute their original callable once. A task can
+    poison outputs and compare at least two of these calls independently to
+    reject alternating or partial writers. These checks do not replace actual
+    measured-output/replay checks or change the scored graph's sample policy.
+
     ``rerun_ms`` executes the timed unit once more and returns its device time,
     bracketed exactly as a reported sample is (preparation, start event,
     invocation, end event), so a caller can compare one invocation over state of
@@ -887,6 +900,7 @@ class TimedRun:
     def __init__(self) -> None:
         self._rerun: Callable[[], Any] | None = None
         self._rerun_timed: Callable[[], tuple[Any, float]] | None = None
+        self._single_invocation: Callable[[Callable[[Any], Any] | None], Any] | None = None
         self.outputs: Any = None
         self.before_sample: Callable[[int], Any] | None = None
         self.after_sample: Callable[[Any], Any] | None = None
@@ -899,6 +913,7 @@ class TimedRun:
     ) -> None:
         self._rerun = rerun
         self._rerun_timed = rerun_timed
+        self._single_invocation = None
         self.outputs = outputs
 
     @property
@@ -916,6 +931,24 @@ class TimedRun:
             raise RuntimeError("timed run was never bound")
         self.outputs, elapsed_ms = self._rerun_timed()
         return elapsed_ms
+
+    def single_invocation(self, *, before_replay: Callable[[Any], Any] | None = None) -> Any:
+        """Audit one logical call, separately from the scored repeated unit.
+
+        Ordinary graph timing captures a new one-call graph for each audit;
+        explicit Event timing invokes its original callable once. This never
+        substitutes for validation of the actual scored outputs and graph.
+        It does not change samples, repetition counts or timing boundaries.
+        ``before_replay`` can poison the fresh graph's actual output buffers
+        after capture, before preparation/execution. Preparation restores any
+        output that is also a stateful input. Event audits pass known measured
+        buffers before preparing and invoking the original callable once.
+        """
+        if self._single_invocation is None:
+            raise RuntimeError("collector does not expose an isolated logical invocation")
+        if before_replay is not None and not callable(before_replay):
+            raise TypeError("before_replay must be callable or None")
+        return self._single_invocation(before_replay)
 
 
 def benchmark_cuda_graph_or_events_samples(
@@ -1126,6 +1159,29 @@ def benchmark_cuda_graph_or_events_samples(
                 return captured_output, elapsed_ms
 
             timed_run._bind(_replay_once, captured_output, _replay_once_timed)
+            def _single_invocation(before_replay: Callable[[Any], Any] | None) -> Any:
+                # A grouped graph can conceal alternating/partial host calls.
+                # Capture one call without changing the scored graph or clock.
+                # Rebuilding it on every audit also exposes alternating capture
+                # behavior. Preparation remains outside capture and execution.
+                stream.wait_stream(torch.cuda.current_stream())
+                holder: list[Any] = []
+                single = _capture_graph(fn, 1, stream, prepare_fn=prepare_fn,
+                                        output_holder=holder)
+                if len(holder) != 1:
+                    raise RuntimeError("isolated graph did not expose its output")
+                with torch.cuda.stream(stream):
+                    if before_replay is not None:
+                        before_replay(holder[0])
+                        if prepare_fn is not None:
+                            # Stateful outputs can also be operator inputs.
+                            # Restore their required initial state after poison.
+                            prepare_fn()
+                    single.replay()
+                torch.cuda.synchronize()
+                return holder[0]
+
+            timed_run._single_invocation = _single_invocation
             metadata["benchmark_timed_run_kind"] = "captured_graph"
         return values, metadata
     except _EmptyGraphCapture:

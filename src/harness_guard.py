@@ -1196,6 +1196,7 @@ def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
             "default_action": "discard_added_protected_files_before_scoring",
             "strict_action": "reject_added_protected_files_without_deleting",
             "unmatched_new_files": "not_rejected_by_this_guard",
+            "protected_module_shadowing": "reject_new_packages_or_extensions_without_deleting",
         },
     }
 
@@ -1242,6 +1243,37 @@ def snapshot_workspace_harness(
     return WorkspaceSnapshot(root=root, digests=digests)
 
 
+def _verify_protected_module_resolution(snapshot: WorkspaceSnapshot) -> None:
+    """Reject new packages/extensions that outrank frozen Python modules.
+
+    A byte-identical module is not sufficient: Python prefers a same-name
+    regular package or extension module. Inspect paths without importing agent
+    code, and preserve rejected additions for inspection.
+    """
+    from importlib.machinery import EXTENSION_SUFFIXES, all_suffixes
+
+    rejected = set()
+    for relative in snapshot.digests:
+        module = Path(relative)
+        if module.suffix != ".py" or module.stem == "__init__":
+            continue
+        package = snapshot.root / module.with_suffix("")
+        if package.is_symlink():
+            rejected.add(module.with_suffix("").as_posix())
+        for suffix in all_suffixes():
+            initializer = package / ("__init__" + suffix)
+            name = initializer.relative_to(snapshot.root).as_posix()
+            if name not in snapshot.digests and (initializer.exists() or initializer.is_symlink()):
+                rejected.add(name)
+        for suffix in EXTENSION_SUFFIXES:
+            extension = snapshot.root / module.with_suffix(suffix)
+            name = extension.relative_to(snapshot.root).as_posix()
+            if name not in snapshot.digests and (extension.exists() or extension.is_symlink()):
+                rejected.add(name)
+    if rejected:
+        raise RuntimeError(f"Added Python import paths shadow protected modules: {sorted(rejected)}")
+
+
 def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None, *, discard_added: bool = True) -> None:
     """Reject tampering with protected harness files; discard ones the agent added.
 
@@ -1266,6 +1298,7 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None, *, discar
             return _v2_digests(snapshot.root, snapshot.task_spec, snapshot.digests, snapshot.initial_symbols)
         return _protected_digests(snapshot.root, snapshot.digests)
 
+    _verify_protected_module_resolution(snapshot)
     before = snapshot.digests
     current = _scan()
 

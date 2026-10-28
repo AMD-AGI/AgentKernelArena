@@ -45,6 +45,52 @@ def event_row(row):
         'benchmark_method': 'cuda_event_fallback', 'benchmark_fallback_reason': 'backend_requires_events'}}
 
 
+def flat_event_row(row):
+    """The maintained task adapters emit this protocol layout as well."""
+    row['benchmark_method'] = 'cuda_event_fallback'
+    row['metadata'] = {
+        'benchmark_fallback_reason': 'backend_requires_events',
+        'benchmark_method_consistent': True,
+        'timed_output_correctness': 'PASS',
+        'benchmark_samples': 100,
+    }
+
+
+def test_flat_captured_event_evidence_has_the_same_applicability(captured):
+    for record in performance_records(captured['context']):
+        replace_stdout(record, lambda obj: [flat_event_row(row) for row in obj['cases']])
+    result = review(captured, rebind=True)
+    assert result['overall_status'] == 'PASS', result['validation_errors']
+    check = result['checks']['benchmark_integrity']
+    assert check['replay_validation_applicability']['status'] == 'not_applicable'
+    assert check['replay_validation_valid'] is None
+
+
+@pytest.mark.parametrize('mutation', [
+    lambda m: m.pop('timed_output_correctness'),
+    lambda m: m.update(timed_output_correctness='FAIL'),
+    lambda m: m.update(timed_output_correctness=True),
+    lambda m: m.update(timed_output_checked=False),
+    lambda m: m.update(timed_output_checked=1),
+    lambda m: m.update(benchmark_method='cuda_graph'),
+    lambda m: m.update(benchmark_method_consistent=False),
+    lambda m: m.update(benchmark_fallback_reason=''),
+    lambda m: m.update(device_timing={}),
+    lambda m: m.update(device_timing={'benchmark_method': 'cuda_graph'}),
+    lambda m: m.update(device_timing={'benchmark_method': 'cuda_event_fallback',
+                                     'benchmark_fallback_reason': 'different_policy'}),
+    lambda m: m.update(device_timing={'benchmark_method': 'cuda_event_fallback',
+                                     'timed_output_checked': False}),
+])
+def test_flat_layout_never_hides_missing_or_conflicting_evidence(captured, mutation):
+    for record in performance_records(captured['context']):
+        replace_stdout(record, lambda obj: [flat_event_row(row) for row in obj['cases']])
+    mutate_case(captured['context'], lambda row: mutation(row['metadata']), index=15)
+    result = review(captured, rebind=True)
+    assert result['overall_status'] == 'WARN'
+    assert result['checks']['benchmark_integrity']['replay_validation_applicability']['status'] == 'undetermined'
+
+
 def test_captured_141050_event_only_warn_becomes_explicit_na(captured):
     original = deepcopy(captured)
     assert captured['original_finalized']['overall_status'] == 'WARN'

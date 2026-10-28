@@ -14,10 +14,15 @@ while `quality_loop` owns a complete multi-task campaign and a single Git branch
 For every selected, platform-compatible task it:
 
 1. Runs the existing task validator in a fresh workspace.
-2. Records WARN results without repairing them.
-3. Attempts one repair for FAIL results, revalidates from a fresh copy, and records
-   the unresolved failure locally if the task remains invalid.
-4. Runs exactly one Codex optimization iteration and the centralized evaluator.
+2. Records WARN results; optionally repairs explicitly selected warning checks.
+3. Attempts bounded repairs for FAIL results (one by default, at most three),
+   retaining every finding and proposal. Each attempt needs changed source, fresh
+   validation and preservation of the original task, cases and timing policy.
+   Acceptance also requires an independent read-only repair review closing all
+   retained findings. Unresolved failures remain in the local report.
+4. In the default `optimize` mode, runs exactly one Codex optimization iteration
+   and the centralized evaluator. `repair_only` stops after validation/repair and
+   never optimizes, promotes a baseline or reports a repair as a speedup.
 5. Starts a separate, read-only Codex session to review correctness evidence and
    case coverage.
 6. Promotes a first-iteration candidate only for an implemented initial-candidate
@@ -90,6 +95,20 @@ The crash-safe `state.yaml` skips terminal tasks only while their validation
 evidence and task fingerprints still match. `audit_report.yaml` records every
 warning, unresolved failure, speedup confirmation, accepted file change, and commit.
 If a run has no accepted changes, it does not open an empty pull request.
+
+For repair-only maintenance, set the following in a run config:
+
+```yaml
+quality_loop:
+  mode: repair_only
+  max_repair_attempts: 2
+  repair_warnings: [correctness_implementation_review, benchmark_integrity]
+```
+
+Existing scored cases cannot be removed, changed or expanded during automatic
+repair. Additional correctness-only controls are permitted. The independent
+repair review also checks semantic rules, input generation and numerical gates
+that cannot be proved by case and metadata comparisons alone.
 
 ## Safety boundaries
 

@@ -30,6 +30,6 @@ def run():
             return True
         except AssertionError:
             return False
-    rows.append(control(actual_zero.to(torch.bfloat16), expected_zero, accept,
+    rows.append(control(actual_zero.to(torch.bfloat16), expected_zero.to(torch.bfloat16), accept,
                         "zero-reference numerical comparator rejects wrong output"))
     return rows

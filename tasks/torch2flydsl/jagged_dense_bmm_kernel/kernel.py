@@ -125,7 +125,9 @@ def jdbba_kernel(
         b_row_off = fx.Int32(off_b) * fx.Int32(N) * fx.Int32(K)
         B_g = fx.make_view(fx.add_offset(fx.get_iter(B), fx.make_int_tuple(b_row_off)), fx.get_layout(B))
 
-        A_buf = fx.rocdl.make_buffer_tensor(A_g, max_size=True)
+        # A tail rows must not read the next segment or beyond the allocation.
+        # The hardware returns zero for raw-buffer loads outside this descriptor.
+        A_buf = make_bounded_buffer_tensor(A_g, fx.Int64(fx.Int32(M_b) * fx.Int32(K) * fx.Int32(2)))
         B_buf = fx.rocdl.make_buffer_tensor(B_g, max_size=True)
         # Bound C's descriptor to exactly M_b rows so the hardware OOB-drops any
         # partial-tile store past this group's last row (prevents writing into

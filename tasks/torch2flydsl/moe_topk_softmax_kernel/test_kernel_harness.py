@@ -30,7 +30,7 @@ import sys
 import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import require_unchanged
+from scripts.replay_checks import nonuniform_input_probes, check_single_invocations, require_unchanged
 
 from task_runtime import candidate_relative_path
 KERNEL_FILE = candidate_relative_path()
@@ -215,6 +215,13 @@ def _require_routing_contract(weights, ids, gating, topk):
         raise AssertionError("Routing expert ids must be unique per token")
 
 
+def _require_weight_association(weights, ids, gating, route_scale):
+    import torch
+    expected = torch.softmax(gating.float(), dim=-1).gather(1, ids.long()) * route_scale
+    if not torch.allclose(weights, expected, atol=1e-6, rtol=1e-2):
+        raise AssertionError("Routing weight differs from the probability of its selected expert")
+
+
 def _routing_reference(model, mmod, gating, bias):
     import torch
     with torch.no_grad():
@@ -235,6 +242,7 @@ def _verify_routing_timed(timed, model, mmod, gating, bias, shape, originals, ex
         weights, ids = actual
         ref_w, ref_id, selection = reference
         _require_routing_contract(weights, ids, gating, topk)
+        _require_weight_association(weights, ids, gating, shape["route_scale"])
         _require_routing_contract(ref_w, ref_id, gating, topk)
         genuine, weight_error = _compare_routing(ref_w, ref_id, weights, ids, selection, topk)
         id_tol = _BIAS_ID_ERR_TOL if shape.get("use_bias") else 0.0
@@ -242,21 +250,32 @@ def _verify_routing_timed(timed, model, mmod, gating, bias, shape, originals, ex
             raise AssertionError("Numerical mismatch in timed routing ids/weights")
     require_unchanged((gating, bias), originals)
     compare(timed.outputs, expected)
-    try:
-        # Preserve the case's score distribution, but permute expert identities.
+    def original_probe():
         gating.copy_(gating.roll(1, dims=-1))
         bias.copy_(bias.roll(1))
-        changed = (gating.clone(), bias.clone())
-        reference = _routing_reference(model, mmod, gating, bias)
-        timed.outputs[0].fill_(float("nan"))
-        timed.outputs[1].fill_(-1)
-        result = timed.rerun()
-        require_unchanged((gating, bias), changed)
-        compare(result, reference)
-    finally:
-        gating.copy_(originals[0])
-        bias.copy_(originals[1])
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    for change in (original_probe, lambda: gating.add_(1000.0), lambda: gating.mul_(4.0)) + nonuniform_input_probes(*(gating, bias)):
+        try:
+            # Preserve the case's score distribution, but permute expert identities.
+            change()
+            changed = (gating.clone(), bias.clone())
+            reference = _routing_reference(model, mmod, gating, bias)
+            check_single_invocations(timed, count=2, inputs=(gating, bias), expected=reference,
+                compare=compare, poison=lambda output: (output[0].fill_(float("nan")), output[1].fill_(-1)))
+            # Isolated captures must not prime the scored graph cache.
+            gating.copy_(originals[0])
+            bias.copy_(originals[1])
+            check_single_invocations(timed, count=2, inputs=(gating, bias), expected=_routing_reference(model, mmod, gating, bias),
+                compare=compare, poison=lambda output: (output[0].fill_(float("nan")), output[1].fill_(-1)))
+            change()
+            timed.outputs[0].fill_(float("nan"))
+            timed.outputs[1].fill_(-1)
+            result = timed.rerun()
+            require_unchanged((gating, bias), changed)
+            compare(result, reference)
+        finally:
+            gating.copy_(originals[0])
+            bias.copy_(originals[1])
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS", "single_invocations_per_probe": 2, "restored_input_single_invocations_per_probe": 2,
             "replay_inputs_perturbed": True, "replay_output_poisoned": True,
             "replay_checked_outputs": ["weights", "expert_ids"]}
 
@@ -288,6 +307,7 @@ def run_correctness(verbose=True):
         require_unchanged((gating, bias), originals)
         _require_routing_contract(ref_w, ref_id, gating, shape["topk"])
         _require_routing_contract(a_w, a_id, gating, shape["topk"])
+        _require_weight_association(a_w, a_id, gating, shape["route_scale"])
         genuine, w_err = _compare_routing(ref_w, ref_id, a_w, a_id, sel, shape["topk"])
         id_err = genuine / max(shape["tokens"], 1)
         # Unbiased shapes must be exact (id_err == 0); biased large-E shapes use the
@@ -322,6 +342,7 @@ def run_correctness(verbose=True):
                 torch.cuda.synchronize()
                 require_unchanged((gating, bias), originals)
                 _require_routing_contract(k_w, k_id, gating, shape["topk"])
+                _require_weight_association(k_w, k_id, gating, shape["route_scale"])
                 kg, kw = _compare_routing(ref_w, ref_id, k_w, k_id, sel, shape["topk"])
                 k_id_err = kg / max(shape["tokens"], 1)
                 kok = k_id_err <= id_tol and kw <= _WEIGHT_ATOL

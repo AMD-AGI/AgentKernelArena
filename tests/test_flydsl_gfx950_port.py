@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tests.task_repair_history import reviewed_repair_source
 
 ROOT = Path(__file__).resolve().parents[1] / 'tasks' / 'flydsl2flydsl'
 CONTRACTS = {
@@ -23,7 +24,8 @@ CONTRACTS = {
 def test_port_preserves_declared_cases_and_original_numerical_timing_harness(task):
     cases, original_harness = CONTRACTS[task]
     assert hashlib.sha256((ROOT / task / 'cases.json').read_bytes()).hexdigest() == cases
-    prefix = (ROOT / task / 'test_kernel_harness.py').read_text().split('def arena_benchmark(', 1)[0]
+    prefix = reviewed_repair_source((ROOT / task / 'test_kernel_harness.py').read_text(), path=ROOT / task / 'test_kernel_harness.py').split('def arena_benchmark(', 1)[0]
+    prefix = prefix.replace('import scaled_input_probes, ', 'import ', 1)
     prefix = prefix.replace('from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events\n'
                             'from scripts.replay_checks import verify_timed_run',
                             'from _aka_benchmark import benchmark_cuda_graph_or_events')

@@ -27,7 +27,7 @@ _moe = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(_moe)
 _sys.modules["kernels.moe_sorting_kernel"] = _moe
-UNIT_SIZE = _moe.UNIT_SIZE
+UNIT_SIZE = 32  # Protected semantic padding unit, independent of candidate tiles.
 moe_sorting_flydsl = _moe.moe_sorting_flydsl
 
 import torch
@@ -52,7 +52,7 @@ import os
 import statistics
 import sys
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import prepare_check, verify_timed_run, compare_outputs
+from scripts.replay_checks import prepare_check, verify_timed_run, compare_outputs, require_unchanged
 from _aka_benchmark import benchmark_cuda_event_samples
 
 WARMUP_ITERS = 3
@@ -72,7 +72,10 @@ def _call_flydsl(topk_ids, topk_weights, E, model_dim=4096, topk=None, unit_size
     s_eids = torch.empty(max_blocks, dtype=torch.int32, device=device)
     nv = torch.empty(2, dtype=torch.int32, device=device)
     buf = torch.empty((T, model_dim), dtype=torch.bfloat16, device=device)
-    return moe_sorting_flydsl(topk_ids, topk_weights, s_ids, s_w, s_eids, nv, buf, E, unit_size, expert_mask)
+    originals = (topk_ids.clone(), topk_weights.clone())
+    moe_sorting_flydsl(topk_ids, topk_weights, s_ids, s_w, s_eids, nv, buf, E, unit_size, expert_mask)
+    require_unchanged((topk_ids, topk_weights), originals)
+    return s_ids, s_w, s_eids, nv, buf
 
 
 def _make_preallocated_flydsl_call(
@@ -98,7 +101,7 @@ def _make_preallocated_flydsl_call(
     buf = torch.empty((T, model_dim), dtype=torch.bfloat16, device=device)
 
     def launch():
-        return moe_sorting_flydsl(
+        moe_sorting_flydsl(
             topk_ids,
             topk_weights,
             s_ids,
@@ -110,6 +113,7 @@ def _make_preallocated_flydsl_call(
             unit_size,
             expert_mask,
         )
+        return s_ids, s_w, s_eids, nv, buf
 
     return launch
 
@@ -898,7 +902,7 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         ms, bench_meta = benchmark_cuda_graph_or_events(
             launch, warmup=warmup, repetition=iters, timed_run=timed,
         )
-        bench_meta.update(verify_timed_run(timed, **check))
+        bench_meta.update(verify_timed_run(timed, **check, single_invocations=2))
         latencies.append(ms)
         report_cases.append({
             "test_case_id": f"moe_sort_{idx}",

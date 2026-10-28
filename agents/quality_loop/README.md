@@ -1,7 +1,7 @@
 # quality_loop agent
 
 `quality_loop` is a repository-level task curator. It audits every selected task,
-attempts one repair for blocking validator failures, runs exactly one Codex
+attempts bounded repairs for blocking validator failures, runs exactly one Codex
 optimization iteration, sends the result to an independent Codex reviewer, and
 optionally hardens an easy baseline or task cases behind fail-closed correctness
 gates. It records unrepairable task defects locally and bundles all accepted task
@@ -72,6 +72,32 @@ push and PR creation. `--plan` is the only intentionally offline mode.
 
 ## Task contract and budgets
 
+Use `quality_loop.mode: repair_only` to audit and repair task quality without
+optimizing candidates, promoting baselines or claiming a speedup. That mode has
+zero optimization iterations. Normal `optimize` mode retains exactly one.
+`max_repair_attempts` defaults to 1 and permits 1--3 attempts. Every attempt needs
+a changed, previously unseen proposal; unchanged validator reruns cannot erase
+an existing finding. All proposals and rejected evidence remain in the artifacts.
+
+WARN-only findings remain recorded by default. `repair_warnings` can explicitly
+select validator check names to repair, for example:
+
+```yaml
+quality_loop:
+  mode: repair_only
+  max_repair_attempts: 2
+  repair_warnings: [correctness_implementation_review, benchmark_integrity]
+```
+
+Repairs preserve the original TaskSpec, all existing case identities/checks and
+captured timing/sample/cache policy. Additional correctness-only cases are
+allowed; changing scored workloads requires a separate reviewed migration.
+An independent repair reviewer compares the source with the original package,
+checks reference/tolerance/input-generation semantics not captured by those
+deterministic checks, and must close every retained finding. A new validator PASS
+alone cannot authorize weakening a task. GPU validation and the read-only review
+both precede acceptance or publication of repaired files.
+
 Tasks use the common [v2 task contract](../../docs/how-to/add-task.md).
 Discovery preserves the full path below `tasks/` as the stable ID, including when
 copying a task to a scratch directory. Nested dependency configs are not separate
@@ -133,8 +159,11 @@ drain timeout is identified separately from the configured role deadline.
 1. Run the shared task validator in a fresh workspace. Require the framework's
    completion marker, matching report hash, task ID, fresh timestamp and successful
    framework status. Missing or operationally failed reports stop the attempt.
-2. Record WARN findings without repairing them. For task FAIL, allow one repair
-   and re-run the validator in a new workspace; a repair needs clean PASS.
+2. Record WARN findings; repair only explicitly selected warning checks. For task
+   FAIL, attempt the configured bounded repairs with original-policy and finding
+   checks, then re-run the validator in a new workspace. A repair needs clean
+   PASS and an accepting independent repair review. In `repair_only` mode stop
+   here and publish only accepted task repairs through the same host finalizer.
 3. Use the shared `TaskSession` to validate the initial package and freeze its
    baseline before the optimizer edits anything. Unimplemented candidates remain
    legal only during initial validation. The declared baseline correctness policy

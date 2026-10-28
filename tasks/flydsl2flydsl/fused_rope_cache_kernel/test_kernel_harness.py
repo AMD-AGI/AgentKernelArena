@@ -13,7 +13,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import prepare_check, verify_timed_run
+from scripts.replay_checks import require_unchanged, prepare_check, verify_timed_run
 
 # ============================================================================
 # GEAK bootstrap
@@ -157,6 +157,7 @@ def run_correctness(configs=None, verbose=True):
                 dtype_str=DTYPE_STR, apply_scale=False,
                 reuse_freqs_front_part=True, pos_dtype="i32",
             )
+            frozen_check = prepare_check(inp, reference_rope_neox, ATOL, RTOL)
             launch_fn(
                 inp["Q"], inp["K"], inp["V"], inp["positions"],
                 inp["cos_cache"], inp["sin_cache"], inp["slot_mapping"],
@@ -164,6 +165,8 @@ def run_correctness(configs=None, verbose=True):
                 inp["T_len"], inp["k_scale"], inp["v_scale"],
             )
             torch.cuda.synchronize()
+            require_unchanged(frozen_check['inputs'], frozen_check['originals'])
+            frozen_check['compare']((inp['Q_out'], inp['K_out'], inp['key_cache'], inp['value_cache']), frozen_check['expected'])
 
             q_ref = reference_rope_neox(inp["Q"], inp["cos_cache"], inp["sin_cache"], inp["positions"])
             k_ref = reference_rope_neox(inp["K"], inp["cos_cache"], inp["sin_cache"], inp["positions"])
@@ -441,7 +444,7 @@ def arena_benchmark(configs=None, warmup=10, iters=100, verbose=True):
         kernel_ms, kernel_bench_meta = benchmark_cuda_graph_or_events(
             _run_kernel, warmup=0, repetition=iters, timed_run=timed
         )
-        kernel_bench_meta.update(verify_timed_run(timed, **check))
+        kernel_bench_meta.update(verify_timed_run(timed, **check, single_invocations=2))
 
         def _bench_ref_ms():
             reference_rope_neox(inp["Q"], inp["cos_cache"], inp["sin_cache"], inp["positions"])

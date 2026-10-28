@@ -21,7 +21,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import allclose_output, require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import nonuniform_input_probes, check_reused_calls, allclose_output, require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -86,6 +86,24 @@ def _reference_softmax(x):
     return torch.softmax(x, axis=1)
 
 
+def _compare_probabilities(actual, expected):
+    """Retain the original gate and add scale-appropriate probability checks."""
+    import torch
+    allclose_output(actual, expected, atol=1e-2, rtol=1e-2, dtype=expected.dtype)
+    if bool((actual < 0).any()):
+        raise AssertionError("Negative softmax probability")
+    if not bool(((actual.float().sum(-1) - 1).abs() <= 1e-2).all()):
+        raise AssertionError("Softmax probability mass is not one")
+    # L1 error is meaningful for small probabilities where absolute .01 is not.
+    if not bool(((actual.float() - expected.float()).abs().sum(-1) <= 1e-2).all()):
+        raise AssertionError("Softmax probability distribution differs from reference")
+
+
+def _peaked_input(x):
+    x.zero_()
+    x[:, x.shape[1] // 2] = 20.0
+
+
 def run_correctness(verbose=True):
     import torch
 
@@ -104,7 +122,14 @@ def run_correctness(verbose=True):
                 require_tensor_contract(y, ref, dtype=x.dtype)
                 finite = bool(torch.isfinite(y).all().item())
                 close = torch.allclose(y, ref, atol=1e-2, rtol=1e-2)
+                _compare_probabilities(y, ref)
                 ok = finite and close
+                if ok:
+                    check_reused_calls(lambda: mod.softmax(x), initial_output=y,
+                        inputs=(x,), originals=originals,
+                        perturbations=(lambda: x.neg_(), lambda: _peaked_input(x), lambda: x.add_(100.0)),
+                        reference=lambda: _reference_softmax(x), compare=_compare_probabilities,
+                        poison=lambda output: output.fill_(float('nan')))
                 if verbose:
                     print(
                         f"  {'PASS' if ok else 'FAIL'}: {tag} "
@@ -116,6 +141,19 @@ def run_correctness(verbose=True):
                 failures.append(tag)
                 if verbose:
                     print(f"  FAIL: {tag} - {str(e)[:160]}")
+
+    # Distinct row profiles detect cross-row mixing/reversal on strided inputs;
+    # row-wise additive offsets alone would be softmax invariant.
+    for dt in DTYPES:
+        storage = torch.zeros((3, 1026), device="cuda", dtype=_torch_dtype(dt))
+        for row, peak in enumerate((1, 17, 129)):
+            storage[row, 2 * peak] = 6.0
+        x = storage[:, ::2]
+        original = storage.clone()
+        expected = _reference_softmax(x)
+        _compare_probabilities(mod.softmax(x), expected)
+        require_unchanged((storage,), (original,))
+    print("Unscored strided softmax row-independence controls: PASS")
 
     total = len(TEST_SHAPES) * len(DTYPES)
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{total})"
@@ -145,9 +183,8 @@ def run_benchmark(verbose=True):
         )
         bench_meta.update(verify_timed_run(
             timed, inputs=(x,), originals=originals, expected=expected,
-            perturb=lambda: x.neg_(), reference=lambda: _reference_softmax(x),
-            compare=lambda actual, wanted: allclose_output(
-                actual, wanted, atol=1e-2, rtol=1e-2, dtype=x.dtype)))
+            perturb=(lambda: x.neg_(), lambda: _peaked_input(x), lambda: x.add_(100.0)), reference=lambda: _reference_softmax(x),
+            compare=_compare_probabilities, single_invocations=2))
         latencies.append(ms)
         nbytes = 2.0 * shape["M"] * shape["N"] * 2  # bf16 read+write
         report.append(

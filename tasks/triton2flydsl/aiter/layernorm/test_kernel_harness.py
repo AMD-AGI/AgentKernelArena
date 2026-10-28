@@ -22,7 +22,7 @@ import os
 import sys
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import allclose_output, require_tensor_contract, require_unchanged, verify_timed_run
+from scripts.replay_checks import nonuniform_input_probes, check_reused_calls, scaled_input_probes, allclose_output, require_tensor_contract, require_unchanged, verify_timed_run
 
 from task_runtime import candidate_relative_path
 SOURCE_FILE = candidate_relative_path()
@@ -113,6 +113,25 @@ def run_correctness(verbose=True):
                 finite = bool(torch.isfinite(y).all().item())
                 close = torch.allclose(y, ref, atol=1e-2, rtol=1e-2)
                 ok = finite and close
+                if ok:
+                    check_reused_calls(lambda: mod.layer_norm(x, weight, bias, EPS), initial_output=y,
+                        inputs=(x, weight, bias), originals=originals,
+                        perturbations=nonuniform_input_probes(x, weight, bias) + (lambda: weight.neg_(),
+                            lambda: (x.fill_(1024.0), x[..., ::2].neg_())),
+                        reference=lambda: _reference_layernorm(x, shape['N'], weight, bias),
+                        compare=lambda actual, wanted: allclose_output(actual, wanted, atol=1e-2, rtol=1e-2),
+                        poison=lambda output: output.fill_(float('nan')))
+                    try:
+                        x.mul_(0.01)
+                        weight.neg_()
+                        bias.neg_()
+                        changed = tuple(v.clone() for v in (x, weight, bias))
+                        wanted = F.layer_norm(x, (shape['N'],), weight=weight, bias=bias, eps=1e-3)
+                        actual = mod.layer_norm(x, weight, bias, 1e-3)
+                        require_unchanged((x, weight, bias), changed)
+                        allclose_output(actual, wanted, atol=1e-2, rtol=1e-2)
+                    finally:
+                        for value, original in zip((x, weight, bias), originals): value.copy_(original)
                 if verbose:
                     print(
                         f"  {'PASS' if ok else 'FAIL'}: {tag} "
@@ -125,6 +144,19 @@ def run_correctness(verbose=True):
                 if verbose:
                     print(f"  FAIL: {tag} - {str(e)[:160]}")
 
+    for dt in DTYPES:
+        try:
+            dense, weight, bias = _make_inputs(2, 128, _torch_dtype(dt))
+            backing = dense.new_full((2, 129), -37.0)
+            backing[:, :128].copy_(dense)
+            x = backing[:, :128]
+            originals = tuple(value.clone() for value in (backing, weight, bias))
+            expected = _reference_layernorm(x, 128, weight, bias)
+            actual = mod.layer_norm(x, weight, bias, EPS)
+            require_unchanged((backing, weight, bias), originals)
+            allclose_output(actual, expected, atol=1e-2, rtol=1e-2)
+        except Exception as exc:
+            failures.append(f'padded_row_{dt}: {exc}')
     total = len(TEST_SHAPES) * len(DTYPES)
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{total})"
     print(f"Status: {status}")
@@ -153,9 +185,9 @@ def run_benchmark(verbose=True):
         )
         bench_meta.update(verify_timed_run(
             timed, inputs=(x, weight, bias), originals=originals, expected=expected,
-            perturb=lambda: x.neg_(), reference=lambda: _reference_layernorm(x, shape["N"], weight, bias),
+            perturb=(lambda: x.fill_(1024.0), lambda: x.add_(1.0)) + scaled_input_probes(weight, bias, factors=(-1.0,)) + scaled_input_probes(x, factors=(0.5, 1e-4)) + scaled_input_probes(weight, bias), reference=lambda: _reference_layernorm(x, shape["N"], weight, bias),
             compare=lambda actual, wanted: allclose_output(
-                actual, wanted, atol=1e-2, rtol=1e-2, dtype=x.dtype)))
+                actual, wanted, atol=1e-2, rtol=1e-2, dtype=x.dtype), single_invocations=2))
         latencies.append(ms)
         nbytes = 2.0 * shape["M"] * shape["N"] * 2  # bf16 read+write
         report.append(

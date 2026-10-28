@@ -73,3 +73,36 @@ quantization and internal preparation performed inside the original wrapper.
 The original10external warmups,100samples, seed42+i, kernel config and allocation
 boundaries are unchanged for baseline and candidate. Final FlyDSL invocation
 auditing is separate from oracle computation and runs outside timing.
+
+## Protected evaluator state
+
+Declared editable candidate sources may import new task-local Python helper
+modules or packages. Those helpers are part of the candidate implementation:
+before candidate import, dependency review follows the normal task-local import
+closure and applies the same restrictions to every helper. Protected harness,
+reference and script imports, symlinked or escaping helper imports, and local
+modules that shadow the supported runtime libraries are rejected; installed
+library source is not traversed. Final FlyDSL candidate sources and their local
+helpers also may not reach the evaluator's module registry, stack frames or
+profiling controls through `sys`, including `os.sys`, aliases and dynamic
+attribute lookup. Ordinary `sys` metadata remains available.
+
+Candidate sources may not import the materialized timing helper `_aka_benchmark`,
+assign or delete attributes of imported modules, read frame or function globals,
+or disable the evaluator's PyTorch dispatch mode. When the local import closure
+is resolved, a same-name `.py` module takes precedence over a namespace-package
+directory, matching Python. These structural checks are not a security sandbox.
+
+## Initial baseline numerical implementation
+
+The baseline uses a two-component MXFP4 expansion for the rotated Q/K operands.
+Each component has E2M1 values and E8M0 scales. Four feature contractions compute
+`(Q0 + Q1) @ (K0 + K1).T`, retaining the first quantization residual instead of
+changing the reference or the numerical gates. Conversion uses nearest-even
+rounding and a shared scale derived from the block maximum. Zero V blocks avoid
+0/0 during FP8 conversion. External shapes, BF16 I/O, seeds, selected flags and
+both numerical acceptance rules are unchanged. This increases internal work and
+storage, so it defines a new baseline identity requiring fresh measurements of
+both roles; old measurements cannot establish a speedup against this baseline.
+The declared wrapper remains the task interface. Internal quantized Q/K feature
+widths include the residual expansion and need not equal the external head size.

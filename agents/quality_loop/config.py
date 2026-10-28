@@ -74,6 +74,8 @@ class QualityLoopConfig:
     validator: BackendConfig = field(default_factory=BackendConfig)
     github: GitHubConfig = field(default_factory=GitHubConfig)
     max_repair_attempts: int = 1
+    mode: str = "optimize"
+    repair_warnings: tuple[str, ...] = ()
     optimization_iterations: int = 1
     easy_speedup_threshold: float = 5.0
     easy_confirmation_runs: int = 3
@@ -96,15 +98,25 @@ class QualityLoopConfig:
         audit = raw.get("quality_loop", {}) or {}
         if not isinstance(audit, dict):
             raise ValueError("quality_loop must be a mapping")
-        iterations = int(audit.get("optimization_iterations", 1))
-        if iterations != 1:
+        mode = audit.get("mode", "optimize")
+        if mode not in ("optimize", "repair_only"):
+            raise ValueError("quality_loop.mode must be optimize or repair_only")
+        expected_iterations = 0 if mode == "repair_only" else 1
+        iterations = audit.get("optimization_iterations", expected_iterations)
+        if type(iterations) is not int or iterations != expected_iterations:
             raise ValueError(
-                "quality_loop enforces exactly one optimization iteration; "
-                "optimization_iterations must be 1"
+                "quality_loop enforces exactly one optimization iteration in optimize mode "
+                "and zero in repair_only mode"
             )
-        repair_attempts = int(audit.get("max_repair_attempts", 1))
-        if repair_attempts != 1:
-            raise ValueError("quality_loop requires exactly one repair attempt")
+        repair_attempts = audit.get("max_repair_attempts", 1)
+        if type(repair_attempts) is not int or not 1 <= repair_attempts <= 3:
+            raise ValueError("quality_loop.max_repair_attempts must be an integer from 1 to 3")
+        from agents.task_validator.report_schema import CHECK_NAMES
+        repair_warnings = audit.get("repair_warnings", [])
+        if (not isinstance(repair_warnings, list)
+                or any(not isinstance(name, str) or name not in CHECK_NAMES for name in repair_warnings)
+                or len(set(repair_warnings)) != len(repair_warnings)):
+            raise ValueError("quality_loop.repair_warnings must list distinct validator check names")
         confirmations = int(audit.get("easy_confirmation_runs", 3))
         if confirmations < 1:
             raise ValueError("easy_confirmation_runs must be at least 1")
@@ -128,6 +140,8 @@ class QualityLoopConfig:
             validator=BackendConfig.from_dict(audit.get("validator")),
             github=GitHubConfig.from_dict(audit.get("github")),
             max_repair_attempts=repair_attempts,
+            mode=mode,
+            repair_warnings=tuple(repair_warnings),
             optimization_iterations=iterations,
             easy_speedup_threshold=threshold,
             easy_confirmation_runs=confirmations,

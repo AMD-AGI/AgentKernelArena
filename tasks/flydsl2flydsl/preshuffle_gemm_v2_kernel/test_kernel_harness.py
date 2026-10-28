@@ -195,6 +195,11 @@ def _make_inputs(M, N, K, seed):
     return A, B_logical, B, scale_a, scale_b, C
 
 
+def _logical_b_from_packed(packed, n, k):
+    """Trusted inverse of the FP8 ABI packing; reference sees live operand bytes."""
+    return packed.reshape(n // 16, k // 64, 4, 16, 16).permute(0, 3, 1, 2, 4).reshape(n, k)
+
+
 def _torch_reference(A, B_logical, scale_a, scale_b):
     import torch
 
@@ -223,7 +228,7 @@ def _kernel_args(C, A, B, scale_a, scale_b, M, N, stream):
     )
 
 
-def _compile_and_run_once(mod, flyc, C, A, B, scale_a, scale_b, M, N, tiles):
+def _compile_and_run_once(mod, flyc, C, A, B, scale_a, scale_b, M, N, tiles, in_dtype="fp8"):
     """Compile the kernel ONCE (flyc.compile also launches once) and return the
     cached CompiledFunction for fast re-launch."""
     tm, tn, tk = tiles
@@ -233,7 +238,7 @@ def _compile_and_run_once(mod, flyc, C, A, B, scale_a, scale_b, M, N, tiles):
         tile_m=tm,
         tile_n=tn,
         tile_k=tk,
-        in_dtype="fp8",
+        in_dtype=in_dtype,
         out_dtype="bf16",
         enable_scheduler=True,
     )
@@ -418,11 +423,11 @@ def run_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         )
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=inputs, originals=originals, expected=expected,
-            perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
-            reference=lambda: _torch_reference(A, B_logical, scale_a, scale_b),
+            perturb=(lambda: A.copy_((-A.float()).to(A.dtype)),
+                     lambda: (A.fill_(16.0), B.fill_(16.0), scale_a.fill_(1.0), scale_b.fill_(1.0))),
+            reference=lambda: _torch_reference(A, _logical_b_from_packed(B, N, K), scale_a, scale_b),
             compare=lambda actual, ref: allclose_output(
-                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
-        ))
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16), single_invocations=2, probe_inputs=(A, B, scale_a, scale_b)))
 
         # Reference baseline: torch.mm of dequantized operands (for speedup display).
         a_f = A.float()
@@ -584,11 +589,11 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
         )
         kernel_bench_meta.update(verify_timed_run(
             timed, inputs=inputs, originals=originals, expected=expected,
-            perturb=lambda: A.copy_((-A.float()).to(A.dtype)),
-            reference=lambda: _torch_reference(A, B_logical, scale_a, scale_b),
+            perturb=(lambda: A.copy_((-A.float()).to(A.dtype)),
+                     lambda: (A.fill_(16.0), B.fill_(16.0), scale_a.fill_(1.0), scale_b.fill_(1.0))),
+            reference=lambda: _torch_reference(A, _logical_b_from_packed(B, N, K), scale_a, scale_b),
             compare=lambda actual, ref: allclose_output(
-                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16),
-        ))
+                actual, ref, atol=ATOL, rtol=RTOL, dtype=torch.bfloat16), single_invocations=2, probe_inputs=(A, B, scale_a, scale_b)))
 
         # Reference baseline: torch.mm of dequantized operands (for speedup display).
         a_f = A.float()
@@ -664,3 +669,41 @@ def arena_benchmark(shapes=None, warmup=10, iters=100, verbose=True):
 
     return report_cases
     return report_cases
+
+
+def run_domain_controls():
+    """Unscored FP16/BF16 branches of the advertised preshuffle builder."""
+    import torch
+    import flydsl.compiler as flyc
+    mod = _load_kernel(_CANDIDATE_DIR, "ps_v2_domain_candidate")
+    if mod is None:
+        raise RuntimeError("Cannot load preshuffle implementation")
+    m = n = k = 256
+    for name, dtype in (("fp16", torch.float16), ("bf16", torch.bfloat16)):
+        a = torch.linspace(-1., 1., m*k, device="cuda").reshape(m, k).to(dtype)
+        # Independent asymmetric operands: transposing the output must fail.
+        rows = torch.arange(n, device="cuda", dtype=torch.float32)[:, None]
+        columns = torch.arange(k, device="cuda", dtype=torch.float32)[None, :]
+        b = (((7 * rows + 3 * columns) % 19 - 9) / 9).to(dtype)
+        packed = b.reshape(n // 16, 16, k // 32, 4, 8).permute(0, 2, 3, 1, 4).contiguous()
+        sa = torch.linspace(.5, 1.5, m, device="cuda")
+        sb = torch.linspace(1.5, .5, n, device="cuda")
+        out = torch.full((m, n), float("nan"), device="cuda", dtype=torch.bfloat16)
+        inputs = (a, b, packed, sa, sb)
+        originals = tuple(value.clone() for value in inputs)
+        # The 16-bit path is unscaled; scale vectors are only FP8 semantics.
+        expected = (a.float() @ b.float().T).to(out.dtype)
+        _compile_and_run_once(mod, flyc, out, a, packed, sa, sb, m, n,
+                              (128, 128, 64), in_dtype=name)
+        require_unchanged(inputs, originals)
+        torch.testing.assert_close(out, expected, atol=ATOL, rtol=RTOL)
+        a.fill_(256.0)
+        b.fill_(256.0)
+        packed.fill_(256.0)
+        expected = (a.float() @ b.float().T).to(out.dtype)
+        high_inputs = tuple(value.clone() for value in inputs)
+        _compile_and_run_once(mod, flyc, out, a, packed, sa, sb, m, n,
+                              (128, 128, 64), in_dtype=name)
+        require_unchanged(inputs, high_inputs)
+        torch.testing.assert_close(out, expected, atol=ATOL, rtol=RTOL)
+    print("Unscored FP16/BF16 preshuffle controls: PASS")

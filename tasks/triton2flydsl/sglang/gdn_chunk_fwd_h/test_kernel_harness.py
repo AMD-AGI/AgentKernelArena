@@ -236,12 +236,17 @@ def _recurrent_replay_validator(inp, initial):
         inp["u"].neg_()
     def compare(actual, expected):
         _compare_recurrent_output(actual, expected, reference_inputs)
+    def nonconsecutive_indices():
+        odd = torch.arange(1, inp['pool'], 2, device=inp['idx'].device, dtype=inp['idx'].dtype)
+        even = torch.arange(0, inp['pool'], 2, device=inp['idx'].device, dtype=inp['idx'].dtype)
+        inp['idx'].copy_(torch.cat((odd, even))[:inp['B']])
     def validate(timed):
         # The canonical rerun invokes the existing prepare_fn outside timing,
         # restoring the requested initial state before the exact measured unit.
         return verify_timed_pair(timed, inputs=inputs, originals=originals,
-                                 expected=expected, perturb=perturb,
-                                 reference=reference, compare=compare)
+                                 expected=expected, perturb=(perturb, nonconsecutive_indices, lambda: inp["idx"].copy_(
+                                     (inp["pool"] - 1 - inp["idx"]).to(inp["idx"].dtype))),
+                                 reference=reference, compare=compare, single_invocations=2)
     return validate
 
 
@@ -267,11 +272,11 @@ def run_correctness():
             inp = make_test_data(B, T, Hg, H, K, V, pool, "cuda", dtype)
             protected_inputs = tuple(v for v in inp.values() if isinstance(v, torch.Tensor))
             originals = tuple(v.clone() for v in protected_inputs)
+            h_r, vn_r, init_r = reference_h(inp)
             h_t, vn_t, init_t = _run_triton(mod, inp)
             require_unchanged(protected_inputs, originals)
             _checked_recurrent_output((h_t, vn_t, init_t), inp)
             _require_unused_state(init_t, inp["init"], inp["idx"])
-            h_r, vn_r, init_r = reference_h(inp)
             idx = inp["idx"]
             h_ok, h_er, h_md = _close(h_t, h_r, atol, rtol, max_ratio)
             v_ok, v_er, v_md = _close(vn_t, vn_r, atol, rtol, max_ratio)

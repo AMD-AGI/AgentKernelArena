@@ -28,7 +28,7 @@ import sys
 import time
 from pathlib import Path
 from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
-from scripts.replay_checks import (normalized_output, require_tensor_contract,
+from scripts.replay_checks import (scaled_input_probes, normalized_output, require_tensor_contract,
                                   require_unchanged, verify_timed_run)
 
 from task_runtime import candidate_relative_path
@@ -133,6 +133,8 @@ def run_correctness(verbose=True):
     assert mmod is not None, "cannot load model.py"
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     failures = []
     for shape in SHAPES:
@@ -217,9 +219,9 @@ def _activation_replay_validator(inp, oracle):
     def validate(timed):
         return verify_timed_run(
             timed, inputs=(inp,), originals=originals, expected=expected,
-            perturb=lambda: inp.neg_(), reference=lambda: oracle(inp),
-            compare=lambda actual, ref: normalized_output(actual, ref, tolerance=REL_TOL),
-        )
+            perturb=(lambda: inp[..., :inp.shape[-1] // 2].fill_(16.0),
+                     lambda: (inp[..., :inp.shape[-1] // 2].fill_(65536.0), inp[..., inp.shape[-1] // 2:].fill_(1.0))) + scaled_input_probes(inp[..., :inp.shape[-1] // 2], inp[..., inp.shape[-1] // 2:]), reference=lambda: oracle(inp),
+            compare=lambda actual, ref: normalized_output(actual, ref, tolerance=REL_TOL), single_invocations=2)
     return validate
 
 
@@ -241,6 +243,8 @@ def run_benchmark(warmup=10, iters=100, verbose=True):
     assert mmod is not None, "cannot load model.py"
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     if has_kernel:
         try:
@@ -366,6 +370,8 @@ def arena_benchmark(warmup=10, iters=100, verbose=True):
     assert mmod is not None, "cannot load model.py"
     kmod = _load_module(_KERNEL_DIR, KERNEL_FILE, "flydsl_kernel")
     has_kernel = kmod is not None and hasattr(kmod, KERNEL_ENTRY)
+    if not has_kernel and not ARENA_PROVIDED_BASELINE:
+        raise RuntimeError("Candidate runtime entrypoint is missing; no baseline fallback")
 
     if has_kernel:
         try:

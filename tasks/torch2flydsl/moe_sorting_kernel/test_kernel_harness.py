@@ -280,10 +280,18 @@ def _sorting_replay_validator(mmod, shape, topk_ids, topk_weights):
         # Recompute the independent sort plan after changing IDs, outside timing.
         topk_ids.copy_((topk_ids + 1) % shape["E"])
         topk_weights.mul_(0.5)
+    def partial_block():
+        import torch
+        base = torch.arange(topk_ids.shape[1], device=topk_ids.device, dtype=topk_ids.dtype)
+        topk_ids.copy_(base.expand_as(topk_ids))
+        topk_ids[33:].copy_((base + 1).expand_as(topk_ids[33:]))
+    probes = (perturb, lambda: topk_ids.copy_(topk_ids[:1].clone().expand_as(topk_ids)))
+    if topk_ids.shape[0] > 32 and shape['E'] > topk_ids.shape[1]:
+        probes += (partial_block,)
     def validate(timed):
         return verify_timed_pair(timed, inputs=inputs, originals=originals,
-                                 expected=expected, perturb=perturb,
-                                 reference=oracle, compare=compare)
+                                 expected=expected, perturb=probes,
+                                 reference=oracle, compare=compare, single_invocations=2)
     return validate
 
 

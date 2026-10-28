@@ -47,21 +47,90 @@ def require_unchanged(actual, original):
         raise AssertionError("Routing modified its read-only input")
 
 
-def verify_topk_timed_run(timed, gating, original, topk, dtype_str, renormalize, reference):
+def verify_topk_timed_run(timed, gating, original, topk, dtype_str, renormalize, reference, *, single_invocations=0):
     if not timed.bound:
         raise RuntimeError("Benchmark did not expose its measured routing invocation")
     require_unchanged(gating, original)
     require_topk_output(timed.outputs, gating, topk, dtype_str, renormalize, reference)
-    try:
-        gating.neg_()
-        changed = gating.clone()
-        timed.outputs[0].fill_(float("nan"))
-        timed.outputs[1].fill_(-1)
-        timed.outputs[2].fill_(-1)
-        replayed = timed.rerun()
-        require_unchanged(gating, changed)
-        require_topk_output(replayed, gating, topk, dtype_str, renormalize, reference)
-    finally:
-        gating.copy_(original)
-    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS",
+    for change in (lambda: gating.neg_(), lambda: gating.add_(1000.0)) + (nonuniform_input_probes(gating) if single_invocations else ()):
+        try:
+            change()
+            changed = gating.clone()
+            check_single_invocations(timed, count=single_invocations, inputs=(gating,), expected=None,
+                compare=lambda actual, _: require_topk_output(actual, gating, topk, dtype_str, renormalize, reference),
+                poison=lambda output: (output[0].fill_(float("nan")), output[1].fill_(-1), output[2].fill_(-1)))
+            if single_invocations:
+                # Return to original inputs through isolated calls, then change
+                # them again before the scored graph. Fresh captures cannot prime
+                # the graph with the probed operands; grouped replay cannot hide
+                # a stale first isolated call either. All controls remain unscored.
+                gating.copy_(original)
+                check_single_invocations(timed, count=single_invocations, inputs=(gating,), expected=None,
+                    compare=lambda actual, _: require_topk_output(actual, gating, topk, dtype_str, renormalize, reference),
+                    poison=lambda output: (output[0].fill_(float("nan")), output[1].fill_(-1), output[2].fill_(-1)))
+                change()
+            timed.outputs[0].fill_(float("nan"))
+            timed.outputs[1].fill_(-1)
+            timed.outputs[2].fill_(-1)
+            replayed = timed.rerun()
+            require_unchanged(gating, changed)
+            require_topk_output(replayed, gating, topk, dtype_str, renormalize, reference)
+            # Snapshot the independent reference's current numerical expectation.
+            # The task comparator recomputes it from immutable current input bytes.
+        finally:
+            gating.copy_(original)
+    return {"timed_output_correctness": "PASS", "replay_correctness": "PASS", "single_invocations_per_probe": single_invocations,
+            "restored_input_single_invocations_per_probe": single_invocations,
             "replay_inputs_perturbed": True, "replay_outputs_poisoned": True}
+
+
+def check_single_invocations(timed, *, count, inputs, expected, compare, poison):
+    """Supplement exact scored replay checks with complete one-call outputs.
+
+    Two independent one-call captures expose alternating host-call omission;
+    poisoned outputs expose partial writers. This control is never scored.
+    Callers must also validate the actual measured/replayed unit separately.
+    """
+    import torch
+    if type(count) is not int or count < 0 or count == 1:
+        raise ValueError("Use zero or at least two isolated invocation checks")
+    if not count:
+        return 0
+    invoke = getattr(timed, "single_invocation", None)
+    if not callable(invoke):
+        raise RuntimeError("Collector lacks isolated logical-call support")
+    for _ in range(count):
+        snapshots = tuple(value.detach().clone() for value in inputs)
+        poison(timed.outputs)
+        actual = invoke(before_replay=poison)
+        if any(value.shape != original.shape or value.dtype != original.dtype
+               or value.device != original.device
+               or not torch.equal(value.contiguous().view(torch.uint8), original.contiguous().view(torch.uint8))
+               for value, original in zip(inputs, snapshots)):
+            raise AssertionError("Operator modified a read-only input during an isolated call")
+        compare(actual, expected)
+    return count
+
+
+def nonuniform_input_probes(*tensors):
+    """Change one floating operand's contents without just rescaling the whole.
+
+    Alternating columns retain their original magnitude while the other columns
+    are halved. This changes quantized code patterns, not just blockwise scales.
+    No RNG, layout, shape, dtype or scored workload is changed.
+    """
+    def change(value):
+        # A broadcast read-only scale can have zero strides. Change each
+        # physical element once without changing its declared view/layout.
+        target = value
+        for dim in range(value.ndim - 1, -1, -1):
+            if target.shape[dim] > 1 and target.stride(dim) == 0:
+                target = target.select(dim, 0)
+        values = target.float()
+        if target.ndim and target.shape[-1] > 1:
+            values[..., ::2] *= 0.5
+        else:
+            values *= 0.5
+        target.copy_(values.to(target.dtype))
+    return tuple(lambda value=value: change(value) for value in tensors
+                 if value.is_floating_point() and bool(value.float().ne(0).any()))

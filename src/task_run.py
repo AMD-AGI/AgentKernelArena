@@ -166,6 +166,17 @@ def validate_task_session(session: TaskSession, *, eval_config: dict, task_confi
         session.validate_initial()
     context_path = session.state_directory / "validation_context.json"
     trusted_context = session.validation_context()
+    candidate_before = session.candidate_source_evidence()
+
+    def evidence_fingerprints():
+        files = {}
+        for path in session.state_directory.glob("*.json"):
+            if path.is_symlink() or not path.is_file():
+                raise RuntimeError("Validation evidence must remain a regular controller-owned file")
+            files[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return files
+
+    evidence_before = evidence_fingerprints()
     eval_config.update(_task_id=session.spec.task_id, _task_validation_context=str(context_path))
     eval_config["_task_validation_request_id"] = validation_request_id or uuid.uuid4().hex
     # Consumed once by the launcher. Direct repeated launcher calls still get
@@ -184,6 +195,10 @@ def validate_task_session(session: TaskSession, *, eval_config: dict, task_confi
     try:
         session.verify_candidate_harness()
         session.verify_baseline_sources()
+        if session.candidate_source_evidence() != candidate_before:
+            raise RuntimeError("Validator changed the initial candidate after captured GPU checks")
+        if evidence_fingerprints() != evidence_before:
+            raise RuntimeError("Validator changed captured action or context evidence")
     except (ValueError, RuntimeError, OSError) as exc:
         error = "; ".join(filter(None, [error, f"Validation changed protected task state: {exc}"]))
     return finalize_report(

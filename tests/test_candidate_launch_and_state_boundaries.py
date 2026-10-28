@@ -4,21 +4,28 @@ These are structural checks on protected task code; they do not run kernels or
 qualify any task on a GPU.
 """
 import ast
+import hashlib
 import importlib.util
+import inspect
 from pathlib import Path
 import shutil
+import sys
 import time
+import types
 
 import pytest
+from tests.task_repair_history import reviewed_repair_source
 
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 from src.task_spec import load_task_spec
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Every FlyDSL task runtime, selected by family rather than by content, so a
+# runtime without the closure and evaluator-state checks fails these tests.
 FLYDSL_CLOSURE_TASKS = sorted(
-    path.parent for path in (ROOT / "tasks").rglob("task_runtime.py")
-    if "def candidate_source_closure" in path.read_text())
+    path.parent for family in ("flydsl2flydsl", "torch2flydsl", "triton2flydsl")
+    for path in (ROOT / "tasks" / family).rglob("task_runtime.py"))
 FLYDSL = "import flydsl\nimport flydsl.compiler as flyc\n"
 
 
@@ -112,7 +119,7 @@ def _candidate(root, body):
 
 
 def test_closure_runtime_copies_are_identical():
-    assert len(FLYDSL_CLOSURE_TASKS) == 37
+    assert len(FLYDSL_CLOSURE_TASKS) == 111
     for name in ("candidate_source_closure", "check_candidate_control_plane"):
         bodies = set()
         for task in FLYDSL_CLOSURE_TASKS:
@@ -184,6 +191,116 @@ def test_same_name_module_precedes_namespace_directory(tmp_path, task):
         runtime.check_dependencies([candidate], final_language=True)
 
 
+@pytest.mark.parametrize("label", sorted(EVALUATOR_STATE_ROUTES))
+def test_each_evaluator_state_route_is_rejected_by_every_flydsl_runtime(tmp_path, label):
+    accepted = []
+    for index, task in enumerate(FLYDSL_CLOSURE_TASKS):
+        root, runtime = _runtime(tmp_path / str(index), task)
+        try:
+            runtime.check_dependencies([_candidate(root, EVALUATOR_STATE_ROUTES[label])], final_language=True)
+        except ValueError:
+            continue
+        accepted.append(task.relative_to(ROOT / "tasks").as_posix())
+    assert not accepted, (label, accepted)
+
+
+@pytest.mark.parametrize("task", FLYDSL_CLOSURE_TASKS, ids=lambda p: p.name)
+def test_shipped_initial_sources_pass_the_evaluator_state_checks(task):
+    # Bundled helpers are part of the import closure, so the shipped initial
+    # implementation must satisfy the same checks as a final candidate.
+    spec = importlib.util.spec_from_file_location(f"shipped_{task.name}", task / "task_runtime.py")
+    runtime = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runtime)
+    cfg = runtime.config()
+    if cfg["baseline"]["kind"] == "provided":
+        pytest.skip("provided baselines are not candidate sources")
+    runtime.check_dependencies(runtime.candidate_files(cfg),
+                               final_language=cfg["candidate"].get("initial_language") == "flydsl")
+
+
+COMPAT_META = sorted(path for family in ("flydsl2flydsl", "torch2flydsl", "triton2flydsl")
+                     for path in (ROOT / "tasks" / family).rglob("flydsl_compat/meta.py"))
+
+
+def test_vendored_caller_location_selects_the_original_frame(monkeypatch):
+    class Location:
+        def __init__(self, *value):
+            self.value = value
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        @staticmethod
+        def unknown():
+            return Location("unknown")
+
+        @staticmethod
+        def file(*args):
+            return Location("file", *args)
+
+        @staticmethod
+        def name(label, childLoc=None):
+            return Location("name", label, childLoc.value)
+
+    # Only the MLIR Location API is stubbed; frame selection is pure Python.
+    mlir = types.ModuleType("flydsl._mlir")
+    mlir.ir = types.SimpleNamespace(Location=Location, Value=type("Value", (), {}))
+    monkeypatch.setitem(sys.modules, "flydsl", types.ModuleType("flydsl"))
+    monkeypatch.setitem(sys.modules, "flydsl._mlir", mlir)
+    # Main added an immutable native compatibility variant with column-level
+    # locations. It is outside the line-only migration exercised below; pin its
+    # original bytes rather than requiring unrelated APIs to be identical.
+    native = ROOT / "tasks/torch2flydsl/moe_a8w4_kernel/flydsl_compat/meta.py"
+    assert native in COMPAT_META
+    assert hashlib.sha256(native.read_bytes()).hexdigest() == (
+        "a54bb32cbdc7a99d05e5aec617fb6c71f500f50286d44c0c0a8f1359cc49e92e"
+    )
+    line_meta = [path for path in COMPAT_META if path != native]
+    assert len(line_meta) == 13 and len({path.read_bytes() for path in line_meta}) == 1
+    source = line_meta[0].read_text()
+    assert "import inspect" not in source and ".f_back" not in source
+
+    def load(name, text):
+        module = types.ModuleType(name)
+        exec(compile(text, str(COMPAT_META[0]), "exec"), module.__dict__)
+        return module
+
+    current = load("compat_meta_current", source)
+
+    def original_location(depth=1):
+        # Independent reference: the original frame walk, with the declared
+        # portable line-level column policy applied to both implementations.
+        frame = inspect.currentframe()
+        for _ in range(depth + 1):
+            if frame is not None:
+                frame = frame.f_back
+        if frame is None:
+            return Location.unknown()
+        info = inspect.getframeinfo(frame)
+        line = info.positions.lineno if hasattr(info, "positions") else info.lineno
+        label = " ".join(ln.strip() for ln in info.code_context) if info.code_context else info.function
+        return Location.name(label, childLoc=Location.file(info.filename, line, 0))
+
+    def site(depth):
+        return current._caller_location(depth=depth).value, original_location(depth=depth).value
+
+    for depth in (1, 2, 3, 10_000):
+        selected, expected = site(depth)
+        assert selected == expected
+    assert site(10_000)[0] == ("unknown",)
+    line = inspect.currentframe().f_lineno + 1
+    selected, _ = site(1)
+    assert selected[0] == "name" and selected[1] == "selected, _ = site(1)"
+    assert selected[2][1:3] == (__file__, line)
+    # traced_op still records its caller's location and runs the operation.
+    calls = []
+    op = current.traced_op(lambda *args, **kwargs: calls.append((args, kwargs)) or "ok")
+    assert op(1, flag=True) == "ok" and calls == [((1,), {"flag": True})]
+
+
 def test_gemm_a8w8_audits_actual_performance_calls(tmp_path):
     task = ROOT / "tasks/triton2flydsl/aiter/gemm_a8w8"
     actions = (task / "scripts/task_actions.py").read_text()
@@ -192,7 +309,8 @@ def test_gemm_a8w8_audits_actual_performance_calls(tmp_path):
     assert "audit_candidate_calls(h, performance=True)" in ast.get_source_segment(actions, performance)
     checks = (task / "scripts/candidate_checks.py").read_text()
     sibling = (ROOT / "tasks/triton2flydsl/sglang/lightning_attn/scripts/candidate_checks.py").read_text()
-    assert checks == sibling.replace("h.load_module", "h._load_source")
+    historical = reviewed_repair_source(checks, path=task / "scripts/candidate_checks.py")
+    assert historical == sibling.replace("h.load_module", "h._load_source")
     assert "def _load_source" in (task / "test_kernel_harness.py").read_text()
     root = tmp_path / "gemm_a8w8"
     shutil.copytree(task, root)

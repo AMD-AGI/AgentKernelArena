@@ -175,7 +175,14 @@ def build_layernorm_module(M: int, N: int, dtype_str: str):
                 thread_sumsq = thread_sumsq + red2
 
             sum_val, sumsq_val = block_reduce_add2(thread_sum, thread_sumsq)
-            mean, rstd = compute_mean_rstd(sum_val, sumsq_val)
+            mean = sum_val * (1.0 / float(N))
+            thread_variance = c_zero_f
+            for tile_i in range_constexpr(num_tiles_py):
+                delta = in_local[tile_i].to(fx.Float32) - mean
+                square = delta * delta
+                thread_variance = thread_variance + square.reduce(ReductionOp.ADD, fastmath=fm_fast)
+            variance_sum, _unused = block_reduce_add2(thread_variance, c_zero_f)
+            rstd = fmath.rsqrt(variance_sum * (1.0 / float(N)) + eps_c, fastmath=fm_fast)
 
             g_cur = _load_vec(gamma_div, tid).to(fx.Float32)
             b_cur = _load_vec(beta_div, tid).to(fx.Float32)
@@ -276,7 +283,18 @@ def build_layernorm_module(M: int, N: int, dtype_str: str):
                 thread_sumsq = thread_sumsq + x2_safe
 
             sum_val, sumsq_val = block_reduce_add2(thread_sum, thread_sumsq)
-            mean, rstd = compute_mean_rstd(sum_val, sumsq_val)
+            mean = sum_val * (1.0 / float(N))
+            thread_variance = c_zero_f
+            for base_idx_int in range_constexpr(0, N, BLOCK_THREADS):
+                idx = tid + base_idx_int
+                valid = idx < N
+                safe = valid.select(idx, 0)
+                value = _load_scalar(row_div, safe).to(fx.Float32)
+                delta = value - mean
+                square = delta * delta
+                thread_variance = thread_variance + valid.select(square, c_zero_f)
+            variance_sum, _unused = block_reduce_add2(thread_variance, c_zero_f)
+            rstd = fmath.rsqrt(variance_sum * (1.0 / float(N)) + eps_c, fastmath=fm_fast)
 
             # ── Pass 2: normalize + affine + store ───────────────────────
             for base_idx_int in range_constexpr(0, N, BLOCK_THREADS):

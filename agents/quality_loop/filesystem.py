@@ -22,6 +22,7 @@ GENERATED_NAMES = {
     "baseline_perf.yaml", "optimized_perf.yaml", "quality_loop_review.yaml",
     "performance_report.json", "perf_report.json", "compile_report.json",
     ".validation_complete", "correctness_report.json", "benchmark_results.json",
+    "quality_loop_repair_review.yaml",
     "eval_result.yaml", AKA_HELPER_FILE_NAME, NATIVE_HIP_MATERIALIZED.name,
 }
 GENERATED_SUFFIXES = {

@@ -96,9 +96,8 @@ def audit_candidate_calls(h, *, performance=False):
         nonlocal benchmark_active, probe_active
         if benchmark_active:
             raise RuntimeError("Nested candidate benchmark audit is not supported")
-        prepare = kwargs.get("prepare_fn")
-        if prepare is not None:
-            prepare()
+        # Probe the existing input without advancing prepare_fn's scored RNG
+        # stream. The canonical benchmark alone owns preparation indices.
         try:
             probe_active = True
             # Probe this actual performance closure outside every clock/capture.
@@ -106,8 +105,6 @@ def audit_candidate_calls(h, *, performance=False):
             fn()
         finally:
             probe_active = False
-            if prepare is not None:
-                prepare()
         benchmark_active = True
         try:
             result = original_benchmark(fn, *args, **kwargs)

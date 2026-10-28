@@ -31,6 +31,7 @@ from agents.quality_loop.prompts import (
     case_enhancement_prompt,
     optimizer_prompt,
     repair_prompt,
+    repair_review_prompt,
     reviewer_prompt,
 )
 from agents.quality_loop.state import (
@@ -40,6 +41,7 @@ from agents.quality_loop.state import (
     validate_run_id,
 )
 from agents.quality_loop.runtime import InitialValidationRejected, create_session
+from agents.quality_loop.repair_policy import RepairPolicy, RepairRejected, blocking_findings
 from agents.task_validator.launch_agent import launch_agent as launch_validator
 from agents.task_validator.report_schema import (
     COMPLETION_MARKER_FILENAME, validation_report_is_complete,
@@ -172,6 +174,7 @@ class QualityLoop:
         self._sessions: dict[Path, Any] = {}
         self._session_task_ids: dict[Path, str] = {}
         self._validation_evidence: list[dict[str, Any]] = []
+        self._validation_manifests: dict[Path, tuple[dict, ...]] = {}
         self.state: AuditState | None = None
         self.artifact_dir: Path | None = None
         self.worktree: Path | None = None
@@ -367,31 +370,43 @@ class QualityLoop:
         original_validation_status = str(validation.get("overall_status", "FAIL")).upper()
         warnings = _validation_warnings(validation)
 
-        if original_validation_status == "FAIL":
+        repair_review = None
+        if original_validation_status == "FAIL" or blocking_findings(validation, self.config.repair_warnings):
             self.state.transition(task_id, "repairing", warnings=warnings)
-            spec = load_task_spec(candidate_task / "config.yaml", task_id=task_id)
-            before = snapshot_tree(validation_workspace)
-            self.backend.run(
-                repair_prompt(validation, task_id), validation_workspace, role="repair"
-            )
-            after = snapshot_tree(validation_workspace)
-            changes = _filtered_changes(
-                before, after, materialized=_materialized_destinations(spec),
-                source_root=validation_workspace
-            )
-            if changes.empty:
+            try:
+                repaired = self._repair_task(
+                    task_id, original_task, candidate_task, task_artifacts,
+                    validation_workspace, validation,
+                )
+            except RepairRejected as exc:
+                self.state.transition(task_id, "repair_rejected", repair_rejection=str(exc))
                 self._handle_unrepairable(task_id, validation)
                 return
-            apply_changes(validation_workspace, candidate_task, changes)
-            load_task_spec(candidate_task / "config.yaml", task_id=task_id)
-            restore_committed_perf_stubs(candidate_task)
-            _, validation = self._validate(
-                task_id, candidate_task, task_artifacts / "validation_repaired"
-            )
+            if repaired is None:
+                return
+            validation, repair_review = repaired
             warnings = _validation_warnings(validation)
-            if validation.get("overall_status") != "PASS":
-                self._handle_unrepairable(task_id, validation)
-                return
+
+        if self.config.mode == "repair_only":
+            changes = _filtered_changes(original_tree, snapshot_tree(candidate_task),
+                                        source_root=candidate_task)
+            if not changes.empty:
+                if validation.get("overall_status") != "PASS" or repair_review is None:
+                    self._handle_unrepairable(task_id, validation)
+                    return
+                apply_changes(candidate_task, canonical_task, changes)
+                restore_committed_perf_stubs(canonical_task)
+            commit = (self.publisher.commit_task(self.worktree, task_id)
+                      if not changes.empty and not self.defer_github else None)
+            self.state.transition(
+                task_id, "completed", mode="repair_only", warnings=warnings,
+                changes=list(changes.paths), commit=commit,
+                commit_pending=not changes.empty and self.defer_github,
+                speedups=[], reviewer=repair_review, baseline_hardened=False,
+                cases_enhanced=False, validation_evidence=list(self._validation_evidence),
+                accepted_fingerprint=stable_fingerprint(snapshot_tree(canonical_task)),
+            )
+            return
 
         self.state.transition(task_id, "optimizing", warnings=warnings)
         optimization_workspace, baseline_cases, result = self._optimize_once(
@@ -519,6 +534,7 @@ class QualityLoop:
             return self.validator_launcher(eval_config, task_config_dir, workspace)
         validate_task_session(session, eval_config=settings, task_config_dir=str(package / "config.yaml"),
                               agent_launcher=launch)
+        self._validation_manifests[workspace] = tuple(session.manifest.cases) if session.manifest else ()
         if not validation_report_is_complete(workspace):
             raise RuntimeError(f"validator did not finalize a complete report for {task_id}")
         if report_path.is_symlink() or marker_path.is_symlink():
@@ -547,6 +563,79 @@ class QualityLoop:
             "spec": spec.to_mapping(),
         })
         return workspace, report
+
+    def _repair_task(self, task_id, original_task, candidate_task, artifacts, workspace, report):
+        spec = load_task_spec(candidate_task / "config.yaml", task_id=task_id)
+        policy = RepairPolicy.capture(spec, self._validation_manifests.get(workspace), report)
+        retained = blocking_findings(report, self.config.repair_warnings)
+        attempted = {stable_fingerprint(snapshot_tree(candidate_task))}
+        for attempt in range(1, self.config.max_repair_attempts + 1):
+            stage = artifacts / f"repair_{attempt:02d}"
+            editor = self._make_workspace(task_id, candidate_task, stage / "editor")
+            before = snapshot_tree(editor)
+            self.backend.run(repair_prompt(report, task_id, findings=retained,
+                                           warning_checks=self.config.repair_warnings),
+                             editor, role="repair")
+            changes = _filtered_changes(before, snapshot_tree(editor),
+                                        materialized=_materialized_destinations(spec), source_root=editor)
+            if changes.empty:
+                break
+            proposal = stage / "proposal"
+            self._copy_task(candidate_task, proposal)
+            apply_changes(editor, proposal, changes)
+            restore_committed_perf_stubs(proposal)
+            try:
+                proposed_spec = load_task_spec(proposal / "config.yaml", task_id=task_id)
+            except (ValueError, OSError) as exc:
+                raise RepairRejected(f"Repair proposed an invalid task specification: {exc}") from exc
+            policy.verify_specification(proposed_spec)
+            fingerprint = stable_fingerprint(snapshot_tree(proposal))
+            if fingerprint in attempted:
+                self.logger.warning("Stopping repeated repair proposal for %s", task_id)
+                break
+            attempted.add(fingerprint)
+            validated, next_report = self._validate(task_id, proposal, stage / "validation")
+            policy.verify(proposed_spec, self._validation_manifests.get(validated), next_report)
+            retained.update(blocking_findings(next_report, self.config.repair_warnings))
+            report = next_report
+            if report.get("overall_status") == "PASS":
+                decision = self._review_repair(task_id, original_task, validated, retained)
+                if decision.get("accepted") is True:
+                    self._replace_directory(candidate_task, proposal)
+                    return report, decision
+                self.state.transition(task_id, "repair_review_rejected", repair_review=decision)
+                break
+            # Keep each proposal/evidence tree; the next editor starts from this
+            # changed package, never from an unchanged validator rerun.
+            self._replace_directory(candidate_task, proposal)
+        self._handle_unrepairable(task_id, report)
+        return None
+
+    def _review_repair(self, task_id, original, workspace, findings):
+        output_name = "quality_loop_repair_review.yaml"
+        output = workspace / output_name
+        if output.exists() or output.is_symlink():
+            raise RuntimeError("Repair review requires a fresh decision")
+        before, original_before = snapshot_tree(workspace), snapshot_tree(original)
+        self.reviewer_backend.run(repair_review_prompt(task_id, original, findings, output_name),
+                                  workspace, role="repair_reviewer")
+        changes = diff_trees(before, snapshot_tree(workspace))
+        if (snapshot_tree(original) != original_before
+                or set(changes.paths) != {output_name} or changes.deleted
+                or not output.is_file() or output.is_symlink()):
+            raise RuntimeError("Repair reviewer changed protected files or omitted its decision")
+        result = yaml.safe_load(output.read_text())
+        if (not isinstance(result, dict) or not isinstance(result.get("summary"), str)
+                or any(type(result.get(k)) is not bool for k in
+                       ("accepted", "contract_preserved", "scoring_preserved"))
+                or not isinstance(result.get("resolved_findings"), list)
+                or any(not isinstance(k, str) for k in result["resolved_findings"])
+                or len(set(result["resolved_findings"])) != len(result["resolved_findings"])):
+            raise RuntimeError("Invalid independent repair review")
+        if (result["contract_preserved"] is not True or result["scoring_preserved"] is not True
+                or set(result["resolved_findings"]) != set(findings)):
+            result["accepted"] = False
+        return result
 
     def _new_session(self, task_id: str, workspace: Path, spec: TaskSpec, stage_dir: Path):
         session = self.session_factory(

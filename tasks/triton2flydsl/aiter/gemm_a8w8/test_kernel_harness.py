@@ -177,6 +177,8 @@ def run_correctness(verbose=True):
     from scripts.api_controls import API_CASES, run_api_controls
     failures.extend(run_api_controls(mod, _make_inputs, _torch_ref,
                                      _checked_scaled_gemm_output, in_dtype, verbose=verbose))
+    run_domain_controls(mod)
+
     total = len(TEST_SHAPES) * 2 + len(API_CASES)
     status = "ALL PASS" if not failures else f"FAILED ({len(failures)}/{total})"
     print(f"Status: {status}")
@@ -267,3 +269,57 @@ if __name__ == "__main__":
     else:
         run_benchmark()
         sys.exit(0)
+
+
+def run_domain_controls(mod):
+    """Unscored signed INT8 calls keep the FP8 scored workload unchanged."""
+    import torch
+    for m, n, k in ((3, 5, 33), (16, 32, 64)):
+        x = (torch.arange(m*k, device="cuda").reshape(m, k) % 17 - 8).to(torch.int8)
+        w = (torch.arange(n*k, device="cuda").reshape(n, k) % 13 - 6).to(torch.int8)
+        xs = torch.linspace(.01, .02, m, device=x.device).reshape(m, 1)
+        ws = torch.linspace(.02, .03, n, device=x.device).reshape(1, n)
+        bias = torch.linspace(-.25, .25, n, device=x.device).reshape(1, n)
+        inputs = (x, w, xs, ws, bias)
+        originals = tuple(value.clone() for value in inputs)
+        expected = _torch_ref(*inputs, torch.bfloat16)
+        actual = mod.gemm_a8w8(*inputs, torch.bfloat16)
+        require_unchanged(inputs, originals)
+        _checked_scaled_gemm_output(actual, x, w, torch.bfloat16)
+        torch.testing.assert_close(actual, expected, atol=.02, rtol=.01)
+    for in_dtype in (torch.int8, _fp8_e4m3_dtype()):
+        for out_dtype in (torch.bfloat16, torch.float16):
+            m, n, k = 16, 32, 64
+            x_store = torch.empty((m, k * 2), device='cuda', dtype=in_dtype)
+            w_store = torch.empty((n * 2, k), device='cuda', dtype=in_dtype)
+            x, w = x_store[:, ::2], w_store[::2, :]
+            x.copy_((torch.arange(m*k, device='cuda').reshape(m, k) % 17 - 8).to(in_dtype))
+            w.copy_((torch.arange(n*k, device='cuda').reshape(n, k) % 13 - 6).to(in_dtype))
+            xs = torch.full((m, 1), .015, device='cuda')
+            ws = torch.full((1, n), .025, device='cuda')
+            bias = torch.linspace(-.25, .25, n, device='cuda').reshape(1, n)
+            inputs = (x, w, xs, ws, bias)
+            originals = tuple(value.clone() for value in inputs)
+            expected = _torch_ref(*inputs, out_dtype)
+            supplied = torch.full((m, n), float('nan'), device='cuda', dtype=out_dtype)
+            actual = mod.gemm_a8w8(*inputs, out_dtype, y=supplied)
+            require_unchanged(inputs, originals)
+            _checked_scaled_gemm_output(actual, x, w, out_dtype)
+            if actual.data_ptr() != supplied.data_ptr():
+                raise AssertionError('Scaled GEMM ignored caller-provided output storage')
+            torch.testing.assert_close(actual, expected, atol=.02, rtol=.01)
+    # Odd large signed INT8 values distinguish INT8 from an illegal FP8 narrowing.
+    m, n, k = 3, 5, 64
+    x = (torch.arange(m*k, device='cuda').reshape(m, k) % 255 - 127).to(torch.int8)
+    w = (torch.arange(n*k, device='cuda').reshape(n, k) * 7 % 255 - 127).to(torch.int8)
+    xs = torch.full((m, 1), .015, device='cuda')
+    ws = torch.full((1, n), .025, device='cuda')
+    bias = torch.zeros((1, n), device='cuda')
+    inputs = (x, w, xs, ws, bias)
+    originals = tuple(value.clone() for value in inputs)
+    expected = _torch_ref(*inputs, torch.bfloat16)
+    actual = mod.gemm_a8w8(*inputs, torch.bfloat16)
+    require_unchanged(inputs, originals)
+    _checked_scaled_gemm_output(actual, x, w, torch.bfloat16)
+    torch.testing.assert_close(actual, expected, atol=.02, rtol=.01)
+    print("Unscored signed, strided and supplied-output scaled-GEMM controls: PASS")
