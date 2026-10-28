@@ -1,0 +1,16 @@
+schema_version: 2
+description: Optimize the supplied Triton request-to-token pool writer while preserving exact in-place prefix and extension copies.
+instructions: [README.md]
+candidate:
+  language: triton
+  initial_state: implemented
+  editable: [kernel.py]
+  entrypoints:
+    - {file: kernel.py, kind: function, symbol: write_req_to_token_pool_triton}
+baseline:
+  kind: initial_candidate
+  correctness_policy: required
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: cases.json
+  timeout_s: 1800
