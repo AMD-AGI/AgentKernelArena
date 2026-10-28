@@ -314,8 +314,8 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     serving_count = len(list((ROOT / "tasks/e2e").glob("*/config.yaml")))
     recipe_count = len(list((ROOT / 'tasks/e2e/magpie').rglob('config.yaml')))
     # The three gfx942 variants use the same runner as their Aiter-task originals.
-    # Includes the standalone A8W4 MoE task and its canonical cold-cache runner.
-    assert config_count == 400 + functional_count + serving_count + recipe_count + 3
+    # Includes the standalone A8W4 MoE and token-pool cold-cache runners.
+    assert config_count == 401 + functional_count + serving_count + recipe_count + 3
     assert problems == []
     assert sum(counts.values()) == config_count
     # Replay-aware adapters call the canonical sample API directly so their
@@ -324,7 +324,7 @@ def test_every_task_performance_entrypoint_uses_a_supported_family():
     # the canonical TimedRun API before the generated vLLM stub is inspected.
     # Four retained ROCmBench runners also call that API directly to validate each sample.
     assert counts == {
-        "canonical_python": 256 + functional_count + 3,
+        "canonical_python": 257 + functional_count + 3,
         "serving_client": serving_count,
         "serving_recipe": recipe_count,
         "native_graph_driver": 2,
