@@ -1,3 +1,3 @@
 """SIKL task generation campaign (runs before Arena task discovery)."""
 
-BUILDER_VERSION = 2
+BUILDER_VERSION = 3
