@@ -1,0 +1,42 @@
+task_type: triton2triton
+num_original_shapes: 8
+injections:
+  - file: test_tma_store_gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M,N,K,NUM_CTAS,NUM_WARPS,TRANS_A,TRANS_B,OUTPUT_F16', [
+          [64, 64, 16, 1, 4, False, True, False],
+          [64, 64, 16, 1, 4, False, True, True],
+          [128, 64, 32, 1, 4, False, True, False],
+          [128, 64, 32, 1, 4, False, True, True],
+          [64, 128, 32, 1, 4, False, True, False],
+          [64, 128, 32, 1, 4, False, True, True],
+          [128, 128, 64, 1, 4, False, True, False],
+          [128, 128, 64, 1, 4, False, True, True],
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize('M,N,K,NUM_CTAS,NUM_WARPS,TRANS_A,TRANS_B,OUTPUT_F16', [
+          [16, 16, 16, 1, 4, False, True, False],     # edge-case: minimal 16x16x16 tile, single-warp boundary
+          [128, 128, 128, 1, 4, False, True, True],    # scale-up: 2x largest K, maxes 64KB shared memory
+          [16, 32, 16, 1, 4, False, True, False],      # scale-down: 4x smaller than typical M/N dims
+          [48, 80, 16, 1, 4, False, True, True],       # alignment-stress: M=48,N=80 not multiples of 32/64/128
+          [112, 48, 32, 1, 4, True, True, False],      # alignment-stress: M=112,N=48 non-power-of-2 dims
+          [16, 128, 128, 1, 4, False, True, True],     # asymmetric: M=16 with large N,K skinny output
+          [64, 64, 64, 1, 4, False, False, False],     # production: transformer attention tile 64x64x64
+          [128, 64, 64, 1, 4, False, True, True],      # production: transformer FFN sub-tile 128x64x64
+      ])
+  - file: test_tma_store_gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M,N,K,NUM_CTAS_param,NUM_WARPS_param,TRANS_A,TRANS_B,OUTPUT_F16_param', TMA_GEMM_PERF_PARAMS)
+    replacement_code: |
+      @pytest.mark.parametrize('M,N,K,NUM_CTAS_param,NUM_WARPS_param,TRANS_A,TRANS_B,OUTPUT_F16_param', [
+          [16, 16, 16, 1, 4, False, True, False],     # edge-case: minimal 16x16x16 tile, single-warp boundary
+          [128, 128, 128, 1, 4, False, True, True],    # scale-up: 2x largest K, maxes 64KB shared memory
+          [16, 32, 16, 1, 4, False, True, False],      # scale-down: 4x smaller than typical M/N dims
+          [48, 80, 16, 1, 4, False, True, True],       # alignment-stress: M=48,N=80 not multiples of 32/64/128
+          [112, 48, 32, 1, 4, True, True, False],      # alignment-stress: M=112,N=48 non-power-of-2 dims
+          [16, 128, 128, 1, 4, False, True, True],     # asymmetric: M=16 with large N,K skinny output
+          [64, 64, 64, 1, 4, False, False, False],     # production: transformer attention tile 64x64x64
+          [128, 64, 64, 1, 4, False, True, True],      # production: transformer FFN sub-tile 128x64x64
+      ])

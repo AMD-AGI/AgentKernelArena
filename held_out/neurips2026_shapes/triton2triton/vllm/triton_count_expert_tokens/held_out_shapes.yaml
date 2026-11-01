@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 4),        # edge-case: minimal single-token single-topk, numel=1 forces BLOCK_SIZE=1 (power-of-2)
+          (2048, 8, 128),    # scale-up: 4x num_tokens, 4x topk, 2x num_experts vs largest original; numel=16384
+          (8, 1, 2),         # scale-down: 4x smaller num_tokens than smallest original, topk=1, only 2 experts; numel=8
+          (37, 3, 11),       # alignment-stress: prime num_tokens, odd topk, prime num_experts; numel=111
+          (131, 5, 67),      # alignment-stress: prime num_tokens, odd topk, prime num_experts; numel=655
+          (1, 2, 4096),      # asymmetric: single token but 4096 experts; extremely wide grid, tiny numel=2
+          (512, 2, 8),       # production: Mixtral-8x7B inference batch, 8 experts, top-2 routing
+          (4096, 2, 8),      # production: Mixtral-8x7B larger prefill batch, 8 experts, top-2 routing
+      ]

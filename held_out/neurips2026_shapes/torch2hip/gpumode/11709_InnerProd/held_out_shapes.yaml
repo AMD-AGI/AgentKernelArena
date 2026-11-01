@@ -1,0 +1,53 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints:
+  fc_dim: 4
+injections:
+  - file: pytorch_code_module/py_11709_InnerProd.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate held-out test cases with varying sizes.
+          HIP kernel expects feat_img: [B, 1, C] (3D with middle dim=1) and feat_sound: [B, C, H, W]
+          All test cases must use C=4 to match fc_dim=4 in get_init_inputs()
+          """
+          configs = [
+              (1, 4, 1, 1),          # edge-case: batch=1, minimal spatial dims
+              (128, 4, 128, 128),    # scale-up: 2x batch and 2x spatial vs largest original
+              (2, 4, 2, 2),          # scale-down: 2x smaller than smallest original
+              (7, 4, 37, 37),        # alignment-stress: prime batch and prime spatial dims
+              (13, 4, 131, 131),     # alignment-stress: prime batch and prime spatial dims
+              (2, 4, 1, 8192),       # asymmetric: extreme W>>H aspect ratio
+              (8, 4, 56, 56),        # production: typical NCHW feature map size
+              (16, 4, 112, 112),     # production: ResNet-style feature map
+          ]
+
+          for B, C, H, W in configs:
+              feat_img = torch.randn([B, 1, C], dtype=torch.float32)
+              feat_sound = torch.randn([B, C, H, W], dtype=torch.float32)
+              yield [feat_img, feat_sound]
+  - file: pytorch_code_functional/py_11709_InnerProd_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate held-out test cases with varying sizes.
+          HIP kernel expects feat_img: [B, 1, C] (3D with middle dim=1) and feat_sound: [B, C, H, W]
+          All test cases must use C=4 to match fc_dim=4 in get_init_inputs()
+          """
+          configs = [
+              (1, 4, 1, 1),          # edge-case: batch=1, minimal spatial dims
+              (128, 4, 128, 128),    # scale-up: 2x batch and 2x spatial vs largest original
+              (2, 4, 2, 2),          # scale-down: 2x smaller than smallest original
+              (7, 4, 37, 37),        # alignment-stress: prime batch and prime spatial dims
+              (13, 4, 131, 131),     # alignment-stress: prime batch and prime spatial dims
+              (2, 4, 1, 8192),       # asymmetric: extreme W>>H aspect ratio
+              (8, 4, 56, 56),        # production: typical NCHW feature map size
+              (16, 4, 112, 112),     # production: ResNet-style feature map
+          ]
+
+          for B, C, H, W in configs:
+              feat_img = torch.randn([B, 1, C], dtype=torch.float32)
+              feat_sound = torch.randn([B, C, H, W], dtype=torch.float32)
+              yield [feat_img, feat_sound]

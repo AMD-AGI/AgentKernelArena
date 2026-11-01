@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 3),        # edge-case: single request, minimal draft, boundary grid size=1
+          (256, 10, 64),     # scale-up: 4x num_reqs vs largest original (64), doubled draft/qlen
+          (2, 1, 4),         # scale-down: 2 requests, minimal draft and query len
+          (37, 5, 18),       # alignment-stress: prime num_reqs=37, non-power-of-2 grid
+          (131, 3, 11),      # alignment-stress: prime num_reqs=131, odd max_qlen=11
+          (1, 12, 50),       # asymmetric: single request with large draft and query len
+          (8, 4, 16),        # production: typical vLLM EAGLE batch with 8 reqs, 4 drafts
+          (32, 5, 32),       # production: medium batch speculative decoding, 5 draft tokens
+      ]

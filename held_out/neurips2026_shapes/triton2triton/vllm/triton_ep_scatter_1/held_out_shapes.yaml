@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1),        # edge-case: single expert, single token — minimal grid and degenerate workload
+          (256, 512),    # scale-up: 4x largest num_experts and max_tokens, tests grid and loop scaling
+          (2, 8),        # scale-down: 2 experts, 8 max tokens — minimal occupancy, over-provisioned shared mem
+          (37, 131),     # alignment-stress: prime num_experts (37) and prime max_tokens (131), stresses BLOCK_EXPERT_NUM masking
+          (13, 1019),    # alignment-stress: prime num_experts (13), large prime max_tokens (1019), stresses token loop bounds
+          (1, 4096),     # asymmetric: single expert with 4096 tokens — all work in one block, extreme ratio
+          (8, 256),      # production: Mixtral-style 8 experts, 256 tokens per expert
+          (128, 64),     # production: DeepSeek-V2-style 128 experts, 64 tokens per expert
+      ]

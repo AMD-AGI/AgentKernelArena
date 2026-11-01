@@ -1,0 +1,41 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints:
+  input_size: 4
+injections:
+  - file: pytorch_code_module/py_10024_Feedforward.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4], [2, 4]),        # edge-case: unequal batch, x/y row boundary at row 1
+              ([4096, 4], [4096, 4]),   # scale-up: total_rows=8192, triggers 512-thread branch
+              ([3, 4], [3, 4]),         # scale-down: total_rows=6, minimal non-degenerate batch
+              ([37, 4], [37, 4]),       # alignment-stress: prime batch, total_rows=74
+              ([131, 4], [131, 4]),     # alignment-stress: prime batch, total_rows=262
+              ([1, 4], [8192, 4]),      # asymmetric: extreme x/y ratio 1:8192
+              ([32, 4], [32, 4]),       # production: common ML mini-batch, total_rows=64
+              ([512, 4], [512, 4]),     # production: large ML batch, total_rows=1024
+          ]
+          for x_shape, y_shape in configs:
+              x = torch.randn(x_shape, dtype=torch.float32)
+              y = torch.randn(y_shape, dtype=torch.float32)
+              yield [x, y]
+  - file: pytorch_code_functional/py_10024_Feedforward_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4], [2, 4]),        # edge-case: unequal batch, x/y row boundary at row 1
+              ([4096, 4], [4096, 4]),   # scale-up: total_rows=8192, triggers 512-thread branch
+              ([3, 4], [3, 4]),         # scale-down: total_rows=6, minimal non-degenerate batch
+              ([37, 4], [37, 4]),       # alignment-stress: prime batch, total_rows=74
+              ([131, 4], [131, 4]),     # alignment-stress: prime batch, total_rows=262
+              ([1, 4], [8192, 4]),      # asymmetric: extreme x/y ratio 1:8192
+              ([32, 4], [32, 4]),       # production: common ML mini-batch, total_rows=64
+              ([512, 4], [512, 4]),     # production: large ML batch, total_rows=1024
+          ]
+          for x_shape, y_shape in configs:
+              x = torch.randn(x_shape, dtype=torch.float32)
+              y = torch.randn(y_shape, dtype=torch.float32)
+              yield [x, y]

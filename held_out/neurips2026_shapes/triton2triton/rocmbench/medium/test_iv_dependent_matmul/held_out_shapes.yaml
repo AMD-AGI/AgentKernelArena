@@ -1,0 +1,49 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: test_iv_dependent_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("type",
+                               ["pre_load", "post_load", "post_pre_mixed", "post_load_two_iters", "post_load_three_iters"])
+      def test_iv_dependent_matmul(type, request, device='cuda'):
+
+          
+          set_seed()
+
+          M = 256
+          K = 256
+          N = 256
+          BLOCK_SIZE_K = 32
+          BLOCK_SIZE_N = 32
+          BLOCK_SIZE_M = 32
+    replacement_code: |
+      @pytest.mark.parametrize("type, M, N, K, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K", [
+          ("pre_load", 32, 32, 32, 32, 32, 32),                  # edge-case: single tile M=N=K=BLOCK_SIZE
+          ("post_load", 4096, 4096, 512, 64, 64, 32),            # scale-up: 16x M,N vs original 256
+          ("post_pre_mixed", 64, 64, 32, 32, 32, 32),            # scale-down: 4x smaller than original
+          ("post_load_two_iters", 131, 197, 64, 32, 32, 32),     # alignment-stress: prime M=131 N=197
+          ("pre_load", 1019, 37, 128, 32, 32, 32),               # alignment-stress: large prime M, small prime N
+          ("post_load_three_iters", 1, 8192, 256, 32, 32, 32),   # asymmetric: single-row decode-like M=1
+          ("post_pre_mixed", 4096, 11008, 4096, 64, 64, 32),     # production: Llama-2 FFN up-projection
+          ("post_load", 2048, 8192, 2048, 64, 64, 32),           # production: transformer FFN hidden layer
+      ])
+      def test_iv_dependent_matmul(type, M, N, K, BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, request, device='cuda'):
+
+          
+          set_seed()
+  - file: test_iv_dependent_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("m_n_k_shape", IV_MATMUL_SHAPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("m_n_k_shape", [
+          (32, 32, 32),          # edge-case: single tile M=N=K=BLOCK_SIZE
+          (4096, 4096, 512),     # scale-up: 16x M,N vs original 256
+          (64, 64, 32),          # scale-down: 4x smaller than original
+          (131, 197, 64),        # alignment-stress: prime M=131 N=197
+          (1019, 37, 128),       # alignment-stress: large prime M, small prime N
+          (1, 8192, 256),        # asymmetric: single-row decode-like M=1
+          (4096, 11008, 4096),   # production: Llama-2 FFN up-projection
+          (2048, 8192, 2048),    # production: transformer FFN hidden layer
+      ])

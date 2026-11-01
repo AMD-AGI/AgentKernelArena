@@ -1,0 +1,46 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: test_gemm_fusion.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.skipif(torch.cuda.get_device_capability()[0] < 9, reason="not passed on ampere")
+      def test_gemm_fusion(request):
+          set_seed()
+
+
+          M, N, K = 4096, 4096, 64
+          BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 64
+    replacement_code: |
+      @pytest.mark.skipif(torch.cuda.get_device_capability()[0] < 9, reason="not passed on ampere")
+      @pytest.mark.parametrize("M, N, K, BLOCK_M, BLOCK_N", [
+          (32, 64, 32, 32, 32),           # edge-case: M=BLOCK_M single tile, minimal sizes
+          (8192, 8192, 32, 128, 64),      # scale-up: 2x M and N vs original 4096
+          (16, 16, 32, 16, 16),           # scale-down: minimal M,N=16
+          (128, 131, 32, 64, 32),         # alignment-stress: prime N=131
+          (256, 1019, 64, 64, 64),        # alignment-stress: prime N=1019
+          (8192, 32, 32, 64, 32),         # asymmetric: M>>N by 256x tall-skinny
+          (4096, 11008, 32, 128, 128),    # production: Llama-7B FFN-like dimensions
+          (2048, 8192, 64, 64, 64),       # production: GPT-style FFN dimensions
+      ])
+      def test_gemm_fusion(M, N, K, BLOCK_M, BLOCK_N, request):
+          set_seed()
+
+          BLOCK_K = K
+  - file: test_gemm_fusion.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("test_params_dict", GEMM_FUSION_PERF_CONFIGS)
+      @pytest.mark.parametrize("dtype_str", GEMM_FUSION_DTYPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("test_params_dict", [
+          {'M': 32, 'N': 64, 'K': 32, 'bm': 32, 'bn': 32},           # edge-case: M=BLOCK_M single tile
+          {'M': 8192, 'N': 8192, 'K': 32, 'bm': 128, 'bn': 64},      # scale-up: 2x M and N vs originals
+          {'M': 16, 'N': 16, 'K': 32, 'bm': 16, 'bn': 16},           # scale-down: minimal M,N=16
+          {'M': 128, 'N': 131, 'K': 32, 'bm': 64, 'bn': 32},         # alignment-stress: prime N=131
+          {'M': 256, 'N': 1019, 'K': 64, 'bm': 64, 'bn': 64},        # alignment-stress: prime N=1019
+          {'M': 8192, 'N': 32, 'K': 32, 'bm': 64, 'bn': 32},         # asymmetric: M>>N tall-skinny
+          {'M': 4096, 'N': 11008, 'K': 32, 'bm': 128, 'bn': 128},    # production: Llama-7B FFN-like
+          {'M': 2048, 'N': 8192, 'K': 64, 'bm': 64, 'bn': 64},       # production: GPT-style FFN
+      ])
+      @pytest.mark.parametrize("dtype_str", GEMM_FUSION_DTYPES_FOR_PERF)

@@ -1,0 +1,48 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_1067_Transpose.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate held-out test cases for transpose operations
+          """
+          configs = [
+              ([1, 1, 256, 256],),       # edge-case: batch=1, dim1=1, dim2=BLOCK_SIZE boundary
+              ([128, 256, 256, 32],),     # scale-up: 2-4x all dims vs largest original
+              ([2, 4, 8, 16],),           # scale-down: 4-8x smaller than smallest original
+              ([7, 37, 131, 19],),        # alignment-stress: all non-power-of-2, prime dims
+              ([13, 67, 97, 41],),        # alignment-stress: all prime dimensions
+              ([1, 2, 65536, 8],),        # asymmetric: extremely tall dim2, skinny rest
+              ([8, 256, 56, 56],),        # production: NCHW ResNet mid-layer feature map
+              ([16, 512, 14, 14],),       # production: NCHW ResNet deeper layer feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_1067_Transpose_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate held-out test cases for transpose operations
+          """
+          configs = [
+              ([1, 1, 256, 256],),       # edge-case: batch=1, dim1=1, dim2=BLOCK_SIZE boundary
+              ([128, 256, 256, 32],),     # scale-up: 2-4x all dims vs largest original
+              ([2, 4, 8, 16],),           # scale-down: 4-8x smaller than smallest original
+              ([7, 37, 131, 19],),        # alignment-stress: all non-power-of-2, prime dims
+              ([13, 67, 97, 41],),        # alignment-stress: all prime dimensions
+              ([1, 2, 65536, 8],),        # asymmetric: extremely tall dim2, skinny rest
+              ([8, 256, 56, 56],),        # production: NCHW ResNet mid-layer feature map
+              ([16, 512, 14, 14],),       # production: NCHW ResNet deeper layer feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

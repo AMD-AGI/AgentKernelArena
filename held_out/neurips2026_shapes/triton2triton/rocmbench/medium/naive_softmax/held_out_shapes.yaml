@@ -1,0 +1,34 @@
+task_type: triton2triton
+num_original_shapes: 10
+injections:
+  - file: naive_softmax.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M, N', [(1823, 781), (1, 1), (128, 1), (1, 128), (8192, 8192), (4096, 8192), (359, 1),
+                                        (1, 359), (1, 131072), (1, 89999)])
+    replacement_code: |
+      @pytest.mark.parametrize('M, N', [
+          (1, 257),            # edge-case: N=BLOCK_SIZE+1, single-element second tile
+          (16384, 16384),      # scale-up: 2x largest original square (8192)
+          (4, 16),             # scale-down: very small workload, 4x smaller than smallest non-degenerate
+          (997, 1019),         # alignment-stress: both dims are primes
+          (131, 4003),         # alignment-stress: prime M and prime N, multi-tile
+          (1, 65537),          # asymmetric: single row, N just above power-of-2
+          (4096, 32000),       # production: Llama-3-8B logits softmax (seq_len x vocab)
+          (8, 128256),         # production: Llama-3 vocab softmax batch=8
+      ])
+  - file: naive_softmax.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M, N', SOFTMAX_SHAPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize('M, N', [
+          (1, 257),            # edge-case: N=BLOCK_SIZE+1, single-element second tile
+          (16384, 16384),      # scale-up: 2x largest original square (8192)
+          (4, 16),             # scale-down: very small workload, 4x smaller than smallest non-degenerate
+          (997, 1019),         # alignment-stress: both dims are primes
+          (131, 4003),         # alignment-stress: prime M and prime N, multi-tile
+          (1, 65537),          # asymmetric: single row, N just above power-of-2
+          (4096, 32000),       # production: Llama-3-8B logits softmax (seq_len x vocab)
+          (8, 128256),         # production: Llama-3 vocab softmax batch=8
+      ])

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 4, True),             # edge-case: batch=1, query_len=1 single-element partial tile
+          (128, 512, 8192, True),       # scale-up: 2-4x all dims, large prefill grid
+          (2, 8, 32, False),            # scale-down: tiny decode, well below original minimums
+          (7, 131, 1019, True),         # alignment-stress: prime num_reqs/query_len/max_model_len, prefill
+          (13, 37, 4003, False),        # alignment-stress: odd primes across all dims, decode path
+          (1, 4096, 4096, True),        # asymmetric: single request with very long sequence (4x max original query_len)
+          (4, 2048, 8192, True),        # production: Qwen2-VL prefill, batch=4 seq=2048 ctx=8K
+          (8, 1, 4096, False),          # production: Qwen2-VL decode, batch=8 single-token generation
+      ]

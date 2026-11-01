@@ -1,0 +1,42 @@
+task_type: torch2hip
+num_original_shapes: 8
+init_constraints:
+  feature_size: 4
+  hidden_size: 4
+injections:
+  - file: pytorch_code_module/py_102_ItemQueryAttention.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 1, 2, 4),         # edge-case: minimal batch=1, tiny seq_size=2
+              (128, 128, 32, 4),     # scale-up: 2x q_size/s_size vs original max 64
+              (1, 2, 2, 4),          # scale-down: 2-4x smaller than smallest original (2,2,4)
+              (3, 5, 7, 4),          # alignment-stress: all-prime dims 3,5,7
+              (7, 11, 13, 4),        # alignment-stress: larger primes 7,11,13
+              (1, 64, 3, 4),         # asymmetric: q=1 vs s=64 extreme ratio
+              (5, 5, 20, 4),         # production: 5-way 5-shot few-shot episode
+              (10, 20, 16, 4),       # production: 10-query 20-support few-shot
+          ]
+          for q_size, s_size, seq_size, feature_size in configs:
+              qs = torch.rand([q_size, seq_size, feature_size], dtype=torch.float32)
+              hs = torch.rand([s_size, seq_size, feature_size], dtype=torch.float32)
+              yield [qs, hs]
+  - file: pytorch_code_functional/py_102_ItemQueryAttention_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 1, 2, 4),         # edge-case: minimal batch=1, tiny seq_size=2
+              (128, 128, 32, 4),     # scale-up: 2x q_size/s_size vs original max 64
+              (1, 2, 2, 4),          # scale-down: 2-4x smaller than smallest original (2,2,4)
+              (3, 5, 7, 4),          # alignment-stress: all-prime dims 3,5,7
+              (7, 11, 13, 4),        # alignment-stress: larger primes 7,11,13
+              (1, 64, 3, 4),         # asymmetric: q=1 vs s=64 extreme ratio
+              (5, 5, 20, 4),         # production: 5-way 5-shot few-shot episode
+              (10, 20, 16, 4),       # production: 10-query 20-support few-shot
+          ]
+          for q_size, s_size, seq_size, feature_size in configs:
+              qs = torch.rand([q_size, seq_size, feature_size], dtype=torch.float32)
+              hs = torch.rand([s_size, seq_size, feature_size], dtype=torch.float32)
+              yield [qs, hs]

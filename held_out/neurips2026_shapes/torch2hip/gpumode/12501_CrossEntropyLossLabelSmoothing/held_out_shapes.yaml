@@ -1,0 +1,48 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_12501_CrossEntropyLossLabelSmoothing.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 10, 1, 1),         # edge-case: batch=1, single spatial element
+              (16, 200, 64, 64),      # scale-up: 2-4x all dims vs originals
+              (1, 5, 4, 4),           # scale-down: all dims well below original minimums
+              (3, 37, 17, 19),        # alignment-stress: prime C, H, W dimensions
+              (5, 131, 13, 11),       # alignment-stress: prime C=131, odd H and W
+              (1, 10, 1, 512),        # asymmetric: H=1, W=512 extreme aspect ratio
+              (8, 1024, 7, 7),        # production: ResNet-50 last stage 7x7 spatial
+              (2, 256, 56, 56),       # production: ResNet mid-stage 56x56 spatial
+          ]
+
+          for (N, C, H, W) in configs:
+              input = torch.randn(N, C, H, W, dtype=torch.float32)
+              target = torch.softmax(
+                  torch.randn(N, C, H, W, dtype=torch.float32),
+                  dim=1,
+              )
+              yield [input, target]
+  - file: pytorch_code_functional/py_12501_CrossEntropyLossLabelSmoothing_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 10, 1, 1),         # edge-case: batch=1, single spatial element
+              (16, 200, 64, 64),      # scale-up: 2-4x all dims vs originals
+              (1, 5, 4, 4),           # scale-down: all dims well below original minimums
+              (3, 37, 17, 19),        # alignment-stress: prime C, H, W dimensions
+              (5, 131, 13, 11),       # alignment-stress: prime C=131, odd H and W
+              (1, 10, 1, 512),        # asymmetric: H=1, W=512 extreme aspect ratio
+              (8, 1024, 7, 7),        # production: ResNet-50 last stage 7x7 spatial
+              (2, 256, 56, 56),       # production: ResNet mid-stage 56x56 spatial
+          ]
+
+          for (N, C, H, W) in configs:
+              input = torch.randn(N, C, H, W, dtype=torch.float32)
+              target = torch.softmax(
+                  torch.randn(N, C, H, W, dtype=torch.float32),
+                  dim=1,
+              )
+              yield [input, target]

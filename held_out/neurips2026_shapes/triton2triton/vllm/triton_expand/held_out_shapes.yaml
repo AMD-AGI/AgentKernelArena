@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1),       # edge-case: batch=1, single token — minimal workload
+          (512, 128),   # scale-up: 8x batch, max tokens_per_req=128 (total 65536 tokens)
+          (1, 2),       # scale-down: minimal batch and near-minimal tokens (< all originals)
+          (37, 113),    # alignment-stress: prime batch and prime tokens, non-power-of-2
+          (53, 97),     # alignment-stress: both primes, misaligned to 32/64/128 tiles
+          (1024, 1),    # asymmetric: very large grid (1024 programs) with 1 token each
+          (8, 64),      # production: typical serving batch with 64 speculative tokens
+          (4, 128),     # production: small batch with max speculative decode length
+      ]

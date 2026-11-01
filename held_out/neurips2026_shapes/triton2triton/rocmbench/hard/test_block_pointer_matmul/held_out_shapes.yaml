@@ -1,0 +1,41 @@
+task_type: triton2triton
+num_original_shapes: 6
+injections:
+  - file: test_block_pointer_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("shape, num_warps", [  #
+          (shape, num_warps) for shape in [
+              [64, 64, 16],
+              [64, 64, 32],
+              [64, 64, 64],
+          ] for num_warps in [4, 8]
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize("shape, num_warps", [
+          ([16, 16, 16], 4),       # edge-case: minimal valid block sizes for tl.dot
+          ([256, 256, 64], 8),     # scale-up: 4x M,N vs typical 64
+          ([32, 32, 16], 4),       # scale-down: half the typical M,N,K
+          ([16, 128, 32], 4),      # alignment-stress: BLOCK_M=16 not multiple of 32
+          ([128, 16, 64], 8),      # alignment-stress: BLOCK_N=16 not multiple of 32
+          ([16, 256, 32], 4),      # asymmetric: 1:16 M:N ratio, tall-skinny output
+          ([128, 128, 64], 8),     # production: transformer FFN block tile
+          ([64, 256, 64], 4),      # production: attention projection block tile
+      ])
+  - file: test_block_pointer_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("shape", BPM_SHAPES_FOR_PERF)
+      @pytest.mark.parametrize("num_warps_arg", BPM_NUM_WARPS_FOR_PERF)
+      @pytest.mark.parametrize("dtype_str", BPM_DTYPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("shape, num_warps_arg, dtype_str", [
+          ((16, 16, 16), 4, 'fp16'),       # edge-case: minimal valid block sizes for tl.dot
+          ((256, 256, 64), 8, 'fp16'),      # scale-up: 4x M,N vs typical 64
+          ((32, 32, 16), 4, 'fp16'),        # scale-down: half the typical M,N,K
+          ((16, 128, 32), 4, 'fp16'),       # alignment-stress: BLOCK_M=16 not multiple of 32
+          ((128, 16, 64), 8, 'fp16'),       # alignment-stress: BLOCK_N=16 not multiple of 32
+          ((16, 256, 32), 4, 'fp16'),       # asymmetric: 1:16 M:N ratio, tall-skinny output
+          ((128, 128, 64), 8, 'fp16'),      # production: transformer FFN block tile
+          ((64, 256, 64), 4, 'fp16'),       # production: attention projection block tile
+      ])

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 64, 64),          # edge-case: M=1 single row, one group, BLOCK=64
+          (1024, 4096, 128),     # scale-up: 4x M and 4x N vs largest original
+          (4, 32, 32),           # scale-down: 8x smaller M, 4x smaller N and group_size
+          (37, 1019, 1019),      # alignment-stress: prime M=37, prime group_size=1019, BLOCK=1024 forces masking
+          (131, 3953, 59),       # alignment-stress: prime M=131, prime group_size=59, N=59*67
+          (1, 16384, 128),       # asymmetric: single row with 128 groups, extreme M<<N ratio
+          (512, 4096, 128),      # production: Llama-7B prefill (batch*seq=512, hidden=4096)
+          (8, 8192, 128),        # production: Llama-70B decode (batch=8, hidden=8192)
+      ]

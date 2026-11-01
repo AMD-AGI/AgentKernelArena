@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1024, 3),                # edge-case: batch=1, min max_model_len=3 stresses clamping
+          (256, 4096, 16384),           # scale-up: 4x num_reqs and 2x hidden/max_model_len
+          (2, 64, 512),                 # scale-down: 2x-4x smaller across all dims
+          (7, 131, 1019),              # alignment-stress: prime num_reqs=7, prime hidden=131, prime max_model_len=1019
+          (13, 997, 4003),             # alignment-stress: prime num_reqs=13, prime hidden=997, prime max_model_len=4003
+          (1, 4096, 65536),            # asymmetric: single request with very large max_model_len
+          (4, 4096, 4096),             # production: Llama-7B EAGLE decode (hidden=4096, typical context)
+          (8, 2560, 8192),             # production: Llama-13B EAGLE decode (hidden=2560, 8K context)
+      ]

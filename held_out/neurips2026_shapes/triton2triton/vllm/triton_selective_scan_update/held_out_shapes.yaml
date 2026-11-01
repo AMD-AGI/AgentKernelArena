@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 4, 32, 1, 2, False, True),       # edge-case: batch=1, dstate=1 minimal state, dim=BLOCK_SIZE_M boundary
+          (32, 16, 256, 64, 8, True, True),     # scale-up: 2x batch, 2x dim, max dstate with all features
+          (1, 2, 16, 8, 1, True, False),        # scale-down: minimal across all dims, tiny workload
+          (3, 6, 37, 19, 3, True, True),        # alignment-stress: prime dim=37, prime dstate=19, odd batch=3
+          (5, 10, 131, 41, 5, False, True),     # alignment-stress: prime dim=131, prime dstate=41, odd batch=5
+          (1, 32, 256, 16, 1, True, False),     # asymmetric: batch=1 single-request decode, many heads, large dim
+          (2, 24, 64, 16, 8, True, True),       # production: Mamba-2 decode, 24 heads, 3 heads/group
+          (8, 64, 128, 16, 8, True, False),     # production: Mamba-2 prefill-like, 64 heads, 8 groups
+      ]

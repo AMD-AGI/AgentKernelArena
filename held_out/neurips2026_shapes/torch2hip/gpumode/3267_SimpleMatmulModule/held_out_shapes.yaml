@@ -1,0 +1,42 @@
+task_type: torch2hip
+num_original_shapes: 11
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_3267_SimpleMatmulModule.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1], [1, 1]),                            # edge-case: minimal 1x1 matmul
+              ([512, 512], [512, 512]),                     # scale-up: 4x largest original square dim
+              ([2, 2], [2, 2]),                             # scale-down: tiny 2x2 matmul
+              ([37, 131], [131, 97]),                       # alignment-stress: prime M, K, N
+              ([3, 131, 67], [3, 67, 131]),                 # alignment-stress: batched with prime dims
+              ([1, 4096], [4096, 1]),                       # asymmetric: extreme tall-skinny output (1xN @ Nx1)
+              ([4096, 11008], [11008, 4096]),                # production: Llama-7B FFN up-projection GEMM
+              ([2, 2048, 4096], [2, 4096, 2048]),           # production: batched transformer FFN shape
+          ]
+
+          for a_shape, b_shape in configs:
+              a = torch.rand(a_shape, dtype=torch.float32)
+              b = torch.rand(b_shape, dtype=torch.float32)
+              yield [a, b]
+  - file: pytorch_code_functional/py_3267_SimpleMatmulModule_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1], [1, 1]),                            # edge-case: minimal 1x1 matmul
+              ([512, 512], [512, 512]),                     # scale-up: 4x largest original square dim
+              ([2, 2], [2, 2]),                             # scale-down: tiny 2x2 matmul
+              ([37, 131], [131, 97]),                       # alignment-stress: prime M, K, N
+              ([3, 131, 67], [3, 67, 131]),                 # alignment-stress: batched with prime dims
+              ([1, 4096], [4096, 1]),                       # asymmetric: extreme tall-skinny output (1xN @ Nx1)
+              ([4096, 11008], [11008, 4096]),                # production: Llama-7B FFN up-projection GEMM
+              ([2, 2048, 4096], [2, 4096, 2048]),           # production: batched transformer FFN shape
+          ]
+
+          for a_shape, b_shape in configs:
+              a = torch.rand(a_shape, dtype=torch.float32)
+              b = torch.rand(b_shape, dtype=torch.float32)
+              yield [a, b]

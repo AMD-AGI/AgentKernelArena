@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 32, 2, 64, 1),          # edge-case: single token, K=BLOCK_SIZE_K boundary, minimal E
+          (1024, 4096, 8, 4096, 2),    # scale-up: 4x M/K/N vs largest original
+          (4, 16, 2, 16, 1),           # scale-down: all dims 4x smaller, K<BLOCK_SIZE_K, N<BLOCK_SIZE_N
+          (37, 131, 7, 67, 2),         # alignment-stress: all prime dims, no multiple of 32/64
+          (19, 97, 5, 131, 3),         # alignment-stress: different primes, novel topk=3
+          (1, 256, 8, 8192, 2),        # asymmetric: single-token decode, N>>K (32x ratio)
+          (512, 4096, 8, 14336, 2),    # production: Mixtral-8x7B prefill (FFN intermediate)
+          (8, 2048, 16, 1408, 6),      # production: DeepSeek-style batch decode, high topk
+      ]

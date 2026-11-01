@@ -1,0 +1,48 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_12501_CrossEntropyLossLabelSmoothing.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 1, 1, 1),         # edge-case: all-minimal single-element batch and spatial
+              (16, 200, 64, 64),     # scale-up: 4x N, 2x C, 2x H/W vs largest original
+              (1, 3, 4, 4),          # scale-down: tiny 3-class 4x4 spatial, well below originals
+              (3, 37, 13, 131),      # alignment-stress: prime C=37, prime W=131, odd N=3
+              (2, 43, 19, 1019),     # alignment-stress: prime dims C=43, H=19, W=1019
+              (1, 2, 1, 65536),      # asymmetric: extreme W>>H with minimal batch/classes
+              (4, 256, 56, 56),      # production: ResNet conv3_x NCHW feature map
+              (8, 512, 28, 28),      # production: ResNet conv4_x NCHW feature map
+          ]
+
+          for (N, C, H, W) in configs:
+              input = torch.randn(N, C, H, W, dtype=torch.float32)
+              target = torch.softmax(
+                  torch.randn(N, C, H, W, dtype=torch.float32),
+                  dim=1,
+              )
+              yield [input, target]
+  - file: pytorch_code_functional/py_12501_CrossEntropyLossLabelSmoothing_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 1, 1, 1),         # edge-case: all-minimal single-element batch and spatial
+              (16, 200, 64, 64),     # scale-up: 4x N, 2x C, 2x H/W vs largest original
+              (1, 3, 4, 4),          # scale-down: tiny 3-class 4x4 spatial, well below originals
+              (3, 37, 13, 131),      # alignment-stress: prime C=37, prime W=131, odd N=3
+              (2, 43, 19, 1019),     # alignment-stress: prime dims C=43, H=19, W=1019
+              (1, 2, 1, 65536),      # asymmetric: extreme W>>H with minimal batch/classes
+              (4, 256, 56, 56),      # production: ResNet conv3_x NCHW feature map
+              (8, 512, 28, 28),      # production: ResNet conv4_x NCHW feature map
+          ]
+
+          for (N, C, H, W) in configs:
+              input = torch.randn(N, C, H, W, dtype=torch.float32)
+              target = torch.softmax(
+                  torch.randn(N, C, H, W, dtype=torch.float32),
+                  dim=1,
+              )
+              yield [input, target]

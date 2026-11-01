@@ -1,0 +1,52 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints:
+  hidden_size: 4
+  filter_size: 4
+injections:
+  - file: pytorch_code_module/py_14069_TransformerFFNLayer.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate 8 held-out test cases for generalization evaluation.
+          TransformerFFNLayer forward() expects x: (T, B, C) where C=hidden_size=4
+          """
+          configs = [
+              ([1, 1, 4],),      # edge-case: batch=1, T=1 minimal boundary
+              ([256, 16, 4],),   # scale-up: 4x T and 4x B vs largest original
+              ([2, 1, 4],),      # scale-down: T=2 B=1, much smaller than originals
+              ([37, 7, 4],),     # alignment-stress: prime T=37, prime B=7
+              ([131, 3, 4],),    # alignment-stress: prime T=131, odd B=3
+              ([4096, 1, 4],),   # asymmetric: very long T=4096, single batch
+              ([512, 8, 4],),    # production: typical transformer prefill
+              ([2048, 2, 4],),   # production: long-context transformer
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_14069_TransformerFFNLayer_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate 8 held-out test cases for generalization evaluation.
+          TransformerFFNLayer forward() expects x: (T, B, C) where C=hidden_size=4
+          """
+          configs = [
+              ([1, 1, 4],),      # edge-case: batch=1, T=1 minimal boundary
+              ([256, 16, 4],),   # scale-up: 4x T and 4x B vs largest original
+              ([2, 1, 4],),      # scale-down: T=2 B=1, much smaller than originals
+              ([37, 7, 4],),     # alignment-stress: prime T=37, prime B=7
+              ([131, 3, 4],),    # alignment-stress: prime T=131, odd B=3
+              ([4096, 1, 4],),   # asymmetric: very long T=4096, single batch
+              ([512, 8, 4],),    # production: typical transformer prefill
+              ([2048, 2, 4],),   # production: long-context transformer
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

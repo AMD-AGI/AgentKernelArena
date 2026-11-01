@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_CASES"
+    replacement_code: |
+      TEST_CASES = [
+          (1, 64, True, True, True, False),        # edge-case: batch=1, minimal M with gating
+          (1024, 512, True, True, False, True),     # scale-up: 4x M and 4x N vs originals, RMS norm with gate-before-norm
+          (16, 32, False, False, True, True),       # scale-down: ~6x smaller M, ~2x smaller N than smallest original
+          (37, 131, True, False, True, False),      # alignment-stress: prime M=37 and prime N=131
+          (193, 97, False, True, True, True),       # alignment-stress: prime-adjacent M=193 and prime N=97 with gating
+          (1, 4096, True, False, True, False),      # asymmetric: single row with very wide N (1:4096 ratio)
+          (2048, 256, True, True, True, False),     # production: GPT-style hidden dim 256, seq_len=2048, gated LayerNorm
+          (4096, 128, False, False, True, True),    # production: Llama-style RMSNorm, seq_len=4096, head_dim=128
+      ]

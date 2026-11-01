@@ -1,0 +1,44 @@
+task_type: triton2triton
+num_original_shapes: 90
+injections:
+  - file: test_block_copy.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("dtypes_str, n, padding_option", [  #
+          (dtypes_str, n, padding)
+          for dtypes_str in (("bool", "bool"), ("int16", "int16"), ("int32", "int32"), ("float16", "float16"),
+                             ("float32", "float32"), ("bfloat16", "bfloat16"))
+          for n in (64, 128, 256, 512, 1024)
+          for padding in (None, "zero", "nan")  #
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize("dtypes_str, n, padding_option", [
+          (("float32", "float32"), 2, "zero"),           # edge-case: N=2, single valid element, extreme partial tile
+          (("float32", "float32"), 4096, None),           # scale-up: 4x largest original N
+          (("float16", "float16"), 16, None),             # scale-down: 4x smaller than smallest original N
+          (("float32", "float32"), 74, "zero"),           # alignment-stress: N//2=37 (prime), not multiple of BLOCK_SIZE
+          (("float16", "float16"), 2038, "zero"),         # alignment-stress: N//2=1019 (prime), misaligned tiles
+          (("float32", "float32"), 131072, "nan"),        # asymmetric: huge N, half the grid blocks read fully OOB from a
+          (("float32", "float32"), 802816, None),         # production: 1x256x56x56 NCHW flattened element-wise
+          (("bfloat16", "bfloat16"), 3211264, "zero"),    # production: 8x512x28x28 NCHW flattened element-wise
+      ])
+  - file: test_block_copy.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("dtypes_str_tuple, n, padding_option", [
+          (dtypes_tuple, n_val, padding_val)
+          for dtypes_tuple in (("float16", "float16"), ("float32", "float32"), ("bfloat16", "bfloat16"), ("int32", "int32")) # Focus on common perf types
+          for n_val in (1024, 8192, 65536, 262144, 1048576) # Larger N for perf
+          for padding_val in (None, "zero") # "nan" might be slow or less common for perf focus
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize("dtypes_str_tuple, n, padding_option", [
+          (("float32", "float32"), 2, "zero"),           # edge-case: N=2, single valid element, extreme partial tile
+          (("float32", "float32"), 4194304, None),        # scale-up: 4x largest original perf N
+          (("float16", "float16"), 16, None),             # scale-down: 64x smaller than smallest original perf N
+          (("float32", "float32"), 74, "zero"),           # alignment-stress: N//2=37 (prime), not multiple of BLOCK_SIZE
+          (("float16", "float16"), 2038, "zero"),         # alignment-stress: N//2=1019 (prime), misaligned tiles
+          (("float32", "float32"), 131072, "zero"),       # asymmetric: huge grid, half blocks read fully OOB from a
+          (("float32", "float32"), 802816, None),         # production: 1x256x56x56 NCHW flattened element-wise
+          (("bfloat16", "bfloat16"), 3211264, "zero"),    # production: 8x512x28x28 NCHW flattened element-wise
+      ])

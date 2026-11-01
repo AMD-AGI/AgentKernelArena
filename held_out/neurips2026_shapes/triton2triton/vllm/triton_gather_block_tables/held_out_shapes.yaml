@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 8, 1),            # edge-case: single request, single block, minimal dimensions
+          (256, 2048, 1024),     # scale-up: 4x num_reqs, 4x max_num_reqs, 4x max_num_blocks vs largest original
+          (2, 8, 4),             # scale-down: 4x smaller than smallest original across all dims
+          (7, 37, 131),          # alignment-stress: prime num_reqs, prime max_num_reqs, prime max_num_blocks
+          (13, 101, 1019),       # alignment-stress: all prime dimensions, max_num_blocks near BLOCK_SIZE boundary
+          (1, 1024, 4096),       # asymmetric: single request gathering from very wide block table (1:4096 ratio)
+          (4, 64, 2048),         # production: vLLM long-context serving, 4 reqs with 2048 blocks (~4M token KV-cache)
+          (8, 128, 512),         # production: vLLM typical batched decode, 8 active reqs in 128-slot scheduler
+      ]

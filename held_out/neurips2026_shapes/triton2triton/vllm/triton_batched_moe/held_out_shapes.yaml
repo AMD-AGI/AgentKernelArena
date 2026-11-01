@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 32, 64),        # edge-case: single expert, single token, K=BLOCK_K boundary
+          (32, 256, 2048, 1024),  # scale-up: 4x experts, 2-4x all dims vs largest original
+          (2, 8, 32, 32),         # scale-down: 4x smaller than smallest original across all dims
+          (7, 37, 131, 97),       # alignment-stress: all prime dimensions, no tile alignment
+          (5, 67, 253, 199),      # alignment-stress: odd composites and primes, misaligned tiles
+          (4, 1, 2048, 2048),     # asymmetric: M=1 decode-like, extreme tall-skinny K/N vs M
+          (8, 64, 4096, 4096),    # production: transformer FFN hidden-dim GEMM (GPT-style)
+          (4, 128, 4096, 11008),  # production: Llama-7B FFN up-projection shape
+      ]

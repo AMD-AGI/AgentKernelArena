@@ -1,0 +1,43 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints:
+  channel: 256
+injections:
+  - file: pytorch_code_module/py_10190_FusedLeakyReLU.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 1],),          # edge-case: minimal single-element, degenerate dims
+              ([4, 256, 512, 512],),     # scale-up: H,W 4x larger than original max (128->512)
+              ([2, 2, 8, 8],),           # scale-down: all dims 2-4x smaller than original min
+              ([4, 37, 31, 31],),        # alignment-stress: C=37 prime, H=W=31 prime
+              ([3, 131, 17, 19],),       # alignment-stress: C=131 prime, H=17 W=19 primes
+              ([1, 4, 1, 65536],),       # asymmetric: H=1 extreme-wide spatial
+              ([8, 256, 56, 56],),       # production: ResNet-50 conv3 output
+              ([2, 128, 112, 112],),     # production: ResNet early-layer feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_10190_FusedLeakyReLU_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 1],),          # edge-case: minimal single-element, degenerate dims
+              ([4, 256, 512, 512],),     # scale-up: H,W 4x larger than original max (128->512)
+              ([2, 2, 8, 8],),           # scale-down: all dims 2-4x smaller than original min
+              ([4, 37, 31, 31],),        # alignment-stress: C=37 prime, H=W=31 prime
+              ([3, 131, 17, 19],),       # alignment-stress: C=131 prime, H=17 W=19 primes
+              ([1, 4, 1, 65536],),       # asymmetric: H=1 extreme-wide spatial
+              ([8, 256, 56, 56],),       # production: ResNet-50 conv3 output
+              ([2, 128, 112, 112],),     # production: ResNet early-layer feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

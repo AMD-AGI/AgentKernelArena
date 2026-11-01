@@ -1,0 +1,61 @@
+task_type: triton2triton
+num_original_shapes: 4
+injections:
+  - file: test_triton_sort.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.interpreter
+      @pytest.mark.parametrize("M_cols, N_rows", [[512, 1], [64, 8], [16, 256], [8, 512]])
+      @pytest.mark.parametrize("descending", [False, True])
+      @pytest.mark.parametrize("dtype_str", ['int32', 'float16', 'float32', 'bfloat16'])
+    replacement_code: |
+      @pytest.mark.interpreter
+      @pytest.mark.parametrize("M_cols, N_rows", [
+          [1, 1],          # edge-case: single element, degenerate 1x1 tile
+          [16384, 1],      # scale-up: 2x max original M_cols (8192)
+          [4, 2],          # scale-down: tiny 2x4 tile, minimal work
+          [32, 4],         # alignment-stress: small non-standard combo N=4 M=32
+          [2048, 2],       # alignment-stress: N=2 never tested in correctness
+          [2, 512],        # asymmetric: 512 rows x 2 cols, extreme tall-skinny ratio
+          [2048, 1],       # production: sort 2048 attention scores single query
+          [64, 128],       # production: 128 heads sorting head_dim=64
+      ])
+      @pytest.mark.parametrize("descending", [False, True])
+      @pytest.mark.parametrize("dtype_str", ['int32', 'float16', 'float32', 'bfloat16'])
+  - file: test_triton_sort.py
+    find_marker: "raw_replace"
+    old_code: |
+      SORT_TILE_SHAPES_FOR_PERF = [
+          # N_tile_rows, M_tile_cols (for the single tile processed by kernel)
+          (1, 1024), (1, 4096), (1, 8192), # Sorting long single rows
+          (8, 512), (8, 1024), (8, 2048),             # Sorting a few medium rows
+          (64, 128), (64, 256),            # Sorting more, shorter rows
+          (256, 64), (256, 128), (256, 256)
+      ]
+      SORT_DTYPES_FOR_PERF = ['int32', 'float16', 'float32', 'bfloat16'] 
+      SORT_DESCENDING_FOR_PERF = [False, True]
+      # NUM_WARPS_FOR_PERF = [1, 2, 4, 8]
+
+      @pytest.mark.parametrize("N_tile_rows, M_tile_cols", SORT_TILE_SHAPES_FOR_PERF)
+      @pytest.mark.parametrize("descending_val", SORT_DESCENDING_FOR_PERF)
+      @pytest.mark.parametrize("dtype_str", SORT_DTYPES_FOR_PERF)
+      # @pytest.mark.parametrize("num_warps_launch", NUM_WARPS_FOR_PERF) # Optional
+    replacement_code: |
+      SORT_TILE_SHAPES_FOR_PERF = [
+          (1, 1),          # edge-case: single element, degenerate 1x1 tile
+          (1, 16384),      # scale-up: 2x max original M_cols (8192)
+          (2, 4),          # scale-down: tiny 2x4 tile, minimal work
+          (4, 32),         # alignment-stress: small non-standard combo N=4 M=32
+          (2, 2048),       # alignment-stress: N=2 never tested in perf
+          (512, 2),        # asymmetric: 512 rows x 2 cols, extreme tall-skinny ratio
+          (1, 2048),       # production: sort 2048 attention scores single query
+          (128, 64),       # production: 128 heads sorting head_dim=64
+      ]
+      SORT_DTYPES_FOR_PERF = ['int32', 'float16', 'float32', 'bfloat16'] 
+      SORT_DESCENDING_FOR_PERF = [False, True]
+      # NUM_WARPS_FOR_PERF = [1, 2, 4, 8]
+
+      @pytest.mark.parametrize("N_tile_rows, M_tile_cols", SORT_TILE_SHAPES_FOR_PERF)
+      @pytest.mark.parametrize("descending_val", SORT_DESCENDING_FOR_PERF)
+      @pytest.mark.parametrize("dtype_str", SORT_DTYPES_FOR_PERF)
+      # @pytest.mark.parametrize("num_warps_launch", NUM_WARPS_FOR_PERF) # Optional

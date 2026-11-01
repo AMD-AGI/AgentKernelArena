@@ -1,0 +1,54 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints:
+  max_sequence_length: 4
+  embedding_dim: 4
+injections:
+  - file: pytorch_code_module/py_11122_PositionEmbedder.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate held-out test cases for PositionEmbedder.
+          Input shape: [batch_size, seq_length, embedding_size]
+          Constraints: embedding_size=4, seq_length<=4 (from get_init_inputs)
+          """
+          configs = [
+              ([1, 1, 4],),       # edge-case: batch=1, seq=1 minimal input
+              ([256, 4, 4],),     # scale-up: 4x batch vs original max of 64
+              ([2, 1, 4],),       # scale-down: batch=2 with minimal seq
+              ([37, 3, 4],),      # alignment-stress: prime batch=37
+              ([131, 2, 4],),     # alignment-stress: prime batch=131
+              ([1, 4, 4],),       # asymmetric: single-batch full seq_length
+              ([8, 4, 4],),       # production: small transformer batch=8, full seq
+              ([16, 2, 4],),      # production: mid-batch partial sequence
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              input_embeddings = torch.randn(shape_list, dtype=torch.float32)
+              yield [input_embeddings]
+  - file: pytorch_code_functional/py_11122_PositionEmbedder_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate held-out test cases for PositionEmbedder.
+          Input shape: [batch_size, seq_length, embedding_size]
+          Constraints: embedding_size=4, seq_length<=4 (from get_init_inputs)
+          """
+          configs = [
+              ([1, 1, 4],),       # edge-case: batch=1, seq=1 minimal input
+              ([256, 4, 4],),     # scale-up: 4x batch vs original max of 64
+              ([2, 1, 4],),       # scale-down: batch=2 with minimal seq
+              ([37, 3, 4],),      # alignment-stress: prime batch=37
+              ([131, 2, 4],),     # alignment-stress: prime batch=131
+              ([1, 4, 4],),       # asymmetric: single-batch full seq_length
+              ([8, 4, 4],),       # production: small transformer batch=8, full seq
+              ([16, 2, 4],),      # production: mid-batch partial sequence
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              input_embeddings = torch.randn(shape_list, dtype=torch.float32)
+              yield [input_embeddings]

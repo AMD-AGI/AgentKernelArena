@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 1, 64, 1, 1, 16),        # edge-case: batch=1, single head, seq_len=1, 1 split — stresses partial-tile (1 token vs BLOCK_N=64)
+          (16, 64, 8, 128, 2048, 16, 32),  # scale-up: 4x batch, 2x heads, 4x seq_len vs largest original
+          (1, 2, 2, 32, 16, 1, 8),         # scale-down: head_dim=32, seq=16, tiny page_size=8, minimal everything
+          (2, 16, 4, 64, 131, 3, 7),       # alignment-stress: prime seq_len=131 (not multiple of 64), prime page_size=7
+          (3, 8, 8, 96, 37, 5, 11),        # alignment-stress: head_dim=96 (non-power-of-2), prime seq=37, prime page_size=11
+          (1, 64, 1, 64, 4096, 2, 16),     # asymmetric: MQA with 64:1 head-to-kv ratio, long seq — extreme kv_group_num=64
+          (4, 32, 4, 128, 4096, 8, 16),    # production: Llama-2 7B GQA decode (32 heads, 4 kv_heads, hd=128, 4k context)
+          (8, 8, 8, 64, 2048, 4, 16),      # production: GPT-style MHA decode (8 heads, hd=64, 2k context, bs=8)
+      ]

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 64, 64),       # edge-case: single chunk, single head, dim==BLOCK_SIZE boundary
+          (64, 64, 512, 256),    # scale-up: 4x nchunks, 8x nheads, 2x dim, 2x chunk_size vs largest original
+          (2, 2, 32, 32),        # scale-down: all dimensions ~2-4x smaller than original minimums
+          (7, 11, 131, 37),      # alignment-stress: prime nchunks/nheads/dim/chunk_size, no power-of-2
+          (5, 13, 97, 67),       # alignment-stress: odd composites and primes, non-tile-aligned dim
+          (1, 8, 2048, 64),      # asymmetric: single chunk with very large dim (32x typical), tall-skinny
+          (32, 16, 128, 64),     # production: Mamba-like SSM prefill, 2x chunks of original shape 2
+          (8, 64, 256, 128),     # production: Mamba-2 large model, 64 heads, realistic dim/chunk_size
+      ]

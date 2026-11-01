@@ -1,0 +1,41 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints:
+  input_size: 4
+injections:
+  - file: pytorch_code_module/py_10024_Feedforward.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([32, 4], [32, 4]),      # edge-case: batch=32 equals common GPU warp size boundary
+              ([512, 4], [512, 4]),     # scale-up: 32x max original batch, vstack->1024 rows
+              ([1, 4], [2, 4]),         # scale-down: minimal mismatched batches, vstack->3 rows total
+              ([37, 4], [37, 4]),       # alignment-stress: prime batch, vstack->74 non-aligned rows
+              ([131, 4], [131, 4]),     # alignment-stress: prime batch, vstack->262 non-aligned rows
+              ([1, 4], [1024, 4]),      # asymmetric: extreme 1:1024 batch ratio, vstack->1025 rows
+              ([64, 4], [64, 4]),       # production: typical MLP mini-batch inference
+              ([256, 4], [256, 4]),     # production: MLP training batch size
+          ]
+          for x_shape, y_shape in configs:
+              x = torch.randn(x_shape, dtype=torch.float32)
+              y = torch.randn(y_shape, dtype=torch.float32)
+              yield [x, y]
+  - file: pytorch_code_functional/py_10024_Feedforward_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([32, 4], [32, 4]),      # edge-case: batch=32 equals common GPU warp size boundary
+              ([512, 4], [512, 4]),     # scale-up: 32x max original batch, vstack->1024 rows
+              ([1, 4], [2, 4]),         # scale-down: minimal mismatched batches, vstack->3 rows total
+              ([37, 4], [37, 4]),       # alignment-stress: prime batch, vstack->74 non-aligned rows
+              ([131, 4], [131, 4]),     # alignment-stress: prime batch, vstack->262 non-aligned rows
+              ([1, 4], [1024, 4]),      # asymmetric: extreme 1:1024 batch ratio, vstack->1025 rows
+              ([64, 4], [64, 4]),       # production: typical MLP mini-batch inference
+              ([256, 4], [256, 4]),     # production: MLP training batch size
+          ]
+          for x_shape, y_shape in configs:
+              x = torch.randn(x_shape, dtype=torch.float32)
+              y = torch.randn(y_shape, dtype=torch.float32)
+              yield [x, y]

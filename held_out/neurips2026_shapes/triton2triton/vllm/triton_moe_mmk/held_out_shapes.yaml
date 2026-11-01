@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 32, 64),         # edge-case: M=1 single-row, partial BLOCK_M tile (1 of 64)
+          (1024, 4096, 1024),   # scale-up: 2-4x all dims vs largest original (512,1024,512)
+          (16, 32, 16),         # scale-down: 2x smaller than smallest original (32,64,32)
+          (37, 131, 97),        # alignment-stress: all dims are primes, none divisible by 32/64
+          (67, 257, 131),       # alignment-stress: larger primes, no alignment to any tile size
+          (1, 64, 4096),        # asymmetric: M=1 decode-like, extreme N>>M ratio (4096:1)
+          (4096, 11008, 4096),  # production: Llama-7B FFN up-projection GEMM shape
+          (2048, 4096, 8192),   # production: Llama-style FFN (hidden_dim=4096, intermediate=8192)
+      ]

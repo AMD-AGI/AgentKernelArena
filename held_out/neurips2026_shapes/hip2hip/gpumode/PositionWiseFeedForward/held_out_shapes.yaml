@@ -1,0 +1,44 @@
+task_type: hip2hip
+num_original_shapes: 10
+init_constraints:
+  d_model: 4
+  hidden_size: 4
+injections:
+  - file: pytorch_code_module/py_14044_PositionWiseFeedForward.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 4],),         # edge-case: batch=1 seq=1, M=1 partial-tile
+              ([512, 512, 4],),     # scale-up: M=262144, 16x original max
+              ([2, 2, 4],),         # scale-down: M=4, well below original min
+              ([37, 131, 4],),      # alignment-stress: prime dims, M=4847
+              ([131, 37, 4],),      # alignment-stress: swapped primes, M=4847
+              ([1, 65536, 4],),     # asymmetric: batch=1, huge seq_len
+              ([8, 512, 4],),       # production: transformer batch=8 seq=512
+              ([2, 2048, 4],),      # production: long-context batch=2 seq=2048
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_14044_PositionWiseFeedForward_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 4],),         # edge-case: batch=1 seq=1, M=1 partial-tile
+              ([512, 512, 4],),     # scale-up: M=262144, 16x original max
+              ([2, 2, 4],),         # scale-down: M=4, well below original min
+              ([37, 131, 4],),      # alignment-stress: prime dims, M=4847
+              ([131, 37, 4],),      # alignment-stress: swapped primes, M=4847
+              ([1, 65536, 4],),     # asymmetric: batch=1, huge seq_len
+              ([8, 512, 4],),       # production: transformer batch=8 seq=512
+              ([2, 2048, 4],),      # production: long-context batch=2 seq=2048
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

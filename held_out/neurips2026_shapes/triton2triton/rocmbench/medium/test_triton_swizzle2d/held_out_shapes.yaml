@@ -1,0 +1,35 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: test_triton_swizzle2d.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("size_i, size_j, size_g", [[5, 7, 3]])
+    replacement_code: |
+      @pytest.mark.parametrize("size_i, size_j, size_g", [
+          (1, 1, 1),             # edge-case: minimal single-element grid
+          (1024, 1024, 64),      # scale-up: 4x area vs largest original shape
+          (4, 4, 2),             # scale-down: tiny grid, below all original perf shapes
+          (37, 131, 7),          # alignment-stress: all-prime dimensions
+          (131, 1019, 13),       # alignment-stress: large primes, stresses bounds-checking
+          (1, 2048, 1),          # asymmetric: single row, extremely wide
+          (384, 256, 32),        # production: GEMM grid tiles for 4096x11008 FFN
+          (96, 128, 16),         # production: GEMM grid tiles for 2048x8192 FFN
+      ])
+  - file: test_triton_swizzle2d.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("size_i_k, size_j_k, size_g_k", SWIZZLE_SHAPES_FOR_PERF)
+      @pytest.mark.parametrize("output_dtype_str", SWIZZLE_DTYPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("size_i_k, size_j_k, size_g_k", [
+          (1, 1, 1),             # edge-case: minimal single-element grid
+          (1024, 1024, 64),      # scale-up: 4x area vs largest original shape
+          (4, 4, 2),             # scale-down: tiny grid, below all original perf shapes
+          (37, 131, 7),          # alignment-stress: all-prime dimensions
+          (131, 1019, 13),       # alignment-stress: large primes, stresses bounds-checking
+          (1, 2048, 1),          # asymmetric: single row, extremely wide
+          (384, 256, 32),        # production: GEMM grid tiles for 4096x11008 FFN
+          (96, 128, 16),         # production: GEMM grid tiles for 2048x8192 FFN
+      ])
+      @pytest.mark.parametrize("output_dtype_str", SWIZZLE_DTYPES_FOR_PERF)

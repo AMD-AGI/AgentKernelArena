@@ -1,0 +1,57 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: test_batched_vecmat.py
+    find_marker: "raw_replace"
+    old_code: |
+      def test_vecmat(request, device='cuda'):
+          """
+          Test the batched vector-matrix multiplication kernel.
+
+          Args:
+              device: The device (e.g., 'cuda' or 'cpu') on which the test is executed.
+              request: Pytest request object used to retrieve the test case name.
+          """
+          set_seed()
+
+          M, N, K = 128, 128, 128
+          block_m, block_n, block_k = 16, 32, 64
+    replacement_code: |
+      @pytest.mark.parametrize("M, N, K, block_m, block_n, block_k", [
+          (16, 32, 64, 16, 32, 64),         # edge-case: single tile per dimension
+          (512, 512, 512, 16, 32, 64),       # scale-up: 4x all dims vs original 128
+          (32, 32, 64, 16, 32, 64),          # scale-down: 4x smaller than original
+          (48, 96, 192, 16, 32, 64),         # alignment-stress: 3 tiles per dim, non-power-of-2 counts
+          (112, 224, 448, 16, 32, 64),       # alignment-stress: 7 tiles per dim, prime tile count
+          (16, 2048, 64, 16, 32, 64),        # asymmetric: M=1 tile, very wide N=64 tiles
+          (64, 256, 128, 16, 32, 64),        # production: transformer hidden-dim projection
+          (256, 128, 512, 16, 32, 64),       # production: transformer FFN with large K reduction
+      ])
+      def test_vecmat(M, N, K, block_m, block_n, block_k, request, device='cuda'):
+          """
+          Test the batched vector-matrix multiplication kernel.
+
+          Args:
+              device: The device (e.g., 'cuda' or 'cpu') on which the test is executed.
+              request: Pytest request object used to retrieve the test case name.
+          """
+          set_seed()
+  - file: test_batched_vecmat.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("M, N, K", BV_SHAPES_FOR_PERF)
+      @pytest.mark.parametrize("block_m, block_n, block_k", BV_BLOCK_CONFIGS_FOR_PERF)
+      @pytest.mark.parametrize("dtype_str", BV_DTYPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("M, N, K", [
+          (16, 32, 64),         # edge-case: single tile per dimension
+          (512, 512, 512),      # scale-up: 4x all dims vs original 128
+          (32, 32, 64),         # scale-down: 4x smaller than original
+          (48, 96, 192),        # alignment-stress: 3 tiles per dim, non-power-of-2 counts
+          (112, 224, 448),      # alignment-stress: 7 tiles per dim, prime tile count
+          (16, 2048, 64),       # asymmetric: M=1 tile, very wide N=64 tiles
+          (64, 256, 128),       # production: transformer hidden-dim projection
+          (256, 128, 512),      # production: transformer FFN with large K reduction
+      ])
+      @pytest.mark.parametrize("block_m, block_n, block_k", BV_BLOCK_CONFIGS_FOR_PERF)
+      @pytest.mark.parametrize("dtype_str", BV_DTYPES_FOR_PERF)

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 2, 1),       # edge-case: batch=1, minimal tokens_per_req=2 (single valid token after rejection), stresses single-program-id grid
+          (128, 64, 4),     # scale-up: 4x num_reqs vs max original (32->128), 3x tokens_per_req, tests large grid dimension 0
+          (2, 3, 1),        # scale-down: 2x smaller tokens_per_req than smallest original, tiny workload per request
+          (7, 13, 3),       # alignment-stress: prime num_reqs=7, prime tokens_per_req=13, total_output=13+3+2+5=23 not aligned to any tile
+          (11, 37, 5),      # alignment-stress: prime num_reqs=11, prime tokens_per_req=37, num_pad=5 (prime), output per req ~47 not aligned to 128
+          (1, 512, 1),      # asymmetric: single request with very long sequence (512 tokens), tests many token blocks (axis=1) with single grid row
+          (4, 16, 2),       # production: EAGLE speculative decoding with 4 concurrent requests, 16 draft tokens each, typical vLLM batch
+          (8, 32, 4),       # production: 8 requests with 32 draft tokens and 4 parallel drafting slots, realistic high-throughput EAGLE config
+      ]

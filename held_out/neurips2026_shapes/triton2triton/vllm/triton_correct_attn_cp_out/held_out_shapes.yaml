@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 64, 2),        # edge-case: batch=1, head=1, minimal grid (single program)
+          (128, 128, 128, 16),   # scale-up: 4-8x B,H vs originals, 2x N, large grid
+          (1, 2, 64, 1),         # scale-down: N=1 single rank, minimal B, degenerate reduction
+          (7, 13, 64, 2),        # alignment-stress: B=7,H=13 primes, non-power-of-2 grid dims
+          (3, 37, 128, 4),       # alignment-stress: B=3,H=37 primes, odd grid partitioning
+          (1, 512, 64, 2),       # asymmetric: B=1 with H=512, extreme head-dominant aspect ratio
+          (4, 32, 128, 8),       # production: Llama-7B 8-way context parallelism prefill
+          (8, 64, 128, 8),       # production: Llama-65B style, 64 GQA heads, 8-way CP
+      ]

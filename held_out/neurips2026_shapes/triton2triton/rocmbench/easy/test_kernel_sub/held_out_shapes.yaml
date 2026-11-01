@@ -1,0 +1,40 @@
+task_type: triton2triton
+num_original_shapes: 6
+injections:
+  - file: test_kernel_sub.py
+    find_marker: "raw_replace"
+    old_code: |
+      @skip_if_no_target
+      @pytest.mark.parametrize("N_val", [1024, 4096, 16384])
+      @pytest.mark.parametrize("dtype_str", ["fp32", "fp16"])
+    replacement_code: |
+      @skip_if_no_target
+      @pytest.mark.parametrize("N_val, dtype_str", [
+          (32, "fp32"),       # edge-case: N=32, single-warp boundary, minimal arange
+          (131072, "fp32"),   # scale-up: 8x largest original N, stress non-tiled grid
+          (128, "fp16"),      # scale-down: 8x smaller than original min (1024)
+          (64, "fp16"),       # alignment-stress: exactly one AMD wavefront width
+          (256, "fp32"),      # alignment-stress: sub-1024 power-of-2, small allocation
+          (65536, "fp16"),    # asymmetric: large N with fp16, precision stress at scale
+          (8192, "fp32"),     # production: GPT-3 hidden dim size
+          (2048, "fp16"),     # production: GPT-2 medium hidden dim size
+      ])
+  - file: test_kernel_sub.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("N_val", KERNEL_SUB_N_VALS_FOR_PERF)
+      @pytest.mark.parametrize("dtype_str", KERNEL_SUB_DTYPES_FOR_PERF)
+      @pytest.mark.parametrize("num_warps_launch", KERNEL_SUB_NUM_WARPS_FOR_PERF)
+      @skip_if_no_target 
+    replacement_code: |
+      @pytest.mark.parametrize("N_val, dtype_str, num_warps_launch", [
+          (32, "fp32", 1),       # edge-case: N=32, single-warp boundary, minimal arange
+          (131072, "fp32", 4),   # scale-up: 8x largest original N, stress non-tiled grid
+          (128, "fp16", 1),      # scale-down: 8x smaller than original min (1024)
+          (64, "fp16", 8),       # alignment-stress: exactly one AMD wavefront width, 8 warps
+          (256, "fp32", 8),      # alignment-stress: sub-1024 power-of-2, unusual warp count
+          (65536, "fp16", 8),    # asymmetric: large N with fp16, precision stress at scale
+          (8192, "fp32", 8),     # production: GPT-3 hidden dim size, 8 warps
+          (2048, "fp16", 8),     # production: GPT-2 medium hidden dim size, 8 warps
+      ])
+      @skip_if_no_target 

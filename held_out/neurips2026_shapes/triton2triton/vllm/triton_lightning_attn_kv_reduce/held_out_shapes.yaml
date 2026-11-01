@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 1, 16, 16),          # edge-case: batch=1, heads=1, seq=1 single-element partial block
+          (4, 8, 2048, 128, 128),      # scale-up: N=2048 is 8x max original, large D and E
+          (1, 1, 16, 16, 16),          # scale-down: all dims minimal, N=16 far below original range
+          (2, 4, 131, 64, 64),         # alignment-stress: N=131 prime, not multiple of any tile size
+          (1, 2, 1019, 32, 32),        # alignment-stress: N=1019 prime, large partial final block
+          (1, 1, 4096, 16, 256),       # asymmetric: D=16 vs E=256 extreme aspect ratio, long seq
+          (8, 32, 2048, 64, 64),       # production: Llama-style 8-batch 32-head prefill
+          (2, 16, 4096, 128, 128),     # production: large transformer prefill seq_len=4096
+      ]

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 64, 4, 8, 32, 1, 1),        # edge-case: M=1 single token, top_k=1, partial BLOCK_SIZE_M=64 tile
+          (512, 2048, 16, 64, 1024, 8, 2), # scale-up: 4x M, 2x K/experts/rank/out_dim vs largest original
+          (2, 32, 2, 4, 16, 1, 1),         # scale-down: all dims 2-4x smaller than smallest original
+          (37, 131, 4, 13, 67, 2, 2),      # alignment-stress: prime M=37, K=131, rank=13, out_dim=67
+          (19, 97, 8, 11, 41, 4, 2),       # alignment-stress: prime M=19, K=97, rank=11, out_dim=41
+          (1, 2048, 4, 8, 1024, 2, 2),     # asymmetric: M=1 decode-like with large K=2048, out_dim=1024
+          (256, 4096, 8, 16, 512, 4, 2),   # production: medium transformer MoE-LoRA (4096 hidden, rank-16, 8 experts)
+          (64, 2048, 8, 32, 256, 8, 2),    # production: multi-adapter serving (8 LoRAs, 2048 hidden, rank-32)
+      ]

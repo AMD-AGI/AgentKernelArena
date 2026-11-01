@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 16, 1, 8, 8, 64, 16),          # edge-case: query_len=1 single-token prefill, ctx_len=block_size boundary
+          (4, 2048, 256, 32, 8, 128, 32),     # scale-up: ctx_len 4x largest original, large GQA config
+          (1, 16, 8, 4, 4, 32, 8),            # scale-down: all dims ~4x smaller, head_dim=32, block_size=8
+          (1, 131, 37, 8, 8, 64, 16),         # alignment-stress: prime ctx_len=131 and query_len=37
+          (2, 97, 67, 16, 4, 96, 24),         # alignment-stress: prime ctx/query, non-power-of-2 head_dim=96 and block_size=24
+          (1, 2048, 1, 32, 1, 64, 16),        # asymmetric: long ctx=2048 with single query, MQA 32:1 ratio
+          (2, 2048, 512, 32, 8, 128, 32),     # production: Llama-2-13B-like GQA prefill
+          (8, 512, 128, 16, 2, 64, 16),       # production: Falcon-like batched GQA prefill
+      ]

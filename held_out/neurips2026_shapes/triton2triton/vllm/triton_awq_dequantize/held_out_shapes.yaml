@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (32, 4, 32),                # edge-case: minimal K=group_size, N_packed=4 single-group boundary
+          (1024, 128, 128),            # scale-up: K=1024 N_packed=128, 4x largest original dimensions
+          (32, 2, 32),                 # scale-down: K=32 N_packed=2, minimal viable sizes ~4x smaller
+          (128, 37, 64),               # alignment-stress: prime N_packed=37, non-power-of-2 columns
+          (192, 131, 64),              # alignment-stress: prime N_packed=131, K=192 not power-of-2
+          (64, 1, 64),                 # asymmetric: N_packed=1 (8 output cols) vs K=64 rows, extreme tall-skinny
+          (512, 64, 128),              # production: Llama-style AWQ 4-bit dequant, 512 input dim, 512 output dim
+          (256, 48, 32),               # production: AWQ dequant for mid-size FFN layer, N=384, K=256
+      ]

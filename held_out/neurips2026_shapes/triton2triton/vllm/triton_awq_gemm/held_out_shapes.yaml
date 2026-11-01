@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 32, 4, 32, 1),        # edge-case: M=1 single-row, minimal K=group_size
+          (512, 1024, 128, 128, 1),  # scale-up: 4x M/K/N vs originals
+          (8, 32, 2, 32, 1),         # scale-down: 4x smaller than smallest original
+          (37, 128, 13, 64, 1),      # alignment-stress: prime M=37, N=104 non-power-of-2
+          (131, 256, 19, 128, 1),    # alignment-stress: prime M=131, N=152 non-aligned
+          (1, 512, 256, 128, 1),     # asymmetric: M=1 x N=2048 extreme wide decode
+          (16, 4096, 512, 128, 2),   # production: Llama-7B FFN 4096x4096 w/ split_k=2
+          (4, 2048, 1024, 128, 1),   # production: Llama-2 FFN gate proj 2048x8192
+      ]

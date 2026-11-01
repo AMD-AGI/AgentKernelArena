@@ -1,0 +1,44 @@
+task_type: torch2hip
+num_original_shapes: 4
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_10099_Gather.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1], 0, [1]),                   # edge-case: single-element tensor and index
+              ([65536], 0, [32768]),            # scale-up: 16x larger than original 1D
+              ([16], 0, [4]),                   # scale-down: 16x smaller than smallest original 1D
+              ([131, 37], 0, [67]),             # alignment-stress: all-prime dimensions 2D
+              ([1019], 0, [503]),               # alignment-stress: prime 1D sizes
+              ([4, 65536], 0, [1]),             # asymmetric: very wide matrix, gather 1 row
+              ([512, 768], 0, [128]),           # production: transformer embedding lookup
+              ([2048, 256], 0, [64]),           # production: large-batch embedding gather
+          ]
+
+          for input_shape, dim, indices_shape in configs:
+              x = torch.randn(input_shape, dtype=torch.float32)
+              axis_size = input_shape[dim]
+              indices = torch.randint(0, axis_size, indices_shape, dtype=torch.int64)
+              yield [x, indices]
+  - file: pytorch_code_functional/py_10099_Gather_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1], 0, [1]),                   # edge-case: single-element tensor and index
+              ([65536], 0, [32768]),            # scale-up: 16x larger than original 1D
+              ([16], 0, [4]),                   # scale-down: 16x smaller than smallest original 1D
+              ([131, 37], 0, [67]),             # alignment-stress: all-prime dimensions 2D
+              ([1019], 0, [503]),               # alignment-stress: prime 1D sizes
+              ([4, 65536], 0, [1]),             # asymmetric: very wide matrix, gather 1 row
+              ([512, 768], 0, [128]),           # production: transformer embedding lookup
+              ([2048, 256], 0, [64]),           # production: large-batch embedding gather
+          ]
+
+          for input_shape, dim, indices_shape in configs:
+              x = torch.randn(input_shape, dtype=torch.float32)
+              axis_size = input_shape[dim]
+              indices = torch.randint(0, axis_size, indices_shape, dtype=torch.int64)
+              yield [x, indices]

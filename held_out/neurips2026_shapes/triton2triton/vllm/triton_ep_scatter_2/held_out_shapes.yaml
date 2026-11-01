@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 64, 2, 1),        # edge-case: single token, single topk, minimal batch
+          (1024, 2048, 32, 2),   # scale-up: 4x tokens, 4x hidden, 2x experts vs largest original
+          (4, 32, 2, 1),         # scale-down: 4x smaller tokens and hidden than smallest original
+          (37, 131, 8, 2),       # alignment-stress: prime num_tokens=37, prime hidden=131
+          (53, 257, 5, 3),       # alignment-stress: prime tokens=53, non-pow2 hidden=257, odd experts/topk
+          (1, 4096, 8, 2),       # asymmetric: single token with very large hidden dimension
+          (128, 256, 64, 2),     # production: MoE scatter for Mixtral-style 64-expert model
+          (512, 512, 8, 4),      # production: large batch with topk=4 expert routing
+      ]

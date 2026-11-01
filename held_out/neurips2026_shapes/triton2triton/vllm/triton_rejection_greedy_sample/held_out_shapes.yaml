@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 1),         # edge-case: batch=1, single draft token, minimal spec_len
+          (256, 16, 128),     # scale-up: 4x batch, 2x draft and spec_len vs largest original
+          (2, 1, 2),          # scale-down: near-minimal multi-batch, single draft token
+          (37, 7, 13),        # alignment-stress: all-prime dimensions, no power-of-2 alignment
+          (131, 3, 17),       # alignment-stress: prime batch=131, prime max_spec_len=17
+          (1024, 1, 1),       # asymmetric: massive batch with trivial per-request work
+          (8, 5, 8),          # production: typical vLLM spec-decode serving batch
+          (4, 7, 10),         # production: deeper speculation depth (Medusa-style)
+      ]

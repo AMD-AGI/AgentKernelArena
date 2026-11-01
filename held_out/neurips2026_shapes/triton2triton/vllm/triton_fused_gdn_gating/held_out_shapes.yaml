@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1),          # edge-case: batch=1, num_heads=1, single-element degenerate
+          (512, 512),      # scale-up: 4x batch and 4x heads vs largest original
+          (4, 3),          # scale-down: 4x smaller batch and heads than smallest original
+          (37, 131),       # alignment-stress: both dims prime, not multiples of 8
+          (97, 43),        # alignment-stress: prime batch and prime heads, partial BLK_HEADS tile
+          (1, 4096),       # asymmetric: single-batch with very large head count
+          (8, 64),         # production: Qwen3/Mamba-style GDN with 64 heads, batch=8
+          (4, 32),         # production: Llama-style GDN decode with 32 heads, batch=4
+      ]

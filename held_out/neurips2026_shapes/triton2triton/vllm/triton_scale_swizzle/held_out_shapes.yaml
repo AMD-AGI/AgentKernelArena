@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (384, 4),       # edge-case: 3 row-blocks, single col-block (minimal cols)
+          (4096, 128),    # scale-up: 8x rows and 16x cols vs largest original
+          (128, 12),      # scale-down: near-minimum rows, total elements 2.7x smaller than largest original
+          (256, 52),      # alignment-stress: cols=52 not divisible by 32/64/128 (13*4)
+          (640, 36),      # alignment-stress: rows=640 (5*128), cols=36 not multiple of 32/64
+          (128, 2048),    # asymmetric: 1 row-block x 512 col-blocks, extreme col-dominant ratio (1:16)
+          (1024, 32),     # production: MX-format scale tensor for 1024x128 weight tile (FP8 GEMM)
+          (2048, 64),     # production: MX-format scale tensor for 2048x256 weight matrix (LLM FC layer)
+      ]

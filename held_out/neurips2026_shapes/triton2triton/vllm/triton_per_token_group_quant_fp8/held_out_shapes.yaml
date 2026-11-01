@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 128, 128),        # edge-case: single token, single group per row
+          (1024, 4096, 128),    # scale-up: 4x M and 4x N vs originals
+          (4, 64, 32),          # scale-down: 8x smaller M, small group_size=32
+          (37, 384, 128),       # alignment-stress: prime M=37
+          (131, 768, 256),      # alignment-stress: prime M=131, large group_size=256
+          (1, 8192, 128),       # asymmetric: single token, very wide N=8192 (64 groups)
+          (512, 4096, 128),     # production: LLaMA-7B hidden_dim=4096 prefill
+          (8, 11008, 64),       # production: LLaMA-7B FFN intermediate dim decode
+      ]

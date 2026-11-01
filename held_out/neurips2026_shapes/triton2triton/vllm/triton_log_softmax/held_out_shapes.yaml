@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1024),        # edge-case: single row, cols == BLOCK_SIZE boundary
+          (2048, 16384),    # scale-up: 4x rows and 4x cols vs largest original
+          (4, 16),          # scale-down: 8x smaller rows and cols than smallest original
+          (37, 1019),       # alignment-stress: both dims prime, no tile alignment
+          (131, 4003),      # alignment-stress: larger primes, partial tiles at scale
+          (1, 65536),       # asymmetric: single row with massive column count
+          (2048, 32000),    # production: vocab log_softmax (batch*seq=4*512, vocab=32000)
+          (4096, 2048),     # production: attention scores (batch*heads*seq=2*16*128, seq=2048)
+      ]

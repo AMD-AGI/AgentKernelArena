@@ -1,0 +1,43 @@
+task_type: triton2triton
+num_original_shapes: 16
+injections:
+  - file: test_randn.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.interpreter
+      @pytest.mark.parametrize('size, seed, dtype, const_seed', [(size, seed, dtype, const_seed)
+                                                                 for size in [100000]
+                                                                 for seed in [0, 42, 124, 54]
+                                                                 for dtype in ['int32', 'int64']
+                                                                 for const_seed in [True, False]])
+    replacement_code: |
+      @pytest.mark.interpreter
+      @pytest.mark.parametrize('size, seed, dtype, const_seed', [
+          (100001, 1, 'int32', False),      # edge-case: size just above 100000, partial tile with 673 elements in last block
+          (400000, 99, 'int64', True),       # scale-up: 4x original size
+          (25000, 13, 'int32', True),        # scale-down: 4x smaller than original size
+          (100003, 0, 'int64', False),       # alignment-stress: prime size, not aligned to any tile boundary
+          (131071, 42, 'int32', True),       # alignment-stress: Mersenne prime 2^17-1
+          (65537, 7, 'int64', False),        # asymmetric: Fermat prime 2^16+1, 64 full blocks + 1 partial element
+          (100352, 0, 'int32', True),        # production: NCHW N=8 C=64 H=W=14 flattened
+          (200704, 42, 'int64', False),      # production: NCHW N=4 C=256 H=W=14 flattened
+      ])
+  - file: test_randn.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("size_val", RAND_SIZES_FOR_PERF)
+      @pytest.mark.parametrize("seed_val", RAND_SEEDS_FOR_PERF)
+      @pytest.mark.parametrize("offset_tl_dtype_str", RAND_OFFSET_DTYPES_FOR_PERF)
+      @pytest.mark.parametrize("const_seed_bool", RAND_CONST_SEED_BOOL_FOR_PERF)
+      # @pytest.mark.parametrize("num_warps_val", NUM_WARPS_FOR_PERF) # Can add back if desired
+    replacement_code: |
+      @pytest.mark.parametrize("size_val, seed_val, offset_tl_dtype_str, const_seed_bool", [
+          (100001, 1, 'int32', False),      # edge-case: size just above 100000, partial tile with 673 elements in last block
+          (400000, 99, 'int64', True),       # scale-up: 4x original size
+          (25000, 13, 'int32', True),        # scale-down: 4x smaller than original size
+          (100003, 0, 'int64', False),       # alignment-stress: prime size, not aligned to any tile boundary
+          (131071, 42, 'int32', True),       # alignment-stress: Mersenne prime 2^17-1
+          (65537, 7, 'int64', False),        # asymmetric: Fermat prime 2^16+1, 64 full blocks + 1 partial element
+          (100352, 0, 'int32', True),        # production: NCHW N=8 C=64 H=W=14 flattened
+          (200704, 42, 'int64', False),      # production: NCHW N=4 C=256 H=W=14 flattened
+      ])

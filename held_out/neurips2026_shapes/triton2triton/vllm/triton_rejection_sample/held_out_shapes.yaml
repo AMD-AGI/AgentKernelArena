@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1),       # edge-case: batch=1 with single speculative step, minimal grid
+          (256, 10),    # scale-up: 4x num_reqs and ~2x spec steps vs largest original
+          (2, 2),       # scale-down: 2x smaller num_reqs and half the min spec steps
+          (37, 7),      # alignment-stress: prime num_reqs=37, odd composite spec steps
+          (13, 11),     # alignment-stress: prime num_reqs=13 and prime spec steps=11
+          (1, 63),      # asymmetric: single request with very long 63-step speculation chain
+          (8, 3),       # production: typical Medusa-style 3-step draft with batch=8
+          (4, 5),       # production: SpecInfer-style 5-step draft with small batch=4
+      ]

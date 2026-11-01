@@ -1,0 +1,42 @@
+task_type: torch2hip
+num_original_shapes: 11
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_11184_Sigmoid.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1],),                         # edge-case: single element, partial-tile stress
+              ([32, 512, 128, 128],),         # scale-up: 4x batch and channels vs largest original
+              ([4, 8],),                      # scale-down: 32 elements, far below smallest original
+              ([37, 131],),                   # alignment-stress: both dims are prime
+              ([3, 67, 127, 127],),           # alignment-stress: odd batch, prime spatial dims
+              ([1, 65536],),                  # asymmetric: single row, very wide vector
+              ([8, 512, 56, 56],),            # production: ResNet-50 conv3 feature map
+              ([2, 1024, 14, 14],),           # production: ResNet-50 conv5 feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_11184_Sigmoid_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1],),                         # edge-case: single element, partial-tile stress
+              ([32, 512, 128, 128],),         # scale-up: 4x batch and channels vs largest original
+              ([4, 8],),                      # scale-down: 32 elements, far below smallest original
+              ([37, 131],),                   # alignment-stress: both dims are prime
+              ([3, 67, 127, 127],),           # alignment-stress: odd batch, prime spatial dims
+              ([1, 65536],),                  # asymmetric: single row, very wide vector
+              ([8, 512, 56, 56],),            # production: ResNet-50 conv3 feature map
+              ([2, 1024, 14, 14],),           # production: ResNet-50 conv5 feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

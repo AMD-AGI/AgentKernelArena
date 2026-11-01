@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (64, 1, 32, 1, 16, 64),       # edge-case: nheads=1, single chunk (nchunks=1), chunk_size=BLOCK_SIZE_M boundary
+          (2048, 16, 128, 8, 64, 128),   # scale-up: 4-8x seqlen, 2-4x headdim/dstate vs originals
+          (32, 2, 16, 1, 8, 32),         # scale-down: 4x smaller seqlen/headdim/dstate than smallest original
+          (259, 4, 37, 1, 16, 37),       # alignment-stress: prime chunk_size=37 and prime headdim=37
+          (427, 7, 41, 1, 19, 61),       # alignment-stress: prime chunk_size=61, headdim=41, dstate=19
+          (4096, 2, 16, 1, 16, 64),      # asymmetric: very long seq (64 chunks) with tiny headdim=16, 2 heads
+          (512, 16, 64, 4, 32, 64),      # production: Mamba-2 370M-scale SSM prefill config
+          (1024, 32, 128, 8, 64, 128),   # production: Mamba-2 1.3B-scale SSM prefill config
+      ]

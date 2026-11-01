@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 1, 32, 32),          # edge-case: batch=1, heads=1, seq=1 single-element degenerate
+          (2, 8, 1024, 128, 128),      # scale-up: 4x max original seq_len (1024 vs 256)
+          (1, 1, 16, 16, 16),          # scale-down: 4x smaller seq and head dims than original minimum
+          (1, 4, 131, 64, 64),         # alignment-stress: prime seq_len=131 not multiple of any tile size
+          (2, 2, 300, 32, 32),         # alignment-stress: seq_len=300 misaligned with BLOCK=256, CBLOCK=32
+          (1, 1, 4096, 16, 16),        # asymmetric: very long seq with tiny head dims (256:1 ratio)
+          (2, 32, 2048, 128, 128),     # production: Llama-2-style prefill, 32 heads, seq=2048, d=128
+          (8, 16, 512, 64, 64),        # production: GPT-style batch=8, 16 heads, seq=512, d=64
+      ]

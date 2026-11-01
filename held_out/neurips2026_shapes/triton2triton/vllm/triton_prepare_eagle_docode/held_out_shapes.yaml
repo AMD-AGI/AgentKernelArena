@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 128, 512, 2),          # edge-case: batch=1, total_tokens=1, minimal inputs
+          (256, 4096, 4096, 16384, 512), # scale-up: 4x num_reqs/total_tokens/hidden_size vs largest original
+          (2, 4, 64, 256, 4),            # scale-down: ~4x smaller than smallest original across all dims
+          (7, 37, 131, 1019, 13),        # alignment-stress: all prime dimensions, no tile alignment
+          (11, 67, 1019, 4003, 23),      # alignment-stress: odd composites and primes, misaligned for BLOCK_SIZE=1024
+          (1, 8192, 256, 16384, 2),      # asymmetric: single request but very large total_tokens pool
+          (8, 128, 4096, 4096, 16),      # production: Llama-7B decode, hidden_size=4096
+          (4, 64, 5120, 8192, 8),        # production: Llama-13B decode, hidden_size=5120
+      ]

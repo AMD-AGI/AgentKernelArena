@@ -1,0 +1,44 @@
+task_type: triton2triton
+num_original_shapes: 72
+injections:
+  - file: test_random_int.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('size, seed, dtype, const_seed', [(size, seed, dtype, const_seed)
+                                                                 for size_str in ['10', '4,53', '400'] # Renamed to size_str
+                                                                 for size in [[int(s) for s in size_str.split(',')]] # Process size here
+                                                                 for seed in [0, 42, 124, 54, 0xffffffff, 0x0000000fcafeb0ba]
+                                                                 for dtype in ['int32', 'int64']
+                                                                 for const_seed in [True, False]])
+    replacement_code: |
+      @pytest.mark.parametrize('size, seed, dtype, const_seed', [
+          ([1], 42, 'int32', True),                # edge-case: single element, partial tile 1/1024
+          ([16777216], 0, 'int32', False),          # scale-up: 2^24=16M elements, 4x largest perf size
+          ([3], 124, 'int64', True),                # scale-down: only 3 elements, minimal workload
+          ([37, 131], 54, 'int32', False),          # alignment-stress: prime dims, N=4847 not multiple of 1024
+          ([1019], 42, 'int64', True),              # alignment-stress: prime size, no tile alignment
+          ([1, 65537], 0, 'int64', False),          # asymmetric: 1x65537 highly skewed shape
+          ([4096], 42, 'int32', True),              # production: common FFN hidden dimension
+          ([2, 1024], 0, 'int64', False),           # production: batch=2, embedding dim 1024
+      ])
+  - file: test_random_int.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("size_val", RANDINT_SIZES_FOR_PERF)
+      @pytest.mark.parametrize("seed_val", RANDINT_SEEDS_FOR_PERF)
+      @pytest.mark.parametrize("output_dtype_str", RANDINT_OUTPUT_DTYPES_FOR_PERF)
+      @pytest.mark.parametrize("const_seed_bool", RANDINT_CONST_SEED_BOOL_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("size_val", [
+          1025,       # edge-case: just above BLOCK=1024, 2 blocks with 1-element partial tile
+          33554432,   # scale-up: 2^25=32M elements, 4x max original perf size
+          4096,       # scale-down: 2^12, 16x smaller than min original perf size
+          131071,     # alignment-stress: Mersenne prime 2^17-1, no tile alignment
+          1000003,    # alignment-stress: prime ~1M, stresses masking logic
+          65537,      # asymmetric: Fermat prime, just above 2^16 boundary
+          4194560,    # production: 4096*1024, realistic FFN layer output count
+          3145728,    # production: 3*2^20=3M, realistic batch processing size
+      ])
+      @pytest.mark.parametrize("seed_val", RANDINT_SEEDS_FOR_PERF)
+      @pytest.mark.parametrize("output_dtype_str", RANDINT_OUTPUT_DTYPES_FOR_PERF)
+      @pytest.mark.parametrize("const_seed_bool", RANDINT_CONST_SEED_BOOL_FOR_PERF)

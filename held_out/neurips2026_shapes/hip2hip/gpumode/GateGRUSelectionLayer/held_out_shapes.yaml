@@ -1,0 +1,45 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints:
+  dim_model: 4
+injections:
+  - file: pytorch_code_module/py_5334_GateGRUSelectionLayer.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 4],),        # edge-case: minimal single-element batch, numel=4
+              ([256, 16, 16, 4],),     # scale-up: N=65536, ~60x largest original
+              ([2, 2, 2, 4],),         # scale-down: N=8, numel=32, well below originals
+              ([37, 3, 1, 4],),        # alignment-stress: N=111, numel=444, not multiple of 32/64/128/256
+              ([131, 1, 1, 4],),       # alignment-stress: N=131 (prime), numel=524
+              ([1, 1, 16384, 4],),     # asymmetric: B0=B1=1, B2=16384, extreme skew
+              ([8, 12, 128, 4],),      # production: batch=8, heads=12, seq=128 GRU gating
+              ([16, 8, 64, 4],),       # production: batch=16, heads=8, seq=64 multi-head GRU
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x_1 = torch.randn(shape_list, dtype=torch.float32)
+              x_2 = torch.randn(shape_list, dtype=torch.float32)
+              yield [x_1, x_2]
+  - file: pytorch_code_functional/py_5334_GateGRUSelectionLayer_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 4],),        # edge-case: minimal single-element batch, numel=4
+              ([256, 16, 16, 4],),     # scale-up: N=65536, ~60x largest original
+              ([2, 2, 2, 4],),         # scale-down: N=8, numel=32, well below originals
+              ([37, 3, 1, 4],),        # alignment-stress: N=111, numel=444, not multiple of 32/64/128/256
+              ([131, 1, 1, 4],),       # alignment-stress: N=131 (prime), numel=524
+              ([1, 1, 16384, 4],),     # asymmetric: B0=B1=1, B2=16384, extreme skew
+              ([8, 12, 128, 4],),      # production: batch=8, heads=12, seq=128 GRU gating
+              ([16, 8, 64, 4],),       # production: batch=16, heads=8, seq=64 multi-head GRU
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x_1 = torch.randn(shape_list, dtype=torch.float32)
+              x_2 = torch.randn(shape_list, dtype=torch.float32)
+              yield [x_1, x_2]

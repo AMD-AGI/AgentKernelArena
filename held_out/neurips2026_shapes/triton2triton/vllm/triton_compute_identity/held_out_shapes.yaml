@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 256, 1),        # edge-case: batch=1, hidden_dim=1×BLOCK_SIZE, single expert
+          (2048, 8192, 2),    # scale-up: 4× num_tokens and 2× hidden_dim vs largest original
+          (4, 256, 2),        # scale-down: 8× fewer tokens than smallest original shape
+          (37, 768, 3),       # alignment-stress: prime num_tokens=37, top_k=3 odd
+          (131, 1280, 5),     # alignment-stress: prime num_tokens=131, hidden_dim=5×256 non-power-of-2, top_k=5
+          (1, 8192, 2),       # asymmetric: single token with very wide hidden_dim (32×BLOCK_SIZE)
+          (8, 4096, 8),       # production: Mixtral-8×7B MoE top-8 identity, prefill batch=8
+          (4, 2048, 2),       # production: Llama-3-MoE decode batch=4, hidden=2048, top_k=2
+      ]

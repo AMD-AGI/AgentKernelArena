@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (32, [1], 2, False, None),                          # edge-case: batch=1, seqlen=1, min width=2, no bias, no activation
+          (512, [128, 128, 64, 64, 64, 64], 4, True, "silu"), # scale-up: dim=512, cu_seqlen=512, batch=6, 4x+ dim and seqlen
+          (16, [2, 2], 3, True, "silu"),                       # scale-down: dim=16 (4x smaller), tiny seqlens
+          (131, [37, 19], 4, True, "silu"),                    # alignment-stress: prime dim=131, prime seqlen=37
+          (97, [11, 7, 5], 5, False, "silu"),                  # alignment-stress: prime dim=97, odd seqlens, width=5
+          (256, [1, 1, 1, 1, 1, 1, 1, 1], 4, True, "silu"),   # asymmetric: dim=256 >> seqlen=1 per seq, 8 single-token batches
+          (192, [64, 64], 4, True, "silu"),                    # production: Mamba-like dim=192, prefill seqlen=64, batch=2
+          (384, [16, 16, 16, 16], 4, False, "silu"),           # production: Mamba-370M dim=384, decode batch=4, width=4
+      ]

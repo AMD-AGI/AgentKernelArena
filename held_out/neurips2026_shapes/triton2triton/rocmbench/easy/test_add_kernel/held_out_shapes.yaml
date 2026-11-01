@@ -1,0 +1,37 @@
+task_type: triton2triton
+num_original_shapes: 2
+injections:
+  - file: test_add_kernel.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('SIZE,BLOCK_SIZE,dtype_str',
+                               [(98432, 1024, dtype_str) for dtype_str in ['float16', 'float32']])
+    replacement_code: |
+      @pytest.mark.parametrize('SIZE,BLOCK_SIZE,dtype_str', [
+          (1025, 1024, 'float32'),       # edge-case: SIZE just 1 over BLOCK_SIZE, partial-tile stress
+          (8388608, 1024, 'float16'),     # scale-up: 8x largest original SIZE
+          (4096, 1024, 'float32'),        # scale-down: ~24x smaller than original 98432
+          (131071, 1024, 'float16'),      # alignment-stress: Mersenne prime 2^17-1
+          (1000003, 2048, 'float32'),     # alignment-stress: large prime, not aligned to any tile size
+          (1, 1024, 'float16'),           # asymmetric: single element vs large BLOCK_SIZE
+          (802816, 1024, 'float16'),      # production: NCHW N=1,C=256,H=W=56 element-wise
+          (3211264, 2048, 'float32'),     # production: NCHW N=8,C=128,H=W=56 element-wise
+      ])
+  - file: test_add_kernel.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('SIZE,BLOCK_SIZE_ARG,dtype_str', # BLOCK_SIZE_ARG is the pytest param name
+                               [(98432, 1024, dtype_str) for dtype_str in ['float16', 'float32']] +
+                               [(1048576, 2048, dtype_str) for dtype_str in ['float16', 'float32']]
+                              )
+    replacement_code: |
+      @pytest.mark.parametrize('SIZE,BLOCK_SIZE_ARG,dtype_str', [
+          (1025, 1024, 'float32'),       # edge-case: SIZE just 1 over BLOCK_SIZE, partial-tile stress
+          (8388608, 1024, 'float16'),     # scale-up: 8x largest original SIZE
+          (4096, 1024, 'float32'),        # scale-down: ~24x smaller than original 98432
+          (131071, 1024, 'float16'),      # alignment-stress: Mersenne prime 2^17-1
+          (1000003, 2048, 'float32'),     # alignment-stress: large prime, not aligned to any tile size
+          (1, 1024, 'float16'),           # asymmetric: single element vs large BLOCK_SIZE
+          (802816, 1024, 'float16'),      # production: NCHW N=1,C=256,H=W=56 element-wise
+          (3211264, 2048, 'float32'),     # production: NCHW N=8,C=128,H=W=56 element-wise
+      ])

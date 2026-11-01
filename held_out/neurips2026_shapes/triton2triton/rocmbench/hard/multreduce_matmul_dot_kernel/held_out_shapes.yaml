@@ -1,0 +1,43 @@
+task_type: triton2triton
+num_original_shapes: 7
+injections:
+  - file: multreduce_matmul_dot_kernel.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("use_bias", [False, True])  
+      @pytest.mark.parametrize("M, N, K", get_target_shapes())  
+      def test_matmul(M: int, N: int, K: int, use_bias: bool,request) -> None:
+    replacement_code: |
+      @pytest.mark.parametrize("use_bias", [False, True])
+      @pytest.mark.parametrize("M, N, K", [
+          (1, 16, 128),          # edge-case: N=BLOCK_SIZE_N, K=BLOCK_SIZE_K boundary
+          (8, 32768, 16384),     # scale-up: 4x largest N, stresses grid sizing
+          (1, 8, 16),            # scale-down: minimal N and K, well below all original shapes
+          (3, 131, 1019),        # alignment-stress: prime N and K, not multiple of any tile
+          (5, 4003, 37),         # alignment-stress: large prime N, small prime K
+          (1, 65536, 64),        # asymmetric: extreme N>>K ratio (1024x), decode-like
+          (8, 4096, 11008),      # production: Llama-7B FFN down-proj shape
+          (4, 8192, 2048),       # production: transformer FFN intermediate shape
+      ])
+      def test_matmul(M: int, N: int, K: int, use_bias: bool,request) -> None:
+  - file: multreduce_matmul_dot_kernel.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("use_bias", [False, True])
+      @pytest.mark.parametrize("M, N, K", get_target_shapes_for_perf())
+      @pytest.mark.parametrize("dtype_str", GEMM_DTYPES_FOR_PERF)
+      def test_performance(M: int, N: int, K: int, use_bias: bool, dtype_str: str, request) -> None:
+    replacement_code: |
+      @pytest.mark.parametrize("use_bias", [False, True])
+      @pytest.mark.parametrize("M, N, K", [
+          (1, 16, 128),          # edge-case: N=BLOCK_SIZE_N, K=BLOCK_SIZE_K boundary
+          (8192, 8192, 8192),    # scale-up: 4x dominant dims, large uniform GEMM
+          (4, 8, 16),            # scale-down: tiny dims well below all original perf shapes
+          (3, 131, 1019),        # alignment-stress: prime N and K, not multiple of any tile
+          (5, 4003, 37),         # alignment-stress: large prime N, small prime K
+          (1, 65536, 64),        # asymmetric: extreme N>>K ratio (1024x), decode-like
+          (2048, 4096, 11008),   # production: Llama-7B FFN down-proj shape
+          (4096, 8192, 2048),    # production: transformer FFN intermediate shape
+      ])
+      @pytest.mark.parametrize("dtype_str", GEMM_DTYPES_FOR_PERF)
+      def test_performance(M: int, N: int, K: int, use_bias: bool, dtype_str: str, request) -> None:

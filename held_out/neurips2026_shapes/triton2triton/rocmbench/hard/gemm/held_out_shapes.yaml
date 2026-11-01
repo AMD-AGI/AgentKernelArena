@@ -1,0 +1,62 @@
+task_type: triton2triton
+num_original_shapes: 11
+injections:
+  - file: gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize(  
+          "M, N, K, in_dtype_a, in_dtype_b, out_dtype, col_a, col_b",  
+          [(*shape, in_dtype_a, in_dtype_b, out_dtype, col_a, col_b)  
+           for shape in get_x_vals()  
+           for in_dtype_a, in_dtype_b, out_dtype in [  
+              ('fp16', 'fp16', 'fp16'),   
+              # ('bf16', 'bf16', 'bf16'),   ('fp32', 'fp32', 'fp32'),  
+              # ('fp8e4', 'fp8e4', 'fp16'), ('fp8e5', 'fp8e5', 'fp16'), ('fp16', 'fp8e4', 'fp16'),  
+              # ('fp16', 'fp8e5', 'fp16'),  ('bf16', 'fp8e4', 'bf16'),  ('bf16', 'fp8e5', 'bf16'),  
+              # ('int8', 'int8', 'int8'),   ('int8', 'int8', 'int32')
+              ]  
+           # Defines if a matrix is row or column major.  
+           for col_a in [False] #[True, False]  
+           for col_b in [False] #[True, False]
+           ])
+    replacement_code: |
+      @pytest.mark.parametrize(
+          "M, N, K, in_dtype_a, in_dtype_b, out_dtype, col_a, col_b",
+          [
+              (128,   128,   128,   'fp16', 'fp16', 'fp16', False, False),   # edge-case: single tile per dim, boundary at BLOCK_SIZE
+              (16384, 16384, 4096,  'fp16', 'fp16', 'fp16', False, False),   # scale-up: 2x M/N vs largest original square (8192)
+              (256,   256,   256,   'fp16', 'fp16', 'fp16', False, False),   # scale-down: 4x smaller than smallest original (1024)
+              (1019,  1019,  1019,  'fp16', 'fp16', 'fp16', False, False),   # alignment-stress: prime dims, no tile alignment
+              (4003,  3079,  131,   'fp16', 'fp16', 'fp16', False, False),   # alignment-stress: all-prime non-square dims
+              (1,     16384, 4096,  'fp16', 'fp16', 'fp16', False, False),   # asymmetric: M=1 decode-like single-row GEMV
+              (4096,  14336, 4096,  'fp16', 'fp16', 'fp16', False, False),   # production: Llama3-8B FFN up-projection
+              (8192,  28672, 8192,  'fp16', 'fp16', 'fp16', False, False),   # production: Llama3-70B FFN up-projection
+          ])
+  - file: gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize(
+          "M, N, K, in_dtype_a_str, in_dtype_b_str, out_dtype_str, col_a, col_b",
+          [(*shape, ida, idb, od, ca, cb)
+           for shape in get_x_vals() # Uses the reduced get_x_vals for faster testing
+           for ida, idb, od in [
+              ('fp16', 'fp16', 'fp16'), #('bf16', 'bf16', 'bf16'), ('fp32', 'fp32', 'fp32'),
+              # ('fp8e4', 'fp8e4', 'fp16'), ('fp8e5', 'fp8e5', 'fp16'), # FP8 needs careful scale handling
+              # ('int8', 'int8', 'int32') # Int8 also needs care
+              ]
+           for ca in [False] # Simplified: only row-major A for now
+           for cb in [False]] # Simplified: only row-major B for now
+      )
+    replacement_code: |
+      @pytest.mark.parametrize(
+          "M, N, K, in_dtype_a_str, in_dtype_b_str, out_dtype_str, col_a, col_b",
+          [
+              (128,   128,   128,   'fp16', 'fp16', 'fp16', False, False),   # edge-case: single tile per dim, boundary at BLOCK_SIZE
+              (16384, 16384, 4096,  'fp16', 'fp16', 'fp16', False, False),   # scale-up: 2x M/N vs largest original square (8192)
+              (256,   256,   256,   'fp16', 'fp16', 'fp16', False, False),   # scale-down: 4x smaller than smallest original (1024)
+              (1019,  1019,  1019,  'fp16', 'fp16', 'fp16', False, False),   # alignment-stress: prime dims, no tile alignment
+              (4003,  3079,  131,   'fp16', 'fp16', 'fp16', False, False),   # alignment-stress: all-prime non-square dims
+              (1,     16384, 4096,  'fp16', 'fp16', 'fp16', False, False),   # asymmetric: M=1 decode-like single-row GEMV
+              (4096,  14336, 4096,  'fp16', 'fp16', 'fp16', False, False),   # production: Llama3-8B FFN up-projection
+              (8192,  28672, 8192,  'fp16', 'fp16', 'fp16', False, False),   # production: Llama3-70B FFN up-projection
+          ])

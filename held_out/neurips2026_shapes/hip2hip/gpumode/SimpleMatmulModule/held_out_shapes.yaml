@@ -1,0 +1,42 @@
+task_type: hip2hip
+num_original_shapes: 11
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_3267_SimpleMatmulModule.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1], [1, 1]),                       # edge-case: minimal 1x1 GEMM, single element partial tile
+              ([512, 512], [512, 512]),                # scale-up: 4x largest original dim (128->512)
+              ([2, 2], [2, 2]),                        # scale-down: 2x smaller than smallest original (4->2)
+              ([37, 131], [131, 37]),                  # alignment-stress: prime dims not multiples of 16
+              ([1019, 17], [17, 1019]),                # alignment-stress: large prime M and N, small prime K
+              ([1, 4096], [4096, 1]),                  # asymmetric: extreme M=1 vector-matrix product
+              ([4096, 4096], [4096, 11008]),           # production: Llama-2 FFN up-projection
+              ([2048, 2048], [2048, 8192]),            # production: GPT-style FFN (hidden=2048, ffn=8192)
+          ]
+
+          for a_shape, b_shape in configs:
+              a = torch.rand(a_shape, dtype=torch.float32)
+              b = torch.rand(b_shape, dtype=torch.float32)
+              yield [a, b]
+  - file: pytorch_code_functional/py_3267_SimpleMatmulModule_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1], [1, 1]),                       # edge-case: minimal 1x1 GEMM, single element partial tile
+              ([512, 512], [512, 512]),                # scale-up: 4x largest original dim (128->512)
+              ([2, 2], [2, 2]),                        # scale-down: 2x smaller than smallest original (4->2)
+              ([37, 131], [131, 37]),                  # alignment-stress: prime dims not multiples of 16
+              ([1019, 17], [17, 1019]),                # alignment-stress: large prime M and N, small prime K
+              ([1, 4096], [4096, 1]),                  # asymmetric: extreme M=1 vector-matrix product
+              ([4096, 4096], [4096, 11008]),           # production: Llama-2 FFN up-projection
+              ([2048, 2048], [2048, 8192]),            # production: GPT-style FFN (hidden=2048, ffn=8192)
+          ]
+
+          for a_shape, b_shape in configs:
+              a = torch.rand(a_shape, dtype=torch.float32)
+              b = torch.rand(b_shape, dtype=torch.float32)
+              yield [a, b]

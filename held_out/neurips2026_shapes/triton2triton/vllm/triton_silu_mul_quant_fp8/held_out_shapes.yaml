@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (256, 256),       # edge-case: N_2=128 yields exactly one group per row (single scale per token)
+          (2048, 8192),     # scale-up: 4x M and 8x N vs largest original (512,1024)
+          (384, 256),       # scale-down: ~5x fewer elements than largest original, minimal N
+          (384, 768),       # alignment-stress: M=3*128, N=3*256, non-power-of-two tile counts
+          (640, 1280),      # alignment-stress: M=5*128, N=5*256, odd multiples stress grid partitioning
+          (128, 16384),     # asymmetric: minimal M with very wide N (64 groups), extreme aspect ratio 1:128
+          (512, 2048),      # production: Llama-style gated MLP intermediate (512 tokens, hidden_dim=2048)
+          (1024, 4096),     # production: large-batch transformer prefill (1024 tokens, hidden_dim=4096)
+      ]

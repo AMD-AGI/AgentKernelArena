@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 64, 1, 1),            # edge-case: batch=1, single slot, topk=1
+          (1024, 1024, 4096, 4),     # scale-up: 4x tokens and slots, 2x topk
+          (4, 32, 8, 2),             # scale-down: ~4x smaller than smallest original
+          (37, 131, 97, 2),          # alignment-stress: all-prime dimensions
+          (53, 1019, 503, 3),        # alignment-stress: prime hidden/slots, odd topk
+          (1, 1024, 8192, 8),        # asymmetric: single token, huge slot pool, high topk
+          (512, 1024, 2048, 2),      # production: Mixtral-style MoE inference batch
+          (2048, 512, 4096, 2),      # production: large prefill MoE gather
+      ]

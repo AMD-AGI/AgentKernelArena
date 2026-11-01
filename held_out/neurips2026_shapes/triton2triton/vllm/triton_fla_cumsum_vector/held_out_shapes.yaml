@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 64, 1, 1, 64, True),        # edge-case: B=1,H=1,S=1, T==chunk_size boundary
+          (8, 1024, 16, 128, 64, False),   # scale-up: 8x T, 4x H, 4x S vs original
+          (1, 16, 1, 8, 16, False),        # scale-down: all dims much smaller than original
+          (2, 131, 3, 37, 64, False),      # alignment-stress: prime T=131, S=37, odd H=3
+          (3, 97, 5, 67, 32, True),        # alignment-stress: prime T=97, S=67, H=5, BT=32
+          (1, 4096, 1, 2, 64, False),      # asymmetric: very long T with minimal S=2
+          (2, 2048, 8, 64, 64, False),     # production: transformer prefill-like shape
+          (4, 512, 32, 128, 64, True),     # production: large model reverse cumsum
+      ]

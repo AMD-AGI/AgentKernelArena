@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 128, 128, 128, 128),        # edge-case: M=1 single-row, partial BLOCK_SIZE_M=64 tile
+          (512, 2048, 2048, 128, 128),     # scale-up: 4x N and K vs largest original shape
+          (16, 64, 64, 64, 64),            # scale-down: 4x smaller than smallest original, block_size=64
+          (37, 131, 256, 128, 128),        # alignment-stress: M=37 prime, N=131 prime, non-tile-aligned
+          (100, 300, 384, 128, 128),       # alignment-stress: M=100 N=300 odd composites, not power-of-2
+          (1, 4096, 4096, 128, 128),       # asymmetric: M=1 decode-like single-token, very wide N and K
+          (4096, 11008, 4096, 128, 128),   # production: Llama-7B FFN up-projection GEMM shape
+          (2048, 8192, 2048, 128, 128),    # production: Llama-13B FFN intermediate GEMM shape
+      ]

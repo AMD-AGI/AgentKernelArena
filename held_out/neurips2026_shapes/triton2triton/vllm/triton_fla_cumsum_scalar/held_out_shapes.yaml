@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 1, 16, True),         # edge-case: minimal degenerate dims, single element partial tile
+          (8, 8192, 16, 128, False),    # scale-up: 64x T, 4x B and H vs original (B=2,T=128,H=4)
+          (1, 16, 1, 16, False),        # scale-down: 8x smaller T, minimal B and H
+          (2, 131, 3, 64, False),       # alignment-stress: T=131 prime, H=3 odd
+          (3, 1019, 7, 128, True),      # alignment-stress: T=1019 prime, H=7 prime, B=3 odd
+          (1, 65536, 1, 64, False),     # asymmetric: extreme T with minimal B=1,H=1 decode-like
+          (4, 2048, 32, 64, False),     # production: Llama-7B prefill 32 heads seq_len=2048
+          (8, 4096, 16, 128, True),     # production: 16 heads seq_len=4096 reverse pass
+      ]

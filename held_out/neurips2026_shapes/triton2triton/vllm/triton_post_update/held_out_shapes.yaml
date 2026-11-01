@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 128, 64, 1),       # edge-case: batch=1, minimal num_reqs and small vocab/model_len
+          (256, 8192, 4096, 5),   # scale-up: 4x num_reqs, 2x vocab_size, 2x max_model_len vs largest original
+          (2, 64, 56, 1),         # scale-down: 2x smaller num_reqs, 4x smaller vocab, ~2x smaller model_len
+          (7, 131, 97, 2),        # alignment-stress: prime num_reqs=7, prime vocab=131, prime model_len=97
+          (13, 1019, 509, 3),     # alignment-stress: prime num_reqs=13, prime vocab=1019, prime model_len=509
+          (1, 16384, 8192, 1),    # asymmetric: single request with very large vocab and model_len
+          (8, 32000, 2048, 4),    # production: Llama-2 vocab=32000, 8 reqs, 4 spec steps
+          (4, 128256, 4096, 3),   # production: Llama-3 vocab=128256, 4 reqs, 3 spec steps
+      ]

@@ -1,0 +1,43 @@
+task_type: torch2hip
+num_original_shapes: 6
+init_constraints:
+  features: 4
+injections:
+  - file: pytorch_code_module/py_11754_layer_normalization.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4],),                # edge-case: batch=1, minimal 2D
+              ([128, 256, 4],),         # scale-up: 4x largest batch and seq dims
+              ([2, 2, 4],),             # scale-down: minimal 3D tensor
+              ([37, 4],),               # alignment-stress: prime batch dim
+              ([7, 131, 4],),           # alignment-stress: prime batch and seq dims
+              ([1, 65536, 4],),         # asymmetric: batch=1, very long sequence
+              ([8, 512, 4],),           # production: transformer batch=8 seq=512
+              ([16, 2048, 4],),         # production: transformer batch=16 seq=2048
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_11754_layer_normalization_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4],),                # edge-case: batch=1, minimal 2D
+              ([128, 256, 4],),         # scale-up: 4x largest batch and seq dims
+              ([2, 2, 4],),             # scale-down: minimal 3D tensor
+              ([37, 4],),               # alignment-stress: prime batch dim
+              ([7, 131, 4],),           # alignment-stress: prime batch and seq dims
+              ([1, 65536, 4],),         # asymmetric: batch=1, very long sequence
+              ([8, 512, 4],),           # production: transformer batch=8 seq=512
+              ([16, 2048, 4],),         # production: transformer batch=16 seq=2048
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

@@ -1,0 +1,45 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints:
+  dim_model: 4
+injections:
+  - file: pytorch_code_module/py_5334_GateGRUSelectionLayer.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 4],),        # edge-case: minimal single-element batch dims
+              ([256, 16, 16, 4],),     # scale-up: 4x each batch dim vs largest original
+              ([2, 2, 2, 4],),         # scale-down: 2x smaller than smallest original
+              ([37, 7, 5, 4],),        # alignment-stress: all prime batch dims
+              ([131, 3, 11, 4],),      # alignment-stress: large prime B0, odd composites
+              ([1, 1, 8192, 4],),      # asymmetric: extreme skew in last batch dim
+              ([8, 32, 64, 4],),       # production: realistic batch x heads x seq_len
+              ([16, 128, 16, 4],),     # production: realistic with large middle dim
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x_1 = torch.randn(shape_list, dtype=torch.float32)
+              x_2 = torch.randn(shape_list, dtype=torch.float32)
+              yield [x_1, x_2]
+  - file: pytorch_code_functional/py_5334_GateGRUSelectionLayer_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 4],),        # edge-case: minimal single-element batch dims
+              ([256, 16, 16, 4],),     # scale-up: 4x each batch dim vs largest original
+              ([2, 2, 2, 4],),         # scale-down: 2x smaller than smallest original
+              ([37, 7, 5, 4],),        # alignment-stress: all prime batch dims
+              ([131, 3, 11, 4],),      # alignment-stress: large prime B0, odd composites
+              ([1, 1, 8192, 4],),      # asymmetric: extreme skew in last batch dim
+              ([8, 32, 64, 4],),       # production: realistic batch x heads x seq_len
+              ([16, 128, 16, 4],),     # production: realistic with large middle dim
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x_1 = torch.randn(shape_list, dtype=torch.float32)
+              x_2 = torch.randn(shape_list, dtype=torch.float32)
+              yield [x_1, x_2]

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 128, 8),          # edge-case: batch=1, minimal vocab/max_bt, BLOCK_SIZE=8
+          (128, 65536, 256),     # scale-up: 2-4x all dims, 128 batch x 64K vocab
+          (2, 64, 4),            # scale-down: 2-4x smaller all dims, tiny workload
+          (7, 1019, 37),         # alignment-stress: all prime/odd, vocab=1019 not aligned to 8192
+          (13, 4003, 131),       # alignment-stress: prime batch/vocab/max_bt, BLOCK_SIZE=256
+          (1, 65536, 16),        # asymmetric: batch=1 with 64K vocab, extreme ratio
+          (8, 32000, 64),        # production: Llama-2 vocab=32000, typical serving batch
+          (4, 50257, 128),       # production: GPT-2 vocab=50257, non-aligned vocab size
+      ]

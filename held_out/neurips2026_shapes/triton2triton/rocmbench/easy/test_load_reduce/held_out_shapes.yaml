@@ -1,0 +1,35 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: test_load_reduce.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('BLOCK_M,BLOCK_N,dtype_str', [(128, 64, dtype_str) for dtype_str in ['float16']])
+    replacement_code: |
+      @pytest.mark.parametrize('BLOCK_M,BLOCK_N,dtype_str', [
+          (1, 64, 'float16'),       # edge-case: single-row BLOCK_M=1
+          (256, 4096, 'float16'),   # scale-up: 4x BLOCK_N beyond original max
+          (16, 16, 'float16'),      # scale-down: 4x smaller than smallest original
+          (8, 16, 'float16'),       # alignment-stress: not multiple of 32/64/128
+          (4, 8, 'float16'),        # alignment-stress: tiny non-standard tile sizes
+          (2, 8192, 'float16'),     # asymmetric: 2 rows x 8192 cols extreme ratio
+          (64, 128, 'float16'),     # production: head_dim=128 attention reduction
+          (32, 2048, 'float16'),    # production: seq_len=2048 token-level reduction
+      ])
+  - file: test_load_reduce.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("block_m_const, block_n_const", LOAD_REDUCE_BLOCK_SHAPES_FOR_PERF)
+      @pytest.mark.parametrize("dtype_str", LOAD_REDUCE_DTYPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("block_m_const, block_n_const", [
+          (1, 64),       # edge-case: single-row BLOCK_M=1
+          (256, 4096),   # scale-up: 4x BLOCK_N beyond original max
+          (16, 16),      # scale-down: 4x smaller than smallest original
+          (8, 16),       # alignment-stress: not multiple of 32/64/128
+          (4, 8),        # alignment-stress: tiny non-standard tile sizes
+          (2, 8192),     # asymmetric: 2 rows x 8192 cols extreme ratio
+          (64, 128),     # production: head_dim=128 attention reduction
+          (32, 2048),    # production: seq_len=2048 token-level reduction
+      ])
+      @pytest.mark.parametrize("dtype_str", LOAD_REDUCE_DTYPES_FOR_PERF)

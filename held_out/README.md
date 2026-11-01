@@ -10,9 +10,36 @@ or are overfit to the test cases visible during development.
 3. **Compare** held-out vs original correctness and speedup to measure the
    "generalization gap"
 
-The **code** (this directory) is checked into the repo. The **generated test
-data** (`held_out_tests/`) is `.gitignore`'d so that held-out shapes remain
-private for paper evaluation. Others can regenerate their own sets.
+The **code** (this directory) is checked into the repo. Newly generated test
+data (`held_out_tests/`) is `.gitignore`'d so that your own held-out shapes
+stay private.
+
+## Released NeurIPS 2026 held-out shapes
+
+For reproducibility, we release the exact held-out shapes used in the NeurIPS
+2026 paper in [`neurips2026_shapes/`](neurips2026_shapes/) (one
+`held_out_shapes.yaml` per task, 196 tasks). They were generated with Cursor
+Agent and `claude-4.6-opus-high` using `generate_heldout.py`.
+
+These shapes were generated **after** the agents had optimized the kernels, so
+the agents evaluated in the paper never saw them. Now that they are public,
+they are no longer hidden from future agents or models. To keep the held-out
+evaluation meaningful, either:
+
+- **Hide them during optimization:** make sure this directory is not
+  reachable from the agent's environment (agents have shell access), and use
+  the shapes only in the final held-out validation stage; or
+- **Regenerate them:** produce a fresh set with `generate_heldout.py` (see
+  below) and keep it private.
+
+To reproduce the paper's held-out results on a completed run:
+
+```bash
+python held_out/run_heldout_eval.py \
+    --run-dir <run_dir> \
+    --heldout-dir held_out/neurips2026_shapes/ \
+    --tasks-dir tasks/
+```
 
 ## Scope
 

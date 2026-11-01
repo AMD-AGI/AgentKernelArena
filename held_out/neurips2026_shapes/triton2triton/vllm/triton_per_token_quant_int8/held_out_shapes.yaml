@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1),              # edge-case: single token, single element — degenerate minimum
+          (2048, 8192),        # scale-up: 4x M and 8x N beyond largest original
+          (4, 16),             # scale-down: 8x smaller M, 4x smaller N than smallest original
+          (37, 131),           # alignment-stress: both dimensions are prime
+          (101, 1019),         # alignment-stress: prime M and N, non-power-of-2 BLOCK
+          (1, 65536),          # asymmetric: single row with very large N (decode-like)
+          (4096, 4096),        # production: Llama-7B hidden dim, full-sequence quantization
+          (8192, 11008),       # production: Llama-7B FFN intermediate after gate projection
+      ]

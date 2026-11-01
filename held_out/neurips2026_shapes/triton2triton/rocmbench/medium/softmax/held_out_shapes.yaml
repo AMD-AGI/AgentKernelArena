@@ -1,0 +1,34 @@
+task_type: triton2triton
+num_original_shapes: 10
+injections:
+  - file: softmax.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M, N', [(1823, 781), (1, 1), (128, 1), (1, 128), (8192, 8192), (4096, 8192), (359, 1),
+                                        (1, 359), (1, 131072), (1, 89999)])
+    replacement_code: |
+      @pytest.mark.parametrize('M, N', [
+          (1, 65),             # edge-case: N=65 just above BLOCK_SIZE=64, forces partial-tile masking
+          (16384, 12288),      # scale-up: 3-4x largest original dims, tests tiling at scale
+          (4, 16),             # scale-down: very small workload, tests minimal occupancy
+          (131, 1019),         # alignment-stress: both prime, no tile alignment
+          (37, 4003),          # alignment-stress: both prime, different aspect ratio
+          (1, 65536),          # asymmetric: single row with N=MAX_FUSED_SIZE for fp32
+          (1024, 128256),      # production: Llama-3 8B logit softmax (batch*seq=1024, vocab=128256)
+          (2048, 32000),       # production: Mistral-7B logit softmax (batch*seq=2048, vocab=32000)
+      ])
+  - file: softmax.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M, N', SOFTMAX_SHAPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize('M, N', [
+          (1, 65),             # edge-case: N=65 just above BLOCK_SIZE=64, forces partial-tile masking
+          (16384, 12288),      # scale-up: 3-4x largest original dims, tests tiling at scale
+          (4, 16),             # scale-down: very small workload, tests minimal occupancy
+          (131, 1019),         # alignment-stress: both prime, no tile alignment
+          (37, 4003),          # alignment-stress: both prime, different aspect ratio
+          (1, 65536),          # asymmetric: single row with N=MAX_FUSED_SIZE for fp32
+          (1024, 128256),      # production: Llama-3 8B logit softmax (batch*seq=1024, vocab=128256)
+          (2048, 32000),       # production: Mistral-7B logit softmax (batch*seq=2048, vocab=32000)
+      ])

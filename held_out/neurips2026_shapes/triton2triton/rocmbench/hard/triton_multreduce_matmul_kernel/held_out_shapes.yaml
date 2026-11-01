@@ -1,0 +1,35 @@
+task_type: triton2triton
+num_original_shapes: 14
+injections:
+  - file: triton_multreduce_matmul_kernel.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("use_bias", [False, True])  
+      @pytest.mark.parametrize("M, N, K", get_target_shapes())  
+    replacement_code: |
+      @pytest.mark.parametrize("use_bias", [False, True])
+      @pytest.mark.parametrize("M, N, K", [
+          (1, 1, 128),            # edge-case: N=1 degenerate single-column output
+          (4, 16384, 32768),      # scale-up: 2x largest N, 1.14x largest K
+          (1, 8, 16),             # scale-down: 4x smaller than smallest original
+          (3, 1019, 4003),        # alignment-stress: both N and K are primes
+          (7, 131, 257),          # alignment-stress: prime N, K, and M=7
+          (1, 65536, 64),         # asymmetric: extreme wide N with tiny K
+          (1, 11008, 4096),       # production: Llama-7B FFN down-projection
+          (8, 8192, 2048),        # production: transformer FFN at max M=8
+      ])
+  - file: triton_multreduce_matmul_kernel.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("m_n_k_shape", GEMM_PERF_SHAPES)
+    replacement_code: |
+      @pytest.mark.parametrize("m_n_k_shape", [
+          (1, 64, 128),           # edge-case: minimal M=1, small N/K at tile boundaries
+          (4096, 2048, 512),      # scale-up: 2x largest M in originals
+          (128, 128, 128),        # scale-down: 4x smaller than smallest original shape
+          (512, 1019, 512),       # alignment-stress: prime N=1019
+          (1024, 1024, 131),      # alignment-stress: prime K=131 forces EVEN_K=False
+          (1, 8192, 512),         # asymmetric: M=1 decode-like extreme ratio
+          (2048, 2048, 2048),     # production: standard square GEMM
+          (1024, 4096, 1024),     # production: transformer FFN shape
+      ])

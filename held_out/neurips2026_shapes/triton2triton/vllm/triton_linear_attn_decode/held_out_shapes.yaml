@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 32, 32),       # edge-case: minimal B=1, H=1, smallest valid D and E
+          (32, 64, 128, 128),    # scale-up: 4-8x batch and heads vs originals
+          (1, 2, 32, 32),        # scale-down: 2-4x smaller D/E than typical shapes
+          (3, 7, 64, 96),        # alignment-stress: prime B=3, prime H=7, E=96 not multiple of 64
+          (5, 13, 128, 160),     # alignment-stress: prime B=5, prime H=13, E=160 not multiple of 64/128
+          (1, 64, 256, 32),      # asymmetric: single batch, many heads, D=256 >> E=32
+          (4, 16, 64, 128),      # production: transformer decode B=4, H=16, d_k=64, d_v=128
+          (8, 32, 128, 64),      # production: large multi-head decode B=8, H=32, d_k=128, d_v=64
+      ]

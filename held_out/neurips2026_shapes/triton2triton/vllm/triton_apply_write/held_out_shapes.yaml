@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 2, 1),          # edge-case: single write, minimal row_size=2, content_len=1
+          (256, 8192, 512),    # scale-up: 4x num_writes and 4x row_size vs largest original
+          (2, 32, 2),          # scale-down: 2x smaller than smallest original across all dims
+          (37, 131, 47),       # alignment-stress: all three dims are prime numbers
+          (53, 1019, 131),     # alignment-stress: primes misaligned with BLOCK_SIZE=1024
+          (1, 16384, 8000),    # asymmetric: single write spanning most of a very wide row
+          (8, 1024, 64),       # production: vLLM KV-cache block write, 8 seqs, 1K row
+          (32, 4096, 256),     # production: vLLM batch prefill, 32 seqs, 4K token slots
+      ]

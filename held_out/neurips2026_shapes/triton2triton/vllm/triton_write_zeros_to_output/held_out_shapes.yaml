@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 64),          # edge-case: single row, N equals BLOCK_SIZE_N
+          (4096, 8192),     # scale-up: 4x largest original M and N
+          (16, 32),         # scale-down: 4x smaller than smallest original
+          (131, 1019),      # alignment-stress: both prime, non-tile-aligned
+          (37, 4003),       # alignment-stress: both prime, different magnitudes
+          (1, 65536),       # asymmetric: single row, extreme 1:65536 aspect ratio
+          (4096, 11008),    # production: Llama-7B FFN zero-out (hidden x intermediate)
+          (2048, 8192),     # production: Llama-13B/GPT FFN buffer zeroing
+      ]

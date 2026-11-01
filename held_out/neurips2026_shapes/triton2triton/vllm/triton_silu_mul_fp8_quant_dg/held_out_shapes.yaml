@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 128, 128),        # edge-case: minimal E=1, T=1, single group
+          (32, 256, 2048, 128),     # scale-up: 4x E and T, 2x H vs largest original
+          (2, 4, 64, 32),           # scale-down: tiny dims, small BLOCK=32
+          (3, 37, 256, 128),        # alignment-stress: prime T=37, odd E=3
+          (7, 19, 384, 128),        # alignment-stress: prime E=7, prime T=19, G=3
+          (1, 512, 128, 128),       # asymmetric: single expert, 512 tokens (tall-skinny)
+          (8, 64, 4096, 128),       # production: Llama-style MoE FFN hidden dim
+          (4, 128, 2048, 128),      # production: large-batch MoE with H=2048
+      ]

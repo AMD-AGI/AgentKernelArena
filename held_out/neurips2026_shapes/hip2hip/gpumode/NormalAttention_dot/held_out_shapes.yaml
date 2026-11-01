@@ -1,0 +1,43 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints:
+  input_channel_num: 4
+injections:
+  - file: pytorch_code_module/py_1001_NormalAttention_dot.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4, 1, 1],),    # edge-case: batch=1, HW=1 single-element spatial
+              ([4, 4, 96, 96],),   # scale-up: HW=9216 vs original max HW=4096
+              ([2, 4, 2, 2],),     # scale-down: HW=4, 4x smaller than smallest original
+              ([3, 4, 7, 5],),     # alignment-stress: HW=35, non-power-of-2 odd composite
+              ([5, 4, 13, 11],),   # alignment-stress: HW=143, prime-like dimensions
+              ([1, 4, 1, 256],),   # asymmetric: extreme aspect ratio H=1 W=256
+              ([8, 4, 14, 14],),   # production: NCHW ResNet stage3 spatial dim
+              ([16, 4, 56, 56],),  # production: NCHW ImageNet conv1 spatial dim
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_1001_NormalAttention_dot_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4, 1, 1],),    # edge-case: batch=1, HW=1 single-element spatial
+              ([4, 4, 96, 96],),   # scale-up: HW=9216 vs original max HW=4096
+              ([2, 4, 2, 2],),     # scale-down: HW=4, 4x smaller than smallest original
+              ([3, 4, 7, 5],),     # alignment-stress: HW=35, non-power-of-2 odd composite
+              ([5, 4, 13, 11],),   # alignment-stress: HW=143, prime-like dimensions
+              ([1, 4, 1, 256],),   # asymmetric: extreme aspect ratio H=1 W=256
+              ([8, 4, 14, 14],),   # production: NCHW ResNet stage3 spatial dim
+              ([16, 4, 56, 56],),  # production: NCHW ImageNet conv1 spatial dim
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

@@ -1,0 +1,43 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints:
+  axis: 2
+injections:
+  - file: pytorch_code_module/py_10082_SoftmaxModule.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1],),           # edge-case: minimal single-element tensor
+              ([128, 256, 256],),     # scale-up: 4x largest original dim
+              ([2, 2, 2],),           # scale-down: half smallest original dim
+              ([7, 13, 37],),         # alignment-stress: all prime dims
+              ([17, 131, 1019],),     # alignment-stress: large primes, 1019 softmax width
+              ([1, 1, 65536],),       # asymmetric: extreme skew along softmax axis
+              ([8, 512, 128],),       # production: transformer attn batch=8 seq=512 head_dim=128
+              ([16, 1024, 256],),     # production: transformer batch=16 seq=1024 features=256
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              v = torch.randn(shape_list, dtype=torch.float32)
+              yield [v]
+  - file: pytorch_code_functional/py_10082_SoftmaxModule_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1],),           # edge-case: minimal single-element tensor
+              ([128, 256, 256],),     # scale-up: 4x largest original dim
+              ([2, 2, 2],),           # scale-down: half smallest original dim
+              ([7, 13, 37],),         # alignment-stress: all prime dims
+              ([17, 131, 1019],),     # alignment-stress: large primes, 1019 softmax width
+              ([1, 1, 65536],),       # asymmetric: extreme skew along softmax axis
+              ([8, 512, 128],),       # production: transformer attn batch=8 seq=512 head_dim=128
+              ([16, 1024, 256],),     # production: transformer batch=16 seq=1024 features=256
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              v = torch.randn(shape_list, dtype=torch.float32)
+              yield [v]

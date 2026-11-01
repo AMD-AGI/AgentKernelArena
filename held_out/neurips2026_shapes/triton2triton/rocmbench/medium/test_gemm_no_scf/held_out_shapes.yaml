@@ -1,0 +1,82 @@
+task_type: triton2triton
+num_original_shapes: 32
+injections:
+  - file: test_gemm_no_scf.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize(
+          'M,N,K,NUM_CTAS,NUM_WARPS,TRANS_A,TRANS_B,OUTPUT_TYPE,USE_TMA_EPILOGUE',
+          itertools.chain(*[[
+              # numCTAs = 1, no TMA multicast:
+              [64, 16, 16, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],
+              [64, 32, 16, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],
+              [64, 64, 16, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],
+              [64, 64, 16, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              [64, 64, 32, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              [64, 64, 64, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              [128, 128, 16, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],
+              [128, 128, 16, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              # static mask, cluster 4x1
+              [256, 64, 16, 4, 4, False, True, "float16", USE_TMA_EPILOGUE],
+              [256, 64, 16, 4, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              # dynamic mask, cluster 2x2
+              [128, 128, 16, 4, 4, False, True, "float16", USE_TMA_EPILOGUE],
+              [128, 128, 16, 4, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              # small M, N
+              [16, 16, 16, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              [16, 32, 16, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              [32, 16, 16, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+              [32, 32, 16, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],
+          ] for USE_TMA_EPILOGUE in [True, False]]))
+    replacement_code: |
+      @pytest.mark.parametrize(
+          'M,N,K,NUM_CTAS,NUM_WARPS,TRANS_A,TRANS_B,OUTPUT_TYPE,USE_TMA_EPILOGUE',
+          itertools.chain(*[[
+              [16, 16, 16, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],    # edge-case: minimal 16x16x16 with fp16 output
+              [256, 128, 16, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],   # scale-up: largest MxN=256x128
+              [16, 16, 32, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],     # scale-down: small 16x16 with K=32
+              [32, 64, 32, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],     # alignment-stress: asymmetric M!=N with K=32
+              [128, 32, 64, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],    # alignment-stress: wide M, narrow N, K=64
+              [256, 16, 16, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],    # asymmetric: M/N=16x tall-skinny
+              [128, 128, 64, 1, 4, False, True, "float16", USE_TMA_EPILOGUE],   # production: typical GEMM tile 128x128x64
+              [64, 128, 32, 1, 4, False, True, "float32", USE_TMA_EPILOGUE],    # production: rectangular FFN-like tile
+          ] for USE_TMA_EPILOGUE in [True, False]]))
+  - file: test_gemm_no_scf.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize(
+          'M,N,K,NUM_CTAS,NUM_WARPS,TRANS_A,TRANS_B,OUTPUT_TYPE,USE_TMA_EPILOGUE',
+          # Using a smaller, more targeted subset for performance to avoid excessive shared memory issues
+          # and long runtimes. The original parametrize is very extensive.
+          # Focus on K values that are likely to fit for a single-block kernel.
+          itertools.chain(*[[
+              # K=16
+              [64, 64, 16, 1, 4, False, False, "float16", USE_TMA_EPILOGUE], # A(M,K), B(K,N)
+              [64, 64, 16, 1, 4, False, False, "float32", USE_TMA_EPILOGUE],
+              [128, 128, 16, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],
+              # K=32
+              [64, 64, 32, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],
+              [64, 64, 32, 1, 4, False, False, "float32", USE_TMA_EPILOGUE],
+              [128, 64, 32, 1, 4, False, False, "float16", USE_TMA_EPILOGUE], # M=128, N=64, K=32
+              # K=64
+              [32, 32, 64, 1, 4, False, False, "float16", USE_TMA_EPILOGUE], # M=32, N=32, K=64
+              [64, 64, 64, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],
+              [64, 64, 64, 1, 4, False, False, "float32", USE_TMA_EPILOGUE],
+              # K=128 - starts to get large for single block shared mem
+              [32, 32, 128, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],
+              # [64, 64, 128, 1, 4, False, False, "float16", USE_TMA_EPILOGUE], # (32*128+128*32)*2 = 16384. Ok.
+                                                                              # (64*128+128*64)*2 = 32768. Ok.
+          ] for USE_TMA_EPILOGUE in [True, False]]))
+    replacement_code: |
+      @pytest.mark.parametrize(
+          'M,N,K,NUM_CTAS,NUM_WARPS,TRANS_A,TRANS_B,OUTPUT_TYPE,USE_TMA_EPILOGUE',
+          itertools.chain(*[[
+              [16, 16, 16, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],    # edge-case: minimal 16x16x16 with fp16 output
+              [256, 128, 16, 1, 4, False, False, "float32", USE_TMA_EPILOGUE],   # scale-up: largest MxN=256x128
+              [16, 16, 32, 1, 4, False, False, "float32", USE_TMA_EPILOGUE],     # scale-down: small 16x16 with K=32
+              [32, 64, 32, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],     # alignment-stress: asymmetric M!=N with K=32
+              [128, 32, 64, 1, 4, False, False, "float32", USE_TMA_EPILOGUE],    # alignment-stress: wide M, narrow N, K=64
+              [256, 16, 16, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],    # asymmetric: M/N=16x tall-skinny
+              [128, 128, 64, 1, 4, False, False, "float16", USE_TMA_EPILOGUE],   # production: typical GEMM tile 128x128x64
+              [64, 128, 32, 1, 4, False, False, "float32", USE_TMA_EPILOGUE],    # production: rectangular FFN-like tile
+          ] for USE_TMA_EPILOGUE in [True, False]]))

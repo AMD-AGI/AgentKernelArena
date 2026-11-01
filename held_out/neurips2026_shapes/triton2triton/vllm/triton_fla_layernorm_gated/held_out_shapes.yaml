@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_CASES"
+    replacement_code: |
+      TEST_CASES = [
+          (1, 32, "swish", True, True, True),          # edge-case: batch=1 single row, D=BT boundary
+          (1024, 512, "swish", False, True, True),      # scale-up: 4x T and 4x D vs originals
+          (16, 16, "sigmoid", True, True, False),       # scale-down: 4x smaller T and D than smallest original
+          (131, 97, "swish", True, True, True),         # alignment-stress: prime T=131, prime D=97
+          (67, 131, "sigmoid", False, True, False),     # alignment-stress: prime T=67 and D=131, non-power-of-2
+          (1, 4096, "swish", True, True, False),        # asymmetric: single row with very wide D (1:4096 ratio)
+          (4096, 128, "swish", True, True, False),      # production: Llama-style RMSNorm, 4K tokens, head_dim=128
+          (2048, 64, "sigmoid", False, True, True),     # production: transformer prefill LayerNorm, 2K tokens, head_dim=64
+      ]

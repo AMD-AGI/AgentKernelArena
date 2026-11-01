@@ -1,0 +1,149 @@
+task_type: triton2triton
+num_original_shapes: 10
+injections:
+  - file: moe_gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [  
+          (64, 14336, 4096, 2, 8),  
+          (16, 14336, 1, 2, 4),  
+          (1, 14336, 128, 2, 4),  
+          (3, 14336, 128, 2, 4),  
+          (16, 14336, 128, 1, 4),  
+          (16, 14336, 128, 1, 1),  
+          (64, 7186, 128, 2, 8),  
+          (64, 3584, 128, 2, 8),  
+          (64, 1792, 128, 2, 8),  
+          (64, 64, 128, 2, 8),  
+      ])  
+      @pytest.mark.parametrize('routed_weight', [True, False])  
+      def test_correctness(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, request, dtype=torch.float16):
+    replacement_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [
+          (1, 64, 32, 1, 1),          # edge-case: M=1 single token, single expert, minimal dims
+          (4096, 14336, 4096, 2, 8),   # scale-up: M=4096, 64x typical token count
+          (4, 32, 16, 1, 2),           # scale-down: tiny M/N/K dimensions
+          (37, 1019, 131, 2, 4),       # alignment-stress: all prime M, N, K
+          (13, 4003, 97, 1, 8),        # alignment-stress: prime dims, EVEN_K=False
+          (1, 16384, 4096, 2, 8),      # asymmetric: M=1 decode-like with wide N
+          (2048, 8192, 2048, 2, 8),    # production: medium transformer MoE FFN
+          (256, 11008, 4096, 2, 8),    # production: Llama-2 7B MoE FFN shape
+      ])
+      @pytest.mark.parametrize('routed_weight', [True, False])
+      def test_correctness(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, request, dtype=torch.float16):
+  - file: moe_gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [  
+          (64, 14336, 4096, 2, 8),  
+          (16, 14336, 1, 2, 4),  
+          (1, 14336, 128, 2, 4),  
+          (16, 14336, 128, 1, 4),  
+          (16, 14336, 128, 1, 1),  
+          (64, 7186, 128, 2, 8),  
+          (64, 3584, 128, 2, 8),  
+          (64, 1792, 128, 2, 8),  
+          (64, 64, 128, 2, 8),  
+      ])  
+      @pytest.mark.parametrize('routed_weight', [True, False])  
+      @pytest.mark.parametrize('use_fp8_w8a8', [True])  
+      @pytest.mark.parametrize('fp8_type', [torch.float8_e4m3fnuz, torch.float8_e5m2fnuz])  
+      def test_correctness_fp8(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, use_fp8_w8a8, fp8_type, request, dtype=torch.float16):
+    replacement_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [
+          (1, 64, 32, 1, 1),          # edge-case: M=1 single token, single expert, minimal dims
+          (4096, 14336, 4096, 2, 8),   # scale-up: M=4096, 64x typical token count
+          (4, 32, 16, 1, 2),           # scale-down: tiny M/N/K dimensions
+          (37, 1019, 131, 2, 4),       # alignment-stress: all prime M, N, K
+          (13, 4003, 97, 1, 8),        # alignment-stress: prime dims, EVEN_K=False
+          (1, 16384, 4096, 2, 8),      # asymmetric: M=1 decode-like with wide N
+          (2048, 8192, 2048, 2, 8),    # production: medium transformer MoE FFN
+          (256, 11008, 4096, 2, 8),    # production: Llama-2 7B MoE FFN shape
+      ])
+      @pytest.mark.parametrize('routed_weight', [True, False])
+      @pytest.mark.parametrize('use_fp8_w8a8', [True])
+      @pytest.mark.parametrize('fp8_type', [torch.float8_e4m3fnuz, torch.float8_e5m2fnuz])
+      def test_correctness_fp8(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, use_fp8_w8a8, fp8_type, request, dtype=torch.float16):
+  - file: moe_gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [  
+          (64, 14336, 4096, 2, 8),  
+          (16, 14336, 1, 2, 4),  
+          (1, 14336, 128, 2, 4),  
+          (16, 14336, 128, 1, 4),  
+          (16, 14336, 128, 1, 1),  
+          (64, 7186, 128, 2, 8),  
+          (64, 3584, 128, 2, 8),  
+          (64, 1792, 128, 2, 8),  
+          (64, 64, 128, 2, 8),  
+      ])  
+      @pytest.mark.parametrize('routed_weight', [True, False])  
+      @pytest.mark.parametrize('use_int8_w8a16', [True])  
+      def test_correctness_int8_w8a16(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, use_int8_w8a16, request,
+    replacement_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [
+          (1, 64, 32, 1, 1),          # edge-case: M=1 single token, single expert, minimal dims
+          (4096, 14336, 4096, 2, 8),   # scale-up: M=4096, 64x typical token count
+          (4, 32, 16, 1, 2),           # scale-down: tiny M/N/K dimensions
+          (37, 1019, 131, 2, 4),       # alignment-stress: all prime M, N, K
+          (13, 4003, 97, 1, 8),        # alignment-stress: prime dims, EVEN_K=False
+          (1, 16384, 4096, 2, 8),      # asymmetric: M=1 decode-like with wide N
+          (2048, 8192, 2048, 2, 8),    # production: medium transformer MoE FFN
+          (256, 11008, 4096, 2, 8),    # production: Llama-2 7B MoE FFN shape
+      ])
+      @pytest.mark.parametrize('routed_weight', [True, False])
+      @pytest.mark.parametrize('use_int8_w8a16', [True])
+      def test_correctness_int8_w8a16(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, use_int8_w8a16, request,
+  - file: moe_gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [  
+          (64, 14336, 4096, 2, 8),  
+          (16, 14336, 1, 2, 4),  
+          (1, 14336, 128, 2, 4),  
+          (16, 14336, 128, 1, 4),  
+          (16, 14336, 128, 1, 1),  
+          (64, 7186, 128, 2, 8),  
+          (64, 3584, 128, 2, 8),  
+          (64, 1792, 128, 2, 8),  
+          (64, 64, 128, 2, 8),  
+      ])  
+      @pytest.mark.parametrize('routed_weight', [True, False])  
+      @pytest.mark.parametrize('use_int8_w8a8', [True])  
+      def test_correctness_int8_w8a8(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, use_int8_w8a8, request,
+    replacement_code: |
+      @pytest.mark.parametrize("M, N, K, top_k, E", [
+          (1, 64, 32, 1, 1),          # edge-case: M=1 single token, single expert, minimal dims
+          (4096, 14336, 4096, 2, 8),   # scale-up: M=4096, 64x typical token count
+          (4, 32, 16, 1, 2),           # scale-down: tiny M/N/K dimensions
+          (37, 1019, 131, 2, 4),       # alignment-stress: all prime M, N, K
+          (13, 4003, 97, 1, 8),        # alignment-stress: prime dims, EVEN_K=False
+          (1, 16384, 4096, 2, 8),      # asymmetric: M=1 decode-like with wide N
+          (2048, 8192, 2048, 2, 8),    # production: medium transformer MoE FFN
+          (256, 11008, 4096, 2, 8),    # production: Llama-2 7B MoE FFN shape
+      ])
+      @pytest.mark.parametrize('routed_weight', [True, False])
+      @pytest.mark.parametrize('use_int8_w8a8', [True])
+      def test_correctness_int8_w8a8(M: int, N: int, K: int, top_k: int, E: int, routed_weight: bool, use_int8_w8a8, request,
+  - file: moe_gemm.py
+    find_marker: "raw_replace"
+    old_code: |
+      MOE_GEMM_PARAMS_FOR_PERF = [
+          # M, N, K, top_k, E
+          (64, 14336, 4096, 2, 8),
+          (256, 7168, 4096, 2, 8), # Example medium size
+          (1024, 14336, 4096, 2, 8), # Example larger M
+          (16, 1024, 512, 1, 4),   # Smaller K, N
+      ]
+    replacement_code: |
+      MOE_GEMM_PARAMS_FOR_PERF = [
+          (1, 64, 32, 1, 1),          # edge-case: M=1 single token, single expert, minimal dims
+          (4096, 14336, 4096, 2, 8),   # scale-up: M=4096, 64x typical token count
+          (4, 32, 16, 1, 2),           # scale-down: tiny M/N/K dimensions
+          (37, 1019, 131, 2, 4),       # alignment-stress: all prime M, N, K
+          (13, 4003, 97, 1, 8),        # alignment-stress: prime dims, EVEN_K=False
+          (1, 16384, 4096, 2, 8),      # asymmetric: M=1 decode-like with wide N
+          (2048, 8192, 2048, 2, 8),    # production: medium transformer MoE FFN
+          (256, 11008, 4096, 2, 8),    # production: Llama-2 7B MoE FFN shape
+      ]

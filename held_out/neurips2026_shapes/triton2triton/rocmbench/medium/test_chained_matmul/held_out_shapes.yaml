@@ -1,0 +1,46 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: test_chained_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      def test_chained_matmul(request, device='cuda'):
+          # Regression test for issue #1601
+          set_seed()
+
+
+          m, n, k = 32, 64, 128
+          block_m, block_n, block_k = 16, 32, k
+    replacement_code: |
+      @pytest.mark.parametrize("m, n, k, block_m, block_n", [
+          (16, 16, 64, 16, 16),       # edge-case: M=N=block_m, minimal single-tile
+          (1024, 512, 64, 64, 32),    # scale-up: 4x M and N vs largest original
+          (16, 16, 16, 16, 16),       # scale-down: minimal K=16, all dims tiny
+          (48, 37, 64, 16, 16),       # alignment-stress: prime N=37, non-pow2 M=48
+          (96, 131, 128, 32, 16),     # alignment-stress: prime N=131, non-pow2 M=96
+          (16, 512, 64, 16, 32),      # asymmetric: N=32x M, extreme tall-N ratio
+          (512, 128, 128, 32, 32),    # production: transformer FFN hidden proj shape
+          (256, 256, 128, 32, 16),    # production: transformer self-attn intermediate
+      ])
+      def test_chained_matmul(m, n, k, block_m, block_n, request, device='cuda'):
+          # Regression test for issue #1601
+          set_seed()
+
+          block_k = k
+  - file: test_chained_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("test_params_dict", CM_PERF_TEST_CONFIGS)
+      @pytest.mark.parametrize("dtype_str", CM_DTYPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("test_params_dict", [
+          {'M': 16, 'N': 16, 'K': 64, 'bm': 16, 'bn': 16},       # edge-case: M=N=block_m, minimal single-tile
+          {'M': 1024, 'N': 512, 'K': 64, 'bm': 64, 'bn': 32},    # scale-up: 4x M and N vs largest original
+          {'M': 16, 'N': 16, 'K': 16, 'bm': 16, 'bn': 16},       # scale-down: minimal K=16, all dims tiny
+          {'M': 48, 'N': 37, 'K': 64, 'bm': 16, 'bn': 16},       # alignment-stress: prime N=37, non-pow2 M=48
+          {'M': 96, 'N': 131, 'K': 128, 'bm': 32, 'bn': 16},     # alignment-stress: prime N=131, non-pow2 M=96
+          {'M': 16, 'N': 512, 'K': 64, 'bm': 16, 'bn': 32},      # asymmetric: N=32x M, extreme tall-N ratio
+          {'M': 512, 'N': 128, 'K': 128, 'bm': 32, 'bn': 32},    # production: transformer FFN hidden proj shape
+          {'M': 256, 'N': 256, 'K': 128, 'bm': 32, 'bn': 16},    # production: transformer self-attn intermediate
+      ])
+      @pytest.mark.parametrize("dtype_str", ['fp16'])

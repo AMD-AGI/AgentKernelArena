@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 64, 16, 1, 1),        # edge-case: M=1 single token, dims equal to BLOCK_M/BLOCK_N/BLOCK_K tile sizes
+          (1024, 4096, 64, 16, 2),   # scale-up: 4x M and hidden_size, 2x lora_rank and num_loras vs originals
+          (4, 16, 4, 1, 1),          # scale-down: 4x smaller M/hidden_size, lora_rank < BLOCK_K triggers masking
+          (37, 131, 13, 3, 1),       # alignment-stress: all-prime dims, none divisible by tile sizes (64/16)
+          (97, 257, 7, 5, 3),        # alignment-stress: prime dims with num_slices=3, lora_rank=7 non-aligned
+          (1, 4096, 8, 2, 1),        # asymmetric: single-token decode with very wide hidden_size (1x4096)
+          (512, 4096, 16, 4, 1),     # production: Llama-7B style single-slice LoRA expand, typical prefill batch
+          (256, 2048, 32, 8, 3),     # production: multi-head QKV packed LoRA with 3 slices, 8 concurrent adapters
+      ]

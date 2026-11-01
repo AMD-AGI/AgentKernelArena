@@ -1,0 +1,40 @@
+task_type: hip2hip
+num_original_shapes: 11
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_11184_Sigmoid.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1],),                        # edge-case: single element, numel < Pack=4, scalar-only path
+              ([64, 2048, 512],),             # scale-up: 64M elements, ~4x largest 2D/3D original
+              ([16, 8],),                     # scale-down: 128 elements, ~8x smaller than smallest original
+              ([37, 131, 53],),               # alignment-stress: all-prime dims, numel=256,711 not divisible by 4
+              ([1019, 4003],),                # alignment-stress: prime dims, numel=4,079,057 not divisible by 4
+              ([1, 1, 1, 65536],),            # asymmetric: extreme aspect ratio, single-row feature map
+              ([4, 256, 56, 56],),            # production: ResNet-50 conv3 NCHW feature map
+              ([8, 512, 14, 14],),            # production: ResNet-50 conv5 NCHW feature map
+          ]
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_11184_Sigmoid_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1],),                        # edge-case: single element, numel < Pack=4, scalar-only path
+              ([64, 2048, 512],),             # scale-up: 64M elements, ~4x largest 2D/3D original
+              ([16, 8],),                     # scale-down: 128 elements, ~8x smaller than smallest original
+              ([37, 131, 53],),               # alignment-stress: all-prime dims, numel=256,711 not divisible by 4
+              ([1019, 4003],),                # alignment-stress: prime dims, numel=4,079,057 not divisible by 4
+              ([1, 1, 1, 65536],),            # asymmetric: extreme aspect ratio, single-row feature map
+              ([4, 256, 56, 56],),            # production: ResNet-50 conv3 NCHW feature map
+              ([8, 512, 14, 14],),            # production: ResNet-50 conv5 NCHW feature map
+          ]
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

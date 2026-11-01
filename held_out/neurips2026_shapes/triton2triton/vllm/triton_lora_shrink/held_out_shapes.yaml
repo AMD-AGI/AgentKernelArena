@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 32, 8, 1, 1),          # edge-case: batch=1, single token stresses partial BLOCK_M tile
+          (1024, 4096, 64, 16, 2),    # scale-up: 4x M and hidden vs largest original, 2x rank and loras
+          (4, 32, 4, 1, 1),           # scale-down: 4x smaller M than smallest original, minimal dims
+          (37, 131, 13, 3, 1),        # alignment-stress: all prime dims, no tile alignment
+          (97, 503, 17, 5, 3),        # alignment-stress: prime hidden near BLOCK_K*SPLIT_K boundary, 3 slices
+          (1, 4096, 8, 2, 1),         # asymmetric: single token with large hidden (512:1 hidden:rank ratio)
+          (512, 4096, 16, 4, 2),      # production: Llama-7B LoRA-A shrink, rank=16, 2 slices for gate/up
+          (128, 2048, 32, 8, 3),      # production: GPT-2-Large multi-head LoRA, 3 slices for QKV projection
+      ]

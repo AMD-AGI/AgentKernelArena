@@ -1,0 +1,45 @@
+task_type: triton2triton
+num_original_shapes: 6
+injections:
+  - file: test_flashattention_fwd.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD', [
+          (4, 48, 128, 64),
+          (4, 48, 256, 64),
+          (4, 48, 512, 64),
+          (4, 48, 1024, 64),
+          (4, 48, 2048, 64),
+          (4, 48, 4096, 64),
+          #  (4, 48, 8192, 64), out of memory
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD', [
+          (1, 1, 128, 16),       # edge-case: batch=1, heads=1, N_CTX=BLOCK_M, smallest D_HEAD
+          (2, 16, 8192, 64),     # scale-up: 2x max original N_CTX
+          (1, 4, 64, 16),        # scale-down: N_CTX < BLOCK_M, partial tile
+          (2, 7, 131, 32),       # alignment-stress: prime H=7, prime N_CTX=131
+          (3, 13, 1019, 64),     # alignment-stress: prime H=13, prime N_CTX=1019
+          (1, 1, 4096, 16),      # asymmetric: single batch/head, long seq, tiny D_HEAD
+          (8, 32, 2048, 64),     # production: Llama-style 8-batch 32-head prefill
+          (2, 16, 4096, 32),     # production: GPT-style 2-batch 16-head prefill
+      ])
+  - file: test_flashattention_fwd.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD', [
+          (4, 48, 128, 64), (4, 48, 256, 64), (4, 48, 512, 64),
+          (4, 48, 1024, 64), (4, 48, 2048, 64), (4, 48, 4096, 64),
+          # (2, 12, 1024, 64), (1, 8, 2048, 32) # Example additional shapes if desired
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize('Z, H, N_CTX, D_HEAD', [
+          (1, 1, 128, 16),       # edge-case: batch=1, heads=1, N_CTX=BLOCK_M, smallest D_HEAD
+          (2, 16, 8192, 64),     # scale-up: 2x max original N_CTX
+          (1, 4, 64, 16),        # scale-down: N_CTX < BLOCK_M, partial tile
+          (2, 7, 131, 32),       # alignment-stress: prime H=7, prime N_CTX=131
+          (3, 13, 1019, 64),     # alignment-stress: prime H=13, prime N_CTX=1019
+          (1, 1, 4096, 16),      # asymmetric: single batch/head, long seq, tiny D_HEAD
+          (8, 32, 2048, 64),     # production: Llama-style 8-batch 32-head prefill
+          (2, 16, 4096, 32),     # production: GPT-style 2-batch 16-head prefill
+      ])

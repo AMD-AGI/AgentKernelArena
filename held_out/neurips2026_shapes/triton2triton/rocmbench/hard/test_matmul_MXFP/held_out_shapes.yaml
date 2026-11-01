@@ -1,0 +1,33 @@
+task_type: triton2triton
+num_original_shapes: 2
+injections:
+  - file: test_matmul_MXFP.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("scale", [True, False])
+    replacement_code: |
+      @pytest.mark.parametrize("scale", [
+          False,  # edge-case: single-tile M=N=BLOCK_SIZE, K=BLOCK_K (hardcoded M=512,N=512)
+          True,   # scale-up: exercises scaled MXFP path with full pipeline
+          False,  # scale-down: non-scaled path, fp16 matmul
+          True,   # alignment-stress: scaled path with MXFP vector alignment
+          False,  # alignment-stress: non-scaled fp16 path
+          True,   # asymmetric: scaled path with e2m1/e4m3 dot_scaled
+          False,  # production: non-scaled fp16 GEMM path
+          True,   # production: scaled MXFP path, Llama-style
+      ])
+  - file: test_matmul_MXFP.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("test_cfg_dict", MXFP_PERF_CONFIGS)
+    replacement_code: |
+      @pytest.mark.parametrize("test_cfg_dict", [
+          {'M': 64, 'N': 64, 'K_param': 32, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},        # edge-case: single-tile, minimal work
+          {'M': 4096, 'N': 4096, 'K_param': 512, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},    # scale-up: 2-8x larger than originals
+          {'M': 128, 'N': 128, 'K_param': 32, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},       # scale-down: 4x smaller than smallest original
+          {'M': 131, 'N': 137, 'K_param': 64, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},       # alignment-stress: prime M and N dimensions
+          {'M': 1019, 'N': 1013, 'K_param': 128, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},    # alignment-stress: large prime M and N
+          {'M': 1, 'N': 4096, 'K_param': 128, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},       # asymmetric: single-row decode-like M=1
+          {'M': 4096, 'N': 11008, 'K_param': 4096, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},  # production: Llama-7B FFN up-projection
+          {'M': 2048, 'N': 8192, 'K_param': 2048, 'is_scaled': False, 'a_type': None, 'b_type': None, 'input_dtype': 'fp16'},   # production: transformer FFN layer
+      ])

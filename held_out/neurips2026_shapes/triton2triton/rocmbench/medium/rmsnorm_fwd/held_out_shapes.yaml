@@ -1,0 +1,57 @@
+task_type: triton2triton
+num_original_shapes: 7
+injections:
+  - file: rmsnorm_fwd.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("in_dtype_str", ["fp16", "bf16"])
+      @pytest.mark.parametrize("out_dtype_str", ["fp16", "bf16"])
+      @pytest.mark.parametrize('ZERO_CENTERED_GAMMA', [True, False])
+      @pytest.mark.parametrize('M, N', [
+          (1, 4),
+          (2, 10),
+          (256, 4096),
+          (4096, 8192),
+          (1, 31744),
+          (8192, 65536),
+          (873, 1245),
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize("in_dtype_str", ["fp16", "bf16"])
+      @pytest.mark.parametrize("out_dtype_str", ["fp16", "bf16"])
+      @pytest.mark.parametrize('ZERO_CENTERED_GAMMA', [True, False])
+      @pytest.mark.parametrize('M, N', [
+          (1, 32768),       # edge-case: N exactly equals MAX_FUSED_SIZE for fp16, USE_BLOCKED boundary
+          (16384, 16384),   # scale-up: 2-4x both dims vs largest original shapes
+          (4, 64),          # scale-down: both dims much smaller than typical test shapes
+          (131, 4003),      # alignment-stress: prime M, N not multiple of any tile size
+          (37, 1019),       # alignment-stress: both prime dims, misaligned for GPU tiles
+          (16384, 7),       # asymmetric: extreme tall-skinny ratio M>>N (~2340:1)
+          (1024, 4096),     # production: Llama3-8B hidden_size, batch*seq=1024
+          (2048, 28672),    # production: Llama3-70B intermediate_size, seq=2048
+      ])
+  - file: rmsnorm_fwd.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("in_dtype_str", ["fp16", "bf16", "fp32"]) # Added fp32 back for perf
+      @pytest.mark.parametrize("out_dtype_str", ["fp16", "bf16", "fp32"])
+      @pytest.mark.parametrize('ZERO_CENTERED_GAMMA', [True, False])
+      @pytest.mark.parametrize('M, N', [
+          (256, 4096), (2048, 2048), (4096, 8192), (8192, 8192),
+          (1, 31744), (1, 131072), (512, 10240),
+          # (1, 4), (873, 1245), # Smaller/odd shapes can be added back if desired
+      ])
+    replacement_code: |
+      @pytest.mark.parametrize("in_dtype_str", ["fp16", "bf16", "fp32"]) # Added fp32 back for perf
+      @pytest.mark.parametrize("out_dtype_str", ["fp16", "bf16", "fp32"])
+      @pytest.mark.parametrize('ZERO_CENTERED_GAMMA', [True, False])
+      @pytest.mark.parametrize('M, N', [
+          (1, 32768),       # edge-case: N exactly equals MAX_FUSED_SIZE for fp16, USE_BLOCKED boundary
+          (16384, 16384),   # scale-up: 2-4x both dims vs largest original shapes
+          (4, 64),          # scale-down: both dims much smaller than typical test shapes
+          (131, 4003),      # alignment-stress: prime M, N not multiple of any tile size
+          (37, 1019),       # alignment-stress: both prime dims, misaligned for GPU tiles
+          (16384, 7),       # asymmetric: extreme tall-skinny ratio M>>N (~2340:1)
+          (1024, 4096),     # production: Llama3-8B hidden_size, batch*seq=1024
+          (2048, 28672),    # production: Llama3-70B intermediate_size, seq=2048
+      ])

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 8, 1),          # edge-case: single row, single topk, partial tile (1/512)
+          (4096, 256, 8),     # scale-up: 8x n_rows, 4x num_experts, bm_cols=8
+          (4, 4, 1),          # scale-down: all dims far below originals
+          (131, 37, 3),       # alignment-stress: prime n_rows and num_experts
+          (1019, 97, 5),      # alignment-stress: prime n_rows=1019, prime num_experts=97
+          (8192, 8, 1),       # asymmetric: very tall (16 grid blocks) with minimal width
+          (2048, 64, 2),      # production: Mixtral-style MoE, 2048 tokens top-2
+          (512, 128, 8),      # production: DeepSeek-V2-style MoE, 128 experts top-8
+      ]

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 2),            # edge-case: batch=1, d=1 minimal single-element halves
+          (2048, 16384),     # scale-up: 4x batch and 4x d vs largest original
+          (4, 32),           # scale-down: 8x smaller batch and d than smallest original
+          (37, 1038),        # alignment-stress: prime batch=37, odd d=519
+          (131, 4006),       # alignment-stress: prime batch=131, prime d=2003
+          (1, 65536),        # asymmetric: single row, d=32768 extreme width
+          (8, 22016),        # production: Llama-7B FFN intermediate_size=11008
+          (2, 8192),         # production: Llama-style hidden_dim=4096
+      ]

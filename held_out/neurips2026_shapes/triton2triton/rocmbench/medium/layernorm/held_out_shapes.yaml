@@ -1,0 +1,34 @@
+task_type: triton2triton
+num_original_shapes: 11
+injections:
+  - file: layernorm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M, N', [(1823, 781), (2, 128), (1, 4), (128, 2), (1, 128), (8192, 8192), (4096, 8192),  
+                                        (359, 1), (1, 359), (1, 131072), (1, 89999)])  
+    replacement_code: |
+      @pytest.mark.parametrize('M, N', [
+          (1, 1),             # edge-case: minimal single-element input
+          (16384, 8192),      # scale-up: 2x largest original M
+          (2, 3),             # scale-down: tiny dimensions both axes
+          (127, 1019),        # alignment-stress: both dims prime
+          (4003, 131),        # alignment-stress: both dims prime, reversed aspect
+          (1, 65536),         # asymmetric: single row, large N decode-like
+          (2048, 4096),       # production: Llama-7B hidden dim layernorm
+          (8, 11008),         # production: Llama-7B FFN intermediate dim
+      ])  
+  - file: layernorm.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M, N', LAYERNORM_SHAPES_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize('M, N', [
+          (1, 1),             # edge-case: minimal single-element input
+          (16384, 8192),      # scale-up: 2x largest original M
+          (2, 3),             # scale-down: tiny dimensions both axes
+          (127, 1019),        # alignment-stress: both dims prime
+          (4003, 131),        # alignment-stress: both dims prime, reversed aspect
+          (1, 65536),         # asymmetric: single row, large N decode-like
+          (2048, 4096),       # production: Llama-7B hidden dim layernorm
+          (8, 11008),         # production: Llama-7B FFN intermediate dim
+      ])

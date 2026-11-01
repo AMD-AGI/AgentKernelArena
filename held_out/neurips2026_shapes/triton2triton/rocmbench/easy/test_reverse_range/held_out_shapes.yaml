@@ -1,0 +1,35 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: test_reverse_range.py
+    find_marker: "raw_replace"
+    old_code: |
+      def test_reverse_range(request, device='cuda'):
+    replacement_code: |
+      @pytest.mark.parametrize("dtype_str, num_warps_launch", [
+          ('fp32', 8),      # edge-case: 8 warps for 512-element fixed kernel stresses warp scheduling
+          ('fp16', 16),     # scale-up: 16 warps oversaturated for 512-element workload
+          ('bf16', 32),     # scale-down: 32 warps extreme underutilization per warp
+          ('fp32', 32),     # alignment-stress: 32 warps max thread-block resource pressure with fp32
+          ('fp16', 32),     # alignment-stress: 32 warps max warp pressure with half precision
+          ('bf16', 8),      # asymmetric: unusual bf16 with 8-warp combo tests dtype/warp interaction
+          ('fp32', 16),     # production-realistic: moderate warp oversubscription typical of autotuned configs
+          ('bf16', 16),     # production-realistic: bf16 with 16 warps common in inference workloads
+      ])
+      def test_reverse_range(dtype_str, num_warps_launch, request, device='cuda'):
+  - file: test_reverse_range.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("dtype_str", REVERSE_RANGE_DTYPES_FOR_PERF)
+      @pytest.mark.parametrize("num_warps_launch", REVERSE_RANGE_NUM_WARPS_FOR_PERF)
+    replacement_code: |
+      @pytest.mark.parametrize("dtype_str, num_warps_launch", [
+          ('fp32', 8),      # edge-case: 8 warps for 512-element fixed kernel stresses warp scheduling
+          ('fp16', 16),     # scale-up: 16 warps oversaturated for 512-element workload
+          ('bf16', 32),     # scale-down: 32 warps extreme underutilization per warp
+          ('fp32', 32),     # alignment-stress: 32 warps max thread-block resource pressure with fp32
+          ('fp16', 32),     # alignment-stress: 32 warps max warp pressure with half precision
+          ('bf16', 8),      # asymmetric: unusual bf16 with 8-warp combo tests dtype/warp interaction
+          ('fp32', 16),     # production-realistic: moderate warp oversubscription typical of autotuned configs
+          ('bf16', 16),     # production-realistic: bf16 with 16 warps common in inference workloads
+      ])

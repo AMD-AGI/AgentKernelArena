@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1024),       # edge-case: batch=1, single program instance
+          (128, 32768),     # scale-up: 2x batch, 4x size vs largest original
+          (2, 64),          # scale-down: tiny batch, size < BLOCK_SIZE (1024)
+          (17, 1019),       # alignment-stress: prime batch=17, prime size=1019
+          (7, 3571),        # alignment-stress: prime batch=7, prime size=3571
+          (1, 131072),      # asymmetric: single copy of 128KB, extreme size-to-batch ratio
+          (8, 16384),       # production: Mamba state copy, 8 layers x 16KB states
+          (32, 4000),       # production: 32-batch inference, ~4KB KV cache segments
+      ]

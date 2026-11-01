@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 16, 1, 16, 16, 16),       # edge-case: minimal dims, BT=16 at tl.dot minimum
+          (4, 256, 4, 128, 128, 64),     # scale-up: 4x T, 4x B, 2x H, 4x K/V vs original
+          (1, 16, 1, 16, 16, 32),        # scale-down: 4x smaller T, minimal B/H/K/V
+          (2, 37, 2, 37, 37, 32),        # alignment-stress: prime T=37 and K=V=37
+          (1, 131, 3, 19, 23, 64),       # alignment-stress: prime T=131, K=19, V=23
+          (1, 1024, 1, 16, 256, 32),     # asymmetric: tall-skinny T>>K with wide V=256
+          (2, 2048, 8, 64, 64, 64),      # production: GLA/HGRN-style prefill B=2 H=8 seq=2048
+          (4, 512, 16, 128, 128, 64),    # production: multi-head linear-attn B=4 H=16 seq=512
+      ]

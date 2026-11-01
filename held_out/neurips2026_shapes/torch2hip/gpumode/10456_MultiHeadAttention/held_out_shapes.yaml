@@ -1,0 +1,60 @@
+task_type: torch2hip
+num_original_shapes: 3
+init_constraints:
+  heads: 4
+  d_model: 4
+
+injections:
+  - file: pytorch_code_module/py_10456_MultiHeadAttention.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate 8 held-out test cases for attention kernels.
+          d_model must be 4 to match get_init_inputs().
+          seq_len must be <= 230 to avoid d_k=0 crash when h=8.
+          Branches: seq_len <= 138 -> h=2,d_k=2; 139-230 -> h=4,d_k=1.
+          """
+          configs = [
+              ([1, 1, 4], [1, 1, 4], [1, 1, 4]),          # edge-case: batch=1, seq_len=1 minimal
+              ([128, 200, 4], [128, 200, 4], [128, 200, 4]),  # scale-up: 4x batch, 3x seq_len
+              ([2, 4, 4], [2, 4, 4], [2, 4, 4]),            # scale-down: 4x smaller than smallest original
+              ([3, 37, 4], [3, 37, 4], [3, 37, 4]),          # alignment-stress: prime batch and seq_len
+              ([7, 131, 4], [7, 131, 4], [7, 131, 4]),       # alignment-stress: prime batch and seq_len
+              ([1, 224, 4], [1, 224, 4], [1, 224, 4]),       # asymmetric: batch=1, large seq_len near branch boundary
+              ([4, 128, 4], [4, 128, 4], [4, 128, 4]),       # production: typical NLP inference batch
+              ([8, 192, 4], [8, 192, 4], [8, 192, 4]),       # production: medium NLP prefill workload
+          ]
+
+          for q_shape, k_shape, v_shape in configs:
+              q = torch.randn(q_shape, dtype=torch.float32)
+              k = torch.randn(k_shape, dtype=torch.float32)
+              v = torch.randn(v_shape, dtype=torch.float32)
+              yield [q, k, v]
+
+  - file: pytorch_code_functional/py_10456_MultiHeadAttention_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Generate 8 held-out test cases for attention kernels.
+          d_model must be 4 to match get_init_inputs().
+          seq_len must be <= 230 to avoid d_k=0 crash when h=8.
+          Branches: seq_len <= 138 -> h=2,d_k=2; 139-230 -> h=4,d_k=1.
+          """
+          configs = [
+              ([1, 1, 4], [1, 1, 4], [1, 1, 4]),          # edge-case: batch=1, seq_len=1 minimal
+              ([128, 200, 4], [128, 200, 4], [128, 200, 4]),  # scale-up: 4x batch, 3x seq_len
+              ([2, 4, 4], [2, 4, 4], [2, 4, 4]),            # scale-down: 4x smaller than smallest original
+              ([3, 37, 4], [3, 37, 4], [3, 37, 4]),          # alignment-stress: prime batch and seq_len
+              ([7, 131, 4], [7, 131, 4], [7, 131, 4]),       # alignment-stress: prime batch and seq_len
+              ([1, 224, 4], [1, 224, 4], [1, 224, 4]),       # asymmetric: batch=1, large seq_len near branch boundary
+              ([4, 128, 4], [4, 128, 4], [4, 128, 4]),       # production: typical NLP inference batch
+              ([8, 192, 4], [8, 192, 4], [8, 192, 4]),       # production: medium NLP prefill workload
+          ]
+
+          for q_shape, k_shape, v_shape in configs:
+              q = torch.randn(q_shape, dtype=torch.float32)
+              k = torch.randn(k_shape, dtype=torch.float32)
+              v = torch.randn(v_shape, dtype=torch.float32)
+              yield [q, k, v]

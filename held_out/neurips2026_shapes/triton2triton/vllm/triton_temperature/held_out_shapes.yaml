@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1),            # edge-case: minimal single request, single vocab element, extreme partial tile
+          (128, 131072),     # scale-up: 2x num_reqs and 4x vocab_size vs largest original
+          (1, 64),           # scale-down: 4x smaller num_reqs and 4x smaller vocab than smallest original
+          (7, 10007),        # alignment-stress: prime num_reqs and prime vocab_size, partial tile
+          (13, 32003),       # alignment-stress: prime num_reqs, large prime vocab near 32k boundary
+          (1, 262144),       # asymmetric: single request with very large vocab (32x largest original vocab)
+          (8, 32000),        # production: typical LLM batch=8 with Llama-2 vocab size
+          (2, 128256),       # production: small batch with Llama-3 vocab size (128256 tokens)
+      ]

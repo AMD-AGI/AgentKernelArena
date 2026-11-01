@@ -1,0 +1,44 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints:
+  hidden: 4
+  vocab_size: 4
+injections:
+  - file: pytorch_code_module/py_8325_MaskedLanguageModel.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 4],),        # edge-case: minimal batch and spatial dims
+              ([256, 16, 16, 4],),     # scale-up: 4x batch and 4x spatial vs original
+              ([2, 2, 2, 4],),         # scale-down: half of smallest original dims
+              ([37, 7, 5, 4],),        # alignment-stress: prime batch, non-power-of-2 spatial
+              ([131, 3, 11, 4],),      # alignment-stress: prime batch and S2
+              ([1, 1, 8192, 4],),      # asymmetric: batch=1, S1=1, very long S2
+              ([8, 512, 1, 4],),       # production: BERT-like batch=8, seq_len=512
+              ([2, 128, 32, 4],),      # production: transformer batch=2, seq=128, heads=32
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_8325_MaskedLanguageModel_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 1, 1, 4],),        # edge-case: minimal batch and spatial dims
+              ([256, 16, 16, 4],),     # scale-up: 4x batch and 4x spatial vs original
+              ([2, 2, 2, 4],),         # scale-down: half of smallest original dims
+              ([37, 7, 5, 4],),        # alignment-stress: prime batch, non-power-of-2 spatial
+              ([131, 3, 11, 4],),      # alignment-stress: prime batch and S2
+              ([1, 1, 8192, 4],),      # asymmetric: batch=1, S1=1, very long S2
+              ([8, 512, 1, 4],),       # production: BERT-like batch=8, seq_len=512
+              ([2, 128, 32, 4],),      # production: transformer batch=2, seq=128, heads=32
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

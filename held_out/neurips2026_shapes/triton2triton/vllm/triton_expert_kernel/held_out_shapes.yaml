@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 32, 1),              # edge-case: M=1 single token, N=1, K=BLOCK_K boundary
+          (2048, 4096, 2048),      # scale-up: 4x largest original dims
+          (8, 16, 8),              # scale-down: all dims below BLOCK sizes
+          (37, 131, 67),           # alignment-stress: all prime dimensions
+          (131, 1019, 37),         # alignment-stress: large primes, non-aligned K-loop
+          (1, 128, 8192),          # asymmetric: M=1 with very wide N
+          (256, 4096, 11008),      # production: LLaMA-7B FFN up-projection
+          (64, 11008, 4096),       # production: LLaMA-7B FFN down-projection
+      ]

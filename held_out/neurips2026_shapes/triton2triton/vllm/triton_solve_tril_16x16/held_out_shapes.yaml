@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 1
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 16, 1, 16),     # edge-case: single block, batch=1, head=1, T==BT
+          (4, 256, 8, 16),    # scale-up: 8x T, 2x B, 2x H vs original
+          (1, 8, 1, 16),      # scale-down: T=8 < BT, partial single block
+          (2, 37, 3, 16),     # alignment-stress: T=37 prime, H=3 odd
+          (3, 131, 5, 16),    # alignment-stress: T=131 prime, B=3 odd, H=5 odd
+          (1, 512, 1, 16),    # asymmetric: 32 blocks along T, single batch/head
+          (2, 128, 8, 16),    # production: small-batch multi-head inference
+          (8, 64, 16, 16),    # production: multi-batch multi-head decode
+      ]

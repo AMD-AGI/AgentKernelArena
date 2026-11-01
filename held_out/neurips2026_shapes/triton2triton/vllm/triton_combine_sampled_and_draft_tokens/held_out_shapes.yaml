@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 0, 1),          # edge-case: batch=1, zero speculative steps, BLOCK_SIZE=1
+          (256, 7, 4096),      # scale-up: 4x num_reqs and seq_base vs largest original
+          (2, 1, 16),          # scale-down: 2x smaller num_reqs/spec/seq_base than smallest original
+          (37, 3, 131),        # alignment-stress: prime num_reqs=37, prime seq_base=131
+          (19, 6, 1019),       # alignment-stress: prime num_reqs=19, prime seq_base=1019, 7 logits in BLOCK_SIZE=8
+          (512, 1, 8),         # asymmetric: 512 reqs with only 2 tokens each, extreme batch-heavy skew
+          (8, 5, 2048),        # production: 8-batch speculative decoding at seq_len 2048
+          (4, 4, 4096),        # production: 4-batch speculative decoding at long context 4096
+      ]

@@ -1,0 +1,26 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 16, 1, 16, 16),    # edge-case: minimal dims, BT=BC=16, single chunk NT=1 NC=1
+          (2, 256, 4, 64, 64),    # scale-up: 4x T, 2x B/H/K vs original
+          (1, 16, 1, 8, 64),      # scale-down: T=16 << chunk_size=64, partial tile
+          (1, 131, 2, 37, 64),    # alignment-stress: prime T=131 and K=37
+          (2, 97, 3, 19, 64),     # alignment-stress: prime T=97, K=19, odd H=3
+          (1, 1024, 1, 16, 64),   # asymmetric: very long T=1024 with minimal H=1, K=16
+          (4, 128, 16, 64, 64),   # production: multi-head attention B=4 H=16 head_dim=64
+          (2, 512, 8, 128, 64),   # production: Llama-style prefill B=2 H=8 head_dim=128
+      ]
+
+      def gen_inputs(seed, device, shape_tuple):
+          import torch
+          B, T, H, K, chunk_size = shape_tuple
+          torch.manual_seed(seed)
+          q = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+          k = torch.randn(B, T, H, K, device=device, dtype=torch.float32) * 0.1
+          gk = torch.randn(B, T, H, K, device=device, dtype=torch.float32).cumsum(1) * 0.01
+          beta = torch.rand(B, T, H, device=device, dtype=torch.float32)
+          return (q, k, gk, beta, 0.125), {"chunk_size": chunk_size}

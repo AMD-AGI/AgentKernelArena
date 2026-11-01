@@ -1,0 +1,43 @@
+task_type: torch2hip
+num_original_shapes: 5
+init_constraints:
+  input_channel_num: 4
+injections:
+  - file: pytorch_code_module/py_1001_NormalAttention_dot.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4, 1, 1],),       # edge-case: batch=1, degenerate 1x1 spatial
+              ([1, 4, 128, 128],),    # scale-up: 2x largest spatial dim (128 vs 64)
+              ([2, 4, 3, 3],),        # scale-down: tiny 3x3 spatial, ~21x smaller than smallest original
+              ([3, 4, 37, 37],),      # alignment-stress: prime spatial dim 37
+              ([5, 4, 19, 23],),      # alignment-stress: prime dims 19x23, non-square
+              ([1, 4, 2, 8192],),     # asymmetric: extreme aspect ratio H=2, W=8192
+              ([8, 4, 56, 56],),      # production: ResNet conv3_x feature map 56x56
+              ([16, 4, 28, 28],),     # production: ResNet conv4_x feature map 28x28
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_1001_NormalAttention_dot_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4, 1, 1],),       # edge-case: batch=1, degenerate 1x1 spatial
+              ([1, 4, 128, 128],),    # scale-up: 2x largest spatial dim (128 vs 64)
+              ([2, 4, 3, 3],),        # scale-down: tiny 3x3 spatial, ~21x smaller than smallest original
+              ([3, 4, 37, 37],),      # alignment-stress: prime spatial dim 37
+              ([5, 4, 19, 23],),      # alignment-stress: prime dims 19x23, non-square
+              ([1, 4, 2, 8192],),     # asymmetric: extreme aspect ratio H=2, W=8192
+              ([8, 4, 56, 56],),      # production: ResNet conv3_x feature map 56x56
+              ([16, 4, 28, 28],),     # production: ResNet conv4_x feature map 28x28
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

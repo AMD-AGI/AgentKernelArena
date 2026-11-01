@@ -1,0 +1,41 @@
+task_type: hip2hip
+num_original_shapes: 6
+init_constraints:
+  features: 4
+injections:
+  - file: pytorch_code_module/py_11754_layer_normalization.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4],),                  # edge-case: batch=1, minimal M=1 row
+              ([128, 256, 4],),           # scale-up: M=32768, 16x original max rows
+              ([2, 2, 4],),              # scale-down: M=4, tiny 3-D tensor
+              ([37, 4],),                # alignment-stress: prime row count M=37
+              ([131, 19, 4],),           # alignment-stress: prime dims, M=2489
+              ([1, 65536, 4],),          # asymmetric: single-batch, very long sequence M=65536
+              ([8, 512, 4],),            # production: transformer hidden states, M=4096
+              ([16, 2048, 4],),          # production: large-batch sequence processing, M=32768
+          ]
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_11754_layer_normalization_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4],),                  # edge-case: batch=1, minimal M=1 row
+              ([128, 256, 4],),           # scale-up: M=32768, 16x original max rows
+              ([2, 2, 4],),              # scale-down: M=4, tiny 3-D tensor
+              ([37, 4],),                # alignment-stress: prime row count M=37
+              ([131, 19, 4],),           # alignment-stress: prime dims, M=2489
+              ([1, 65536, 4],),          # asymmetric: single-batch, very long sequence M=65536
+              ([8, 512, 4],),            # production: transformer hidden states, M=4096
+              ([16, 2048, 4],),          # production: large-batch sequence processing, M=32768
+          ]
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

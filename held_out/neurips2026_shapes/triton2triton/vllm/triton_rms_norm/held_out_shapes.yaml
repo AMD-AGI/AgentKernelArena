@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1024),       # edge-case: batch=1, hidden == BLOCK_SIZE boundary
+          (2048, 8192),    # scale-up: 4x rows and 2x hidden vs originals
+          (4, 32),         # scale-down: 8x fewer rows, 4x smaller hidden
+          (37, 1019),      # alignment-stress: both dims prime, partial tile
+          (131, 4003),     # alignment-stress: prime dims, multi-iteration partial tile
+          (1, 65536),      # asymmetric: single row, 64 BLOCK_SIZE iterations
+          (8192, 4096),    # production: Llama-2-7B prefill hidden_dim
+          (2048, 11008),   # production: Llama-2-7B FFN intermediate dim
+      ]

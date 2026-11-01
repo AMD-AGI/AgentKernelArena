@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 8),            # edge-case: batch=1, qlen=1, minimal single-token partial-tile
+          (128, 2048, 8192),     # scale-up: 2-4x all dims vs originals
+          (2, 4, 16),            # scale-down: 8x smaller qlen/max_len than smallest original
+          (7, 37, 131),          # alignment-stress: all prime/odd dims, qlen=37 not tile-aligned
+          (13, 1019, 4003),      # alignment-stress: prime qlen=1019 near BLOCK_SIZE=1024 boundary
+          (1, 4096, 8192),       # asymmetric: single batch with very long query (4 full blocks)
+          (8, 512, 4096),        # production: typical LLM prefill batch=8 seq=512
+          (4, 2048, 8192),       # production: long-context LLM prefill batch=4 seq=2048
+      ]

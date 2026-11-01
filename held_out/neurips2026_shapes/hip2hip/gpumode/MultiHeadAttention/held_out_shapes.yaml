@@ -1,0 +1,60 @@
+task_type: hip2hip
+num_original_shapes: 3
+init_constraints:
+  heads: 4
+  d_model: 4
+injections:
+  - file: pytorch_code_module/py_10456_MultiHeadAttention.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Held-out test shapes for MultiHeadAttention.
+          d_model=4 fixed by get_init_inputs(). Dynamic head selection:
+            seq_len <= 138 -> H=2, d_k=2
+            139 <= seq_len <= 230 -> H=4, d_k=1
+            seq_len > 230 -> H=8 (invalid with d_model=4, avoid)
+          """
+          configs = [
+              ([1, 1, 4], [1, 1, 4], [1, 1, 4]),             # edge-case: batch=1, seq_len=1
+              ([64, 128, 4], [64, 128, 4], [64, 128, 4]),     # scale-up: 2x batch and 2x seq_len vs largest original
+              ([2, 4, 4], [2, 4, 4], [2, 4, 4]),              # scale-down: 4x smaller than smallest original
+              ([7, 37, 4], [7, 37, 4], [7, 37, 4]),           # alignment-stress: both dims prime
+              ([13, 131, 4], [13, 131, 4], [13, 131, 4]),     # alignment-stress: larger primes
+              ([1, 200, 4], [1, 200, 4], [1, 200, 4]),        # asymmetric: batch=1 with large seq_len, triggers H=4
+              ([2, 128, 4], [2, 128, 4], [2, 128, 4]),        # production: small-batch inference
+              ([8, 48, 4], [8, 48, 4], [8, 48, 4]),           # production: typical training micro-batch
+          ]
+
+          for q_shape, k_shape, v_shape in configs:
+              q = torch.randn(q_shape, dtype=torch.float32)
+              k = torch.randn(k_shape, dtype=torch.float32)
+              v = torch.randn(v_shape, dtype=torch.float32)
+              yield [q, k, v]
+  - file: pytorch_code_functional/py_10456_MultiHeadAttention_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Held-out test shapes for MultiHeadAttention.
+          d_model=4 fixed by get_init_inputs(). Dynamic head selection:
+            seq_len <= 138 -> H=2, d_k=2
+            139 <= seq_len <= 230 -> H=4, d_k=1
+            seq_len > 230 -> H=8 (invalid with d_model=4, avoid)
+          """
+          configs = [
+              ([1, 1, 4], [1, 1, 4], [1, 1, 4]),             # edge-case: batch=1, seq_len=1
+              ([64, 128, 4], [64, 128, 4], [64, 128, 4]),     # scale-up: 2x batch and 2x seq_len vs largest original
+              ([2, 4, 4], [2, 4, 4], [2, 4, 4]),              # scale-down: 4x smaller than smallest original
+              ([7, 37, 4], [7, 37, 4], [7, 37, 4]),           # alignment-stress: both dims prime
+              ([13, 131, 4], [13, 131, 4], [13, 131, 4]),     # alignment-stress: larger primes
+              ([1, 200, 4], [1, 200, 4], [1, 200, 4]),        # asymmetric: batch=1 with large seq_len, triggers H=4
+              ([2, 128, 4], [2, 128, 4], [2, 128, 4]),        # production: small-batch inference
+              ([8, 48, 4], [8, 48, 4], [8, 48, 4]),           # production: typical training micro-batch
+          ]
+
+          for q_shape, k_shape, v_shape in configs:
+              q = torch.randn(q_shape, dtype=torch.float32)
+              k = torch.randn(k_shape, dtype=torch.float32)
+              v = torch.randn(v_shape, dtype=torch.float32)
+              yield [q, k, v]

@@ -1,0 +1,42 @@
+task_type: hip2hip
+num_original_shapes: 8
+init_constraints:
+  feature_size: 4
+  hidden_size: 4
+injections:
+  - file: pytorch_code_module/py_102_ItemQueryAttention.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 1, 1, 4),          # edge-case: minimal dims, single-element attention
+              (128, 128, 256, 4),    # scale-up: 2x largest original on all batch/seq dims
+              (1, 1, 2, 4),          # scale-down: smaller than smallest original (2,2,4)
+              (3, 5, 7, 4),          # alignment-stress: all-prime batch and seq dims
+              (13, 11, 37, 4),       # alignment-stress: larger primes stressing grid
+              (1, 128, 512, 4),      # asymmetric: q=1 with large s and seq
+              (5, 5, 20, 4),         # production: 5-way 5-shot few-shot learning
+              (10, 20, 50, 4),       # production: larger meta-learning workload
+          ]
+          for q_size, s_size, seq_size, feature_size in configs:
+              qs = torch.rand([q_size, seq_size, feature_size], dtype=torch.float32)
+              hs = torch.rand([s_size, seq_size, feature_size], dtype=torch.float32)
+              yield [qs, hs]
+  - file: pytorch_code_functional/py_102_ItemQueryAttention_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              (1, 1, 1, 4),          # edge-case: minimal dims, single-element attention
+              (128, 128, 256, 4),    # scale-up: 2x largest original on all batch/seq dims
+              (1, 1, 2, 4),          # scale-down: smaller than smallest original (2,2,4)
+              (3, 5, 7, 4),          # alignment-stress: all-prime batch and seq dims
+              (13, 11, 37, 4),       # alignment-stress: larger primes stressing grid
+              (1, 128, 512, 4),      # asymmetric: q=1 with large s and seq
+              (5, 5, 20, 4),         # production: 5-way 5-shot few-shot learning
+              (10, 20, 50, 4),       # production: larger meta-learning workload
+          ]
+          for q_size, s_size, seq_size, feature_size in configs:
+              qs = torch.rand([q_size, seq_size, feature_size], dtype=torch.float32)
+              hs = torch.rand([s_size, seq_size, feature_size], dtype=torch.float32)
+              yield [qs, hs]

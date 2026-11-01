@@ -1,0 +1,42 @@
+task_type: torch2hip
+num_original_shapes: 11
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_14539_GELU.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1],),                         # edge-case: single element
+              ([64, 256, 128, 128],),         # scale-up: 4x batch vs largest original
+              ([8, 16],),                     # scale-down: 4x smaller than smallest 2D
+              ([37, 131, 97],),               # alignment-stress: all-prime 3D shape
+              ([7, 1019, 61, 61],),           # alignment-stress: prime spatial dims in 4D
+              ([1, 65536],),                  # asymmetric: single-row very wide vector
+              ([8, 256, 56, 56],),            # production: ResNet-50 conv3 feature map
+              ([16, 512, 14, 14],),           # production: ResNet-50 conv5 feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]
+  - file: pytorch_code_functional/py_14539_GELU_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1],),                         # edge-case: single element
+              ([64, 256, 128, 128],),         # scale-up: 4x batch vs largest original
+              ([8, 16],),                     # scale-down: 4x smaller than smallest 2D
+              ([37, 131, 97],),               # alignment-stress: all-prime 3D shape
+              ([7, 1019, 61, 61],),           # alignment-stress: prime spatial dims in 4D
+              ([1, 65536],),                  # asymmetric: single-row very wide vector
+              ([8, 256, 56, 56],),            # production: ResNet-50 conv3 feature map
+              ([16, 512, 14, 14],),           # production: ResNet-50 conv5 feature map
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              x = torch.randn(shape_list, dtype=torch.float32)
+              yield [x]

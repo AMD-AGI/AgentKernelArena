@@ -1,0 +1,44 @@
+task_type: hip2hip
+num_original_shapes: 5
+init_constraints:
+  in_size: 4
+  out_size: 4
+injections:
+  - file: pytorch_code_module/py_1178_MLP_model.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4],),      # edge-case: batch=1, single-row grid.y
+              ([256, 4],),    # scale-up: 4x max original batch
+              ([2, 4],),      # scale-down: 2x below min original batch
+              ([37, 4],),     # alignment-stress: prime batch, not multiple of wavefront
+              ([131, 4],),    # alignment-stress: large prime batch
+              ([1, 2, 2],),   # asymmetric: 3D input flattened to [1,4], M=1 extreme ratio
+              ([128, 4],),    # production: typical inference batch size
+              ([512, 4],),    # production: large training mini-batch
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              xb = torch.randn(shape_list, dtype=torch.float32)
+              yield [xb]
+  - file: pytorch_code_functional/py_1178_MLP_model_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1, 4],),      # edge-case: batch=1, single-row grid.y
+              ([256, 4],),    # scale-up: 4x max original batch
+              ([2, 4],),      # scale-down: 2x below min original batch
+              ([37, 4],),     # alignment-stress: prime batch, not multiple of wavefront
+              ([131, 4],),    # alignment-stress: large prime batch
+              ([1, 2, 2],),   # asymmetric: 3D input flattened to [1,4], M=1 extreme ratio
+              ([128, 4],),    # production: typical inference batch size
+              ([512, 4],),    # production: large training mini-batch
+          ]
+
+          for shape in configs:
+              shape_list = shape[0] if isinstance(shape, tuple) and len(shape) == 1 else shape
+              xb = torch.randn(shape_list, dtype=torch.float32)
+              yield [xb]

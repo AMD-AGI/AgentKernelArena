@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 64, 32, 1, 16),         # edge-case: single token, single head, minimal blocks
+          (1024, 64, 128, 128, 128, 16),  # scale-up: 4x tokens, 8x heads, 2x blocks vs largest original
+          (4, 2, 32, 16, 1, 8),           # scale-down: tiny across all dimensions
+          (37, 7, 131, 67, 5, 11),        # alignment-stress: all-prime dimensions, non-power-of-2 block_size
+          (53, 13, 97, 41, 10, 7),        # alignment-stress: different prime combo, odd block_size
+          (1, 32, 128, 128, 1, 64),       # asymmetric: single token scattered across many heads
+          (8, 32, 128, 64, 64, 16),       # production: Llama-style prefill, 32 GQA heads
+          (2, 16, 64, 64, 256, 16),       # production: long-context decode, large block pool
+      ]

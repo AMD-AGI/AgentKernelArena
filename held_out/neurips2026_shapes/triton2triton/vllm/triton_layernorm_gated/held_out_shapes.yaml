@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 128, True, False, False),       # edge-case: batch=1, minimal single-row RMSNorm
+          (2048, 8192, True, True, True),      # scale-up: 4x max M and 4x max N with all features enabled
+          (4, 32, False, True, False),         # scale-down: 8x smaller M, 4x smaller N than smallest original
+          (37, 131, False, True, True),        # alignment-stress: both prime, BLOCK_N=256 with ~51% utilization
+          (113, 1019, True, False, True),      # alignment-stress: both prime, BLOCK_N=1024 with ~99.5% mask overhead
+          (1, 16384, False, True, True),       # asymmetric: single row with very large hidden dim (1:16384 ratio)
+          (4096, 4096, True, False, False),    # production: Llama-7B hidden_dim RMSNorm without bias or gating
+          (2048, 5120, True, False, True),     # production: Llama-13B hidden_dim RMSNorm with SwiGLU gating
+      ]

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1024),       # edge-case: batch=1, vocab equals BLOCK_SIZE (single full tile, no partial)
+          (128, 65536),    # scale-up: 2x batch and 2x vocab vs largest original
+          (2, 64),         # scale-down: tiny batch and vocab well below BLOCK_SIZE (partial tile only)
+          (7, 4003),       # alignment-stress: odd batch, prime vocab not divisible by 32/64/128/1024
+          (13, 1019),      # alignment-stress: prime batch and prime vocab, both non-aligned
+          (1, 131072),     # asymmetric: single request with very large vocab (1:131072 ratio)
+          (32, 32000),     # production: Llama-2 vocab size with typical batch
+          (8, 128256),     # production: Llama-3 vocab size with moderate batch
+      ]

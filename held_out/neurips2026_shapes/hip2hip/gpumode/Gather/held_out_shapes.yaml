@@ -1,0 +1,44 @@
+task_type: hip2hip
+num_original_shapes: 4
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_10099_Gather.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1], 0, [1]),                        # edge-case: single element, degenerate dims
+              ([32768], 0, [8192]),                  # scale-up: 8x largest original 1D
+              ([16, 4, 8], 0, [2]),                  # scale-down: tiny 3D, small-inner path
+              ([131, 97], 0, [37]),                  # alignment-stress: prime dims, odd inner_size forces scalar fallback
+              ([4, 67, 131], 0, [19]),               # alignment-stress: 3D primes, inner_size=8777 (odd) scalar fallback
+              ([2, 65536], 0, [1]),                  # asymmetric: 1 index from tall 2D, vec4 inner_size=65536
+              ([8, 64, 56, 56], 0, [4]),             # production: NCHW N=8 C=64 H=W=56, ResNet-like feature map
+              ([16, 128, 28, 28], 0, [2]),           # production: NCHW N=16 C=128 H=W=28, conv block gather
+          ]
+
+          for input_shape, dim, indices_shape in configs:
+              x = torch.randn(input_shape, dtype=torch.float32)
+              axis_size = input_shape[dim]
+              indices = torch.randint(0, axis_size, indices_shape, dtype=torch.int64)
+              yield [x, indices]
+  - file: pytorch_code_functional/py_10099_Gather_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          configs = [
+              ([1], 0, [1]),                        # edge-case: single element, degenerate dims
+              ([32768], 0, [8192]),                  # scale-up: 8x largest original 1D
+              ([16, 4, 8], 0, [2]),                  # scale-down: tiny 3D, small-inner path
+              ([131, 97], 0, [37]),                  # alignment-stress: prime dims, odd inner_size forces scalar fallback
+              ([4, 67, 131], 0, [19]),               # alignment-stress: 3D primes, inner_size=8777 (odd) scalar fallback
+              ([2, 65536], 0, [1]),                  # asymmetric: 1 index from tall 2D, vec4 inner_size=65536
+              ([8, 64, 56, 56], 0, [4]),             # production: NCHW N=8 C=64 H=W=56, ResNet-like feature map
+              ([16, 128, 28, 28], 0, [2]),           # production: NCHW N=16 C=128 H=W=28, conv block gather
+          ]
+
+          for input_shape, dim, indices_shape in configs:
+              x = torch.randn(input_shape, dtype=torch.float32)
+              axis_size = input_shape[dim]
+              indices = torch.randint(0, axis_size, indices_shape, dtype=torch.int64)
+              yield [x, indices]

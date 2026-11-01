@@ -1,0 +1,36 @@
+task_type: triton2triton
+num_original_shapes: 4
+injections:
+  - file: test_chained_dot_fp8.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize('M, N, D, dtype, msize', [(*shape, dtype, msize)
+                                                         for shape in [(128, 64, 32), (256, 128, 128)]
+                                                         for dtype in ['fp8']
+                                                         for msize in [16, 32]])
+    replacement_code: |
+      @pytest.mark.parametrize('M, N, D, dtype, msize', [
+          (16, 32, 16, 'fp8', 16),        # edge-case: minimal dims, M=BLOCK_M, N=BLOCK_N, D=16
+          (4096, 1024, 128, 'fp8', 32),    # scale-up: 2x largest M and N
+          (32, 16, 16, 'fp8', 16),         # scale-down: 4x smaller than smallest original
+          (131, 37, 64, 'fp8', 32),        # alignment-stress: prime M=131, prime N=37
+          (1019, 131, 128, 'fp8', 16),     # alignment-stress: prime M=1019, prime N=131
+          (4096, 32, 64, 'fp8', 32),       # asymmetric: tall-skinny M/N=128:1
+          (2048, 128, 64, 'fp8', 16),      # production: transformer prefill seq=2048 head_dim=64
+          (512, 512, 128, 'fp8', 32),      # production: self-attention seq=512 head_dim=128
+      ])
+  - file: test_chained_dot_fp8.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("test_config", CHAINED_DOT_PERF_CONFIGS)
+    replacement_code: |
+      @pytest.mark.parametrize("test_config", [
+          {'M': 16, 'N_kv': 32, 'D': 16, 'dtype_str': 'fp8', 'msize': 16},        # edge-case: minimal dims
+          {'M': 4096, 'N_kv': 1024, 'D': 128, 'dtype_str': 'fp8', 'msize': 32},    # scale-up: 2x largest M and N
+          {'M': 32, 'N_kv': 16, 'D': 16, 'dtype_str': 'fp8', 'msize': 16},         # scale-down: 4x smaller
+          {'M': 131, 'N_kv': 37, 'D': 64, 'dtype_str': 'fp8', 'msize': 32},        # alignment-stress: prime M and N
+          {'M': 1019, 'N_kv': 131, 'D': 128, 'dtype_str': 'fp8', 'msize': 16},     # alignment-stress: prime M=1019
+          {'M': 4096, 'N_kv': 32, 'D': 64, 'dtype_str': 'fp8', 'msize': 32},       # asymmetric: tall-skinny M/N=128:1
+          {'M': 2048, 'N_kv': 128, 'D': 64, 'dtype_str': 'fp8', 'msize': 16},      # production: prefill seq=2048
+          {'M': 512, 'N_kv': 512, 'D': 128, 'dtype_str': 'fp8', 'msize': 32},      # production: self-attn seq=512
+      ])

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 32000),       # edge-case: single request, single token — minimal grid, BLOCK_SIZE_TOKENS=1
+          (256, 16, 128000),   # scale-up: 4x num_reqs vs max original, 2x num_sampled, large vocab
+          (2, 2, 10000),       # scale-down: 2x below min original num_reqs and num_sampled, small vocab
+          (37, 11, 32000),     # alignment-stress: prime num_reqs=37, non-power-of-2 num_sampled=11 (BLOCK_SIZE=16, 5 masked)
+          (43, 13, 50257),     # alignment-stress: prime num_reqs=43, prime num_sampled=13 (BLOCK_SIZE=16, 3 masked), odd vocab
+          (1, 63, 128000),     # asymmetric: single request with very wide token dim (BLOCK_SIZE=64, near boundary)
+          (8, 5, 32000),       # production: typical EAGLE batch, ~5 speculative tokens, Llama-2 vocab
+          (4, 7, 128256),      # production: small EAGLE batch, 7 draft tokens, Llama-3 vocab size
+      ]

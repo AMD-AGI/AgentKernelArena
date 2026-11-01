@@ -1,0 +1,52 @@
+task_type: torch2hip
+num_original_shapes: 4
+init_constraints: {}
+injections:
+  - file: pytorch_code_module/py_14007_KDLoss.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Held-out test shapes for KDLoss kernel generalization evaluation.
+          Each config is ([N, C, H, W], [N, C, H, W]) with matching pred/target shapes.
+          """
+          configs = [
+              ([1, 10, 1, 1], [1, 10, 1, 1]),             # edge-case: batch=1, spatial=1x1
+              ([64, 10, 128, 128], [64, 10, 128, 128]),    # scale-up: 4x batch, 2-4x spatial
+              ([2, 10, 8, 8], [2, 10, 8, 8]),              # scale-down: 4x smaller batch and spatial
+              ([8, 10, 37, 37], [8, 10, 37, 37]),          # alignment-stress: prime spatial dims
+              ([16, 10, 131, 131], [16, 10, 131, 131]),    # alignment-stress: larger prime spatial
+              ([1, 10, 1, 8192], [1, 10, 1, 8192]),        # asymmetric: extreme width, height=1
+              ([4, 10, 224, 224], [4, 10, 224, 224]),      # production: ImageNet input resolution
+              ([16, 10, 56, 56], [16, 10, 56, 56]),        # production: ResNet feature map dims
+          ]
+
+          for pred_shape, target_shape in configs:
+              pred = torch.randn(pred_shape, dtype=torch.float32)
+              target = torch.randn(target_shape, dtype=torch.float32)
+              target = torch.softmax(target, dim=1)
+              yield [pred, target]
+  - file: pytorch_code_functional/py_14007_KDLoss_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Held-out test shapes for KDLoss kernel generalization evaluation.
+          Each config is ([N, C, H, W], [N, C, H, W]) with matching pred/target shapes.
+          """
+          configs = [
+              ([1, 10, 1, 1], [1, 10, 1, 1]),             # edge-case: batch=1, spatial=1x1
+              ([64, 10, 128, 128], [64, 10, 128, 128]),    # scale-up: 4x batch, 2-4x spatial
+              ([2, 10, 8, 8], [2, 10, 8, 8]),              # scale-down: 4x smaller batch and spatial
+              ([8, 10, 37, 37], [8, 10, 37, 37]),          # alignment-stress: prime spatial dims
+              ([16, 10, 131, 131], [16, 10, 131, 131]),    # alignment-stress: larger prime spatial
+              ([1, 10, 1, 8192], [1, 10, 1, 8192]),        # asymmetric: extreme width, height=1
+              ([4, 10, 224, 224], [4, 10, 224, 224]),      # production: ImageNet input resolution
+              ([16, 10, 56, 56], [16, 10, 56, 56]),        # production: ResNet feature map dims
+          ]
+
+          for pred_shape, target_shape in configs:
+              pred = torch.randn(pred_shape, dtype=torch.float32)
+              target = torch.randn(target_shape, dtype=torch.float32)
+              target = torch.softmax(target, dim=1)
+              yield [pred, target]

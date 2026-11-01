@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1024, 1),        # edge-case: batch=1, query_len=1 forces massive partial tile (1/1024)
+          (256, 4096, 2048),    # scale-up: 4x num_reqs, 2x max_seq_len, 4x query_len vs original max
+          (1, 32, 8),           # scale-down: minimal dimensions, 4-8x smaller than original minimum
+          (7, 131, 37),         # alignment-stress: all prime/odd-composite dims, partial tile 37/1024
+          (13, 1019, 131),      # alignment-stress: prime dims, partial tile 131/1024
+          (1, 8192, 4096),      # asymmetric: single request with very long query (4 loop iters)
+          (8, 2048, 512),       # production: typical LLM serving batch, 8 concurrent prefills
+          (32, 4096, 1024),     # production: large batch prefill, query_len == BLOCK_SIZE boundary
+      ]

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 1, 64, 64, [16, 8, 8]),          # edge-case: batch=1, single head, minimal token count
+          (1024, 32, 8, 128, 64, [16, 8, 8]),      # scale-up: 4x num_tokens vs largest original (256->1024)
+          (4, 2, 1, 64, 64, [16, 8, 8]),           # scale-down: 4x smaller tokens and minimal heads
+          (37, 7, 3, 64, 64, [16, 8, 8]),          # alignment-stress: prime num_tokens=37, non-pow2 heads=7,3
+          (131, 5, 5, 128, 64, [16, 8, 8]),        # alignment-stress: prime num_tokens=131, non-pow2 heads=5
+          (1, 64, 8, 64, 64, [16, 8, 8]),          # asymmetric: single token with very wide 64 q-heads
+          (2, 32, 4, 128, 128, [32, 16, 16]),      # production: Qwen2-VL-7B decode, head_dim=128, rotary_dim=128
+          (4096, 8, 8, 64, 64, [16, 8, 8]),        # production: Qwen2-VL prefill long sequence batch=1-equivalent
+      ]

@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 1, 1, 0),              # edge-case: minimal single-request, partial tile (1 vs BLOCK_SIZE=1024)
+          (256, 2048, 1024, 500),     # scale-up: 4x largest original in all dimensions
+          (2, 4, 4, 1),              # scale-down: ~4-8x smaller than smallest original shape
+          (7, 37, 131, 17),          # alignment-stress: all primes, query_len=131 not aligned to any tile size
+          (13, 67, 1019, 43),        # alignment-stress: primes, query_len=1019 just below BLOCK_SIZE=1024
+          (1, 4096, 8192, 0),        # asymmetric: 1 request but 4096 max_num_reqs padding and 8192 query_len
+          (8, 512, 2048, 4096),      # production: Llama-style long-context prefill batch with KV-cache resume
+          (32, 256, 1, 1024),        # production: autoregressive decode batch, query_len=1 per request
+      ]

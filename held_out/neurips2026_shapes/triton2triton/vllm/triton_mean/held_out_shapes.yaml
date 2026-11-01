@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          ((1, 1), 0),                # edge-case: single-element reduction dim, batch=1
+          ((4, 8192, 128), 1),        # scale-up: N=8192 is 8x max original, 8 BLOCK_SIZE passes
+          ((2, 8, 4), 1),             # scale-down: N=8 is 16x smaller than smallest original N
+          ((37, 131), 1),             # alignment-stress: both dims prime, N=131 not multiple of 32/64/128
+          ((7, 1019, 13), 2),         # alignment-stress: all dims prime, reduce dim=2 (unseen path)
+          ((1, 65536), 1),            # asymmetric: single row with 65536-element reduction
+          ((8, 4096, 128), 1),        # production: transformer hidden-state mean over seq_len=4096
+          ((2, 2048, 256), 1),        # production: layer-norm-style mean, batch=2 seq=2048 feat=256
+      ]

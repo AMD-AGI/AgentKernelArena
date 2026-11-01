@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 2, 0),        # edge-case: batch=1, minimal tokens_per_req=2, num_rej_max=0
+          (256, 128, 8),     # scale-up: 4x num_reqs, 4x tokens_per_req vs originals
+          (2, 4, 1),         # scale-down: 2x smaller batch, 4-8x smaller tokens_per_req
+          (7, 37, 5),        # alignment-stress: prime num_reqs=7, prime tokens_per_req=37
+          (13, 131, 11),     # alignment-stress: prime num_reqs=13, prime tokens_per_req=131
+          (1, 2048, 6),      # asymmetric: single request with very long sequence (2x BLOCK_SIZE)
+          (8, 64, 3),        # production: EAGLE decode batch=8, moderate speculation depth
+          (4, 128, 5),       # production: EAGLE verify batch=4, longer accepted sequence
+      ]

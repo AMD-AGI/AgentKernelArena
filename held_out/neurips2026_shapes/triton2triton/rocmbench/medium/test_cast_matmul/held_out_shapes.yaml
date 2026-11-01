@@ -1,0 +1,43 @@
+task_type: triton2triton
+num_original_shapes: 36
+injections:
+  - file: test_cast_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("M, K, N, w_dtype, x_dtype, out_dtype",
+                               [(M, K, N, w, x, o)  #
+                                for (M, K, N) in [(128, 128, 128), (1280, 768, 1024)]  #
+                                for w in input_dtypes
+                                for x in input_dtypes  #
+                                for o in out_dtypes])
+    replacement_code: |
+      @pytest.mark.parametrize("M, K, N, w_dtype, x_dtype, out_dtype",
+                               [(M, K, N, w, x, o)  #
+                                for (M, K, N) in [
+                                    (16, 32, 16),          # edge-case: M=BLOCK_M, K=BLOCK_K, N=BLOCK_N single tile
+                                    (4096, 4096, 4096),    # scale-up: 4x larger than original max dims
+                                    (32, 32, 32),          # scale-down: 4x smaller than original min dims
+                                    (131, 197, 251),       # alignment-stress: all prime dimensions
+                                    (1019, 37, 4003),      # alignment-stress: large primes, non-tile-aligned
+                                    (1, 512, 8192),        # asymmetric: single-row decode-like M=1
+                                    (4096, 4096, 11008),   # production: Llama-2 FFN up-projection
+                                    (2048, 8192, 2048),    # production: transformer FFN hidden layer
+                                ]  #
+                                for w in input_dtypes
+                                for x in input_dtypes  #
+                                for o in out_dtypes])
+  - file: test_cast_matmul.py
+    find_marker: "raw_replace"
+    old_code: |
+      @pytest.mark.parametrize("M, K, N", CAST_MATMUL_SHAPES_FOR_PERF) # Note M,K,N order
+    replacement_code: |
+      @pytest.mark.parametrize("M, K, N", [
+          (16, 32, 16),          # edge-case: M=BLOCK_M, K=BLOCK_K, N=BLOCK_N single tile
+          (4096, 4096, 4096),    # scale-up: 4x larger than original max dims
+          (32, 32, 32),          # scale-down: 4x smaller than original min dims
+          (131, 197, 251),       # alignment-stress: all prime dimensions
+          (1019, 37, 4003),      # alignment-stress: large primes, non-tile-aligned
+          (1, 512, 8192),        # asymmetric: single-row decode-like M=1
+          (4096, 4096, 11008),   # production: Llama-2 FFN up-projection
+          (2048, 8192, 2048),    # production: transformer FFN hidden layer
+      ]) # Note M,K,N order

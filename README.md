@@ -201,6 +201,8 @@ python held_out/run_heldout_eval.py \
 
 Each task is classified into a generalization quadrant: `both_pass`, `opt_regression` (optimization broke generalization), `both_fail` (shape exceeds kernel design spec), or `opt_improvement` (agent improved robustness).
 
+**NeurIPS 2026 held-out shapes.** For reproducibility, the exact held-out shapes used in the paper are released in [`held_out/neurips2026_shapes/`](held_out/neurips2026_shapes/). They were generated after the agents had optimized the kernels, so the evaluated agents never saw them. Because they are now public, either keep them out of the agent's environment and use them only in the final held-out validation stage, or regenerate a private set with `generate_heldout.py`. See [`held_out/README.md`](held_out/README.md#released-neurips-2026-held-out-shapes).
+
 ## Scoring
 
 | Gate | Points | Condition |

@@ -1,0 +1,53 @@
+task_type: hip2hip
+num_original_shapes: 4
+init_constraints:
+  temp_factor: 4
+injections:
+  - file: pytorch_code_module/py_14007_KDLoss.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Held-out test cases for KD Loss kernel generalization evaluation.
+          Each config is (pred_shape, target_shape) with [N, C, H, W] layout.
+          """
+          configs = [
+              ([1, 1, 1, 1], [1, 1, 1, 1]),             # edge-case: minimal dims, C=1 forces 31 idle threads in warp
+              ([64, 10, 128, 128], [64, 10, 128, 128]),   # scale-up: 4x N, 2x H/W vs largest original
+              ([2, 10, 4, 4], [2, 10, 4, 4]),             # scale-down: 4x smaller N, 8x smaller H/W
+              ([4, 37, 31, 31], [4, 37, 31, 31]),         # alignment-stress: prime C=37, prime H=W=31
+              ([7, 131, 17, 17], [7, 131, 17, 17]),       # alignment-stress: prime C=131, prime N=7, prime H=W=17
+              ([1, 10, 1, 8192], [1, 10, 1, 8192]),       # asymmetric: H=1, W=8192 extreme aspect ratio
+              ([16, 100, 14, 14], [16, 100, 14, 14]),     # production: CIFAR-100 KD at 14x14 feature maps
+              ([4, 1000, 7, 7], [4, 1000, 7, 7]),         # production: ImageNet-1K KD at 7x7 final feature maps
+          ]
+
+          for pred_shape, target_shape in configs:
+              pred = torch.randn(pred_shape, dtype=torch.float32)
+              target = torch.randn(target_shape, dtype=torch.float32)
+              target = torch.softmax(target, dim=1)
+              yield [pred, target]
+  - file: pytorch_code_functional/py_14007_KDLoss_func.py
+    find_marker: "def get_inputs"
+    replacement_code: |
+      def get_inputs():
+          """
+          Held-out test cases for KD Loss kernel generalization evaluation.
+          Each config is (pred_shape, target_shape) with [N, C, H, W] layout.
+          """
+          configs = [
+              ([1, 1, 1, 1], [1, 1, 1, 1]),             # edge-case: minimal dims, C=1 forces 31 idle threads in warp
+              ([64, 10, 128, 128], [64, 10, 128, 128]),   # scale-up: 4x N, 2x H/W vs largest original
+              ([2, 10, 4, 4], [2, 10, 4, 4]),             # scale-down: 4x smaller N, 8x smaller H/W
+              ([4, 37, 31, 31], [4, 37, 31, 31]),         # alignment-stress: prime C=37, prime H=W=31
+              ([7, 131, 17, 17], [7, 131, 17, 17]),       # alignment-stress: prime C=131, prime N=7, prime H=W=17
+              ([1, 10, 1, 8192], [1, 10, 1, 8192]),       # asymmetric: H=1, W=8192 extreme aspect ratio
+              ([16, 100, 14, 14], [16, 100, 14, 14]),     # production: CIFAR-100 KD at 14x14 feature maps
+              ([4, 1000, 7, 7], [4, 1000, 7, 7]),         # production: ImageNet-1K KD at 7x7 final feature maps
+          ]
+
+          for pred_shape, target_shape in configs:
+              pred = torch.randn(pred_shape, dtype=torch.float32)
+              target = torch.randn(target_shape, dtype=torch.float32)
+              target = torch.softmax(target, dim=1)
+              yield [pred, target]

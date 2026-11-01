@@ -1,0 +1,16 @@
+task_type: triton2triton
+num_original_shapes: 5
+injections:
+  - file: scripts/task_runner.py
+    find_marker: "TEST_SHAPES"
+    replacement_code: |
+      TEST_SHAPES = [
+          (1, 128, 128, 128, 128),         # edge-case: M=1 single-row, partial BLOCK_SIZE_M=64 tile
+          (512, 2048, 2048, 128, 128),      # scale-up: 4x largest original dims (M,N,K all 4x)
+          (16, 32, 64, 32, 64),             # scale-down: all dims well below original, smaller block sizes
+          (37, 131, 256, 128, 128),         # alignment-stress: M=37 prime, N=131 prime, not multiple of 64/128
+          (100, 200, 384, 64, 128),         # alignment-stress: M=100 N=200 non-power-of-2, block_n=64
+          (1, 4096, 4096, 128, 128),        # asymmetric: M=1 decode-like, extremely tall-skinny output
+          (4096, 11008, 4096, 128, 128),    # production: Llama-7B FFN up-proj (4096x11008x4096)
+          (2048, 8192, 2048, 128, 128),     # production: Llama-13B FFN size (2048x8192x2048)
+      ]
