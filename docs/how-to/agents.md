@@ -236,7 +236,7 @@ To integrate a custom agent:
 A minimal launcher skeleton is:
 
 ```python
-# Created by OpenAI
+# Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 from agents import register_agent
 
 
