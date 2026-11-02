@@ -4,7 +4,7 @@
 `b46359a30ecb57528a424b22770fda828cf249a5`, where all 57 entries existed.
 Some duplicate tasks have since been retired; use the
 [current task selectors](../../docs/how-to/run-evaluation.md#select-tasks) and
-[release notes](../../docs/reference/release-notes.md#unreleased) for new runs.
+[release notes](../../docs/reference/release-notes.md#agentkernelarena-040) for new runs.
 The original inventory and validation observations below are retained.
 
 This inventory describes the 57 migrated tasks. The task's own `config.yaml`,

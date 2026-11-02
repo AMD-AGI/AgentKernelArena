@@ -48,7 +48,7 @@ registry, so the framework loads only the agent you select.
 
 The supported identifiers are defined by `AgentType` in
 `src/module_registration.py`. Retired templates and compatibility notes are
-listed in the [release notes](../reference/release-notes.md#unreleased).
+listed in the [release notes](../reference/release-notes.md).
 
 The Cursor, Claude Code, and Codex integrations reuse their host CLI login
 state. Specialized integrations have additional setup and configuration under
