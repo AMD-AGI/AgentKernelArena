@@ -1,5 +1,12 @@
 # MI355X runtime upgrade qualification
 
+**Historical qualification record.** The decisions and measurements below
+describe the task-schema refactor's source and runtime revisions. The default
+has since moved to SGLang 0.5.20 / ROCm 10; use the
+[current runtime guide](mi355x-runtime.md) and
+[compatibility matrix](compatibility-matrix.md) for new runs. This record's
+original decisions, measurements and qualification limits remain unchanged.
+
 This record accompanies the task-schema refactor. It qualifies runtime changes
 separately from task validation and agent optimization. A tag existing in a
 registry, an import succeeding, or a runtime smoke passing does not establish
@@ -8,7 +15,7 @@ correctness or performance for all Arena tasks.
 ## Decision
 
 Retain the verified SGLang 0.5.14 / ROCm 7.2 runtime for `gfx950`. The default in
-[`docker_benchmark.sh`](../../src/scripts/docker_benchmark.sh) now selects its
+[`docker_benchmark.sh`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh) now selects its
 immutable manifest reference, rather than its movable dated tag. This preserves
 the existing software stack, cache handling, and evaluation-tool image gate.
 Explicit `AKA_DOCKER_IMAGE` and per-architecture overrides remain available.

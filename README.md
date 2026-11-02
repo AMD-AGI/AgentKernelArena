@@ -1,476 +1,189 @@
-# AgentKernelArena (AKA): An A/B Testing and RL-Ready Environment for GPU Kernel Agents
+# AgentKernelArena: An RL-Ready Environment for GPU Kernel Agents
 
-AgentKernelArena is a controlled experimentation platform for developing AI agents on real GPU kernel optimization tasks. It enables reproducible A/B testing across models, prompts, tools, and agent policies, while providing objective compilation, correctness, and performance signals that can serve as rewards for agent reinforcement learning.
+**Develop and evaluate kernel optimization policies with real GPU feedback.**
 
-## Overview
+AgentKernelArena (AKA) provides GPU optimization tasks, controlled execution and independently evaluated reward signals for agent reinforcement learning. Tasks range from individual operators to end-to-end model workloads. Use Arena to collect task outcomes for an external RL pipeline, evaluate trained policies, and compare agents, models, prompts or tools under the same conditions.
 
-AgentKernelArena makes changes to an agent measurable. Run the same task set with a baseline and a treatment—such as a different model, prompt, MCP server, skill, tool, memory strategy, or policy—and compare the outcomes under the same execution and scoring pipeline.
+[Quickstart](#run-your-first-task) · [Tasks](#choose-what-to-evaluate) · [Rewards and results](#understand-rewards-and-results) · [Agent comparison](#compare-agents-or-configurations) · [Documentation](#documentation)
 
-The platform provides:
+## Choose what to evaluate
 
-- **Controlled A/B experiments**: Label and compare repeated runs while holding tasks, hardware, environment, and evaluation rules constant.
-- **RL-ready feedback**: Produce per-task compilation, correctness, runtime, speedup, and score signals that can be consumed as rewards by an external reinforcement-learning system.
-- **Multiple agent integrations**: Run Cursor Agent, Claude Code, Codex, DeepSeek Harness, GEAK-based agents, or custom agents through a shared interface.
-- **Real GPU task environments**: Work with HIP, Triton, FlyDSL, PyTorch-to-kernel conversion, instruction-to-kernel generation, and image-backed kernel optimization tasks.
-- **Isolated and reproducible execution**: Give every task its own timestamped workspace and preserve logs, modified sources, and structured results.
-- **Fixed-workload serving tasks**: Evaluate model-wide kernel changes and fusion with pinned settings, fresh paired measurements and independent candidate review. Each imported [Magpie workload](tasks/e2e/magpie/README.md) has its own selectable task directory; shared adapters prepare its immutable runtime before agent execution. See [the e2e guide](docs/how-to/e2e-kernel-tasks.md).
-- **Centralized evaluation**: Measure compilation, correctness, and GPU performance independently of the optimizing agent.
-- **Multi-GPU scheduling**: Start one isolated Docker worker per GPU and dynamically claim tasks from a shared queue.
-- **Slurm/Spur login-node workflow**: Allocate one or eight MI355X GPUs, then launch the same Docker runtime on the assigned compute node.
-- **Resumable experiments**: Resume a run without repeating tasks whose framework completion and source evidence remain valid.
-- **Held-out evaluation**: Test optimized kernels on unseen shapes and measure the generalization gap.
-- **Task validation and visualization**: Validate task quality with a dedicated agent and compare local run reports in a dashboard.
-- **SIKL task authoring**: Generate, repair, and validate standard Arena tasks from a dataset folder with [`sikl_task_builder`](docs/how-to/sikl-task-builder.md).
+| Task scope | What the agent can change | What Arena measures |
+| --- | --- | --- |
+| **Operator tasks** | Implement, translate or optimize the task's declared compute region in HIP, Triton or FlyDSL. A region may contain several kernels. | Correctness against the task's reference and GPU runtime against its baseline. |
+| **End-to-end tasks** | Rewrite kernel implementations and fuse computation across the model's declared source trees. | Model correctness and serving throughput under a fixed workload. |
 
-AgentKernelArena supplies an environment and objective reward signals; it does not currently include an RL trainer, replay buffer, or policy-update loop. Its per-task workspaces provide reproducibility and concurrent-run separation, not a security sandbox: agent processes run permissively inside a privileged container and can access mounted repository and authentication state.
+For end-to-end tasks, model weights, precision, TP/EP/PP, serving flags and workload settings stay fixed. Gains must come from valid compute implementation changes. The supplied example kernels are starting points; they do not limit optimization to those operators. Implementations must satisfy the task's input contract; hard-coded answers and evaluator changes are outside the allowed scope. Profiling the actual workload is encouraged, and agents choose their own tools.
 
-## A/B Testing Workflow
+Browse [operator tasks](tasks/) or the [Magpie workload catalog](tasks/e2e/magpie/README.md). The catalog includes text, multimodal and AgentX workloads, with one selectable task directory per recipe. End-to-end runs require a prepared runtime binding; use the [e2e guide](docs/how-to/e2e-kernel-tasks.md) before launching them. A catalog entry alone does not establish GPU qualification.
 
-Run the same configuration twice with a distinct suffix. Change only the capability under test between the two runs.
+## Run your first task
 
-```bash
-# Choose the run configuration used for both sides of the experiment.
-CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
-
-# Baseline: capability disabled
-make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix baseline"
-
-# Treatment: capability enabled
-make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix treatment"
-```
-
-Compare the generated reports directly:
-
-```bash
-python3 src/tools/compare_runs.py \
-  workspace_MI300_claude_code/run_<timestamp>_baseline \
-  workspace_MI300_claude_code/run_<timestamp>_treatment
-```
-
-For visual comparison, build the local dashboard as described in the
-[visualization module README](src/visualization/README.md).
-For stochastic agents, repeat matched baseline/treatment pairs and interpret
-the observed deltas together with run-to-run variance.
-
-## Architecture
-
-### Core Components
-
-```text
-AgentKernelArena/
-├── main.py                         # Run orchestration, resume, and parallel queue
-├── example_configs/                # Quickstart and curated benchmark run configs
-├── src/
-│   ├── module_registration.py     # Agent registration and handler selection
-│   ├── preprocessing.py            # Workspace and source setup
-│   ├── prompt_builder.py           # Task prompt construction
-│   ├── evaluator.py                # Compilation and correctness evaluation
-│   ├── performance.py              # Baseline and optimized timing
-│   ├── score.py                    # Reward/score calculation
-│   ├── postprocessing.py           # Aggregate run reports
-│   ├── held_out/                   # Optional generalization evaluation module
-│   ├── visualization/              # Dashboard module and static frontend
-│   └── tools/
-│       ├── compare_runs.py         # Compare two completed experiment runs
-│       └── perf/                   # Canonical performance helpers
-├── agents/
-│   ├── cursor/                     # Cursor Agent CLI
-│   ├── claude_code/                # Claude Code CLI
-│   ├── codex/                      # Codex CLI
-│   ├── deepseek_harness/            # DeepSeek Harness headless CLI
-│   ├── forge/                      # KernelForge through the shared task contract
-│   ├── geak/                       # Native GEAK Workflow integration
-│   └── task_validator/             # Task quality validator
-├── tasks/
-│   ├── hip2hip/
-│   ├── triton2triton/
-│   ├── torch2hip/
-│   ├── torch2flydsl/
-│   ├── triton2flydsl/
-│   ├── flydsl2flydsl/
-│   ├── Aiter-task/                 # Production GEMM, MoE, mHC, top-k and MLA to FlyDSL
-│   └── image_kernel/               # Kernels from declared in-image source trees
-└── docs/                            # Full documentation
-```
-
-### Execution Flow
-
-1. Load the run configuration and selected agent.
-2. Discover task `config.yaml` files matching the configured selectors.
-3. Create an isolated task workspace and materialize its declared sources.
-4. Validate the task, establish its independent baseline, and check an existing
-   initial candidate when present. Generation targets may start unimplemented.
-5. Build the task prompt and run the selected agent inside the workspace.
-6. Independently compile, check, and time the agent's modified implementation.
-7. Write a structured `task_result.yaml` containing reward signals and a score,
-   then run any task-declared exports for an accepted candidate.
-8. Aggregate all task results into run-level CSV, JSON, and text reports.
-
-`task_validator` follows a validation-specific path and writes `validation_report.yaml` instead of optimizing and scoring a kernel.
-
-For multi-GPU runs, the host-side Docker runner creates a shared `.parallel/` queue under the run directory. Each long-lived worker sees one logical GPU, atomically claims one task at a time, and returns for more work until the queue is empty. Final aggregation runs once after all workers finish.
-
-## Supported Agents
-
-Each run selects one `agent.template`. Repeated runs can compare different agents or different configurations of the same agent.
-
-| Template | Purpose |
-| --- | --- |
-| `cursor` | Cursor Agent CLI integration |
-| `claude_code` | Claude Code CLI integration |
-| `codex` | Codex CLI integration |
-| `deepseek_harness` | DeepSeek Harness headless CLI ([setup](agents/deepseek_harness/README.md)) |
-| `forge` | KernelForge search through the shared task interface; initialize, translate, or optimize as required |
-| `geak` | GEAK multi-agent Workflow engine through the shared v2 task interface |
-| `task_validator` | Task quality validation; does not optimize kernels |
-
-The registry maps the compatibility names `geak_v4` to `geak` and
-`forge_operator2flydsl` to `forge`. Each uses the canonical launcher, defaults
-and post-processing; there are no separate legacy agent directories. See
-[`src/module_registration.py`](src/module_registration.py) for selectable names
-and the [GEAK](agents/geak/README.md) and [Forge](agents/forge/README.md) guides
-for their shared v2 interfaces and runtime requirements.
-
-Agent-specific defaults live under `agents/<agent_name>/agent_config.yaml` or in the selected agent CLI. Supported run-level overrides take precedence over agent-local defaults. Specialized agents may require additional setup; inspect their directories and agent-specific README files where present.
-
-See [CLI agent defaults and verification](docs/reference/agent-model-defaults.md)
-for tested CLI/model versions, run-level overrides, and the scope of live checks.
-
-## Task Environments
-
-| Task type | Objective |
-| --- | --- |
-| `hip2hip` | Optimize an existing HIP implementation |
-| `triton2triton` | Optimize an existing Triton implementation |
-| `torch2hip` | Replace a PyTorch reference with a HIP implementation |
-| `torch2flydsl` | Replace a PyTorch reference with a FlyDSL implementation |
-| `triton2flydsl` | Translate a Triton implementation to FlyDSL |
-| `flydsl2flydsl` | Optimize an existing FlyDSL implementation |
-| `image_kernel` | Optimize a kernel from a declared source tree in the runtime image |
-| `Aiter-task` | Reimplement production BF16 and blockwise-scaled FP8 GEMM, MXFP4 MoE, fused mHC, paged top-k and sparse flash MLA operators in FlyDSL |
-
-These names organize task selection; the candidate and evaluation declarations
-determine behavior. Every retained suite uses the unified task contract in
-[Task definition, schema, and authoring](docs/how-to/add-task.md).
-The prompt system also recognizes `cuda2hip`; the current bundled task tree does not include a `cuda2hip/` suite.
-
-## Installation
-
-### Prerequisites
-
-- A Linux host with a supported AMDGPU kernel driver; `/dev/kfd` and `/dev/dri`
-  must be present
-- Docker Engine; the current user must be able to access the Docker daemon
-  without `sudo`
-- Git
-- Node.js 22+ and npm when using the alternative npm installation of Claude Code
-  (or another npm-installed agent CLI); DeepSeek Harness uses a dedicated
-  Node.js 24 prefix as described in [its setup guide](agents/deepseek_harness/README.md)
-- For MI300/MI355X, use the GPU-specific SGLang image: `gfx942` uses `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses the digest-pinned SGLang 0.5.20 / ROCm 10 runtime. See the [runtime compatibility matrix](docs/reference/compatibility-matrix.md) for image selection and task-specific requirements.
-- For RDNA4 `gfx1201`, the runner automatically builds the default [pinned RDNA4 runtime](docker/rdna4/README.md) on first use if it is missing.
-- A supported agent CLI installed and logged in on the host, or the dependencies required by a specialized agent
-
-### Setup
+You need a Linux AMD GPU host with GPU access through Docker, Git and an installed, authenticated agent CLI. Follow the [installation guide](docs/install/install.md) for driver, CLI and authentication setup. The example below uses Claude Code on MI355X and runs one HIP GELU task.
 
 ```bash
 git clone https://github.com/AMD-AGI/AgentKernelArena.git
 cd AgentKernelArena
 
-# Verify the container runtime, GPU, and Python environment.
+CONFIG_PATH=example_configs/quickstart_claude_mi355x.yaml
+
+# Check the GPU/runtime and the selected agent, then run the task.
 make docker-smoke
-
-# Install the primary quickstart agent with Claude Code's native installer.
-curl -fsSL https://claude.ai/install.sh | bash
-claude --version
-
-# Start Claude Code and complete login on the host, then exit.
-claude
-claude auth status
-
-# Select the quickstart config for the physical GPU.
-CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
-# For MI355X instead:
-# CONFIG_PATH=example_configs/quickstart_claude_mi355x.yaml
-
-# Verify the agent selected by the config, then run one task.
 make docker-check-agents CONFIG="$CONFIG_PATH"
 make docker-run CONFIG="$CONFIG_PATH"
-
-# Other options:
-# make install-cursor-agent
-# Install Codex using its official CLI instructions and ensure `codex` is in PATH.
 ```
 
-Installing an agent CLI is not enough: authenticate it on the host before
-running `docker-check-agents` or an experiment. The Docker runner supports both
-Claude Code's recommended native installation and its alternative npm
-installation. The npm path requires Node.js 22+ and npm. See the
-[official Claude Code setup guide](https://code.claude.com/docs/en/installation)
-for the current alternatives.
+Choose a quickstart matching your physical GPU:
 
-The following configurations provide starting points for supported runtimes:
-
-| Configuration | Purpose |
+| GPU | Claude Code quickstart |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code GELU task; inspect the physical model before tuning. |
-| `example_configs/quickstart_claude_mi300x.yaml` | Claude Code GELU task with the MI300X hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi325x.yaml` | Claude Code GELU task with the MI325X hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi300a.yaml` | Claude Code GELU task with the MI300A hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`); use this for a first run on MI355X. |
-| `example_configs/quickstart_claude_rdna4.yaml` | One Claude Code GELU task on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
-| `example_configs/quickstart_deepseek_harness_mi300.yaml` | One DeepSeek Harness GELU task on MI300/MI300X; requires the pinned CLI and API key. |
-| `example_configs/quickstart_deepseek_harness_mi355x.yaml` | One DeepSeek Harness GELU task on MI355X; see [setup](agents/deepseek_harness/README.md). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 46-task Cursor Agent benchmark on MI355X; use this for a longer benchmark only after installing and authenticating Cursor Agent. |
+| MI355X | [quickstart_claude_mi355x.yaml](example_configs/quickstart_claude_mi355x.yaml) |
+| MI300X | [quickstart_claude_mi300x.yaml](example_configs/quickstart_claude_mi300x.yaml) |
+| MI325X | [quickstart_claude_mi325x.yaml](example_configs/quickstart_claude_mi325x.yaml) |
+| RDNA4 (`gfx1201`) | [quickstart_claude_rdna4.yaml](example_configs/quickstart_claude_rdna4.yaml) |
 
-Running `make docker-run` without `CONFIG` uses the generic MI300-series Claude
-quickstart. On another GPU, pass the matching configuration explicitly; for
-example, use `CONFIG=example_configs/quickstart_claude_mi355x.yaml` on MI355X.
+Check the [compatibility matrix](docs/reference/compatibility-matrix.md) for runtime requirements, additional hardware profiles and task-specific limits. GPU experiments run through Docker; Slurm/Spur launches that same workflow on an allocated compute node.
 
-FlyDSL tasks require FlyDSL in the container. The pinned image may already provide it; otherwise run:
+## Configure a run
+
+A **run config** selects the agent, task set, GPU and search budget. Each **task's config** defines its computation, editable sources, baseline, correctness checks and measurement policy. Changing the agent does not change the task contract.
+
+Copy an example into an untracked local configuration:
 
 ```bash
-make docker-setup-flydsl
+cp "$CONFIG_PATH" config_experiment.yaml
 ```
 
-Performance timing helpers are maintained in `src/tools/perf/` and materialized into run workspaces. See [src/tools/perf/README.md](src/tools/perf/README.md) before changing task timing code.
-
-For detailed installation and compatibility information, see [docs/install/install.md](docs/install/install.md) and [docs/reference/compatibility-matrix.md](docs/reference/compatibility-matrix.md).
-
-## Usage
-
-### Configure an Experiment
-
-Start from the example that matches the physical GPU and the agent you installed.
-Experiment preflight intentionally fails when the configured and detected GPU
-architectures differ. To create a custom experiment, copy an example and edit
-the copy:
-
-```bash
-cp example_configs/quickstart_claude_mi300.yaml config_experiment.yaml
-```
-
-Keep this local `config_*.yaml` copy untracked; the repository ignores that
-pattern. Commit reusable examples only after the
-[repository cleanliness checks](CONTRIBUTING.md#repository-cleanliness-before-committing).
-
-For Codex and Claude Code, the run config's `agent` mapping can override
-`model`, `effort`, `max_iterations`, and `timeout_seconds` from the selected
-agent's `agent_config.yaml`. Cursor accepts the same overrides except a
-standalone `effort`. See [run-level overrides](docs/reference/agent-model-defaults.md#run-level-overrides)
-for exact semantics; other integrations define their own supported settings.
-
-Cursor, Claude Code, Codex, and DeepSeek Harness accept `budget_mode`.
-The default, `iterations`, runs one
-session that asks for up to `max_iterations` versions. With `time`,
-`timeout_seconds` becomes the agent's wall-clock budget: if the agent stops
-early, Arena resumes the same session with the time remaining. Every run also
-writes a per-task cost record (dollars and tokens where the provider reports
-them, `null` otherwise) to `<run_dir>/agent_costs/<task_workspace>.json`, for
-all agents. See [iteration and time budgets](docs/how-to/agents.md#iteration-and-time-budgets)
-and [agent cost records](docs/how-to/agents.md#agent-cost-records).
-
-For a Cursor, Claude Code, Codex, or task-validator config, verify only the
-selected first-class host CLI (the validator resolves to its configured backend):
-
-```bash
-CONFIG_PATH=config_experiment.yaml
-make docker-check-agents CONFIG="$CONFIG_PATH"
-```
-
-Use `AGENTS=claude_code,codex` to check an explicit subset or `AGENTS=all` to
-check Cursor, Claude Code, and Codex together. Specialized integrations such as
-Forge and legacy mini-swe have their own dependency checks. GEAK and its v2 aliases
-resolve to Claude Code for this CLI check; a normal run additionally checks the
-pinned GEAK engine and SDK.
-
-DeepSeek Harness also supports config-selected `docker-check-agents`, or an
-explicit `AGENTS=deepseek_harness`. It uses an API key and isolated per-task
-state; see [its setup guide](agents/deepseek_harness/README.md). `AGENTS=all`
-continues to check the original three CLIs.
-
-### Run Serially
-
-```bash
-make docker-run CONFIG="$CONFIG_PATH"
-make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix experiment_name"
-```
-
-### Run Across Multiple GPUs
-
-```bash
-# Explicit host GPU IDs
-make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1,2,3
-
-# Discover GPUs with rocm-smi --showid
-make docker-parallel-run CONFIG="$CONFIG_PATH"
-```
-
-The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Specialized GEAK integrations need their own
-dependencies and GPU-ID configuration before they are used with isolated
-workers.
-
-### Run From a Slurm/Spur Login Node
-
-When the login node has no GPU or Docker daemon, allocate the compute node
-before entering the existing Docker workflow:
-
-```bash
-# One-GPU development smoke/run
-make slurm-smoke
-make slurm-run CONFIG=config_codex_mi355x_spur.yaml
-
-# One node, eight GPUs, one isolated Docker worker per GPU
-make slurm-parallel-smoke
-make slurm-parallel-submit CONFIG=example_configs/benchmark_cursor_mi355x.yaml
-```
-
-See [Run on Slurm/Spur GPU nodes](docs/how-to/slurm-run.md) for synchronous,
-batch, interactive, resource-override, authentication, and logging details.
-
-### Resume a Run
-
-```bash
-make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--resume-latest"
-make docker-run CONFIG="$CONFIG_PATH" RUN_ARGS="--resume-run run_20260702_041903_experiment"
-
-make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1,2,3 RUN_ARGS="--resume-latest"
-```
-
-### Select Task Groups
-
-Task selectors are paths relative to `tasks/`. A selector can name one task or any parent directory.
-
-The `Aiter-task` suite was previously named `SIKL-task`. Update custom selectors
-to `Aiter-task/...`. This rename changes task IDs and report grouping; start a
-new run with the new selectors, since existing runs retain their original IDs.
-
-HIP tasks now live directly under `hip2hip/`; their former `gpumode/`, `others/`,
-and `vllm/` grouping directories are gone. The redundant
-`instruction2triton/rocmbench/` selections were removed in favor of the
-registered `triton2triton/rocmbench/` tasks. The distinct flip task is now
-`triton2triton/rocmbench/test_triton_flip`. These moves change task IDs, so use
-new selectors for new runs; existing reports keep their historical IDs.
+For example:
 
 ```yaml
+agent:
+  template: claude_code
+  budget_mode: time
+  timeout_seconds: 3600
+
 tasks:
-  - hip2hip
-  - triton2triton/vllm
-  - triton2triton/rocmbench
-  - torch2hip
-  - torch2flydsl
-  - triton2flydsl
-  - flydsl2flydsl
+  - hip2hip/GELU
+  - triton2triton/vllm/triton_rms_norm
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace
 ```
 
-## Reward and Scoring Signals
+Then run `make docker-run CONFIG=config_experiment.yaml`.
 
-Every normal optimization task produces `task_result.yaml` with compilation and correctness status, baseline and optimized times, speedup, timing-method metadata, and the final score.
+Task selectors are relative to `tasks/`: a full path selects one task, and a parent directory selects its descendants. Each task retains its own architecture requirements and dependencies. End-to-end tasks need their additional runtime, GPU-group and evaluation-budget settings; they cannot be added to an operator run by changing only this list.
 
-The score uses the power family with **`p = 1`** (linear):
+The CLI integrations include **Codex, Claude Code, Cursor and DeepSeek Harness**. **GEAK and KernelForge** have separate integration setup. Model, provider and effort settings are integration-specific; see [agents and budgets](docs/how-to/agents.md) and the [selectable template registry](src/module_registration.py). Whole-model end-to-end tasks currently support the four CLI integrations; GEAK and KernelForge adaptation is separate work.
+
+## Understand rewards and results
+
+For each task, Arena preserves the baseline, runs the agent in a task workspace, and independently compiles, checks and benchmarks the delivered implementation. The evaluator writes the result; an agent's completion message is not an acceptance verdict.
+
+The correctness reference defines valid output. The performance baseline supplies the timing comparison. They can be different implementations.
 
 ```text
-score = max(0, 1 - speedup_threshold / speedup_ratio) ** p
+workspace_<gpu>_<agent>/run_<timestamp>/
+├── <task workspace>/task_result.yaml  # Per-task checks, timing and outcome
+├── agent_costs/                      # Usage/cost records; unavailable values are null
+└── reports/                          # Run-level CSV, JSON and text summaries
 ```
 
-Compilation and correctness must pass, and the evaluator must provide a valid,
-comparable speedup. Otherwise the score is `0`. There are no compilation or
-correctness bonuses. With the default `speedup_threshold = 1.05`, a candidate
-must be more than 5% faster to earn a positive score:
+Read these outcomes separately:
 
-| Speedup | Score |
-| --- | ---: |
-| At or below 1.05× | 0 |
-| 1.1× | 0.0455 |
-| 1.2× | 0.1250 |
-| 2× | 0.4750 |
+| Question | Evidence |
+| --- | --- |
+| Did the agent finish its invocation? | `agent_execution` |
+| Does the delivered implementation build and pass the checks? | `pass_compilation`, `pass_correctness` |
+| Did it satisfy the applicable acceptance gates? | `candidate_accepted`, with method, workload and review evidence |
+| How fast was it, and what score did it earn? | `speedup_ratio`, timing metadata, raw measurements and `score` |
 
-Scores are bounded between `0` and `1`. With the linear curve, the score is the
-fraction of runtime saved beyond the threshold, `1 - candidate_time /
-(baseline_time / 1.05)`, and its slope stays finite just above the cutoff, so
-timing noise moves near-threshold scores only slightly. Over a set of tasks that
-all score above zero, the mean score is `1 - 1.05 / H`, where `H` is their
-harmonic-mean speedup. A zero score does not imply a correctness failure;
-compilation, correctness, and acceptance have separate fields.
+A correct implementation can receive zero reward. For candidates eligible for performance credit, the default reward is:
 
-To adjust the curve, edit `SCORE_POWER` in [`src/score.py`](src/score.py): `0.5`
-is concave, `1.0` is linear, and `2.0` is convex. Edit
-`SCORE_SPEEDUP_THRESHOLD` to change the cutoff. Both constants must be finite and
-positive. See [Scoring](docs/reference/api-reference.md#scoring) for the variable
-definitions, aggregation rule, and implications for comparing historical scores.
-
-## Task Configuration
-
-Each task has one `config.yaml` plus task-local implementation and evaluation
-files. Read [Task definition, schema, and authoring](docs/how-to/add-task.md)
-for the canonical schema, examples, command/result contracts, baseline and
-candidate lifecycle, optional sanitizers, and migration instructions.
-
-All retained tasks declare schema v2 and task-owned evaluation actions.
-GPU qualification and agent campaign results are tracked separately from that
-migration. Task-family directory names remain useful selectors; no family has
-a separate configuration schema.
-
-## Development
-
-### Add an Agent
-
-Create `agents/your_agent/launch_agent.py` with the interface used by `main.py`:
-
-```python
-from agents import register_agent
-
-
-@register_agent("your_agent")
-def launch_agent(
-    eval_config: dict,
-    task_config_dir: str,
-    workspace: str,
-) -> str:
-    # Build the prompt, invoke the agent in `workspace`, and return its output.
-    return result
+```text
+s = evaluator-reported speedup ratio
+reward = score = max(0, 1 - 1.05 / s)
 ```
 
-Then:
+The score is in `[0, 1]` and becomes positive only above 1.05× speedup. Compilation and correctness are prerequisites, with no separate point bonuses. Correctness, acceptance and reward remain separate fields. See the [result and scoring reference](docs/reference/api-reference.md#scoring) and [scoring implementation](src/score.py) for eligibility, case aggregation and reward parameters.
 
-1. Add the name to `AgentType` in `src/module_registration.py`.
-2. Add its import branch in `load_agent_launcher`.
-3. Select the standard or custom prompt-building path in the launcher.
-4. Add it to `load_post_processing_handler` if it should use normal run aggregation.
-5. Add an `agent_config.yaml` and focused documentation for agent-specific settings.
+End-to-end evaluation uses fresh paired baseline/candidate serving runs and a separate read-only verifier for scope, computation and measurement evidence. It reports model throughput rather than substituting kernel-only timing. Numerical checks and semantic review have finite coverage; passing them is not a proof against every possible invalid implementation. See [e2e measurement and results](docs/how-to/e2e-kernel-tasks.md#measurement-and-results).
 
-### Add a Task
+Arena supplies the environment and reward signals; an external system owns training and policy updates. Retain the evaluator's original result and reward alongside any trainer-specific transformations so experiments remain comparable.
 
-Read [Task definition, schema, and authoring](docs/how-to/add-task.md) before
-changing task code, config, references, or harnesses. Follow its
-[authoring workflow](docs/how-to/add-task.md#how-to-add-or-modify-a-task).
-When converting an external legacy task, also read the
-[compatibility and migration guidance](docs/how-to/add-task.md#migration).
+## Compare agents or configurations
 
-New tasks and material task-contract/harness changes require a fresh
-framework-finalized `validation_report.yaml` on compatible GPU hardware before
-PR submission. A clean pass has `overall_status: PASS`; WARN needs an explicit
-maintainer-approved justification. See the
-[validator guide](docs/how-to/task-validator.md) for the Docker command and
-report interpretation.
+There are two comparisons:
 
-## Additional Tools
+- **Inside a task:** Arena compares the delivered implementation with the preserved performance baseline.
+- **Across runs:** You compare agents or agent settings on the same task set and hardware.
 
-- [Held-out evaluation](src/held_out/README.md): Generate unseen shapes and evaluate generalization.
-- [Visualization dashboard](src/visualization/README.md): Compare local experiment reports.
-- [Full documentation](docs/README.md): Installation, configuration, task authoring, parallel execution, and methodology.
+For an agent or policy-checkpoint comparison, create two run configs and change only the setting being tested, such as the model, prompt or enabled tool. Keep tasks, hardware, runtime, evaluation policy, reward definition and search budget matched.
 
-## Current Directions
+```bash
+cp "$CONFIG_PATH" config_control.yaml
+cp "$CONFIG_PATH" config_treatment.yaml
+# Edit config_treatment.yaml to make the intended agent-setting change.
 
-- Improve interactive A/B comparison and experiment tracking.
-- Export richer episode traces and reward data for external agent-RL pipelines.
-- Expand standardized private held-out coverage.
-- Support heterogeneous agent configurations within one multi-GPU experiment.
-- Continue expanding task coverage across the supported kernel environments.
+make docker-run CONFIG=config_control.yaml RUN_ARGS="--run-suffix control"
+make docker-run CONFIG=config_treatment.yaml RUN_ARGS="--run-suffix treatment"
+```
 
-## Citation
+Compare the actual run directories printed by Arena:
 
-If you use AgentKernelArena in your research, please cite our paper:
+```bash
+# Replace these paths with the directories from the two runs.
+CONTROL_RUN_DIR="workspace_MI355X_claude_code/run_TIMESTAMP_control"
+TREATMENT_RUN_DIR="workspace_MI355X_claude_code/run_TIMESTAMP_treatment"
+python3 src/tools/compare_runs.py "$CONTROL_RUN_DIR" "$TREATMENT_RUN_DIR"
+```
+
+The suffix labels the result directory; it does not enable a capability. Repeat matched runs when assessing stochastic agents, retain the full results and interpret gains alongside measurement variation.
+
+## Validate and extend tasks
+
+Tasks use one [shared task contract](docs/how-to/add-task.md), regardless of their source language or agent. The main task families cover existing HIP/Triton/FlyDSL optimization, PyTorch-to-kernel implementation, translation to FlyDSL, production AITER operators and image-backed sources. End-to-end tasks use the same lifecycle with serving-specific evaluation.
+
+- **Validate a task:** [`task_validator`](docs/how-to/task-validator.md) runs the declared actions and reviews the checks. Its framework-finalized `validation_report.yaml` is separate from an optimization result.
+- **Repair task quality:** [`quality_loop`](docs/how-to/quality-loop.md) can run bounded repairs with fresh validation and independent review. Its repair-only mode preserves the scored contract and does not treat repairs as optimization gains.
+- **Add a task or agent:** Follow the [task authoring guide](docs/how-to/add-task.md), [agent integration guide](docs/how-to/agents.md#add-a-new-agent) and [contribution checklist](CONTRIBUTING.md).
+
+New tasks and material harness changes require a fresh GPU validator report with `overall_status: PASS`. WARN requires explicit maintainer-approved justification. A schema-valid task or CPU test pass does not establish GPU qualification across agents, runtimes or architectures. Validate task semantics and measurement integrity before using their scores as training rewards.
+
+Task workspaces preserve reproducibility and separate concurrent runs. The privileged worker containers can access mounted repository and authentication state; they are not security sandboxes.
+
+## Documentation
+
+| Goal | Guide |
+| --- | --- |
+| Install the runtime and authenticate an agent | [Installation](docs/install/install.md) |
+| Run, select tasks or resume an experiment | [Run an experiment](docs/how-to/run-evaluation.md) |
+| Configure an agent, model or time budget | [Agents and models](docs/how-to/agents.md) |
+| Run model-wide kernel optimization or an AgentX workload | [End-to-end tasks](docs/how-to/e2e-kernel-tasks.md) |
+| Spread tasks across GPUs or GPU groups | [Parallel execution](docs/how-to/parallel-run.md) |
+| Submit from a Slurm/Spur login node | [Cluster execution](docs/how-to/slurm-run.md) |
+| Understand timing or optional evaluator-side analysis | [Benchmark methodology](docs/reference/benchmark-methodology.md) · [Evaluation tools](docs/how-to/use-evaluation-tools.md) |
+| Evaluate a policy's generalization on supported tasks | [Held-out evaluation](docs/how-to/held-out-evaluation.md) |
+| Interpret rewards and result fields | [Scoring and results](docs/reference/api-reference.md#scoring) |
+| Build tasks from a dataset bundle | [Task builder](docs/how-to/sikl-task-builder.md) |
+
+See the [documentation index](docs/index.rst) for the full guide and [configuration reference](docs/reference/api-reference.md) for individual fields.
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `tasks/` | Task contracts, candidate sources and task-owned evaluation |
+| `agents/` | Optimization integrations, verifier and maintenance workflows |
+| `src/` | Shared task lifecycle, evaluator, scoring, runtime and reporting |
+| `example_configs/` | Maintained run configurations |
+| `docker/` | Runtime recipes and evaluator-side tool images |
+| `tests/` | Framework and task regression coverage |
+
+## Citation and license
+
+If you use AgentKernelArena in research, please cite:
 
 ```bibtex
 @misc{younesian2026agentkernelarena,
@@ -487,5 +200,4 @@ If you use AgentKernelArena in your research, please cite our paper:
 }
 ```
 
-For reproducibility, please also report the commit hash or release,
-task selection, hardware, and evaluation configuration used in your experiments.
+Report the repository revision, task selection, hardware and evaluation configuration with your results. AgentKernelArena is licensed under [Apache 2.0](LICENSE).

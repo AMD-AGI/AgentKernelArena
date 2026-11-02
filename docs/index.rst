@@ -1,16 +1,17 @@
 .. meta::
-   :description: AgentKernelArena is an A/B testing and RL-ready environment for developing AI agents on real GPU kernel optimization tasks.
+   :description: AgentKernelArena provides real GPU optimization tasks and independently evaluated reward signals for agent reinforcement learning and controlled benchmarking.
    :keywords: AgentKernelArena, A/B testing, agent reinforcement learning, ROCm, GPU, kernel optimization, AI agent, HIP, Triton, AMD
 
 ******************************
 AgentKernelArena documentation
 ******************************
 
-AgentKernelArena is a controlled experimentation platform for developing AI
-agents on real GPU kernel optimization tasks. It enables reproducible A/B tests
-across models, prompts, tools, and agent policies, and produces objective
-compilation, correctness, and performance signals that external agent-RL
-systems can use as rewards.
+AgentKernelArena provides GPU optimization tasks, controlled execution and
+independently evaluated reward signals for agent reinforcement learning.
+Tasks range from individual operators to end-to-end model workloads. Use the
+same tasks, hardware and evaluation policy to compare agents, trained policies,
+models, prompts or tools. Training and policy updates belong to the external
+training system.
 
 The AgentKernelArena source code is hosted in the
 `AMD-AGI/AgentKernelArena <https://github.com/AMD-AGI/AgentKernelArena>`_ GitHub
@@ -32,7 +33,7 @@ repository.
       * :doc:`Task definition, schema, and authoring <how-to/add-task>`
       * :doc:`Optimize kernels through serving throughput <how-to/e2e-kernel-tasks>`
       * :doc:`Validate tasks <how-to/task-validator>`
-      * :doc:`Visualize and compare runs <how-to/visualization>`
+      * :doc:`Audit and repair tasks <how-to/quality-loop>`
 
    .. grid-item-card:: Examples
 

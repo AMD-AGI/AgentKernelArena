@@ -24,7 +24,7 @@ ships quickstarts and specialized examples, including:
 | `example_configs/quickstart_claude_mi325x.yaml` | Claude Code GELU task with the MI325X hardware profile (`gfx942`). |
 | `example_configs/quickstart_claude_mi300a.yaml` | Claude Code GELU task with the MI300A hardware profile (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated 46-task Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Curated Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
 | `example_configs/evaluation_tools_advisory_mi355x.yaml` | Default-disabled template for experimental `gfx950` evaluation-tool sidecars. It still requires task-specific adapters before opt-in. |
 
 For a first run, select the quickstart that matches the physical GPU:

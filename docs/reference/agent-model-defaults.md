@@ -9,9 +9,9 @@ The executable defaults remain in each agent's `agent_config.yaml`.
 
 | Integration | Selected model | Effort | CLI tested | Evidence |
 | --- | --- | --- | --- | --- |
-| [Codex](../../agents/codex/agent_config.yaml) | `gpt-6-astra` | `xhigh` | `codex-cli 0.154.0` | Official model documentation, local app-server `model/list`, successful inference and file-write smoke |
-| [Claude Code](../../agents/claude_code/agent_config.yaml) | `claude-fable-5-1` | `max` | `2.1.272` | Official model configuration documentation, inference reporting this exact model, successful file-write smoke |
-| [Cursor](../../agents/cursor/agent_config.yaml) | `composer-2.5` | Model-defined | `2026.09.10-fd3934a` | Account's `cursor-agent models` listing, inference reporting Composer 2.5, successful file-write smoke |
+| [Codex](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/codex/agent_config.yaml) | `gpt-6-astra` | `xhigh` | `codex-cli 0.154.0` | Official model documentation, local app-server `model/list`, successful inference and file-write smoke |
+| [Claude Code](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/claude_code/agent_config.yaml) | `claude-fable-5-1` | `max` | `2.1.272` | Official model configuration documentation, inference reporting this exact model, successful file-write smoke |
+| [Cursor](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/cursor/agent_config.yaml) | `composer-2.5` | Model-defined | `2026.09.10-fd3934a` | Account's `cursor-agent models` listing, inference reporting Composer 2.5, successful file-write smoke |
 
 Codex moves from `gpt-5.5` to `gpt-6-astra` while preserving `xhigh`. The installed
 CLI's model discovery returned `low`, `medium`, `high`, `xhigh`, `max`, and
@@ -67,7 +67,7 @@ the model argument and delegates selection to the CLI; omitting the field uses
 Arena's checked-in default. Explicit `effort: null` similarly omits that flag.
 
 DeepSeek Harness also supports `budget_mode`, with its own model/provider
-settings described in the [DeepSeek guide](../../agents/deepseek_harness/README.md).
+settings described in the [DeepSeek guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md).
 
 All three CLI prompts also expose the resolved per-invocation time budget and
 ask the agent to retain its best implementation at the declared delivery paths,

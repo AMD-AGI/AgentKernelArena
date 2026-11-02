@@ -71,7 +71,7 @@ archive, together with the source/config identity and GPU/runtime details.
 Do not copy them into `tasks/` or commit them as task inputs. Describe the
 validation outcome and link shareable evidence in the PR; an archived PASS
 does not qualify changed source. Follow the
-[commit checklist](../../CONTRIBUTING.md#repository-cleanliness-before-committing)
+[commit checklist](https://github.com/AMD-AGI/AgentKernelArena/blob/main/CONTRIBUTING.md#repository-cleanliness-before-committing)
 before staging task changes.
 
 ## Validator configuration

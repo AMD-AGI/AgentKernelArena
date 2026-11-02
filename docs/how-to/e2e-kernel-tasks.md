@@ -259,7 +259,9 @@ invalidate the review. The policy is fixed before optimization and on resume.
 This supplements runtime fingerprints and numerical tests. It cannot override a
 failed numeric gate or guarantee detection of every possible malicious program.
 
-The existing score remains 120 plus 100 times the accepted ratio after all gates;
+Serving tasks use the shared [scoring policy](../reference/api-reference.md#scoring):
+a bounded score in `[0, 1]`, with the default linear curve requiring more than
+`1.05×` speedup for positive reward. All applicable acceptance gates must pass;
 no missing ratio is reconstructed from average durations. A measured gain is
 not a statistical-significance claim: reports retain all pairs, indicate
 whether every pair improved, and record per-case `uncertainty` with the ratio
@@ -552,7 +554,7 @@ serving_runtime:
 Prepare immutable assets with `src.prepare_serving_runtime`, then use the normal
 Docker runner and `task_validator`. All optimizer integrations use the same task
 selection. See the maintained SGLang selection in
-[`example_configs/e2e_magpie_qwen3_next_80b_validator_mi355x.yaml`](../../example_configs/e2e_magpie_qwen3_next_80b_validator_mi355x.yaml).
+[`example_configs/e2e_magpie_qwen3_next_80b_validator_mi355x.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/e2e_magpie_qwen3_next_80b_validator_mi355x.yaml).
 
 The host creates content-addressed task packages under `AKA_SERVING_TASK_CACHE`
 (default `~/.cache/aka-serving-tasks`), outside the checkout. Cache identity includes

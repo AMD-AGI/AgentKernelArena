@@ -11,6 +11,19 @@ This topic summarizes the features available in each AgentKernelArena release. F
 
 ## Unreleased
 
+- Added end-to-end tasks for model-wide kernel implementation and fusion under
+  fixed weights, precision, parallelism, serving flags and workloads. Magpie
+  recipes have individual selectable task directories, shared runtime binding
+  and a separate read-only candidate verifier. Catalog coverage does not imply
+  that every model/runtime combination has passed GPU qualification. See
+  [End-to-end tasks](../how-to/e2e-kernel-tasks.md).
+- Added bounded `repair_only` task maintenance with fresh validator results,
+  preservation of scored cases and numerical gates, and independent review of
+  retained findings. Repairs are not optimization gains. See
+  [Quality loop](../how-to/quality-loop.md).
+- Updated the MI355X default to the immutable SGLang 0.5.20 / ROCm 10 runtime.
+  Task-specific runtime requirements and optional analysis-tool qualifications
+  remain separate; see [MI355X runtime and compatibility](mi355x-runtime.md).
 - Added shared CDNA 3 (`gfx942`) architecture guidance with separate MI300X,
   MI325X and MI300A hardware profiles and quickstarts. Generic `MI300` no
   longer assumes MI300X topology or memory limits; the `MI325` alias remains
@@ -20,10 +33,10 @@ This topic summarizes the features available in each AgentKernelArena release. F
 - Retired five ROCmBench primitive tasks (`test_reverse_range`,
   `test_triton_swizzle2d`, `test_random_int`, `test_randn`, `test_kernel_sub`)
   and 16 `torch2hip/gpumode` generation tasks whose PyTorch references and
-  workload manifests match retained `hip2hip` optimization tasks. The bundled
-  inventory now contains 420 task packages. Remove these retired selectors
-  from custom run configs; use the corresponding HIP optimization task when
-  appropriate. Earlier qualification records describe their original revisions.
+  workload manifests match retained `hip2hip` optimization tasks. Remove these
+  retired selectors from custom run configs; use the corresponding HIP
+  optimization task when appropriate. Earlier qualification records describe
+  their original revisions.
 - Removed retired-task-only CPU tests and parameter cases. CPU CI limits
   nested numerical-library threads and uploads per-test timing results.
 - Changed the default per-task score curve from square root to linear
@@ -34,7 +47,7 @@ This topic summarizes the features available in each AgentKernelArena release. F
   comparable. See [Scoring](api-reference.md#scoring).
 - Added the opt-in `deepseek_harness` agent with a pinned headless CLI,
   API-key authentication, isolated per-task sessions, and Docker/Slurm
-  quickstarts. See the [integration guide](../../agents/deepseek_harness/README.md)
+  quickstarts. See the [integration guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md)
   for installation, model settings, and validation limits. `AGENTS=all`
   continues to check Cursor, Claude Code, and Codex.
 - Removed the unused `geak_v3`, `geak_v3_triton`, and `mini_swe_triton`

@@ -36,21 +36,30 @@ Run the single-task Claude Code quickstart for the physical GPU.
     ```text
     workspace_MI300_claude_code/
     └── run_<timestamp>/
-        └── hip2hip_gpumode_GELU_<timestamp>/
+        └── hip2hip_GELU_<timestamp>/
             └── task_result.yaml
     ```
 
-A successful `task_result.yaml` looks like:
+An illustrative excerpt from an accepted `task_result.yaml` looks like this.
+The numbers show the default scoring calculation, not a measured result:
 
 ```yaml
 task_name: hip2hip/GELU
 pass_compilation: true
 pass_correctness: true
-base_execution_time: 1.82
-best_optimized_execution_time: 1.15
-speedup_ratio: 1.58
-score: 278.0
+pass_tool_gate: true
+benchmark_method_consistent: true
+workload_consistent: true
+candidate_accepted: true
+base_execution_time: 0.100
+best_optimized_execution_time: 0.080
+speedup_ratio: 1.25
+score: 0.16
 ```
+
+At `1.25×`, the default score is `1 - 1.05 / 1.25 = 0.16`.
+Compilation and correctness are prerequisites; a correct candidate can still
+score zero. See [Scoring](../reference/api-reference.md#scoring).
 
 ## Example 2: Run an experiment on a whole task category
 
@@ -79,26 +88,32 @@ post-processing aggregates them into a run report.
 ## Example 3: A/B test an agent capability
 
 Measure whether a new Model Context Protocol (MCP) server, skill, or prompt
-change helps. Run the same task set twice with distinct run suffixes.
+change helps. Create separate control and treatment configurations, then change
+only the capability under test in the treatment's agent configuration or setup.
 
 ```bash
-# Baseline (capability disabled in the agent configuration)
-make docker-run CONFIG=config_triton.yaml RUN_ARGS="--run-suffix baseline"
+cp config_triton.yaml config_triton_control.yaml
+cp config_triton.yaml config_triton_treatment.yaml
+# Enable the capability in the treatment's agent configuration or setup.
 
-# Treatment (capability enabled)
-make docker-run CONFIG=config_triton.yaml RUN_ARGS="--run-suffix with_capability"
+make docker-run CONFIG=config_triton_control.yaml RUN_ARGS="--run-suffix control"
+make docker-run CONFIG=config_triton_treatment.yaml RUN_ARGS="--run-suffix treatment"
 ```
 
-Both runs land in `workspace_MI300_<agent>/` with distinct run names. Build the
-dashboard and compare them side-by-side:
+Keep the task set, hardware, runtime, reward definition and search budget matched.
+The suffix only labels a run directory; it does not enable a capability.
+Compare the actual run directories printed by Arena:
 
 ```bash
-python3 -m src.visualization build --include-workspace-runs
-python3 -m src.visualization serve --host 127.0.0.1 --port 8080
+# Replace these with the directories from the two runs.
+CONTROL_RUN_DIR="workspace_MI300_claude_code/run_TIMESTAMP_control"
+TREATMENT_RUN_DIR="workspace_MI300_claude_code/run_TIMESTAMP_treatment"
+python3 src/tools/compare_runs.py "$CONTROL_RUN_DIR" "$TREATMENT_RUN_DIR"
 ```
 
-Open <http://127.0.0.1:8080> to compare scores. See
-[Visualize and compare runs](../how-to/visualization.md) for details.
+Repeat matched runs when assessing stochastic agents and inspect variation
+alongside the aggregate scores. See [A/B testing](../how-to/agents.md#ab-testing-and-ablation-studies)
+for more details.
 
 ## Example 4: Validate a new task
 
@@ -122,7 +137,8 @@ make docker-run CONFIG=config_validator.yaml
 ```
 
 Open the generated `validation_report.yaml` in the task workspace. The task must
-reach **PASS** (or **WARN** with justification) before merging. See
+reach **PASS** before it is treated as qualified. **WARN** requires an explicit
+maintainer-approved justification and is not a clean pass. See
 [Validate tasks](../how-to/task-validator.md) for more information.
 
 ## Example 5: Run eight GPU workers in parallel
@@ -160,7 +176,7 @@ workspace_MI355X_claude_code/
     │   ├── running/
     │   ├── done/
     │   └── failed/
-    ├── hip2hip_gpumode_GELU_<timestamp>/
+    ├── hip2hip_GELU_<timestamp>/
     │   └── task_result.yaml
     └── reports/
         └── overall_report.txt

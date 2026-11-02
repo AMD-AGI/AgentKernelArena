@@ -1,7 +1,7 @@
 # MI355X runtime and compatibility
 
-The proposed MI355X default is the immutable SGLang 0.5.20 / ROCm 10 manifest
-selected in [`docker_benchmark.sh`](../../src/scripts/docker_benchmark.sh).
+The MI355X default is the immutable SGLang 0.5.20 / ROCm 10 manifest
+selected in [`docker_benchmark.sh`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh).
 The `gfx942` and `gfx1201` defaults are unchanged. Explicit image overrides and
 task-specific runtime requirements still apply. GPU ASan is **unqualified** on
 the tested hosts and remains unavailable when its required controls fail. The

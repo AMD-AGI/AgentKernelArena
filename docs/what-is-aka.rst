@@ -6,11 +6,11 @@
 What is AgentKernelArena?
 *************************
 
-AgentKernelArena is a controlled experimentation platform for developing AI
-agents on real GPU kernel optimization tasks. It enables reproducible A/B tests
-across models, prompts, tools, and agent policies, while providing objective
-compilation, correctness, and performance signals that can serve as rewards for
-agent reinforcement learning.
+AgentKernelArena provides real GPU optimization tasks and independently
+evaluated reward signals for developing and benchmarking kernel agents.
+External reinforcement-learning systems can consume the structured task
+outcomes and final score. Matched runs compare agents, policy checkpoints,
+models, prompts or tools under the same task and evaluation conditions.
 
 The platform supplies isolated environments and reward signals. It does not
 currently include an RL trainer, replay buffer, or policy-update loop.
@@ -29,8 +29,10 @@ isolated, timestamped workspace and follows the same outcome pipeline:
 
 * **Compile**: Build the agent's kernel and confirm it compiles cleanly.
 * **Validate**: Run the task's correctness check against a reference.
-* **Profile**: Measure GPU execution time and compute speedup over a baseline.
-* **Reward**: Write structured signals and combine them into a configurable score.
+* **Benchmark**: Measure GPU execution time or fixed-workload model throughput
+  against an independently preserved performance baseline.
+* **Reward**: Write structured outcomes and a bounded performance score. The
+  correctness reference and performance baseline have separate roles.
 
 Key features
 ============
@@ -41,29 +43,49 @@ AgentKernelArena includes the following key features.
   model, prompt, MCP server, skill, tool, memory strategy, or agent policy.
 * **RL-ready feedback**: Export compilation, correctness, timing, speedup, and
   score fields for use by external reinforcement-learning systems.
-* **Multiple agent integrations**: Cursor Agent, Claude Code, Codex, GEAK v4,
-  Forge, and custom agents.
+* **Agent integrations**: CLI integrations include Cursor, Claude Code, Codex and
+  DeepSeek Harness. GEAK and KernelForge have separate setup requirements. See
+  :doc:`the agent guide <how-to/agents>` for selectable templates and support
+  boundaries.
 * **Docker-first runtime**: Experiments execute inside pinned ROCm/SGLang
   Docker images selected from the target GPU architecture.
-* **Task categories**: HIP (``hip2hip``), CUDA-to-HIP (``cuda2hip``), Triton
-  (``triton2triton``), Torch-to-HIP (``torch2hip``),
-  Torch/Triton-to-FlyDSL (``torch2flydsl``, ``triton2flydsl``), FlyDSL
-  (``flydsl2flydsl``), and production-operator-to-FlyDSL
-  (``operator2flydsl``), plus image-backed kernels (``image_kernel``).
+* **Operator tasks**: Optimize existing implementations, implement PyTorch
+  references in a kernel language, or translate compute to FlyDSL. The bundled
+  suites also include production operators under ``Aiter-task`` and
+  ``Aiter-task-mi300``, and declared in-image sources under ``image_kernel``.
+  Task selectors are actual paths relative to ``tasks/``; the
+  :doc:`task contract <how-to/add-task>` defines behavior.
+* **End-to-end tasks**: Rewrite kernel implementations and fuse compute across
+  a model's declared source trees. Weights, precision, TP/EP/PP, serving flags
+  and workload settings remain fixed. The Magpie catalog provides one task
+  directory per text, multimodal or AgentX recipe. Runtime binding and GPU
+  qualification are required separately; see :doc:`how-to/e2e-kernel-tasks`.
 * **Objective metrics**: Automated compilation, correctness, and real GPU
   performance speedups.
 * **Performance timing provenance**: Timing method metadata is recorded for
   baseline and optimized runs so mixed-method comparisons are visible.
 * **Workspace isolation**: Each task runs in its own timestamped workspace for
   reproducibility.
-* **Multi-GPU parallel runs**: On multi-GPU servers, start one isolated Docker
-  worker per GPU and keep idle GPUs busy with a shared task queue.
+* **Multi-GPU parallel runs**: Start Docker workers with one GPU or a declared
+  GPU group, then distribute tasks through a shared queue.
 * **Task validator**: An agent plus deterministic report gate that runs 12 checks
   on task quality, benchmark integrity, and harness integrity
   before tasks are used in shared experiments.
-* **Held-out evaluation**: Re-evaluate optimized kernels on unseen shapes and
-  quantify generalization regressions. See :doc:`how-to/held-out-evaluation`.
-* **Visualization dashboard**: A static dashboard for comparing run reports.
+* **Task repair**: The :doc:`quality loop <how-to/quality-loop>` supports bounded
+  repairs, fresh validation and independent review. Its repair-only mode
+  preserves the scored contract and does not report repairs as speedups.
+* **Held-out evaluation**: Re-evaluate supported kernels on unseen shapes and
+  quantify generalization regressions. This is a separate post-run workflow;
+  see :doc:`how-to/held-out-evaluation`.
+
+The default score lies in ``[0, 1]`` and requires more than ``1.05×`` speedup
+from a valid comparison. Compilation and correctness are prerequisites, with
+no separate point bonuses. An agent completing its invocation, a candidate
+passing correctness and a positive reward are distinct outcomes. See
+:doc:`the configuration and scoring reference <reference/api-reference>`.
+
+Task workspaces preserve reproducibility and separate concurrent runs. The
+privileged worker containers are not security sandboxes.
 
 Use cases
 =========

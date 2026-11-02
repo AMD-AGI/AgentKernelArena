@@ -26,7 +26,7 @@ A run configuration defines a single experiment. Start from a file under
 GEAK resolves GPU IDs within the process-visible namespace; a masked Docker
 worker uses logical device zero. Host allocations remain controlled by the
 Docker/Slurm runner. GEAK search settings use the `agent` mapping in the
-[GEAK guide](../../agents/geak/README.md#runtime-setup). The `geak_v4` template
+[GEAK guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md#runtime-setup). The `geak_v4` template
 name is a registry alias for this same integration.
 
 Agent-specific defaults live in `agents/<agent_name>/agent_config.yaml`.
@@ -78,7 +78,7 @@ requirements.
 
 When tools are enabled, the selected scoring image must resolve to the same
 immutable local Docker image ID as the scoring manifest pinned in
-[`docker/eval-tools/images.lock.yaml`](../../docker/eval-tools/images.lock.yaml). The runner rejects a different build, launches by the verified ID,
+[`docker/eval-tools/images.lock.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/eval-tools/images.lock.yaml). The runner rejects a different build, launches by the verified ID,
 and records both the selected reference and verified ID in plan source evidence.
 
 Worker reports live at repository-root
@@ -367,7 +367,7 @@ rewards or divide the two aggregate timing fields. This retains the existing
 aggregation contract, so a positive task score does not guarantee every case
 improved.
 
-#### Adjusting the curve
+### Adjusting the curve
 
 Edit these two constants in `src/score.py` before running or aggregating an
 experiment. There is one scoring function, with no additional reward field or
@@ -393,7 +393,7 @@ gives zero to baseline-equivalent and slower candidates.
 `1 - 1.05 / 1.25 = 0.16`. The same measurement scores `0.4` with `p = 0.5`
 (`sqrt(0.16)`) and `0.0256` with `p = 2`.
 
-#### Result interpretation and historical reports
+### Result interpretation and historical reports
 
 Scores are in `[0, 1]`, with faster valid candidates approaching `1`. Compilation
 and correctness are prerequisites, with no separate point bonuses. A correct

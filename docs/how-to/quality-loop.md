@@ -133,7 +133,7 @@ that cannot be proved by case and metadata comparisons alone.
   promotion is attempted without a task-type allowlist and fails closed when the
   selected task has no promotable committed source baseline.
 - Case proposals use the filename allowlist in
-  [`is_case_path`](../../agents/quality_loop/filesystem.py), plus the declared
+  [`is_case_path`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/filesystem.py), plus the declared
   `evaluation.workloads` file. They cannot edit candidate scopes, materialized
   source destinations or generated benchmark helpers. A file outside this
   allowlist rejects the whole proposal before the correctness gates. Input
@@ -142,8 +142,8 @@ that cannot be proved by case and metadata comparisons alone.
   proposed cases, the change is rejected. A generation task's original empty
   candidate is not used as an executable baseline.
 
-See the [agent guide](../../agents/quality_loop/README.md) and
-[configuration](../../agents/quality_loop/agent_config.yaml) for the complete
+See the [agent guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/README.md) and
+[configuration](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/agent_config.yaml) for the complete
 contract, role receipts and external reviewer evidence index.
 
 ## Recorded GPU smoke (2026-09-15)

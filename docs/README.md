@@ -22,8 +22,8 @@ python -m sphinx -T -b html docs docs/_build/html
 
 | Path | Page | Notes |
 | --- | --- | --- |
-| `index.rst` | Overview | Landing page with links to the main documentation sections and the GitHub repo. |
-| `what-is-aka.rst` | Overview | Product overview, key features, and use cases. |
+| `index.rst` | Overview | RL-ready task environment, evaluation signals, and links to the main documentation sections. |
+| `what-is-aka.rst` | Overview | Operator/e2e task scopes, external RL use, evaluation outcomes, and support boundaries. |
 | `install/install.md` | Installation | Docker runner (`make docker-smoke`/`docker-run`), agent CLIs, authentication, and provider setup. |
 | `reference/release-notes.md` | Release Notes | Current-development changes, released capabilities, and known limitations. |
 | `reference/compatibility-matrix.md` | Compatibility Matrix | Verified hardware/software versions. |
@@ -37,7 +37,7 @@ python -m sphinx -T -b html docs docs/_build/html
 | `how-to/agents.md` | How-to | Supported agents, model providers, and A/B testing. |
 | `how-to/add-task.md` | Task contract and authoring | Canonical task definition, selected v2 schema, command/result contracts, examples, authoring workflow, and legacy migration status. |
 | `how-to/task-validator.md` | How-to | Current task-validator execution, checks, and framework-finalized reports. |
-| `how-to/quality-loop.md` | How-to | Repository-wide validation, one-pass optimization, task hardening, and single-draft-PR publication. |
+| `how-to/quality-loop.md` | How-to | Bounded task repairs, repair-only maintenance, optional optimization, independent review, and single-draft-PR publication. |
 | `how-to/held-out-evaluation.md` | How-to | Generate private shapes and evaluate completed runs for generalization. |
 | `how-to/visualization.md` | How-to | Build dashboard data and serve the comparison dashboard. |
 | `examples/examples.md` | Examples | Step-by-step walkthroughs with expected output. |
@@ -57,7 +57,11 @@ Navigation (the left sidebar) is defined in `sphinx/_toc.yml.in`.
 
 ## Notes on the local build
 
-A local build outside AMD infrastructure prints benign warnings for intersphinx
-inventory fetches and a `Current project 'AgentKernelArena' not found in
-projects` message until the project is registered in the rocm-docs-core project
-registry. The build itself succeeds.
+The theme may report `Current project 'AgentKernelArena' not found in projects`
+until the project is registered in the rocm-docs-core project registry. This
+warning is separate from document-source errors.
+
+The theme fetches remote project metadata during a build. Certificate,
+authentication or network failures can stop that step; resolve them before
+treating the build as successful. Links to repository files outside `docs/`
+use GitHub URLs so they work in both GitHub and the generated documentation.
