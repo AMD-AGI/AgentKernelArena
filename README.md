@@ -252,7 +252,7 @@ See [`agents/task_validator/README.md`](agents/task_validator/README.md) for the
 
 | Source | Tasks | License |
 |--------|-------|---------|
-| [GPU Mode](https://github.com/GPUMODE/kernelbot-data) | HIP-to-HIP, PyTorch-to-HIP | CC-BY-4.0 |
+| [GPU Mode KernelBook](https://huggingface.co/datasets/GPUMODE/KernelBook) | HIP-to-HIP, PyTorch-to-HIP | MIT (at the time of use) |
 | [vLLM](https://github.com/vllm-project/vllm) | Triton-to-Triton | Apache-2.0 |
 | [ROCmBench](https://github.com/AMD-AGI/GEAK-eval) | Triton-to-Triton | Cited (no specified license) |
 
