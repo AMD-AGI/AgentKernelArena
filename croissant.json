@@ -1,0 +1,506 @@
+{
+  "@context": {
+    "@language": "en",
+    "@vocab": "https://schema.org/",
+    "citeAs": "cr:citeAs",
+    "column": "cr:column",
+    "conformsTo": "dct:conformsTo",
+    "cr": "http://mlcommons.org/croissant/",
+    "rai": "http://mlcommons.org/croissant/RAI/",
+    "data": {
+      "@id": "cr:data",
+      "@type": "@json"
+    },
+    "dataType": {
+      "@id": "cr:dataType",
+      "@type": "@vocab"
+    },
+    "dct": "http://purl.org/dc/terms/",
+    "equivalentProperty": {
+      "@id": "cr:equivalentProperty",
+      "@type": "@vocab"
+    },
+    "examples": {
+      "@id": "cr:examples",
+      "@type": "@json"
+    },
+    "extract": "cr:extract",
+    "field": "cr:field",
+    "fileProperty": "cr:fileProperty",
+    "fileObject": "cr:fileObject",
+    "fileSet": "cr:fileSet",
+    "format": "cr:format",
+    "includes": "cr:includes",
+    "isLiveDataset": "cr:isLiveDataset",
+    "jsonPath": "cr:jsonPath",
+    "key": "cr:key",
+    "md5": "cr:md5",
+    "parentField": "cr:parentField",
+    "path": "cr:path",
+    "recordSet": "cr:recordSet",
+    "references": "cr:references",
+    "regex": "cr:regex",
+    "repeated": "cr:repeated",
+    "replace": "cr:replace",
+    "samplingRate": "cr:samplingRate",
+    "sc": "https://schema.org/",
+    "separator": "cr:separator",
+    "source": "cr:source",
+    "subField": "cr:subField",
+    "transform": "cr:transform",
+    "prov": "http://www.w3.org/ns/prov#",
+    "containedIn": "cr:containedIn"
+  },
+  "@type": "sc:Dataset",
+  "conformsTo": "http://mlcommons.org/croissant/1.1",
+  "name": "AgentKernelArena",
+  "alternateName": "AgentKernelArena Benchmark",
+  "description": "AgentKernelArena is an open-source benchmark for evaluating AI coding agents on GPU kernel optimization tasks targeting AMD Instinct MI300X accelerators. It contains 196 tasks spanning three categories: HIP-to-HIP kernel optimization (24 tasks), Triton-to-Triton kernel optimization (148 tasks, from vLLM and ROCmBench), and PyTorch-to-HIP kernel generation (24 tasks). Each task ships with source code, evaluation scripts (compile/correctness/performance), and multi-shape test cases. The benchmark additionally defines a held-out shape generalization protocol with 8 structurally diverse shapes per task spanning six generalization categories (edge-case, scale-up, scale-down, alignment-stress, asymmetric-aspect-ratio, production-realistic). The exact held-out shapes used in the paper are released in held_out/neurips2026_shapes/ for reproducibility. They were generated after the agents had optimized the kernels, so the evaluated agents never saw them; users should either keep them out of the agent's environment and use them only in a final held-out validation stage, or regenerate a private set with held_out/generate_heldout.py. The primary artifact is a reusable executable benchmark suite rather than a traditional dataset; the publicly distributed 'data' consists of kernel source files, task configurations, and evaluation harnesses.",
+  "url": "https://github.com/AMD-AGI/AgentKernelArena/tree/v0.0-neurips2026",
+  "version": "1.0.0",
+  "datePublished": "2026-05-06",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "citeAs": "@inproceedings{agentkernelarena2026, title={{AgentKernelArena}: Benchmarking Performance and Generalization of {AI} Coding Agents on {GPU} Kernels Optimization}, author={Sharareh Younesian and Wenwen Ouyang and Sina Rafati and Mehdi Rezagholizadeh and Sharon Zhou and Ji Liu and Yue Liu and Yuchen Yang and Hao Li and Ziqiong Liu and Dong Li and Vikram Appia and Zhenyu Gu and Emad Barsoum}, booktitle={Advances in Neural Information Processing Systems, Evaluations \\& Datasets Track}, year={2026}}",
+  "creator": [
+    {
+      "@type": "sc:Person",
+      "name": "Sharareh Younesian",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Wenwen Ouyang",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Sina Rafati",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Mehdi Rezagholizadeh",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Sharon Zhou",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Ji Liu",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Yue Liu",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Yuchen Yang",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Hao Li",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Ziqiong Liu",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Dong Li",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Vikram Appia",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Zhenyu Gu",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    },
+    {
+      "@type": "sc:Person",
+      "name": "Emad Barsoum",
+      "affiliation": {
+        "@type": "sc:Organization",
+        "name": "Advanced Micro Devices, Inc. (AMD)"
+      }
+    }
+  ],
+  "publisher": {
+    "@type": "sc:Organization",
+    "name": "Advanced Micro Devices, Inc. (AMD)"
+  },
+  "keywords": [
+    "GPU kernel optimization",
+    "AI coding agents",
+    "benchmark",
+    "evaluation",
+    "HIP",
+    "Triton",
+    "ROCm",
+    "AMD Instinct MI300X",
+    "LLM",
+    "code generation",
+    "agentic systems",
+    "held-out generalization"
+  ],
+  "isLiveDataset": false,
+  "distribution": [
+    {
+      "@type": "cr:FileObject",
+      "@id": "github-repository",
+      "name": "github-repository",
+      "description": "Zip archive of the repository at git tag v0.0-neurips2026 (the version used in the NeurIPS 2026 paper), containing all 196 tasks, evaluation harnesses, agent launchers, cheatsheets, and the held-out shapes used in the paper.",
+      "contentUrl": "https://github.com/AMD-AGI/AgentKernelArena/archive/refs/tags/v0.0-neurips2026.zip",
+      "encodingFormat": "application/zip",
+      "sha256": "ec3a55813adefee9ad05a4af18d93702b04c35e9c52afde9d33a4e8cf0de6265"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "all-task-configs",
+      "name": "all-task-configs",
+      "description": "Aggregated file set of all 196 task configuration files across all categories. Used as the primary source for the 'tasks' RecordSet.",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/plain",
+      "includes": "*/tasks/**/config.yaml"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "hip2hip-task-configs",
+      "name": "hip2hip-task-configs",
+      "description": "Per-task YAML configuration files for the 24 HIP-to-HIP tasks (sourced from the GPU Mode community kernel dataset).",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/plain",
+      "includes": "*/tasks/hip2hip/**/config.yaml"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "torch2hip-task-configs",
+      "name": "torch2hip-task-configs",
+      "description": "Per-task YAML configuration files for the 24 PyTorch-to-HIP generation tasks (sourced from the GPU Mode community kernel dataset; agent creates a HIP kernel from scratch given a PyTorch nn.Module specification).",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/plain",
+      "includes": "*/tasks/torch2hip/**/config.yaml"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "triton2triton-vllm-task-configs",
+      "name": "triton2triton-vllm-task-configs",
+      "description": "Per-task YAML configuration files for the 118 Triton-to-Triton optimization tasks extracted from the vLLM inference engine (Apache-2.0).",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/plain",
+      "includes": "*/tasks/triton2triton/vllm/**/config.yaml"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "triton2triton-rocmbench-task-configs",
+      "name": "triton2triton-rocmbench-task-configs",
+      "description": "Per-task YAML configuration files for the 30 Triton-to-Triton optimization tasks adapted from the ROCmBench evaluation suite.",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/plain",
+      "includes": "*/tasks/triton2triton/rocmbench/**/config.yaml"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "task-source-files",
+      "name": "task-source-files",
+      "description": "Kernel source files (HIP .hip/.h and Triton .py) that agents read and optimize.",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/plain",
+      "includes": "*/tasks/**/source/*"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "task-evaluation-scripts",
+      "name": "task-evaluation-scripts",
+      "description": "Per-task evaluation harness scripts (compile, correctness, performance) used by the centralized evaluator.",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/x-python",
+      "includes": "*/tasks/**/scripts/*.py"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "cheatsheets",
+      "name": "cheatsheets",
+      "description": "GPU architecture cheatsheets (MI300X, MI355X) and language best-practice guides (HIP, Triton) provided to agents as optional context.",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/markdown",
+      "includes": "*/src/prompts/cheatsheet/**/*.md"
+    },
+    {
+      "@type": "cr:FileSet",
+      "@id": "held-out-shapes",
+      "name": "held-out-shapes",
+      "description": "Held-out shapes used in the NeurIPS 2026 paper: one held_out_shapes.yaml per task (196 files).",
+      "containedIn": {
+        "@id": "github-repository"
+      },
+      "encodingFormat": "text/plain",
+      "includes": "*/held_out/neurips2026_shapes/**/held_out_shapes.yaml"
+    }
+  ],
+  "recordSet": [
+    {
+      "@type": "cr:RecordSet",
+      "@id": "tasks",
+      "name": "tasks",
+      "description": "The 196 kernel optimization tasks that constitute AgentKernelArena. Each record describes one task's category, source provenance, target kernel function, and evaluation protocol. Records are materialized from per-task config.yaml files under tasks/ in the repository.",
+      "key": {
+        "@id": "tasks/task_id"
+      },
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "tasks/task_id",
+          "name": "task_id",
+          "description": "Task identifier: the task's path under tasks/ (e.g., 'hip2hip/gpumode/GELU').",
+          "dataType": "sc:Text",
+          "source": {
+            "fileSet": {
+              "@id": "all-task-configs"
+            },
+            "extract": {
+              "fileProperty": "fullpath"
+            },
+            "transform": {
+              "regex": "^(?:.*/)?tasks/(.+)/config\\.yaml$"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "tasks/category",
+          "name": "category",
+          "description": "Task category: one of 'hip2hip' (HIP-to-HIP optimization), 'torch2hip' (PyTorch-to-HIP generation), or 'triton2triton' (Triton-to-Triton optimization).",
+          "dataType": "sc:Text",
+          "source": {
+            "fileSet": {
+              "@id": "all-task-configs"
+            },
+            "extract": {
+              "fileProperty": "fullpath"
+            },
+            "transform": {
+              "regex": "^(?:.*/)?tasks/([^/]+)/.+/config\\.yaml$"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "tasks/source",
+          "name": "source",
+          "description": "Upstream source of the task: 'gpumode' (GPU Mode KernelBook), 'vllm' (vLLM inference engine, Apache-2.0), or 'rocmbench' (ROCmBench evaluation suite).",
+          "dataType": "sc:Text",
+          "source": {
+            "fileSet": {
+              "@id": "all-task-configs"
+            },
+            "extract": {
+              "fileProperty": "fullpath"
+            },
+            "transform": {
+              "regex": "^(?:.*/)?tasks/[^/]+/([^/]+)/.+/config\\.yaml$"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "tasks/config",
+          "name": "config",
+          "description": "Full content of the task's config.yaml (task_type, source_file_path, target_kernel_functions, compile/correctness/performance commands, prompt instructions).",
+          "dataType": "sc:Text",
+          "source": {
+            "fileSet": {
+              "@id": "all-task-configs"
+            },
+            "extract": {
+              "fileProperty": "content"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "@type": "cr:RecordSet",
+      "@id": "held_out_shapes",
+      "name": "held_out_shapes",
+      "description": "Held-out shapes used in the NeurIPS 2026 paper, one record per task.",
+      "key": {
+        "@id": "held_out_shapes/task_id"
+      },
+      "field": [
+        {
+          "@type": "cr:Field",
+          "@id": "held_out_shapes/task_id",
+          "name": "task_id",
+          "description": "Task identifier, matching tasks/task_id.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileSet": {
+              "@id": "held-out-shapes"
+            },
+            "extract": {
+              "fileProperty": "fullpath"
+            },
+            "transform": {
+              "regex": "^(?:.*/)?neurips2026_shapes/(.+)/held_out_shapes\\.yaml$"
+            }
+          }
+        },
+        {
+          "@type": "cr:Field",
+          "@id": "held_out_shapes/shapes",
+          "name": "shapes",
+          "description": "Full content of held_out_shapes.yaml.",
+          "dataType": "sc:Text",
+          "source": {
+            "fileSet": {
+              "@id": "held-out-shapes"
+            },
+            "extract": {
+              "fileProperty": "content"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "rai:dataCollection": "Tasks were curated from three open-source upstream sources: (i) the GPU Mode KernelBook dataset (MIT license at the time of use), from which PyTorch nn.Module specifications were used to derive 24 operators used in both the HIP-to-HIP and PyTorch-to-HIP categories; (ii) the vLLM inference engine (Apache-2.0), from which 118 Triton kernels were extracted and isolated into self-contained, single-file form via an LLM-assisted pipeline followed by human review; (iii) the ROCmBench evaluation suite (companion to GEAK, Wang et al. 2025), from which 30 Triton kernel tasks were adapted. For each task, an LLM-assisted pipeline produced baseline implementations, scaffold scripts (task_runner.py with compile/correctness/performance subcommands), input generators, and reference outputs; all tasks were then validated end-to-end on AMD Instinct MI300X hardware by an automated task-validator agent and reviewed by human authors. Held-out shape sets (8 shapes per task, tagged by one of six generalization categories) were generated by an LLM agent inspecting each task's source and test infrastructure. The exact held-out shapes used in the paper are released in held_out/neurips2026_shapes/ for reproducibility. They were generated after the agents had optimized the kernels, so the evaluated agents never saw them; users should either keep them out of the agent's environment and use them only in a final held-out validation stage, or regenerate a private set with held_out/generate_heldout.py.",
+  "rai:dataCollectionType": [
+    "Derived from pre-existing open-source repositories",
+    "LLM-assisted scaffolding of evaluation harnesses",
+    "Automated task validation with human review"
+  ],
+  "rai:dataCollectionRawData": "Upstream source code is publicly available under the licenses stated above. No personally identifying information, human-subject data, web-scraped content, or proprietary third-party code was collected. All kernel code originates from permissively-licensed open-source GPU workload repositories. The benchmark redistributes adapted task wrappers plus references to upstream; attribution to the originating source is preserved in per-task metadata.",
+  "rai:dataCollectionMissingData": "Coverage is restricted to operators and kernels that are (a) permissively licensed, (b) self-contained enough to isolate into single-file tasks, and (c) compilable and executable on AMD MI300X with ROCm. Operators that require multi-kernel orchestration across files, depend on proprietary libraries, or are tightly coupled to CUDA-only intrinsics are intentionally excluded from the current release and discussed in the paper's Limitations section.",
+  "rai:dataImputationProtocol": "Not applicable. No value imputation is performed; tasks are either included as compiled/tested/profiled self-contained units, or excluded during validation.",
+  "rai:dataPreprocessingProtocol": [
+    "Upstream kernels were isolated into single-file form where necessary (vLLM).",
+    "Each task was wrapped with a uniform task_runner.py scaffold exposing 'compile', 'correctness', and 'performance' subcommands.",
+    "Numerical tolerances (atol, rtol) were selected per data type and operator class; defaults are documented in each task's config.yaml prompt.instructions field.",
+    "Multi-shape test cases (typically 3-11 shapes per task) were added to each task; an additional 8 held-out shapes per task are kept separate from the visible test set (held_out/neurips2026_shapes/) and injected only at held-out evaluation time.",
+    "All 196 tasks were validated end-to-end by an automated task validator agent on AMD MI300X and reviewed by human authors."
+  ],
+  "rai:dataAnnotationProtocol": "Annotation is minimal and structural. Each task directory contains a config.yaml with: task_type, source_file_path(s), target_kernel_functions, compile/correctness/performance commands, and task-specific optimization instructions. Category labels (hip2hip/torch2hip/triton2triton) and source labels (gpumode/vllm/rocmbench) are derived deterministically from the directory path. Held-out shapes are tagged with one of six generalization-category labels: edge-case/boundary, scale-up, scale-down, alignment-stress, asymmetric-aspect-ratio, production-realistic.",
+  "rai:dataAnnotationPlatform": "Annotations were authored in plain YAML and Markdown files in the repository. No third-party annotation platform was used. An LLM coding agent (Cursor Agent with claude-4.6-opus-high) drafted initial held-out shape sets and scaffold scripts; all outputs were human-reviewed by the paper authors before inclusion.",
+  "rai:dataAnnotationAnalysis": "Inter-annotator agreement is not applicable because annotations are objective structural metadata (file paths, function names, shell commands, shape tuples) rather than subjective labels. Correctness of each annotation is verified automatically by the task validator, which executes each task's compile/correctness/performance pipeline and confirms that it produces meaningful baseline metrics.",
+  "rai:dataAnnotatorDemographics": "Annotation involved (i) LLM scaffolding for initial task wrappers and held-out shape proposals, and (ii) human review by the paper authors. The benchmark contains no human-subject data, no crowdsourced labels, and no demographic attributes.",
+  "rai:dataUseCases": [
+    "Benchmarking AI coding agents (e.g., Cursor Agent, Claude Code, Codex, and future open-source agents) on end-to-end GPU kernel optimization workflows.",
+    "Disentangling the contribution of agent scaffold versus underlying LLM capability via paired (agent, model) evaluation.",
+    "Stress-testing whether agent optimizations generalize beyond visible test shapes via the held-out shape protocol.",
+    "Providing a standardized target for researchers developing specialized kernel-optimization systems (e.g., GEAK, AutoTriton, TritonForge, AdaExplore, QiMeng-Kernel) to compare against."
+  ],
+  "rai:dataBiases": "The task distribution is biased toward operators that are common in modern transformer inference workloads (attention variants, normalization layers, MoE routing, GEMM variants, sampling), and under-represents classical HPC, scientific computing, graph, and signal-processing kernels. The Triton-to-Triton category is dominated by vLLM-derived tasks (118 of 148), which reflects the LLM-inference-engine origin of the upstream source. The main experiments target AMD MI300X (with replication on MI355X and NVIDIA H100 reported in the paper), so absolute speedup numbers are platform-specific and should not be interpreted as universal claims about agent quality on other GPUs. The baseline implementations against which agent speedups are measured are themselves human- or LLM-assisted first drafts and may not represent fully-tuned production kernels in all cases; speedups should therefore be read as 'improvement over the documented baseline' rather than 'improvement over state-of-the-art hand-tuned code'.",
+  "rai:dataLimitations": [
+    "Main results are on AMD Instinct MI300X; the cross-hardware replication (MI355X, NVIDIA H100) covers fewer configurations, and H100 covers Triton-to-Triton only.",
+    "Only three production agents (Cursor Agent, Claude Code, Codex Agent) and a fixed roster of commercial LLMs are evaluated in the accompanying paper; open-weight-model agent launchers are left to future contributors.",
+    "Each configuration is run three times, which bounds the statistical power of run-to-run variability estimates.",
+    "The max_iterations constraint is a soft natural-language directive appended to the agent prompt rather than a hard runtime cap, so agents may internally perform more tool invocations between versions.",
+    "Tasks that require multi-kernel orchestration, proprietary numerics libraries, or CUDA-only intrinsics are out of scope for the current release.",
+    "Held-out shape generation uses an LLM, which may introduce coverage gaps in the space of 'structurally distinct' shapes relative to shapes encountered in deployed systems."
+  ],
+  "rai:dataSocialImpact": "AgentKernelArena is evaluation infrastructure rather than a deployed sociotechnical system. Positive impacts: lowering the barrier to high-performance GPU programming, accelerating the development of AI-assisted kernel optimization tools, diversifying hardware coverage in the LLM-for-code literature, and providing a held-out-evaluation protocol that discourages overfitting to visible test shapes. Dual-use consideration: faster AI-assisted kernel optimization could meaningfully reduce the cost of both beneficial and harmful model training and inference workloads, with downstream implications for capability scaling. The authors view rigorous held-out evaluation as a prerequisite for responsible adoption of agent-generated kernels in production systems, and release the benchmark under Apache-2.0 to enable independent scrutiny.",
+  "rai:personalSensitiveInformation": "None. AgentKernelArena consists exclusively of GPU kernel source code (HIP/Triton/PyTorch), structural task metadata (YAML configurations, shell commands, tensor shapes, numerical tolerances), kernel architecture cheatsheets, and numerical benchmarking outputs (compile logs, correctness reports, wall-clock timings). It contains no personally identifying information, no human-subject data, no demographic attributes (gender, age, ethnicity, socio-economic status, geography, language, culture, political or religious beliefs), no health or medical information, no biometric data, and no user-generated content. All upstream source repositories (GPU Mode community kernel dataset, vLLM, ROCmBench) publish kernel source code under permissive open-source licenses and contain no such information.",
+  "rai:hasSyntheticData": true,
+  "rai:syntheticDataDescription": "Portions of the benchmark were produced with LLM assistance under human review: (i) baseline HIP implementations for the torch2hip category were drafted by an LLM-assisted pipeline and then validated for compile/correctness/performance on AMD MI300X; (ii) a subset of per-task test shapes and reference outputs were generated by LLM agents and verified numerically; (iii) the held-out shape definitions (8 per task, tagged by generalization category) were produced by a Cursor Agent instance running claude-4.6-opus-high inspecting each task's source and test infrastructure, and are released in held_out/neurips2026_shapes/. The upstream kernel source code itself (from GPU Mode, vLLM, ROCmBench) is not synthetic. See rai:dataCollection and rai:dataPreprocessingProtocol for the full generation pipeline and human-review procedures.",
+  "rai:dataReleaseMaintenancePlan": "The benchmark is released under Apache-2.0 and hosted as a public Git repository. The authors commit to: (i) accepting community-contributed agents, tasks, and GPU-architecture cheatsheets via pull request using the documented extensibility interface; (ii) tagging versioned releases when new task categories or evaluation protocols are added; (iii) keeping the version used in the NeurIPS 2026 paper frozen at git tag v0.0-neurips2026 while the main branch continues to evolve; and (iv) preserving all upstream attribution in per-task metadata. Issues and errata will be tracked in the repository's issue tracker. Reproduction details including agent model identifiers and evaluation windows are documented in the accompanying paper to allow temporal model drift to be accounted for.",
+  "prov:wasDerivedFrom": [
+    {
+      "@id": "https://huggingface.co/datasets/GPUMODE/KernelBook"
+    },
+    {
+      "@id": "https://github.com/vllm-project/vllm"
+    },
+    {
+      "@id": "https://github.com/AMD-AGI/GEAK-eval"
+    }
+  ],
+  "prov:wasGeneratedBy": [
+    {
+      "@type": "prov:Activity",
+      "prov:label": "Data collection",
+      "description": "See rai:dataCollection."
+    },
+    {
+      "@type": "prov:Activity",
+      "prov:label": "Preprocessing",
+      "description": "See rai:dataPreprocessingProtocol."
+    },
+    {
+      "@type": "prov:Activity",
+      "prov:label": "Annotation",
+      "description": "See rai:dataAnnotationProtocol and rai:dataAnnotationPlatform."
+    },
+    {
+      "@type": "prov:Activity",
+      "prov:label": "Synthetic data generation",
+      "description": "See rai:syntheticDataDescription."
+    }
+  ]
+}
