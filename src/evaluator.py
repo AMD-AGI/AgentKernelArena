@@ -333,6 +333,24 @@ def evaluate_kernel(
                         raise ValueError("Serving latency limit declared but a measurement omitted p99_tpot_ms")
                     if any(value > limit for value in latencies):
                         raise ValueError("Serving latency limit exceeded")
+            elif task_session.spec.contract is not None:
+                # Schema-v3: remeasure the baseline next to the candidate in
+                # alternating fresh processes (B, C, B, C) and average each
+                # arm per case, so device drift cannot favor either side.
+                rounds = {"baseline": [], "candidate": []}
+                for role in ("baseline", "candidate", "baseline", "candidate"):
+                    if role == "candidate":
+                        performance = task_session.candidate_action("performance").result
+                    else:
+                        performance = task_session.baseline_action("performance").result
+                    if not performance.passed:
+                        raise ValueError(performance.reason or f"{role} performance failed")
+                    rounds[role].append(performance_cases(performance))
+                baseline_cases[:] = _mean_cases(rounds["baseline"])
+                optimized_cases = _mean_cases(rounds["candidate"])
+                results["interleaved_rounds"] = {
+                    role: [[{"id": c.test_case_id, "ms": c.execution_time_ms} for c in run] for run in runs]
+                    for role, runs in rounds.items()}
             else:
                 performance = task_session.candidate_action("performance").result
                 if not performance.passed:
@@ -478,6 +496,24 @@ def evaluate_kernel(
     log.info("=" * 80)
     
     return results
+
+
+def _mean_cases(runs: List[List[TestCaseResult]]) -> List[TestCaseResult]:
+    """Per-case mean time over repeated runs with identical case identities."""
+    first = runs[0]
+    by_id = [{case.test_case_id: case for case in run} for run in runs]
+    if any(set(rows) != set(by_id[0]) for rows in by_id):
+        raise ValueError("Repeated performance runs reported different cases")
+    merged = []
+    for case in first:
+        times = [rows[case.test_case_id].execution_time_ms for rows in by_id]
+        methods = {rows[case.test_case_id].metadata.get("benchmark_method") for rows in by_id}
+        if len(methods) != 1:
+            raise ValueError(f"Case {case.test_case_id} changed timing method between runs")
+        metadata = dict(case.metadata)
+        metadata["round_times_ms"] = times
+        merged.append(TestCaseResult(case.test_case_id, case.shape, sum(times) / len(times), metadata))
+    return merged
 
 
 def _session_check(session: "TaskSession", action: str) -> Tuple[bool, Optional[str]]:

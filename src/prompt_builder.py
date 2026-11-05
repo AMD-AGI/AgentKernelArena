@@ -283,12 +283,17 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
         )
     logger.info(f"Building prompt from config: {task_config_path}")
 
-    if task_config.get('schema_version') == 2:
+    if task_config.get('schema_version') in (2, 3):
         project_root = Path(__file__).resolve().parent.parent
         stable_id = eval_config.get('_task_id')
         if stable_id is None:
             stable_id = task_config_path.resolve().parent.relative_to(project_root / 'tasks').as_posix()
-        spec = load_task_spec(task_config_path, task_id=stable_id)
+        if task_config.get('schema_version') == 3:
+            # The workspace holds the execution record resolved for this run's
+            # target language; the task package itself names no language.
+            spec = load_task_spec(Path(workspace_directory) / 'config.yaml', task_id=stable_id)
+        else:
+            spec = load_task_spec(task_config_path, task_id=stable_id)
         context, gfx_arch = _load_cheatsheet(
             spec.candidate.language, target_gpu_model, project_root, spec.to_mapping(), logger,
         )

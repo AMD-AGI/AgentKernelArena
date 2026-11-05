@@ -156,55 +156,67 @@ def _run_exports(session: TaskSession, harness, logger: logging.Logger) -> list[
     return results
 
 
-def validate_task_session(session: TaskSession, *, eval_config: dict, task_config_dir: str,
-                          agent_launcher, validation_request_id: str | None = None) -> dict:
-    """Provide identical trusted initial evidence to main and quality_loop."""
-    from agents.task_validator.report_schema import finalize_report, validation_report_is_complete
+def audit_task_session(session: TaskSession, *, eval_config: dict, task_config_dir: str,
+                       agent_launcher, audit_request_id: str | None = None) -> dict:
+    """Run the QA auditor on identical trusted initial evidence (main and quality_loop).
+
+    The auditor writes the itemized report. The framework then verifies that
+    neither the audit nor its model review changed protected task state or the
+    captured evidence; any such change, or a missing or altered report, adds a
+    blocking QA-AUDIT finding.
+    """
+    from agents.qa_auditor.report import build_report, load_report, write_report
+    from .task_materialization import load_materialization_record
 
     bind_session_runtime(session)
     if session.initial_validation is None:
         session.validate_initial()
     context_path = session.state_directory / "validation_context.json"
-    trusted_context = session.validation_context()
     candidate_before = session.candidate_source_evidence()
 
     def evidence_fingerprints():
         files = {}
         for path in session.state_directory.glob("*.json"):
+            if path.name.startswith("qa_"):
+                continue
             if path.is_symlink() or not path.is_file():
                 raise RuntimeError("Validation evidence must remain a regular controller-owned file")
             files[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
         return files
 
     evidence_before = evidence_fingerprints()
-    eval_config.update(_task_id=session.spec.task_id, _task_validation_context=str(context_path))
-    eval_config["_task_validation_request_id"] = validation_request_id or uuid.uuid4().hex
-    # Consumed once by the launcher. Direct repeated launcher calls still get
-    # fresh IDs, while an outer controller can bind this exact attempt.
-    eval_config["_task_validation_controller_request_id"] = eval_config["_task_validation_request_id"]
+    request_id = audit_request_id or uuid.uuid4().hex
+    eval_config.update(_task_id=session.spec.task_id, _task_validation_context=str(context_path),
+                       _task_validation_request_id=request_id)
     environment = {"ARENA_EVAL_PHASE": "task_validation", "ARENA_VALIDATION_CONTEXT": str(context_path)}
-    error = None
+    errors = []
     try:
         with _agent_environment(environment):
             agent_launcher(eval_config=eval_config, task_config_dir=task_config_dir, workspace=str(session.workspace))
     except Exception as exc:
-        error = f"Validator launcher failed: {type(exc).__name__}: {exc}"
-    error = "; ".join(filter(None, [error, eval_config.get("_task_validation_backend_error")])) or None
-    if (session.workspace / "validation_report.yaml").exists() and not validation_report_is_complete(session.workspace):
-        error = "; ".join(filter(None, [error, "Validator returned an altered or incomplete finalized report"]))
+        errors.append(f"Auditor launcher failed: {type(exc).__name__}: {exc}")
     try:
         session.verify_candidate_harness()
         session.verify_baseline_sources()
         if session.candidate_source_evidence() != candidate_before:
-            raise RuntimeError("Validator changed the initial candidate after captured GPU checks")
+            raise RuntimeError("The audit changed the initial candidate after captured GPU checks")
         if evidence_fingerprints() != evidence_before:
-            raise RuntimeError("Validator changed captured action or context evidence")
+            raise RuntimeError("The audit changed captured action or context evidence")
     except (ValueError, RuntimeError, OSError) as exc:
-        error = "; ".join(filter(None, [error, f"Validation changed protected task state: {exc}"]))
-    return finalize_report(
-        session.workspace, expected_task_name=session.spec.task_id, trusted_task_evidence=trusted_context,
-        validation_request_id=eval_config.get("_task_validation_request_id"),
-        framework_error=error, task_schema_version=2)
+        errors.append(f"Audit changed protected task state: {exc}")
+    report = load_report(session.workspace)
+    if report is None or report.get("audit_request_id") != request_id or report.get("task_id") != session.spec.task_id:
+        errors.append("The auditor returned no complete report for this request")
+        report = None
+    if errors:
+        record = load_materialization_record(session.workspace)
+        report = build_report(task_id=session.spec.task_id,
+                              findings=(report or {}).get("findings", []),
+                              task_package_sha256=record.get("task_package_sha256"),
+                              target_language=session.spec.target_language, request_id=request_id,
+                              evidence=(report or {}).get("evidence", {}), framework_errors=errors)
+        write_report(session.workspace, report, state=session.state_directory)
+    return report
 
 
 def _budget_path(run_directory: Path, task_name: str) -> Path:
@@ -217,8 +229,18 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     """Open the persisted task budget, then run the shared v2 lifecycle under it."""
     from .measurement import measurement_kind
     from .run_budget import budget_policy, open_budget
+    from .task_contract import audit_target_language, is_v3_task, target_language_for
 
-    spec = load_task_spec(Path(task_config_dir), task_id=task_name)
+    target_language = None
+    if is_v3_task(Path(task_config_dir)):
+        # An audit qualifies the task itself: its candidate starts as the
+        # baseline whenever the baseline is written in a target language.
+        target_language = (audit_target_language(Path(task_config_dir), task_id=task_name)
+                           if agent.value == "qa_auditor" else target_language_for(eval_config, task_name))
+        if target_language is None:
+            raise ValueError(f"Task {task_name} needs a target_language from the run config")
+    eval_config["_target_language"] = target_language
+    spec = load_task_spec(Path(task_config_dir), task_id=task_name, target_language=target_language)
     policy = budget_policy(eval_config)
     if policy and "final_evaluation_pairs" in policy and measurement_kind(spec.to_mapping()) != "serving":
         raise ValueError("final_evaluation_pairs applies only to serving tasks")
@@ -227,7 +249,7 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         raise ValueError("Serving tasks require budget.task_wall_time_s and budget.final_evaluation_reserve_s")
     from .candidate_verification import policy as review_policy, bind_policy
     review = review_policy(eval_config, serving=measurement_kind(spec.to_mapping()) == 'serving')
-    if agent.value != 'task_validator':
+    if agent.value != 'qa_auditor':
         bind_policy(_budget_path(run_directory, task_name).with_suffix('.verification.json'), review)
     record = open_budget(_budget_path(run_directory, task_name), policy)
     arguments = dict(eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
@@ -281,7 +303,8 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     # Loading a prior session to write a failed final result is bookkeeping, not
     # new setup/search/GPU work. Action deadlines below remain expired.
     workspace = retained if expired_resume else setup_workspace(
-        task_config_dir, run_directory, timestamp, logger, task_name=task_name)
+        task_config_dir, run_directory, timestamp, logger, task_name=task_name,
+        target_language=spec.target_language)
     state = _state_directory(workspace)
     if state.exists():
         session = TaskSession.load(spec, workspace, state, logger)
@@ -296,7 +319,7 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     if initial.accepted and measurement_kind(config) == "serving":
         from .run_budget import reserve_from_validation
         from .candidate_verification import policy as review_policy
-        review = None if agent.value == 'task_validator' else review_policy(eval_config, serving=True)
+        review = None if agent.value == 'qa_auditor' else review_policy(eval_config, serving=True)
         budget_record = reserve_from_validation(budget_record, session,
             verification_seconds=review['timeout_seconds'] if review else 0)
         _json_file(_budget_path(run_directory, task_name), budget_record)
@@ -307,16 +330,16 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
                    "ARENA_VALIDATION_CONTEXT": str(state / "validation_context.json")}
     if initial.accepted:
         environment["ARENA_TASK_CONTEXT"] = str(session.agent_context_path)
-    if agent.value == "task_validator":
+    if agent.value == "qa_auditor":
         from .run_budget import agent_budget
         # Qualification review uses the remaining wall time; there is no later
         # optimization search for which it must reserve another evaluation.
         review_budget = {**budget_record, "effective_reserve_s": 0} if budget_record else None
         agent_config = agent_budget(agent_config, review_budget)
-        validate_task_session(session, eval_config=agent_config, task_config_dir=task_config_dir,
-                              agent_launcher=agent_launcher)
-        from agents.task_validator.report_schema import validation_report_is_complete
-        return validation_report_is_complete(workspace), workspace
+        audit_task_session(session, eval_config=agent_config, task_config_dir=task_config_dir,
+                           agent_launcher=agent_launcher)
+        from agents.qa_auditor.report import qa_report_is_complete
+        return qa_report_is_complete(workspace), workspace
 
     agent_result = {"status": "NOT_RUN", "error": None, "duration_s": 0.0,
                     "candidate_changed": None}

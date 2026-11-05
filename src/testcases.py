@@ -633,8 +633,10 @@ def calculate_average_speedup(
         log.warning("No valid speedups calculated")
         return 0.0
     
-    avg_speedup = sum(speedups) / len(speedups)
-    log.info(f"Average speedup across {len(speedups)} test case(s): {avg_speedup:.2f}x")
+    # Geometric mean: each case contributes its speedup ratio equally, so a
+    # large shape cannot outweigh a small one and a 2x win cancels a 2x loss.
+    avg_speedup = math.exp(sum(math.log(value) for value in speedups) / len(speedups))
+    log.info(f"Geometric-mean speedup across {len(speedups)} test case(s): {avg_speedup:.2f}x")
     return avg_speedup
 
 

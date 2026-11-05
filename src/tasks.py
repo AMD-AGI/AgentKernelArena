@@ -28,25 +28,16 @@ def get_task_config(tasks_root: str = "tasks", category: Optional[str] = None) -
     """
     task_config_dict = {}
     root = Path(tasks_root)
+    prefix = f"{category}/" if category else ""
 
-    # If category is specified, only scan that category
-    if category:
-        pattern = f"{category}/**/config.yaml"
-    else:
-        pattern = "**/config.yaml"
+    # Schema-v3 kernel tasks declare task.yaml; schema-v2 serving tasks keep
+    # config.yaml. A directory must not declare both.
+    for name in ("task.yaml", "config.yaml"):
+        for config_path in root.glob(f"{prefix}**/{name}"):
+            task_name = config_path.parent.relative_to(root).as_posix()
+            if task_name in task_config_dict:
+                raise ValueError(f"Task {task_name} declares both task.yaml and config.yaml")
+            task_config_dict[task_name] = str(config_path)
 
-    for config_path in root.glob(pattern):
-        # Get task name as relative path from tasks_root to the task folder
-        # This ensures uniqueness across different categories
-        # Example: triton2triton/vllm/triton_rms_norm
-        task_folder = config_path.parent
-        task_name = str(task_folder.relative_to(root))
-
-        # Store relative path from project root to config.yaml
-        relative_path = str(config_path)
-
-        # Register to task_config_dict
-        task_config_dict[task_name] = relative_path
-
-    return task_config_dict
+    return dict(sorted(task_config_dict.items()))
 

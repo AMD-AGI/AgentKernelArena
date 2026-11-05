@@ -451,21 +451,19 @@ def is_task_complete(
         run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
         task_name: Full task name (e.g., "hip2hip/SiLU")
         timestamp: Timestamp string used in task directory name
-        agent_name: task_validator uses the finalized validation report. V2
-            optimization requires the framework completion record; legacy
-            optimization uses task_result.yaml.
+        agent_name: qa_auditor uses the framework-finalized QA report.
+            Optimization requires the framework completion record.
 
     Returns:
         True if the task's applicable completion contract is satisfied
     """
     task_dir = get_task_workspace_path(run_directory, task_name, timestamp)
-    if agent_name == "task_validator":
-        # A model-written YAML file is not completion evidence by itself. Only a
-        # schema-valid report atomically finalized by the validator launcher may
-        # be resumed or counted by post-processing.
-        from agents.task_validator.report_schema import validation_report_is_complete
+    if agent_name == "qa_auditor":
+        # Only a report finalized with its completion marker counts; a file a
+        # model wrote is not completion evidence.
+        from agents.qa_auditor.report import qa_report_is_complete
 
-        return validation_report_is_complete(task_dir)
+        return qa_report_is_complete(task_dir)
     # External state keeps an agent-edited/deleted config from downgrading a
     # materialized v2 task to the legacy report-exists completion rule.
     v2_state = any(os.path.lexists(run_directory / directory / task_dir.name)
@@ -489,7 +487,7 @@ def is_task_complete(
 
 
 def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, logger: logging.Logger,
-                    task_name: str = "") -> Path:
+                    task_name: str = "", target_language: str | None = None) -> Path:
     """
     Setup workspace for agent execution by duplicating the task directory.
 
@@ -534,7 +532,7 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
                 ).as_posix()
             except ValueError as exc:
                 raise TaskConfigError("v2 setup_workspace requires the stable discovered task_name") from exc
-        spec = load_task_spec(task_config_path, task_id=stable_id)
+        spec = load_task_spec(task_config_path, task_id=stable_id, target_language=target_language)
         return materialize_task_workspace(
             spec, task_config_path,
             get_task_workspace_path(run_directory, stable_id, timestamp), logger,

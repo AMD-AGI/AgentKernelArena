@@ -1,0 +1,9 @@
+# Semantic review after the deterministic audit. Set backend to none to run
+# only the deterministic checks. Review findings are warnings unless a
+# counterexample is reproduced by the framework (see rubric.py).
+review:
+  backend: claude_code
+  model: null
+  effort: high
+  timeout_seconds: 3600
+  counterexample_timeout_seconds: 1800

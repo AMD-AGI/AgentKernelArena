@@ -71,7 +71,7 @@ class WorkspaceSnapshot:
 
 
 _V2_OUTPUT_NAMES = {
-    "task_result.yaml", "validation_report.yaml", ".validation_complete",
+    "task_result.yaml", "qa_report.yaml", ".qa_complete", "qa_review.draft.json",
     "baseline_perf.yaml", "optimized_perf.yaml",
 }
 _V2_RUNTIME_DIRS = _IGNORED_RUNTIME_DIRS | {"build", "logs", "perf", ".pytest_cache"}
@@ -1081,7 +1081,7 @@ def _task_input_paths(root: Path, task_root: Path) -> set[str]:
             repo_subdir = str(origin).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
     runtime_dirs = _IGNORED_RUNTIME_DIRS | {"build", "logs", "perf", ".pytest_cache"}
     output_names = {
-        "task_result.yaml", "validation_report.yaml", ".validation_complete",
+        "task_result.yaml", "qa_report.yaml", ".qa_complete", "qa_review.draft.json",
         "baseline_perf.yaml", "optimized_perf.yaml",
     }
     protected = set()
