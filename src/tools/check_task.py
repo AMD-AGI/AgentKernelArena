@@ -52,6 +52,7 @@ for case in (cases[0], cases[-1]) if len(cases) > 1 else cases:
             raise SystemExit(f"reference output {name} is {outputs[name].dtype}; use float32/float64")
         shapes[name] = list(actual)
     report.append({"case": case.case_id, "outputs": shapes})
+    del inputs, outputs  # free the first case before drawing the next one
 print("SMOKE=" + json.dumps(report))
 '''
 
@@ -78,15 +79,17 @@ def check(task_dir: Path, *, smoke_limit: int) -> dict:
         if baseline_language in TARGET_LANGUAGES:
             from src.tools.arena_eval.audit import PolicyError, audit_hip_sources, audit_python_sources
 
-            sources = {p.relative_to(workspace / "solution").as_posix(): p.read_text(encoding="utf-8")
-                       for p in (workspace / "solution").rglob("*") if p.is_file()}
             try:
+                sources = {p.relative_to(workspace / "solution").as_posix(): p.read_text(encoding="utf-8")
+                           for p in (workspace / "solution").rglob("*") if p.is_file()}
                 if baseline_language == "hip":
                     audit_hip_sources(sources, "kernel.hip")
                 else:
                     audit_python_sources(sources, baseline_language)
             except PolicyError as exc:
                 result["errors"].append(f"baseline fails the {baseline_language} candidate rules: {exc}")
+            except UnicodeDecodeError as exc:
+                result["errors"].append(f"baseline holds a file that is not UTF-8 source text: {exc}")
         else:
             result["warnings"].append(f"{baseline_language} baseline: no candidate-path positive control")
         from agents.qa_auditor.deterministic import check_package, check_provenance, check_reference
@@ -99,7 +102,13 @@ def check(task_dir: Path, *, smoke_limit: int) -> dict:
             result["errors"].append(f"{finding.check_id}: {finding.detail}")
         if not (task_dir / "README.md").is_file():
             result["warnings"].append("README.md is missing")
+        from src.tools.arena_eval.values import is_exact_dtype
+
+        interface = contract.interface
         for name, declaration in contract.raw["compare"].items():
+            dtype = (interface["outputs"].get(name) or interface["inputs"].get(name) or {}).get("dtype", "")
+            if declaration["bound"] == "exact" and is_exact_dtype(dtype):
+                continue  # integer, boolean and packed outputs always compare exactly
             if declaration["bound"] != "baseline_relative" or len(declaration) > 1:
                 result["warnings"].append(f"compare.{name} departs from the default bound: justify it in README.md")
         env = {k: v for k, v in os.environ.items() if not k.startswith("ARENA_")}

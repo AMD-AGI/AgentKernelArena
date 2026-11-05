@@ -133,3 +133,29 @@ def test_integer_outputs_compare_exactly():
     assert compare_tensor({"bound": "exact"}, actual, reference, dtype_name="int32").passed
     actual[3] += 1
     assert not compare_tensor({"bound": "exact"}, actual, reference, dtype_name="int32").passed
+
+
+def test_fp8_control_counts_as_applied_only_when_it_changes_an_output():
+    from types import SimpleNamespace
+
+    from src.tools.arena_eval.controls import _mutants
+
+    contract = SimpleNamespace(inputs={"x": {"kind": "tensor"}}, mutable=(), checked_tensors=("out",))
+
+    def baseline(*, x, out):
+        out.copy_(x)
+
+    integer = _mutants(contract, baseline)
+    integer["fp8_rounded"](x=torch.arange(8, dtype=torch.int32), out=torch.empty(8, dtype=torch.int32))
+    integer["fp8_rounded"](x=torch.ones(8), out=torch.empty(8))  # 1.0 is exact in fp8
+    assert "fp8_rounded" not in integer["_effective"]
+    floating = _mutants(contract, baseline)
+    floating["fp8_rounded"](x=torch.full((8,), 1.0 + 2 ** -10), out=torch.empty(8))
+    assert "fp8_rounded" in floating["_effective"]
+
+
+def test_hip_loader_ignores_license_and_documentation_files():
+    from src.tools.arena_eval.loader import _is_documentation
+
+    assert all(_is_documentation(p) for p in ("LICENSE", "LICENSE.MIT", "NOTICE", "README.md", "sub/COPYING"))
+    assert not any(_is_documentation(p) for p in ("kernel.hip", "license_utils.h", "notes.hpp"))

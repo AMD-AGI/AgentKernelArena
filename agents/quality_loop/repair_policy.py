@@ -63,8 +63,8 @@ def compare_tightened(original: dict, proposed: dict) -> bool:
 
     Only decidable cases count: ``exact`` is the strictest bound, otherwise the
     bound kind must stay the same and every parameter must move toward
-    strictness. Anything else (for example another bound kind or a changed
-    dot_product length) is not a provable tightening.
+    strictness. Anything else (for example another bound kind) is not a
+    provable tightening.
     """
     if _json(original) == _json(proposed):
         return True

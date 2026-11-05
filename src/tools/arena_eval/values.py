@@ -79,20 +79,23 @@ def _builtin(declaration: dict, shape: tuple[int, ...], generator: torch.Generat
     dist = declaration["distribution"]
     kind = dist["kind"]
     dtype = _dtype(declaration["dtype"])
+    # In-place arithmetic keeps one float32 copy alive (the same operations, so the same values): large
+    # weight stacks otherwise need three full-size temporaries while they are drawn.
     if kind == "normal":
         value = torch.randn(shape, generator=generator, device=device, dtype=torch.float32)
-        value = value * float(dist.get("std", 1.0)) + float(dist.get("mean", 0.0))
+        value.mul_(float(dist.get("std", 1.0))).add_(float(dist.get("mean", 0.0)))
     elif kind == "uniform":
         low, high = float(dist["low"]), float(dist["high"])
         value = torch.rand(shape, generator=generator, device=device, dtype=torch.float32)
-        value = value * (high - low) + low
+        value.mul_(high - low).add_(low)
     elif kind == "log_uniform":
         low, high = float(dist["log2_low"]), float(dist["log2_high"])
-        exponent = torch.rand(shape, generator=generator, device=device, dtype=torch.float32)
-        value = torch.exp2(exponent * (high - low) + low)
+        value = torch.rand(shape, generator=generator, device=device, dtype=torch.float32)
+        value.mul_(high - low).add_(low).exp2_()
         if dist.get("signed", False):
-            sign = torch.randint(0, 2, shape, generator=generator, device=device) * 2 - 1
-            value = value * sign
+            sign = torch.randint(0, 2, shape, generator=generator, device=device)
+            value.mul_(sign.mul_(2).sub_(1))
+            del sign
     elif kind == "randint":
         return torch.randint(int(dist["low"]), int(dist["high"]), shape, generator=generator,
                              device=device, dtype=torch.int64).to(dtype)

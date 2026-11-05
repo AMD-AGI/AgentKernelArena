@@ -167,7 +167,6 @@ value before every call.
 | `tolerance` | `atol`, `rtol`, `max_violation_fraction` | Fixed tolerances. |
 | `sqnr` | `min_db` | Signal-to-noise ratio of the whole output. |
 | `output_rounding` | `max_violation_fraction` | Within twice the output dtype's rounding of the reference. |
-| `dot_product` | `length`, `accumulate_dtype`, `max_split_k` | Accumulation-error bound of a reduction of `length`. |
 
 Use the default unless the operator needs another rule; the QA auditor reports
 every departure as a warning that README.md must justify. `k` stays within

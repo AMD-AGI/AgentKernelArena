@@ -32,6 +32,7 @@ def _tensors(contract, outputs, working):
 def _mutants(contract, baseline: Callable) -> dict[str, Callable]:
     read_only = [n for n, d in contract.inputs.items() if d["kind"] == "tensor" and n not in contract.mutable]
     cache: dict[str, Any] = {}
+    effective = set()  # controls whose perturbation changed at least one checked tensor
 
     def noop(**call):
         return None
@@ -81,7 +82,10 @@ def _mutants(contract, baseline: Callable) -> dict[str, Callable]:
             tensor = call[name]
             if tensor.dtype in (torch.float32, torch.float64, torch.float16, torch.bfloat16) and hasattr(
                     torch, "float8_e4m3fn"):
-                tensor.copy_(tensor.to(torch.float8_e4m3fn).to(tensor.dtype))
+                rounded = tensor.to(torch.float8_e4m3fn).to(tensor.dtype)
+                if not torch.equal(values.tensor_bytes(rounded), values.tensor_bytes(tensor)):
+                    effective.add("fp8_rounded")
+                tensor.copy_(rounded)
 
     controls = {"noop": noop, "zeros": zeros, "half_written": half, "stale_outputs": stale,
                 "input_write": input_write, "shifted_16_ulp": shifted, "fp8_rounded": low_precision}
@@ -92,6 +96,7 @@ def _mutants(contract, baseline: Callable) -> dict[str, Callable]:
         cache.clear()
 
     controls["_reset"] = reset
+    controls["_effective"] = effective
     return controls
 
 
@@ -124,6 +129,7 @@ def run_controls() -> dict:
     baseline, _ = _load(contract, "baseline", audit=False)
     mutants = _mutants(contract, baseline)
     reset = mutants.pop("_reset")
+    effective = mutants.pop("_effective")
     rejected = {name: [] for name in mutants}
     input_findings, determinism, reference_dtypes = [], [], {}
     for case in contract.cases:
@@ -153,10 +159,16 @@ def run_controls() -> dict:
                     rejected[name].append(case.case_id)
             except Exception as exc:  # A crash also rejects the control.
                 rejected[name].append(f"{case.case_id}:{type(exc).__name__}")
+    # fp8 rounding is a no-op on integer outputs and on values fp8 represents exactly (masks, small
+    # counts): a control that never changed a checked tensor proves nothing and is not applicable.
+    not_applicable = sorted(name for name in ("fp8_rounded",)
+                            if name in rejected and not rejected[name] and name not in effective)
+    for name in not_applicable:
+        del rejected[name]
     survived = sorted(name for name, cases in rejected.items() if not cases)
     return {"controls": {name: {"rejected": bool(cases), "first_rejections": cases[:3]}
                          for name, cases in rejected.items()},
-            "survived": survived, "input_findings": input_findings,
+            "survived": survived, "not_applicable": not_applicable, "input_findings": input_findings,
             "baseline_nondeterministic_cases": determinism, "reference_dtypes": reference_dtypes}
 
 

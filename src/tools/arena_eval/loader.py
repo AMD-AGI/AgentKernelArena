@@ -76,6 +76,14 @@ def implementation_sources(implementation: Implementation) -> dict[str, str]:
     return sources
 
 
+def _is_documentation(path: str) -> bool:
+    """License and documentation files that ship beside a vendored implementation but are never compiled."""
+    name = Path(path).name
+    if name.endswith(HIP_SOURCE_SUFFIXES + HIP_HEADER_SUFFIXES):
+        return False
+    return name.upper().startswith(("LICENSE", "NOTICE", "COPYING")) or name.endswith(".md")
+
+
 def _content_hash(sources: dict[str, str], extra: str = "") -> str:
     digest = hashlib.sha256(extra.encode())
     for path, text in sorted(sources.items()):
@@ -177,6 +185,7 @@ def _load_hip(contract: Contract, implementation: Implementation) -> Loaded:
     entry = Path(implementation.entry_file).relative_to(implementation.root).as_posix()
     if entry not in sources or not entry.endswith(".hip"):
         raise BuildError(f"{implementation.role} entry {implementation.entry_file} is missing")
+    sources = {path: text for path, text in sources.items() if not _is_documentation(path)}
     for path in sources:
         if not path.endswith(HIP_SOURCE_SUFFIXES + HIP_HEADER_SUFFIXES):
             raise BuildError(f"HIP implementation file {path} is neither a .hip source nor a header")

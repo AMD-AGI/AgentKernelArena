@@ -241,7 +241,7 @@ def evaluate_task(workspace: Path, output: Path, *, salt: str, cases_file: Path 
         original = json.loads(contract_path.read_text())
         contract = heldout_contract(original, salt=salt, extra_cases=_load_extra_cases(cases_file))
         result["extra_case_ids"] = [case["id"] for case in contract["cases"][len(original["cases"]):]]
-        contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True) + "\n")
+        contract_path.write_text(json.dumps(contract, indent=2) + "\n")
 
         guard = snapshot_workspace_harness(heldout, task_spec=spec)
         evidence = output / "actions"

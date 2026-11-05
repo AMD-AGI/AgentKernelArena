@@ -73,13 +73,23 @@ def _task_python_files(workspace: Path) -> list[Path]:
     files = []
     for path in sorted(workspace.rglob("*.py")):
         relative = path.relative_to(workspace)
-        if relative.parts[0] in ("_aka_eval", "solution") or "__pycache__" in relative.parts:
+        if relative.parts[0] in ("_aka_eval", "solution") or "__pycache__" in relative.parts or _is_os_junk(path):
             continue
         files.append(path)
     return files
 
 
+def _is_os_junk(path: Path) -> bool:
+    """macOS metadata written by archive tools: AppleDouble ``._*`` forks and ``.DS_Store``."""
+    return path.name.startswith("._") or path.name == ".DS_Store"
+
+
 def check_package(workspace: Path, findings: list[Finding]) -> None:
+    for path in sorted(workspace.rglob("*")):
+        relative = path.relative_to(workspace)
+        if relative.parts[0] not in ("_aka_eval", "solution") and _is_os_junk(path):
+            findings.append(Finding("QA-PACKAGE", f"{relative.as_posix()} is operating-system metadata; delete it",
+                                    {"path": relative.as_posix()}))
     for path in _task_python_files(workspace):
         relative = path.relative_to(workspace).as_posix()
         try:

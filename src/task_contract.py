@@ -51,7 +51,6 @@ BOUNDS = {
     "tolerance": {"atol", "rtol", "max_violation_fraction"},
     "sqnr": {"min_db"},
     "output_rounding": {"max_violation_fraction"},
-    "dot_product": {"length", "accumulate_dtype", "max_split_k", "max_violation_fraction"},
 }
 MIN_PERFORMANCE_CASES = 4
 MAX_PERFORMANCE_CASES = 16
@@ -316,8 +315,8 @@ def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
         symbols.add(name)
     inputs = _mapping(interface["inputs"], "interface.inputs", set(interface["inputs"]))
     outputs = _mapping(interface["outputs"], "interface.outputs", set(interface["outputs"]))
-    if not outputs:
-        raise TaskConfigError("interface.outputs must declare at least one output")
+    if not outputs and not interface.get("mutable"):
+        raise TaskConfigError("interface must declare at least one output or mutable input")
     if set(inputs) & set(outputs):
         raise TaskConfigError("Input and output names must be distinct")
     generator_needed = False
@@ -417,8 +416,6 @@ def _validate_compare(raw: dict, checked: list[str], outputs: dict, inputs: dict
                     raise TaskConfigError(f"compare.{name} tolerance needs nonnegative {key}")
         if declaration["bound"] == "sqnr" and _number(declaration.get("min_db"), "min_db") <= 0:
             raise TaskConfigError(f"compare.{name}.min_db must be positive")
-        if declaration["bound"] == "dot_product":
-            _int(declaration.get("length"), f"compare.{name}.length", 1)
 
 
 def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict) -> None:
@@ -764,8 +761,9 @@ def render_workspace(task_root: Path, workspace: Path, *, task_id: str, target_l
         write(f"{EVAL_DIR}/{source.name}", source.read_text(encoding="utf-8"))
     write(f"{EVAL_DIR}/_aka_benchmark.py",
           (Path(__file__).resolve().parent / "tools" / "perf" / "aka_benchmark.py").read_text(encoding="utf-8"))
-    write(f"{EVAL_DIR}/contract.json", json.dumps(contract.resolved_contract(target_language), indent=2,
-                                                  sort_keys=True) + "\n")
+    # Declaration order is part of the contract: a reference may return its outputs as a tuple, and derived
+    # axes may build on earlier ones, so the mappings are written in task.yaml order, not sorted.
+    write(f"{EVAL_DIR}/contract.json", json.dumps(contract.resolved_contract(target_language), indent=2) + "\n")
     write(f"{EVAL_DIR}/CANDIDATE.md", _candidate_document(contract, target_language))
     if contract.initial_state(target_language) == "implemented":
         source = task_root / BASELINE_DIR

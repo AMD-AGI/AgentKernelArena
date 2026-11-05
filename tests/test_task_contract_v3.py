@@ -56,6 +56,42 @@ def test_every_target_resolves_to_a_v2_execution_spec(language, tmp_path):
         assert "AKA-UNIMPLEMENTED-TEMPLATE" in entry.read_text()
 
 
+def test_task_spec_round_trips_the_contract_record():
+    spec = load_task_spec(PILOT / "task.yaml", task_id=PILOT_ID, target_language="hip")
+    contract = spec.contract
+    assert contract["schema_version"] == 3 and contract["task_file"] == "task.yaml"
+    assert contract["target_language"] == "hip" and contract["baseline_language"] == "triton"
+    assert set(contract) <= {"schema_version", "task_file", "target_language", "baseline_language", "operator"}
+    mapping = spec.to_mapping()
+    assert mapping["contract"] == contract
+    again = TaskSpec.from_mapping(mapping, task_id=PILOT_ID)
+    assert again.contract == contract and again.target_language == "hip"
+    assert again.to_mapping() == mapping
+    spec.contract["target_language"] = "triton"   # a copy: the spec cannot be mutated through it
+    assert spec.contract["target_language"] == "hip"
+
+
+@pytest.mark.parametrize("update", [
+    {"target_language": "triton"},          # disagrees with candidate.language
+    {"schema_version": 2},
+    {"task_file": "config.yaml"},
+    {"unexpected": True},
+])
+def test_task_spec_rejects_an_inconsistent_contract_record(update):
+    mapping = load_task_spec(PILOT / "task.yaml", task_id=PILOT_ID, target_language="hip").to_mapping()
+    mapping["contract"].update(update)
+    with pytest.raises(TaskConfigError):
+        TaskSpec.from_mapping(mapping, task_id=PILOT_ID)
+
+
+def test_schema_v2_spec_has_no_contract_record(tmp_path):
+    mapping = load_task_spec(PILOT / "task.yaml", task_id=PILOT_ID, target_language="hip").to_mapping()
+    del mapping["contract"]
+    spec = TaskSpec.from_mapping(mapping, task_id=PILOT_ID)
+    assert spec.contract is None and spec.target_language is None
+    assert "contract" not in spec.to_mapping()
+
+
 def test_target_language_is_required_and_checked():
     with pytest.raises(TaskConfigError):
         load_task_spec(PILOT / "task.yaml", task_id=PILOT_ID)
@@ -150,3 +186,34 @@ def test_generated_and_solution_names_are_reserved(tmp_path):
     (package / "solution" / "kernel.py").write_text("")
     with pytest.raises(TaskConfigError, match="cannot contain solution"):
         load_task_spec(package / "task.yaml", task_id=PILOT_ID, target_language="triton")
+
+
+def test_an_in_place_operator_may_declare_only_mutable_inputs():
+    raw, workloads = _raw()
+    raw["interface"]["outputs"] = {}
+    raw["interface"]["mutable"] = ["x"]
+    raw["compare"] = {"x": {"bound": "baseline_relative"}}
+    _validate(raw, workloads)
+    raw["interface"]["mutable"] = []
+    raw["compare"] = {}
+    with pytest.raises(TaskConfigError, match="at least one output or mutable input"):
+        _validate(raw, workloads)
+
+
+def test_contract_json_keeps_the_declared_order(tmp_path):
+    # A reference may return a tuple in declared order and derived axes may build on earlier ones,
+    # so the evaluator must see the task.yaml order, not an alphabetical one.
+    workspace = tmp_path / "ws"
+    shutil.copytree(PILOT, workspace)
+    render_workspace(PILOT, workspace, task_id=PILOT_ID, target_language="triton")
+    resolved = json.loads((workspace / "_aka_eval/contract.json").read_text())
+    declared = yaml.safe_load((PILOT / "task.yaml").read_text())["interface"]
+    assert list(resolved["inputs"]) == list(declared["inputs"])
+    assert list(declared["inputs"]) != sorted(declared["inputs"])
+
+
+def test_dot_product_bound_is_not_offered():
+    raw, workloads = _raw()
+    raw["compare"]["out"] = {"bound": "dot_product", "length": 8192}
+    with pytest.raises(TaskConfigError):
+        _validate(raw, workloads)

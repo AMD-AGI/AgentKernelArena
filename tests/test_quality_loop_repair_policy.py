@@ -96,7 +96,7 @@ def test_invalid_proposal_is_a_rejected_repair(tmp_path):
     ({"bound": "baseline_relative"}, {"bound": "tolerance", "atol": 0, "rtol": 0}, False),
     ({"bound": "tolerance", "atol": 1e-3, "rtol": 1e-3}, {"bound": "tolerance", "atol": 1e-4, "rtol": 1e-3}, True),
     ({"bound": "sqnr", "min_db": 30}, {"bound": "sqnr", "min_db": 25}, False),
-    ({"bound": "dot_product", "length": 4096}, {"bound": "dot_product", "length": 8192}, False),
+    ({"bound": "output_rounding"}, {"bound": "output_rounding", "max_violation_fraction": 0.001}, False),
 ])
 def test_compare_bounds_may_only_tighten(tmp_path, original, proposed, tighter):
     assert compare_tightened(original, proposed) is tighter

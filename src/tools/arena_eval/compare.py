@@ -19,9 +19,6 @@ import torch
 
 from .values import UNIT_ROUNDOFF, tensor_bytes, is_exact_dtype
 
-SQRT_LENGTH_MULTIPLE = 6.0
-CONSTANT_MULTIPLE = 2.0
-SLACK = 2.0
 OUTPUT_ROUNDING_MULTIPLE = 2.0
 DEFAULT_MAX_ERROR_MULTIPLE = 2.0
 
@@ -118,7 +115,7 @@ def _elementwise(name: str, a, rounded, reference, limit, max_violation_fraction
 
 def compare_tensor(declaration: dict, actual: torch.Tensor, reference: torch.Tensor, *,
                    dtype_name: str, baseline: torch.Tensor | None = None,
-                   magnitude: torch.Tensor | None = None, element_order: str = "fixed") -> CompareResult:
+                   element_order: str = "fixed") -> CompareResult:
     """``actual`` against the reference under the declared bound."""
     if tuple(actual.shape) != tuple(reference.shape):
         return CompareResult(False, declaration.get("bound", "exact"), 1.0,
@@ -151,16 +148,6 @@ def compare_tensor(declaration: dict, actual: torch.Tensor, reference: torch.Ten
         limit = float(declaration["atol"]) + (float(declaration["rtol"]) + u) * y.abs()
         return _elementwise(kind, a, rounded, y, limit, max_violation,
                             lambda e, c, f: (_bias(e, c)[0] or f == 0, _bias(e, c)[1]))
-    if kind == "dot_product":
-        if magnitude is None:
-            raise ValueError("dot_product bound needs a magnitude reference")
-        length = int(declaration["length"])
-        split = int(declaration.get("max_split_k", 1))
-        effective = max(-(-length // s) + (s - 1).bit_length() for s in range(1, split + 1))
-        multiple = SQRT_LENGTH_MULTIPLE * math.sqrt(effective) + CONSTANT_MULTIPLE
-        accumulated = SLACK * multiple * UNIT_ROUNDOFF[declaration.get("accumulate_dtype", "float32")]
-        limit = accumulated * magnitude.double() + u * y.abs()
-        return _elementwise(kind, a, rounded, y, limit, max_violation, lambda e, c, f: _bias(e, c))
     if kind == "baseline_relative":
         if baseline is None:
             raise ValueError("baseline_relative bound needs the baseline output")
