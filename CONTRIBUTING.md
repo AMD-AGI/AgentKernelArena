@@ -5,7 +5,7 @@ Thanks for your interest in AgentKernelArena! This guide explains how to contrib
 ## Before You Start
 
 - Read `README.md` to understand the project scope: controlled A/B experiments and RL-ready feedback for GPU kernel agents.
-- Before adding or modifying a task, read [Task definition, schema, and authoring](docs/how-to/add-task.md), including its implementation-status and migration guidance. It is the single authoring reference for new and existing task families.
+- Before adding or modifying a task, read [Task definition, schema, and authoring](docs/how-to/add-task.md), It is the single authoring reference for schema-v3 kernel tasks. Every new or changed task needs a framework-finalized `qa_report.yaml` with `status: PASS` from the [QA auditor](docs/how-to/qa-auditor.md) on MI355X before its PR.
 - Skim the files under `example_configs/` for run-level agent/task/GPU selection and the relevant `agents/<name>/agent_config.yaml` for agent-specific model and runtime settings.
 - Ensure you have an AMD GPU with ROCm-compatible Docker access; use the architecture-specific runtime documented in the compatibility matrix.
 - Confirm that the selected agent integration and its authentication/dependencies are available.
@@ -30,7 +30,7 @@ make docker-check-agents AGENTS=all
 # Optional: install the Cursor Agent CLI on the host (so it can be mounted)
 make install-cursor-agent
 
-# Optional: install FlyDSL when the image lacks it (for all three FlyDSL task types)
+# Optional: install FlyDSL when the image lacks it (for FlyDSL tasks)
 make docker-setup-flydsl
 
 # Optional: install local commit hooks
@@ -58,15 +58,15 @@ make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml
 
 Keep source, tests, required task inputs, reusable configurations, and maintained
 documentation in the repository. Keep temporary plans, scratch scripts, PR task
-lists, retry configs, status notes, and raw validation reports outside it unless
+lists, retry configs, status notes, and raw QA reports outside it unless
 their inclusion is explicitly requested. `example_configs/` is for maintained
-run examples, not a record of individual validation campaigns.
+run examples, not a record of individual audit campaigns.
 
 When Docker or Slurm needs a local config in the mounted checkout, use an
 ignored `config_*.yaml` file, such as `config_experiment.yaml`. Verify that it
 is ignored and untracked; do not force-add it. Keep generated outputs in the
 configured run directories. Task packages must not ship previous `build/`
-output, `validation_report*`, `task_result.*`, or validation summaries.
+output, `qa_report*`, `.qa_complete`, `task_result.*`, or `qa_summary.json`.
 Intentional test fixtures and required input/reference data remain versioned.
 
 Before each commit:
@@ -131,7 +131,7 @@ This project depends on GPU hardware/drivers and orchestrates external LLM agent
 
 - Test environment (GPU model, ROCm version, Docker image, OS)
 - Agent(s) used and their versions
-- Task selector exercised (for example `hip2hip`, `triton2triton`, `torch2hip`, a FlyDSL task type, or `image_kernel`)
+- Task selector and `target_language` exercised (for example `normalization` with `triton`, or a `qa_auditor` run), and the `qa_report.yaml` status for new or changed tasks
 - Key commands and output summary, e.g.:
 
 ```bash
@@ -160,7 +160,7 @@ This project executes third-party AI agents permissively inside privileged Docke
 ## Suggested Contributions
 
 - Add new agent integrations under `agents/`
-- Extend task coverage across HIP, Triton, FlyDSL, PyTorch conversion, instruction-generated, or image-backed tasks
+- Extend schema-v3 task coverage across operators and production scenarios, and harden language support (Triton, Gluon, HIP, FlyDSL) beyond MI355X
 - Improve scoring or fairness logic in `src/score.py`
 - Improve A/B comparison, experiment tracking, or visualization (`src/visualization/`)
 - Improve support for additional model providers and local serving backends

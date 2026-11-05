@@ -1,7 +1,7 @@
 ---
 myst:
     html_meta:
-        "description": "Common AgentKernelArena configuration reference: run config.yaml schema, task config fields, CLI flags, scoring formula, and the agent registry."
+        "description": "Common AgentKernelArena configuration reference: run config.yaml schema, task contract links, CLI flags, scoring formula, and the agent registry."
         "keywords": "AgentKernelArena, API reference, config.yaml, CLI flags, scoring, agent registry, ROCm, GPU kernel"
 ---
 
@@ -18,7 +18,8 @@ A run configuration defines a single experiment. Start from a file under
 | Field | Type | Description |
 | --- | --- | --- |
 | `agent.template` | string | Agent to run. One of the [supported agents](../how-to/agents.md#supported-agents). |
-| `tasks` | list of strings | Task selectors relative to `tasks/`. Use `all` for every task, a category prefix for a group, or a full path for a single task. |
+| `tasks` | list of strings or mappings | Task selectors relative to `tasks/`. Use `all` for every task, a path prefix for a group, or a full path for a single task. A `{path, target_language}` mapping selects the same tasks with a per-task language. A task cannot be selected twice with different languages. |
+| `target_language` | `triton`, `gluon`, `hip` or `flydsl` | Implementation language for schema-v3 kernel tasks, which name none. Required for every kernel task unless the task has a per-task override; not needed by `qa_auditor` or the schema-v2 `tasks/e2e/` serving tasks. Verified on MI355X (`gfx950`) for all four languages; other architectures are implemented but unverified. |
 | `target_gpu_model` | string | Target GPU model, for example `MI300X`, `MI325X`, `MI300A`, `MI355X`, or `RDNA4`; `MI300` remains the generic `gfx942` fallback. Used to select the Docker image architecture, set `PYTORCH_ROCM_ARCH`, and name the workspace. |
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
@@ -49,11 +50,13 @@ Example:
 agent:
   template: cursor
 
-tasks:
-  - hip2hip/GELU
-  - triton2triton/vllm/triton_rms_norm
+target_language: triton
 
-target_gpu_model: MI300
+tasks:
+  - normalization/rms_norm/bf16_h8192
+  - {path: gemm/gemm_a8w8, target_language: hip}
+
+target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace
 ```
@@ -171,7 +174,7 @@ The following Make targets are available for running experiments.
 | `make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml` | Run tasks serially in one Docker container |
 | `make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1` | Run one Docker worker per listed GPU, using a shared dynamic task queue |
 | `make docker-smoke` | Verify Docker, ROCm runtime visibility, Python imports, and GPU access |
-| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`task_validator` resolves to its backend; GEAK and its v2 aliases resolve to Claude Code). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Engine/SDK checks are separate from this CLI check |
+| `make docker-check-agents CONFIG=example_configs/quickstart_claude_mi300.yaml` | Verify the first-class host CLI selected by the config inside Docker (`qa_auditor` resolves to its review backend; GEAK and its v2 aliases resolve to Claude Code). Override with `AGENTS=claude_code,codex`; use `AGENTS=all` for all three. Engine/SDK checks are separate from this CLI check |
 | `make docker-shell` | Open an interactive shell in the experiment runtime |
 
 `docker-parallel-run` accepts these environment variables:
@@ -194,16 +197,17 @@ full scheduling model.
 reference for task configuration. It replaces the former task-family-specific
 field tables on this page and covers:
 
-- The selected unified v2 schema and compact examples.
-- Command and result protocols, baseline/reference/candidate roles, and lifecycle.
-- Workspace paths, edit boundaries, agent independence, and task-local checks.
-- Optional sanitizer commands, common exports, and how to add or modify a task.
-- Legacy field mappings and runtime migration requirements.
+- The schema-v3 `task.yaml`: axes, inputs, outputs, comparison bounds, baseline provenance and platform support.
+- The reference, baseline, workloads and the `run()` candidate interface in every language.
+- Static and runtime candidate rules, evaluation actions, cold-cache CUDA-graph timing and geometric-mean scoring.
+- How to add or modify a task, and the QA requirement ([QA auditor](../how-to/qa-auditor.md)).
 
-**Implementation status:** all retained task configurations and runners use v2
-through the shared loader, evaluator, and validator. GPU qualification remains
-separate from schema migration. Run and final-result schemas remain documented
-on this page; the task guide describes executable task contracts.
+**Implementation status:** kernel tasks use schema v3 through the shared task
+contract loader and evaluator; the end-to-end serving tasks under `tasks/e2e/`
+keep schema v2 ([e2e kernel tasks](../how-to/e2e-kernel-tasks.md)). GPU
+qualification is a separate claim, recorded by a QA auditor report. Run and
+final-result schemas remain documented on this page; the task guide describes
+executable task contracts.
 
 ### Evaluation profile
 

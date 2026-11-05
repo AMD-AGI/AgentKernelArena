@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 
+def is_v3_task(config: Mapping[str, Any]) -> bool:
+    """True for a v2 execution config resolved from a schema-v3 task.yaml."""
+    return (config.get("contract") or {}).get("schema_version") == 3
+
+
 def is_v2_task(config: Mapping[str, Any]) -> bool:
     return config.get("schema_version") == 2
 
@@ -27,6 +32,10 @@ def candidate_paths(config: Mapping[str, Any]) -> tuple[str, ...]:
 
 def candidate_symbols(config: Mapping[str, Any]) -> tuple[str, ...]:
     candidate = config["candidate"]
+    if is_v3_task(config):
+        # solution/ is a tree whose only entry is the host function run(); it is
+        # not a GPU dispatch symbol, and the evaluator attests launches itself.
+        return ()
     entries = candidate.get("entrypoints", ())
     # A builder is a host interface, not an attested GPU dispatch symbol. Its
     # kind remains in profile.evidence; plugins still require exact artifacts.
@@ -60,6 +69,10 @@ def protected_paths(config: Mapping[str, Any]) -> tuple[str, ...]:
     for task-owned helpers outside these declared/conventional locations.
     """
     paths = ["config.yaml", "README.md", "scripts", "tests", "eval_tools"]
+    if is_v3_task(config):
+        # Schema-v3 workspaces: the generated evaluator and the task contract sit
+        # beside solution/, which is the only editable tree.
+        paths.extend(("_aka_eval", "task.yaml"))
     paths.extend(config.get("instructions", ()))
     paths.extend(config.get("baseline", {}).get("source_files", ()))
     evaluation = config.get("evaluation", {})

@@ -1,5 +1,8 @@
+# QA audit of the Qwen3-0.6B SGLang serving task (schema v2); needs a GPU group and the
+# serving-runtime preparation described in docs/how-to/e2e-kernel-tasks.md. See
+# docs/how-to/qa-auditor.md. backend selects the model-review CLI (claude_code | codex | none).
 agent:
-  template: task_validator
+  template: qa_auditor
   backend: codex
 tasks:
   - e2e/qwen3_0_6b_sglang

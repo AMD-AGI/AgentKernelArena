@@ -29,8 +29,10 @@ isolated, timestamped workspace and follows the same outcome pipeline:
 
 * **Compile**: Build the agent's kernel and confirm it compiles cleanly.
 * **Validate**: Run the task's correctness check against a reference.
-* **Benchmark**: Measure GPU execution time or fixed-workload model throughput
-  against an independently preserved performance baseline.
+* **Benchmark**: Measure cold-cache CUDA-graph GPU time (kernel tasks, scored as
+  the geometric-mean speedup over performance cases, with the baseline
+  remeasured next to the candidate) or fixed-workload model throughput against
+  an independently preserved performance baseline.
 * **Reward**: Write structured outcomes and a bounded performance score. The
   correctness reference and performance baseline have separate roles.
 
@@ -49,12 +51,15 @@ AgentKernelArena includes the following key features.
   boundaries.
 * **Docker-first runtime**: Experiments execute inside pinned ROCm/SGLang
   Docker images selected from the target GPU architecture.
-* **Operator tasks**: Optimize existing implementations, implement PyTorch
-  references in a kernel language, or translate compute to FlyDSL. The bundled
-  suites also include production operators under ``Aiter-task`` and
-  ``Aiter-task-mi300``, and declared in-image sources under ``image_kernel``.
-  Task selectors are actual paths relative to ``tasks/``; the
-  :doc:`task contract <how-to/add-task>` defines behavior.
+* **Kernel tasks**: Each task is one operator in one scenario, organized as
+  ``tasks/<category>/<operator>/<scenario>/`` with an interface, a PyTorch
+  reference, a vendored baseline and production workloads. Tasks name no
+  implementation language: the run's ``target_language`` (Triton, Gluon, HIP
+  or FlyDSL; per-task overrides allowed) selects it, and every language is
+  scored against the same baseline. The four languages are verified on MI355X;
+  other architectures are implemented but unverified. Task selectors are paths
+  relative to ``tasks/``; the :doc:`task contract <how-to/add-task>` defines
+  behavior.
 * **End-to-end tasks**: Rewrite kernel implementations and fuse compute across
   a model's declared source trees. Weights, precision, TP/EP/PP, serving flags
   and workload settings remain fixed. The Magpie catalog provides one task
@@ -68,11 +73,14 @@ AgentKernelArena includes the following key features.
   reproducibility.
 * **Multi-GPU parallel runs**: Start Docker workers with one GPU or a declared
   GPU group, then distribute tasks through a shared queue.
-* **Task validator**: An agent plus deterministic report gate that runs 12 checks
-  on task quality, benchmark integrity, and harness integrity
-  before tasks are used in shared experiments.
+* **QA auditor**: The :doc:`qa_auditor <how-to/qa-auditor>` agent audits tasks
+  with deterministic checks, a control suite of known-wrong implementations and
+  an optional model review. Findings are itemized as blocking or warning; a
+  model opinion becomes blocking only through a counterexample the framework
+  reproduces. Its framework-finalized ``qa_report.yaml`` gates tasks before
+  they are used in shared experiments.
 * **Task repair**: The :doc:`quality loop <how-to/quality-loop>` supports bounded
-  repairs, fresh validation and independent review. Its repair-only mode
+  repairs, fresh audits and independent review. Its repair-only mode
   preserves the scored contract and does not report repairs as speedups.
 * **Held-out evaluation**: Re-evaluate supported kernels on unseen shapes and
   quantify generalization regressions. This is a separate post-run workflow;
@@ -98,4 +106,4 @@ AgentKernelArena supports the following use cases.
 * Compare agent configurations while keeping tasks and evaluation rules fixed.
 * Run large task suites faster by distributing tasks across all GPUs on a
   multi-GPU server.
-* Curate and validate a high-quality, self-contained GPU kernel task suite.
+* Curate and audit a high-quality, self-contained GPU kernel task suite.

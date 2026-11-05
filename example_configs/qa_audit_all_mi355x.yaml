@@ -1,0 +1,22 @@
+# Full QA audit of every task on MI355X (gfx950), one isolated auditor worker per GPU.
+# See docs/how-to/qa-auditor.md. Kernel tasks need no target_language: the audit
+# qualifies the task itself. `all` also selects the schema-v2 serving tasks under
+# tasks/e2e/, which need a budget and a prepared runtime binding (see
+# e2e_qwen3_qa_mi355x.yaml); select category prefixes such as `normalization`
+# instead to audit kernel tasks only.
+#
+# Run with:
+#   make docker-parallel-run \
+#     CONFIG=example_configs/qa_audit_all_mi355x.yaml \
+#     GPU_IDS=0,1,2,3,4,5,6,7 \
+#     RUN_ARGS="--run-suffix qa_all_round1"
+agent:
+  template: qa_auditor
+  backend: claude_code      # claude_code | codex | none (deterministic checks only)
+
+tasks:
+  - all
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

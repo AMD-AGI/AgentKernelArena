@@ -7,6 +7,11 @@ myst:
 
 # End-to-end kernel optimization
 
+Serving tasks keep their own schema-v2 contract (`tasks/e2e/**/config.yaml`); the
+schema-v3 kernel-task contract in [add-task.md](add-task.md) does not apply to them,
+and they ignore the run's `target_language`. They are audited by the
+[QA auditor](qa-auditor.md).
+
 Serving tasks measure model throughput while allowing only kernel source changes.
 TP/EP/PP, weights, precision, serving flags, request concurrency, prompt lengths,
 output lengths and benchmark policy remain fixed before either implementation runs.
@@ -57,14 +62,14 @@ the override, and all raw measurements. Repetition spread is reported without
 claiming statistical significance. Choose the count before the run;
 do not select the best result from extra repetitions.
 
-Prepare immutable dependencies and weights on the Docker host, then validate:
+Prepare immutable dependencies and weights on the Docker host, then audit:
 
 ```bash
 python3 -m venv ~/.local/share/aka-serving-venv
 ~/.local/share/aka-serving-venv/bin/python -m pip install PyYAML
 export AKA_SERVING_PYTHON=~/.local/share/aka-serving-venv/bin/python
-"$AKA_SERVING_PYTHON" -m src.prepare_serving_runtime --config example_configs/e2e_qwen3_validator_mi355x.yaml
-make docker-run CONFIG=example_configs/e2e_qwen3_validator_mi355x.yaml
+"$AKA_SERVING_PYTHON" -m src.prepare_serving_runtime --config example_configs/e2e_qwen3_qa_mi355x.yaml
+make docker-run CONFIG=example_configs/e2e_qwen3_qa_mi355x.yaml
 make docker-run CONFIG=example_configs/e2e_qwen3_codex_mi355x.yaml
 ```
 
@@ -152,7 +157,7 @@ it. This changes only the worker's network namespace; it grants no additional
 capabilities and does not change clean evaluation-container settings, model
 flags or workload. Unset preserves the runner's existing network choice.
 
-Direct `codex` runs and `task_validator` backends also save complete sanitized
+Direct `codex` runs and `qa_auditor` review backends also save complete sanitized
 stdout/stderr events beside the workspace, in a private directory created for
 each invocation. The framework log prints its location. Events are flushed as
 they arrive, preserving tool output and failure details beyond the shortened
@@ -280,10 +285,10 @@ attention, GEMM, MoE or other useful targets. The locked client window must stay
 long enough (`minimum_measurement_s`) that startup and ramp effects do not dominate.
 
 Changing `benchmark.yaml`, the lock, or `config.yaml` changes the task contract
-and requires a fresh validator PASS before the task is treated as qualified.
+and requires a fresh QA auditor PASS before the task is treated as qualified.
 
-Qualification requires a fresh framework-finalized task-validator PASS on the
-locked GPU runtime. CPU regression tests alone do not qualify an e2e task.
+Qualification requires a fresh framework-finalized `qa_report.yaml` with
+`status: PASS` on the locked GPU runtime. CPU regression tests alone do not qualify an e2e task.
 
 ### Variable request lengths and large models
 
@@ -552,9 +557,9 @@ serving_runtime:
 ```
 
 Prepare immutable assets with `src.prepare_serving_runtime`, then use the normal
-Docker runner and `task_validator`. All optimizer integrations use the same task
+Docker runner and `qa_auditor`. All optimizer integrations use the same task
 selection. See the maintained SGLang selection in
-[`example_configs/e2e_magpie_qwen3_next_80b_validator_mi355x.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/e2e_magpie_qwen3_next_80b_validator_mi355x.yaml).
+[`example_configs/e2e_magpie_qwen3_next_80b_qa_mi355x.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/e2e_magpie_qwen3_next_80b_qa_mi355x.yaml).
 
 The host creates content-addressed task packages under `AKA_SERVING_TASK_CACHE`
 (default `~/.cache/aka-serving-tasks`), outside the checkout. Cache identity includes

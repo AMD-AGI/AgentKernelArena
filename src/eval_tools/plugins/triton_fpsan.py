@@ -19,6 +19,7 @@ from .attestation import BuildAttestation
 from .base import (
     artifact_path,
     blocked_check,
+    unsupported_language_check,
     command_from_context,
     parsed_to_run_result,
     ready_check,
@@ -32,7 +33,10 @@ class TritonFpSanPlugin:
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
-        if profile.language == KernelLanguage.FLYDSL or profile.framework == "flydsl":
+        unsupported = unsupported_language_check(profile.language, "triton_fpsan")
+        if unsupported is not None:
+            engine = unsupported
+        elif profile.language == KernelLanguage.FLYDSL or profile.framework == "flydsl":
             engine = blocked_check(
                 CapabilityState.UNSUPPORTED,
                 "triton_fpsan_flydsl_pipeline_unavailable",

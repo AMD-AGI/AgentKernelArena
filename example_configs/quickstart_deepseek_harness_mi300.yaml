@@ -1,8 +1,12 @@
+# Languages are verified on MI355X (gfx950) only; this architecture is implemented but unverified.
+# The shipped task declares required_arch gfx950 and is skipped on other GPUs: select a task whose
+# platform_support includes this GPU, or change it in an untracked local copy.
 # DeepSeek Harness on MI300/MI300X (gfx942). See agents/deepseek_harness/README.md.
 agent:
   template: deepseek_harness
+target_language: triton   # triton | gluon | hip | flydsl
 tasks:
-  - hip2hip/GELU
+  - normalization/rms_norm/bf16_h8192
 target_gpu_model: MI300
 log_directory: logs
 workspace_directory_prefix: workspace

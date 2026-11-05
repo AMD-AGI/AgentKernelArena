@@ -7,13 +7,11 @@ build/
 /tasks/**/compile_report.json
 /tasks/**/correctness_report.json
 /tasks/**/performance_report.json
-/tasks/**/validation_report*.yaml
-/tasks/**/validation_report*.json
-/tasks/**/validation_summary.yaml
-/tasks/**/VALIDATION_SUMMARY.yaml
+/tasks/**/qa_report*.yaml
+/tasks/**/qa_summary.json
 /tasks/**/task_result.yaml
 /tasks/**/task_result.json
-/tasks/**/.validation_complete
+/tasks/**/.qa_complete
 
 .vscode
 .idea

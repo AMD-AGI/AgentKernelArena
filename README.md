@@ -10,16 +10,18 @@ AgentKernelArena (AKA) provides GPU optimization tasks, controlled execution and
 
 | Task scope | What the agent can change | What Arena measures |
 | --- | --- | --- |
-| **Operator tasks** | Implement, translate or optimize the task's declared compute region in HIP, Triton or FlyDSL. A region may contain several kernels. | Correctness against the task's reference and GPU runtime against its baseline. |
+| **Kernel tasks** | Implement and optimize one operator in one scenario in the language the run selects (`target_language`: Triton, Gluon, HIP or FlyDSL). | Correctness against a high-precision PyTorch reference and cold-cache CUDA-graph GPU time against the task's vendored baseline. |
 | **End-to-end tasks** | Rewrite kernel implementations and fuse computation across the model's declared source trees. | Model correctness and serving throughput under a fixed workload. |
 
 For end-to-end tasks, model weights, precision, TP/EP/PP, serving flags and workload settings stay fixed. Gains must come from valid compute implementation changes. The supplied example kernels are starting points; they do not limit optimization to those operators. Implementations must satisfy the task's input contract; hard-coded answers and evaluator changes are outside the allowed scope. Profiling the actual workload is encouraged, and agents choose their own tools.
 
-Browse [operator tasks](tasks/) or the [Magpie workload catalog](tasks/e2e/magpie/README.md). The catalog includes text, multimodal and AgentX workloads, with one selectable task directory per recipe. End-to-end runs require a prepared runtime binding; use the [e2e guide](docs/how-to/e2e-kernel-tasks.md) before launching them. A catalog entry alone does not establish GPU qualification.
+A kernel task is a schema-v3 package, `tasks/<category>/<operator>/<scenario>/`: `task.yaml` (interface), `reference.py`, a vendored `baseline/`, `workloads.json` taken from production use, and a README. It names no implementation language, so the same task can be run in any supported language and scored against the same baseline. Categories include activation, attention, convolution, elementwise, embedding, gemm, kv_cache, moe, normalization, positional, quantization, reduction, sampling, sorting and state_space. See the [task contract](docs/how-to/add-task.md).
+
+Browse [kernel tasks](tasks/) or the [Magpie workload catalog](tasks/e2e/magpie/README.md). The catalog includes text, multimodal and AgentX workloads, with one selectable task directory per recipe. End-to-end runs require a prepared runtime binding; use the [e2e guide](docs/how-to/e2e-kernel-tasks.md) before launching them. A catalog entry alone does not establish GPU qualification.
 
 ## Run your first task
 
-You need a Linux AMD GPU host with GPU access through Docker, Git and an installed, authenticated agent CLI. Follow the [installation guide](docs/install/install.md) for driver, CLI and authentication setup. The example below uses Claude Code on MI355X and runs one HIP GELU task.
+You need a Linux AMD GPU host with GPU access through Docker, Git and an installed, authenticated agent CLI. Follow the [installation guide](docs/install/install.md) for driver, CLI and authentication setup. The example below uses Claude Code on MI355X and runs one Triton RMSNorm task.
 
 ```bash
 git clone https://github.com/AMD-AGI/AgentKernelArena.git
@@ -42,11 +44,11 @@ Choose a quickstart matching your physical GPU:
 | MI325X | [quickstart_claude_mi325x.yaml](example_configs/quickstart_claude_mi325x.yaml) |
 | RDNA4 (`gfx1201`) | [quickstart_claude_rdna4.yaml](example_configs/quickstart_claude_rdna4.yaml) |
 
-Check the [compatibility matrix](docs/reference/compatibility-matrix.md) for runtime requirements, additional hardware profiles and task-specific limits. GPU experiments run through Docker; Slurm/Spur launches that same workflow on an allocated compute node.
+Triton, Gluon, HIP and FlyDSL are verified on MI355X (`gfx950`). Other architectures are implemented but unverified, and the shipped task declares `gfx950`; select a task whose `platform_support` includes your GPU. Check the [compatibility matrix](docs/reference/compatibility-matrix.md) for runtime requirements, additional hardware profiles and task-specific limits. GPU experiments run through Docker; Slurm/Spur launches that same workflow on an allocated compute node.
 
 ## Configure a run
 
-A **run config** selects the agent, task set, GPU and search budget. Each **task's config** defines its computation, editable sources, baseline, correctness checks and measurement policy. Changing the agent does not change the task contract.
+A **run config** selects the agent, task set, target language, GPU and search budget. Each **task** defines its interface, reference, baseline, workloads and correctness bounds. Changing the agent does not change the task contract.
 
 Copy an example into an untracked local configuration:
 
@@ -62,9 +64,11 @@ agent:
   budget_mode: time
   timeout_seconds: 3600
 
+target_language: triton   # triton | gluon | hip | flydsl
+
 tasks:
-  - hip2hip/GELU
-  - triton2triton/vllm/triton_rms_norm
+  - normalization/rms_norm/bf16_h8192
+  - {path: gemm/gemm_a8w8, target_language: hip}   # per-task override
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -73,7 +77,7 @@ workspace_directory_prefix: workspace
 
 Then run `make docker-run CONFIG=config_experiment.yaml`.
 
-Task selectors are relative to `tasks/`: a full path selects one task, and a parent directory selects its descendants. Each task retains its own architecture requirements and dependencies. End-to-end tasks need their additional runtime, GPU-group and evaluation-budget settings; they cannot be added to an operator run by changing only this list.
+Task selectors are relative to `tasks/`: a full path selects one task, and a parent directory selects its descendants. Every kernel task needs a `target_language`, set for the run or per task; a task cannot be selected with two languages. The end-to-end tasks ignore it. Each task retains its own architecture requirements and dependencies. End-to-end tasks need their additional runtime, GPU-group and evaluation-budget settings; they cannot be added to an operator run by changing only this list.
 
 The CLI integrations include **Codex, Claude Code, Cursor and DeepSeek Harness**. **GEAK and KernelForge** have separate integration setup. Model, provider and effort settings are integration-specific; see [agents and budgets](docs/how-to/agents.md) and the [selectable template registry](src/module_registration.py). Whole-model end-to-end tasks currently support the four CLI integrations; GEAK and KernelForge adaptation is separate work.
 
@@ -82,6 +86,8 @@ The CLI integrations include **Codex, Claude Code, Cursor and DeepSeek Harness**
 For each task, Arena preserves the baseline, runs the agent in a task workspace, and independently compiles, checks and benchmarks the delivered implementation. The evaluator writes the result; an agent's completion message is not an acceptance verdict.
 
 The correctness reference defines valid output. The performance baseline supplies the timing comparison. They can be different implementations.
+
+For kernel tasks, each performance case is timed as a cold-cache CUDA graph (1 GiB cache flush before every replay). The final evaluation remeasures the baseline interleaved with the candidate, and the task's speedup is the geometric mean of the per-case speedups. A failed correctness case scores zero.
 
 ```text
 workspace_<gpu>_<agent>/run_<timestamp>/
@@ -141,15 +147,15 @@ python3 src/tools/compare_runs.py "$CONTROL_RUN_DIR" "$TREATMENT_RUN_DIR"
 
 The suffix labels the result directory; it does not enable a capability. Repeat matched runs when assessing stochastic agents, retain the full results and interpret gains alongside measurement variation.
 
-## Validate and extend tasks
+## Audit and extend tasks
 
-Tasks use one [shared task contract](docs/how-to/add-task.md), regardless of their source language or agent. The main task families cover existing HIP/Triton/FlyDSL optimization, PyTorch-to-kernel implementation, translation to FlyDSL, production AITER operators and image-backed sources. End-to-end tasks use the same lifecycle with serving-specific evaluation.
+Kernel tasks share one [task contract](docs/how-to/add-task.md) regardless of agent or language. End-to-end tasks keep their own serving contract.
 
-- **Validate a task:** [`task_validator`](docs/how-to/task-validator.md) runs the declared actions and reviews the checks. Its framework-finalized `validation_report.yaml` is separate from an optimization result.
-- **Repair task quality:** [`quality_loop`](docs/how-to/quality-loop.md) can run bounded repairs with fresh validation and independent review. Its repair-only mode preserves the scored contract and does not treat repairs as optimization gains.
+- **Audit a task:** the [`qa_auditor`](docs/how-to/qa-auditor.md) agent runs deterministic checks, a control suite of known-wrong implementations and an optional model review, and writes an itemized `qa_report.yaml`. Each finding is blocking or a warning; any blocking finding fails the task. The report is separate from an optimization result.
+- **Repair task quality:** [`quality_loop`](docs/how-to/quality-loop.md) can run bounded repairs with fresh audits and independent review. Its repair-only mode preserves the scored contract and does not treat repairs as optimization gains.
 - **Add a task or agent:** Follow the [task authoring guide](docs/how-to/add-task.md), [agent integration guide](docs/how-to/agents.md#add-a-new-agent) and [contribution checklist](CONTRIBUTING.md).
 
-New tasks and material harness changes require a fresh GPU validator report with `overall_status: PASS`. WARN requires explicit maintainer-approved justification. A schema-valid task or CPU test pass does not establish GPU qualification across agents, runtimes or architectures. Validate task semantics and measurement integrity before using their scores as training rewards.
+New tasks and material changes to a task require a fresh GPU `qa_report.yaml` with `status: PASS` (every blocking finding fixed). Warnings never block but must be read. A schema-valid task or CPU test pass does not establish GPU qualification across agents, runtimes or architectures. Audit task semantics and measurement integrity before using their scores as training rewards.
 
 Task workspaces preserve reproducibility and separate concurrent runs. The privileged worker containers can access mounted repository and authentication state; they are not security sandboxes.
 
@@ -166,6 +172,7 @@ Task workspaces preserve reproducibility and separate concurrent runs. The privi
 | Understand timing or optional evaluator-side analysis | [Benchmark methodology](docs/reference/benchmark-methodology.md) · [Evaluation tools](docs/how-to/use-evaluation-tools.md) |
 | Evaluate a policy's generalization on supported tasks | [Held-out evaluation](docs/how-to/held-out-evaluation.md) |
 | Interpret rewards and result fields | [Scoring and results](docs/reference/api-reference.md#scoring) |
+| Audit a task before its PR | [QA auditor](docs/how-to/qa-auditor.md) |
 | Build tasks from a dataset bundle | [Task builder](docs/how-to/sikl-task-builder.md) |
 
 See the [documentation index](docs/index.rst) for the full guide and [configuration reference](docs/reference/api-reference.md) for individual fields.

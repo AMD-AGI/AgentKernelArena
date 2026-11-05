@@ -17,6 +17,22 @@ on a CUDA build and HIP Graph on a ROCm build.
 Native HIP benchmark drivers use the equivalent implementation in
 `src/tools/perf/native_hip_graph_benchmark.hpp`.
 
+## Schema-v3 kernel tasks
+
+Kernel tasks (see the [task contract](../how-to/add-task.md#evaluation)) use one
+timing method in every language. Each call to `run()` is captured into a CUDA
+graph and timed per replay after a 1 GiB cache flush
+(`benchmark_cuda_graph_cold_cache_samples`: 10 warmups, 100 samples, median).
+The two framework input draws alternate between samples, and every timed
+sample's outputs are checked. There is no Event fallback for these tasks: a
+baseline that cannot be captured on the current stream fails the QA audit
+(`QA-TIMING-METHOD`), and each performance case must take the baseline at least
+10 us (`QA-TIMING-FLOOR`). The final evaluation remeasures the baseline
+interleaved with the candidate, and the task's speedup is the geometric mean of
+the per-case speedups (baseline time over candidate time). The remaining
+sections of this page describe the shared helper and the older fallback and
+cold-weight policies, which apply to the end-to-end and legacy helper paths.
+
 ## Canonical Python API
 
 For new or materially revised kernel benchmarks, use the executable
@@ -150,7 +166,7 @@ task harnesses therefore run a conservative source preflight. Every visible
 launch must use a stream obtained from PyTorch's current CUDA/HIP stream; a
 literal legacy stream, capture-unsafe synchronization/allocation, or an
 unverifiable launch construct classifies the baseline case as Event-only. For
-hip2hip comparisons, the reference source fixes this policy; candidate source
+comparisons against a HIP reference, the reference source fixes this policy; candidate source
 cannot downgrade a graph-capable reference to Events.
 
 Fallback still uses device events; it does not use Python, subprocess, or CPU
@@ -344,7 +360,7 @@ capture-unsafe reference reason. Updated results additionally recorded
 `eager_callable`, `timed_output_correctness: PASS` and `replay_correctness: PASS`
 for all five cases. These sequential runs verify timing boundaries and output
 checks; they do not establish a performance improvement. Action-level evidence
-is distinct from the full task-validator report. That separate HGEMM report
+is distinct from a full validator report (the predecessor of the QA auditor's `qa_report.yaml`). That separate HGEMM report
 was subsequently framework-finalized as `PASS` in the same job, with an
 implemented frozen initial candidate and no baseline diagnostic exemption.
 
@@ -353,5 +369,5 @@ reports, but a subsequent audit found external process/memory occupancy and
 other tasks failed with allocation/launch resource errors. Preserve those
 reports as historical functional evidence; all performance from that node is
 unqualified. Job 139392 explicitly excluded node217 and repeated the smoke,
-HGEMM boundary checks and full validator on the available-memory allocation
+HGEMM boundary checks and the full validator run on the available-memory allocation
 described above. Neither sequential run establishes an optimization gain.

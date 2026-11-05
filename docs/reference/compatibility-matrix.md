@@ -26,6 +26,21 @@ physical MI300A GPU qualification. `MI300` remains a generic fallback and `MI325
 remains an alias for MI325X. Runtime routing shares the existing `gfx942` image;
 individual task and runtime qualification still applies.
 
+## Kernel languages
+
+Schema-v3 kernel tasks are implemented in the language the run selects with
+`target_language`. See [Run an experiment](../how-to/run-evaluation.md#select-the-target-language).
+
+| Language | MI355X (`gfx950`) | Other architectures |
+| --- | --- | --- |
+| Triton | Verified | Implemented; not verified |
+| Gluon | Verified | Implemented; not verified |
+| HIP | Verified | Implemented; not verified |
+| FlyDSL | Verified | Implemented; not verified |
+
+A task's `platform_support` can further restrict the architectures it runs on.
+Report problems on an unverified architecture with the failing configuration.
+
 ## Software requirements
 
 The following software versions are required or verified.
@@ -33,7 +48,7 @@ The following software versions are required or verified.
 | Component | Version | Notes |
 | --- | --- | --- |
 | Linux | Ubuntu 22.04, Ubuntu 24.04 | |
-| hipcc | Matches ROCm image | Required for HIP tasks. |
+| hipcc | Matches ROCm image | Required for `target_language: hip` and HIP baselines. |
 | Profiler tools | Match runtime image | Smoke reports `rocprof-compute` and `rocprofv3` availability. Core graph/event timing needs neither; profiling runs can require specific binaries with `AKA_REQUIRED_PROFILERS`. Availability does not establish candidate analysis. See the [runtime guide](mi355x-runtime.md#sdk-and-profiling). |
 | Docker | Current stable release | Required; serial experiments run through `make docker-run`; multi-GPU experiments run through `make docker-parallel-run`. |
 | SGLang runtime image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; SGLang 0.5.20 / ROCm 10 for `gfx950` | The MI355X default is `lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. Task-specific runtime requirements still apply. |
@@ -42,9 +57,9 @@ The following software versions are required or verified.
 | Python for the full repository CPU/source audit | CPython 3.12 | The complete source set requires 3.12 syntax, and migration AST fingerprints are pinned to this minor version. Use full Git history; see [contributor verification](https://github.com/AMD-AGI/AgentKernelArena/blob/main/CONTRIBUTING.md#testing-and-verification). |
 | Node.js and npm | Node.js 22+ for Claude Code's npm installation; Node.js 24 for DeepSeek Harness | Required on the host for npm-installed agent CLIs; DeepSeek uses a dedicated prefix. |
 | PyTorch | ROCm build bundled in the image | Provided by the selected runtime image. |
-| Triton | Bundled with the image's ROCm PyTorch | Required for Triton task categories. |
+| Triton | Bundled with the image's ROCm PyTorch | Required for `target_language: triton` and `gluon` and for Triton baselines. |
 | AITER | Source installation bundled in the pinned `gfx950` image | Required by AITER-backed task oracles and kernels. Distribution metadata alone may not identify a source installation; retain the image identity and materialized source hashes. |
-| FlyDSL | `0.3.2` in the default `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks. |
+| FlyDSL | `0.3.2` in the default `gfx950` image (or `make docker-setup-flydsl` when absent) | Required for `target_language: flydsl` and tasks with a FlyDSL baseline. |
 
 ## Evaluation-tool sidecars
 
@@ -86,7 +101,7 @@ The following templates are selectable in the current `AgentType` registry. See
 | `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK; see the [GEAK guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md). |
 | `geak_v4` | Registry alias for `geak`; uses the same v2 launcher, configuration and Workflow runtime. |
 | `forge_operator2flydsl` | Compatibility name for `forge`, using the same launcher and configuration. |
-| `task_validator` | Claude Code or Codex backend, with defaults in `agents/task_validator/agent_config.yaml` and run-level `agent` overrides. |
+| `qa_auditor` | Model-review backend `claude_code` or `codex` (or `none` for deterministic checks only), with defaults in `agents/qa_auditor/agent_config.yaml` and run-level `agent` overrides. See [QA auditor](../how-to/qa-auditor.md). |
 
 Selectable names are defined in [the registry](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/module_registration.py).
 This dependency list does not assert that every agent/model/task combination

@@ -28,7 +28,7 @@ The following agents are available.
 | `deepseek_harness` | DeepSeek Harness headless CLI ([setup](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md)) |
 | `forge` | KernelForge through the shared v2 task interface |
 | `geak` | GEAK Workflow engine through the shared v2 task interface |
-| `task_validator` | Task quality validator; does not optimize kernels (see [Validate tasks](task-validator.md)) |
+| `qa_auditor` | Task QA auditor; does not optimize kernels (see [Audit tasks with the QA auditor](qa-auditor.md)) |
 
 The [registry](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/module_registration.py) maps the legacy names
 `geak_v4` to `geak` and `forge_operator2flydsl` to `forge`, with the same
@@ -71,7 +71,7 @@ These settings do not belong in task configurations.
 
 For Cursor, Claude Code, and Codex, authenticate with the host CLI. A normal run
 preflights only the selected CLI. When the config selects one of these
-first-class integrations (or `task_validator`), select the run configuration
+first-class integrations (or `qa_auditor`), select the run configuration
 first and check its CLI/backend:
 
 ```bash
@@ -154,7 +154,7 @@ value is not reported. Arena never estimates dollars from tokens.
 | `geak` | Claude Agent SDK `ResultMessage.total_cost_usd` | `ResultMessage.usage` |
 | `forge` | KernelForge `llm_usage.total_cost_usd`, when `cost_available` is not false | KernelForge `llm_usage` counters |
 | `deepseek_harness` | `null` | The `--json` final event's `usage`, when emitted; otherwise `null` |
-| `task_validator` | `null` | `null` |
+| `qa_auditor` | `null` | `null` |
 
 Main fields:
 

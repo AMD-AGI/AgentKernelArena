@@ -1,8 +1,8 @@
 ---
 myst:
     html_meta:
-        "description": "Step-by-step examples for running AgentKernelArena experiments, A/B testing agent capabilities, validating tasks, and resuming interrupted runs."
-        "keywords": "AgentKernelArena, examples, experiment, A/B test, task validation, GPU kernel, ROCm, HIP, Triton"
+        "description": "Step-by-step examples for running AgentKernelArena experiments, A/B testing agent capabilities, auditing tasks, and resuming interrupted runs."
+        "keywords": "AgentKernelArena, examples, experiment, A/B test, QA auditor, GPU kernel, ROCm, HIP, Triton"
 ---
 
 # AgentKernelArena examples
@@ -15,13 +15,15 @@ multi-GPU examples use `make docker-parallel-run`.
 
 ## Example 1: Run one agent configuration on one task
 
-Run the single-task Claude Code quickstart for the physical GPU.
+Run the single-task Claude Code quickstart: optimize RMSNorm in Triton.
+The language comes from the run configuration's `target_language`; the task
+names none. The shipped task requires `gfx950`; on other GPUs select a task
+whose `platform_support` includes your architecture.
 
-1. Select the MI300/MI300X example (use
-   `example_configs/quickstart_claude_mi355x.yaml` on MI355X):
+1. Select the MI355X example:
 
     ```bash
-    CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
+    CONFIG_PATH=example_configs/quickstart_claude_mi355x.yaml
     ```
 
 2. Run:
@@ -34,9 +36,9 @@ Run the single-task Claude Code quickstart for the physical GPU.
 3. Inspect the result:
 
     ```text
-    workspace_MI300_claude_code/
+    workspace_MI355X_claude_code/
     └── run_<timestamp>/
-        └── hip2hip_GELU_<timestamp>/
+        └── normalization_rms_norm_bf16_h8192_<timestamp>/
             └── task_result.yaml
     ```
 
@@ -44,7 +46,7 @@ An illustrative excerpt from an accepted `task_result.yaml` looks like this.
 The numbers show the default scoring calculation, not a measured result:
 
 ```yaml
-task_name: hip2hip/GELU
+task_name: normalization/rms_norm/bf16_h8192
 pass_compilation: true
 pass_correctness: true
 pass_tool_gate: true
@@ -63,17 +65,20 @@ score zero. See [Scoring](../reference/api-reference.md#scoring).
 
 ## Example 2: Run an experiment on a whole task category
 
-Run Claude Code across all vLLM Triton tasks. Save this configuration as
-`config_triton.yaml`:
+Run Claude Code across every task in a category, in Triton, then in HIP for
+one operator. Save this configuration as `config_triton.yaml`:
 
 ```yaml
 agent:
   template: claude_code
 
-tasks:
-  - triton2triton/vllm
+target_language: triton   # triton | gluon | hip | flydsl
 
-target_gpu_model: MI300
+tasks:
+  - normalization
+  # - {path: gemm/gemm_a8w8, target_language: hip}   # per-task override
+
+target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace
 ```
@@ -82,7 +87,8 @@ workspace_directory_prefix: workspace
 make docker-run CONFIG=config_triton.yaml
 ```
 
-Each task gets its own workspace under the same `run_<timestamp>/` directory, and
+Every task is scored against its own baseline, so the same task set can be rerun with
+another `target_language` and compared. Each task gets its own workspace under the same `run_<timestamp>/` directory, and
 post-processing aggregates them into a run report.
 
 ## Example 3: A/B test an agent capability
@@ -106,8 +112,8 @@ Compare the actual run directories printed by Arena:
 
 ```bash
 # Replace these with the directories from the two runs.
-CONTROL_RUN_DIR="workspace_MI300_claude_code/run_TIMESTAMP_control"
-TREATMENT_RUN_DIR="workspace_MI300_claude_code/run_TIMESTAMP_treatment"
+CONTROL_RUN_DIR="workspace_MI355X_claude_code/run_TIMESTAMP_control"
+TREATMENT_RUN_DIR="workspace_MI355X_claude_code/run_TIMESTAMP_treatment"
 python3 src/tools/compare_runs.py "$CONTROL_RUN_DIR" "$TREATMENT_RUN_DIR"
 ```
 
@@ -115,31 +121,32 @@ Repeat matched runs when assessing stochastic agents and inspect variation
 alongside the aggregate scores. See [A/B testing](../how-to/agents.md#ab-testing-and-ablation-studies)
 for more details.
 
-## Example 4: Validate a new task
+## Example 4: Audit a new task
 
-Before merging a new task, run the task_validator agent against it. Save this
-configuration as `config_validator.yaml`:
+Before its PR, run the `qa_auditor` agent against a new or changed task. Save
+this configuration as `config_qa.yaml`:
 
 ```yaml
 agent:
-  template: task_validator
+  template: qa_auditor
+  backend: claude_code      # claude_code | codex | none (deterministic checks only)
 
 tasks:
-  - hip2hip/my_new_kernel
+  - normalization/rms_norm/my_new_scenario
 
-target_gpu_model: MI300
+target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace
 ```
 
 ```bash
-make docker-run CONFIG=config_validator.yaml
+make docker-run CONFIG=config_qa.yaml
 ```
 
-Open the generated `validation_report.yaml` in the task workspace. The task must
-reach **PASS** before it is treated as qualified. **WARN** requires an explicit
-maintainer-approved justification and is not a clean pass. See
-[Validate tasks](../how-to/task-validator.md) for more information.
+Open the generated `qa_report.yaml` in the task workspace. The task must reach
+`status: PASS`, which requires every blocking finding to be fixed. Warnings do
+not block but carry a reason and a fix. See
+[Audit tasks with the QA auditor](../how-to/qa-auditor.md) for the check table.
 
 ## Example 5: Run eight GPU workers in parallel
 
@@ -151,8 +158,10 @@ same task queue. Save this configuration as
 agent:
   template: claude_code
 
+target_language: triton
+
 tasks:
-  - hip2hip
+  - normalization
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -176,7 +185,7 @@ workspace_MI355X_claude_code/
     │   ├── running/
     │   ├── done/
     │   └── failed/
-    ├── hip2hip_GELU_<timestamp>/
+    ├── normalization_rms_norm_bf16_h8192_<timestamp>/
     │   └── task_result.yaml
     └── reports/
         └── overall_report.txt
@@ -186,18 +195,19 @@ Each worker sees one logical GPU inside its container (`HIP_VISIBLE_DEVICES=0`,
 `CUDA_VISIBLE_DEVICES=0`) while `ROCR_VISIBLE_DEVICES` selects the host GPU.
 Post-processing runs once after all worker containers finish.
 
-## Example 6: Validate tasks in parallel
+## Example 6: Audit tasks in parallel
 
-The same queue works for `task_validator`. This is useful before merging a large
-batch of tasks. Save this configuration as
-`config_parallel_validator_mi355x.yaml`:
+The same queue works for `qa_auditor`. This is useful before merging a large
+batch of tasks. Save this configuration as `config_parallel_qa_mi355x.yaml`, or
+use `example_configs/qa_audit_all_mi355x.yaml`:
 
 ```yaml
 agent:
-  template: task_validator
+  template: qa_auditor
+  backend: claude_code
 
 tasks:
-  - hip2hip
+  - normalization
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -206,13 +216,13 @@ workspace_directory_prefix: workspace
 
 ```bash
 make docker-parallel-run \
-  CONFIG=config_parallel_validator_mi355x.yaml \
+  CONFIG=config_parallel_qa_mi355x.yaml \
   GPU_IDS=0,1,2,3,4,5,6,7 \
-  RUN_ARGS="--run-suffix validator_parallel8"
+  RUN_ARGS="--run-suffix qa_parallel8"
 ```
 
-Each task workspace writes `validation_report.yaml`, and the run directory gets
-one final `validation_summary.yaml` after all workers complete.
+Each task workspace writes `qa_report.yaml`, and the run directory gets one
+final `qa_summary.json` after all workers complete.
 
 ## Example 7: Resume an interrupted run
 
@@ -220,10 +230,10 @@ If a long run is interrupted, resume it without repeating completed tasks:
 
 ```bash
 # Resume the most recent run
-make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS="--resume-latest"
+make docker-run CONFIG=example_configs/quickstart_claude_mi355x.yaml RUN_ARGS="--resume-latest"
 
 # Or resume a specific run directory
-make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS="--resume-run run_20260617_101500"
+make docker-run CONFIG=example_configs/quickstart_claude_mi355x.yaml RUN_ARGS="--resume-run run_20260617_101500"
 ```
 
 For a parallel run, use the same resume arguments with `docker-parallel-run`:

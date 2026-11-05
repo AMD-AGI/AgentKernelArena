@@ -4,6 +4,50 @@ Reference: [HIP documentation](https://rocm.docs.amd.com/projects/HIP/en/latest/
 
 ---
 
+## Candidate entry point (schema v3)
+
+Your whole solution is the directory `solution/`; it is the only editable tree. The task fixes the
+call, not the implementation. Entry: `solution/kernel.hip` registers exactly one op named `run` whose arguments are the call keys; written tensors are `Tensor(a!)`.
+
+The call, as Python sees it (the HIP op takes the same keys as arguments):
+
+```python
+def run(*, <inputs>, <outputs>) -> None: ...
+```
+
+`_aka_eval/CANDIDATE.md` in the workspace states the exact signature, shapes and dtypes.
+
+```cpp
+#define TORCH_LIBRARY_EXPAND(ns, m) TORCH_LIBRARY(ns, m)
+TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
+  m.def("run(Tensor x, Tensor weight, float epsilon, Tensor(a!) out) -> ()", &run);
+}
+```
+
+Other `.hip` files and headers in `solution/` are compiled with it (`torch.utils.cpp_extension`, built for
+the GPU's architecture). Launch on `at::hip::getCurrentHIPStream()`; include only HIP, ATen/c10,
+`torch/library.h`, standard headers and your own headers; call no BLAS/MIOpen/ATen compute and keep no
+mutable static state.
+
+Candidate rules (enforced by the evaluator, not a sandbox):
+
+- `run` writes every output (and every mutable input) in place and returns `None`. Outputs are
+  preallocated and poisoned before each call; other inputs are read-only.
+- All computation runs in kernels you write in HIP. Host code may only allocate, take views and
+  make same-dtype copies, and launch. PyTorch arithmetic, reductions, dtype conversions and library
+  operators raise at run time; so do other kernel languages and production packages.
+- No `eval`/`exec`, reflection, module mutation, I/O, printing, synchronization, host round trips
+  (`.item()`, `.cpu()`), randomness, global PyTorch state, or imports of task, reference, baseline or
+  evaluator modules. Keep no state derived from inputs across calls.
+- HIP sources include only HIP, ATen/c10, `torch/library.h`, standard headers and your own headers;
+  `hipMalloc`/`hipFree`, synchronization, streams/events/graphs and BLAS/MIOpen/ATen compute are rejected.
+- Every call is timed as one CUDA-graph replay after a 1 GiB cache flush, so launches must be
+  capturable on the current stream. Keep first-use compilation and any tuning deterministic and
+  cached per shape.
+
+---
+
+
 ## 1. Memory Access — Coalescing
 
 AMD CDNA GPUs (MI300/MI350 series) access global memory in 64-byte cache lines. A wavefront of 64 threads fetches optimally when consecutive threads access consecutive addresses.
@@ -153,6 +197,10 @@ On MI300+, use `__hip_atomic_fetch_add` with `__HIP_MEMORY_SCOPE_WORKGROUP` for 
 ---
 
 ## 7. Async Copies and Streams
+
+General HIP background. A schema-v3 candidate cannot use this section: it allocates outputs through
+ATen, launches on `at::hip::getCurrentHIPStream()` only, and the evaluator rejects `hipMalloc*`,
+stream/event/graph creation and synchronization calls in `solution/`.
 
 Overlap host-device transfers with kernel execution using multiple streams:
 

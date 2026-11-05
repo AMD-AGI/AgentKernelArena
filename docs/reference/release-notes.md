@@ -9,6 +9,32 @@ myst:
 
 This topic summarizes the features available in each AgentKernelArena release. For the hardware and software versions validated for a release, see the [Compatibility matrix](compatibility-matrix.md).
 
+## Unreleased
+
+### Schema-v3 kernel tasks, run-selected language and the QA auditor
+
+- Kernel tasks are schema v3: one operator in one scenario at
+  `tasks/<category>/<operator>/<scenario>/`, with an interface (`task.yaml`), a
+  float64 PyTorch reference, a vendored baseline with provenance, and workloads
+  taken from production use. A task names no implementation language. The
+  run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
+  `{path, target_language}` overrides) selects it. See
+  [Task definition, schema, and authoring](../how-to/add-task.md).
+- All four languages are verified on MI355X (`gfx950`); other architectures are
+  implemented but unverified.
+- Timing is a cold-cache CUDA graph per call. The final evaluation remeasures
+  the baseline interleaved with the candidate, and a task's speedup is the
+  geometric mean over its performance cases.
+- The `qa_auditor` agent replaces `task_validator`. It reports itemized
+  blocking and warning findings, makes a model-review finding blocking only
+  through a counterexample the framework reproduces twice, and writes
+  `qa_report.yaml` and a `qa_summary.json`. See
+  [Audit tasks with the QA auditor](../how-to/qa-auditor.md).
+- The earlier task families (`triton2triton`, `hip2hip`, `torch2hip`,
+  `triton2flydsl`, `torch2flydsl`, `flydsl2flydsl`, `Aiter-task`,
+  `image_kernel`) are replaced by the new tasks; no compatibility layer is
+  provided. The end-to-end serving tasks keep schema v2.
+
 ## AgentKernelArena 0.4.0
 
 AgentKernelArena 0.4.0 makes Arena an RL-ready environment with bounded,

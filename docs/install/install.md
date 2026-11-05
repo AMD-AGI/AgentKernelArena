@@ -56,8 +56,7 @@ architecture defaults because they do not select a run config. Config image
 overrides also disable automatic RDNA4 builds. Invalid explicit values fail
 before a container is launched.
 
-The [DeepSeek draft validator config](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/task_validator_deepseek_drafts_mi355x.yaml)
-pins its MI355X run to the tested ROCm 10 image. The runner supplies writable
+A run config may pin its MI355X run to the tested ROCm 10 image with `docker_image`. The runner supplies writable
 AITER/FlyDSL caches and AITER configuration storage for that image, which is also
 the MI355X default. Other GPU architecture defaults are unchanged.
 
@@ -191,21 +190,23 @@ Specialized integrations require additional runtime setup. Review
 ## Choose an example configuration
 
 Choose the configuration that matches the physical GPU and installed agent.
-The quickstart configurations each run one GELU task. For a longer Cursor Agent
-run, use the curated task selection in
+The quickstart configurations each run one RMSNorm task with `target_language: triton`. The
+shipped task declares `required_arch: [gfx950]`, so on other GPUs select a task whose
+`platform_support` includes the architecture (languages are verified on MI355X only). For a
+longer Cursor Agent run over a whole category, use
 [`benchmark_cursor_mi355x.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/benchmark_cursor_mi355x.yaml).
 
 | Configuration | Purpose |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code GELU task; inspect the physical model before tuning. |
-| `example_configs/quickstart_claude_mi300x.yaml` | Claude Code GELU task with the MI300X hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi325x.yaml` | Claude Code GELU task with the MI325X hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi300a.yaml` | Claude Code GELU task with the MI300A hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code RMSNorm task (Triton); inspect the physical model before tuning. |
+| `example_configs/quickstart_claude_mi300x.yaml` | Claude Code RMSNorm task (Triton) with the MI300X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi325x.yaml` | Claude Code RMSNorm task (Triton) with the MI325X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi300a.yaml` | Claude Code RMSNorm task (Triton) with the MI300A hardware profile (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
 | `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | First DeepSeek Harness run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | First DeepSeek Harness run on MI355X (`gfx950`). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated Cursor Agent benchmark on MI355X; requires an installed and authenticated Cursor Agent CLI. |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Cursor Agent over a task category on MI355X; requires an installed and authenticated Cursor Agent CLI. |
 
 The default `make docker-run` configuration is the generic MI300-series quickstart.
 On another GPU, always pass the matching `CONFIG`; for MI355X, use
@@ -235,9 +236,9 @@ than changing a shared example in place:
 cp "$CONFIG_PATH" my_experiment.yaml
 ```
 
-## FlyDSL tasks (optional)
+## FlyDSL (optional)
 
-`flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks
+Runs with `target_language: flydsl`, and tasks with a FlyDSL baseline,
 need the `flydsl` package inside the container. The selected image may already
 ship it (`make docker-smoke` prints `flydsl=ok <version>` when present). If
 yours does not, install it once into the container's persistent pip user-base:
@@ -252,7 +253,7 @@ This is a no-op when the image already provides FlyDSL.
 
 Cursor, Claude Code, and Codex reuse their host CLI authentication. A normal run
 preflights only its selected CLI. For another config that selects one of these
-CLIs—or `task_validator`, which resolves to its configured backend—check the
+CLIs—or `qa_auditor`, whose review backend resolves to its configured backend—check the
 same CLI without starting a task by passing that run config:
 
 ```bash

@@ -2,7 +2,7 @@
 myst:
     html_meta:
         "description": "Run AgentKernelArena experiments across multiple GPUs with one Docker worker container per GPU, dynamic task claiming, isolated caches, and shared post-processing."
-        "keywords": "AgentKernelArena, multi-GPU, parallel run, Docker worker, GPU isolation, task_validator, ROCm"
+        "keywords": "AgentKernelArena, multi-GPU, parallel run, Docker worker, GPU isolation, qa_auditor, ROCm"
 ---
 
 # Run tasks in parallel across multiple GPUs in AgentKernelArena
@@ -130,20 +130,22 @@ make docker-parallel-run CONFIG="$CONFIG_PATH" GPU_IDS=0,1 RUN_ARGS="--resume-la
 Completion is detected from the per-task workspace:
 
 - Normal optimization agents: `task_result.yaml`
-- `task_validator`: `validation_report.yaml`
+- `qa_auditor`: a framework-finalized `qa_report.yaml` with its `.qa_complete` marker
 
-## Run the task validator in parallel
+## Run the QA auditor in parallel
 
-The `task_validator` agent uses the same worker queue. This is useful when
-validating many tasks before a release or shared experiment. Save this example
-as `config_parallel_validator_mi355x.yaml`:
+The `qa_auditor` agent uses the same worker queue. This is useful when
+auditing many tasks before a release or shared experiment. Start from
+`example_configs/qa_audit_all_mi355x.yaml`, or save this example as
+`config_parallel_qa_mi355x.yaml`:
 
 ```yaml
 agent:
-  template: task_validator
+  template: qa_auditor
+  backend: claude_code      # claude_code | codex | none
 
 tasks:
-  - hip2hip
+  - normalization
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -152,12 +154,12 @@ workspace_directory_prefix: workspace
 
 ```bash
 make docker-parallel-run \
-  CONFIG=config_parallel_validator_mi355x.yaml \
+  CONFIG=config_parallel_qa_mi355x.yaml \
   GPU_IDS=0,1,2,3,4,5,6,7 \
-  RUN_ARGS="--run-suffix validator_parallel8"
+  RUN_ARGS="--run-suffix qa_parallel8"
 ```
 
-The final `validation_summary.yaml` is written once after all workers complete.
+The final `qa_summary.json` is written once after all workers complete.
 
 ## Failure behavior
 

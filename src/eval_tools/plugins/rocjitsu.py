@@ -26,6 +26,7 @@ from .base import (
     ParseResult,
     artifact_path,
     blocked_check,
+    unsupported_language_check,
     command_from_context,
     parsed_to_run_result,
     ready_check,
@@ -114,7 +115,10 @@ class RocJitsuPlugin:
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
-        if profile.framework in {"aiter", "rocblas", "rccl"}:
+        unsupported = unsupported_language_check(profile.language, "rocjitsu")
+        if unsupported is not None:
+            engine = unsupported
+        elif profile.framework in {"aiter", "rocblas", "rccl"}:
             engine = blocked_check(
                 CapabilityState.UNSUPPORTED,
                 "rocjitsu_framework_runtime_unsupported",

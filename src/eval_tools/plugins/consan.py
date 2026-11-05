@@ -22,6 +22,7 @@ from ..contracts import (
 )
 from .base import (
     blocked_check,
+    unsupported_language_check,
     command_from_context,
     parsed_to_run_result,
     ready_check,
@@ -52,7 +53,10 @@ class ConSanPlugin:
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
-        if profile.language not in {
+        unsupported = unsupported_language_check(profile.language, "consan")
+        if unsupported is not None:
+            engine = unsupported
+        elif profile.language not in {
             KernelLanguage.HIP,
             KernelLanguage.TRITON,
             KernelLanguage.FLYDSL,

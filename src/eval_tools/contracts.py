@@ -33,6 +33,7 @@ class ToolName(_StringEnum):
 
 class KernelLanguage(_StringEnum):
     TRITON = "triton"
+    GLUON = "gluon"
     HIP = "hip"
     FLYDSL = "flydsl"
     UNKNOWN = "unknown"

@@ -32,8 +32,8 @@ repository.
       * :doc:`Configure agents and models <how-to/agents>`
       * :doc:`Task definition, schema, and authoring <how-to/add-task>`
       * :doc:`Optimize kernels through serving throughput <how-to/e2e-kernel-tasks>`
-      * :doc:`Validate tasks <how-to/task-validator>`
-      * :doc:`Audit and repair tasks <how-to/quality-loop>`
+      * :doc:`Audit tasks with the QA auditor <how-to/qa-auditor>`
+      * :doc:`Repair tasks automatically <how-to/quality-loop>`
 
    .. grid-item-card:: Examples
 

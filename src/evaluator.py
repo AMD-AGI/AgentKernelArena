@@ -618,7 +618,11 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
     from .candidate_verification import verify_candidate, apply_review
     apply_review(result, verify_candidate(session, result, eval_config, log))
     agent_name = eval_config.get("agent", {}).get("template", "unknown")
-    write_task_result(session.workspace, result, baseline_cases, session.spec.task_id, agent_name, log)
+    contract = session.spec.contract or {}
+    write_task_result(session.workspace, result, baseline_cases, session.spec.task_id, agent_name, log,
+                      target_language=session.spec.target_language or session.spec.candidate.language,
+                      operator=(contract.get("operator") or {}).get("name"),
+                      operator_category=(contract.get("operator") or {}).get("category"))
     task_result_scoring(str(session.workspace))
     return yaml.safe_load((session.workspace / "task_result.yaml").read_text())
 
@@ -630,7 +634,10 @@ def write_task_result(
     task_name: str,
     agent_name: str,
     logger: Optional[logging.Logger] = None,
-    create_plots: bool = True
+    create_plots: bool = True,
+    target_language: Optional[str] = None,
+    operator: Optional[str] = None,
+    operator_category: Optional[str] = None,
 ) -> None:
     """
     Write standardized task_result.yaml file and optionally create performance plots.
@@ -643,6 +650,9 @@ def write_task_result(
         agent_name: Name of the agent that generated the kernel
         logger: Optional logger
         create_plots: Whether to create performance comparison plots
+        target_language: Language the candidate was written in (the run's target)
+        operator: Schema-v3 operator name (None for tasks without a contract)
+        operator_category: Schema-v3 operator category (None without a contract)
     """
     log = logger or logging.getLogger(__name__)
     
@@ -685,6 +695,9 @@ def write_task_result(
 
     task_result = {
         'task_name': task_name,
+        'target_language': target_language,
+        'operator': operator,
+        'operator_category': operator_category,
         'pass_compilation': evaluation_results['pass_compilation'],
         'compilation_error_message': evaluation_results.get('compilation_error_message'),
         'pass_correctness': evaluation_results['pass_correctness'],

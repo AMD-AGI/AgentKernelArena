@@ -7,7 +7,10 @@ does not change a Triton, HIP, or FlyDSL implementation requirement.
 
 ## Preserve the interface
 
-Follow the declared entrypoint and parameter names. Keep keyword arguments,
+Follow the declared entrypoint and parameter names. A schema-v3 task fixes one call,
+`run(*, <inputs>, <outputs>) -> None` in `solution/kernel.py`: inputs then outputs by keyword,
+every output written in place, `None` returned. The run's `target_language` (triton, gluon, hip or
+flydsl) selects the implementation language; the task itself names none. Keep keyword arguments,
 scalar parameters, optional inputs, and return containers consistent with the
 task contract. For multiple outputs, preserve names and order; do not omit an
 auxiliary output merely because the main tensor appears correct. Some interfaces
@@ -27,8 +30,8 @@ expected numerical behavior. A baseline can fail its independent reference.
 Keep that failure visible and investigate it without changing the reference,
 comparison thresholds, input distribution, or case set.
 
-Only edit declared candidate paths and symbols. References, initializers,
-comparators, workloads, and harness files remain protected. Imports permitted in
+Only edit the declared candidate paths (for v3 tasks the `solution/` tree). References, initializers,
+comparators, workloads, the baseline, and `_aka_eval/` remain protected. Imports permitted in
 a production baseline are not automatically permitted in the final candidate.
 Follow the task's dependency policy and implement its requested GPU computation;
 do not return reference results or delegate to a prohibited baseline operator.

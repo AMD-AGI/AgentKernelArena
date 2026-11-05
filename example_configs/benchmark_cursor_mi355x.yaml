@@ -1,83 +1,23 @@
-# ============================================================================
-# Agent & Task Configuration
-# ============================================================================
-
-# Curated 46-task benchmark example for Cursor Agent on MI355X (gfx950).
+# Cursor Agent example on MI355X (gfx950) over every schema-v3 kernel task in a category.
 # For a first run, use one of the quickstart_claude_*.yaml examples instead.
 
-# Agent Template Selection
-# Choose ONE agent template that defines how the LLM interacts with the system
-# Supported templates: src/module_registration.py (AgentType).
-# Setup and configuration: docs/how-to/agents.md.
+# Agent template: src/module_registration.py (AgentType). Setup: docs/how-to/agents.md.
 agent:
   template: cursor
 
-# Task Selection
-# Specify task names to execute (use full path from tasks/ directory)
-# Examples:
-#   - hip2hip                              # All tasks under hip2hip
-#   - triton2triton                        # All tasks under triton2triton
-#   - torch2hip                            # All tasks under torch2hip
-#   - hip2hip/NormalAttention_dot  # single task under hip2hip
-#   - all                                  # Run ALL available tasks
+# The run selects the implementation language; tasks name none.
+target_language: triton   # triton | gluon | hip | flydsl
 
+# Task selectors are path prefixes under tasks/ (docs/how-to/run-evaluation.md):
+#   - normalization                                # every task in a category
+#   - normalization/rms_norm                       # one operator, all scenarios
+#   - normalization/rms_norm/bf16_h8192            # one task
+#   - {path: gemm/gemm_a8w8, target_language: hip} # per-task language override
+#   - all                                          # everything (includes e2e serving tasks,
+#                                                  # which need a budget and runtime binding)
 tasks:
-  # hip2hip: 20 tasks
-  - hip2hip/CrossEntropyLossLabelSmoothing
-  - hip2hip/Feedforward
-  - hip2hip/FusedLeakyReLU
-  - hip2hip/GateGRUSelectionLayer
-  - hip2hip/GELU
-  - hip2hip/InnerProd
-  - hip2hip/ItemQueryAttention
-  - hip2hip/KDLoss
-  - hip2hip/layer_normalization
-  - hip2hip/MaskedLanguageModel
-  - hip2hip/MLP_model
-  - hip2hip/MultiHeadAttention
-  - hip2hip/NormalAttention_dot
-  - hip2hip/NormalAttention_embedded_gaussian
-  - hip2hip/PositionWiseFeedForward
-  - hip2hip/Sigmoid
-  - hip2hip/SiLU
-  - hip2hip/TransformerFFNLayer
-  - hip2hip/assign_score_withk
-  - hip2hip/ball_query
+  - normalization
 
-  # triton2triton/vllm: 10 tasks
-  - triton2triton/vllm/triton_awq_dequantize
-  - triton2triton/vllm/triton_awq_gemm
-  - triton2triton/vllm/triton_batched_moe
-  - triton2triton/vllm/triton_flash_prefill_attention
-  - triton2triton/vllm/triton_fused_moe
-  - triton2triton/vllm/triton_layernorm_gated
-  - triton2triton/vllm/triton_matmul_persistent
-  - triton2triton/vllm/triton_rms_norm
-  - triton2triton/vllm/triton_scaled_mm
-  - triton2triton/vllm/triton_topk_log_softmax
-
-  # triton2triton/rocmbench: 10 tasks
-  - triton2triton/rocmbench/easy/test_add_kernel
-  - triton2triton/rocmbench/easy/test_batched_vecmat
-  - triton2triton/rocmbench/easy/test_block_copy
-  - triton2triton/rocmbench/easy/test_kernel_dot
-  - triton2triton/rocmbench/medium/layernorm
-  - triton2triton/rocmbench/medium/naive_softmax
-  - triton2triton/rocmbench/medium/rmsnorm_fwd
-  - triton2triton/rocmbench/medium/softmax
-  - triton2triton/rocmbench/hard/gemm
-  - triton2triton/rocmbench/hard/moe_gemm
-
-  # torch2hip: 2 tasks
-  - torch2hip/gpumode/10024_Feedforward
-  - torch2hip/gpumode/10099_Gather
-
-  # Distinct ROCmBench tasks retained from the former instruction selection: 4
-  - triton2triton/rocmbench/hard/multreduce_matmul_dot_kernel
-  - triton2triton/rocmbench/hard/rmsnorm_bwd
-  - triton2triton/rocmbench/hard/test_flashattention_fwd
-  - triton2triton/rocmbench/hard/test_gemm_fusion
-
-target_gpu_model: MI355X # MI300 or MI355X
+target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace

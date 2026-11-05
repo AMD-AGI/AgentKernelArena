@@ -28,6 +28,7 @@ from ..contracts import (
     Finding,
     FindingSeverity,
     FindingStatus,
+    KernelLanguage,
     ToolContext,
     ToolInvocation,
     ToolRunResult,
@@ -151,6 +152,32 @@ def ready_check(**evidence: Any) -> CapabilityCheck:
 
 def blocked_check(state: CapabilityState, code: str, detail: str, **evidence: Any) -> CapabilityCheck:
     return CapabilityCheck.blocked(state, code, detail, **evidence)
+
+
+def unsupported_language_check(language: Any, tool: str) -> Optional[CapabilityCheck]:
+    """Fail closed for languages no tool has been qualified on.
+
+    ``not_applicable`` is skipped by the policy, so a Gluon or unmapped (gpu,
+    tilelang, other) candidate must be ``unsupported`` for a required tool to
+    block performance instead of silently passing. Returns None otherwise.
+    """
+
+    value = text_value(language)
+    if value == KernelLanguage.GLUON.value:
+        return CapabilityCheck.blocked(
+            CapabilityState.UNSUPPORTED,
+            f"{tool}_gluon_unsupported",
+            f"{tool} has not been qualified on Gluon kernels: its probes and adapters "
+            "exercise Triton, HIP and FlyDSL artifacts only.",
+        )
+    if value not in {item.value for item in KernelLanguage} - {KernelLanguage.UNKNOWN.value}:
+        return CapabilityCheck.blocked(
+            CapabilityState.UNSUPPORTED,
+            f"{tool}_language_unsupported",
+            f"{tool} supports triton, hip and flydsl candidates; the candidate language "
+            "is not one of them (gpu, tilelang and other languages map to unknown).",
+        )
+    return None
 
 
 def command_from_context(context: ToolContext, *keys: str) -> tuple[str, ...]:

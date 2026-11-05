@@ -32,11 +32,11 @@ python -m sphinx -T -b html docs docs/_build/html
 | `how-to/run-evaluation.md` | How-to | Choose or create a run configuration, run an experiment through Docker, resume runs, and read results. |
 | `how-to/slurm-run.md` | How-to | Allocate MI355X GPUs from a GPU-less Slurm/Spur login node and run Docker on the compute node. |
 | `how-to/use-evaluation-tools.md` | How-to | Configure isolated sanitizer/analysis sidecars, interpret capability and findings, and understand the strict language/GPU support matrix. |
-| `how-to/parallel-run.md` | How-to | Run one isolated Docker worker per GPU or GPU group, use the shared `.parallel/` task queue, resume parallel runs, and parallelize `task_validator`. |
+| `how-to/parallel-run.md` | How-to | Run one isolated Docker worker per GPU or GPU group, use the shared `.parallel/` task queue, resume parallel runs, and parallelize `qa_auditor`. |
 | `how-to/e2e-kernel-tasks.md` | How-to | Define fixed-workload serving tasks, prepare pinned runtimes, budget long searches, and read paired throughput results. |
 | `how-to/agents.md` | How-to | Supported agents, model providers, and A/B testing. |
-| `how-to/add-task.md` | Task contract and authoring | Canonical task definition, selected v2 schema, command/result contracts, examples, authoring workflow, and legacy migration status. |
-| `how-to/task-validator.md` | How-to | Current task-validator execution, checks, and framework-finalized reports. |
+| `how-to/add-task.md` | Task contract and authoring | Canonical schema-v3 kernel task contract: operator interface, reference, baseline, workloads, run-selected target language, evaluation and authoring workflow. |
+| `how-to/qa-auditor.md` | How-to | Run the QA auditor, the blocking/warning check table, the counterexample rule, `qa_report.yaml` and `qa_summary.json`. |
 | `how-to/quality-loop.md` | How-to | Bounded task repairs, repair-only maintenance, optional optimization, independent review, and single-draft-PR publication. |
 | `how-to/held-out-evaluation.md` | How-to | Generate private shapes and evaluate completed runs for generalization. |
 | `how-to/visualization.md` | How-to | Build dashboard data and serve the comparison dashboard. |
