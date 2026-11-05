@@ -392,4 +392,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+    # Containers often run as a uid absent from /etc/passwd; getpass-based
+    # cache paths in PyTorch/Triton must not turn that into a task failure.
+    os.environ.setdefault("USER", "aka")
     sys.exit(main())

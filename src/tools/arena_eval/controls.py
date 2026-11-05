@@ -177,4 +177,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    import os
+
+    os.environ.setdefault("USER", "aka")
     sys.exit(main())
