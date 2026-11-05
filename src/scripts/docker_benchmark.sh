@@ -1769,7 +1769,12 @@ container_preflight() {
     local config_name="${1:-$DEFAULT_RUN_CONFIG}"
     container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
-    container_check_agents $(resolve_required_agents "$config_name")
+    # A deterministic-only audit (qa_auditor with backend none) needs no agent CLI.
+    local required
+    required="$(resolve_required_agents "$config_name")"
+    if [[ -n "${required// /}" ]]; then
+        container_check_agents $required
+    fi
     # GEAK aliases all use the same v2 SDK and pinned engine.
     case "$(read_agent_template "$config_name")" in
         geak|geak_v4)
