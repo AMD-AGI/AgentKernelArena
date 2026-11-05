@@ -159,3 +159,14 @@ def test_hip_loader_ignores_license_and_documentation_files():
 
     assert all(_is_documentation(p) for p in ("LICENSE", "LICENSE.MIT", "NOTICE", "README.md", "sub/COPYING"))
     assert not any(_is_documentation(p) for p in ("kernel.hip", "license_utils.h", "notes.hpp"))
+
+
+def test_float32_probe_serves_float64_requests_in_float32_and_restores_torch():
+    from src.tools.arena_eval.controls import _float32_torch
+
+    x = torch.ones(3, dtype=torch.bfloat16)
+    with _float32_torch():
+        assert torch.zeros(2, dtype=torch.float64).dtype == torch.float32
+        assert x.double().dtype == torch.float32 and x.to(torch.double).dtype == torch.float32
+    assert torch.float64 is not torch.float32 and x.double().dtype == torch.float64
+    assert torch.zeros(1, dtype=torch.float64).dtype == torch.float64

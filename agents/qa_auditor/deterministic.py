@@ -226,6 +226,16 @@ def run_controls(workspace: Path, output: Path, timeout_s: int, findings: list[F
     for name, dtype in (report.get("reference_dtypes") or {}).items():
         if dtype in ("bfloat16", "float16") or dtype.startswith("float8"):
             findings.append(Finding("QA-REFERENCE", f"reference returns {name} as {dtype}; use float32 or float64"))
+    failed = [item for item in report.get("calibration_probe", []) if item.get("passed") is False]
+    for name in sorted({item["output"] for item in failed}):
+        cases = [item for item in failed if item["output"] == name]
+        worst = max(cases, key=lambda item: item.get("violation_fraction", 0))
+        findings.append(Finding(
+            "QA-BOUND-CALIBRATION",
+            f"{name}: a float32 PyTorch evaluation of the reference fails the bound in "
+            f"{len(cases)} case(s), e.g. {worst['case']}: violation fraction {worst['violation_fraction']:.3g}, "
+            f"peak {worst['peak_bound_multiple']:.3g}x, bias z {worst['bias_z_score']:.3g}",
+            {"output": name, "cases": [item["case"] for item in cases]}))
     if report.get("baseline_nondeterministic_cases"):
         findings.append(Finding("QA-NONDETERMINISTIC",
                                 f"cases {report['baseline_nondeterministic_cases'][:6]}"))

@@ -12,6 +12,7 @@ draws. It never edits task files.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import json
 import sys
 from typing import Any, Callable
@@ -100,6 +101,57 @@ def _mutants(contract, baseline: Callable) -> dict[str, Callable]:
     return controls
 
 
+@contextmanager
+def _float32_torch():
+    """Run PyTorch code with float64 requests served in float32.
+
+    The reference evaluated this way is a second correct implementation of the
+    operator with float32 accumulation and library reduction orders, which is
+    what a candidate kernel looks like to the error bound.
+    """
+    saved = torch.float64, torch.double, torch.Tensor.double
+    torch.float64 = torch.double = torch.float32
+    torch.Tensor.double = lambda self, memory_format=torch.preserve_format: self.float()
+    try:
+        yield
+    finally:
+        torch.float64, torch.double, torch.Tensor.double = saved
+
+
+def _calibration_probe(contract, case, data: _CaseData) -> list[dict]:
+    """Whether a float32 evaluation of the reference passes each baseline-relative bound.
+
+    It runs only when the evaluation actually differs from the float64 reference.
+    A failure is a calibration warning, not proof of a wrong bound: a float32
+    evaluation can be less accurate than a baseline that accumulates more carefully.
+    """
+    from .compare import compare_tensor
+    from .evaluate import _bound, _dtype_name
+
+    names = [n for n in contract.checked_tensors if _bound(contract, n).get("bound", "baseline_relative") ==
+             "baseline_relative" and data.baselines[0][n].dtype.is_floating_point]
+    if not names:
+        return []
+    values.reference_function(contract)  # import the reference (and its constants) outside the patch
+    try:
+        with _float32_torch():
+            probe = values.reference_outputs(contract, data.inputs[0].logical)
+    except Exception as exc:  # noqa: BLE001 - a reference that cannot run in float32 is not probed
+        return [{"case": case.case_id, "skipped": f"{type(exc).__name__}: {str(exc)[:200]}"}]
+    results = []
+    for name in names:
+        baseline = data.baselines[0][name]
+        reference = data.references[0][name]
+        candidate = probe[name]
+        if candidate.dtype == reference.dtype and torch.equal(candidate, reference):
+            continue  # the reference never ran in reduced precision
+        candidate = candidate.to(baseline.dtype)
+        result = compare_tensor(_bound(contract, name), candidate, reference, dtype_name=_dtype_name(baseline),
+                                baseline=baseline, element_order=contract.element_order)
+        results.append({"case": case.case_id, "output": name, **result.to_mapping()})
+    return results
+
+
 def _input_findings(contract, data: _CaseData) -> list[dict]:
     findings = []
     for name, declaration in contract.inputs.items():
@@ -131,13 +183,17 @@ def run_controls() -> dict:
     reset = mutants.pop("_reset")
     effective = mutants.pop("_effective")
     rejected = {name: [] for name in mutants}
-    input_findings, determinism, reference_dtypes = [], [], {}
+    input_findings, determinism, reference_dtypes, calibration = [], [], {}, []
     for case in contract.cases:
         data = _CaseData(contract, case, device, baseline, need_baseline=True)
         if case is contract.cases[0] or case is contract.cases[-1]:
             input_findings += [{"case": case.case_id, **item} for item in _input_findings(contract, data)]
             reference_dtypes.update({name: str(tensor.dtype).removeprefix("torch.")
                                      for name, tensor in data.references[0].items()})
+        try:
+            calibration += _calibration_probe(contract, case, data)
+        except Exception as exc:  # noqa: BLE001 - the probe is informational and must not stop the controls
+            calibration.append({"case": case.case_id, "skipped": f"{type(exc).__name__}: {str(exc)[:200]}"})
         # Baseline run-to-run agreement on identical inputs (informational).
         runs = []
         for _ in range(2):
@@ -169,6 +225,7 @@ def run_controls() -> dict:
     return {"controls": {name: {"rejected": bool(cases), "first_rejections": cases[:3]}
                          for name, cases in rejected.items()},
             "survived": survived, "not_applicable": not_applicable, "input_findings": input_findings,
+            "calibration_probe": calibration,
             "baseline_nondeterministic_cases": determinism, "reference_dtypes": reference_dtypes}
 
 
