@@ -97,9 +97,9 @@ The following templates are selectable in the current `AgentType` registry. See
 | `claude_code` | Native/local or npm-installed Claude Code CLI and host login state. |
 | `codex` | Codex CLI and host login state. |
 | `deepseek_harness` | Dedicated Node.js 24 prefix with the `dsh` version pinned in [agent_config.yaml](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/agent_config.yaml), plus `DEEPSEEK_API_KEY`; see [setup](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md). |
-| `forge` | Pinned KernelForge engine and selected backend/provider; see the [Forge guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md). |
-| `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK; see the [GEAK guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md). |
-| `geak_v4` | Registry alias for `geak`; uses the same v2 launcher, configuration and Workflow runtime. |
+| `forge` | Pinned KernelForge engine and selected backend/provider, on schema-v3 tasks with target language `triton`, `gluon`, `hip` or `flydsl` (an unsupported language or baseline fails closed); see the [Forge guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md). |
+| `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK, on schema-v3 tasks with target language `triton`, `gluon`, `hip` or `flydsl` (Gluon has not yet run through GEAK on a GPU); see the [GEAK guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md). |
+| `geak_v4` | Registry alias for `geak`; uses the same launcher, configuration and Workflow runtime. |
 | `forge_operator2flydsl` | Compatibility name for `forge`, using the same launcher and configuration. |
 | `qa_auditor` | Model-review backend `claude_code` or `codex` (or `none` for deterministic checks only), with defaults in `agents/qa_auditor/agent_config.yaml` and run-level `agent` overrides. See [QA auditor](../how-to/qa-auditor.md). |
 
@@ -109,9 +109,10 @@ has completed qualification.
 
 DeepSeek Harness qualification is recorded in
 [PR #111](https://github.com/AMD-AGI/AgentKernelArena/pull/111), including the
-schema-v2 SIKL FlyDSL GEMM and HIP quantization image tasks on MI355X through
-Slurm and Docker. Results apply to the recorded task, candidate, and runtime;
-earlier HIP GELU and Triton RMSNorm observations predate the schema-v2 rebase.
+SIKL FlyDSL GEMM and HIP quantization image tasks (historical task identities, since
+replaced by schema-v3 packages) on MI355X through Slurm and Docker. Results apply
+to the recorded task, candidate, and runtime; earlier HIP GELU and Triton RMSNorm
+observations predate that rebase.
 Its MI300 example, RDNA4 execution, and multi-GPU scheduling have not yet been
 validated on hardware.
 

@@ -1,7 +1,7 @@
 ---
 myst:
     html_meta:
-        "description": "Audit, repair, harden, and publish AgentKernelArena tasks with the Codex-based quality_loop workflow."
+        "description": "Audit, repair, harden, and publish schema-v3 AgentKernelArena tasks with the Codex-based quality_loop workflow and the QA auditor."
         "keywords": "AgentKernelArena, quality_loop, task audit, Codex, draft pull request, GPU kernel"
 ---
 
@@ -11,29 +11,52 @@ myst:
 It differs from a normal `agent.template`: normal agents optimize one copied task,
 while `quality_loop` owns a complete multi-task campaign and a single Git branch.
 
+It works only on schema-v3 kernel task packages (`task.yaml`, `workloads.json`,
+`reference.py`, a vendored `baseline/`; see
+[Task definition, schema, and authoring](add-task.md)). Discovery finds
+`tasks/**/task.yaml` and ignores schema-v2 packages such as the e2e serving
+tasks. It audits through the [QA auditor](qa-auditor.md); the audit rubric,
+check ids and `qa_report.yaml` format are defined there.
+
 For every selected, platform-compatible task it:
 
-1. Runs the existing task validator in a fresh workspace.
-2. Records WARN results; optionally repairs explicitly selected warning checks.
-3. Attempts bounded repairs for FAIL results (one by default, at most three),
-   retaining every finding and proposal. Each attempt needs changed source, fresh
-   validation and preservation of the original task, cases and timing policy.
-   Acceptance also requires an independent read-only repair review closing all
-   retained findings. Unresolved failures remain in the local report.
+1. Audits the package in a fresh workspace with the QA auditor and accepts only
+   a framework-finalized `qa_report.yaml` (with its `.qa_complete` marker) for
+   the exact package digest and current rubric.
+2. Records warnings; optionally repairs explicitly selected warning check ids
+   (`repair_warnings`, for example `QA-README`).
+3. Attempts bounded repairs for blocking findings (one attempt by default, at
+   most three), retaining every finding and proposal. Each attempt needs changed
+   source, a fresh QA PASS and preservation of the original task, cases and
+   timing policy. Acceptance also requires an independent read-only repair
+   review closing all retained findings. Unresolved failures remain in the local
+   report.
 4. In the default `optimize` mode, runs exactly one Codex optimization iteration
-   and the centralized evaluator. `repair_only` stops after validation/repair and
-   never optimizes, promotes a baseline or reports a repair as a speedup.
+   in `solution/` and the centralized evaluator. `repair_only` stops after
+   audit/repair and never optimizes, promotes a baseline or reports a repair as
+   a speedup.
 5. Starts a separate, read-only Codex session to review correctness evidence and
    case coverage.
-6. Promotes a first-iteration candidate only for an implemented initial-candidate
-   baseline, when three measurements have median speedup at least 5x and all
-   correctness/method/case-count gates pass. Provided baselines remain independent.
+6. Promotes a first-iteration candidate only when it is a same-language copy of
+   the baseline, three measurements have median speedup at least 5x and all
+   correctness, method and case-count gates pass. A cross-language candidate is
+   never promoted.
 7. Proposes targeted cases when enabled and requested by the accepting reviewer.
-   Adopt them only when their file changes are eligible, the original baseline
-   and actual optimized candidate pass them, and fresh task validation passes.
-8. Requires fresh framework-finalized validator PASS evidence for material task
-   changes before applying them, then commits accepted changes to one isolated
-   branch and creates at most one draft PR. The workflow never creates GitHub issues.
+   Only `workloads.json` and `inputs.py` may change, existing cases stay
+   identical and new cases are correctness-only. The original baseline and the
+   actual optimized candidate must pass them, and the package needs a fresh QA
+   PASS.
+8. Requires fresh QA PASS evidence for material task changes before applying
+   them, then commits accepted changes to one isolated branch and creates at
+   most one draft PR. The workflow never creates GitHub issues.
+
+## Optimization language
+
+The run configuration has a top-level `target_language` (`triton`, `gluon`,
+`hip` or `flydsl`); `null` optimizes each task in its audit language (the
+baseline's language when it is a target language). It is not part of the
+`quality_loop:` block. Each audit materializes the package for its audit
+language, so the candidate starts as a copy of the baseline.
 
 ## Prerequisites
 
@@ -80,7 +103,7 @@ For a bounded smoke campaign:
 ```bash
 make docker-quality-loop \
   CONFIG=example_configs/quality_loop_mi300.yaml \
-  QUALITY_LOOP_ARGS="--tasks hip2hip/GELU triton2triton/vllm/triton_rms_norm"
+  QUALITY_LOOP_ARGS="--tasks normalization/rms_norm"
 ```
 
 Resume with the run ID printed in `quality_loop_runs/`:
@@ -91,10 +114,12 @@ make docker-quality-loop \
   QUALITY_LOOP_ARGS="--resume <run-id>"
 ```
 
-The crash-safe `state.yaml` skips terminal tasks only while their validation
-evidence and task fingerprints still match. `audit_report.yaml` records every
-warning, unresolved failure, speedup confirmation, accepted file change, and commit.
-If a run has no accepted changes, it does not open an empty pull request.
+The crash-safe `state.yaml` skips terminal tasks only while their files and
+completed QA evidence (report digest, package digest and rubric version) still
+match. `audit_report.yaml` records every warning, unresolved failure, speedup
+confirmation, accepted file change, and commit. If a run has no accepted
+changes, it does not open an empty pull request. `--no-publish` still requires
+the GitHub preflight but suppresses push and PR creation.
 
 For repair-only maintenance, set the following in a run config:
 
@@ -102,13 +127,25 @@ For repair-only maintenance, set the following in a run config:
 quality_loop:
   mode: repair_only
   max_repair_attempts: 2
-  repair_warnings: [correctness_implementation_review, benchmark_integrity]
+  repair_warnings: [QA-README, QA-BOUND-OVERRIDE]
 ```
 
-Existing scored cases cannot be removed, changed or expanded during automatic
-repair. Additional correctness-only controls are permitted. The independent
-repair review also checks semantic rules, input generation and numerical gates
-that cannot be proved by case and metadata comparisons alone.
+Repairs keep scoring unchanged (`agents/quality_loop/repair_policy.py`). A
+repair may add correctness-only cases, edit `inputs.py`, `reference.py`,
+`README.md` and the `task.yaml` description, add a `baseline/LICENSE` and
+tighten an error bound. It may not change the `task.yaml` interface, the
+reference or baseline declarations, operator, platform or timeout, the vendored
+baseline sources, any original workload case, or add a performance case.
+
+## Configure roles
+
+Optimizer/repair/case-enhancement (`backend`), reviewer and auditor have
+independently configurable model, effort and timeout budgets in the
+`quality_loop:` block. The `auditor` block configures the QA auditor's semantic
+review (`codex`, `claude_code`, or `none` for its deterministic checks only).
+Defaults are in
+[`agent_config.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/agent_config.yaml); dated model
+evidence is in [CLI defaults](../reference/agent-model-defaults.md).
 
 ## Safety boundaries
 
@@ -118,35 +155,28 @@ that cannot be proved by case and metadata comparisons alone.
   into an ephemeral writable home.
 - The host refuses to commit or publish when the worktree contains a path that is
   not in the accepted per-task change manifest.
-- Optimizers cannot edit task harness files; the existing harness digest guard is
-  checked before evaluation.
+- Optimizers can edit only `solution/`; the harness guard is checked before
+  evaluation. The framework-written `config.yaml`, `_aka_eval/` and `solution/`
+  are never proposed as task changes.
 - Reviewer output is schema checked, and modifications beyond its one YAML result
   file invalidate the review.
-- Materialized image source trees and generated benchmark helpers are never
-  copied into a task commit.
-- Runtime reports, ROCmBench `*_py.pt` outputs, compiled objects/libraries, and
-  ELF executables are filtered from task changes. The host independently rejects
-  generated outputs before a commit, including paths accepted by an older run's
-  manifest. This leaves local experiment artifacts intact; ordinary tensor/input
-  fixtures are not rejected merely for being binary files.
-- The top-level `tasks` selectors define the complete audit scope. Baseline
-  promotion is attempted without a task-type allowlist and fails closed when the
-  selected task has no promotable committed source baseline.
-- Case proposals use the filename allowlist in
-  [`is_case_path`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/filesystem.py), plus the declared
-  `evaluation.workloads` file. They cannot edit candidate scopes, materialized
-  source destinations or generated benchmark helpers. A file outside this
-  allowlist rejects the whole proposal before the correctness gates. Input
-  generators under other directory names are not automatically eligible.
-- If the declared original baseline or actual optimized candidate fails the
-  proposed cases, the change is rejected. A generation task's original empty
-  candidate is not used as an executable baseline.
+- QA and evaluation reports, compiled objects/libraries and ELF executables are
+  filtered from task changes, and the host independently rejects generated
+  outputs before a commit. Ordinary tensor/input fixtures are not rejected merely
+  for being binary files.
+- The top-level `tasks` selectors define the complete audit scope.
+- If the original baseline or the actual optimized candidate fails proposed
+  cases, the change is rejected.
 
-See the [agent guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/README.md) and
-[configuration](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/agent_config.yaml) for the complete
-contract, role receipts and external reviewer evidence index.
+See the [agent guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/quality_loop/README.md) for the complete
+contract, role receipts and the external reviewer evidence index.
 
-## Recorded GPU smoke (2026-09-15)
+## Recorded GPU smoke (2026-09-15, historical)
+
+This record predates schema v3 and the QA auditor: it used the former task
+validator and the former task identities `hip2hip/GELU` and
+`torch2hip/gpumode/14539_GELU`, which no longer exist as selectable tasks. It is
+kept unchanged as dated evidence, not as current behavior.
 
 Job `141055`, run `20260915_200935`, completed the ordinary Docker workflow with
 `--no-publish` on one MI355X in 18 minutes 24 seconds (scheduler exit `0:0`). The

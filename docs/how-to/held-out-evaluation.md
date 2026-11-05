@@ -1,46 +1,34 @@
 ---
 myst:
     html_meta:
-        "description": "Generate private held-out task shapes and evaluate completed AgentKernelArena runs for kernel generalization."
-        "keywords": "AgentKernelArena, held-out evaluation, generalization, GPU kernel, private tests, unseen shapes"
+        "description": "Re-run a finished AgentKernelArena schema-v3 candidate on new seeds and optional extra cases to measure kernel generalization."
+        "keywords": "AgentKernelArena, held-out evaluation, generalization, GPU kernel, private tests, unseen inputs"
 ---
 
-# Evaluate kernels on held-out shapes
+# Evaluate kernels on held-out inputs
 
-The optional `src.held_out` module evaluates whether an optimized kernel
-generalizes to input shapes that were not visible during the original run.
+The optional `src.held_out` module evaluates whether a finished, accepted
+candidate generalizes to inputs it did not see. During an optimization run the
+evaluator derives two seeds per workload case from the task and case IDs, and an
+agent can run the evaluator as often as it likes, so those inputs are
+observable. A held-out evaluation re-runs the same candidate on the same task
+with:
+
+- **new seeds**: every workload case gets two new seeds derived from a salt that
+  the framework draws for this evaluation (`secrets.token_hex`); `--salt`
+  reproduces one;
+- optional **extra in-domain cases** from your own files (below).
+
 This is a manually invoked post-run workflow; normal `docker-run` and
-`docker-parallel-run` commands do not execute it automatically.
-
-Generated shape configurations are written to `held_out_tests/`, which is
-excluded from Git so private evaluation inputs are not committed.
-
-## Supported task scopes
-
-All retained tasks use v2. Held-out generation reads the task's declared runner,
-workloads, instructions, and candidate boundaries, rather than selecting a
-runtime by task-family name. Generated injections must preserve the operator
-domain, reference, tolerances, implementation, and timing policy. Update the
-manifest and any separate input generator together; merely renaming an existing
-performance case does not make its inputs held out.
-
-The following family-specific injection helpers remain for legacy external
-configurations and historical workspaces:
-
-| Task type | Supported scope | Injection target |
-| --- | --- | --- |
-| `triton2triton` | `vllm` | `TEST_SHAPES` in `scripts/task_runner.py` |
-| `triton2triton` | `rocmbench` | `@pytest.mark.parametrize` declarations |
-| `hip2hip` | Direct task directories with module and functional `get_inputs()` references | `get_inputs()` in those references |
-| `torch2hip` | `gpumode` | `get_inputs()` in the module and functional references |
-
-The `hip2hip` legacy helper applies to tasks with those references. Native and
-inference tasks need task-specific held-out injection support.
+`docker-parallel-run` commands do not execute it. It applies to schema-v3 kernel
+tasks (see [Task definition, schema, and authoring](add-task.md)); workspaces of
+other task kinds are not discovered. It runs no evaluation tools and makes no
+sanitizer claims.
 
 ## Enter the runtime
 
-Generation and evaluation require the same agent, Python, ROCm, and GPU access
-as a normal experiment. From the repository root, enter the Docker runtime:
+Run it inside the scoring runtime of the original run, because the current
+scoring runtime must be identical to the one captured then:
 
 ```bash
 make docker-shell
@@ -48,57 +36,86 @@ make docker-shell
 
 Run the remaining commands inside that shell from the mounted repository root.
 
-## Generate held-out shapes
-
-Generate configurations with one authenticated first-class agent CLI:
-
-```bash
-python3 -m src.held_out.generate_heldout \
-  --tasks-dir tasks/ \
-  --output-dir held_out_tests/ \
-  --backend claude_code \
-  --timeout 600
-```
-
-Use `--dry-run` to list supported tasks without launching an agent. Use
-`--tasks hip2hip/SiLU` to select a specific task. Supported backends are
-`claude_code`, `codex`, and `cursor`.
-
-## Evaluate a completed run
-
-Pass a completed run directory and the generated held-out configurations:
+## Run the evaluation
 
 ```bash
 python3 -m src.held_out.run_heldout_eval \
-  --run-dir workspace_MI300_claude_code/run_<timestamp> \
-  --heldout-dir held_out_tests/ \
-  --tasks-dir tasks/
+  --run-dir workspace_MI355X_codex/run_<timestamp> \
+  [--cases-dir held_out_cases/] [--salt HEX] \
+  [--tasks TASK_ID ...] [--output-suffix _heldout]
 ```
 
-The evaluator creates a sibling directory ending in `_heldout`. For v2, it
-requires an accepted original candidate, intact session/completion/source
-evidence, and the captured GPU/runtime identity. It copies the run's frozen
-baseline under `orig/` and the submitted candidate under `opt/`, then injects
-the same held-out inputs into both. It uses the public task actions and a new
-manifest, preserving the original run; it does not reconstruct the baseline
-from today's task checkout or overwrite an existing held-out task workspace.
-Historical non-v2 runs retain the legacy restoration path.
+| Option | Meaning |
+| --- | --- |
+| `--run-dir` | Completed run directory (required). |
+| `--cases-dir` | Optional directory of extra cases: `<dir>/<task id>/held_out_cases.json`. |
+| `--salt` | 8 to 64 lowercase hexadecimal digits, to reproduce an evaluation. Default: a fresh random salt. |
+| `--tasks` | Task IDs to evaluate. Default: every framework-completed schema-v3 workspace in the run. |
+| `--output-suffix` | Suffix of the output directory beside `--run-dir` (default `_heldout`). An existing output directory is never reused. |
 
-Results distinguish four outcomes:
+Record the salt (it is written to the summary and the log) so the evaluation can
+be reproduced. The process exits nonzero if no task was evaluated or any task
+ended in `evaluation_error`.
 
-| Original | Optimized | Status |
+## Extra cases
+
+`held_out_cases.json` is `{"cases": [...]}` in the `workloads.json` case format:
+each case has `id`, `axes` and `checks` (`["correctness"]` or
+`["correctness", "performance"]`), with optional `scalars`, `source` and
+`description`. Each case must name exactly the task's `var` axes, within their
+declared `[min, max]` and `multiple_of`; use a new `id` matching
+`[A-Za-z0-9_.-]+`; and differ in axes and scalars from every existing case.
+Seeds are never supplied by the file. Keep these files private; they are not
+part of the repository.
+
+## What it does for each task
+
+1. Requires the original run to be framework-complete (its completion record
+   matches its report and candidate sources), its candidate accepted, and the
+   scoring runtime identical to the captured one. Nothing in the original run is
+   written.
+2. Builds `<output>/<workspace>/workspace` from the session's frozen initial
+   workspace (evaluator, contract, baseline, reference and task files exactly as
+   materialized) with the evaluated candidate files (`solution/`) copied in; their
+   digests must equal the report's `evaluated_candidate_sources`.
+3. Changes only `_aka_eval/contract.json`: held-out seeds for every case plus any
+   extra cases.
+4. Runs the trusted evaluator: `validate-task` (its case list must equal the
+   held-out contract's), then baseline and candidate `compile` and `correctness`,
+   then `performance` in alternating fresh processes (baseline, candidate,
+   baseline, candidate), averaged per case as in the final evaluation. After
+   every action the harness guard and the candidate digests are rechecked. Action
+   evidence is kept under `actions/`.
+
+## Outcomes
+
+`generalization_status` combines baseline and candidate correctness on the
+held-out inputs:
+
+| Baseline | Candidate | Status |
 | --- | --- | --- |
 | Pass | Pass | `both_pass` |
-| Pass | Fail | `opt_regression` |
+| Pass | Fail | `candidate_regression` |
 | Fail | Fail | `both_fail` |
-| Fail | Pass | `opt_improvement` |
+| Fail | Pass | `candidate_improvement` |
 
-Missing provenance, invalid injections, and execution/protocol errors are
-reported as `evaluation_error`, separately from these correctness outcomes.
+Missing evidence, a violated protocol or an execution error is reported as
+`evaluation_error`, separately from these correctness outcomes. Only `both_pass`
+with consistent timing methods and workloads receives a held-out speedup
+(geometric mean over cases) and score, by the normal scoring rules.
 
-Each task writes `heldout_task_result.yaml`; the run-level output is
-`heldout_summary.yaml`. The aggregate includes conditional correctness,
-`P(optimized correct | original correct)`, and held-out speedup retention.
+## Outputs
 
-For injection formats and implementation details, see the
-[module README](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/held_out/README.md).
+Results go to `<run-dir><suffix>/`:
+
+- `<workspace>/heldout_task_result.yaml` per task, with the status, salt, extra
+  case IDs, compile/correctness flags, timings, held-out and original speedup and
+  score, and any error;
+- `heldout_summary.yaml`: quadrant counts, conditional correctness
+  (`P(candidate correct | baseline correct)` on the held-out inputs), held-out
+  speedup and original-run speedup statistics over `both_pass` tasks, and a
+  per-task table;
+- `heldout_eval.log`.
+
+Keep these outputs with the run's artifacts; do not commit them. Run the unit
+tests with `make check-held-out`.

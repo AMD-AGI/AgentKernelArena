@@ -220,17 +220,23 @@ ignored, so use only the documented keys.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `evaluation_profile.language` | string | Canonical values are `triton`, `hip`, `flydsl`, and `unknown`. |
+| `evaluation_profile.language` | string | Canonical values are `triton`, `gluon`, `hip`, `flydsl`, and `unknown`. For a task with an execution config it must equal `candidate.language`. `gluon` and `unknown` report every tool as `unsupported`. |
 | `evaluation_profile.artifact_kind` | string | `source_aot`, `python_jit`, `hsaco_precompiled`, or `unknown`. |
 | `evaluation_profile.framework` | string | Framework identity such as `standalone`, `aiter`, `rocblas`, or `rccl`. |
 | `evaluation_profile.instrumentation_control` | string | `compiler_controlled`, `recompile`, `none`, or `unknown`. This describes whether the selected candidate can be rebuilt/instrumented. |
 | `evaluation_profile.adapter` | string or `null` | Explicit adapter identity, for example `triton_aot`, `flydsl_aot`, or `hip_fpsan_manual`. It is a claim that must still be supported by adapter options/evidence. |
 | `evaluation_profile.source_available` | boolean | Whether source for the selected candidate is available to the evaluator. |
-| `evaluation_profile.submission_paths` | string or list of strings | Additional workspace-relative evidence files. V2 always includes candidate declarations and protected task inputs; this field extends that set and cannot hide candidate edits. Absolute paths and `..` are rejected. |
+| `evaluation_profile.submission_paths` | string or list of strings | Additional workspace-relative evidence files. The execution config always includes candidate declarations and protected task inputs; this field extends that set and cannot hide candidate edits. Absolute paths and `..` are rejected. |
 | `evaluation_profile.fpsan_ported` | boolean | Explicit evidence that the HIP reference and candidate were manually ported to HIP-FpSan value semantics. |
 | `evaluation_profile.rebuilt_from_source` | boolean | Explicit evidence used when a framework/library path is rebuilt from controlled source. It does not replace artifact attestation. |
 
 ### Task-level tool adapters
+
+Schema-v3 kernel tasks cannot declare `evaluation_profile` or `evaluation_tools`: the
+`task.yaml` contract has no such fields, the candidate is the `solution/` tree and
+the language is the run's `target_language` (not verified against a v3 task). The
+rest of this section applies to task kinds whose execution config carries these
+sections.
 
 A task can register adapters for known tools, including tools the current run
 does not enable. Disabled adapters are validated and remain dormant. The only

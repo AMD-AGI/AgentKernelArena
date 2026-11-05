@@ -99,12 +99,12 @@ pre-existing user files, workspaces, logs, and experiment results.
 - Add documentation or comments when intent is non-obvious.
 - Performance timing helpers are generated into run workspaces from
   `src/tools/perf/`.
-  Do not hand-edit `tasks/*/rocmbench/**/performance_utils_pytest.py` stubs or the
-  `AKA-GENERATED` block in vLLM `task_runner.py` files. Edit `src/tools/perf/`
-  instead, and run `make check-perf-helpers` before pushing.
-  Use `make materialize-perf-workspace WORKSPACE=...` or
-  `make materialize-perf-task TASK=tasks/...` when you need a local copy with
-  the real helper code injected.
+  Do not commit generated copies (`_aka_benchmark.py`, `_aka_serving*.py` or
+  `_aka_eval/`) under `tasks/`. Edit `src/tools/perf/` instead, and run
+  `make check-perf-helpers` before pushing. The check
+  (`src/tools/sync_perf_helpers.py`) fails if a generated helper is committed or
+  if a schema-v2 (serving) task is neither a serving recipe nor a serving client;
+  it audits task sources only and is not GPU qualification.
 
 ## Testing and Verification
 

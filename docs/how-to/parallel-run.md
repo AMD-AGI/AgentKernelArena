@@ -171,5 +171,5 @@ run, the final command returns nonzero if any descriptor is left in `failed/`,
 Task-level failures are different from runner failures. For example, the shared
 evaluator can finalize `task_result.yaml` with `pass_correctness: false`; that
 task is still considered completed by the scheduler and appears in the aggregate
-report. For v2, completion requires matching framework session, result, and
+report. Completion requires matching framework session, result, and
 source evidence; an agent-written report alone does not satisfy this check.

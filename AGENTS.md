@@ -17,7 +17,7 @@ instructions; never embed paths from a local checkout.
 - `agents/`: isolated agent integrations and their own configuration.
 - `tasks/`: self-contained kernel tasks and task-local runners.
 - `example_configs/`: run-level agent, task, and GPU selections.
-- `src/tools/perf/`: canonical benchmark helpers materialized into workspaces.
+- `src/tools/perf/`: canonical benchmark helpers the framework writes into workspaces.
 - `src/eval_tools/`: evaluator-side optional analysis-tool control plane.
 - `tests/`: framework, integration, and regression tests.
 
@@ -25,8 +25,8 @@ When behavior and prose disagree, inspect the implementation. In particular:
 
 - Agent identifiers and loading: `src/module_registration.py`
 - Task definition, schema, and authoring contract: `docs/how-to/add-task.md`
-- Task-specific declarations: the task's `config.yaml`
-- Evaluation and scoring: `src/evaluator.py`, `src/performance.py`, `src/score.py`
+- Task-specific declarations: the task's `task.yaml` (schema v3; `config.yaml` only for the schema-v2 e2e serving tasks)
+- Evaluation and scoring: `src/evaluator.py`, `src/score.py`
 - Harness protection: `src/harness_guard.py`
 - Benchmark helpers: `src/tools/perf/`
 - Evaluation-tool policy: `docs/how-to/use-evaluation-tools.md`
@@ -73,7 +73,7 @@ into new guidance; link to their source of truth instead.
 
 Keep agents and tasks independent.
 
-- A task defines a backend-neutral contract through its files and `config.yaml`.
+- A task defines a backend-neutral contract through its files and `task.yaml`.
   Task code must not import from `agents/` or depend on a particular agent,
   model, prompt format, provider, or authentication mechanism.
 - Agent implementations must not import task modules, mutate committed task
@@ -166,9 +166,10 @@ QA auditor `PASS`.
 
 ## Generated performance helpers
 
-`src/tools/perf/` is the single source of truth for shared benchmark code. Do not
-hand-edit committed ROCmBench helper stubs, generated `_aka_benchmark.py` or
-`hip_graph_benchmark.hpp` copies, or `AKA-GENERATED` regions in task runners.
+`src/tools/perf/` is the single source of truth for shared benchmark code. The
+framework writes it into run workspaces (`_aka_eval/_aka_benchmark.py` for kernel
+tasks); never commit generated `_aka_benchmark.py`, `_aka_serving*.py` or
+`_aka_eval/` copies under `tasks/`, and do not hand-edit generated copies.
 
 After changing canonical helpers, run:
 
@@ -176,9 +177,10 @@ After changing canonical helpers, run:
 make check-perf-helpers
 ```
 
-Run `make sync-perf-helpers` only when stub or marker structure changes. For
-inspection, use `make materialize-perf-task TASK=tasks/<task-path>` or
-`make materialize-perf-workspace WORKSPACE=<workspace>`.
+It runs `src/tools/sync_perf_helpers.py`, which fails when a generated helper is
+committed under `tasks/` or when a schema-v2 task is neither a serving recipe nor
+a serving client importing `_aka_serving`. Schema-v3 tasks carry no benchmark
+code. It audits task sources only; it is not GPU qualification.
 
 ## Agent integrations and evaluation tools
 

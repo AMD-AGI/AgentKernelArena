@@ -26,13 +26,13 @@ The following agents are available.
 | `claude_code` | Anthropic Claude Code CLI |
 | `codex` | Codex CLI |
 | `deepseek_harness` | DeepSeek Harness headless CLI ([setup](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md)) |
-| `forge` | KernelForge through the shared v2 task interface |
-| `geak` | GEAK Workflow engine through the shared v2 task interface |
+| `forge` | KernelForge on schema-v3 kernel tasks; target languages `triton`, `gluon`, `hip` and `flydsl` (FlyDSL rewrites need a Triton or HIP baseline) |
+| `geak` | GEAK Workflow engine on schema-v3 kernel tasks; target languages `triton`, `gluon`, `hip` and `flydsl` |
 | `qa_auditor` | Task QA auditor; does not optimize kernels (see [Audit tasks with the QA auditor](qa-auditor.md)) |
 
 The [registry](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/module_registration.py) maps the legacy names
 `geak_v4` to `geak` and `forge_operator2flydsl` to `forge`, with the same
-configuration and post-processing. There is no separate v1 task integration. See the [GEAK](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md) and
+configuration and post-processing. Forge and GEAK work on [schema-v3 tasks](add-task.md); the run's top-level `target_language` selects the candidate language, and an unsupported language, or a package that is not a v3 kernel task (such as the e2e serving tasks), fails before any engine work. See the [GEAK](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md) and
 [Forge](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md) guides for runtime requirements. Registry
 availability alone does not establish GPU or model qualification.
 
@@ -80,7 +80,7 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
 Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
-the original three CLIs (Cursor, Claude Code, and Codex) and login states. GEAK and its v2 aliases resolve to
+the original three CLIs (Cursor, Claude Code, and Codex) and login states. GEAK and its aliases resolve to
 Claude Code for this check; normal runs also check the pinned GEAK engine and
 SDK. Other specialized integrations have their own checks; their README files
 document dependencies and provider configuration.
@@ -95,8 +95,7 @@ endpoint, Docker, and session-isolation details.
 
 DeepSeek's run-level overrides and per-invocation budget follow
 [its integration guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md#install-and-configure).
-It uses `reasoning_effort` rather than the other CLIs' `effort` field. Schema-v2
-agent completion and independent candidate acceptance are reported separately.
+It uses `reasoning_effort` rather than the other CLIs' `effort` field. Agent completion and independent candidate acceptance are reported separately.
 
 ## Iteration and time budgets
 

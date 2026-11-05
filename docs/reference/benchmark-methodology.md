@@ -14,9 +14,6 @@ PyTorch.  The canonical implementation is
 same `torch.cuda` namespace, so `benchmark_method: cuda_graph` means CUDA Graph
 on a CUDA build and HIP Graph on a ROCm build.
 
-Native HIP benchmark drivers use the equivalent implementation in
-`src/tools/perf/native_hip_graph_benchmark.hpp`.
-
 ## Schema-v3 kernel tasks
 
 Kernel tasks (see the [task contract](../how-to/add-task.md#evaluation)) use one
@@ -35,9 +32,8 @@ cold-weight policies, which apply to the end-to-end and legacy helper paths.
 
 ## Canonical Python API
 
-For new or materially revised kernel benchmarks, use the executable
-[cold-cache graph reference](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/tools/perf/examples/cold_cache_graph/README.md).
-Its `ReadOnlyCacheFlush` uses a reusable initialized 1 GiB read sweep, after input
+The canonical implementation is `src/tools/perf/aka_benchmark.py`, which the
+schema-v3 evaluator uses for kernel tasks. Its `ReadOnlyCacheFlush` uses a reusable initialized 1 GiB read sweep, after input
 preparation and before the start Event of every single-operator graph replay.
 The resulting `cuda_graph_cold_cache` metric is an Event graph span with eviction
 excluded. It is distinct from the legacy warm `cuda_graph` method below, profiler
@@ -215,28 +211,19 @@ A task that uses this method keeps the integrity checks of its default timing. I
 ## Independent task workspaces
 
 Task sources do not import AgentKernelArena's `src` package and do not carry
-copies of the full canonical helper. During `setup_workspace()`:
+copies of the canonical helper. For a schema-v3 kernel task,
+`src/task_contract.py::render_workspace` writes the evaluator and the timing
+helper into the run workspace as `_aka_eval/_aka_benchmark.py`, beside the
+resolved contract; `solution/` is the only editable tree. The end-to-end serving
+tasks receive their serving client helpers from
+`src/perf_helper_materialization.py`. The materialized workspace is
+self-contained: the Python timing helper depends only on the standard library and
+PyTorch.
 
-- `_aka_benchmark.py` is copied beside each importing performance entrypoint,
-  including root `test_kernel_harness.py`, `scripts/task_runner.py`, and
-  `eval_tools/cal_kernel_perf.py`;
-- ROCmBench's `performance_utils_pytest.py` stub is replaced with a thin adapter;
-- vLLM's marked inline block is replaced with a thin adapter and receives a
-  sibling `_aka_benchmark.py`;
-- a native driver that includes `hip_graph_benchmark.hpp` receives the canonical
-  header as `scripts/native/hip_graph_benchmark.hpp`.
-
-The materialized workspace is self-contained. The Python timing helper depends
-only on the standard library and PyTorch; the native helper depends only on the
-HIP runtime already required by its task.
-
-Generated helpers, marked adapters, native benchmark drivers, and protected
-evaluation inputs are covered by the harness integrity guard. V2 tasks declare
-file, symbol, or tree boundaries in `candidate.editable`. A colocated
-kernel/benchmark file must use symbol scopes for implementation functions and
-explicitly permitted helpers; benchmark/test functions, reference logic,
-constants, and executable harness statements remain protected. See the task
-guide for the exact declaration rules.
+Generated helpers and protected evaluation inputs are covered by the harness
+integrity guard. A kernel task's candidate is the `solution/` tree; every other
+file, including `_aka_eval/`, the contract, baseline and reference, is protected.
+See the task guide for the exact rules.
 
 Normal optimization runs and `quality_loop` also snapshot the original task
 package's non-editable inputs before launching the optimizer. This includes
@@ -244,8 +231,7 @@ case data such as `session_cases.json`, reference implementations, and helper
 files outside test directories. The snapshot is kept in framework memory and
 checked before evaluation and again before writing the final result. Editing,
 deleting, or renaming an original input rejects the run for every agent.
-`candidate.editable` identifies the implementation boundary; symbol-level
-protection applies to colocated kernel/benchmark files. Runtime outputs under `build/`, `logs/`, and
+The candidate boundary (`solution/` for kernel tasks) identifies the implementation. Runtime outputs under `build/`, `logs/`, and
 `perf/`, environment caches, and generated result reports are not task inputs.
 New preparation files are allowed unless they match protected harness patterns,
 in which case the existing scratch-file removal policy applies. Cloned or
@@ -332,11 +318,14 @@ Run:
 make check-perf-helpers
 ```
 
-The check verifies committed ROCmBench stubs and marked adapters, then audits
-every task config. Each configured performance path must be recognized as a
-canonical Python importer, vLLM adapter, ROCmBench adapter, or native graph
-driver. An unrecognized benchmark entrypoint fails the check instead of quietly
-using an undocumented timer.
+`src/tools/sync_perf_helpers.py` audits committed task sources; it is not a GPU
+qualification. Schema-v3 kernel tasks (`task.yaml`) carry no benchmark code and
+are only counted. Every remaining schema-v2 task (`config.yaml`) must be a
+serving recipe (the exact bootstrap stub plus a hash-pinned workload) or a
+serving client whose `scripts/evaluate.py` imports `_aka_serving`; anything else
+fails the check instead of quietly using an undocumented timer. The check also
+fails when a generated helper copy (`_aka_benchmark.py`, `_aka_serving*.py`,
+`_aka_eval/`) is committed under `tasks/`.
 
 Pull requests also run the CPU/mock unit suite and Python compilation audit in
 CI.
@@ -369,5 +358,5 @@ reports, but a subsequent audit found external process/memory occupancy and
 other tasks failed with allocation/launch resource errors. Preserve those
 reports as historical functional evidence; all performance from that node is
 unqualified. Job 139392 explicitly excluded node217 and repeated the smoke,
-HGEMM boundary checks and the full validator run on the available-memory allocation
+HGEMM boundary checks and the full task validator run (the predecessor of the QA audit) on the available-memory allocation
 described above. Neither sequential run establishes an optimization gain.
