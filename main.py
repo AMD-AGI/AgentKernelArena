@@ -14,28 +14,12 @@ from src.preprocessing import (
     get_task_workspace_path,
     is_task_complete,
     setup_rocm_env,
-    setup_workspace,
 )
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
-from src.evaluator import (
-    evaluate_compilation,
-    evaluate_kernel,
-    measure_baseline,
-    write_task_result,
-)
 from src.runtime_env import apply_subprocess_python_path
 from src.task_spec import required_gpu_arches
-from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
-from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 from src.tools.agent_cost import AgentCostCollector
 from src.tools.agent_time_budget import validate_run_budget_mode
-from src.eval_tools.config import EvalToolsConfig
-from src.eval_tools.contracts import SourceEvidence
-from src.eval_tools.evidence import (
-    SubmissionEvidence,
-    capture_submission_evidence,
-    load_submission_evidence,
-)
 
 
 QUEUE_DIR_NAME = ".parallel"
@@ -465,26 +449,6 @@ def _filter_completed_tasks(
     if skipped_tasks:
         logger.info(f"Skipped tasks: {skipped_tasks}")
     return tasks_to_run
-
-
-def _submission_evidence_for_task(
-    *,
-    workspace: Path,
-    task_config: dict[str, Any],
-    run_directory: Path,
-) -> SubmissionEvidence:
-    """Capture or verify the immutable pre-agent source snapshot for one task."""
-
-    storage = run_directory / ".eval-tool-evidence" / workspace.name
-    if storage.exists():
-        evidence = load_submission_evidence(storage)
-        if evidence.workspace != workspace.resolve():
-            raise RuntimeError(
-                "submission evidence belongs to a different workspace: "
-                f"{evidence.workspace} != {workspace.resolve()}"
-            )
-        return evidence
-    return capture_submission_evidence(workspace, task_config, storage)
 
 
 def run_task(

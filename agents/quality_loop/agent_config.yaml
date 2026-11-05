@@ -1,8 +1,12 @@
-# quality_loop is a repository-level audit workflow. It defaults to auditing all
-# tasks that are runnable on the selected target GPU.
+# quality_loop is a repository-level audit workflow over schema-v3 kernel tasks
+# (tasks/**/task.yaml). It defaults to auditing all tasks that are runnable on
+# the selected target GPU.
 tasks:
   - all
 target_gpu_model: MI300
+# Optimization language (triton | gluon | hip | flydsl). null optimizes each
+# task in its audit language: the baseline's language when it is a target.
+target_language: null
 
 quality_loop:
   backend:
@@ -15,14 +19,14 @@ quality_loop:
     model: gpt-5.6-terra
     effort: medium
     timeout_seconds: 1800
-  validator:
+  auditor:                      # the QA auditor's semantic review (codex | claude_code | none)
     name: codex
     model: gpt-5.6-terra
     effort: medium
     timeout_seconds: 3600
 
   mode: optimize             # repair_only skips optimization/promotion
-  repair_warnings: []        # opt in by validator check name
+  repair_warnings: []        # opt in by QA warning check id, e.g. QA-README
   max_repair_attempts: 1      # bounded 1..3; each attempt needs changed source
   optimization_iterations: 1 # 1 in optimize mode; 0 in repair_only mode
   easy_speedup_threshold: 5.0

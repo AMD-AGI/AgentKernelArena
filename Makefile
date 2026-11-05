@@ -10,8 +10,7 @@ SHELL := /bin/bash
         slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
         check-docker-runner check-slurm-runner check-evaluator check-gpu-architecture check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
-        sync-perf-helpers check-perf-helpers materialize-perf-workspace \
-        materialize-perf-task cleanup-works install-cursor-agent
+        check-perf-helpers cleanup-works install-cursor-agent
 
 help:
 	@echo "AgentKernelArena Experimentation Platform - Makefile Commands"
@@ -32,7 +31,7 @@ help:
 	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
 	@echo "make docker-sikl-task-builder INPUT=/path/to/bundle - Generate, repair and validate SIKL tasks"
 	@echo "                         Use SIKL_BUILDER_ARGS='resume --run-id ...' to resume"
-	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for flydsl2flydsl, torch2flydsl, and triton2flydsl)"
+	@echo "make docker-setup-flydsl - Install FlyDSL when absent (for runs with target_language: flydsl)"
 	@echo "make docker-setup-geak   - Install the Claude Agent SDK when absent (for the geak agent)"
 	@echo "make docker-setup-forge  - Install Hyperloom[forge] from HYPERLOOM_ROOT's HEAD (for the forge agent)"
 	@echo "make check-docker-runner - Check Docker runner syntax and runtime-specific arguments"
@@ -53,10 +52,7 @@ help:
 	@echo "make check-visualization - Run visualization module unit tests"
 	@echo ""
 	@echo "Maintenance:"
-	@echo "make sync-perf-helpers   - Refresh committed perf-helper stubs in task sources"
-	@echo "make check-perf-helpers  - Verify task perf-helper stubs and markers are valid"
-	@echo "make materialize-perf-workspace WORKSPACE=workspace_x - Inject canonical perf helpers into workspace(s)"
-	@echo "make materialize-perf-task TASK=tasks/... OUT=/tmp/aka-task - Copy task(s) and inject canonical perf helpers"
+	@echo "make check-perf-helpers  - Audit task benchmark entrypoints against src/tools/perf/"
 	@echo "make cleanup-works       - Remove workspace_* directories and logs"
 	@echo "make install-cursor-agent - Install the Cursor Agent CLI on the host"
 
@@ -68,14 +64,9 @@ QUALITY_LOOP_ARGS ?=
 SIKL_BUILDER_ARGS ?= run
 INPUT ?=
 AGENTS ?=
-WORKSPACES ?= $(WORKSPACE)
-TASKS ?= $(TASK)
-OUT ?= /tmp/aka-materialized-tasks
-FORCE ?= 0
 VISUALIZATION_ARGS ?= --include-workspace-runs
 VISUALIZATION_HOST ?= 127.0.0.1
 VISUALIZATION_PORT ?= 8080
-MATERIALIZE_FORCE_ARG := $(if $(filter 1 true yes,$(FORCE)),--force,)
 
 SLURM_PARTITION ?= amd-spur
 SLURM_GPU_TYPE ?= mi355x
@@ -163,7 +154,7 @@ slurm-parallel-submit:
 	@$(SLURM_ENV) $(SLURM_RUNNER) parallel-submit --config_name $(CONFIG) $(RUN_ARGS)
 
 # Install FlyDSL into the container's persistent pip user-base when the selected
-# image does not ship it. Needed by all three FlyDSL task types.
+# image does not ship it. Needed by runs that target FlyDSL.
 docker-setup-flydsl:
 	@$(DOCKER_RUNNER) setup-flydsl
 
@@ -205,24 +196,11 @@ visualization-run:
 	@python3 -m src.visualization run $(VISUALIZATION_ARGS) \
 		--host "$(VISUALIZATION_HOST)" --port "$(VISUALIZATION_PORT)"
 
-# Refresh committed perf-helper stubs/markers in task sources. Runtime workspaces
-# are materialized from src/tools/perf/ by setup_workspace().
-sync-perf-helpers:
-	@python3 src/tools/sync_perf_helpers.py
-
-# Verify all task perf-helper stubs/markers are in the expected committed form.
+# Audit committed task benchmark entrypoints: every schema-v2 task is a serving
+# recipe or serving client, and no generated helper copy is committed. Run
+# workspaces receive the canonical code from src/tools/perf/.
 check-perf-helpers:
-	@python3 src/tools/sync_perf_helpers.py --check
-
-# Materialize canonical perf helpers into existing copied task workspace(s).
-materialize-perf-workspace:
-	@test -n "$(WORKSPACES)" || (echo "Usage: make materialize-perf-workspace WORKSPACE=workspace_x"; exit 2)
-	@python3 src/tools/materialize_perf_helpers.py workspace $(WORKSPACES)
-
-# Copy one or more task source directories to OUT, then materialize helpers there.
-materialize-perf-task:
-	@test -n "$(TASKS)" || (echo "Usage: make materialize-perf-task TASK=tasks/... [OUT=/tmp/aka-task] [FORCE=1]"; exit 2)
-	@python3 src/tools/materialize_perf_helpers.py task --out "$(OUT)" $(MATERIALIZE_FORCE_ARG) $(TASKS)
+	@python3 src/tools/sync_perf_helpers.py
 
 cleanup-works:
 	@echo "Removing workspace directories and logs..."

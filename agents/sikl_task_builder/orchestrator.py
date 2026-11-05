@@ -1,4 +1,4 @@
-"""Generate, repair, validate and install SIKL tasks with resumable evidence."""
+"""Generate, repair, QA-audit and install schema-v3 SIKL tasks with resumable evidence."""
 
 from __future__ import annotations
 
@@ -21,6 +21,11 @@ from .validation import runtime_identity, validate_task
 
 REPO = Path(__file__).resolve().parents[2]
 LOG = logging.getLogger(__name__)
+# Bundle content that no input repair can fix: the source data must change.
+SPEC_PROBLEMS = frozenset({"needs_spec", "unvendored_dependency", "forbidden_dependency", "missing_license",
+                           "missing_license_text", "unsupported_reference", "reference_dependency",
+                           "unsupported_layout", "unsupported_baseline_language", "unsupported_dtype",
+                           "unsupported_scalar"})
 
 
 def atomic_json(path: Path, value):
@@ -182,8 +187,9 @@ def run(config: Config, run_id: str | None = None, *, repo: Path = REPO,
                     record["state"] = "needs_spec" if not previous.get("baseline/correctness", {"ok": True})["ok"] else "failed"
             except Exception as exc:
                 code = getattr(exc, "code", "execution_error")
-                record.update(state="platform_deferred" if code == "platform_deferred" else "failed",
-                              error={"code": code, "message": str(exc)})
+                state_name = ("platform_deferred" if code == "platform_deferred" else
+                              "needs_spec" if code in SPEC_PROBLEMS else "failed")
+                record.update(state=state_name, error={"code": code, "message": str(exc)})
                 LOG.exception("Task %s failed", task.task_id)
                 if code == "source_changed":
                     raise

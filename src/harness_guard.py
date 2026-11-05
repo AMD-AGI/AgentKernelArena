@@ -2,8 +2,10 @@
 """Workspace integrity guard for task harness files.
 
 Agents should optimize kernels, not the measurement harness.  This module
-records a digest snapshot of task-owned harness files before an agent runs and
-verifies that those files are unchanged before scoring.
+records a digest snapshot of every task file outside the candidate's editable
+paths (from the workspace's schema-v2 execution spec, which schema-v3 tasks
+also resolve to) before an agent runs and verifies that those files are
+unchanged before scoring.
 
 Note that the protected set is defined by naming patterns, not only by location, so a
 file an agent creates anywhere in the workspace can fall inside it.  Such files are
@@ -22,7 +24,6 @@ from typing import Iterable
 
 import yaml
 
-from .perf_helper_materialization import configured_performance_entrypoints
 from .task_spec import EditScope, TaskSpec, resolve_task_path
 
 
@@ -37,8 +38,6 @@ _HARNESS_FILE_NAMES = {
     "config.yaml",
     "config.yml",
     "conftest.py",
-    "hip_graph_benchmark.hpp",
-    "performance_utils_pytest.py",
 }
 _HARNESS_FILE_SUFFIXES = (
     "_test.py",
@@ -62,7 +61,7 @@ class WorkspaceSnapshot:
 
     root: Path
     digests: dict[str, str]
-    task_spec: TaskSpec | None = None
+    task_spec: TaskSpec
     initial_symbols: dict[str, frozenset[str]] = field(default_factory=dict)
     # Runtime-patching sites of each editable Python file and library operator
     # calls of each editable C++/HIP file before the agent ran; None when an
@@ -897,20 +896,6 @@ def _is_protected_path(rel: Path) -> bool:
     return name.endswith(_HARNESS_FILE_SUFFIXES)
 
 
-def _iter_protected_files(root: Path) -> Iterable[Path]:
-    configured_entrypoints = {
-        path.resolve() for path in configured_performance_entrypoints(root)
-    }
-    for path in root.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(root)
-        if set(rel.parts) & _IGNORED_RUNTIME_DIRS:
-            continue
-        if _is_protected_path(rel) or path.resolve() in configured_entrypoints:
-            yield path
-
-
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -932,55 +917,6 @@ def _task_config(root: Path) -> dict:
     return {}
 
 
-def _string_list(value) -> list[str]:
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        return [item for item in value if isinstance(item, str)]
-    return []
-
-
-def _editable_entrypoint_targets(root: Path) -> dict[Path, set[str]]:
-    """Return co-located benchmark/source files and their editable functions.
-
-    A small number of ROCmBench tasks intentionally keep the Triton kernel and
-    pytest harness in one configured file. Protecting that whole entrypoint
-    would make the optimization task impossible, so its kernel implementation
-    surface is excluded from the integrity digest while benchmark tests and
-    task-owned data remain protected.
-    """
-
-    config = _task_config(root)
-    targets = {
-        name.strip()
-        for configured in _string_list(config.get("target_kernel_functions"))
-        for name in configured.split(",")
-        if name.strip()
-    }
-    if not targets:
-        return {}
-    source_paths = set()
-    for configured in _string_list(config.get("source_file_path")):
-        path = (root / configured).resolve()
-        if path.is_file():
-            source_paths.add(path)
-    entrypoints = {
-        path.resolve() for path in configured_performance_entrypoints(root)
-    }
-    # Legacy instruction2triton tasks embed the editable Triton target in the
-    # configured pytest/performance entrypoint but leave source_file_path empty.
-    # Treat that entrypoint as the implied source for this family only. The AST
-    # digest still protects tests, ordinary helpers, constants, and executable
-    # harness statements; only imports and Triton target/helper nodes are masked.
-    if config.get("task_type") == "instruction2triton" and not source_paths:
-        source_paths.update(entrypoints)
-    return {
-        path: targets
-        for path in source_paths & entrypoints
-        if path.suffix == ".py"
-    }
-
-
 def _is_triton_jit_function(node: ast.AST) -> bool:
     if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return False
@@ -998,124 +934,6 @@ def _is_triton_jit_function(node: ast.AST) -> bool:
     return False
 
 
-def _target_decorator_helper_names(
-    tree: ast.Module, editable_targets: set[str]
-) -> set[str]:
-    """Return top-level helper names called by declared target decorators.
-
-    Autotune and heuristic configuration is often kept in an ordinary helper
-    such as ``get_autotune_config()`` rather than written inline in the target
-    decorator.  Follow calls from the target's decorators by exactly one hop;
-    calls made by those helpers are deliberately not traversed.
-    """
-
-    helper_names: set[str] = set()
-    for node in tree.body:
-        if not (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name in editable_targets
-        ):
-            continue
-        for decorator in node.decorator_list:
-            for child in ast.walk(decorator):
-                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name):
-                    helper_names.add(child.func.id)
-    return helper_names
-
-
-def _sha256_python_harness(path: Path, editable_targets: set[str]) -> str:
-    """Hash the harness portion of a co-located Python kernel entrypoint.
-
-    ROCmBench keeps editable Triton code and pytest harnesses in one module.
-    Imports, declared target functions, Triton JIT helpers, and top-level
-    helpers called directly by target decorators are legitimate optimization
-    surface, so omit their complete AST nodes.  Test/benchmark functions,
-    unrelated ordinary Python helpers, module constants, and executable
-    statements remain in the digest.
-    """
-
-    try:
-        tree = ast.parse(path.read_text())
-    except (OSError, UnicodeDecodeError, SyntaxError):
-        return "invalid-python:" + _sha256(path)
-
-    decorator_helpers = _target_decorator_helper_names(tree, editable_targets)
-    tree.body = [
-        node
-        for node in tree.body
-        if not isinstance(node, (ast.Import, ast.ImportFrom))
-        and not (
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and node.name in editable_targets | decorator_helpers
-        )
-        and not _is_triton_jit_function(node)
-    ]
-    canonical = ast.dump(tree, annotate_fields=True, include_attributes=False)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _task_input_paths(root: Path, task_root: Path) -> set[str]:
-    """Freeze non-editable files shipped by the task, including data and oracles.
-
-    Use the task package to identify inputs, not files generated by baseline
-    compilation or agent preparation. Repository caches are not task packages;
-    the existing harness rules still apply inside those trees.
-    """
-    if not task_root.is_dir():
-        raise FileNotFoundError(f"Original task directory is unavailable: {task_root}")
-    config = _task_config(root)
-    editable = {
-        (root / name).resolve()
-        for key in ("source_file_path", "target_file_path", "editable_sources")
-        for name in _string_list(config.get(key))
-    }
-    if config.get("task_type") == "instruction2triton" and not editable:
-        editable.update(
-            path.resolve() for path in configured_performance_entrypoints(root)
-        )
-
-    repo_subdir = config.get("repo_subdir")
-    if not repo_subdir:
-        origin = config.get("image_repo_path") or config.get("repo_url")
-        if origin:
-            repo_subdir = str(origin).rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
-    runtime_dirs = _IGNORED_RUNTIME_DIRS | {"build", "logs", "perf", ".pytest_cache"}
-    output_names = {
-        "task_result.yaml", "qa_report.yaml", ".qa_complete", "qa_review.draft.json",
-        "baseline_perf.yaml", "optimized_perf.yaml",
-    }
-    protected = set()
-    for path in task_root.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(task_root)
-        if set(rel.parts[:-1]) & runtime_dirs or rel.name in output_names:
-            continue
-        if repo_subdir and rel.is_relative_to(repo_subdir):
-            continue
-        candidate = root / rel
-        if candidate.resolve() not in editable:
-            protected.add(rel.as_posix())
-    return protected
-
-
-def _protected_digests(root: Path, extra_paths: Iterable[str] = ()) -> dict[str, str]:
-    editable_entrypoints = _editable_entrypoint_targets(root)
-    digests = {}
-    paths = set(_iter_protected_files(root))
-    paths.update(
-        root / relative for relative in extra_paths if (root / relative).is_file()
-    )
-    for path in sorted(paths):
-        resolved = path.resolve()
-        if resolved in editable_entrypoints:
-            digest = _sha256_python_harness(path, editable_entrypoints[resolved])
-        else:
-            digest = _sha256(path)
-        digests[str(path.relative_to(root))] = digest
-    return digests
-
-
 def describe_workspace_harness(
     root: Path, *, snapshot: WorkspaceSnapshot | None = None
 ) -> dict[str, object]:
@@ -1129,32 +947,15 @@ def describe_workspace_harness(
     """
 
     root = Path(root)
-    if snapshot is not None:
-        if snapshot.root.resolve() != root.resolve():
-            raise ValueError("Harness snapshot belongs to a different workspace")
-        if snapshot.task_spec is not None:
-            return _describe_v2_snapshot(snapshot)
-    config = _task_config(root)
-    if config.get("schema_version") == 2:
+    if snapshot is None:
         return _describe_v2_snapshot(snapshot_workspace_harness(root))
-    editable_entrypoints = _editable_entrypoint_targets(root)
-    return {
-        "enforced_during_optimization": True,
-        "protected_paths": sorted(
-            str(path.relative_to(root)) for path in _iter_protected_files(root)
-        ),
-        "editable_entrypoint_targets": {
-            str(path.relative_to(root)): sorted(targets)
-            for path, targets in sorted(
-                editable_entrypoints.items(), key=lambda item: str(item[0])
-            )
-        },
-    }
+    if snapshot.root.resolve() != root.resolve():
+        raise ValueError("Harness snapshot belongs to a different workspace")
+    return _describe_v2_snapshot(snapshot)
 
 
 def _describe_v2_snapshot(snapshot: WorkspaceSnapshot) -> dict[str, object]:
     """Describe existing digest selection; do not recompute or change enforcement."""
-    assert snapshot.task_spec is not None
     scopes = {edit.path: edit for edit in snapshot.task_spec.candidate.editable
               if edit.scope == "symbols"}
     policies = {}
@@ -1211,36 +1012,30 @@ def snapshot_workspace_harness(
     """
 
     root = Path(root)
-    config = _task_config(root)
-    if task_spec is not None or config.get("schema_version") == 2:
-        spec = task_spec or TaskSpec.from_mapping(config, task_id="workspace")
-        protected = _v2_protected_paths(root, spec)
-        initial_symbols = {}
-        for edit in spec.candidate.editable:
-            if edit.scope == "symbols":
-                path = resolve_task_path(root, edit.path, must_exist=True)
-                initial_symbols[edit.path] = _top_level_names(path)
-        if task_root is not None:
-            # Missing shipped inputs cannot disappear from the snapshot merely
-            # because a preparation step deleted them.
-            protected.update(_v2_protected_paths(Path(task_root), spec))
-        missing = sorted(relative for relative in protected if not (root / relative).is_file())
-        if missing:
-            raise RuntimeError(f"Task inputs missing before agent execution: {missing}")
-        digests = _v2_digests(root, spec, protected, initial_symbols)
-        patching = {relative: dict(sites) for relative in _editable_checked_files(root, spec)
-                    if (sites := _patching_sites_of(root / relative, spec.candidate.language)) is not None}
-        return WorkspaceSnapshot(root, digests, spec, initial_symbols, patching)
-    task_inputs = (
-        _task_input_paths(root, Path(task_root)) if task_root is not None else set()
-    )
-    missing = sorted(
-        relative for relative in task_inputs if not (root / relative).is_file()
-    )
+    if task_spec is not None:
+        spec = task_spec
+    else:
+        config = _task_config(root)
+        if config.get("schema_version") != 2:
+            raise ValueError("The harness guard needs a task specification or a schema-v2 config.yaml")
+        spec = TaskSpec.from_mapping(config, task_id="workspace")
+    protected = _v2_protected_paths(root, spec)
+    initial_symbols = {}
+    for edit in spec.candidate.editable:
+        if edit.scope == "symbols":
+            path = resolve_task_path(root, edit.path, must_exist=True)
+            initial_symbols[edit.path] = _top_level_names(path)
+    if task_root is not None:
+        # Missing shipped inputs cannot disappear from the snapshot merely
+        # because a preparation step deleted them.
+        protected.update(_v2_protected_paths(Path(task_root), spec))
+    missing = sorted(relative for relative in protected if not (root / relative).is_file())
     if missing:
         raise RuntimeError(f"Task inputs missing before agent execution: {missing}")
-    digests = _protected_digests(root, task_inputs)
-    return WorkspaceSnapshot(root=root, digests=digests)
+    digests = _v2_digests(root, spec, protected, initial_symbols)
+    patching = {relative: dict(sites) for relative in _editable_checked_files(root, spec)
+                if (sites := _patching_sites_of(root / relative, spec.candidate.language)) is not None}
+    return WorkspaceSnapshot(root, digests, spec, initial_symbols, patching)
 
 
 def _verify_protected_module_resolution(snapshot: WorkspaceSnapshot) -> None:
@@ -1290,13 +1085,11 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None, *, discar
     """
 
     def _scan() -> dict[str, str]:
-        # Preserve the editable-body masking used for colocated kernel/harness
-        # files. A raw SHA here would reject legitimate target-function edits.
-        # Recheck the original paths even when their names do not match a
-        # harness pattern (e.g. session_cases.json or a reference module).
-        if snapshot.task_spec is not None:
-            return _v2_digests(snapshot.root, snapshot.task_spec, snapshot.digests, snapshot.initial_symbols)
-        return _protected_digests(snapshot.root, snapshot.digests)
+        # Preserve the editable-body masking of symbol-scoped files. A raw SHA
+        # here would reject legitimate target-function edits. Recheck the
+        # original paths even when their names do not match a harness pattern
+        # (e.g. a workloads file or a reference module).
+        return _v2_digests(snapshot.root, snapshot.task_spec, snapshot.digests, snapshot.initial_symbols)
 
     _verify_protected_module_resolution(snapshot)
     before = snapshot.digests
@@ -1318,7 +1111,7 @@ def verify_workspace_harness(snapshot: WorkspaceSnapshot, logger=None, *, discar
     if discarded:
         current = _scan()
 
-    if snapshot.task_spec is not None and snapshot.initial_patching is not None:
+    if snapshot.initial_patching is not None:
         for relative in _editable_checked_files(snapshot.root, snapshot.task_spec):
             sites = _patching_sites_of(snapshot.root / relative, snapshot.task_spec.candidate.language)
             if sites is not None:

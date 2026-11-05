@@ -9,8 +9,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.tools.perf.aka_benchmark import benchmark_cuda_graph_or_events
-from src.tools.perf.vllm_cuda_graph_block import _TimedRun
+from src.tools.perf.aka_benchmark import TimedRun, benchmark_cuda_graph_or_events
 
 
 pytestmark = pytest.mark.skipif(
@@ -94,7 +93,7 @@ def test_timed_run_distinguishes_graph_replay_from_explicit_events(
         torch.mul(x, 2.0, out=output)
         return output
 
-    timed_run = _TimedRun()
+    timed_run = TimedRun()
     _, metadata = benchmark_cuda_graph_or_events(
         write_output,
         warmup=2,
@@ -116,7 +115,7 @@ def test_timed_run_distinguishes_graph_replay_from_explicit_events(
     assert torch.equal(output, torch.full_like(output, 6.0))
 
     monkeypatch.setenv("AKA_BENCHMARK_FORCE_EVENT", "1")
-    event_timed = _TimedRun()
+    event_timed = TimedRun()
     _, event_metadata = benchmark_cuda_graph_or_events(
         write_output,
         warmup=0,

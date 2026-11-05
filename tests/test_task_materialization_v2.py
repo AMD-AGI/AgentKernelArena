@@ -346,13 +346,13 @@ def test_v2_requires_stable_discovery_id_outside_bundled_tasks(tmp_path):
     assert not (tmp_path / "runs").exists()
 
 
-def test_legacy_workspace_path_still_works(tmp_path):
-    root = tmp_path / "legacy"
+def test_config_without_a_task_schema_is_rejected(tmp_path):
+    root = tmp_path / "unversioned"
     config = write(root, "config.yaml", yaml.safe_dump({"task_type": "hip2hip", "source_file_path": ["kernel.hip"]}))
-    write(root, "kernel.hip", "// legacy")
-    workspace = run(config, tmp_path)
-    assert (workspace / "kernel.hip").read_text() == "// legacy"
-    assert not materialization_state_directory(workspace).exists()
+    write(root, "kernel.hip", "// unversioned")
+    with pytest.raises(TaskConfigError):
+        run(config, tmp_path)
+    assert not (tmp_path / "runs").exists() or not any((tmp_path / "runs").iterdir())
 
 
 def test_image_source_cannot_contain_workspace_or_receive_setup_writes(tmp_path):
@@ -476,7 +476,7 @@ def test_setup_never_leaves_background_writers(tmp_path, wait_for_child):
 
 def test_canonical_perf_helpers_are_generated_and_protected_under_same_deadline(tmp_path, monkeypatch):
     config, _ = task(tmp_path)
-    write(config.parent, "scripts/evaluate.py", "import _aka_benchmark\n")
+    write(config.parent, "scripts/evaluate.py", "from _aka_serving import main\n")
     original = materialization._run
     deadlines = []
     labels = []
@@ -486,13 +486,13 @@ def test_canonical_perf_helpers_are_generated_and_protected_under_same_deadline(
         return original(argv, cwd, deadline, state, label, env)
     monkeypatch.setattr(materialization, "_run", capture_deadline)
     workspace = run(config, tmp_path)
-    helper = workspace / "scripts/_aka_benchmark.py"
-    canonical = Path(__file__).resolve().parents[1] / "src/tools/perf/aka_benchmark.py"
+    helper = workspace / "scripts/_aka_serving.py"
+    canonical = Path(__file__).resolve().parents[1] / "src/tools/perf/serving.py"
     assert helper.read_bytes() == canonical.read_bytes()
-    assert "scripts/_aka_benchmark.py" in load_materialization_record(workspace)["protected_files"]
+    assert "scripts/_aka_serving.py" in load_materialization_record(workspace)["protected_files"]
     assert "copy" in labels and "perf-helpers" in labels
     assert all(deadline is deadlines[0] for deadline in deadlines)
-    assert not (config.parent / "scripts/_aka_benchmark.py").exists()
+    assert not (config.parent / "scripts/_aka_serving.py").exists()
 
 
 def test_missing_completed_marker_rejects_resume_and_preserves_artifacts(tmp_path):
@@ -573,29 +573,17 @@ def test_v2_completion_cannot_downgrade_by_replacing_config(tmp_path, monkeypatc
     assert not is_task_complete(tmp_path / "runs", TASK_ID, "stamp", "codex")
 
 
-def test_legacy_completion_remains_report_exists(tmp_path, monkeypatch):
-    workspace = expected_workspace(tmp_path)
-    write(workspace, "config.yaml", "task_type: hip2hip")
-    write(workspace, "task_result.yaml", "legacy result")
-    module = types.ModuleType("src.task_run")
-    def unexpected(*args, **kwargs):
-        raise AssertionError("Legacy completion must not invoke v2 completion")
-    module.task_run_is_complete = unexpected
-    monkeypatch.setitem(sys.modules, "src.task_run", module)
-    assert is_task_complete(tmp_path / "runs", TASK_ID, "stamp", "codex")
-
-
-def test_v2_validator_keeps_existing_finalization_contract(tmp_path, monkeypatch):
-    from agents.task_validator import report_schema
+def test_qa_audit_completion_uses_only_the_finalized_report(tmp_path, monkeypatch):
+    from agents.qa_auditor import report
     config, _ = task(tmp_path)
     workspace = run(config, tmp_path)
     finalized = False
     calls = []
-    def validation_report_is_complete(root):
+    def qa_report_is_complete(root):
         calls.append(root)
         return finalized
-    monkeypatch.setattr(report_schema, "validation_report_is_complete", validation_report_is_complete)
-    assert not is_task_complete(tmp_path / "runs", TASK_ID, "stamp", "task_validator")
+    monkeypatch.setattr(report, "qa_report_is_complete", qa_report_is_complete)
+    assert not is_task_complete(tmp_path / "runs", TASK_ID, "stamp", "qa_auditor")
     finalized = True
-    assert is_task_complete(tmp_path / "runs", TASK_ID, "stamp", "task_validator")
+    assert is_task_complete(tmp_path / "runs", TASK_ID, "stamp", "qa_auditor")
     assert calls == [workspace, workspace]

@@ -29,7 +29,7 @@ class GPUArchitectureConfigTests(unittest.TestCase):
         for model, profile_heading in expected_headings.items():
             with self.subTest(model=model):
                 prompt, gfx_arch = _load_cheatsheet(
-                    "hip2hip", model, PROJECT_ROOT, {}, logging.getLogger(__name__)
+                    "hip", model, PROJECT_ROOT, logging.getLogger(__name__)
                 )
 
                 self.assertEqual(gfx_arch, "gfx942")
@@ -42,7 +42,7 @@ class GPUArchitectureConfigTests(unittest.TestCase):
 
     def test_generic_mi300_target_loads_non_sku_specific_profile(self) -> None:
         prompt, gfx_arch = _load_cheatsheet(
-            "triton2triton", "MI300", PROJECT_ROOT, {}, logging.getLogger(__name__)
+            "triton", "MI300", PROJECT_ROOT, logging.getLogger(__name__)
         )
 
         self.assertEqual(gfx_arch, "gfx942")
@@ -52,17 +52,15 @@ class GPUArchitectureConfigTests(unittest.TestCase):
     def test_mi325_alias_keeps_the_mi325x_profile(self) -> None:
         logger = logging.getLogger(__name__)
         self.assertEqual(
-            _load_cheatsheet("hip2hip", "MI325", PROJECT_ROOT, {}, logger),
-            _load_cheatsheet("hip2hip", "MI325X", PROJECT_ROOT, {}, logger),
+            _load_cheatsheet("hip", "MI325", PROJECT_ROOT, logger),
+            _load_cheatsheet("hip", "MI325X", PROJECT_ROOT, logger),
         )
 
-    def test_v2_tasks_keep_destination_language_knowledge(self) -> None:
+    def test_candidate_language_selects_the_knowledge_guide(self) -> None:
         for model in ("MI300X", "MI325X", "MI300A"):
             with self.subTest(model=model):
                 prompt, arch = _load_cheatsheet(
-                    "Aiter-task", model, PROJECT_ROOT,
-                    {"schema_version": 2, "candidate": {"language": "flydsl"}},
-                    logging.getLogger(__name__),
+                    "flydsl", model, PROJECT_ROOT, logging.getLogger(__name__),
                 )
                 self.assertEqual(arch, "gfx942")
                 self.assertIn(f"# AMD Instinct {model} Model Profile", prompt)
@@ -74,7 +72,7 @@ class GPUArchitectureConfigTests(unittest.TestCase):
                 path = PROJECT_ROOT / f"example_configs/quickstart_claude_{model.lower()}.yaml"
                 config = yaml.safe_load(path.read_text())
                 self.assertEqual(config["target_gpu_model"], model)
-                self.assertEqual(config["tasks"], ["hip2hip/GELU"])
+                self.assertTrue(config["tasks"])
                 for task in config["tasks"]:
                     self.assertTrue(get_task_config(str(PROJECT_ROOT / "tasks"), task))
 
@@ -102,10 +100,10 @@ class GPUArchitectureConfigTests(unittest.TestCase):
             )
 
             legacy_prompt, legacy_arch = _load_cheatsheet(
-                "hip2hip", "LEGACY", project_root, {}, logging.getLogger(__name__)
+                "hip", "LEGACY", project_root, logging.getLogger(__name__)
             )
             composed_prompt, composed_arch = _load_cheatsheet(
-                "hip2hip", "COMPOSED", project_root, {}, logging.getLogger(__name__)
+                "hip", "COMPOSED", project_root, logging.getLogger(__name__)
             )
 
             self.assertEqual(legacy_arch, "gfx900")

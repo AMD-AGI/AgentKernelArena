@@ -124,19 +124,14 @@ make slurm-run CONFIG="$CONFIG_PATH" RUN_ARGS="--run-suffix deepseek_smoke"
 ```
 
 See [the Slurm guide](../../docs/how-to/slurm-run.md) for resource selection and
-batch submission. The schema-v2 MI355X checks use the
-[SIKL FlyDSL GEMM task](../../tasks/Aiter-task/gemm_a16w16_nt_n32_k6144/README.md)
-and [HIP quantization image task](../../tasks/image_kernel/mi355x_vllm_hip_dynamic_per_tensor_quant/README.md),
-with an explicit image override from the
-[runtime qualification record](../../docs/reference/runtime-upgrade-qualification.md).
-[PR #111](https://github.com/AMD-AGI/AgentKernelArena/pull/111) records their
-agent status, correctness, timing, and export results. Earlier HIP GELU and
-Triton RMSNorm observations predate the schema-v2 rebase and do not qualify this
-revision. MI300, RDNA4, and multi-GPU runs remain unverified on hardware.
-
-The recorded schema-v2 GPU checks used `reasoning_effort: high`,
-`max_iterations: 1`, and `timeout_seconds: 1200`. They do not measure the model
-quality or performance of the current `max` / 9-version defaults.
+batch submission. The recorded MI355X checks
+([PR #111](https://github.com/AMD-AGI/AgentKernelArena/pull/111): agent status,
+correctness, timing and export results) used schema-v2 task packages that have
+since been migrated to schema v3, with `reasoning_effort: high`,
+`max_iterations: 1` and `timeout_seconds: 1200`. They do not qualify this
+revision on schema-v3 tasks or measure the model quality or performance of the
+current `max` / 9-version defaults. MI300, RDNA4, and multi-GPU runs remain
+unverified on hardware.
 
 Every task launch creates a fresh `.deepseek_harness-*` directory inside its
 task workspace. It preserves the prompt, credential-free Cordis patch,
@@ -147,14 +142,16 @@ overwriting earlier evidence. Retries create another task state directory and
 home rather than reusing past runs.
 Nonzero CLI exits raise an agent failure. A first-invocation timeout still
 raises `TimeoutError`; a continuation stopped at the deadline is normal
-completion of the time budget, following the shared CLI rules. Under schema v2, Arena
+completion of the time budget, following the shared CLI rules. Arena
 records `agent_execution` separately and independently evaluates any retained
 candidate; a passing candidate does not turn a failed invocation into a completed
 agent run. The shared task prompt and `ARENA_TASK_CONTEXT`,
 `ARENA_VALIDATION_CONTEXT`, and `ARENA_EVAL_PHASE` environment variables reach
-the CLI unchanged, including for materialized image sources and initially empty
-SIKL candidates. Task commands, the frozen baseline, final reports, and exports
-remain owned by the shared framework.
+the CLI unchanged, including for a schema-v3 candidate that starts as an
+unimplemented template. The prompt comes from the workspace's resolved
+`config.yaml` (built by `src/prompt_builder.py`); task commands
+(`python3 -m _aka_eval.evaluate ...`), the frozen baseline, final reports, and
+exports remain owned by the shared framework.
 Output captured by the adapter redacts the configured API key; upstream session
 files are third-party artifacts and should be reviewed before sharing.
 

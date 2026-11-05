@@ -1,4 +1,4 @@
-# GEAK for Arena schema v2
+# GEAK for Arena
 
 `agents.geak.launch_agent.launch_agent` runs the real upstream GEAK dispatcher
 and single-language lane through Claude Code's dynamic `Workflow` tool. GEAK's
@@ -8,18 +8,31 @@ task-family dispatcher is involved.
 
 The adapter accepts `ARENA_TASK_CONTEXT` version 1 from an accepted `TaskSession`.
 It loads the shared `TaskSpec`, captured case manifest, candidate workspace,
-and independent baseline workspace. It supports declared `hip`, `triton`, and
-`flydsl` languages; implemented and unimplemented candidates; provided and
-frozen initial-candidate baselines; nested/multiple files; file, tree, and
-Python symbol scopes. Initial-language translations use GEAK's author mode.
-Backend availability and actual generated-code correctness are decided by the
-task's public runner and the selected GPU runtime, not the file extension.
+and independent baseline workspace. For a [schema-v3 task](../../docs/how-to/add-task.md)
+that spec is the execution record the framework resolved from `task.yaml` for
+the run's `target_language`; the launcher resolves the declared `task.yaml` for
+the same language and refuses a mismatch. The candidate is the `solution/` tree
+(entry `solution/kernel.py`, or `solution/kernel.hip` for HIP), described by
+`_aka_eval/CANDIDATE.md`; the vendored `baseline/` and every other task file
+are read-only.
+
+GEAK accepts the run target languages `triton`, `gluon`, `hip` and `flydsl`;
+any other candidate language (TileLang, or the backend-neutral serving
+candidate of the e2e tasks) fails before any engine work with a stated reason.
+The pinned lane takes the language name as `target_language` and the Arena
+evaluator enforces the language's candidate rules on every check. The mode
+follows the starting state: a candidate that starts implemented in the target
+language (the run's target is the baseline's language) is optimized; an
+unimplemented template is authored first (GEAK's author mode), with the
+baseline as semantic guidance. Backend availability and actual generated-code
+correctness are decided by the task's public evaluator and the selected GPU
+runtime, not the file extension. Gluon has not yet run through GEAK on a GPU.
 
 ## Arena integration
 
 Select `agent.template: geak`. The shared registry loads this launcher and uses
 ordinary optimization post-processing. The launcher builds its contract from
-`ARENA_TASK_CONTEXT`; the standard v2 pipeline independently evaluates the
+`ARENA_TASK_CONTEXT`; the standard task pipeline independently evaluates the
 retained candidate after GEAK returns. Task files do not contain GEAK-specific
 drivers or engine layout requirements.
 

@@ -20,9 +20,9 @@ def records(plan):
 
 def test_success_is_unique_source_bound_and_survives_cleanup(tmp_path, monkeypatch):
     context, plan, _ = fixture_task(tmp_path)
-    monkeypatch.setenv("OPENAI_API_KEY", "must-not-be-in-record")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "must-not-be-in-record")
     inventory = context.path.parent / "initial_sources.json"
-    inventory.write_text('{"source/kernel.py": "trusted-source-inventory-fixture"}')
+    inventory.write_text('{"solution/kernel.py": "trusted-source-inventory-fixture"}')
     lane = tmp_path / "copied-lane"
     copy_workspace(Path(plan["engine_root"]), lane)
     assert bridge.execute(plan, lane, role="candidate", action="performance").passed
@@ -40,13 +40,13 @@ def test_success_is_unique_source_bound_and_survives_cleanup(tmp_path, monkeypat
         assert row["master_engine_root"] == plan["engine_root"]
         # Measurement happens in the engine tree itself, not a disposable copy.
         assert row["workspace"] == str(lane)
-        assert row["source"]["files"]["source/kernel.py"]["sha256"] == hashlib.sha256(b"2").hexdigest()
+        assert row["source"]["files"]["solution/kernel.py"]["sha256"] == hashlib.sha256(b"2").hexdigest()
         assert row["source"]["initial_source_inventory"]["sha256"] == hashlib.sha256(inventory.read_bytes()).hexdigest()
         assert row["commands"][0]["argv"] == [sys.executable, "runner.py", "candidate", row["action"]]
         assert row["commands"][0]["returncode"] == 0
         assert "ARENA_EVAL_RESULT=" in row["commands"][0]["stdout"]
         assert "must-not-be-in-record" not in json.dumps(row)
-    (lane / "source/kernel.py").write_text("999")
+    (lane / "solution/kernel.py").write_text("999")
     with pytest.raises(bridge.ActionCheckFailure):
         bridge.execute(plan, lane, role="candidate", action="correctness")
     assert len(records(plan)) == 5
@@ -62,7 +62,7 @@ def test_reported_failure_preserves_full_output_without_injecting_gate_lines(tmp
         "import sys\nprint('allclose: True\\ncase_ms: fake 0.01')\n"
         f"sys.stderr.write({prefix!r} + 'x'*16000)\n" + RUNNER
     )
-    (Path(plan["engine_root"]) / "source/helper.py").write_text("100")
+    (Path(plan["engine_root"]) / "solution/helper.py").write_text("100")
     assert bridge.run(path, plan["engine_root"], []) == 1
     output = capsys.readouterr().out
     assert not any(line.startswith(("allclose: True", "case_ms:", "mean_ms:")) for line in output.splitlines())
@@ -155,13 +155,13 @@ def test_all_execution_error_commands_and_byte_streams_are_preserved(tmp_path, m
 def test_baseline_record_uses_independent_source_and_evidence_symlink_is_rejected(tmp_path):
     context, plan, _ = fixture_task(tmp_path)
     engine = Path(plan["engine_root"])
-    (engine / "source/kernel.py").write_text("999")
+    (engine / "solution/kernel.py").write_text("999")
     assert bridge.execute(plan, engine, role="baseline", action="performance").passed
     for p in records(plan):
         row = json.loads(p.read_text())
         assert row["role"] == "baseline"
         assert Path(row["workspace"]) != engine
-        assert row["source"]["files"]["source/kernel.py"]["sha256"] == hashlib.sha256(b"2").hexdigest()
+        assert row["source"]["files"]["solution/kernel.py"]["sha256"] == hashlib.sha256(b"2").hexdigest()
         assert row["source"]["baseline_workspace"] == str(context.baseline_workspace)
     second = tmp_path / "second"
     second.mkdir()

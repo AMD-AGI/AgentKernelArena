@@ -1,4 +1,11 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
+"""Audit, repair, optimize and harden schema-v3 kernel task packages.
+
+A task package is ``tasks/<id>/task.yaml`` with its workloads, reference,
+vendored baseline, optional inputs.py and README.md (docs/how-to/add-task.md).
+Every task judgment is a framework-finalized QA audit (agents/qa_auditor); every
+accepted change to a package needs a fresh audit PASS of the changed package.
+"""
 from __future__ import annotations
 
 import logging
@@ -15,15 +22,17 @@ from typing import Any
 
 import yaml
 
+from agents.qa_auditor.report import (
+    COMPLETION_MARKER_FILENAME, REPORT_FILENAME, load_report, report_is_current,
+)
+from agents.qa_auditor.rubric import WARNING
 from agents.quality_loop.backend import AgentBackend, CodexBackend
 from agents.quality_loop.config import QualityLoopConfig
 from agents.quality_loop.filesystem import (
     TreeChanges,
     apply_changes,
     diff_trees,
-    is_case_path,
     is_generated_path,
-    restore_committed_perf_stubs,
     snapshot_tree,
 )
 from agents.quality_loop.github import GitHubPublisher, PreflightResult
@@ -42,54 +51,59 @@ from agents.quality_loop.state import (
 )
 from agents.quality_loop.runtime import InitialValidationRejected, create_session
 from agents.quality_loop.repair_policy import RepairPolicy, RepairRejected, blocking_findings
-from agents.task_validator.launch_agent import launch_agent as launch_validator
-from agents.task_validator.report_schema import (
-    COMPLETION_MARKER_FILENAME, validation_report_is_complete,
-)
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
-from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.preprocessing import _resolve_gfx_arch, setup_workspace
 from src.prompt_builder import prompt_builder
-from src.task_spec import TaskSpec, load_task_spec, required_gpu_arches, resolve_task_path
+from src.task_contract import (
+    BASELINE_DIR, SOLUTION_DIR, TASK_FILE, audit_target_language, load_task_contract,
+)
+from src.task_spec import TaskConfigError, TaskSpec, load_task_spec, required_gpu_arches, resolve_task_path
+
+# Case enhancement may extend the workloads and their generator, nothing else.
+CASE_FILES = ("workloads.json", "inputs.py")
+
+
+def _launch_auditor(eval_config, task_config_dir, workspace):
+    from agents.qa_auditor.launch_agent import launch_agent
+
+    return launch_agent(eval_config, task_config_dir, workspace)
 
 
 def _task_slug(task_id: str) -> str:
     return task_id.replace("/", "__") + "-" + hashlib.sha256(task_id.encode()).hexdigest()[:12]
 
 
-def _source_paths(spec: TaskSpec, root: Path) -> tuple[str, ...]:
-    """Expand declared edit scopes; directory names and suffixes imply no language."""
+def _solution_paths(root: Path) -> tuple[str, ...]:
+    """The candidate tree's files; directory names and suffixes imply no language."""
     paths = set()
-    for scope in spec.candidate.editable:
-        source = resolve_task_path(root, scope.path)
-        if scope.scope == "tree":
-            if source.exists():
-                for path in source.rglob("*"):
-                    relative = path.relative_to(root).as_posix()
-                    resolve_task_path(root, relative)
-                    if path.is_file() and not is_generated_path(relative, root=root):
-                        paths.add(relative)
-        else:
-            paths.add(scope.path)
+    source = resolve_task_path(root, SOLUTION_DIR)
+    if source.exists():
+        for path in source.rglob("*"):
+            relative = path.relative_to(root).as_posix()
+            resolve_task_path(root, relative)
+            if path.is_file() and not is_generated_path(path.relative_to(source).as_posix(), root=source):
+                paths.add(relative)
     return tuple(sorted(paths))
 
 
-def _materialized_destinations(spec: TaskSpec) -> tuple[str, ...]:
-    return tuple(item["destination"] for item in
-                 spec.to_mapping().get("workspace", {}).get("sources", []))
+def _package_digest(root: Path) -> str:
+    """The materialization record's task_package_sha256 for this directory."""
+    from src.task_materialization import _STALE_OUTPUTS, _Deadline, _digest, _tree_manifest
+
+    return _digest(_tree_manifest(Path(root), _Deadline(3600), excludes=tuple(_STALE_OUTPUTS)))
 
 
 def _filtered_changes(
     before: dict[str, str],
     after: dict[str, str],
     *,
-    materialized: tuple[str, ...] = (),
     source_root: Path | None = None,
 ) -> TreeChanges:
+    """Task-package changes between two snapshots; framework/runtime files excluded."""
     changes = diff_trees(before, after)
 
     def keep(path: str) -> bool:
-        return not is_generated_path(path, materialized=materialized, root=source_root)
+        return not is_generated_path(path, root=source_root)
 
     return TreeChanges(
         added=tuple(p for p in changes.added if keep(p)),
@@ -98,12 +112,10 @@ def _filtered_changes(
     )
 
 
-def _validation_warnings(report: dict[str, Any]) -> list[str]:
-    warnings: list[str] = []
-    for name, check in (report.get("checks") or {}).items():
-        if isinstance(check, dict) and str(check.get("status", "")).upper() == "WARN":
-            warnings.append(f"{name}: {check.get('details') or check.get('analysis') or 'warning'}")
-    return warnings
+def _audit_warnings(report: dict[str, Any]) -> list[str]:
+    return [f"{finding.get('id')}: {finding.get('detail') or finding.get('title') or 'warning'}"
+            for finding in report.get("findings", [])
+            if isinstance(finding, dict) and finding.get("severity") == WARNING]
 
 
 def _review_is_valid(review: Any) -> bool:
@@ -159,7 +171,7 @@ class QualityLoop:
         reviewer_backend: AgentBackend | None = None,
         publisher: GitHubPublisher | None = None,
         defer_github: bool = False,
-        validator_launcher=None,
+        auditor_launcher=None,
         session_factory=None,
     ):
         self.repo_root = repo_root.resolve()
@@ -169,27 +181,26 @@ class QualityLoop:
         self.reviewer_backend = reviewer_backend or CodexBackend(config.reviewer, logger)
         self.publisher = publisher or GitHubPublisher(self.repo_root, config.github, logger)
         self.defer_github = defer_github
-        self.validator_launcher = validator_launcher or launch_validator
+        self.auditor_launcher = auditor_launcher or _launch_auditor
         self.session_factory = session_factory or create_session
         self._sessions: dict[Path, Any] = {}
         self._session_task_ids: dict[Path, str] = {}
-        self._validation_evidence: list[dict[str, Any]] = []
-        self._validation_manifests: dict[Path, tuple[dict, ...]] = {}
+        self._audit_evidence: list[dict[str, Any]] = []
         self.state: AuditState | None = None
         self.artifact_dir: Path | None = None
         self.worktree: Path | None = None
         self.preflight: PreflightResult | None = None
 
     def discover_tasks(self, root: Path | None = None) -> dict[str, Path]:
+        """Schema-v3 packages by stable ID; nested task.yaml files are not tasks."""
         tasks_root = (root or self.repo_root) / "tasks"
         discovered = {
             str(path.parent.relative_to(tasks_root)): path
-            for path in tasks_root.rglob("config.yaml")
+            for path in tasks_root.rglob(TASK_FILE)
         }
-        # Do not discover acquisition copies or nested harness fixtures as tasks.
         discovered = {
             task_id: path for task_id, path in discovered.items()
-            if not any((parent / "config.yaml").is_file()
+            if not any((parent / TASK_FILE).is_file()
                        for parent in path.parent.parents
                        if parent != tasks_root and parent.is_relative_to(tasks_root))
         }
@@ -207,7 +218,7 @@ class QualityLoop:
                 missing.append(selector)
             selected.update(matches)
         if missing:
-            raise ValueError(f"task selector(s) matched nothing: {missing}")
+            raise ValueError(f"task selector(s) matched no schema-v3 task: {missing}")
         return dict(sorted(selected.items()))
 
     def plan(self) -> dict[str, Any]:
@@ -215,9 +226,9 @@ class QualityLoop:
         gfx_arch = _resolve_gfx_arch(self.config.target_gpu_model)
         runnable: list[str] = []
         deferred: list[str] = []
-        for task_id, config_path in tasks.items():
-            task_config = load_task_spec(config_path, task_id=task_id).to_mapping()
-            if self._platform_matches(task_config, gfx_arch):
+        for task_id, task_file in tasks.items():
+            contract = load_task_contract(task_file, task_id=task_id)
+            if self._platform_matches(contract.raw, gfx_arch):
                 runnable.append(task_id)
             else:
                 deferred.append(task_id)
@@ -227,6 +238,7 @@ class QualityLoop:
             "platform_deferred": deferred,
             "target_gpu_model": self.config.target_gpu_model,
             "gfx_arch": gfx_arch,
+            "target_language": self.config.target_language or "audit language",
             "backend": self.config.backend.name,
             "optimization_iterations": self.config.optimization_iterations,
         }
@@ -296,21 +308,21 @@ class QualityLoop:
         assert self.state is not None and self.worktree is not None
         tasks = self.discover_tasks(self.worktree)
         gfx_arch = _resolve_gfx_arch(self.config.target_gpu_model)
-        for index, (task_id, config_path) in enumerate(tasks.items(), 1):
-            if self.state.is_terminal(task_id) and self._terminal_evidence_current(task_id, config_path.parent):
+        for index, (task_id, task_file) in enumerate(tasks.items(), 1):
+            if self.state.is_terminal(task_id) and self._terminal_evidence_current(task_id, task_file.parent):
                 self.logger.info("Resume: skipping terminal task %s", task_id)
                 continue
             self.logger.info("quality_loop task %d/%d: %s", index, len(tasks), task_id)
             try:
-                task_config = load_task_spec(config_path, task_id=task_id).to_mapping()
-                if not self._platform_matches(task_config, gfx_arch):
+                contract = load_task_contract(task_file, task_id=task_id)
+                if not self._platform_matches(contract.raw, gfx_arch):
                     self.state.transition(
                         task_id, "platform_deferred",
                         reason=f"requires a different platform than {gfx_arch or 'unknown'}",
-                        accepted_fingerprint=stable_fingerprint(snapshot_tree(config_path.parent)),
+                        accepted_fingerprint=stable_fingerprint(snapshot_tree(task_file.parent)),
                     )
                     continue
-                self._process_task(task_id, config_path.parent)
+                self._process_task(task_id, task_file.parent)
             except Exception as exc:
                 self.logger.exception("quality_loop task failed: %s", task_id)
                 # Tooling/agent/runtime failures are not evidence that the task is
@@ -346,56 +358,54 @@ class QualityLoop:
         self.state.finish("completed", pull_request_url=pr_url)
         return report_path
 
+    def _optimization_language(self, task_id: str, task_dir: Path) -> str:
+        return self.config.target_language or audit_target_language(task_dir / TASK_FILE, task_id=task_id)
+
     def _process_task(self, task_id: str, canonical_task: Path) -> None:
         assert self.state is not None
         assert self.artifact_dir is not None
         assert self.worktree is not None
-        load_task_spec(canonical_task / "config.yaml", task_id=task_id)
+        load_task_contract(canonical_task / TASK_FILE, task_id=task_id)
         task_artifacts = self.artifact_dir / "tasks" / _task_slug(task_id) / uuid.uuid4().hex
         original_task = task_artifacts / "original_task"
         candidate_task = task_artifacts / "candidate_task"
         task_artifacts.mkdir(parents=True)
-        self._validation_evidence = []
+        self._audit_evidence = []
         self._copy_task(canonical_task, original_task)
         self._copy_task(canonical_task, candidate_task)
         original_tree = snapshot_tree(original_task)
-        original_validation_status = "FAIL"
 
-        self.state.transition(task_id, "validating",
+        self.state.transition(task_id, "auditing",
                               attempt_artifacts=str(task_artifacts.relative_to(self.repo_root)),
                               accepted_fingerprint=stable_fingerprint(snapshot_tree(canonical_task)))
-        validation_workspace, validation = self._validate(
-            task_id, candidate_task, task_artifacts / "validation_initial"
-        )
-        original_validation_status = str(validation.get("overall_status", "FAIL")).upper()
-        warnings = _validation_warnings(validation)
+        audit_workspace, report = self._audit(task_id, candidate_task, task_artifacts / "audit_initial")
+        original_status = str(report.get("status", "FAIL")).upper()
+        warnings = _audit_warnings(report)
 
         repair_review = None
-        if original_validation_status == "FAIL" or blocking_findings(validation, self.config.repair_warnings):
+        if original_status == "FAIL" or blocking_findings(report, self.config.repair_warnings):
             self.state.transition(task_id, "repairing", warnings=warnings)
             try:
                 repaired = self._repair_task(
-                    task_id, original_task, candidate_task, task_artifacts,
-                    validation_workspace, validation,
+                    task_id, original_task, candidate_task, task_artifacts, audit_workspace, report,
                 )
             except RepairRejected as exc:
                 self.state.transition(task_id, "repair_rejected", repair_rejection=str(exc))
-                self._handle_unrepairable(task_id, validation)
+                self._handle_unrepairable(task_id, report)
                 return
             if repaired is None:
                 return
-            validation, repair_review = repaired
-            warnings = _validation_warnings(validation)
+            report, repair_review = repaired
+            warnings = _audit_warnings(report)
 
         if self.config.mode == "repair_only":
             changes = _filtered_changes(original_tree, snapshot_tree(candidate_task),
                                         source_root=candidate_task)
             if not changes.empty:
-                if validation.get("overall_status") != "PASS" or repair_review is None:
-                    self._handle_unrepairable(task_id, validation)
+                if report.get("status") != "PASS" or repair_review is None:
+                    self._handle_unrepairable(task_id, report)
                     return
                 apply_changes(candidate_task, canonical_task, changes)
-                restore_committed_perf_stubs(canonical_task)
             commit = (self.publisher.commit_task(self.worktree, task_id)
                       if not changes.empty and not self.defer_github else None)
             self.state.transition(
@@ -403,7 +413,7 @@ class QualityLoop:
                 changes=list(changes.paths), commit=commit,
                 commit_pending=not changes.empty and self.defer_github,
                 speedups=[], reviewer=repair_review, baseline_hardened=False,
-                cases_enhanced=False, validation_evidence=list(self._validation_evidence),
+                cases_enhanced=False, audit_evidence=list(self._audit_evidence),
                 accepted_fingerprint=stable_fingerprint(snapshot_tree(canonical_task)),
             )
             return
@@ -436,7 +446,6 @@ class QualityLoop:
 
         hardened = False
         hardening_reason = "candidate did not meet the configured easy-task gate"
-        spec = load_task_spec(candidate_task / "config.yaml", task_id=task_id)
         if difficulty_is_easy(
             speedups=speedups,
             result=result,
@@ -456,7 +465,7 @@ class QualityLoop:
             self.config.case_enhancement
             and review.get("accepted") is True
             and review.get("case_enhancement_needed") is True
-            and original_validation_status in {"PASS", "WARN"}
+            and original_status == "PASS"
         ):
             cases_enhanced = self._enhance_cases(
                 task_id,
@@ -467,24 +476,18 @@ class QualityLoop:
                 optimized_workspace=optimization_workspace,
             )
 
-        restore_committed_perf_stubs(candidate_task)
-        candidate_tree = snapshot_tree(candidate_task)
-        final_changes = _filtered_changes(
-            original_tree,
-            candidate_tree,
-            materialized=_materialized_destinations(spec), source_root=candidate_task,
-        )
+        final_changes = _filtered_changes(original_tree, snapshot_tree(candidate_task),
+                                          source_root=candidate_task)
         commit = None
         commit_pending = False
         if not final_changes.empty:
-            _, final_validation = self._validate(
-                task_id, candidate_task, task_artifacts / "validation_final"
+            _, final_report = self._audit(
+                task_id, candidate_task, task_artifacts / "audit_final"
             )
-            if final_validation.get("overall_status") != "PASS":
-                self._handle_unrepairable(task_id, final_validation)
+            if final_report.get("status") != "PASS":
+                self._handle_unrepairable(task_id, final_report)
                 return
             apply_changes(candidate_task, canonical_task, final_changes)
-            restore_committed_perf_stubs(canonical_task)
             if self.defer_github:
                 # A linked worktree's .git file contains a host-absolute path,
                 # which is intentionally unavailable inside the GPU container.
@@ -500,113 +503,120 @@ class QualityLoop:
             commit=commit,
             commit_pending=commit_pending,
             speedups=speedups,
+            target_language=self._optimization_language(task_id, original_task),
             reviewer=review,
             baseline_hardened=hardened,
             baseline_hardening_reason=hardening_reason,
             cases_enhanced=cases_enhanced,
-            validation_evidence=list(self._validation_evidence),
+            audit_evidence=list(self._audit_evidence),
             accepted_fingerprint=stable_fingerprint(snapshot_tree(canonical_task)),
         )
 
-    def _validate(
+    def _audit(
         self, task_id: str, task_dir: Path, stage_dir: Path
     ) -> tuple[Path, dict[str, Any]]:
-        spec = load_task_spec(task_dir / "config.yaml", task_id=task_id)
+        """One fresh QA audit of ``task_dir``; operational failures raise.
+
+        The returned report is the framework-finalized qa_report.yaml for this
+        exact package, this request and the current rubric. Its status (PASS or
+        FAIL) is the task judgment; warnings never block.
+        """
         # Preserve the stable discovery ID even for a repaired scratch package.
         package = stage_dir / "definitions" / "tasks" / task_id
         package.parent.mkdir(parents=True, exist_ok=True)
         self._copy_task(task_dir, package)
-        workspace = self._make_workspace(task_id, package, stage_dir / "execution")
-        report_path = workspace / "validation_report.yaml"
+        task_file = package / TASK_FILE
+        language = audit_target_language(task_file, task_id=task_id)
+        spec = load_task_spec(task_file, task_id=task_id, target_language=language)
+        workspace = self._make_workspace(task_id, package, stage_dir / "execution",
+                                         target_language=language)
+        report_path = workspace / REPORT_FILENAME
         marker_path = workspace / COMPLETION_MARKER_FILENAME
-        if report_path.exists() or marker_path.exists():
-            raise RuntimeError("fresh validator workspace contains pre-existing evidence")
-        before = snapshot_tree(workspace)
-        started = time.time_ns()
-        settings = self._eval_config(task_id=task_id, validator=True)
+        if os.path.lexists(report_path) or os.path.lexists(marker_path):
+            raise RuntimeError("fresh audit workspace contains pre-existing QA evidence")
+        before, package_before = snapshot_tree(workspace), snapshot_tree(package)
+        started = time.time()
+        settings = self._eval_config(task_id=task_id, auditor=True)
         from src.task_session import TaskSession
-        from src.task_run import validate_task_session
+        from src.task_run import audit_task_session
 
-        session = TaskSession.create(spec, workspace, stage_dir / "validation-session", self.logger)
-        # The shared runner passes the captured manifest, initial-state and
-        # baseline evidence before the semantic reviewer starts.
+        session = TaskSession.create(spec, workspace, stage_dir / "audit-session", self.logger)
+        request_id = uuid.uuid4().hex
+
         def launch(*, eval_config, task_config_dir, workspace):
-            return self.validator_launcher(eval_config, task_config_dir, workspace)
-        validate_task_session(session, eval_config=settings, task_config_dir=str(package / "config.yaml"),
-                              agent_launcher=launch)
-        self._validation_manifests[workspace] = tuple(session.manifest.cases) if session.manifest else ()
-        if not validation_report_is_complete(workspace):
-            raise RuntimeError(f"validator did not finalize a complete report for {task_id}")
-        if report_path.is_symlink() or marker_path.is_symlink():
-            raise RuntimeError("validator evidence must not be a symlink")
-        report = yaml.safe_load(report_path.read_text(encoding="utf-8"))
-        if report.get("task_name") != task_id:
-            raise RuntimeError("validator report names a different task")
-        timestamp = datetime.fromisoformat(str(report.get("validation_timestamp", "")))
-        if timestamp.tzinfo is None:
-            raise RuntimeError("validator report timestamp must identify its timezone")
-        if (report_path.stat().st_mtime_ns < started
-                or timestamp.timestamp() < started / 1e9 - 1
-                or timestamp.timestamp() > time.time() + 5):
-            raise RuntimeError("validator returned stale or future-dated evidence")
-        changes = _filtered_changes(before, snapshot_tree(workspace),
-                                    materialized=_materialized_destinations(spec),
-                                    source_root=workspace)
+            return self.auditor_launcher(eval_config, task_config_dir, workspace)
+
+        audit_task_session(session, eval_config=settings, task_config_dir=str(task_file),
+                           agent_launcher=launch, audit_request_id=request_id)
+        report = load_report(workspace)
+        if report is None:
+            raise RuntimeError(f"QA auditor did not finalize a complete report for {task_id}")
+        if report.get("task_id") != task_id or report.get("audit_request_id") != request_id:
+            raise RuntimeError("QA report belongs to another task or audit request")
+        try:
+            generated = datetime.fromisoformat(str(report.get("generated_at", "")))
+        except ValueError as exc:
+            raise RuntimeError("QA report has no valid generation time") from exc
+        if (generated.tzinfo is None or generated.timestamp() < started - 1
+                or generated.timestamp() > time.time() + 5):
+            raise RuntimeError("QA auditor returned stale or future-dated evidence")
+        if snapshot_tree(package) != package_before or not report_is_current(report, _package_digest(package)):
+            raise RuntimeError("QA report does not qualify this exact task package and rubric")
+        changes = _filtered_changes(before, snapshot_tree(workspace), source_root=workspace)
         if not changes.empty:
-            raise RuntimeError(f"validator modified task files: {changes.paths}")
-        if report.get("framework_status") != "PASS":
-            raise RuntimeError("validator framework failed; this is not a repairable task judgment")
-        self._validation_evidence.append({
+            raise RuntimeError(f"QA audit modified task files: {changes.paths}")
+        framework = [f for f in report.get("findings", []) if f.get("id") == "QA-AUDIT"]
+        if framework:
+            # The audit itself failed; that is not a repairable task judgment.
+            raise RuntimeError("QA audit did not run to completion: "
+                               + "; ".join(str(f.get("detail"))[:500] for f in framework))
+        self._audit_evidence.append({
             "workspace": str(workspace.relative_to(self.repo_root)),
             "report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+            "task_package_sha256": report["task_package_sha256"],
             "task_fingerprint": stable_fingerprint(snapshot_tree(task_dir)),
-            "spec": spec.to_mapping(),
+            "target_language": language,
+            "status": report["status"],
         })
         return workspace, report
 
     def _repair_task(self, task_id, original_task, candidate_task, artifacts, workspace, report):
-        spec = load_task_spec(candidate_task / "config.yaml", task_id=task_id)
-        policy = RepairPolicy.capture(spec, self._validation_manifests.get(workspace), report)
+        policy = RepairPolicy.capture(candidate_task, task_id)
         retained = blocking_findings(report, self.config.repair_warnings)
         attempted = {stable_fingerprint(snapshot_tree(candidate_task))}
+        language = audit_target_language(candidate_task / TASK_FILE, task_id=task_id)
         for attempt in range(1, self.config.max_repair_attempts + 1):
             stage = artifacts / f"repair_{attempt:02d}"
-            editor = self._make_workspace(task_id, candidate_task, stage / "editor")
+            editor = self._make_workspace(task_id, candidate_task, stage / "editor",
+                                          target_language=language)
             before = snapshot_tree(editor)
             self.backend.run(repair_prompt(report, task_id, findings=retained,
                                            warning_checks=self.config.repair_warnings),
                              editor, role="repair")
-            changes = _filtered_changes(before, snapshot_tree(editor),
-                                        materialized=_materialized_destinations(spec), source_root=editor)
+            changes = _filtered_changes(before, snapshot_tree(editor), source_root=editor)
             if changes.empty:
                 break
             proposal = stage / "proposal"
             self._copy_task(candidate_task, proposal)
             apply_changes(editor, proposal, changes)
-            restore_committed_perf_stubs(proposal)
-            try:
-                proposed_spec = load_task_spec(proposal / "config.yaml", task_id=task_id)
-            except (ValueError, OSError) as exc:
-                raise RepairRejected(f"Repair proposed an invalid task specification: {exc}") from exc
-            policy.verify_specification(proposed_spec)
+            policy.verify(proposal)
             fingerprint = stable_fingerprint(snapshot_tree(proposal))
             if fingerprint in attempted:
                 self.logger.warning("Stopping repeated repair proposal for %s", task_id)
                 break
             attempted.add(fingerprint)
-            validated, next_report = self._validate(task_id, proposal, stage / "validation")
-            policy.verify(proposed_spec, self._validation_manifests.get(validated), next_report)
+            audited, next_report = self._audit(task_id, proposal, stage / "audit")
             retained.update(blocking_findings(next_report, self.config.repair_warnings))
             report = next_report
-            if report.get("overall_status") == "PASS":
-                decision = self._review_repair(task_id, original_task, validated, retained)
+            if report.get("status") == "PASS" and not blocking_findings(report, self.config.repair_warnings):
+                decision = self._review_repair(task_id, original_task, audited, retained)
                 if decision.get("accepted") is True:
                     self._replace_directory(candidate_task, proposal)
                     return report, decision
                 self.state.transition(task_id, "repair_review_rejected", repair_review=decision)
                 break
             # Keep each proposal/evidence tree; the next editor starts from this
-            # changed package, never from an unchanged validator rerun.
+            # changed package, never from an unchanged audit rerun.
             self._replace_directory(candidate_task, proposal)
         self._handle_unrepairable(task_id, report)
         return None
@@ -640,7 +650,8 @@ class QualityLoop:
     def _new_session(self, task_id: str, workspace: Path, spec: TaskSpec, stage_dir: Path):
         session = self.session_factory(
             spec=spec, workspace=workspace, artifact_dir=stage_dir,
-            eval_config=self._eval_config(task_id=task_id), logger=self.logger,
+            eval_config=self._eval_config(task_id=task_id, language=spec.target_language),
+            logger=self.logger,
         )
         self._session_task_ids[workspace] = task_id
         return session
@@ -662,34 +673,24 @@ class QualityLoop:
     def _optimize_once(
         self, task_id: str, task_dir: Path, stage_dir: Path
     ) -> tuple[Path, list[Any], dict[str, Any]]:
-        spec = load_task_spec(task_dir / "config.yaml", task_id=task_id)
-        workspace = self._make_workspace(task_id, task_dir, stage_dir)
+        language = self._optimization_language(task_id, task_dir)
+        spec = load_task_spec(task_dir / TASK_FILE, task_id=task_id, target_language=language)
+        workspace = self._make_workspace(task_id, task_dir, stage_dir, target_language=language)
         session = self._new_session(task_id, workspace, spec, stage_dir / "evaluation")
         # The framework owns initial-state validation and the independent baseline.
-        # Empty candidates and cross-language tasks follow their declarations.
+        # An unimplemented template is legal only before the optimizer runs.
         session.prepare()
         self._sessions[workspace] = session
         original_sources = stage_dir / "original_sources"
         original_sources.mkdir()
-        source_manifest = {}
-        for relative in _source_paths(spec, workspace):
-            source = resolve_task_path(workspace, relative)
-            if not source.is_file():
-                source_manifest[relative] = "missing"
-                continue
+        for relative in _solution_paths(workspace):
             destination = original_sources / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, destination)
-            source_manifest[relative] = "copied"
-        (original_sources / "manifest.yaml").write_text(
-            yaml.safe_dump(source_manifest, sort_keys=True), encoding="utf-8"
-        )
+            shutil.copy2(resolve_task_path(workspace, relative), destination)
         original_source_tree = snapshot_tree(original_sources)
-        harness = snapshot_workspace_harness(workspace, task_root=task_dir)
-        base_prompt = prompt_builder(
-            str(task_dir / "config.yaml"), str(workspace),
-            self._eval_config(task_id=task_id), self.logger,
-        )
+        harness = snapshot_workspace_harness(workspace, task_root=task_dir, task_spec=spec)
+        settings = self._eval_config(task_id=task_id, language=language)
+        base_prompt = prompt_builder(str(task_dir / TASK_FILE), str(workspace), settings, self.logger)
         base_prompt += (
             f"\n\nRead-only framework task context: `{session.agent_context_path}`. "
             "Use its frozen baseline workspace for baseline checks; never derive "
@@ -699,10 +700,7 @@ class QualityLoop:
         verify_workspace_harness(harness, logger=self.logger)
         if snapshot_tree(original_sources) != original_source_tree:
             raise RuntimeError("optimizer modified the protected original-source snapshot")
-        materialize_perf_helpers_in_workspace(workspace, logger=self.logger)
         result = self._evaluate_session(workspace)
-        if result.get("task_name") != task_id:
-            raise RuntimeError("TaskSession reported a different task identity")
         verify_workspace_harness(harness, logger=self.logger)
         shutil.copytree(original_sources, workspace / ".quality_loop_original_sources")
         return workspace, session.baseline_cases, result
@@ -718,16 +716,7 @@ class QualityLoop:
                 or yaml.safe_load(result_path.read_text()) != result):
             raise RuntimeError("review requires the current framework evaluation evidence")
         before = snapshot_tree(workspace)
-        evidence_names = (
-            "task_result.yaml",
-            "baseline_perf.yaml",
-            "optimized_perf.yaml",
-        )
-        evidence_before = {
-            name: (workspace / name).read_bytes()
-            for name in evidence_names
-            if (workspace / name).is_file()
-        }
+        evidence_before = result_path.read_bytes()
         original_sources = workspace / ".quality_loop_original_sources"
         original_before = snapshot_tree(original_sources)
         session = self._sessions.get(workspace)
@@ -742,13 +731,8 @@ class QualityLoop:
         )
         session.verify_review_evidence(review_evidence)
         after = snapshot_tree(workspace)
-        evidence_after = {
-            name: (workspace / name).read_bytes()
-            for name in evidence_names
-            if (workspace / name).is_file()
-        }
         if (
-            evidence_after != evidence_before
+            not result_path.is_file() or result_path.read_bytes() != evidence_before
             or snapshot_tree(original_sources) != original_before
         ):
             raise RuntimeError("reviewer modified protected evaluation evidence")
@@ -786,39 +770,69 @@ class QualityLoop:
         self, task_id: str, original_task: Path, candidate_task: Path,
         optimized_workspace: Path, task_artifacts: Path,
     ) -> tuple[bool, str | None]:
-        spec = load_task_spec(candidate_task / "config.yaml", task_id=task_id)
-        if spec.baseline.kind != "initial_candidate":
-            return False, "provided baseline is independent; copying a candidate does not replace it"
+        """Replace the vendored baseline with the reviewed easy-task candidate.
+
+        Only a same-language candidate is promoted: it started as a copy of the
+        baseline, so it is a derivative of the vendored code and keeps its
+        upstream license. Provenance records the promotion. A fresh QA PASS of
+        the promoted package and the dual correctness gate are both required.
+        """
+        session = self._sessions.get(optimized_workspace)
+        spec = session.session.spec if session is not None else None
+        if spec is None or spec.contract is None:
+            return False, "promotion requires the controller's schema-v3 optimization session"
         if spec.candidate.initial_state != "implemented":
-            return False, "there is no implemented starting candidate to promote"
-        sources = _source_paths(spec, candidate_task)
-        destinations = _materialized_destinations(spec)
-        if not sources or any(
-            not resolve_task_path(candidate_task, path).is_file()
-            or any(path == dest or path.startswith(dest + "/") for dest in destinations)
-            for path in sources
-        ):
-            return False, "task has no promotable committed source baseline"
+            return False, (f"a {spec.candidate.language} candidate cannot replace the "
+                           f"{spec.contract['baseline_language']} baseline; only same-language "
+                           "candidates are promoted")
+        sources = _solution_paths(optimized_workspace)
+        entry = spec.candidate.entrypoints[0].file
+        if entry not in sources:
+            return False, "optimized candidate has no entry file to promote"
         backup = task_artifacts / "baseline_before_promotion"
         self._copy_task(candidate_task, backup)
         accepted = False
         try:
-            self._install_candidate(spec, optimized_workspace, candidate_task)
-            promoted = spec.to_mapping()
-            promoted["candidate"]["initial_language"] = spec.candidate.language
-            promoted["baseline"]["language"] = spec.candidate.language
-            promoted = TaskSpec.from_mapping(promoted, task_id=task_id).to_mapping()
-            (candidate_task / "config.yaml").write_text(yaml.safe_dump(promoted, sort_keys=False))
-            restore_committed_perf_stubs(candidate_task)
+            baseline = candidate_task / BASELINE_DIR
+            for path in sorted(baseline.rglob("*"), reverse=True):
+                if path.is_file() and not path.name.startswith("LICENSE") and path.suffix != ".md":
+                    path.unlink()
+                elif path.is_dir() and not any(path.iterdir()):
+                    path.rmdir()
+            digest = hashlib.sha256()
+            for relative in sources:
+                data = resolve_task_path(optimized_workspace, relative, must_exist=True).read_bytes()
+                digest.update(relative.encode() + b"\0" + data)
+                target = baseline / Path(relative).relative_to(SOLUTION_DIR)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            raw = yaml.safe_load((candidate_task / TASK_FILE).read_text(encoding="utf-8"))
+            previous = raw["baseline"]["provenance"]
+            run_id = self.state.data["run_id"] if self.state is not None else "unknown"
+            raw["baseline"]["provenance"] = {
+                **previous,
+                "source": f"AgentKernelArena quality_loop run {run_id}",
+                "revision": digest.hexdigest(),
+                "modifications": (
+                    f"Reviewed {spec.candidate.language} candidate promoted by quality_loop run {run_id} "
+                    f"(median {self.config.easy_speedup_threshold:g}x or more over the previous baseline). "
+                    f"It replaces the baseline vendored from {previous['source']} at "
+                    f"{previous['revision']}, from which it was derived; the upstream license applies. "
+                    f"Earlier modifications: {previous.get('modifications', 'none')}"),
+            }
+            (candidate_task / TASK_FILE).write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+            try:
+                load_task_contract(candidate_task / TASK_FILE, task_id=task_id)
+            except (TaskConfigError, ValueError) as exc:
+                return False, f"promoted package is not a valid task: {exc}"
             if not self._dual_correctness_gate(
-                task_id, original_task, candidate_task, task_artifacts / "hardening_gate"
+                task_id, original_task, candidate_task, task_artifacts / "hardening_gate",
+                optimized_workspace=optimized_workspace,
             ):
                 return False, "promoted baseline failed the dual correctness gate"
-            _, validation = self._validate(
-                task_id, candidate_task, task_artifacts / "validation_hardened"
-            )
-            if validation.get("overall_status") != "PASS":
-                return False, "promoted baseline needs a clean fresh task validation PASS"
+            _, report = self._audit(task_id, candidate_task, task_artifacts / "audit_hardened")
+            if report.get("status") != "PASS":
+                return False, "promoted baseline needs a fresh QA audit PASS"
             accepted = True
             return True, None
         finally:
@@ -829,142 +843,134 @@ class QualityLoop:
         self, task_id: str, original_task: Path, candidate_task: Path,
         rationale: str, task_artifacts: Path, *, optimized_workspace: Path,
     ) -> bool:
+        language = audit_target_language(candidate_task / TASK_FILE, task_id=task_id)
         case_workspace = self._make_workspace(
-            task_id, candidate_task, task_artifacts / "case_candidate"
+            task_id, candidate_task, task_artifacts / "case_candidate", target_language=language
         )
-        spec = load_task_spec(candidate_task / "config.yaml", task_id=task_id)
         before = snapshot_tree(case_workspace)
         self.backend.run(case_enhancement_prompt(task_id, rationale), case_workspace,
                          role="case_enhancer")
-        changes = _filtered_changes(before, snapshot_tree(case_workspace),
-                                    materialized=_materialized_destinations(spec),
-                                    source_root=case_workspace)
+        changes = _filtered_changes(before, snapshot_tree(case_workspace), source_root=case_workspace)
         if changes.empty:
             return False
-        workloads = spec.to_mapping()["evaluation"].get("workloads")
-        if any(
-            (not is_case_path(path) and path != workloads)
-            or any(scope.contains(path) for scope in spec.candidate.editable)
-            or Path(path).name == "performance_utils_pytest.py"
-            for path in changes.paths
-        ):
+        if any(path not in CASE_FILES for path in changes.paths) or changes.deleted:
             self.logger.warning("Rejecting non-case changes from case enhancer: %s", changes.paths)
+            return False
+        proposal = task_artifacts / "case_proposal"
+        self._copy_task(candidate_task, proposal)
+        apply_changes(case_workspace, proposal, changes)
+        try:
+            # Cases may only be added, and only as correctness checks.
+            RepairPolicy.capture(candidate_task, task_id).verify(proposal)
+        except RepairRejected as exc:
+            self.logger.warning("Rejecting case enhancement for %s: %s", task_id, exc)
             return False
         backup = task_artifacts / "candidate_before_cases"
         self._copy_task(candidate_task, backup)
         accepted = False
         try:
-            apply_changes(case_workspace, candidate_task, changes)
-            restore_committed_perf_stubs(candidate_task)
+            self._replace_directory(candidate_task, proposal)
             if not self._dual_correctness_gate(
                 task_id, original_task, candidate_task, task_artifacts / "case_gate",
                 optimized_workspace=optimized_workspace,
             ):
                 return False
-            _, validation = self._validate(
-                task_id, candidate_task, task_artifacts / "validation_cases"
-            )
-            accepted = validation.get("overall_status") == "PASS"
+            _, report = self._audit(task_id, candidate_task, task_artifacts / "audit_cases")
+            accepted = report.get("status") == "PASS"
             return accepted
         finally:
             if not accepted:
                 self._replace_directory(candidate_task, backup)
 
     @staticmethod
-    def _install_candidate(spec: TaskSpec, source: Path, destination: Path) -> None:
-        """Install all declared files/helpers, preserving nested paths and removals."""
-        paths = set(_source_paths(spec, source)) | set(_source_paths(spec, destination))
-        for relative in sorted(paths):
-            src = resolve_task_path(source, relative)
+    def _install_candidate(source: Path, destination: Path) -> None:
+        """Install the complete solution/ tree, preserving nested helpers and removals."""
+        wanted = set(_solution_paths(source))
+        for relative in _solution_paths(destination):
+            if relative not in wanted:
+                resolve_task_path(destination, relative).unlink()
+        for relative in sorted(wanted):
+            src = resolve_task_path(source, relative, must_exist=True)
             dst = resolve_task_path(destination, relative)
-            if src.is_file():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-            elif any(scope.scope == "tree" and scope.contains(relative)
-                     for scope in spec.candidate.editable):
-                QualityLoop._reset_path(dst)
-            else:
-                raise RuntimeError(f"candidate omitted declared file {relative}")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
 
     def _dual_correctness_gate(
-        self, task_id: str, original_task: Path, candidate_task: Path, stage_dir: Path,
-        *, optimized_workspace: Path | None = None,
+        self, task_id: str, original_task: Path, proposed_task: Path, stage_dir: Path,
+        *, optimized_workspace: Path,
     ) -> bool:
-        original_spec = load_task_spec(original_task / "config.yaml", task_id=task_id)
-        proposed_spec = load_task_spec(candidate_task / "config.yaml", task_id=task_id)
+        """The original baseline and the optimized candidate both pass the proposed cases.
+
+        The proposed package keeps its workloads and inputs but takes the
+        ORIGINAL baseline and declaration, so preparation never treats an
+        optimized candidate as its own baseline. The workspace is materialized
+        for the optimized candidate's language, whose solution/ is then
+        checked with compile and full correctness.
+        """
+        session = self._sessions.get(optimized_workspace)
+        language = (session.session.spec.target_language if session is not None
+                    else self._optimization_language(task_id, original_task))
         original_with_cases = stage_dir / "original_with_cases"
         original_with_cases.parent.mkdir(parents=True, exist_ok=True)
-        self._copy_task(candidate_task, original_with_cases)
-        # Retain proposed cases, but prepare the ORIGINAL role/state/language.
-        # Preparation must never snapshot the optimized candidate as its baseline.
-        config = proposed_spec.to_mapping()
-        config["candidate"] = original_spec.to_mapping()["candidate"]
-        config["baseline"] = original_spec.to_mapping()["baseline"]
-        check_spec = TaskSpec.from_mapping(config, task_id=task_id)
-        (original_with_cases / "config.yaml").write_text(yaml.safe_dump(check_spec.to_mapping()))
-        self._restore_initial_candidate(original_spec, original_task, original_with_cases)
-        workspace = self._make_workspace(task_id, original_with_cases, stage_dir / "execution")
-        session = self._new_session(task_id, workspace, check_spec, stage_dir / "evaluation")
+        self._copy_task(proposed_task, original_with_cases, exclude_root=(TASK_FILE, BASELINE_DIR))
+        shutil.copy2(original_task / TASK_FILE, original_with_cases / TASK_FILE)
+        self._copy_task(original_task / BASELINE_DIR, original_with_cases / BASELINE_DIR)
+        check_spec = load_task_spec(original_with_cases / TASK_FILE, task_id=task_id, target_language=language)
+        workspace = self._make_workspace(task_id, original_with_cases, stage_dir / "execution",
+                                         target_language=language)
+        evaluation = self._new_session(task_id, workspace, check_spec, stage_dir / "evaluation")
         try:
-            session.prepare()
+            evaluation.prepare()
         except InitialValidationRejected:
             self.logger.warning("Original baseline did not pass proposed cases for %s", task_id)
             return False
-        # A generation task's empty original is never called as a candidate.
-        # The actual optimized implementation is checked against the new cases.
-        self._install_candidate(proposed_spec, optimized_workspace or candidate_task, workspace)
-        return session.check_candidate() is True
-
-    @staticmethod
-    def _restore_initial_candidate(spec: TaskSpec, source: Path, destination: Path) -> None:
-        for relative in set(_source_paths(spec, source)) | set(_source_paths(spec, destination)):
-            src = resolve_task_path(source, relative)
-            dst = resolve_task_path(destination, relative)
-            if src.is_file():
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src, dst)
-            elif dst.exists() or dst.is_symlink():
-                QualityLoop._reset_path(dst)
+        # An unimplemented template is never called as a candidate. The actual
+        # optimized implementation is checked against the new cases.
+        self._install_candidate(optimized_workspace, workspace)
+        return evaluation.check_candidate() is True
 
     def _handle_unrepairable(self, task_id: str, report: dict[str, Any]) -> None:
         assert self.state is not None
         self.state.transition(
             task_id,
             "reported_failure",
-            warnings=_validation_warnings(report),
-            validation_report=report,
-            validation_evidence=list(self._validation_evidence),
+            warnings=_audit_warnings(report),
+            qa_report=report,
+            audit_evidence=list(self._audit_evidence),
         )
 
-    def _make_workspace(self, task_id: str, task_dir: Path, stage_dir: Path) -> Path:
+    def _make_workspace(self, task_id: str, task_dir: Path, stage_dir: Path, *,
+                        target_language: str) -> Path:
         self._reset_path(stage_dir)
         stage_dir.mkdir(parents=True, exist_ok=True)
         return setup_workspace(
-            str(task_dir / "config.yaml"),
+            str(task_dir / TASK_FILE),
             stage_dir,
             "qualityloop",
             self.logger,
             task_name=task_id,
+            target_language=target_language,
         )
 
-    def _eval_config(self, *, task_id: str | None = None, validator: bool = False) -> dict[str, Any]:
-        backend = self.config.validator if validator else self.config.backend
-        result = {
-            "target_gpu_model": self.config.target_gpu_model,
-            "agent": {
-                "template": "task_validator" if validator else "codex",
-                "backend": backend.name,
-                "model": backend.model,
-                "effort": backend.effort,
-                "timeout_seconds": backend.timeout_seconds,
-                "python_path": os.environ.get("AGENT_KERNEL_ARENA_PYTHON"),
-                "max_iterations": 1,
-            },
+    def _eval_config(self, *, task_id: str | None = None, auditor: bool = False,
+                     language: str | None = None) -> dict[str, Any]:
+        backend = self.config.auditor if auditor else self.config.backend
+        agent = {
+            "template": "qa_auditor" if auditor else "codex",
+            "backend": backend.name,
+            "model": backend.model,
+            "effort": backend.effort,
+            "timeout_seconds": backend.timeout_seconds,
         }
+        if not auditor:
+            agent.update(python_path=os.environ.get("AGENT_KERNEL_ARENA_PYTHON"), max_iterations=1)
+        result = {"target_gpu_model": self.config.target_gpu_model, "agent": agent}
+        if language is not None:
+            result["target_language"] = language
         if task_id is not None:
             result["task_id"] = task_id
             result["_task_id"] = task_id  # Shared prompt builder identity for scratch packages.
-        if self.config.evaluation_tools:
+        if self.config.evaluation_tools and not auditor:
             result["evaluation_tools"] = dict(self.config.evaluation_tools)
         return result
 
@@ -975,7 +981,7 @@ class QualityLoop:
             return False
         if record.get("state") == "platform_deferred":
             return True
-        evidence = record.get("validation_evidence")
+        evidence = record.get("audit_evidence")
         if not isinstance(evidence, list) or not evidence:
             return False
         try:
@@ -986,26 +992,31 @@ class QualityLoop:
                 workspace = (self.repo_root / relative).resolve(strict=True)
                 if not workspace.is_relative_to(self.repo_root):
                     return False
-                path = workspace / "validation_report.yaml"
-                if path.is_symlink() or (workspace / COMPLETION_MARKER_FILENAME).is_symlink():
+                report = load_report(workspace)
+                if report is None:
                     return False
-                if not validation_report_is_complete(workspace):
-                    return False
+                path = workspace / REPORT_FILENAME
                 if hashlib.sha256(path.read_bytes()).hexdigest() != item.get("report_sha256"):
                     return False
-                report = yaml.safe_load(path.read_text())
-                if report.get("task_name") != task_id or report.get("framework_status") != "PASS":
+                if (report.get("task_id") != task_id or report.get("status") != item.get("status")
+                        or not report_is_current(report, item.get("task_package_sha256"))
+                        or any(f.get("id") == "QA-AUDIT" for f in report.get("findings", []))):
                     return False
-        except (KeyError, TypeError, ValueError, OSError, yaml.YAMLError):
+        except (KeyError, TypeError, ValueError, OSError, AttributeError):
             return False
         return True
 
     @staticmethod
-    def _copy_task(source: Path, destination: Path) -> None:
-        # Copy declarations/sources, never prior evaluation results. Leave the
-        # original experiment artifacts exactly where their owner stored them.
+    def _copy_task(source: Path, destination: Path, *, exclude_root: tuple[str, ...] = ()) -> None:
+        # Copy the task package, never prior evaluation results or the
+        # framework-written workspace files. Leave the original experiment
+        # artifacts exactly where their owner stored them.
+        root = Path(source)
+
         def ignore(directory, names):
-            return [name for name in names if is_generated_path(name)]
+            base = Path(directory).relative_to(root)
+            return [name for name in names if is_generated_path((base / name).as_posix())
+                    or (base == Path(".") and name in exclude_root)]
         shutil.copytree(source, destination, symlinks=True, ignore=ignore)
 
     @staticmethod
@@ -1036,8 +1047,9 @@ class QualityLoop:
             "repo": self.state.data["repo_slug"],
             "base_sha": self.state.data["base_sha"],
             "target_gpu_model": self.config.target_gpu_model,
+            "target_language": self.config.target_language,
             "backend": self.config.backend.name,
-            "optimization_iterations": 1,
+            "optimization_iterations": self.config.optimization_iterations,
             "counts": counts,
             "warning_count": warning_count,
             "tasks": records,
@@ -1059,25 +1071,29 @@ class QualityLoop:
         ]
         warnings = sum(len(value.get("warnings") or []) for value in records.values())
         report_relative = report_path.relative_to(self.repo_root)
+        optimizer = ("none (repair_only)" if self.config.mode == "repair_only"
+                     else f"Codex, exactly one iteration per task in "
+                          f"{self.config.target_language or 'each task audit language'}")
         return f"""## Summary
 
 - Audited tasks: {len(records)}
 - Accepted task changes: {len(changed)}
-- Validator warnings recorded: {warnings}
-- Unresolved validation failures: {len(unresolved)}
-- Optimizer: Codex, exactly one iteration per task
+- QA warnings recorded: {warnings}
+- Unresolved QA failures: {len(unresolved)}
+- Optimizer: {optimizer}
 - Easy-task threshold: reproducible {self.config.easy_speedup_threshold:.1f}x
 
 ## Changed tasks
 
 {chr(10).join(f'- `{task}`' for task in changed) or '- None'}
 
-## Unresolved validation failures
+## Unresolved QA failures
 
 {chr(10).join(f'- `{task}`' for task in unresolved) or '- None'}
 
 The full machine-readable report is stored in the local run artifact
 `{report_relative}`. Every accepted task change passed a fresh framework-finalized
-task validation. Promotions and case changes also checked the original declared
-baseline and the actual optimized candidate through the shared task lifecycle.
+QA audit (`qa_report.yaml`, status PASS) of the changed package. Promotions and
+case changes also checked the original baseline and the actual optimized candidate
+through the shared task lifecycle.
 """

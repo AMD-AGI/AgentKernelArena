@@ -11,7 +11,7 @@ from pathlib import Path
 from .bundle import inspect_bundle
 from .config import Config
 from .materialize import authoring_editable, check_contract, materialize_task
-from .validation import check_task, validate_task
+from .validation import CHECK_MODES, check_task, validate_task
 
 
 def dispatch(action: str, run_dir: Path, task_id: str, mode="source-check", validation_id=None):
@@ -51,7 +51,7 @@ def main(argv=None):
     parser.add_argument("--task-id", required=True)
     parser.add_argument("action", choices=("inspect_bundle", "describe_task", "materialize_task",
                                           "check_contract", "check_task", "validate_task", "read_validation"))
-    parser.add_argument("--mode", default="source-check")
+    parser.add_argument("--mode", default="source-check", choices=sorted(CHECK_MODES))
     parser.add_argument("--validation-id")
     args = parser.parse_args(argv)
     try:

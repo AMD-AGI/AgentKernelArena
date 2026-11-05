@@ -1,11 +1,10 @@
-import json
 import logging
-from unittest import mock
+from types import SimpleNamespace
 
 import pytest
 
 from src.evaluator import evaluate_kernel, write_task_result
-from src.performance import measure_baseline
+from src.task_protocol import ActionResult, performance_cases
 from src.testcases import (
     TestCaseResult as CaseResult,
     analyze_benchmark_method_consistency,
@@ -13,8 +12,6 @@ from src.testcases import (
     calculate_average_speedup,
     load_performance_results,
     match_test_cases,
-    parse_test_cases_from_json,
-    parse_test_cases_from_stdout,
     save_performance_results,
 )
 
@@ -30,6 +27,28 @@ def _case(case_id, time_ms, method, shape):
             "benchmark_effective_repeats": 8,
         },
     )
+
+
+def _performance(cases):
+    """The validated action evidence a session returns for these cases."""
+    rows = tuple({"test_case_id": c.test_case_id, "shape": c.shape, "status": "PASS",
+                  "execution_time_ms": c.execution_time_ms, "metadata": dict(c.metadata)}
+                 for c in cases)
+    return ActionResult("candidate", "performance", "PASS", rows)
+
+
+class _Session:
+    """A v2 kernel session whose candidate passes and reports these timings."""
+
+    spec = SimpleNamespace(contract=None)
+
+    def __init__(self, cases):
+        self.cases = cases
+
+    def candidate_action(self, action):
+        if action == "performance":
+            return SimpleNamespace(result=_performance(self.cases))
+        return SimpleNamespace(result=ActionResult("candidate", action, "PASS", ()))
 
 
 def test_mismatched_method_refuses_speedup_but_keeps_timings():
@@ -79,11 +98,7 @@ def test_explicit_ids_win_over_reordered_duplicate_semantic_keys():
     for case in baseline + optimized:
         case.metadata["params"] = {"shape": [1], "variant": "same"}
 
-    matched = match_test_cases(
-        baseline,
-        optimized,
-        allow_index_fallback=False,
-    )
+    matched = match_test_cases(baseline, optimized)
 
     assert [
         (base.test_case_id, opt.test_case_id) for base, opt in matched
@@ -91,46 +106,29 @@ def test_explicit_ids_win_over_reordered_duplicate_semantic_keys():
     assert calculate_average_speedup(baseline, optimized) == 1.0
 
 
-def test_duplicate_synthetic_semantic_keys_do_not_greedily_match():
+def test_duplicate_ids_are_never_paired():
     baseline = [
-        _case("test_case_0", 100.0, "cuda_graph", [1]),
-        _case("test_case_1", 1.0, "cuda_graph", [1]),
+        _case("a", 100.0, "cuda_graph", [1]),
+        _case("a", 1.0, "cuda_graph", [1]),
     ]
     optimized = [
-        _case("test_case_0", 1.0, "cuda_graph", [1]),
-        _case("test_case_1", 100.0, "cuda_graph", [1]),
+        _case("a", 1.0, "cuda_graph", [1]),
+        _case("a", 100.0, "cuda_graph", [1]),
     ]
-    for case in baseline + optimized:
-        case.metadata["_synthetic_test_case_id"] = True
-        case.metadata["params"] = {"shape": [1], "variant": "same"}
 
-    assert match_test_cases(
-        baseline,
-        optimized,
-        allow_index_fallback=False,
-    ) == []
-    consistent, mismatches = analyze_benchmark_method_consistency(
-        baseline,
-        optimized,
-    )
+    assert match_test_cases(baseline, optimized) == []
+    consistent, mismatches = analyze_benchmark_method_consistency(baseline, optimized)
     assert not consistent
     assert mismatches == []
     assert calculate_average_speedup(baseline, optimized) == 0.0
 
 
-def test_singleton_synthetic_cases_cannot_hide_changed_shape_with_index_fallback():
-    baseline = [_case("test_case_0", 2.0, "cuda_graph", [1])]
-    optimized = [_case("test_case_0", 1.0, "cuda_graph", [2])]
-    baseline[0].metadata["_synthetic_test_case_id"] = True
-    optimized[0].metadata["_synthetic_test_case_id"] = True
+def test_single_cases_with_different_ids_are_never_paired():
+    baseline = [_case("a", 2.0, "cuda_graph", [1])]
+    optimized = [_case("b", 1.0, "cuda_graph", [1])]
 
-    consistent, mismatches = analyze_benchmark_method_consistency(
-        baseline,
-        optimized,
-    )
-
-    assert consistent
-    assert mismatches == []
+    assert match_test_cases(baseline, optimized) == []
+    assert analyze_benchmark_method_consistency(baseline, optimized) == (False, [])
     assert not analyze_workload_consistency(baseline, optimized)[0]
     assert calculate_average_speedup(baseline, optimized) == 0.0
 
@@ -167,21 +165,19 @@ def test_identical_workloads_allow_different_timing_diagnostics():
     assert calculate_average_speedup(baseline, optimized) == 2.0
 
 
-def test_nested_workload_metadata_is_preserved_and_checked_after_reload(tmp_path):
+def test_action_workload_metadata_is_preserved_and_checked_after_reload(tmp_path):
     for name, ctx_len in [('baseline', 1024), ('optimized', 16)]:
-        report = tmp_path / f'{name}.json'
-        report.write_text(json.dumps([{
-            'test_case_id': 'a', 'execution_time_ms': 1.0,
-            'metadata': {'params': {'ctx_len': ctx_len}, 'dtype': 'bf16',
-                         'benchmark_method': 'cuda_graph'},
-        }]))
-        cases = parse_test_cases_from_json(report)
-        save_performance_results(cases, tmp_path, f'{name}.yaml')
+        result = ActionResult(name, 'performance', 'PASS', ({
+            'test_case_id': 'a', 'status': 'PASS', 'execution_time_ms': 1.0,
+            'params': {'ctx_len': ctx_len}, 'dtype': 'bf16', 'benchmark_method': 'cuda_graph',
+        },))
+        save_performance_results(performance_cases(result), tmp_path, f'{name}.yaml')
     baseline = load_performance_results(tmp_path, 'baseline.yaml')
     optimized = load_performance_results(tmp_path, 'optimized.yaml')
 
     assert baseline[0].metadata['dtype'] == 'bf16'
     assert baseline[0].metadata['params'] == {'ctx_len': 1024}
+    assert baseline[0].metadata['benchmark_method'] == 'cuda_graph'
     assert not analyze_workload_consistency(baseline, optimized)[0]
     assert calculate_average_speedup(baseline, optimized) == 0.0
 
@@ -192,12 +188,7 @@ def test_evaluator_reports_workload_mismatch_without_scoring_or_plotting(tmp_pat
 
     baseline = [_case('a', 20.0, 'cuda_graph', [1024])]
     optimized = [_case('a', 1.0, 'cuda_graph', [16])]
-    with (
-        mock.patch('src.evaluator.evaluate_compilation', return_value=(True, None)),
-        mock.patch('src.evaluator.evaluate_correctness', return_value=(True, None)),
-        mock.patch('src.evaluator.measure_performance', return_value=optimized),
-    ):
-        result = evaluate_kernel(tmp_path, {'task_type': 'triton2triton'}, baseline)
+    result = evaluate_kernel(tmp_path, {}, baseline, task_session=_Session(optimized))
 
     assert result['pass_correctness']
     assert result['benchmark_method_consistent']
@@ -237,35 +228,6 @@ def test_candidate_event_fallback_cannot_switch_graph_baseline():
     assert calculate_average_speedup(baseline, optimized) == 0.0
 
 
-def test_synthetic_id_provenance_survives_yaml_round_trip(tmp_path):
-    cases = [_case("test_case_0", 1.0, "cuda_graph", [1])]
-    cases[0].metadata["_synthetic_test_case_id"] = True
-
-    save_performance_results(cases, tmp_path, "perf.yaml")
-    loaded = load_performance_results(tmp_path, "perf.yaml")
-
-    assert loaded[0].metadata["_synthetic_test_case_id"] is True
-
-
-def test_baseline_is_measured_once_without_candidate_selected_event_variant(tmp_path):
-    baseline = [
-        _case(
-            "aggregate",
-            2.0,
-            "mixed:cuda_event_fallback,cuda_graph",
-            [1],
-        )
-    ]
-    with mock.patch(
-        "src.performance.measure_performance",
-        return_value=baseline,
-    ) as measured:
-        measured_baseline = measure_baseline(tmp_path, {}, logger=mock.Mock())
-
-    assert measured.call_count == 1
-    assert measured_baseline == baseline
-
-
 def test_mixed_aggregate_method_string_must_match_exactly():
     baseline = [_case("a", 4.0, "mixed:cuda_graph,cuda_event_fallback", [1])]
     optimized = [_case("a", 2.0, "mixed:cuda_event_fallback,cuda_graph", [1])]
@@ -299,66 +261,6 @@ def test_missing_method_metadata_is_never_comparable():
     assert calculate_average_speedup(baseline, optimized) == 0.0
 
 
-def test_nested_benchmark_metadata_is_promoted_for_scoring(tmp_path):
-    report = tmp_path / "performance_report.json"
-    row = {
-        "test_case_id": "a",
-        "shape": [1],
-        "execution_time_ms": 2.0,
-        "metadata": {
-            "model": "representative-image-kernel",
-            "benchmark_method": "cuda_graph",
-            "benchmark_samples": 100,
-        },
-    }
-    report.write_text(json.dumps([row]))
-    baseline = parse_test_cases_from_json(report)
-
-    row["execution_time_ms"] = 1.0
-    report.write_text(json.dumps([row]))
-    optimized = parse_test_cases_from_json(report)
-
-    assert baseline[0].metadata["metadata"]["model"] == (
-        "representative-image-kernel"
-    )
-    assert baseline[0].metadata["benchmark_method"] == "cuda_graph"
-    assert baseline[0].metadata["benchmark_samples"] == 100
-    assert calculate_average_speedup(baseline, optimized) == 2.0
-
-
-def test_flat_benchmark_metadata_wins_over_nested_compatibility_value(tmp_path):
-    report = tmp_path / "performance_report.json"
-    report.write_text(json.dumps([{
-        "test_case_id": "a",
-        "execution_time_ms": 1.0,
-        "benchmark_method": "cuda_event_fallback",
-        "metadata": {"benchmark_method": "cuda_graph"},
-    }]))
-
-    cases = parse_test_cases_from_json(report)
-
-    assert cases[0].metadata["benchmark_method"] == "cuda_event_fallback"
-
-
-def test_stdout_geak_metadata_is_retained():
-    cases = parse_test_cases_from_stdout(
-        "GEAK_RESULT_LATENCY_MS=0.125\n"
-        "GEAK_BENCHMARK_METHOD=mixed:cuda_graph,cuda_event_fallback\n"
-        "GEAK_BENCHMARK_METHOD_CONSISTENT=0\n"
-        "GEAK_BENCHMARK_FALLBACK_REASON=shape 2 reads a host scalar\n"
-    )
-
-    assert len(cases) == 1
-    assert cases[0].execution_time_ms == 0.125
-    assert cases[0].metadata["benchmark_method"] == (
-        "mixed:cuda_graph,cuda_event_fallback"
-    )
-    assert cases[0].metadata["benchmark_fallback_reason"] == (
-        "shape 2 reads a host scalar"
-    )
-    assert cases[0].metadata["benchmark_method_consistent"] is False
-
-
 def test_task_reported_method_mismatch_is_unscoreable_even_if_outer_methods_match():
     baseline = [_case("a", 2.0, "cuda_graph", [1])]
     optimized = [_case("a", 1.0, "cuda_graph", [1])]
@@ -389,26 +291,12 @@ def test_all_benchmark_metadata_survives_yaml_round_trip(tmp_path):
     assert loaded[0].metadata["benchmark_fallback_reason"] == "not applicable"
 
 
-@mock.patch("src.evaluator.evaluate_compilation", return_value=(True, None))
-@mock.patch("src.evaluator.evaluate_correctness", return_value=(True, None))
-def test_evaluator_retains_times_but_disables_mismatched_speedup(
-    _correctness, _compilation, tmp_path
-):
+def test_evaluator_retains_times_but_disables_mismatched_speedup(tmp_path):
     baseline = [_case("a", 2.0, "cuda_graph", [1])]
     optimized = [_case("a", 1.0, "cuda_event_fallback", [1])]
 
-    with mock.patch("src.evaluator.measure_performance", return_value=optimized):
-        result = evaluate_kernel(
-            tmp_path,
-            {
-                "task_type": "triton2triton",
-                "compile_command": ["compile"],
-                "correctness_command": ["correctness"],
-                "performance_command": ["performance"],
-            },
-            baseline,
-            logger=mock.Mock(),
-        )
+    result = evaluate_kernel(tmp_path, {}, baseline, logging.getLogger(__name__),
+                             task_session=_Session(optimized))
 
     assert result["best_optimized_execution_time"] == 1.0
     assert result["average_speedup"] == 0.0

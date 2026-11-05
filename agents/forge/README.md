@@ -1,43 +1,55 @@
 # Forge agent
 
-Forge is one agent integration for the [public task v2 contract](../../docs/how-to/add-task.md).
-The task declares its candidate, baseline, entrypoints and evaluation commands.
-It does not supply a Forge driver or consume `KERNELFORGE_*` variables. The registry maps the old
+Forge runs the external KernelForge engine on [schema-v3 kernel tasks](../../docs/how-to/add-task.md).
+The task names no implementation language; the run's `target_language` selects
+it, and the framework resolves `task.yaml` into the execution record Forge reads
+from `ARENA_TASK_CONTEXT` (its `contract` names the target and baseline
+languages and the operator). The candidate is the `solution/` tree with its
+`run` entry (`solution/kernel.py`, or `solution/kernel.hip` for HIP); `_aka_eval/`
+is the evaluator and `_aka_eval/CANDIDATE.md` the interface. The task supplies
+no Forge driver and does not consume `KERNELFORGE_*` variables. Schema-v2
+packages (the e2e serving tasks) are rejected: no Forge backend implements
+their backend-neutral candidate. The registry maps the old
 `forge_operator2flydsl` name to this same launcher and configuration.
 
 ## Workflow selection
 
-| Current candidate | Internal workflow |
+The candidate starts as a copy of the baseline when the target language is the
+baseline's, and otherwise as an unimplemented template.
+
+| Starting candidate | Internal workflow |
 | --- | --- |
-| Verified target implementation | `forge-loop` |
-| Unimplemented FlyDSL candidate | `forge-rewrite-by-flydsl`: PORT, then its nested loop |
-| Existing implementation in a different language, target FlyDSL | Same rewrite workflow |
-| Unimplemented or cross-language HIP/Triton candidate | Forge correctness-only implementer, then `forge-loop` |
-| Initialization to another target language | Explicit unsupported-capability error until that backend is qualified |
+| Implemented in the target language and verified | `forge-loop` (optimize) |
+| Unimplemented, target HIP, Triton or Gluon | Forge correctness-only implementer, then `forge-loop` (initialize) |
+| Unimplemented, target FlyDSL, baseline Triton or HIP | `forge-rewrite-by-flydsl` with `--source-language <baseline>`: PORT, then its nested loop (rewrite) |
+| Unimplemented, target FlyDSL, any other baseline language | Fails closed before the engine starts: the PORT reads only the source languages the engine reports |
+| Any other target language | Fails closed before any engine work |
 
-`workflow: auto` is the default. `optimize` requires a currently verified target
-implementation; `rewrite` requires initialization. A changed candidate is rebuilt
-and checked against the final target contract before routing, so a resumed task
-whose config originally declared a stub does not repeatedly PORT. A changed
-candidate that compiles but receives a complete, explicitly classified numerical
-rejection enters initialization again. Its failed evidence is retained and fed
-to the implementer; it is never treated as an accepted implementation. Missing
-failure classifications, build failures, runtime errors, incomplete case evidence
-and unchanged broken task seeds still abort. This deliberately narrow recovery
-does not infer a candidate mistake from a missing dependency or broken harness.
-The backend comes from `candidate.language` and is checked against the actual
-installed KernelForge registry. There is no task-name dispatch, suffix inference,
-or silent substitution of an unsupported backend with FlyDSL.
+`workflow: auto` is the default; `optimize`, `initialize` and `rewrite` must
+match the route above. A candidate changed by an earlier invocation is rebuilt
+and checked against the final target contract before routing, so a resumed
+task does not repeatedly initialize. A changed candidate that compiles but
+receives a complete, explicitly classified numerical rejection enters
+initialization again. Its failed evidence is retained and fed to the
+implementer; it is never treated as an accepted implementation. Missing failure
+classifications, build failures, runtime errors, incomplete case evidence and
+unchanged broken task seeds still abort, as does a FlyDSL repair whose baseline
+the PORT cannot read. The backend is the run's target language, checked against
+the installed KernelForge registry. There is no task-name dispatch, suffix
+inference, or silent substitution of an unsupported backend with FlyDSL.
 
-The FlyDSL CLI still owns its PORT and nested OPTIMIZE. HIP/Triton use the same
+The FlyDSL CLI still owns its PORT and nested OPTIMIZE; it translates the
+task's vendored baseline (`baseline/kernel.py` or `baseline/kernel.hip`), and
+the framework's frozen baseline still runs independently as the denominator.
+HIP, Triton and Gluon use the same
 KernelForge implementer factory and provider execution mechanism as the loop,
 with the upstream `correctness_only` gate enabled during initialization. This
 phase is implemented in [initialization.py](initialization.py); it does not call
 another Arena agent or require a task-specific driver, category, factory name,
 or initialization command. `rewrite` explicitly requests initialization and
-selects the appropriate path for the declared target language.
+selects the appropriate path for the run's target language.
 
-`initialization_budget_fraction` bounds HIP/Triton initialization against the
+`initialization_budget_fraction` bounds HIP/Triton/Gluon initialization against the
 remaining shared campaign time. It reserves the remainder for native search,
 whose own initial measurements, analysis and round admission also take time.
 FlyDSL PORT is bounded instead by `max_port_attempts` and the engine's own phase
@@ -77,19 +89,19 @@ engine's own policy; the adapter no longer overrides it. A first valid
 implementation is recorded as the first scoreable candidate rather than as a
 speed improvement, and Arena scores the delivered bundle either way.
 
-### HIP/Triton initialization
+### HIP, Triton and Gluon initialization
 
 Initialization uses the existing Forge correctness-only implementer before
 entering the ordinary performance search:
 
 1. Keep the task's provided baseline and references independent. Measure baseline
-   timing through the public baseline actions. Preserve existing candidate stubs
-   or cross-language sources; create empty files only for missing declared file
-   targets. An empty implementation tree needs a declared entrypoint anchor.
+   timing through the public baseline actions. Start from the workspace's
+   unimplemented template at the candidate entry; an empty file is created only
+   if the entry is missing.
 2. Run `kernelforge.orchestrator.agent.make_agent_fn` with the target backend's
    expertise prompt, normal configured provider/model, real SDK session execution,
-   workspace guard and correctness-only in-session gate. The task instructions,
-   evaluator and declared entrypoints supply the implementation contract.
+   workspace guard and correctness-only in-session gate. README.md,
+   `_aka_eval/CANDIDATE.md` and the read-only baseline supply the contract.
    Both the keyword interface and the grouped `ImplementerSetup` interface are
    supported, preserving the same protected paths, correctness gate and session
    limit. The grouped gate receives the validation limit for both stage and
@@ -142,7 +154,7 @@ both task workspaces, containing:
 {
   "version": 1,
   "task_id": "suite/task",
-  "task_config": {"schema_version": 2},
+  "task_config": {"schema_version": 2, "contract": {"schema_version": 3}},
   "workspace": "<absolute runtime candidate root>",
   "baseline_workspace": "<absolute independent baseline root>",
   "manifest": {"protocol": "arena-eval-v1"}
@@ -150,7 +162,8 @@ both task workspaces, containing:
 ```
 
 The abbreviated `task_config` and `manifest` above stand for the complete
-normalized TaskSpec mapping and successful `validate-task` ActionResult. These
+execution record resolved from `task.yaml` (with its `contract`) and the
+successful `validate-task` ActionResult. These
 are framework runtime paths, not paths authored in a task config. The adapter
 validates them with `TaskSpec`, `parse_command_result` and `CaseManifest`.
 
@@ -205,8 +218,8 @@ implementation trees. A rewrite binds its current attempt to the same declared
 paths when assessing it; the task never needs to know the attempt's location.
 The final bundle is read from the engine's selected full Git commit, not from a
 newest-file guess or an unfinished working-tree edit. Missing files, candidate
-symlinks, path escapes and malformed result bindings are errors. Symbol-scoped
-Python files retain their protected statements and tests.
+symlinks, path escapes and malformed result bindings are errors. Only the
+`solution/` tree is delivered; symbol-scoped candidates are not installed.
 
 The status record separates `DELIVERED` from the eventual Arena verdict, which
 remains `pending`. A correct candidate can be delivered without an improvement.
@@ -312,9 +325,8 @@ checks remain mandatory for every accepted candidate, and an intermediate KEEP,
 a recovered candidate, or an initialization-only run is not an Arena completion
 verdict.
 
-Common Arena post-processing owns exports. Neither this launcher nor the alias
-backfills an SIKL solution or assumes `kernel.py` / `workload.json`. The obsolete
-agent-specific backfill utility has been removed; exports use the framework.
+Common Arena post-processing owns exports; neither this launcher nor the alias
+backfills a solution.
 
 ## Installed KernelForge runtime
 
@@ -364,19 +376,19 @@ present for FlyDSL tasks. Provider authentication must be available to the
 selected backend; existing authentication environment values are preserved.
 A dedicated interpreter can be selected with run-level `agent.python`.
 
-Backend selection follows validated `candidate.language`. Operator and source
-owner identity come from `kernel_identity`; a CK operator written in HIP keeps
-its CK operator identity while using the HIP backend. The installed engine
-provides no TileLang backend. TileLang tasks remain valid Arena tasks, but Forge
-rejects them explicitly; it never substitutes FlyDSL. The retained legacy backend
-helper also rejects missing registries and unsupported languages.
+Backend selection follows the run's target language. The operator name comes
+from the task contract, and the engine's KB framework identity (`aiter`,
+`sglang`, `vllm`, else `standalone`) from the baseline's recorded provenance
+source. The probe reports the rewrite's accepted source languages from
+`kernelforge.rewrite_by_flydsl.protocol`; an engine that does not publish them
+cannot run a FlyDSL rewrite. TileLang is a baseline language only and never a
+Forge target.
 
 New scratch repositories start on `codex/arena-forge`, independently of the
 runtime's Git default branch; upstream refuses to optimize on `main` or `master`.
 The public task assessment and final candidate installation enforce the task
-boundary, including symbol-scoped colocated Python harnesses: the bridge checks
-the declared symbol boundary against its independent template before
-compilation, correctness, or performance, and installation repeats that check.
+boundary: only `solution/` is delivered, and the evaluator applies the
+candidate rules on every check.
 
 Search defaults live in [agent_config.yaml](agent_config.yaml); the run may
 override `workflow`, `model`, `agent_backend`, `permission_mode`,
@@ -388,8 +400,8 @@ warm starts follow the engine defaults. Arena publishes the task and leaves the
 search policy to Forge. Two consequences are load bearing. The public task
 protocol exposes no profiler invocation, so the bridge answers `--profile-run`
 with an explicit unsupported capability. A single-file upstream recipe cannot
-describe a multi-file candidate, so a task whose `candidate.editable` spans more
-than one file may receive a warm start that covers only part of its submission.
+describe a multi-file candidate, so a `solution/` tree with helper files may
+receive a warm start that covers only part of its submission.
 
 Search behaviour stays behind what the removed patch layer forced until the
 engine grows the seams it took: no injected protected paths, no total wall clock
@@ -416,10 +428,9 @@ default, and that HIP/Triton initialization runs the real Forge implementer,
 session execution, workspace guard and correctness gate. They cover rejected
 attempts, an unedited workspace, harness tampering, session timeouts and a
 failing loop. The provider is scripted throughout, so they prove neither model
-quality nor GPU compiler compatibility. Real LLM/GPU qualification remains a
-required integration gate, including at least five tasks of each retained task
-type in the parent campaign. HIP/Triton initialization is implemented, but that
-campaign is required before claiming those task types are fully qualified.
+quality nor GPU compiler compatibility. Real LLM/GPU qualification on
+schema-v3 tasks remains a required integration gate for every target language;
+Gluon initialization and the v3 workflows have not yet run on a GPU.
 
 The framework integration must:
 
@@ -431,7 +442,3 @@ The framework integration must:
    independently evaluate any delivery through the common evaluator.
 4. Perform shared exports only after the final accepted candidate and results
    are available. Never restore the alias's old SIKL backfill call.
-
-Remaining private legacy helpers in `common.py`, `launch_agent.py` and
-`drivers/arena_task_adapter.py` are compatibility imports only. The public v2
-launcher does not call their legacy task dispatch or report parsers.

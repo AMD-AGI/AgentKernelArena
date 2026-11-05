@@ -1,4 +1,10 @@
-"""Real CPU action processes; synthetic timings are not GPU qualification."""
+"""Review-evidence transport through a real TaskSession (CPU only).
+
+quality_loop's session adapter and review index are independent of the task
+schema. A schema-v3 package needs a GPU to execute its evaluator, so these tests
+drive the same TaskSession with a small CPU protocol runner; its timings are
+synthetic and never GPU qualification.
+"""
 import copy
 import hashlib
 import json
@@ -15,7 +21,53 @@ from agents.quality_loop.runtime import EvaluationSession
 from src.task_protocol import merge_command_results, parse_command_result
 from src.task_session import TaskSession
 from src.task_spec import load_task_spec
-from tests.test_quality_loop_v2 import make_task, workflow
+from tests.test_quality_loop_v2 import workflow
+
+
+def make_task(root, *, state="unimplemented", baseline="provided"):
+    """A CPU protocol task: the runner implements the shared command protocol."""
+    root.mkdir(parents=True)
+    config = {
+        "schema_version": 2,
+        "candidate": {"language": "flydsl", "initial_state": state,
+                      "editable": ["source/kernel.py"],
+                      "entrypoints": [{"file": "source/kernel.py", "kind": "function", "symbol": "kernel"}]},
+        "baseline": {"kind": baseline},
+        "evaluation": {"runner": ["python3", "runner.py"], "workloads": "cases.json"},
+    }
+    (root / "source").mkdir()
+    (root / "source/kernel.py").write_text(
+        "def kernel(x):\n    raise NotImplementedError\n" if state == "unimplemented"
+        else "def kernel(x):\n    return 2*x\n")
+    (root / "config.yaml").write_text(yaml.safe_dump(config))
+    (root / "cases.json").write_text("[1, 3]")
+    (root / "runner.py").write_text('''
+import ast,json,os,sys
+from pathlib import Path
+import yaml
+c=yaml.safe_load(Path('config.yaml').read_text())
+source=Path('source/kernel.py').read_text()
+if sys.argv[1]=='validate-task': role,action='task','validate-task'
+else: role,action=sys.argv[1:3]
+rows=[{'test_case_id':str(x),'shape':[1],'dtype':'int32','params':{'x':x},'status':'PASS'} for x in json.loads(Path('cases.json').read_text())]
+result={'protocol':'arena-eval-v1','role':role,'action':action,'status':'PASS','cases':rows}
+if action=='validate-task':
+ result['metadata']={'candidate_state':'unimplemented' if 'NotImplementedError' in source else 'implemented'}
+ for r in rows:r['checks']=['correctness','performance']
+elif action=='compile':
+ ast.parse(source);result['cases']=[]
+elif action=='correctness':
+ namespace={};exec(source,namespace)
+ for r in rows:
+  x=r['params']['x']; actual=2*x if role=='baseline' and c['baseline']['kind']=='provided' else namespace['kernel'](x)
+  r['metrics']={'actual':actual,'reference':2*x}
+  if actual!=2*x:r['status']='FAIL';result['status']='FAIL';result['reason']='wrong output'
+elif action=='performance':
+ for r in rows:r.update(execution_time_ms=1.0,benchmark_method='cuda_graph',metadata={'synthetic_cpu_fixture':True})
+print('ARENA_EVAL_RESULT='+json.dumps(result))
+sys.exit(0 if result['status']=='PASS' else 1)
+''')
+    return root
 
 
 @pytest.fixture(autouse=True)

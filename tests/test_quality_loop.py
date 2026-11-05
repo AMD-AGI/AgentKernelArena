@@ -1,3 +1,4 @@
+"""quality_loop configuration, publication and workflow control flow (CPU only)."""
 import json
 import logging
 import subprocess
@@ -12,7 +13,7 @@ from agents.quality_loop.config import QualityLoopConfig
 from agents.quality_loop.filesystem import (
     apply_changes,
     diff_trees,
-    is_case_path,
+    is_generated_path,
     snapshot_tree,
 )
 from agents.quality_loop.github import CommandError, GitHubPublisher, parse_github_slug
@@ -21,6 +22,59 @@ from agents.quality_loop.state import AuditState, resolve_worktree, validate_run
 
 
 LOGGER = logging.getLogger("quality-loop-test")
+
+TASK_ID = "elementwise/scale/f32"
+TASK_YAML = {
+    "schema_version": 3,
+    "description": "out = 2 * x over a vector.",
+    "operator": {"name": "scale", "category": "elementwise"},
+    "interface": {
+        "axes": {"n": {"kind": "var", "min": 1, "max": 1048576}},
+        "inputs": {"x": {"kind": "tensor", "shape": ["n"], "dtype": "float32",
+                         "distribution": {"kind": "normal", "mean": 0.0, "std": 1.0}}},
+        "outputs": {"out": {"shape": ["n"], "dtype": "float32"}},
+    },
+    "reference": {"file": "reference.py", "symbol": "reference"},
+    "baseline": {"language": "triton", "entry": "baseline/kernel.py",
+                 "provenance": {"source": "arena-tests", "revision": "v1",
+                                "path": "tests/fixture.py", "license": "Apache-2.0"}},
+    "compare": {"out": {"bound": "baseline_relative"}},
+    "workloads": "workloads.json",
+}
+# Three distinct boundary correctness cases and four performance cases
+# spanning 128x, as src.task_contract requires.
+CASES = [
+    {"id": f"n{n}", "axes": {"n": n},
+     "checks": ["correctness", "performance"] if perf else ["correctness"], "source": "fixture"}
+    for n, perf in ((1, False), (3, False), (1000, False),
+                    (1024, True), (4096, True), (16384, True), (131072, True))
+]
+
+
+def write_package(task: Path, *, task_yaml: dict | None = None, cases: list | None = None) -> Path:
+    """A minimal valid schema-v3 package (see docs/how-to/add-task.md)."""
+    (task / "baseline").mkdir(parents=True, exist_ok=True)
+    (task / "task.yaml").write_text(yaml.safe_dump(task_yaml or TASK_YAML, sort_keys=False))
+    (task / "workloads.json").write_text(json.dumps({"cases": cases or CASES}, indent=1) + "\n")
+    (task / "reference.py").write_text("def reference(*, x):\n    return x.double() * 2\n")
+    (task / "baseline/kernel.py").write_text(
+        "import triton\n\n\ndef run(*, x, out):\n    raise RuntimeError('fixture baseline')\n")
+    (task / "README.md").write_text("Scale fixture.\n")
+    return task
+
+
+def make_task(root: Path, task_id: str = TASK_ID) -> Path:
+    return write_package(root / "tasks" / task_id)
+
+
+def qa_report(status: str, findings: list | None = None) -> dict:
+    """A report-shaped mapping; real finalization is exercised in test_quality_loop_v2."""
+    return {"status": status, "findings": list(findings or []), "summary": "workflow fixture"}
+
+
+def finding(check_id: str, severity: str, detail: str) -> dict:
+    return {"id": check_id, "severity": severity, "title": check_id, "detail": detail,
+            "evidence": {}, "fix": "fixture"}
 
 
 class FakePublisher:
@@ -31,6 +85,7 @@ class FakePublisher:
         self.commits.append(task_id)
         return "abc123"
 
+
 class RepairBackend:
     def __init__(self, change_on_repair=True):
         self.roles = []
@@ -39,7 +94,7 @@ class RepairBackend:
     def run(self, prompt, workspace, *, role):
         self.roles.append(role)
         if role == "repair" and self.change_on_repair:
-            (workspace / "kernel.py").write_text("def kernel():\n    return 1\n")
+            (workspace / "README.md").write_text("Repaired: documents the boundary cases.\n")
         return "ok"
 
 
@@ -62,25 +117,28 @@ class TamperingReviewerBackend:
 
 
 class StubQualityLoop(QualityLoop):
+    """Workflow fixture: audits, workspaces, optimization and review are stubbed.
+
+    The real audit, materialization and session paths are exercised in
+    test_quality_loop_v2 and test_quality_loop_review_evidence.
+    """
+
     def __init__(self, *args, reports, **kwargs):
         super().__init__(*args, **kwargs)
         self.reports = list(reports)
 
-    def _validate(self, task_id, task_dir, stage_dir):
-        stage_dir.mkdir(parents=True, exist_ok=True)
+    def _make_workspace(self, task_id, task_dir, stage_dir, *, target_language):
+        if stage_dir.exists():
+            self._reset_path(stage_dir)
+        stage_dir.mkdir(parents=True)
         workspace = stage_dir / "workspace"
-        if workspace.exists():
-            self._reset_path(workspace)
-        workspace.mkdir()
-        for path in task_dir.iterdir():
-            if path.is_file():
-                (workspace / path.name).write_bytes(path.read_bytes())
+        self._copy_task(task_dir, workspace)
+        return workspace
+
+    def _audit(self, task_id, task_dir, stage_dir):
+        workspace = self._make_workspace(task_id, task_dir, stage_dir, target_language="triton")
         report = self.reports.pop(0)
-        (workspace / "validation_report.yaml").write_text(yaml.safe_dump(report))
-        self._validation_manifests[workspace] = ({
-            "test_case_id": "fixture", "shape": [1], "dtype": "int32",
-            "params": {}, "checks": ["correctness", "performance"],
-        },)
+        (workspace / "qa_report.yaml").write_text(yaml.safe_dump(report))
         return workspace, report
 
     def _review_repair(self, task_id, original, workspace, findings):
@@ -90,12 +148,7 @@ class StubQualityLoop(QualityLoop):
                     resolved_findings=list(findings), summary="CPU workflow fixture")
 
     def _optimize_once(self, task_id, task_dir, stage_dir):
-        stage_dir.mkdir(parents=True, exist_ok=True)
-        workspace = stage_dir / "workspace"
-        workspace.mkdir()
-        for path in task_dir.iterdir():
-            if path.is_file():
-                (workspace / path.name).write_bytes(path.read_bytes())
+        workspace = self._make_workspace(task_id, task_dir, stage_dir, target_language="triton")
         result = {
             "task_name": task_id,
             "pass_compilation": True,
@@ -119,27 +172,10 @@ class StubQualityLoop(QualityLoop):
         }
 
 
-def make_task(root: Path) -> Path:
-    task = root / "tasks" / "hip2hip" / "sample"
-    task.mkdir(parents=True)
-    (task / "config.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "schema_version": 2,
-                "candidate": {"language": "hip", "editable": ["kernel.py"]},
-                # This workflow-only fixture substitutes validation/evaluation;
-                # protocol execution is exercised separately in test_quality_loop_v2.
-                "evaluation": {"runner": ["python3", "scripts/evaluate.py"]},
-            }
-        )
-    )
-    (task / "kernel.py").write_text("def kernel():\n    raise RuntimeError('broken')\n")
-    return task
-
-
 def attach_state(workflow: QualityLoop, root: Path, worktree: Path) -> None:
-    workflow.artifact_dir = root / "artifacts" / "run"
-    workflow.worktree = worktree
+    # As in QualityLoop.run: run paths derive from the resolved repository root.
+    workflow.artifact_dir = workflow.repo_root / "artifacts" / "run"
+    workflow.worktree = worktree.resolve()
     workflow.state = AuditState.create(
         workflow.artifact_dir / "state.yaml",
         run_id="run",
@@ -152,6 +188,16 @@ def attach_state(workflow: QualityLoop, root: Path, worktree: Path) -> None:
     )
 
 
+def stub_workflow(root, backend, publisher, reports, **kwargs):
+    config = QualityLoopConfig.from_dict(
+        {"tasks": [TASK_ID], "target_gpu_model": "MI300", "quality_loop": {}})
+    return StubQualityLoop(root, config, logger=LOGGER, backend=backend, reviewer_backend=backend,
+                           publisher=publisher, reports=reports, **kwargs)
+
+
+BLOCKING = [finding("QA-CONTROLS", "blocking", "the zero_output control passes correctness")]
+
+
 class QualityLoopTests(unittest.TestCase):
     def test_config_defaults_to_codex_and_exactly_one_iteration(self):
         config = QualityLoopConfig.from_dict(
@@ -159,56 +205,29 @@ class QualityLoopTests(unittest.TestCase):
         )
         self.assertEqual(config.backend.name, "codex")
         self.assertEqual(config.reviewer.name, "codex")
+        self.assertEqual(config.auditor.name, "codex")
+        self.assertIsNone(config.target_language)
         self.assertEqual(config.optimization_iterations, 1)
 
-        with self.assertRaisesRegex(ValueError, "exactly one"):
-            QualityLoopConfig.from_dict(
-                {
-                    "tasks": ["all"],
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {"optimization_iterations": 2},
-                }
-            )
-
-        with self.assertRaisesRegex(ValueError, "always drafts"):
-            QualityLoopConfig.from_dict(
-                {
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {"github": {"draft_pr": False}},
-                }
-            )
-
-        with self.assertRaisesRegex(ValueError, "never creates GitHub issues"):
-            QualityLoopConfig.from_dict(
-                {
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {"github": {"issue_labels": ["task-bug"]}},
-                }
-            )
-
-        with self.assertRaisesRegex(ValueError, "integer from 1 to 3"):
-            QualityLoopConfig.from_dict(
-                {
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {"max_repair_attempts": 0},
-                }
-            )
-
-        with self.assertRaisesRegex(ValueError, "top-level tasks field"):
-            QualityLoopConfig.from_dict(
-                {
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {"promotion_task_types": ["hip2hip"]},
-                }
-            )
-
-        with self.assertRaisesRegex(ValueError, "repository-relative"):
-            QualityLoopConfig.from_dict(
-                {
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {"artifact_root": "../outside"},
-                }
-            )
+        cases = (
+            ({"tasks": ["all"], "quality_loop": {"optimization_iterations": 2}}, "exactly one"),
+            ({"quality_loop": {"github": {"draft_pr": False}}}, "always drafts"),
+            ({"quality_loop": {"github": {"issue_labels": ["task-bug"]}}}, "never creates GitHub issues"),
+            ({"quality_loop": {"max_repair_attempts": 0}}, "integer from 1 to 3"),
+            ({"quality_loop": {"promotion_task_types": ["hip2hip"]}}, "top-level tasks field"),
+            ({"quality_loop": {"artifact_root": "../outside"}}, "repository-relative"),
+            ({"quality_loop": {"validator": {"name": "codex"}}}, "replaced by quality_loop.auditor"),
+            ({"quality_loop": {"auditor": {"name": "cursor"}}}, "auditor supports only"),
+            ({"quality_loop": {"target_language": "hip"}}, "top level"),
+            ({"target_language": "cuda"}, "target_language must be"),
+            ({"tasks": [{"path": "gemm", "target_language": "hip"}]}, "selector"),
+        )
+        for raw, message in cases:
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                QualityLoopConfig.from_dict({"target_gpu_model": "MI300", **raw})
+        config = QualityLoopConfig.from_dict({"target_gpu_model": "MI300", "target_language": "gluon",
+                                              "quality_loop": {"auditor": {"name": "none"}}})
+        self.assertEqual((config.target_language, config.auditor.name), ("gluon", "none"))
 
     def test_run_ids_and_relative_worktree_paths_are_container_portable(self):
         with self.assertRaisesRegex(ValueError, "run ID"):
@@ -233,14 +252,12 @@ class QualityLoopTests(unittest.TestCase):
     def test_yaml_task_selectors_define_the_complete_scope(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            for task_id in ("custom/selected", "hip2hip/not-selected"):
-                task = root / "tasks" / task_id
-                task.mkdir(parents=True)
-                (task / "config.yaml").write_text(yaml.safe_dump({
-                    "schema_version": 2,
-                    "candidate": {"language": "hip", "editable": ["kernel.hip"]},
-                    "evaluation": {"runner": ["python3", "evaluate.py"]},
-                }))
+            for task_id in ("custom/selected", "elementwise/not-selected"):
+                make_task(root, task_id)
+            # A schema-v2 package (the e2e serving tasks) is not a quality_loop task.
+            legacy = root / "tasks" / "e2e" / "serving"
+            legacy.mkdir(parents=True)
+            (legacy / "config.yaml").write_text("schema_version: 2\n")
             config = QualityLoopConfig.from_dict(
                 {
                     "tasks": ["custom/selected"],
@@ -250,6 +267,13 @@ class QualityLoopTests(unittest.TestCase):
             )
             workflow = QualityLoop(root, config, logger=LOGGER)
             self.assertEqual(list(workflow.discover_tasks(root)), ["custom/selected"])
+            everything = QualityLoop(root, QualityLoopConfig.from_dict(
+                {"target_gpu_model": "MI300"}), logger=LOGGER)
+            self.assertEqual(list(everything.discover_tasks(root)),
+                             ["custom/selected", "elementwise/not-selected"])
+            with self.assertRaisesRegex(ValueError, "matched no schema-v3 task"):
+                QualityLoop(root, QualityLoopConfig.from_dict(
+                    {"tasks": ["e2e"], "target_gpu_model": "MI300"}), logger=LOGGER).discover_tasks(root)
 
     def test_preflight_rejects_missing_write_permission(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -363,17 +387,21 @@ class QualityLoopTests(unittest.TestCase):
             destination = root / "destination"
             source.mkdir()
             destination.mkdir()
-            (source / "kernel.py").write_text("old\n")
-            (destination / "kernel.py").write_text("old\n")
+            (source / "inputs.py").write_text("old\n")
+            (destination / "inputs.py").write_text("old\n")
             before = snapshot_tree(source)
-            (source / "kernel.py").write_text("new\n")
-            (source / "test_kernel.py").write_text("case\n")
+            (source / "inputs.py").write_text("new\n")
+            (source / "README.md").write_text("doc\n")
             changes = diff_trees(before, snapshot_tree(source))
             apply_changes(source, destination, changes)
-            self.assertEqual((destination / "kernel.py").read_text(), "new\n")
-            self.assertEqual((destination / "test_kernel.py").read_text(), "case\n")
-            self.assertTrue(is_case_path("test_kernel.py"))
-            self.assertFalse(is_case_path("kernel.py"))
+            self.assertEqual((destination / "inputs.py").read_text(), "new\n")
+            self.assertEqual((destination / "README.md").read_text(), "doc\n")
+            # Framework-written workspace files are never task-package changes.
+            for generated in ("config.yaml", "solution/kernel.py", "_aka_eval/evaluate.py",
+                              "qa_report.yaml", ".qa_complete", "qa_review.draft.json"):
+                self.assertTrue(is_generated_path(generated), generated)
+            for task_file in ("task.yaml", "workloads.json", "inputs.py", "baseline/kernel.py"):
+                self.assertFalse(is_generated_path(task_file), task_file)
 
     def test_pending_diff_verification_rejects_unrecorded_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -530,7 +558,8 @@ class QualityLoopTests(unittest.TestCase):
             )
             original = workspace / ".quality_loop_original_sources"
             original.mkdir()
-            (original / "kernel.py").write_text("def kernel():\n    return 1\n")
+            (original / "solution").mkdir()
+            (original / "solution/kernel.py").write_text("def kernel():\n    return 1\n")
             config = QualityLoopConfig.from_dict(
                 {"target_gpu_model": "MI300", "quality_loop": {}}
             )
@@ -545,7 +574,7 @@ class QualityLoopTests(unittest.TestCase):
             workflow._sessions[workspace] = mock.Mock()
             with self.assertRaisesRegex(RuntimeError, "protected evaluation evidence"):
                 workflow._review(
-                    "hip2hip/sample",
+                    TASK_ID,
                     workspace,
                     {
                         "pass_compilation": True,
@@ -554,102 +583,76 @@ class QualityLoopTests(unittest.TestCase):
                     },
                 )
 
-    def test_repair_then_revalidate_commits_only_successful_task_change(self):
+    def test_repair_then_reaudit_commits_only_successful_task_change(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             worktree = root / "worktree"
             task = make_task(worktree)
             backend = RepairBackend(change_on_repair=True)
             publisher = FakePublisher()
-            config = QualityLoopConfig.from_dict(
-                {
-                    "tasks": ["hip2hip/sample"],
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {},
-                }
-            )
-            workflow = StubQualityLoop(
-                root,
-                config,
-                logger=LOGGER,
-                backend=backend,
-                reviewer_backend=backend,
-                publisher=publisher,
-                reports=[
-                    {"overall_status": "FAIL", "checks": {}, "summary": "broken"},
-                    {"overall_status": "PASS", "checks": {}, "summary": "fixed"},
-                    {"overall_status": "PASS", "checks": {}, "summary": "final"},
-                ],
-            )
+            workflow = stub_workflow(root, backend, publisher, [
+                qa_report("FAIL", BLOCKING), qa_report("PASS"), qa_report("PASS")])
             attach_state(workflow, root, worktree)
-            workflow._process_task("hip2hip/sample", task)
+            workflow._process_task(TASK_ID, task)
 
-            self.assertIn("return 1", (task / "kernel.py").read_text())
-            self.assertEqual(workflow.state.task("hip2hip/sample")["state"], "completed")
+            self.assertIn("Repaired", (task / "README.md").read_text())
+            record = workflow.state.task(TASK_ID)
+            self.assertEqual(record["state"], "completed")
+            self.assertEqual(record["changes"], ["README.md"])
             self.assertEqual(backend.roles, ["repair"])
-            self.assertEqual(publisher.commits, ["hip2hip/sample"])
+            self.assertEqual(publisher.commits, [TASK_ID])
 
     def test_unrepairable_failure_is_reported_without_external_action(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             worktree = root / "worktree"
             task = make_task(worktree)
-            original = (task / "kernel.py").read_text()
+            original = snapshot_tree(task)
             backend = RepairBackend(change_on_repair=False)
             publisher = FakePublisher()
-            config = QualityLoopConfig.from_dict(
-                {
-                    "tasks": ["hip2hip/sample"],
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {},
-                }
-            )
-            workflow = StubQualityLoop(
-                root,
-                config,
-                logger=LOGGER,
-                backend=backend,
-                reviewer_backend=backend,
-                publisher=publisher,
-                reports=[{"overall_status": "FAIL", "checks": {}, "summary": "broken"}],
-            )
+            workflow = stub_workflow(root, backend, publisher, [qa_report("FAIL", BLOCKING)])
             attach_state(workflow, root, worktree)
-            workflow._process_task("hip2hip/sample", task)
+            workflow._process_task(TASK_ID, task)
 
-            record = workflow.state.task("hip2hip/sample")
+            record = workflow.state.task(TASK_ID)
             self.assertEqual(record["state"], "reported_failure")
-            self.assertEqual(record["validation_report"]["overall_status"], "FAIL")
-            self.assertEqual((task / "kernel.py").read_text(), original)
+            self.assertEqual(record["qa_report"]["status"], "FAIL")
+            self.assertEqual(snapshot_tree(task), original)
             self.assertEqual(publisher.commits, [])
+
+    def test_repair_that_changes_the_scored_contract_is_rejected(self):
+        class ScoringBackend:
+            def run(self, prompt, workspace, *, role):
+                # Still a valid package, but an original case now measures another shape.
+                cases = json.loads((workspace / "workloads.json").read_text())
+                cases["cases"][1]["axes"] = {"n": 5}
+                (workspace / "workloads.json").write_text(json.dumps(cases))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            worktree = root / "worktree"
+            task = make_task(worktree)
+            original = snapshot_tree(task)
+            workflow = stub_workflow(root, ScoringBackend(), FakePublisher(),
+                                     [qa_report("FAIL", BLOCKING), qa_report("PASS")])
+            attach_state(workflow, root, worktree)
+            workflow._process_task(TASK_ID, task)
+            record = workflow.state.task(TASK_ID)
+            self.assertEqual(record["state"], "reported_failure")
+            self.assertIn("original case", record["repair_rejection"])
+            self.assertEqual(snapshot_tree(task), original)
 
     def test_container_reports_unrepairable_failure_without_publication_request(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             worktree = root / "worktree"
             task = make_task(worktree)
-            backend = RepairBackend(change_on_repair=False)
-            publisher = FakePublisher()
-            config = QualityLoopConfig.from_dict(
-                {
-                    "tasks": ["hip2hip/sample"],
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {},
-                }
-            )
-            workflow = StubQualityLoop(
-                root,
-                config,
-                logger=LOGGER,
-                backend=backend,
-                reviewer_backend=backend,
-                publisher=publisher,
-                defer_github=True,
-                reports=[{"overall_status": "FAIL", "checks": {}, "summary": "broken"}],
-            )
+            workflow = stub_workflow(root, RepairBackend(change_on_repair=False), FakePublisher(),
+                                     [qa_report("FAIL", BLOCKING)], defer_github=True)
             attach_state(workflow, root, worktree)
-            workflow._process_task("hip2hip/sample", task)
+            workflow._process_task(TASK_ID, task)
 
-            record = workflow.state.task("hip2hip/sample")
+            record = workflow.state.task(TASK_ID)
             self.assertEqual(record["state"], "reported_failure")
             self.assertNotIn("issue_request", record)
             self.assertNotIn("issue_url", record)
@@ -659,77 +662,34 @@ class QualityLoopTests(unittest.TestCase):
             root = Path(tmp)
             worktree = root / "worktree"
             task = make_task(worktree)
-            backend = RepairBackend(change_on_repair=True)
             publisher = FakePublisher()
-            config = QualityLoopConfig.from_dict(
-                {
-                    "tasks": ["hip2hip/sample"],
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {},
-                }
-            )
-            workflow = StubQualityLoop(
-                root,
-                config,
-                logger=LOGGER,
-                backend=backend,
-                reviewer_backend=backend,
-                publisher=publisher,
-                defer_github=True,
-                reports=[
-                    {"overall_status": "FAIL", "checks": {}, "summary": "broken"},
-                    {"overall_status": "PASS", "checks": {}, "summary": "fixed"},
-                    {"overall_status": "PASS", "checks": {}, "summary": "final"},
-                ],
-            )
+            workflow = stub_workflow(root, RepairBackend(change_on_repair=True), publisher, [
+                qa_report("FAIL", BLOCKING), qa_report("PASS"), qa_report("PASS")], defer_github=True)
             attach_state(workflow, root, worktree)
-            workflow._process_task("hip2hip/sample", task)
+            workflow._process_task(TASK_ID, task)
 
-            record = workflow.state.task("hip2hip/sample")
+            record = workflow.state.task(TASK_ID)
             self.assertTrue(record["commit_pending"])
             self.assertIsNone(record["commit"])
             self.assertEqual(publisher.commits, [])
 
-    def test_warn_is_reported_without_repair(self):
+    def test_warning_is_reported_without_repair(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             worktree = root / "worktree"
             task = make_task(worktree)
             backend = RepairBackend()
-            publisher = FakePublisher()
-            config = QualityLoopConfig.from_dict(
-                {
-                    "tasks": ["hip2hip/sample"],
-                    "target_gpu_model": "MI300",
-                    "quality_loop": {},
-                }
-            )
-            workflow = StubQualityLoop(
-                root,
-                config,
-                logger=LOGGER,
-                backend=backend,
-                reviewer_backend=backend,
-                publisher=publisher,
-                reports=[
-                    {
-                        "overall_status": "WARN",
-                        "checks": {
-                            "performance": {"status": "WARN", "details": "too few repeats"}
-                        },
-                        "summary": "warning",
-                    }
-                ],
-            )
+            workflow = stub_workflow(root, backend, FakePublisher(), [
+                qa_report("PASS", [finding("QA-NONDETERMINISTIC", "warning", "cases ['n4096']")])])
             attach_state(workflow, root, worktree)
-            workflow._process_task("hip2hip/sample", task)
+            workflow._process_task(TASK_ID, task)
 
-            record = workflow.state.task("hip2hip/sample")
+            record = workflow.state.task(TASK_ID)
             self.assertEqual(record["state"], "completed")
-            self.assertEqual(record["warnings"], ["performance: too few repeats"])
+            self.assertEqual(record["warnings"], ["QA-NONDETERMINISTIC: cases ['n4096']"])
             self.assertNotIn("repair", backend.roles)
 
-    def test_easy_gate_is_fail_closed_and_task_type_agnostic(self):
+    def test_easy_gate_is_fail_closed_and_language_agnostic(self):
         config = QualityLoopConfig.from_dict(
             {"target_gpu_model": "MI300", "quality_loop": {}}
         )
