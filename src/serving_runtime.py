@@ -430,7 +430,7 @@ def main():
         return
     if args.mode == 'verifier':
         from .candidate_verification import policy
-        if config.get('agent', {}).get('template') != 'task_validator':
+        if config.get('agent', {}).get('template') != 'qa_auditor':
             review = policy(config, serving=bool(tasks))
             if review:
                 print(review['backend'])

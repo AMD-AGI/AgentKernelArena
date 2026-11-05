@@ -38,9 +38,10 @@ FORBIDDEN_ATTRIBUTES = frozenset({
     "__import__", "__loader__", "__spec__", "__self__", "__func__", "__wrapped__",
     "f_globals", "f_locals", "f_back", "f_builtins", "f_code", "gi_frame", "cr_frame",
     "ag_frame", "tb_frame", "gi_code", "cr_code",
-    # Synchronization, host round trips and timing inside launch code.
+    # Synchronization, host round trips and timing inside launch code. Stream,
+    # event and graph objects are reached only through torch.cuda, which the
+    # allowlist below already restricts; kernel languages use these names.
     "synchronize", "item", "cpu", "tolist", "numpy", "elapsed_time", "record_stream",
-    "Event", "Stream", "graph", "CUDAGraph",
     # Dispatch and evaluator state.
     "_python_dispatch", "_disable_current_modes", "_DisableTorchDispatch", "_pop_mode",
     "_pop_mode_temporarily", "_unset_dispatch_mode", "_DisablePythonDispatcher",
