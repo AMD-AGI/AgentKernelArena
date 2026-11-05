@@ -6,25 +6,19 @@ from typing import Dict, Optional
 
 
 def get_task_config(tasks_root: str = "tasks", category: Optional[str] = None) -> Dict[str, str]:
-    """
-    Automatically scan all task folders under the tasks directory.
-    If config.yaml exists, register it to task_config_list.
+    """Find every task under ``tasks_root``.
 
-    Task naming strategy:
-    - Uses relative path from tasks_root as the unique task name
-    - Example: tasks/triton2triton/vllm/triton_rms_norm/config.yaml
-      -> task_name: "triton2triton/vllm/triton_rms_norm"
-    - This ensures uniqueness even when folder names collide
+    A schema-v3 kernel task declares ``task.yaml``; a schema-v2 e2e serving task
+    keeps ``config.yaml``. The task name is the directory's path relative to
+    ``tasks_root``, for example ``tasks/normalization/rms_norm/bf16_h8192/task.yaml``
+    -> ``normalization/rms_norm/bf16_h8192``.
 
     Args:
         tasks_root: Root directory for tasks (default: "tasks")
-        category: Optional path prefix to filter tasks (e.g., "hip2hip" or
-            "repository/rocprim")
+        category: Optional path prefix to filter tasks (e.g. "normalization" or "e2e")
 
     Returns:
-        dict: {task_name: config_path}
-            - task_name: Relative path from tasks_root to the task folder
-            - config_path: Relative path to config.yaml from project root
+        dict: {task_name: path of its task.yaml or config.yaml}
     """
     task_config_dict = {}
     root = Path(tasks_root)
