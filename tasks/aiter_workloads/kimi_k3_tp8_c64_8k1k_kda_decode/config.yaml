@@ -1,0 +1,47 @@
+schema_version: 2
+description: >-
+  Optimize the complete upstream AITER fused_recurrent_kda call for a Kimi K3
+  TP8 rank with 12 heads of width 128. The fixed scenario has 64 fully admitted
+  requests and one token per request for each of 1024 decode steps after an
+  8192-token prefix. This is a config-derived operator proxy, not a replay of
+  the historical scheduler or a claim of serving integration.
+kernel_identity:
+  logical_operator: kimi_k3_recurrent_delta_attention_decode
+  source_owner: aiter
+instructions: [README.md]
+platform_support:
+  required_arch: gfx950
+candidate:
+  language: gpu
+  initial_language: gpu
+  initial_state: implemented
+  editable:
+    - {path: source, scope: tree}
+  entrypoints:
+    - {file: source/kernel.py, kind: function, symbol: fused_recurrent_kda}
+baseline:
+  kind: provided
+  language: gpu
+  correctness_policy: required
+  source_files:
+    - upstream/aiter/ops/triton/attention/kda.py
+    - upstream/aiter/ops/triton/_gluon_kernels/gfx950/attention/kda_decode.py
+workspace:
+  sources:
+    - kind: git
+      url: https://github.com/ROCm/aiter.git
+      revision: 2cb3d17589b9253ea3b3ef5222fc7f810a8f3ef0
+      destination: upstream
+  setup:
+    - [python3, scripts/runtime.py]
+evaluation:
+  runner: [python3, scripts/evaluate.py]
+  workloads: workloads.json
+  timeout_s: 3600
+  aggregation:
+    method: weighted_total_time
+    case_weights:
+      decode_b64_t1: 1024
+    source:
+      path: frequency_provenance.json
+      sha256: 5746f5bdc604f7d93ec5c209b6108ea5e914155774f7bb761c7cd70ca22933a1

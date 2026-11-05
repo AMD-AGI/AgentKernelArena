@@ -38,6 +38,14 @@ See `docs/reference/benchmark-methodology.md` for measurement and fairness
 rules, including paired graph/Event baseline selection and the opt-in
 cold-weight timing of `benchmark_cuda_graph_cold_weights_samples()`.
 
+New kernel benchmarks should start with the runnable
+[cold-cache graph example](examples/cold_cache_graph/README.md), using
+`ReadOnlyCacheFlush` and `benchmark_cuda_graph_cold_cache_samples`. Its separate
+`cuda_graph_cold_cache` method evicts caches before each single-invocation replay,
+outside the Event interval. The example also shows balanced A/B rounds, pristine
+correctness checks, raw samples and a paired confidence interval. Existing task
+policies remain unchanged until an explicit, GPU-qualified migration.
+
 ## Observing measured outputs
 
 Pass `TimedRun()` as `timed_run` to retain the actual measured output and a

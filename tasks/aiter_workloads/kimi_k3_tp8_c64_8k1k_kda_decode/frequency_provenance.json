@@ -1,0 +1,33 @@
+{
+  "case_weights": {
+    "decode_b64_t1": 1024
+  },
+  "derivation": {
+    "batch": 64,
+    "calls_per_selected_layer": 1024,
+    "observed_vs_derived": "Concurrency and output-token count are recorded recipe values. Constant full occupancy and one call per step are the declared scenario, not an observed complete scheduler trace.",
+    "output_tokens_per_request": 1024,
+    "rule": "All 64 requests are already admitted and contribute exactly one token to each of 1024 decode calls. Weight counts calls, not requests times calls.",
+    "tokens_per_sequence_per_call": 1
+  },
+  "excluded": [
+    "prefill",
+    "partial admission and changing decode batch size",
+    "cross-layer totals",
+    "EP/DCP inference",
+    "26-call upstream TP8+DCP8 prefill fixture",
+    "end-to-end throughput estimate"
+  ],
+  "model": {
+    "config_sha256": "9710e121a58d03ac92c8d6da287a19541994319afbbe6d6202af001ffd379213",
+    "repository": "moonshotai/Kimi-K3",
+    "revision": "9f62e4e9fffbd0a83ddd60e1c209d828994b3569"
+  },
+  "recorded_recipe": {
+    "producer_run": "kimi-actual-v4-no-stack-194550",
+    "protocol_sha256": "75e4b663150e74d003b1be5e9a3a550e3cea94745f72ac2a27f36df8960b4584",
+    "record": "20261009 kimi-k3 lean-c39e94c8-kimi-actual-v4-no-stack-194550-r2/portable/PROTOCOL.json"
+  },
+  "scope": "One KDA layer at one TP8 rank; fully admitted 64-request decode scenario only.",
+  "status": "config_derived_scenario"
+}

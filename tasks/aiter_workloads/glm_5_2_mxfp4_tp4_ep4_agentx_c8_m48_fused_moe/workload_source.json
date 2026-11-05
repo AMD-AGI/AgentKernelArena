@@ -1,0 +1,106 @@
+{
+  "schema": "aiter.workload-source/1",
+  "model": "amd/GLM-5.2-MXFP4",
+  "checkpoint_revision": "386bd0e4ec821f7b07975701cec3c3b953a5576a",
+  "precision": "MXFP4",
+  "parallelism": {
+    "tp": 4,
+    "ep": 4,
+    "pp": 1,
+    "pcp": 1
+  },
+  "workload": {
+    "scenario": "AgentX",
+    "concurrency": 8,
+    "duration_seconds": 3600,
+    "dataset": "semianalysisai/cc-traces-weka-062126",
+    "dataset_revision": "23f152f6f0f9399a85901b89a6458def0ef16729",
+    "seed": 42,
+    "request_lengths": "trace-driven, not fixed",
+    "warmup_requests_per_lane": 10,
+    "warmup_grace_seconds": 1800,
+    "trace_idle_gap_cap_seconds": 300
+  },
+  "serving": {
+    "image": "lmsysorg/sglang-rocm@sha256:ac30a0fe98fb3f6e258d302280110f1be44c83edc54b914037db57c82cc20828",
+    "image_tag": "lmsysorg/sglang-rocm:v0.5.20-rocm720-mi35x-20260930",
+    "chunked_prefill_size": 32768,
+    "speculative_algorithm": "EAGLE",
+    "speculative_num_steps": 5,
+    "speculative_eagle_topk": 1,
+    "speculative_num_draft_tokens": 6,
+    "max_running_requests": 16,
+    "cuda_graph_max_bs_decode": 16,
+    "kv_cache_dtype": "fp8_e4m3",
+    "hicache_size": 180,
+    "hicache_write_policy": "write_through"
+  },
+  "saved_preparation_evidence": [
+    {
+      "record_id": "glm_tp4ep4_ci_recipe_20261019_v1/selected_c8/config_tp4_c8_hicache.yaml",
+      "sha256": "a43411cd0540b5b9da8f816ee4877e35864017b1507aee928f2575fd37e9b4ad",
+      "bytes": 4232
+    },
+    {
+      "record_id": "crusoe_glm_workload_prepare_20261019_v1/BASELINE_LAUNCH_INPUTS.json",
+      "sha256": "f222f3ff9adc09c67f1f187840f28d644d3bee33a05741edd2e5048db64251f1",
+      "bytes": 13001
+    }
+  ],
+  "limits": [
+    "Retained workload settings identify a prospective reproduction configuration.",
+    "M48 is an explicitly selected local-call scenario, not an observed batch or a proven EAGLE verification width.",
+    "Generated expert/routing values are not checkpoint tensors or captured state.",
+    "Source applicability does not establish current whole-model dispatch or native qualification.",
+    "The pinned public AITER BF16 call uses its runtime activation quantization rules; checkpoint-declared EVEN activation quantization is recorded but is not asserted to be the runtime rule."
+  ],
+  "public_model_config": {
+    "url": "https://huggingface.co/amd/GLM-5.2-MXFP4/resolve/386bd0e4ec821f7b07975701cec3c3b953a5576a/config.json",
+    "sha256": "8b46225f7afd7181735c2dd97b925bcb70dfebb72b1a105d4ac0be7583a5c726",
+    "bytes": 77279,
+    "projection": {
+      "architectures": [
+        "GlmMoeDsaForCausalLM"
+      ],
+      "model_type": "glm_moe_dsa",
+      "hidden_size": 6144,
+      "moe_intermediate_size": 2048,
+      "n_routed_experts": 256,
+      "n_shared_experts": 1,
+      "num_experts_per_tok": 8,
+      "num_hidden_layers": 78,
+      "first_k_dense_replace": 3
+    },
+    "global_quantization_projection": {
+      "weight": {
+        "dtype": "fp4",
+        "is_dynamic": false,
+        "qscheme": "per_group",
+        "ch_axis": -1,
+        "group_size": 32,
+        "round_method": "half_even",
+        "scale_format": "e8m0",
+        "scale_calculation_mode": "even"
+      },
+      "input_tensors": {
+        "dtype": "fp4",
+        "is_dynamic": true,
+        "qscheme": "per_group",
+        "ch_axis": -1,
+        "group_size": 32,
+        "round_method": "half_even",
+        "scale_format": "e8m0",
+        "scale_calculation_mode": "even"
+      }
+    },
+    "selected_site_quantization_audit": {
+      "model_site": "model.layers.3.mlp",
+      "basis": "first main-model MoE after three dense layers; the operator dimensions also apply to other nonexcluded main-model MoE sites",
+      "rank0_weight_module_count": 195,
+      "excluded_rank0_weight_modules": [],
+      "layer_quant_config": {},
+      "layer_type_quant_config": {},
+      "excluded_mtp_layer": 78
+    }
+  }
+}

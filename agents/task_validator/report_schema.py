@@ -16,6 +16,8 @@ from typing import Any, Mapping
 
 import yaml
 
+from src.measurement import DEVICE_METHODS
+
 
 REPORT_SCHEMA_VERSION = 3
 REPORT_FILENAME = "validation_report.yaml"
@@ -62,7 +64,7 @@ ALLOWED_SKIP_REASONS = frozenset(
     }
 )
 COMMAND_CHECKS = frozenset({"compilation", "correctness", "performance"})
-SCOREABLE_BENCHMARK_METHODS = frozenset({"cuda_graph", "cuda_event_fallback"})
+SCOREABLE_BENCHMARK_METHODS = DEVICE_METHODS
 REVIEW_CHECKS = frozenset(
     {
         "correctness_implementation_review",
@@ -214,7 +216,7 @@ def _normalize_benchmark_integrity(
         ):
             policy_findings.append(
                 ("benchmark_integrity: method must be serving_wall_clock" if serving else
-                 "benchmark_integrity: methods must be exactly cuda_graph or cuda_event_fallback")
+                 "benchmark_integrity: methods must be supported device timing methods")
             )
             hard_failure = True
 

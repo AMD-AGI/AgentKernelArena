@@ -232,6 +232,9 @@ make docker-setup-flydsl
 For fixed-workload AITER tasks, see the [pinned AITER and FlyDSL setup](docs/install/install.md#pinned-aiter-and-flydsl-on-sglang-0520)
 for AITER `2cb3d175`, FlyDSL `0.4.0` and the public SGLang `0.5.20` / ROCm `7.2`
 base, including the separate qualification required for a newly built runtime.
+The [fixed-configuration task guide](docs/how-to/aiter-workloads.md) lists the
+model variants, selected operations, measured versus configuration-derived
+case policies, and agent-independent validation and run instructions.
 
 Performance timing helpers are maintained in `src/tools/perf/` and materialized into run workspaces. See [src/tools/perf/README.md](src/tools/perf/README.md) before changing task timing code.
 
