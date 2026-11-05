@@ -98,28 +98,40 @@ def run_action(role, action, data):
         values = make_inputs(case, data["input_generation"]["seeds"][0])
         frozen = snapshot_inputs(values)
         expected = reference(*values)
-        launch = lambda: operation(*values)
+        captured_output = None
+
+        def launch():
+            nonlocal captured_output
+            captured_output = operation(*values)
+            return captured_output
+
+        def prepare_output():
+            if captured_output is not None:
+                captured_output.fill_(float("nan"))
+
         row = {key: value for key, value in case.items() if key != "checks"}
         row["status"] = "PASS"
         row["metrics"] = check_output(launch(), expected, data["tolerance"])
         torch.cuda.synchronize()
         replay = launch
         if action == "performance":
-            from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+            from _aka_benchmark import ReadOnlyCacheFlush, TimedRun, benchmark_cuda_graph_cold_cache_samples
 
             timed = TimedRun()
             timed.after_sample = lambda output: check_output(output, expected, data["tolerance"])
-            samples, timing = benchmark_cuda_graph_or_events_samples(
-                launch, **data["timing"], use_cuda_graph=True, timed_run=timed,
+            samples, timing = benchmark_cuda_graph_cold_cache_samples(
+                launch, **data["timing"], cache_flush=ReadOnlyCacheFlush(),
+                prepare_fn=prepare_output, timed_run=timed,
             )
-            if timing["benchmark_method"] != "cuda_graph":
+            if timing["benchmark_method"] != "cuda_graph_cold_cache":
                 raise RuntimeError("Timing must use the declared CUDA/HIP graph method")
             check_output(timed.outputs, expected, data["tolerance"])
             check_output(timed.rerun(), expected, data["tolerance"])
             elapsed = statistics.median(samples)
             if not math.isfinite(elapsed) or elapsed <= 0:
                 raise RuntimeError("Device timing is not finite and positive")
-            row.update(execution_time_ms=elapsed, benchmark_method="cuda_graph", metadata=timing)
+            timing["samples_ms"] = samples
+            row.update(execution_time_ms=elapsed, benchmark_method="cuda_graph_cold_cache", metadata=timing)
             replay = timed.rerun
         check_inputs_unchanged(frozen)
         del frozen

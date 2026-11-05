@@ -39,9 +39,7 @@
   },
   "timing": {
     "warmup": 10,
-    "repetition": 100,
-    "target_ms": 1.0,
-    "max_graph_repeats": 1000
+    "repetition": 100
   },
   "cases": [
     {
@@ -70,7 +68,7 @@
           8192
         ],
         "weight_layout": "aiter_shuffle_weight_16x16",
-        "benchmark_method": "cuda_event_fallback"
+        "benchmark_method": "cuda_graph_cold_cache"
       }
     },
     {
@@ -99,7 +97,7 @@
           64
         ],
         "weight_layout": "aiter_shuffle_weight_16x16",
-        "benchmark_method": "cuda_graph"
+        "benchmark_method": "cuda_graph_cold_cache"
       }
     }
   ]

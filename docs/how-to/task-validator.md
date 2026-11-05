@@ -174,8 +174,9 @@ An authoring controller can supply a fresh request ID through
 finalization. Standalone invocations generate a fresh ID on each call, preventing
 reuse of a previous draft merely because the same launch configuration is reused.
 
-For performance, `cuda_graph` and `cuda_event_fallback` are the only scoreable
-methods. Each case must use the same method for baseline and candidate; different
+For performance, the scoreable device methods are `cuda_graph`,
+`cuda_event_fallback`, `cuda_graph_cold_weights` and `cuda_graph_cold_cache`.
+Each case must use the same method for baseline and candidate; different
 cases may use different methods. CPU/host timing, missing or unknown methods,
 aggregate `mixed:*` values, mismatched method pairs, candidate-triggered fallback,
 invalid/partial cases, missing state restore, or demonstrably asymmetric timed work
@@ -183,6 +184,16 @@ fail `benchmark_integrity`. Missing exact output validation from the captured Gr
 WARN by itself; an observed incorrect/stale replay or a demonstrated unsafe state/reset
 interaction remains FAIL. The 10-warmup/100-sample pattern is a recommended default
 rather than a hard scoring rule.
+
+`cuda_graph_cold_cache` requires a read-only eviction sweep after input
+preparation and before the start Event, followed by exactly one complete
+operator graph replay. Eviction is outside timing. The recorded cache policy,
+sweep byte count and graph-span metric must be valid and match across roles.
+Capture failures cannot fall back to warm replay or Event-only timing. Both
+cold graph methods still require numerical validation of the measured replay;
+they do not qualify for the framework's event-only replay-review exception.
+Cold-cache, cold-weight and warm graph measurements have different identities;
+historical measurements cannot be relabelled or compared across those methods.
 
 The validator receives trusted framework facts for the protected harness boundary and
 the pre/post scoring lifecycle. Baseline and candidate are separate invocations of the

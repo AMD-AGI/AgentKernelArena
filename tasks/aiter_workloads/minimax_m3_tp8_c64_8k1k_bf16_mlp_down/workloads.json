@@ -7,7 +7,7 @@
       ],
       "dtype": "bfloat16",
       "params": {
-        "benchmark_method": "cuda_graph",
+        "benchmark_method": "cuda_graph_cold_cache",
         "bias": false,
         "k": 1536,
         "m": 8192,
@@ -28,7 +28,7 @@
       ],
       "dtype": "bfloat16",
       "params": {
-        "benchmark_method": "cuda_graph",
+        "benchmark_method": "cuda_graph_cold_cache",
         "bias": false,
         "k": 1536,
         "m": 64,
@@ -61,9 +61,7 @@
     "site": "language_model.model.layers.0.mlp.down_proj"
   },
   "timing": {
-    "max_graph_repeats": 1000,
     "repetition": 100,
-    "target_ms": 1.0,
     "warmup": 10
   },
   "tolerance": {

@@ -53,7 +53,7 @@ def load_contract(root=ROOT):
                 or case["dtype"] != "bfloat16"
                 or case["checks"] != ["correctness", "performance"]
                 or case["params"] != {"m": m, "n": n, "k": k, "bias": False,
-                                       "transpose_weight": True, "benchmark_method": "cuda_graph"}):
+                                       "transpose_weight": True, "benchmark_method": "cuda_graph_cold_cache"}):
             raise ValueError("Case identity, geometry, or measurement policy changed")
     config = yaml.safe_load((root / "config.yaml").read_text())
     aggregate = config["evaluation"]["aggregation"]
@@ -78,7 +78,6 @@ def load_contract(root=ROOT):
         raise ValueError("Protected upstream-style input policy changed")
     if data["tolerance"] != {"rtol": 0.01, "atol": 0.01}:
         raise ValueError("Protected BF16 numerical tolerance changed")
-    if data["timing"] != {"warmup": 10, "repetition": 100, "target_ms": 1.0,
-                          "max_graph_repeats": 1000}:
+    if data["timing"] != {"warmup": 10, "repetition": 100}:
         raise ValueError("Protected timing policy changed")
     return data

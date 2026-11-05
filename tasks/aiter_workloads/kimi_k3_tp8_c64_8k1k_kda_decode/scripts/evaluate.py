@@ -65,7 +65,7 @@ def read_contract():
             "qkv_dtype": "bfloat16", "g_beta_parameter_dtype": "float32",
             "lower_bound": -5.0, "scale": 128 ** -0.5, "qk_l2norm": True,
             "gate_in_kernel": True, "beta_sigmoid_in_kernel": True,
-            "benchmark_method": "cuda_graph" if padding == 0 else None,
+            "benchmark_method": "cuda_graph_cold_cache" if padding == 0 else None,
         }
         if case["params"] != expected_params:
             raise ValueError("The declared case parameters differ from the generated public call")
@@ -83,8 +83,7 @@ def read_contract():
         raise ValueError("Weights are not bound to the declared scenario")
     if data["numerical_contract"]["max_sequence_rms_ratio"] != 0.005:
         raise ValueError("The upstream-derived error limit changed")
-    if data["timing"] != {"warmup": 10, "repetition": 100, "target_ms": 1.0,
-                          "max_graph_repeats": 1, "method": "cuda_graph"}:
+    if data["timing"] != {"warmup": 10, "repetition": 100}:
         raise ValueError("The frozen timing policy changed")
     json.dumps(data, allow_nan=False)
     return data
@@ -141,7 +140,7 @@ def check_case(call, case, *, seed, limit):
 
 
 def measure_case(call, case, timing, limit):
-    from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+    from _aka_benchmark import ReadOnlyCacheFlush, TimedRun, benchmark_cuda_graph_cold_cache_samples
     from cases import make_case, prepare, refresh_operands, remap_state_slots, snapshot
     from reference import check_result, expected
 
@@ -156,18 +155,19 @@ def measure_case(call, case, timing, limit):
         checked.append(check_result(payload, result, gold, before, limit=limit))
 
     timed.after_sample = observe
-    samples, metadata = benchmark_cuda_graph_or_events_samples(
+    samples, metadata = benchmark_cuda_graph_cold_cache_samples(
         lambda: call(**payload["kwargs"]),
         warmup=timing["warmup"], repetition=timing["repetition"],
-        target_ms=timing["target_ms"], max_graph_repeats=1,
-        use_cuda_graph=True, prepare_fn=lambda: prepare(payload), timed_run=timed,
+        cache_flush=ReadOnlyCacheFlush(),
+        prepare_fn=lambda: prepare(payload), timed_run=timed,
     )
-    if metadata["benchmark_method"] != "cuda_graph" or metadata["benchmark_effective_repeats"] != 1:
+    if metadata["benchmark_method"] != "cuda_graph_cold_cache" or metadata["benchmark_effective_repeats"] != 1:
         raise AssertionError("The fixed state transition requires one call per graph replay")
     if len(samples) != timing["repetition"] or len(checked) != len(samples):
         raise AssertionError("Every scored sample must have an output/state check")
     if any(not math.isfinite(value) or value <= 0 for value in samples):
         raise AssertionError("Invalid device timing")
+    metadata["samples_ms"] = samples
     # Preserve the timed graph and buffer addresses. Change both operands and
     # the incoming state and routing, then replay that exact captured unit.
     refresh_operands(payload, 43)
@@ -228,7 +228,7 @@ def main(argv=None):
                     ]}
                 else:
                     elapsed, metadata, metrics = measure_case(call, case, data["timing"], limit)
-                    row.update(execution_time_ms=elapsed, benchmark_method="cuda_graph",
+                    row.update(execution_time_ms=elapsed, benchmark_method="cuda_graph_cold_cache",
                                metadata=metadata, metrics=metrics)
                 report["cases"].append(row)
         report["status"] = "PASS"

@@ -8,7 +8,7 @@
       ],
       "dtype": "bfloat16",
       "params": {
-        "benchmark_method": "cuda_graph",
+        "benchmark_method": "cuda_graph_cold_cache",
         "beta_sigmoid_in_kernel": true,
         "g_beta_parameter_dtype": "float32",
         "gate_in_kernel": true,
@@ -117,10 +117,7 @@
     "serving_integration": "unverified"
   },
   "timing": {
-    "max_graph_repeats": 1,
-    "method": "cuda_graph",
     "repetition": 100,
-    "target_ms": 1.0,
     "warmup": 10
   },
   "workload": {

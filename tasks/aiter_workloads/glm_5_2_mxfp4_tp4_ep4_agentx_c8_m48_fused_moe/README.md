@@ -120,12 +120,14 @@ checked-call policy. It is frozen before native qualification and is not
 adjusted in response to a candidate's results. Reference controls cover zero
 hidden states, all-remote routes, and deliberately corrupted output.
 
-Both roles use the canonical materialized `_aka_benchmark` helper with CUDA
-graph timing on ROCm: 10 warmups, 100 samples, a 1 ms graph target and a maximum
-of 1000 graph repeats. The scoreable latency is the median per-invocation device
-time. Graph failure is an error, not an implicit timing-method change. Input
-generation and common upstream weight preparation are outside timing for both
-roles. The callable includes its output and scratch work on every invocation.
+Both roles use the canonical `cuda_graph_cold_cache` helper: one complete
+operator per graph replay, 10 warmups and 100 reported samples. The captured
+output is retained and poisoned before a read-only 1 GiB cache sweep; both
+operations occur before the start Event. Every measured output is checked
+after its end Event. Raw samples and cache metadata are retained. The scoreable
+latency is the median device time. Graph failure is an error. Input generation
+and common upstream weight preparation remain outside timing for both roles;
+the complete callable, including candidate-required preparation, is captured.
 
 The evaluator checks the actual measured outputs and exact captured graph
 replay. It then copies seed-29 hidden states and routing into the same public

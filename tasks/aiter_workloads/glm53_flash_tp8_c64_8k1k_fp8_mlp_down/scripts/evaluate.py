@@ -85,7 +85,18 @@ def execute(role, action, data):
         args, canonical = make_case(case, data["input_policy"]["seed"])
         before = snapshot(args)
         expected = reference(args[0], canonical, args[2], args[3])
-        actual = fn(*args)  # Includes real JIT compilation for compile actions.
+        captured_output = None
+
+        def launch():
+            nonlocal captured_output
+            captured_output = fn(*args)
+            return captured_output
+
+        def prepare_output():
+            if captured_output is not None:
+                captured_output.fill_(float("nan"))
+
+        actual = launch()  # Includes real JIT compilation for compile actions.
         metrics = check_output(actual, expected)
         check_unchanged(args, before)
         row = case_row(case, manifest=role == "task")
@@ -97,17 +108,17 @@ def execute(role, action, data):
             else:
                 raise AssertionError("The oracle accepted a zero-output negative control")
         elif action == "performance":
-            from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+            from _aka_benchmark import ReadOnlyCacheFlush, TimedRun, benchmark_cuda_graph_cold_cache_samples
 
             timed = TimedRun()
             timed.after_sample = lambda output: check_output(output, expected)
-            values, timing = benchmark_cuda_graph_or_events_samples(
-                lambda: fn(*args), timed_run=timed,
-                use_cuda_graph=case["params"]["benchmark_method"] == "cuda_graph",
-                fallback_reason="declared_eager_prefill", **data["timing"]
+            values, timing = benchmark_cuda_graph_cold_cache_samples(
+                launch, timed_run=timed, cache_flush=ReadOnlyCacheFlush(),
+                prepare_fn=prepare_output, **data["timing"]
             )
             if timing["benchmark_method"] != case["params"]["benchmark_method"]:
                 raise RuntimeError("Observed timing method differs from the declared case")
+            timing["samples_ms"] = values
             check_unchanged(args, before)
             row.update(execution_time_ms=statistics.median(values),
                        benchmark_method=timing["benchmark_method"], metadata=timing)

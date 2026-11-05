@@ -40,6 +40,10 @@ def test_rocmbench_has_one_registered_flip_and_no_old_classification():
         "aiter_workloads/deepseek_v4_pro_tp8_ep1_c64_8k1k_fp8_blockscale_linear",
         "aiter_workloads/deepseek_v4_pro_tp8_ep1_c64_8k1k_fused_moe",
         "aiter_workloads/deepseek_v4_pro_tp8_ep1_c64_8k1k_mhc",
+        "aiter_workloads/glm53_flash_tp8_c64_8k1k_fp8_mlp_down",
+        "aiter_workloads/glm_5_2_mxfp4_tp4_ep4_agentx_c8_m48_fused_moe",
+        "aiter_workloads/kimi_k3_tp8_c64_8k1k_kda_decode",
+        "aiter_workloads/minimax_m3_tp8_c64_8k1k_bf16_mlp_down",
     }
     assert len(get_task_config(str(TASKS))) == 436 + len(serving) + len(aiter_workloads)
 

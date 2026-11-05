@@ -192,8 +192,7 @@ def test_exact_replay_rejects_captured_routing_values(modules, monkeypatch, cach
             self.prepare()
             return self.replay()
 
-    def fake_benchmark(fn, *, warmup, repetition, target_ms, max_graph_repeats,
-                       use_cuda_graph, prepare_fn, timed_run):
+    def fake_benchmark(fn, *, warmup, repetition, cache_flush, prepare_fn, timed_run):
         payload = holder["payload"]
         routing = payload["kwargs"]["ssm_state_indices"]
         captured_indices = routing.clone()
@@ -211,12 +210,12 @@ def test_exact_replay_rejects_captured_routing_values(modules, monkeypatch, cach
         for _ in range(repetition):
             prepare_fn()
             timed_run.after_sample(replay())
-        return [1.0] * repetition, {"benchmark_method": "cuda_graph", "benchmark_effective_repeats": 1}
+        return [1.0] * repetition, {"benchmark_method": "cuda_graph_cold_cache", "benchmark_effective_repeats": 1}
 
     monkeypatch.setitem(sys.modules, "_aka_benchmark", types.SimpleNamespace(
-        TimedRun=TimedRun, benchmark_cuda_graph_or_events_samples=fake_benchmark))
+        TimedRun=TimedRun, ReadOnlyCacheFlush=lambda: object(), benchmark_cuda_graph_cold_cache_samples=fake_benchmark))
     call = lambda **kwargs: oracle_call(ref, holder["payload"])
-    timing = {"warmup": 1, "repetition": 3, "target_ms": 1.0}
+    timing = {"warmup": 1, "repetition": 3}
     if cache_routing:
         with pytest.raises(AssertionError):
             evaluator.measure_case(call, small_case(4), timing, 0.005)
@@ -246,9 +245,8 @@ def test_measure_checks_every_sample_before_reset(modules, monkeypatch, wrong_ti
             self.prepare()
             return self.fn()
 
-    def fake_benchmark(fn, *, warmup, repetition, target_ms, max_graph_repeats,
-                       use_cuda_graph, prepare_fn, timed_run):
-        assert use_cuda_graph and max_graph_repeats == 1 and prepare_fn is not None
+    def fake_benchmark(fn, *, warmup, repetition, cache_flush, prepare_fn, timed_run):
+        assert prepare_fn is not None
         timed_run.fn, timed_run.prepare = fn, prepare_fn
         for _ in range(repetition):
             prepare_fn()
@@ -260,15 +258,15 @@ def test_measure_checks_every_sample_before_reset(modules, monkeypatch, wrong_ti
                 payload["raw"].view(payload["slots"], payload["stride"])[slot, 0] = 0
             timed_run.after_sample(result)
             observations.append(True)
-        return [1.0] * repetition, {"benchmark_method": "cuda_graph", "benchmark_effective_repeats": 1}
+        return [1.0] * repetition, {"benchmark_method": "cuda_graph_cold_cache", "benchmark_effective_repeats": 1}
 
     monkeypatch.setitem(sys.modules, "_aka_benchmark", types.SimpleNamespace(
-        TimedRun=TimedRun, benchmark_cuda_graph_or_events_samples=fake_benchmark))
+        TimedRun=TimedRun, ReadOnlyCacheFlush=lambda: object(), benchmark_cuda_graph_cold_cache_samples=fake_benchmark))
 
     def call(**kwargs):
         return oracle_call(ref, holder["payload"])
 
-    timing = {"warmup": 1, "repetition": 3, "target_ms": 1.0}
+    timing = {"warmup": 1, "repetition": 3}
     if wrong_timed_state:
         with pytest.raises(AssertionError, match="unselected state"):
             evaluator.measure_case(call, small_case(4), timing, 0.005)

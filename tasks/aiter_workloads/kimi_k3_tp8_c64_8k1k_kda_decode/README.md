@@ -70,10 +70,10 @@ the incoming request state and physical-slot padding are preserved.
 This remapping exercises the declared graph-input contract; its frequency in
 the recorded serving workload is unknown.
 
-The canonical Arena graph benchmark times one complete public call per replay.
-Its `prepare_fn` restores incoming state and poisons output **outside** every
-sample's device interval; the helper forces one logical call per replay when
-preparation is supplied. Both roles use 10 warmups and 100 samples. Every timed
+The canonical `cuda_graph_cold_cache` benchmark times one complete public call
+per replay. Its `prepare_fn` restores incoming state and poisons output before
+a read-only 1 GiB cache sweep, all outside the Event interval. Both roles use
+10 warmups and 100 samples, retaining raw samples and cache metadata. Every timed
 sample's outputs and complete observable state are checked after its end event
 and before the next restoration. The same captured graph must also work after
 inputs, incoming state and routing change in place. Graph failure is a failure, not an

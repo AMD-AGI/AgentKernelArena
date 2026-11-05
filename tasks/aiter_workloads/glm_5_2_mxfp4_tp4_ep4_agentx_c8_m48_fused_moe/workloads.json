@@ -41,7 +41,7 @@
         "input_seed": 17,
         "fresh_seed": 29,
         "weight_seed": 0,
-        "benchmark_method": "cuda_graph",
+        "benchmark_method": "cuda_graph_cold_cache",
         "input_policy": "upstream_style_normal_mxfp4_with_global_top8_plus_shared"
       }
     }
@@ -72,9 +72,7 @@
   },
   "timing": {
     "warmup": 10,
-    "repetition": 100,
-    "target_ms": 1.0,
-    "max_graph_repeats": 1000
+    "repetition": 100
   },
   "qualification_status": "source_prepared_native_unqualified"
 }

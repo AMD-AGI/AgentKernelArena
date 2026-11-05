@@ -36,7 +36,7 @@ def read_binding():
             or case.get("dtype") != "bfloat16" or case.get("checks") != ["correctness", "performance"]):
         raise ValueError("Case identity differs from the declared MoE scenario")
     expected = {"ep_rank": 0, "input_seed": 17, "fresh_seed": 29, "weight_seed": 0,
-                "benchmark_method": "cuda_graph", "input_policy": "upstream_style_normal_mxfp4_with_global_top8_plus_shared"}
+                "benchmark_method": "cuda_graph_cold_cache", "input_policy": "upstream_style_normal_mxfp4_with_global_top8_plus_shared"}
     if case.get("params") != expected:
         raise ValueError("Input distribution, rank or timing policy differs")
     config = yaml.safe_load((ROOT / "config.yaml").read_text())
@@ -62,7 +62,7 @@ def read_binding():
         raise ValueError("Workload source digest differs")
     if provenance.get("source") != source_record:
         raise ValueError("Objective and workload source bindings disagree")
-    if data.get("timing") != {"warmup": 10, "repetition": 100, "target_ms": 1.0, "max_graph_repeats": 1000}:
+    if data.get("timing") != {"warmup": 10, "repetition": 100}:
         raise ValueError("Frozen timing policy differs")
     json.dumps(data, allow_nan=False)
     return data
@@ -122,7 +122,17 @@ def run_action(role, action, data):
         from aiter.fused_moe import fused_moe
     else:
         fused_moe = candidate_callable()
-    launch = lambda: fused_moe(*payload["args"], **payload["kwargs"])
+    captured_output = None
+
+    def launch():
+        nonlocal captured_output
+        captured_output = fused_moe(*payload["args"], **payload["kwargs"])
+        return captured_output
+
+    def prepare_output():
+        if captured_output is not None:
+            captured_output.fill_(float("nan"))
+
     before = snapshot_inputs(payload)
     if action == "compile":
         launch()
@@ -137,20 +147,22 @@ def run_action(role, action, data):
         row["metrics"] = check_output(launch(), expected)
         replay = launch
     else:
-        from _aka_benchmark import TimedRun, benchmark_cuda_graph_or_events_samples
+        from _aka_benchmark import ReadOnlyCacheFlush, TimedRun, benchmark_cuda_graph_cold_cache_samples
 
         timed = TimedRun()
         timed.after_sample = lambda output: check_output(output, expected)
-        samples, timing = benchmark_cuda_graph_or_events_samples(
-            launch, **data["timing"], use_cuda_graph=True, timed_run=timed)
-        if timing.get("benchmark_method") != "cuda_graph":
+        samples, timing = benchmark_cuda_graph_cold_cache_samples(
+            launch, **data["timing"], cache_flush=ReadOnlyCacheFlush(),
+            prepare_fn=prepare_output, timed_run=timed)
+        if timing.get("benchmark_method") != "cuda_graph_cold_cache":
             raise ValueError("Graph timing cannot silently fall back")
         check_output(timed.outputs, expected)
         check_output(timed.rerun(), expected)
         elapsed = statistics.median(samples)
         if not math.isfinite(elapsed) or elapsed <= 0:
             raise ValueError("Invalid device timing")
-        row.update(execution_time_ms=elapsed, benchmark_method="cuda_graph", metadata=timing)
+        timing["samples_ms"] = samples
+        row.update(execution_time_ms=elapsed, benchmark_method="cuda_graph_cold_cache", metadata=timing)
         replay = timed.rerun
     check_inputs_unchanged(before)
     del before

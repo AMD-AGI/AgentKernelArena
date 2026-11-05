@@ -87,10 +87,13 @@ Correctness also covers unaligned activation and weight views separately and
 together at both shapes, with new values replayed through each captured graph.
 These layout checks do not add invocation weights to the fixed workload score.
 
-Both roles use the same canonical graph timing helper, 10 warmup calls,
-100 reported samples and a 1 ms target. All reported samples and the measured
-graph replay are checked numerically outside the timed interval. The score is
-the ratio of the two roles' weighted total times under the declared scenario.
+Both roles use the canonical `cuda_graph_cold_cache` helper: one complete
+operator per graph replay, 10 warmups and 100 reported samples. The captured
+output is retained and poisoned before a read-only 1 GiB eviction sweep;
+preparation and eviction are outside the Event interval. Every reported output
+and changed-value graph replay is checked. Raw samples and cache metadata are
+retained. Graph failure is an error; no eager fallback or batching is allowed.
+The score remains the ratio of weighted total times under the declared scenario.
 
 The baseline uses the normal upstream tuned-table merge and dispatch, including
 its default choice when no tuned row exists. It does not force Triton, select a

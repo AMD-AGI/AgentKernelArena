@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import math
 import os
+import random
 import re
+import statistics
 import warnings
 from typing import Any, Callable
 
@@ -1339,13 +1341,209 @@ def benchmark_cuda_graph_cold_weights_samples(
     return values, metadata
 
 
+COLD_CACHE_METHOD = "cuda_graph_cold_cache"
+DEFAULT_CACHE_FLUSH_BYTES = 1 << 30
+
+
+class ReadOnlyCacheFlush:
+    """Evict data caches by reading a reusable, initialized 1 GiB GPU buffer.
+
+    Only the small reduction output is written. A full-buffer memset would leave
+    dirty cache lines whose writeback can be charged to the following operator.
+    Allocate this object once, outside capture/timing, and share it between A/B.
+    This is an eviction sweep, not an architectural cache-invalidate instruction;
+    the caller must size it above the target device's relevant data caches.
+    """
+
+    def __init__(self, nbytes: int = DEFAULT_CACHE_FLUSH_BYTES, *, device: Any = "cuda"):
+        _require_gpu_timing()
+        block = 4096
+        if type(nbytes) is not int or nbytes <= 0 or nbytes % (4 * block):
+            raise ValueError("cache flush bytes must be a positive multiple of 16384")
+        device = torch.device(device)
+        if device.type != "cuda":
+            raise ValueError("cache eviction requires a CUDA/ROCm device")
+        if device.index is None:
+            device = torch.device("cuda", torch.cuda.current_device())
+        self.nbytes = nbytes
+        self.device = device
+        # Initialization is outside timing; never read uninitialized allocations.
+        self._cache = torch.zeros((nbytes // (4 * block), block),
+                                  dtype=torch.int32, device=device)
+        self._sums = torch.empty(self._cache.shape[0], dtype=torch.int32, device=device)
+
+    def __call__(self) -> None:
+        # An observable reduction consumes every element of the sweep buffer.
+        # Using Torch here keeps the timer usable by HIP/FlyDSL tasks without
+        # introducing a Triton runtime dependency into the materialized helper.
+        torch.sum(self._cache, dim=1, dtype=torch.int32, out=self._sums)
+
+
+def benchmark_cuda_graph_cold_cache_samples(
+    fn: Callable[[], Any],
+    *,
+    cache_flush: ReadOnlyCacheFlush,
+    warmup: int = 10,
+    repetition: int = 100,
+    prepare_fn: Callable[[], Any] | None = None,
+    timed_run: Any | None = None,
+) -> tuple[list[float], dict[str, Any]]:
+    """Time one cold-cache operator per replay, excluding preparation/eviction.
+
+    Order on the same stream: prepare -> eviction -> start Event -> operator
+    graph replay -> end Event. The preparation callback forces one logical call
+    per graph, including calibration, so later calls cannot reuse a warm cache.
+    Captured outputs remain observable through TimedRun and both rerun methods
+    also perform eviction. Capture failure and forced Event timing fail closed.
+    """
+    if timed_run is not None:
+        timed_run._bind(None, None)
+    if type(warmup) is not int or warmup < 0 or type(repetition) is not int or repetition < 1:
+        raise ValueError("cold-cache timing requires integer warmup >= 0 and repetition >= 1")
+    if os.environ.get(_FORCE_EVENT_ENV) == "1":
+        raise RuntimeError("cold-cache measurement requires CUDA-graph replay; Event timing is forbidden")
+    if not isinstance(cache_flush, ReadOnlyCacheFlush):
+        raise TypeError("cache_flush must be a ReadOnlyCacheFlush instance")
+    if cache_flush.device.index != torch.cuda.current_device():
+        raise ValueError("cache eviction and graph replay must use the same current device")
+    if getattr(timed_run, "before_sample", None) is not None:
+        raise ValueError("cold-cache snapshots belong in prepare_fn, before cache eviction")
+
+    def prepare_cold() -> None:
+        if prepare_fn is not None:
+            prepare_fn()
+        # Last device work before the start Event; input reset must not rewarm
+        # the operand caches after the sweep.
+        cache_flush()
+
+    # Always collect the actual graph, even when the caller needs only timings:
+    # the generic helper must never silently return an eager fallback here.
+    collector = timed_run if timed_run is not None else TimedRun()
+    values, metadata = benchmark_cuda_graph_or_events_samples(
+        fn, warmup=warmup, repetition=repetition, prepare_fn=prepare_cold,
+        timed_run=collector,
+    )
+    if metadata["benchmark_method"] != "cuda_graph" or metadata["benchmark_effective_repeats"] != 1:
+        raise RuntimeError("cold-cache measurement requires exactly one operator per graph replay")
+    metadata.update(
+        benchmark_method=COLD_CACHE_METHOD,
+        benchmark_cache_policy="read_only_eviction_before_each_invocation",
+        benchmark_cache_flush_bytes=cache_flush.nbytes,
+        benchmark_cache_flush_in_timing=False,
+        benchmark_metric="gpu_event_graph_span",
+    )
+    return values, metadata
+
+
+def summarize_paired_speedup(rounds: list[dict[str, Any]], *, seed: int = 0,
+                            bootstrap_samples: int = 10000) -> dict[str, Any]:
+    """Paired geometric-mean speedup and a 95% percentile-bootstrap interval.
+
+    Resample whole rounds, never individual timings across the two arms. Keep all
+    rounds, without clipping or deleting outliers. The interval assumes rounds
+    are representative/approximately independent; it cannot fix device sharing,
+    thermal drift or a biased workload. This diagnostic does not set Arena scores.
+    """
+    if len(rounds) < 4:
+        raise ValueError("paired timing requires at least four measured rounds")
+    if type(bootstrap_samples) is not int or bootstrap_samples < 100:
+        raise ValueError("bootstrap_samples must be at least 100")
+    logs = []
+    for row in rounds:
+        times = [row[f"{role}_ms"] for role in ("baseline", "candidate")]
+        if any(type(t) not in (float, int) or not math.isfinite(t) or t <= 0 for t in times):
+            raise ValueError("paired round times must be finite and positive")
+        logs.append(math.log(times[0]) - math.log(times[1]))
+    rng = random.Random(seed)
+    n = len(logs)
+    resampled = sorted(statistics.fmean(rng.choices(logs, k=n))
+                       for _ in range(bootstrap_samples))
+    lower = math.exp(resampled[int(0.025 * (bootstrap_samples - 1))])
+    upper = math.exp(resampled[math.ceil(0.975 * (bootstrap_samples - 1))])
+    return {
+        "speedup_geomean": math.exp(statistics.fmean(logs)),
+        "speedup_ci95": [lower, upper],
+        "speedup_ci_method": "paired_round_percentile_bootstrap",
+        "bootstrap_samples": bootstrap_samples,
+        "bootstrap_seed": seed,
+        "rounds": n,
+        "baseline_median_ms": statistics.median(row["baseline_ms"] for row in rounds),
+        "candidate_median_ms": statistics.median(row["candidate_ms"] for row in rounds),
+    }
+
+
+def benchmark_paired_cuda_graph_cold_cache(
+    baseline: Callable[[], Any],
+    candidate: Callable[[], Any],
+    *,
+    cache_flush: ReadOnlyCacheFlush,
+    rounds: int = 16,
+    repetition: int = 100,
+    warmup: int = 10,
+    seed: int = 0,
+    prepare_fn: Callable[[], Any] | None = None,
+    check_fn: Callable[[str, Any], Any],
+    before_arm: Callable[[str, int], Any] | None = None,
+) -> dict[str, Any]:
+    """Balanced, seeded AB/BA rounds with observed outputs and raw samples.
+
+    Both arms must implement equivalent complete work over the same fixture.
+    ``prepare_fn`` loads fresh inputs/poisons outputs outside the timed interval;
+    ``check_fn`` verifies the actual sample and changed-input graph replay output.
+    The example shows how to make those checks independent of the candidate.
+    """
+    if type(rounds) is not int or rounds < 4 or rounds % 2:
+        raise ValueError("rounds must be an even integer of at least four")
+    if not callable(check_fn):
+        raise TypeError("check_fn must validate actual measured outputs")
+    order = [("baseline", "candidate"), ("candidate", "baseline")] * (rounds // 2)
+    random.Random(seed).shuffle(order)
+    records = []
+    for index, participants in enumerate(order):
+        record: dict[str, Any] = {"round": index, "order": list(participants)}
+        for role in participants:
+            if before_arm is not None:
+                before_arm(role, index)
+            timed = TimedRun()
+            # Every reported sample is checked after its end Event. Validation
+            # may rewarm caches, so the next sample evicts again after prepare.
+            timed.after_sample = lambda outputs, role=role: check_fn(role, outputs)
+            samples, metadata = benchmark_cuda_graph_cold_cache_samples(
+                baseline if role == "baseline" else candidate,
+                cache_flush=cache_flush, warmup=warmup, repetition=repetition,
+                prepare_fn=prepare_fn, timed_run=timed,
+            )
+            check_fn(role, timed.outputs)
+            check_fn(role, timed.rerun())
+            replay_ms = timed.rerun_ms()
+            check_fn(role, timed.outputs)
+            record[f"{role}_ms"] = statistics.median(samples)
+            record[f"{role}_samples_ms"] = samples
+            record[f"{role}_replay_ms"] = replay_ms
+            record[f"{role}_metadata"] = metadata
+        records.append(record)
+    return {
+        "benchmark_method": COLD_CACHE_METHOD,
+        "round_order_seed": seed,
+        "round_aggregation": "median_of_samples",
+        "summary": summarize_paired_speedup(records, seed=seed),
+        "measurements": records,
+    }
+
+
 __all__ = [
+    "COLD_CACHE_METHOD",
     "COLD_WEIGHTS_METHOD",
+    "DEFAULT_CACHE_FLUSH_BYTES",
+    "ReadOnlyCacheFlush",
     "TimedRun",
+    "benchmark_cuda_graph_cold_cache_samples",
+    "benchmark_paired_cuda_graph_cold_cache",
     "benchmark_cuda_event_samples",
     "benchmark_cuda_graph_or_events",
     "benchmark_cuda_graph_cold_weights_samples",
     "benchmark_cuda_graph_or_events_samples",
     "cold_weight_copy_count",
     "hip_source_graph_capture_policy",
+    "summarize_paired_speedup",
 ]

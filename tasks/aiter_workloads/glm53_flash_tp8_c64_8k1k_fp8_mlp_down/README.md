@@ -74,14 +74,15 @@ relative Frobenius error must also be at most `0.01` to reject zero answers at
 small output scales. Both baseline and candidate face the same checks, with
 fresh inputs, a zero-output rejection control and input-mutation checks.
 
-Timing uses Arena's canonical helper: eager GPU events for prefill and a CUDA
-graph for decode, with 10 warmups and 100 samples. Every timed sample's output
-is checked outside its timed interval. After timing, dynamic values are changed
-in the same public buffers and the actual retained callable/graph is replayed
-against a recomputed reference. This tests current-value dependence.
-The timing split is part of the scenario: variable prefill launches use the
-eager path, while the fixed full decode batch uses graph replay. It is not a
-claim that the historical server's graph coverage has been reconstructed.
+Both prefill and decode use the canonical `cuda_graph_cold_cache` helper: one
+complete operator per graph replay, 10 warmups and 100 reported samples. The
+harness retains and poisons the captured output before the read-only 1 GiB
+cache sweep; preparation and eviction occur before the start Event. Every
+reported output is checked after its end Event. Raw samples and cache metadata
+are retained. After timing, dynamic values change in the same public buffers
+and that exact graph is replayed against a fresh reference. Graph capture
+failure is an error; there is no eager fallback. This is a standalone operator
+policy, not a reconstruction of the historical server's graph coverage.
 
 The standard seven actions are provided by `scripts/evaluate.py`. Use the
 documented [SGLang/AITER/FlyDSL runtime](https://github.com/AMD-AGI/AgentKernelArena/blob/8a5a6981522eb65369a02b3569292d0612a53727/docs/install/install.md#pinned-aiter-and-flydsl-on-sglang-0520)
