@@ -31,6 +31,7 @@ FORBIDDEN_MODULES = frozenset({
 })
 REFERENCE_MODULES = frozenset({"torch", "math", "typing", "functools", "itertools", "operator",
                                "dataclasses", "__future__", "collections", "numbers", "enum"})
+LOCAL_PATH = re.compile(r"(?:/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|[A-Za-z]:\\Users\\)[^\s\"'`)]*")
 ABSOLUTE_PATH = re.compile(r"""["'](/(?:sgl-workspace|opt|usr|root|home|workspace|tmp|shared_nfs|data|mnt)\b[^"']*)["']""")
 HIP_FORBIDDEN_INCLUDE = re.compile(r'#\s*include\s*[<"]((?:rocblas|hipblas|hipblaslt|miopen|ck|composable_kernel|'
                                    r'rocwmma|rccl|aiter)[^>"]*)[>"]')
@@ -98,6 +99,17 @@ def check_package(workspace: Path, findings: list[Finding]) -> None:
         for match in ABSOLUTE_PATH.finditer(text):
             findings.append(Finding("QA-PACKAGE", f"{relative} names the absolute path {match.group(1)}",
                                     {"path": relative}))
+    for path in sorted(workspace.rglob("*")):
+        relative = path.relative_to(workspace)
+        if (not path.is_file() or relative.parts[0] in ("_aka_eval", "solution") or relative.as_posix() == "config.yaml"
+                or path.suffix not in (".py", ".md", ".yaml", ".yml", ".json", ".hip", ".h", ".hpp", ".cuh", ".txt")):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in LOCAL_PATH.finditer(text):
+            findings.append(Finding("QA-PACKAGE", f"{relative.as_posix()} names a local filesystem path "
+                                    f"{match.group(0)!r}; describe sources by their public project and path",
+                                    {"path": relative.as_posix()}))
+            break
     for path in sorted((workspace / "baseline").rglob("*")):
         if path.suffix in (".hip", ".h", ".hpp", ".cuh", ".cpp", ".cu", ".inc"):
             text = path.read_text(encoding="utf-8", errors="replace")
