@@ -361,10 +361,13 @@ for image in \
     assert_cache_args_present "-worker-3" "${args[@]}"
 done
 
-# The DeepSeek run config selects ROCm 10 without an environment image override.
+# A DeepSeek run config that pins the ROCm 10 image selects it without an
+# environment image override.
 # Check the emitted Docker argv for all config-driven execution modes.
-DEEPSEEK_CONFIG="$ROOT/example_configs/task_validator_deepseek_drafts_mi355x.yaml"
 DEEPSEEK_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69"
+DEEPSEEK_CONFIG="$TEST_HOME/deepseek-config-image.yaml"
+cp "$ROOT/example_configs/quickstart_deepseek_harness_mi355x.yaml" "$DEEPSEEK_CONFIG"
+printf '\ndocker_image: %s\n' "$DEEPSEEK_IMAGE" >> "$DEEPSEEK_CONFIG"
 IMAGE_TEST_HOME="$TEST_HOME/image-home"
 IMAGE_TEST_PREFIX="$TEST_HOME/image-node"
 mkdir -p "$IMAGE_TEST_HOME/.claude" "$IMAGE_TEST_PREFIX/bin"
@@ -597,7 +600,7 @@ printf '#!/usr/bin/env bash\ncase "$*" in *"agents.quality_loop.host start"*) ec
     "$QUALITY_TEST_RUN_ID" "$QUALITY_ARTIFACT_REL" "$QUALITY_WORKTREE_REL" \
     > "$QUALITY_BIN/python3"
 chmod +x "$QUALITY_BIN/python3"
-printf 'tasks:\n  - hip2hip/GELU\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
+printf 'tasks:\n  - normalization/rms_norm/bf16_h8192\ntarget_gpu_model: MI355X\nquality_loop: {}\nevaluation_tools:\n  enabled:\n    - gpu_asan\n  policy: advisory\n' > "$QUALITY_CONFIG"
 mkdir -p "$ROOT/$QUALITY_ARTIFACT_REL" "$ROOT/$QUALITY_WORKTREE_REL"
 
 mapfile -t args < <(
@@ -751,13 +754,13 @@ if run_check_args "$DSH_TEST_HOME" "$DSH_CONFIG" \
     fail "DeepSeek check accepted a missing CLI installation"
 fi
 
-# task_validator may override its default backend in the run config. Provision
+# qa_auditor may override its default review backend in the run config. Provision
 # that selected CLI rather than the backend from agent_config.yaml.
-VALIDATOR_CODEX_CONFIG="$TEST_HOME/validator-codex-config.yaml"
-printf 'agent:\n  template: task_validator\n  backend: codex\ntasks:\n  - backend: ignored\n' > "$VALIDATOR_CODEX_CONFIG"
+AUDITOR_CODEX_CONFIG="$TEST_HOME/auditor-codex-config.yaml"
+printf 'agent:\n  template: qa_auditor\n  backend: codex\ntasks:\n  - backend: ignored\n' > "$AUDITOR_CODEX_CONFIG"
 mapfile -t args < <(run_check_args \
     "$CODEX_HOME" \
-    "$VALIDATOR_CODEX_CONFIG" \
+    "$AUDITOR_CODEX_CONFIG" \
     AKA_NODE_PREFIX="$CODEX_PREFIX")
 assert_has "codex" "${args[@]}"
 assert_not_has "claude_code" "${args[@]}"

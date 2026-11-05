@@ -86,6 +86,17 @@ def test_different_methods_across_shapes_are_allowed_when_each_pair_matches():
     assert calculate_average_speedup(baseline, optimized) == 2.0
 
 
+@pytest.mark.parametrize("baseline_ms,optimized_ms,expected", [
+    ((4.0, 1.0), (1.0, 2.0), 2.0 ** 0.5),   # 4x and 0.5x: geometric, not arithmetic (2.25)
+    ((2.0, 1.0), (1.0, 2.0), 1.0),          # a 2x win cancels a 2x loss
+    ((1000.0, 0.01), (500.0, 0.005), 2.0),  # a large shape does not outweigh a small one
+])
+def test_average_speedup_is_the_geometric_mean_of_per_case_ratios(baseline_ms, optimized_ms, expected):
+    baseline = [_case(f"c{i}", t, "cuda_graph", [i]) for i, t in enumerate(baseline_ms)]
+    optimized = [_case(f"c{i}", t, "cuda_graph", [i]) for i, t in enumerate(optimized_ms)]
+    assert calculate_average_speedup(baseline, optimized) == pytest.approx(expected, rel=1e-12)
+
+
 def test_explicit_ids_win_over_reordered_duplicate_semantic_keys():
     baseline = [
         _case("a", 100.0, "cuda_graph", [1]),

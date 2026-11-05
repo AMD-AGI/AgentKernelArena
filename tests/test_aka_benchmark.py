@@ -834,50 +834,6 @@ def test_hip_source_policy_rejects_streamless_memory_api(
     )
 
 
-def test_committed_hip2hip_sources_are_graph_capture_compatible(monkeypatch):
-    helper = _load_helper(monkeypatch)
-    repo = Path(__file__).parents[1]
-
-    hip_root = repo / "tasks/hip2hip"
-    gpumode_sources = sorted(
-        # Include reference sources relocated beneath protected scripts/tests.
-        source for task in hip_root.iterdir()
-        if (task / "eval_tools/evaluate.py").is_file()
-        for source in task.rglob("*.hip")
-    )
-    assert len(gpumode_sources) == 44
-    failures = {
-        str(path.relative_to(repo)): helper.hip_source_graph_capture_policy(path)
-        for path in gpumode_sources
-        if helper.hip_source_graph_capture_policy(path) != (True, None)
-    }
-
-    other_pairs = {
-        "assign_score_withk": ("assign_score_withk.cpp", "assign_score_withk_cuda.hip"),
-        "ball_query": ("ball_query.cpp", "ball_query_cuda.hip"),
-        "furthest_point_sample": ("furthest_point_sample.cpp", "furthest_point_sample_cuda.hip"),
-        "knn": ("knn.cpp", "knn_cuda.hip"),
-        "points_in_boxes": ("points_in_boxes.cpp", "points_in_boxes_cuda.hip"),
-        "roiaware_pool3d": ("roiaware_pool3d.cpp", "roiaware_pool3d_kernel.hip"),
-        "roipoint_pool3d": ("roipoint_pool3d.cpp", "roipoint_pool3d_kernel.hip"),
-        "three_nn": ("three_nn.cpp", "three_nn_cuda.hip"),
-    }
-    others_root = repo / "tasks/hip2hip"
-    for task_name, names in other_pairs.items():
-        paths = tuple(others_root / task_name / "src" / name for name in names)
-        policy = helper.hip_source_graph_capture_policy(*paths)
-        if policy != (True, None):
-            failures[f"tasks/hip2hip/{task_name}"] = policy
-
-    assert failures == {
-        "tasks/hip2hip/CrossEntropyLossLabelSmoothing/hip/"
-        "hip_12501_CrossEntropyLossLabelSmoothing_ref.hip": (
-            False,
-            "hip_source_declares_event_only",
-        )
-    }
-
-
 def test_hip_source_policy_does_not_trust_unrelated_stream_assignment(
     monkeypatch, tmp_path
 ):

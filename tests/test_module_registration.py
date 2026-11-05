@@ -12,7 +12,7 @@ from src.module_registration import (
 )
 
 
-@pytest.mark.parametrize("name", ["geak_v3", "geak_v3_triton", "mini_swe_triton"])
+@pytest.mark.parametrize("name", ["geak_v3", "geak_v3_triton", "mini_swe_triton", "task_validator"])
 @pytest.mark.parametrize("spelling", ["original", "hyphenated", "uppercase"])
 def test_retired_agent_templates_are_rejected(name, spelling):
     selected = name
@@ -27,7 +27,8 @@ def test_retired_agent_templates_are_rejected(name, spelling):
 
 
 @pytest.mark.parametrize("name", [
-    "cursor", "claude_code", "codex", "task_validator", "geak", "geak_v4", "forge", "forge_operator2flydsl",
+    "cursor", "claude_code", "codex", "deepseek_harness", "qa_auditor", "geak", "geak_v4", "forge",
+    "forge_operator2flydsl",
 ])
 def test_remaining_agents_load_with_their_postprocessors(name):
     logger = logging.getLogger(__name__)
@@ -36,10 +37,10 @@ def test_remaining_agents_load_with_their_postprocessors(name):
     launcher = load_agent_launcher(agent, logger)
     assert launcher is importlib.import_module(f"agents.{agent.value}.launch_agent").launch_agent
 
-    if name == "task_validator":
-        from agents.task_validator.validation_postprocessing import validation_post_processing
+    if name == "qa_auditor":
+        from agents.qa_auditor.postprocessing import audit_post_processing
 
-        expected = validation_post_processing
+        expected = audit_post_processing
     else:
         from src.postprocessing import general_post_processing
 

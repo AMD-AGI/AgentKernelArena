@@ -100,22 +100,11 @@ def test_reference_collection_keeps_defaults_and_architecture_overrides():
     }
 
 
-def test_tilelang_resolves_for_the_mhc_task():
-    """The exact task that failed in production must now build a prompt cheatsheet."""
-    task = (
-        PROJECT_ROOT
-        / "tasks/image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre/config.yaml"
-    )
-    if not task.is_file():
-        pytest.skip("tilelang mHC task not present in this checkout")
-
-    spec = load_task_spec(task, task_id="image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre")
-    language = spec.candidate.language
-    assert language == "tilelang"
+def test_tilelang_baselines_have_a_substantial_cheatsheet():
+    """TileLang is a baseline language: an agent reading such a baseline needs its guide."""
     knowledge = _config().get("knowledge", {})
-
-    assert language in knowledge, f"{language} still unregistered"
-    body = (PROJECT_ROOT / knowledge[language]).read_text(encoding="utf-8")
+    assert "tilelang" in knowledge, "tilelang still unregistered"
+    body = (PROJECT_ROOT / knowledge["tilelang"]).read_text(encoding="utf-8")
     assert len(body) > 2000, "a stub cheatsheet is not useful guidance for the agent"
 
 

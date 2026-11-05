@@ -35,21 +35,38 @@ def test_event_log_flushes_redacts_and_preserves_previous_invocations(tmp_path):
     assert (log.directory / "stdout.jsonl").read_bytes() == previous
 
 
-def test_validator_retains_terminal_error_details_outside_candidate(tmp_path):
-    from agents.task_validator.launch_agent import _run_backend
+def test_backend_retains_terminal_error_details_outside_the_workspace(tmp_path):
+    from agents.backend_cli import run_backend
     workspace = tmp_path / "task"
     workspace.mkdir()
     event = {"type": "result", "is_error": True, "subtype": "error_during_execution",
              "errors": ["Session expired and could not be refreshed"],
-             "authorization": "synthetic-validator-secret"}
-    result = _run_backend(
+             "authorization": "synthetic-auditor-secret"}
+    result = run_backend(
         [sys.executable, "-c", f"print({json.dumps(event)!r}); raise SystemExit(7)"],
         backend="claude_code", workspace=str(workspace), timeout_seconds=5,
         logger=logging.getLogger(__name__),
     )
-    assert result.returncode == 7 and result.error
-    directory, = tmp_path.glob(".task-validator-claude_code-stream-*")
+    assert result.returncode == 7 and not result.timed_out
+    assert result.error == "Backend emitted a terminal failure event"
+    directory, = tmp_path.glob(".task-backend-claude_code-stream-*")
     saved = (directory / "stdout.jsonl").read_text()
     assert "Session expired and could not be refreshed" in saved
-    assert "synthetic-validator-secret" not in saved + result.output
+    assert "synthetic-auditor-secret" not in saved + result.output
     assert not list(workspace.iterdir())
+
+
+@pytest.mark.parametrize("events,error", [
+    ([{"type": "turn.completed"}], None),
+    ([{"type": "turn.failed"}], "Backend emitted a terminal failure event"),
+    ([], "Backend did not emit a successful terminal event"),
+])
+def test_backend_success_requires_a_terminal_success_event(tmp_path, events, error):
+    from agents.backend_cli import run_backend
+    workspace = tmp_path / "task"
+    workspace.mkdir()
+    lines = "".join(f"print({json.dumps(json.dumps(event))});" for event in events)
+    result = run_backend([sys.executable, "-c", lines or "pass"], backend="codex", workspace=str(workspace),
+                         timeout_seconds=5, logger=logging.getLogger(__name__))
+    assert result.returncode == 0
+    assert result.error == error
