@@ -171,7 +171,7 @@ value before every call.
 Use the default unless the operator needs another rule; the QA auditor reports
 every departure as a warning that README.md must justify. `k` stays within
 `[1, 8]`; `max_violation_fraction` within `[0, 0.01]`. Tune them per task, never
-globally. `element_order: any_in_full_rows` compares sorted rows (top-k ids with
+globally. Elements admitted by `max_violation_fraction` must still lie within 16 times the bound, so it absorbs accumulation-order outliers, not skipped or zeroed elements. `element_order: any_in_full_rows` compares sorted rows (top-k ids with
 ties).
 
 Under `baseline_relative`, the baseline itself must pass a sanity check: no

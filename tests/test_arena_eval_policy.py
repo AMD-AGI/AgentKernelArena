@@ -223,3 +223,21 @@ def test_bias_fallback_allows_the_baseline_bias_plus_sampling_noise():
     declaration = {"bound": "baseline_relative", "k": 8}
     assert compare_tensor(declaration, candidate, reference, dtype_name="float64", baseline=baseline).passed
     assert not compare_tensor(declaration, draw(12.0), reference, dtype_name="float64", baseline=baseline).passed
+
+
+def test_violation_fraction_admits_outliers_but_not_arbitrary_errors():
+    torch.manual_seed(2)
+    reference = torch.randn(256, 1024, dtype=torch.float64)
+    baseline = reference.to(torch.bfloat16)
+    declaration = {"bound": "baseline_relative", "max_violation_fraction": 0.01}
+    outliers = reference.clone()
+    picked = outliers.view(-1)[::200]
+    signs = torch.ones_like(picked)
+    signs[1::2] = -1  # outliers in both directions, as accumulation-order differences are
+    picked += signs * (3 * (baseline.double() - reference).abs().view(-1)[::200] + 2 ** -8)
+    outliers = outliers.to(torch.bfloat16)
+    assert compare_tensor(declaration, outliers, reference, dtype_name="bfloat16", baseline=baseline).passed
+    skipped = baseline.clone()
+    skipped[:, -8:] = 0  # an unwritten tail of under 1% of the elements
+    result = compare_tensor(declaration, skipped, reference, dtype_name="bfloat16", baseline=baseline)
+    assert result.violation_fraction < 0.01 and not result.passed

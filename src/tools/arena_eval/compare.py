@@ -21,6 +21,7 @@ from .values import UNIT_ROUNDOFF, tensor_bytes, is_exact_dtype
 
 OUTPUT_ROUNDING_MULTIPLE = 2.0
 MIN_ROW_ELEMENTS = 8
+VIOLATION_PEAK_LIMIT = 16.0
 DEFAULT_MAX_ERROR_MULTIPLE = 2.0
 
 
@@ -110,7 +111,10 @@ def _elementwise(name: str, a, rounded, reference, limit, max_violation_fraction
             peak = math.inf
     unbiased, z = bias_check(errors, finite, fraction)
     nonfinite = _nonfinite(a, rounded)
-    passed = nonfinite == 0 and fraction <= max_violation_fraction and unbiased
+    # max_violation_fraction admits rare elements over the bound (accumulation-order outliers), never an
+    # arbitrary error: a skipped tail or a zeroed tile lands far beyond VIOLATION_PEAK_LIMIT bounds.
+    within_peak = fraction == 0 or peak <= VIOLATION_PEAK_LIMIT
+    passed = nonfinite == 0 and fraction <= max_violation_fraction and unbiased and within_peak
     return CompareResult(passed, name, fraction, peak, z, nonfinite, mismatched)
 
 
