@@ -217,3 +217,19 @@ def test_dot_product_bound_is_not_offered():
     raw["compare"]["out"] = {"bound": "dot_product", "length": 8192}
     with pytest.raises(TaskConfigError):
         _validate(raw, workloads)
+
+
+def test_package_digest_ignores_umask_bits_but_not_the_executable_bit(tmp_path):
+    from src.task_materialization import _Deadline, _tree_manifest, package_digest
+
+    def digest(root):
+        return package_digest(_tree_manifest(root, _Deadline(60)))
+
+    for name, file_mode, dir_mode in (("a", 0o644, 0o755), ("b", 0o664, 0o775)):
+        root = tmp_path / name
+        shutil.copytree(PILOT, root, ignore=shutil.ignore_patterns("__pycache__"))
+        for path in [root, *root.rglob("*")]:
+            path.chmod(dir_mode if path.is_dir() else file_mode)
+    assert digest(tmp_path / "a") == digest(tmp_path / "b")
+    (tmp_path / "b" / "reference.py").chmod(0o775)
+    assert digest(tmp_path / "a") != digest(tmp_path / "b")

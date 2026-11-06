@@ -88,9 +88,9 @@ def _solution_paths(root: Path) -> tuple[str, ...]:
 
 def _package_digest(root: Path) -> str:
     """The materialization record's task_package_sha256 for this directory."""
-    from src.task_materialization import _STALE_OUTPUTS, _Deadline, _digest, _tree_manifest
+    from src.task_materialization import _STALE_OUTPUTS, _Deadline, _tree_manifest, package_digest
 
-    return _digest(_tree_manifest(Path(root), _Deadline(3600), excludes=tuple(_STALE_OUTPUTS)))
+    return package_digest(_tree_manifest(Path(root), _Deadline(3600), excludes=tuple(_STALE_OUTPUTS)))
 
 
 def _filtered_changes(

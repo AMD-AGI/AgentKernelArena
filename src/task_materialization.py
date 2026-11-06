@@ -64,6 +64,22 @@ def _digest(value: object) -> str:
                                      allow_nan=False).encode()).hexdigest()
 
 
+def package_digest(manifest: dict[str, dict]) -> str:
+    """Content identity of a task package: paths, kinds, file contents and the executable bit.
+
+    Other permission bits follow the checkout's umask (0644 on one host, 0664 on another), so a
+    package hash that included them would make the same package look different, and every QA report
+    look stale, on another machine.
+    """
+    normalized = {}
+    for relative, item in manifest.items():
+        entry = {key: value for key, value in item.items() if key != "mode"}
+        if item.get("kind") == "file":
+            entry["executable"] = bool(item["mode"] & 0o111)
+        normalized[relative] = entry
+    return _digest(normalized)
+
+
 def _file_digest(path: Path, deadline: _Deadline) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -388,7 +404,7 @@ def materialize_task_workspace(spec: TaskSpec, config_path: Path, workspace: Pat
     identity = {
         "task_id": spec.task_id, "workspace": str(workspace),
         "original_config_sha256": _file_digest(config_path, deadline),
-        "task_spec_sha256": _digest(config), "task_package_sha256": _digest(task_manifest),
+        "task_spec_sha256": _digest(config), "task_package_sha256": package_digest(task_manifest),
         "runtime": _runtime_identity(),
     }
     if os.path.lexists(workspace):

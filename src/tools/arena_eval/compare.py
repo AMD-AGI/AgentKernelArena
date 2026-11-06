@@ -180,7 +180,7 @@ def compare_tensor(declaration: dict, actual: torch.Tensor, reference: torch.Ten
                 error = errors[mask]
                 error_rms = error.square().mean().sqrt().item()
                 baseline_bias = abs(baseline_error[mask].mean().item())
-                unbiased = abs(error.mean().item()) <= k * baseline_bias + 5 * error_rms / error.numel()
+                unbiased = abs(error.mean().item()) <= k * baseline_bias + 5 * error_rms / math.sqrt(error.numel())
             return unbiased, z
 
         return _elementwise(kind, a, rounded, y, limit, max_violation, bias_check)

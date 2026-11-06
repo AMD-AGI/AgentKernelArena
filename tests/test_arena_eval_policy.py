@@ -206,3 +206,20 @@ def test_short_rows_use_the_whole_outputs_baseline_rms():
     shifted = (reference * (1 + 64 * 2.0 ** -24) + 1e-4).float()
     assert not compare_tensor({"bound": "baseline_relative", "k": 8}, shifted, reference, dtype_name="float32",
                               baseline=baseline).passed
+
+
+def test_bias_fallback_allows_the_baseline_bias_plus_sampling_noise():
+    import math
+
+    torch.manual_seed(1)
+    reference = torch.randn(4096, 64, dtype=torch.float64)
+    n, sigma = reference.numel(), 1e-10
+
+    def draw(mean):
+        noise = torch.randn_like(reference)
+        return reference + sigma * (noise - noise.mean()) + mean * sigma / math.sqrt(n)
+
+    baseline, candidate = draw(0.5), draw(7.0)  # z test fails (7 > 5), within 8 * 0.5 + 5 sampling sigmas
+    declaration = {"bound": "baseline_relative", "k": 8}
+    assert compare_tensor(declaration, candidate, reference, dtype_name="float64", baseline=baseline).passed
+    assert not compare_tensor(declaration, draw(12.0), reference, dtype_name="float64", baseline=baseline).passed
