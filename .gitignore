@@ -7,13 +7,11 @@ build/
 /tasks/**/compile_report.json
 /tasks/**/correctness_report.json
 /tasks/**/performance_report.json
-/tasks/**/validation_report*.yaml
-/tasks/**/validation_report*.json
-/tasks/**/validation_summary.yaml
-/tasks/**/VALIDATION_SUMMARY.yaml
+/tasks/**/qa_report*.yaml
+/tasks/**/qa_summary.json
 /tasks/**/task_result.yaml
 /tasks/**/task_result.json
-/tasks/**/.validation_complete
+/tasks/**/.qa_complete
 
 .vscode
 .idea
@@ -65,9 +63,5 @@ docs/_build/
 # Generated visualization data and manually collected report bundles
 .visualization/
 
-# FlyDSL kernel build artifacts and profiler output (generated at run time)
-tasks/flydsl2flydsl/*/build/
-tasks/flydsl2flydsl/*/.rocprofv3/
-tasks/flydsl2flydsl/*/performance_report.json
 # SIKL generation drafts, source snapshots and validation evidence.
 sikl_task_builder_runs/

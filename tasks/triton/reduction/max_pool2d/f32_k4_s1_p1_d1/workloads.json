@@ -1,0 +1,170 @@
+{
+ "description": "NCHW fp32 maxpool inputs with 64 channels (KernelBench level 1 problem 42 scaled to 64 channels); small maps are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_h4",
+   "axes": {
+    "batch": 1,
+    "height": 4,
+    "width": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "smallest legal image (output 3x3)"
+  },
+  {
+   "id": "b3_h37_w50",
+   "axes": {
+    "batch": 3,
+    "height": 37,
+    "width": 50
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two, unaligned map"
+  },
+  {
+   "id": "b17_h97",
+   "axes": {
+    "batch": 17,
+    "height": 97,
+    "width": 97
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch and odd map size"
+  },
+  {
+   "id": "b2_h64",
+   "axes": {
+    "batch": 2,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small feature map"
+  },
+  {
+   "id": "b1_h256",
+   "axes": {
+    "batch": 1,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single image"
+  },
+  {
+   "id": "b2_h256",
+   "axes": {
+    "batch": 2,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small batch"
+  },
+  {
+   "id": "b4_h320_w448",
+   "axes": {
+    "batch": 4,
+    "height": 320,
+    "width": 448
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "non-square feature map"
+  },
+  {
+   "id": "b8_h256",
+   "axes": {
+    "batch": 8,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench batch scale-up"
+  },
+  {
+   "id": "b16_h256",
+   "axes": {
+    "batch": 16,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 1 problem 42, case 0 scale (16x32 planes doubled)"
+  },
+  {
+   "id": "b32_h256",
+   "axes": {
+    "batch": 32,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 1 problem 42, case 1 scale"
+  },
+  {
+   "id": "b64_h128",
+   "axes": {
+    "batch": 64,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 1 problem 42, case 4"
+  },
+  {
+   "id": "b16_h512",
+   "axes": {
+    "batch": 16,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large feature map"
+  },
+  {
+   "id": "b32_h512",
+   "axes": {
+    "batch": 32,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 1 problem 42, default case"
+  }
+ ]
+}

@@ -1,0 +1,108 @@
+schema_version: 3
+description: >-
+  Mixture-of-experts expert GEMM with MXFP4 activations and weights (E2M1 codes with one E8M0 scale per
+  32 values along K): for every token t and slot k, c[t, k] = A[t] @ B[topk_ids[t, k]]^T, accumulated in
+  float32 and rounded to bfloat16, without routing weights. A [n_tokens, K / 2] and B [E, N, K / 2] hold
+  two codes per byte (even index in the low nibble) with uint8 E8M0 scales [n_tokens, K / 32] and
+  [E, N, K / 32]. The work also arrives in vLLM's expert-sorted layout (moe_align_block_size for tile
+  height align_block, 64 below 256 tokens and 128 from 256 on): sorted_token_ids lists the (token, slot) indices t * topk + k grouped by expert,
+  each group padded to a multiple of align_block with the sentinel n_tokens * topk, expert_ids gives the
+  expert of each align_block tile (-1 past the end) and num_tokens_post_padded the padded total.
+operator:
+  name: fused_moe_mxfp4_gemm
+  category: moe
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 8192, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Reduction width K (Mixtral 8x7B hidden size).}
+    intermediate_size: {kind: const, value: 14336, description: Output width N (Mixtral 8x7B expert FFN).}
+    num_experts: {kind: const, value: 8, description: Experts.}
+    topk: {kind: const, value: 2, description: Experts per token.}
+  derived_axes:
+    align_block: "64 + 64 * min(1, n_tokens // 256)"
+    sorted_len: "n_tokens * topk + num_experts * (align_block - 1)"
+    num_blocks: "ceil_div(n_tokens * topk + num_experts * (align_block - 1), align_block)"
+  inputs:
+    a:
+      kind: tensor
+      shape: [n_tokens, hidden_size // 2]
+      dtype: uint8
+      distribution: {kind: generator}
+      description: Packed E2M1 activation codes.
+    a_scale:
+      kind: tensor
+      shape: [n_tokens, hidden_size // 32]
+      dtype: uint8
+      distribution: {kind: generator}
+      description: E8M0 scale (biased exponent) of each 32 consecutive activations.
+    b:
+      kind: tensor
+      shape: [num_experts, intermediate_size, hidden_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: Packed E2M1 expert weight codes.
+    b_scale:
+      kind: tensor
+      shape: [num_experts, intermediate_size, hidden_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: E8M0 scale (biased exponent) of each 32 consecutive weights.
+    topk_ids:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct expert ids selected for each token.
+    sorted_token_ids:
+      kind: tensor
+      shape: [sorted_len]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: (token, slot) indices grouped by expert, padded per expert with the sentinel n_tokens * topk.
+    expert_ids:
+      kind: tensor
+      shape: [num_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Expert of each align_block tile of sorted_token_ids; -1 for unused tiles.
+    num_tokens_post_padded:
+      kind: tensor
+      shape: [1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Number of used entries of sorted_token_ids.
+  outputs:
+    c: {shape: [n_tokens, topk, intermediate_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_mxfp4.py
+      - aiter/ops/triton/moe/moe_op_mxfp4.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/moe_common.py
+      - aiter/ops/triton/configs/moe/gfx950-MOE-MX_FP4.json
+      - aiter/ops/triton/utils/moe_config_utils.py
+    license: MIT
+    modifications: >-
+      Kernel and launcher inlined into one file (as in the previous task package) without the logger and
+      the logging repr= of triton.jit; the activation scale load is additionally masked by the token mask
+      so padding rows do not read past the activation scales; the launcher is reduced to MXFP4 x MXFP4
+      without swizzled scales, with unit per-tensor scales and no routing weight; the tuned gfx950 MX_FP4
+      config table is inlined. Wrapped in the arena run() interface writing into the preallocated output.
+compare:
+  c: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

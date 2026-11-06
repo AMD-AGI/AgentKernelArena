@@ -17,7 +17,7 @@ instructions; never embed paths from a local checkout.
 - `agents/`: isolated agent integrations and their own configuration.
 - `tasks/`: self-contained kernel tasks and task-local runners.
 - `example_configs/`: run-level agent, task, and GPU selections.
-- `src/tools/perf/`: canonical benchmark helpers materialized into workspaces.
+- `src/tools/perf/`: canonical benchmark helpers the framework writes into workspaces.
 - `src/eval_tools/`: evaluator-side optional analysis-tool control plane.
 - `tests/`: framework, integration, and regression tests.
 
@@ -25,8 +25,8 @@ When behavior and prose disagree, inspect the implementation. In particular:
 
 - Agent identifiers and loading: `src/module_registration.py`
 - Task definition, schema, and authoring contract: `docs/how-to/add-task.md`
-- Task-specific declarations: the task's `config.yaml`
-- Evaluation and scoring: `src/evaluator.py`, `src/performance.py`, `src/score.py`
+- Task-specific declarations: the task's `task.yaml` (schema v3; `config.yaml` only for the schema-v2 e2e serving tasks)
+- Evaluation and scoring: `src/evaluator.py`, `src/score.py`
 - Harness protection: `src/harness_guard.py`
 - Benchmark helpers: `src/tools/perf/`
 - Evaluation-tool policy: `docs/how-to/use-evaluation-tools.md`
@@ -56,7 +56,7 @@ into new guidance; link to their source of truth instead.
 - Write experiment output only to its configured output locations and keep it
   untracked. Do not copy generated workspaces, logs, or report bundles into
   source or documentation directories to make them part of a commit. This
-  includes task `build/` directories, `*_report.json`, `validation_report*`,
+  includes task `build/` directories, `*_report.json`, `qa_report*`, `.qa_complete`,
   `task_result.*`, and run summaries. Preserve evidence with its source/config
   identity and runtime details outside the versioned task package.
 - Before every commit, follow the [contribution checklist](CONTRIBUTING.md#repository-cleanliness-before-committing).
@@ -73,7 +73,7 @@ into new guidance; link to their source of truth instead.
 
 Keep agents and tasks independent.
 
-- A task defines a backend-neutral contract through its files and `config.yaml`.
+- A task defines a backend-neutral contract through its files and `task.yaml`.
   Task code must not import from `agents/` or depend on a particular agent,
   model, prompt format, provider, or authentication mechanism.
 - Agent implementations must not import task modules, mutate committed task
@@ -106,43 +106,46 @@ Do not claim GPU validation from code inspection or CPU-only tests. If compatibl
 hardware, agent credentials, or external dependencies are unavailable, state
 that explicitly.
 
-## Task authoring and validation
+## Task authoring and QA
 
 Before adding or modifying any task, you MUST read
-[Task definition, schema, and authoring](docs/how-to/add-task.md), including its
-implementation-status and migration sections. This applies to task configs,
-sources, references, input generators, harnesses, and benchmark scripts.
-It is the canonical task guide; inspect nearby task implementations as well.
-All retained tasks use schema v2 and the shared loader/evaluator/validator.
-New tasks must use that contract and implement its task-owned actions; adding a
-field to YAML alone does not implement the associated behavior.
+[Task definition, schema, and authoring](docs/how-to/add-task.md). This applies
+to `task.yaml`, references, baselines, workloads, input generators, and
+READMEs. It is the canonical task guide; inspect nearby tasks as well. Kernel
+tasks use schema v3: `tasks/<baseline_language>/<category>/<operator>/<scenario>/`
+holds the interface, a PyTorch reference, a vendored baseline and production workloads,
+and names no implementation language; the run configuration's `target_language`
+(`triton`, `gluon`, `hip` or `flydsl`) selects it. The serving tasks under
+`tasks/e2e/` keep their schema-v2 contract
+([e2e kernel tasks](docs/how-to/e2e-kernel-tasks.md)). Adding a field to YAML
+alone does not implement the associated behavior.
 
-- Paths in an isolated task must resolve within the task directory. Do not use
-  absolute paths, undeclared downloads, or external repositories.
-- Command fields in `config.yaml` are lists. Commands must exit nonzero on
-  failure and honor their declared timeouts.
-- Compilation checks must actually compile or syntax-check the target.
-- Correctness checks must compare against a meaningful reference with sensible
-  tolerances and representative cases; never accept a text-pattern check or a
-  trivially passing harness.
-- Performance checks must emit scoreable device timing and preserve equivalent
-  work, state, and allocation boundaries for baseline and candidate.
+- Paths in a task must resolve within the task directory. Do not use absolute
+  paths, undeclared downloads, or external repositories; vendor baselines with
+  recorded provenance instead of importing production packages.
+- The reference must be independent high-precision PyTorch; correctness must
+  compare against it with meaningful bounds and representative cases, never a
+  text-pattern check or a trivially passing harness.
+- Performance cases must be scoreable cold-cache CUDA-graph timings with
+  equivalent work, state, and allocation boundaries for baseline and candidate.
 - Use `platform_support` for real architecture constraints instead of silently
-  skipping cases inside a runner.
+  skipping cases.
 
-Every new task, and every material change to a task contract or harness, must
-pass `task_validator` on compatible GPU hardware **before a PR is submitted**:
+Every new task, and every material change to a task contract, reference,
+baseline, or workloads, must pass the QA auditor on compatible GPU hardware
+(MI355X for the verified languages) **before a PR is submitted**:
 
 ```bash
-make docker-run CONFIG=<validator-config>
+make docker-run CONFIG=<qa-config>
 ```
 
-Require a framework-finalized `validation_report.yaml` whose `overall_status` is
-`PASS`. A `WARN` needs an explicit maintainer-approved justification and is not
-a clean pass; a `FAIL`, timeout, partial report, stale report, or skipped task
-does not satisfy this gate. See
-[the validator guide](docs/how-to/task-validator.md) for the current checks and
-report contract.
+Require a framework-finalized `qa_report.yaml` (with its `.qa_complete` marker)
+whose `status` is `PASS` for the exact task package. Every blocking finding must
+be fixed; warnings do not block but must be read, and any you leave need a
+justification in the task README or PR. A `FAIL`, timeout, partial report, stale
+report (different package or rubric version), or skipped task does not satisfy
+this gate. See [the QA auditor guide](docs/how-to/qa-auditor.md) for the check
+table and report contract.
 
 ## Benchmark and harness integrity
 
@@ -159,13 +162,14 @@ implementation helpers are editable. Follow the boundary enforced by
 
 Repository-maintenance changes to a harness are allowed only when the task itself
 requires them. Such changes need focused regression coverage and a fresh
-`task_validator` pass.
+QA auditor `PASS`.
 
 ## Generated performance helpers
 
-`src/tools/perf/` is the single source of truth for shared benchmark code. Do not
-hand-edit committed ROCmBench helper stubs, generated `_aka_benchmark.py` or
-`hip_graph_benchmark.hpp` copies, or `AKA-GENERATED` regions in task runners.
+`src/tools/perf/` is the single source of truth for shared benchmark code. The
+framework writes it into run workspaces (`_aka_eval/_aka_benchmark.py` for kernel
+tasks); never commit generated `_aka_benchmark.py`, `_aka_serving*.py` or
+`_aka_eval/` copies under `tasks/`, and do not hand-edit generated copies.
 
 After changing canonical helpers, run:
 
@@ -173,9 +177,10 @@ After changing canonical helpers, run:
 make check-perf-helpers
 ```
 
-Run `make sync-perf-helpers` only when stub or marker structure changes. For
-inspection, use `make materialize-perf-task TASK=tasks/<task-path>` or
-`make materialize-perf-workspace WORKSPACE=<workspace>`.
+It runs `src/tools/sync_perf_helpers.py`, which fails when a generated helper is
+committed under `tasks/` or when a schema-v2 task is neither a serving recipe nor
+a serving client importing `_aka_serving`. Schema-v3 tasks carry no benchmark
+code. It audits task sources only; it is not GPU qualification.
 
 ## Agent integrations and evaluation tools
 

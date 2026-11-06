@@ -1,0 +1,42 @@
+schema_version: 3
+description: >-
+  out = x @ dequant(qweight, qzeros, scales) for AWQ 4-bit weights: x [m, 4096] float16; qweight [4096, 512] int32
+  holding eight 4-bit values per word along n; qzeros [32, 512] int32 (same packing, one zero point per 128-row
+  group and output column); scales [32, 4096] float16. Output column 8*j + i takes the nibble at bit offset
+  4 * [0, 4, 1, 5, 2, 6, 3, 7][i] of word j (AWQ interleaved order), and dequant = (nibble - zero) * scale.
+  Result rounded to float16.
+operator: {name: gemm_awq_w4a16, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 32768, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 4096, description: Output channels.}
+    k: {kind: const, value: 4096, description: Contracted dimension.}
+    group_size: {kind: const, value: 128, description: Rows of the weight sharing one scale and zero point.}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: float16, distribution: {kind: generator}}
+    qweight: {kind: tensor, shape: [k, n // 8], dtype: int32, role: weight, distribution: {kind: generator}}
+    qzeros: {kind: tensor, shape: [k // group_size, n // 8], dtype: int32, role: weight,
+             distribution: {kind: generator}}
+    scales: {kind: tensor, shape: [k // group_size, n], dtype: float16, role: weight,
+             distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: float16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/quantization/awq_triton.py
+    license: Apache-2.0
+    modifications: >-
+      awq_gemm_kernel kept as is; the awq_gemm_triton launcher is wrapped in run() writing into the preallocated
+      output with split-K fixed to 1 (vLLM's host-side torch sum over the split-K partials is removed, so the
+      kernel stores its result directly); the dequantize kernel is dropped; imports adapted.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

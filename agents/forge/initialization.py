@@ -1,4 +1,4 @@
-"""Initialize declared HIP/Triton candidates with KernelForge's implementer.
+"""Initialize HIP, Triton and Gluon candidates with KernelForge's implementer.
 
 This is a correctness-only Forge phase, not another Arena agent. The subsequent
 search is the unmodified forge-loop algorithm with an independent timing anchor.
@@ -22,24 +22,19 @@ from src.task_spec import resolve_task_path
 
 
 def materialize_targets(spec, root: Path, anchor: str) -> None:
-    """Make missing *declared* files visible to Forge/Git; preserve existing code.
+    """Make a missing candidate entry visible to Forge/Git; preserve existing code.
 
-    Empty files are not accepted implementations: the task's compiler and full
-    correctness check must pass after the actual implementer session.
+    A schema-v3 workspace already holds the unimplemented template at the
+    entry. An empty file is not an accepted implementation: the task's compile
+    and full correctness check must pass after the actual implementer session.
     """
-    paths = {anchor, *(scope.path for scope in spec.candidate.editable if scope.scope != "tree")}
-    for relative in sorted(paths):
-        if relative in protected_paths(spec) and not any(
-            scope.scope == "symbols" and scope.path == relative for scope in spec.candidate.editable
-        ):
-            raise ValueError(f"Initialization target overlaps a protected path: {relative}")
-        path = resolve_task_path(root, relative)
-        if path.exists():
-            if not path.is_file():
-                raise ValueError(f"Initialization target is not a file: {relative}")
-            continue
-        if any(scope.path == relative and scope.scope == "symbols" for scope in spec.candidate.editable):
-            raise ValueError(f"Cannot reconstruct a missing symbol-scoped harness: {relative}")
+    if anchor in protected_paths(spec):
+        raise ValueError(f"Initialization target overlaps a protected path: {anchor}")
+    path = resolve_task_path(root, anchor)
+    if path.exists():
+        if not path.is_file():
+            raise ValueError(f"Initialization target is not a file: {anchor}")
+    else:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
     candidate_files(spec, root)  # Reject links and unresolved declarations now.
@@ -126,8 +121,11 @@ async def initialize(plan: dict) -> dict:
 
     context = TaskContext.load(plan["context"])
     spec, root = context.spec, Path(plan["engine_root"])
-    if spec.candidate.language not in ("hip", "triton"):
-        raise ValueError("The generic Forge initialization phase supports HIP and Triton")
+    from agents.forge.adapter import INITIALIZATION_LANGUAGES
+
+    if spec.candidate.language not in INITIALIZATION_LANGUAGES:
+        raise ValueError("The generic Forge initialization phase supports "
+                         + ", ".join(INITIALIZATION_LANGUAGES))
     settings = plan["agent_config"]
     report = {"status": "RUNNING", "target_language": spec.candidate.language,
               "mechanism": "kernelforge.orchestrator.agent.make_agent_fn",
@@ -144,7 +142,9 @@ async def initialize(plan: dict) -> dict:
     _save(os.environ["ARENA_FORGE_PLAN"], plan)
     starting_head = _git(root, "rev-parse", "HEAD")
     protected = protected_inventory(spec, root)
-    history = "No valid target implementation exists yet. Implement the declared task interface."
+    history = (f"No valid {spec.candidate.language} implementation exists yet. Implement "
+               f"{plan['anchor']} following _aka_eval/CANDIDATE.md; the "
+               f"{spec.contract['baseline_language']} baseline under baseline/ is read-only semantic guidance.")
     try:
         for attempt in range(1, settings["initialization_max_attempts"] + 1):
             remaining = phase_deadline - time.time()

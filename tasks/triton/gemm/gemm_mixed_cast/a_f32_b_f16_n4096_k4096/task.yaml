@@ -1,0 +1,42 @@
+schema_version: 3
+description: >-
+  out = float16(a) @ b with a [m, 4096] float32 and b [4096, 4096] float16 (row-major): every element of a is first
+  rounded to float16 (the operator casts the operand to the output dtype before the product), the products are
+  accumulated in float32 and the result is rounded to float16.
+operator: {name: gemm_mixed_cast, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 32768, description: Rows of the activation matrix.}
+    n: {kind: const, value: 4096, description: Output columns.}
+    k: {kind: const, value: 4096, description: Contracted dimension.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [k, n]
+      dtype: float16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.05}
+  outputs:
+    out: {shape: [m, n], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD-AGI/AgentKernelArena (the rocmbench test_cast_matmul kernel, after ROCm/triton and triton issue 2523)
+    revision: a3b51f2c71d8b305b46521656d3639b9b26ff446
+    path: tasks/triton2triton/rocmbench/medium/test_cast_matmul/test_cast_matmul.py::matmul_kernel
+    license: MIT
+    modifications: >-
+      matmul_kernel kept as is; wrapped in the run() interface with a fixed 128x128x64 tile, GROUP_M 8 and a
+      float32 dot accumulator.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

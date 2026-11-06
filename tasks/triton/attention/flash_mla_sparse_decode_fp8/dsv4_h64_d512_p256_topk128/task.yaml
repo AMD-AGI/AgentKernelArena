@@ -1,0 +1,89 @@
+schema_version: 3
+description: >-
+  DeepSeek-V4 sparse attention over the packed FP8 sliding-window KV pool (flash_mla_with_kvcache with
+  sparse indices, main pool only). Each query row b (one decode request, or one prefill token) has 64
+  heads of dimension 512 and selects the nonnegative slots among the first sparse_lens[b] entries of
+  sparse_indices[b, 0]; slot s = page * 256 + position decodes to one 512-dimensional vector that is both
+  key and value (448 float8_e4m3fn codes times 2^(scale - 127) per 64-code tile, then 64 bfloat16 rope
+  values). With logit[h, s] = sm_scale * q[b, 0, h] . kv[s]: output[b, 0, h] =
+  sum_s exp(logit[h, s]) kv[s] / (sum_s exp(logit[h, s]) + exp(sinks[h])) rounded to bfloat16, and
+  lse[b, 0, h] = log(sum_s exp(logit[h, s])) in float32, excluding the sink. A row that selects nothing
+  has a zero output and lse = +inf.
+operator:
+  name: flash_mla_sparse_decode_fp8
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 16384, description: "Query rows: decode requests, or prefill tokens (one row each)."}
+    query_length: {kind: const, value: 1, description: Query tokens per row.}
+    heads: {kind: const, value: 64, description: Query heads sharing the single latent KV head.}
+    head_dim: {kind: const, value: 512, description: "Shared key/value width (448 nope + 64 rope)."}
+    pages: {kind: const, value: 2019, description: Pages of the sliding-window KV pool.}
+    page_size: {kind: const, value: 256, description: Token slots per page.}
+    one: {kind: const, value: 1, description: KV heads (a single shared latent).}
+    packed_width: {kind: const, value: 584, description: "Bytes per slot: 448 FP8 codes, 64 bfloat16, 8 scale bytes."}
+    topk: {kind: const, value: 128, description: Index-table width (the sliding window).}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, query_length, heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv_cache:
+      kind: tensor
+      shape: [pages, page_size, one, packed_width]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: >-
+        Packed pool. Page bytes [0, 256 * 576) hold the slots' payloads (448 E4M3 codes, then 64 bfloat16
+        rope values); bytes [256 * 576, 256 * 584) hold their scale records (7 UE8M0 exponents, one pad byte).
+    sparse_indices:
+      kind: tensor
+      shape: [batch, query_length, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Pool slots per row; -1 selects nothing and entries past sparse_lens must be ignored.
+    sparse_lens:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Valid prefix length of each row's index table, in [0, topk].
+    sm_scale: {kind: scalar, dtype: float32, default: 0.04419417382415922, description: "Softmax scale, 1/sqrt(512)."}
+    sinks:
+      kind: tensor
+      shape: [heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Per-head attention-sink logits, added to the softmax denominator only.
+  outputs:
+    output: {shape: [batch, query_length, heads, head_dim], dtype: bfloat16}
+    lse: {shape: [batch, query_length, heads], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: >-
+      python/sglang/kernels/ops/attention/nsa_triton_decode/triton_mla_kernels_decode_fused.py,
+      python/sglang/kernels/ops/attention/nsa_triton_decode/triton_mla_kernels_decode_optimized.py
+    license: Apache-2.0
+    modifications: >-
+      Single-scope path of triton_sparse_attn_decode (the ROCm Triton backend of flash_mla_with_kvcache):
+      _process_kv_block_aggressive and _fused_gather_attn_dsv4_kernel unchanged; the gfx942 FP8 probe
+      inlined for gfx950; @triton.autotune replaced by its BLOCK_H=64, BLOCK_N=64, 8-warp configuration;
+      the split-K (topk >= 8192) and >2 GB buffer-ops branches dropped; output and lse written into the
+      preallocated tensors.
+compare:
+  output: {bound: baseline_relative, k: 5, max_violation_fraction: 1.0e-6}
+  lse: {bound: baseline_relative, k: 8, max_violation_fraction: 5.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

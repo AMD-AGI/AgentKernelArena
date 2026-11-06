@@ -3,34 +3,28 @@ import ast
 import hashlib
 import json
 from pathlib import Path
-import shutil
 import sys
 
 import pytest
 import yaml
 
-from agents.task_validator.validation_prompt_v2 import build_v2_validation_prompt
-from agents.task_validator.trusted_evidence import snapshot_task_evidence
 from src.harness_guard import (
     describe_workspace_harness, snapshot_workspace_harness, verify_workspace_harness,
 )
-from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.task_session import TaskSession
-from src.task_spec import TaskSpec, load_task_spec
+from src.task_spec import TaskSpec
 from test_task_session_v2 import RUNNER
-from test_task_validator_v2 import context, draft, normalized
 
-ROOT = Path(__file__).resolve().parents[1]
 AST_MODE = "sha256_python_ast_excluding_editable_symbols"
 
 
-def make_session(tmp_path, *, helpers=False):
+def make_session(tmp_path, *, helpers=False, kernel=None):
     workspace = tmp_path / "candidate"
     workspace.mkdir()
-    (workspace / "kernel.py").write_text(
+    (workspace / "kernel.py").write_text(kernel or (
         "import math\nTOLERANCE = 0.01\ndef compute(): return 3\n"
         "def reference(): return 3\n"
-    )
+    ))
     (workspace / "evaluate.py").write_text(RUNNER)
     config = {
         "schema_version": 2,
@@ -54,31 +48,26 @@ def add_pass(text, symbol):
     return "".join(lines)
 
 
-@pytest.mark.parametrize("task", ['triton2triton/rocmbench/hard/moe_gemm'])
-def test_actual_moe_digest_allows_kernel_but_rejects_protected_test(tmp_path, task):
-    # Copies of the actual packages, with the canonical helper materializer.
-    # No import of Triton, numerical execution, or claim of GPU qualification.
-    workspace = tmp_path / "task"
-    shutil.copytree(ROOT / "tasks" / task, workspace)
-    materialize_perf_helpers_in_workspace(workspace)
-    spec = load_task_spec(workspace / "config.yaml", task_id=task)
-    snapshot = snapshot_workspace_harness(workspace, task_spec=spec)
-    info = describe_workspace_harness(workspace, snapshot=snapshot)
-    policy = info["protected_path_policies"]["moe_gemm.py"]
-    source = workspace / "moe_gemm.py"
+def test_symbol_digest_allows_editable_symbol_but_rejects_protected_symbol(tmp_path):
+    session = make_session(tmp_path, helpers=True, kernel=(
+        "import math\nTOLERANCE = 0.01\n\ndef compute():\n    return 3\n\n"
+        "def reference():\n    return 3\n"))
+    info = describe_workspace_harness(session.workspace, snapshot=session.harness)
+    policy = info["protected_path_policies"]["kernel.py"]
+    source = session.workspace / "kernel.py"
     original = source.read_text()
     assert policy["digest_mode"] == AST_MODE
-    assert policy["digest"] == snapshot.digests["moe_gemm.py"]
+    assert policy["digest"] == session.harness.digests["kernel.py"]
     assert policy["digest"] != hashlib.sha256(source.read_bytes()).hexdigest()
-    assert policy["editable_symbols"] == ["moe_gemm_kernel"]
+    assert policy["editable_symbols"] == ["compute"]
     assert policy["allow_new_helpers"] is True
-    assert "test_correctness" in policy["initial_top_level_names"]
-    source.write_text(add_pass(original, "moe_gemm_kernel"))
-    verify_workspace_harness(snapshot)
-    assert describe_workspace_harness(workspace, snapshot=snapshot) == info
-    source.write_text(add_pass(original, "test_correctness"))
-    with pytest.raises(RuntimeError, match="moe_gemm.py"):
-        verify_workspace_harness(snapshot)
+    assert "reference" in policy["initial_top_level_names"]
+    source.write_text(add_pass(original, "compute"))
+    verify_workspace_harness(session.harness)
+    assert describe_workspace_harness(session.workspace, snapshot=session.harness) == info
+    source.write_text(add_pass(original, "reference"))
+    with pytest.raises(RuntimeError, match="kernel.py"):
+        verify_workspace_harness(session.harness)
 
 
 def test_raw_file_metadata_corresponds_to_byte_protection(tmp_path):
@@ -180,35 +169,3 @@ def test_file_editable_candidate_is_not_described_as_protected(tmp_path):
     assert info["editable_entrypoint_targets"] == {}
     (session.workspace / "kernel.py").write_text("# file-scope edit\n")
     verify_workspace_harness(snapshot)
-
-
-def test_prompt_includes_effective_symbol_modes_beyond_the_path_sample(tmp_path):
-    session = make_session(tmp_path)
-    assert session.validate_initial().accepted
-    ctx = session.validation_context()
-    # Large protected-path inventories may omit the candidate from the sample.
-    ctx["harness"]["protected_paths"] = [f"a-{i}.py" for i in range(30)] + ["kernel.py"]
-    evidence = snapshot_task_evidence(ctx, task_id=session.spec.task_id)
-    prompt = build_v2_validation_prompt(
-        task_id=session.spec.task_id, task_config=session.spec.to_mapping(),
-        workspace=str(session.workspace), trusted_task_evidence=evidence,
-    )
-    data = prompt.split("FRAMEWORK TRANSPORT AND CAPTURED ACTION SUMMARY (JSON data)\n", 1)[1]
-    transport = json.loads(data.split("\n\nTASK DECLARATION", 1)[0])
-    assert "kernel.py" not in transport["harness"]["protected_paths_sample"]
-    assert transport["harness"]["symbol_digest_policies"]["kernel.py"] == ctx["harness"]["protected_path_policies"]["kernel.py"]
-    assert "a single\n   digest does not imply a whole-file lock" in prompt
-    assert "missing or contradictory" in prompt
-
-
-@pytest.mark.parametrize("verdict", ["FAIL", "WARN"])
-def test_metadata_never_overrides_independent_harness_review(tmp_path, verdict):
-    session_path = tmp_path / "guard"; session_path.mkdir()
-    session = make_session(session_path)
-    ctx = context(tmp_path, state="implemented", baseline_kind="initial_candidate")
-    ctx["harness"] = describe_workspace_harness(session.workspace, snapshot=session.harness)
-    raw = draft(ctx)
-    raw["checks"]["harness_integrity"]["status"] = verdict
-    raw["checks"]["harness_integrity"]["editable_targets_preserved"] = verdict != "FAIL"
-    report = normalized(ctx, raw)
-    assert report["overall_status"] == verdict

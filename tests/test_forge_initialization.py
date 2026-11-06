@@ -15,10 +15,9 @@ from test_forge_v2 import ROOT, fixture_task, mock_engine
 from agents.forge import adapter, bridge
 from agents.forge.bundles import allow_candidate_paths
 from agents.forge.initialization import materialize_targets, _make_initialization_agent, _new_path_patterns, prepare_loop
-from src.task_spec import TaskSpec
 
 
-@pytest.mark.parametrize("language", ["hip", "triton"])
+@pytest.mark.parametrize("language", ["hip", "triton", "gluon"])
 def test_launcher_routes_initialization_through_its_own_engine(tmp_path, monkeypatch, language):
     context, _, _ = fixture_task(tmp_path, language=language, initial_state="unimplemented")
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
@@ -28,7 +27,7 @@ def test_launcher_routes_initialization_through_its_own_engine(tmp_path, monkeyp
     assert commands[0][2:4] == ["--arena-initialize", "forge-loop"]
     assert commands[0][commands[0].index("--kernel-backend") + 1] == language
     assert '"workflow": "initialize"' in output
-    assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
+    assert (context.baseline_workspace / "solution/helper.py").read_text() == "3"
 
 
 @pytest.mark.parametrize("initial_status", ["PASS", "FAILED"])
@@ -52,27 +51,27 @@ def test_no_keep_delivery_requires_a_validated_initial_commit(tmp_path, monkeypa
         output = adapter.launch({}, "unused", str(context.workspace))
         assert '"delivery_selection": "initial_correct_implementation"' in output
         assert '"iteration_count": 0' in output
-        assert (context.workspace / "source/helper.py").read_text() == "6"
+        assert (context.workspace / "solution/helper.py").read_text() == "6"
     else:
         with pytest.raises(adapter.ForgeRunError, match="full selected commit"):
             adapter.launch({}, "unused", str(context.workspace))
-        assert (context.workspace / "source/helper.py").read_text() == "3"
+        assert (context.workspace / "solution/helper.py").read_text() == "3"
 
 
-def test_missing_declared_files_materialized_without_inventing_entrypoint(tmp_path):
+def test_missing_entry_materialized_without_inventing_other_files(tmp_path):
     context, plan, _ = fixture_task(tmp_path, language="hip", initial_state="unimplemented")
     root = Path(plan["engine_root"])
-    (root / "source/kernel.py").unlink()
-    materialize_targets(context.spec, root, "source/kernel.py")
-    assert (root / "source/kernel.py").read_text() == ""
-    assert (root / "source/helper.py").read_text() == "3"
-    assert not (root / "kernel.py").exists()
-    # Metadata declaring symbol scope cannot authorize recreating a harness.
-    data = context.spec.to_mapping()
-    data["candidate"]["editable"][0] = {"path": "source/kernel.py", "scope": "symbols", "symbols": ["declared"]}
-    (root / "source/kernel.py").unlink()
-    with pytest.raises(ValueError, match="symbol-scoped"):
-        materialize_targets(TaskSpec.from_mapping(data, task_id="unrelated"), root, "source/kernel.py")
+    (root / "solution/kernel.hip").unlink()
+    materialize_targets(context.spec, root, "solution/kernel.hip")
+    assert (root / "solution/kernel.hip").read_text() == ""
+    assert (root / "solution/helper.py").read_text() == "3"
+    assert not (root / "kernel.hip").exists()
+    # An existing template is the starting point, never replaced.
+    (root / "solution/kernel.hip").write_text("// AKA-UNIMPLEMENTED-TEMPLATE")
+    materialize_targets(context.spec, root, "solution/kernel.hip")
+    assert (root / "solution/kernel.hip").read_text() == "// AKA-UNIMPLEMENTED-TEMPLATE"
+    with pytest.raises(ValueError, match="protected"):
+        materialize_targets(context.spec, root, "README.md")
 
 
 @pytest.mark.parametrize("value", [0, 1, -1, True, float("nan")])
@@ -106,7 +105,7 @@ def test_implementer_api_preserves_all_initialization_controls(monkeypatch, grou
     monkeypatch.setitem(sys.modules, "kernelforge.loop.gate_settings",
                         SimpleNamespace(GateMeasurement=SimpleNamespace))
     config = object()
-    _make_initialization_agent(config, new_path_patterns=["source/*", "source/nested/*"], **options)
+    _make_initialization_agent(config, new_path_patterns=["solution/*", "solution/nested/*"], **options)
     assert received["config"] is config
     if not grouped:
         assert received == dict(config=config, **options)
@@ -114,7 +113,7 @@ def test_implementer_api_preserves_all_initialization_controls(monkeypatch, grou
     setup = received["setup"]
     assert vars(setup.task) == dict({key: options[key] for key in
         ("program_md", "kernel_backend_name", "profiling_enabled", "task_type", "source_files",
-         "target_functions", "extra_protected_paths")}, commit_new_paths=["source/*", "source/nested/*"])
+         "target_functions", "extra_protected_paths")}, commit_new_paths=["solution/*", "solution/nested/*"])
     assert vars(setup.session) == dict(session_timeout_sec=23, permission_mode="acceptEdits", insession_gate=True)
     assert vars(setup.measurement) == dict(driver_script="driver.py", interposed_driver_path="driver.py",
                                          correctness_only=True, stage_timeout_sec=17, bench_timeout_sec=17)
@@ -125,14 +124,10 @@ def test_implementer_api_preserves_all_initialization_controls(monkeypatch, grou
 
 def test_new_file_patterns_stay_inside_declared_tree_directories(tmp_path):
     context, plan, _ = fixture_task(tmp_path, language="hip", initial_state="unimplemented")
-    mapping = context.spec.to_mapping()
-    mapping["candidate"]["editable"] = [{"path": "source", "scope": "tree"}]
     root = Path(plan["engine_root"])
-    (root / "source/nested").mkdir()
+    (root / "solution/nested").mkdir()
     (root / "unrelated").mkdir()
-    spec = TaskSpec.from_mapping(mapping, task_id=context.spec.task_id)
-    assert _new_path_patterns(spec, root) == ["source/*", "source/nested/*"]
-    assert _new_path_patterns(context.spec, root) == []
+    assert _new_path_patterns(context.spec, root) == ["solution/*", "solution/nested/*"]
 
 
 @pytest.mark.parametrize("absolute,existing", [(False, False), (True, False), (True, True)])
@@ -179,6 +174,7 @@ root = Path(plan['engine_root'])
 mode = os.environ['CPU_TEST_MODE']
 context = TaskContext.load(plan['context'])
 language = context.spec.candidate.language
+entry = plan['anchor']
 loop_calls, sessions = [], []
 
 class ScriptedProvider:
@@ -193,7 +189,7 @@ class ScriptedProvider:
         assert spec.cwd == str(root), spec.cwd
         assert 'INITIALIZE' in spec.system_prompt
         assert language.lower() in spec.system_prompt.lower()
-        assert 'source/kernel.py' in spec.system_prompt
+        assert entry in spec.system_prompt
         assert spec.timeout_sec <= plan['agent_config']['session_timeout_seconds']
         if len(sessions) > 1:
             assert 'wrong multiplication' in spec.user_prompt or 'invalid literal' in spec.user_prompt
@@ -204,9 +200,9 @@ class ScriptedProvider:
         if mode == 'tamper':
             (root / 'runner.py').write_text('print("allclose: True")')
         elif mode != 'no_edit':
-            (root / 'source/kernel.py').write_text('100' if len(sessions) == 1 else '1')
-            (root / 'source/helper.py').write_text('6')
-            nested = root / 'source/nested/new_helper.py'
+            (root / entry).write_text('100' if len(sessions) == 1 else '1')
+            (root / 'solution/helper.py').write_text('6')
+            nested = root / 'solution/nested/new_helper.py'
             nested.parent.mkdir(exist_ok=True)
             nested.write_text('# declared tree helper, generated by scripted Forge provider\n')
         changes = guard.verify()
@@ -226,7 +222,7 @@ def loop_callback(**kwargs):
     assert kwargs['kernel_backend'] == language
     assert kwargs['baseline_json'] == plan['baseline']
     assert kwargs['deadline_unix'] == plan['deadline_unix']
-    assert str(root / 'source/nested/new_helper.py') in kwargs['source_files']
+    assert str(root / 'solution/nested/new_helper.py') in kwargs['source_files']
     initial = json.loads(Path(plan['initialization_result']).read_text())
     assert initial['status'] == 'PASS'
     # Run the real loop's initial candidate measurement against an independent
@@ -261,7 +257,7 @@ except BaseException as error:
     else:
         assert report['status'] == 'FAILED', report
         assert not loop_calls
-    assert (context.workspace / 'source/kernel.py').read_text() == '2'
+    assert (context.workspace / entry).read_text() == '2'
     if mode == 'no_edit':
         assert len(report['attempts']) == 2
         assert all(row['status'] == 'REJECTED' for row in report['attempts'])
@@ -277,9 +273,9 @@ else:
     assert report['arena_verdict'] == 'pending'
     selected = committed_candidate(context.spec, root, result['best_commit'], root.parent / 'delivery')
     install_candidate(context.spec, selected, context.workspace)
-    assert (context.workspace / 'source/nested/new_helper.py').exists()
-    assert (context.workspace / 'source/kernel.py').read_text() == '1'
-    assert (context.baseline_workspace / 'source/kernel.py').read_text() == '2'
+    assert (context.workspace / 'solution/nested/new_helper.py').exists()
+    assert (context.workspace / entry).read_text() == '1'
+    assert (context.baseline_workspace / entry).read_text() == '2'
     assert 'phase_deadline_unix' not in json.loads(Path(os.environ['ARENA_FORGE_PLAN']).read_text())
 print('REAL_FORGE_INITIALIZATION_CPU_PASS')
 '''
@@ -293,9 +289,6 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
     if not python:
         pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
     context, plan, path = fixture_task(tmp_path, language=language, initial_state="unimplemented")
-    document = json.loads(context.path.read_text())
-    document["task_config"]["candidate"]["editable"] = [{"path": "source", "scope": "tree"}]
-    context.path.write_text(json.dumps(document))
     config = adapter._config({"agent": {"agent_backend": "codex", "model": "scripted-model",
                                         "initialization_max_attempts": 2, "session_timeout_seconds": 30}})
     if mode == "timeout":
@@ -304,11 +297,11 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
                 deadline_unix=time.time()+120, initialization_result=str(tmp_path / "initialize.json"))
     path.write_text(json.dumps(plan))
     engine = Path(plan["engine_root"])
-    (engine / "source/kernel.py").write_text("")
+    (engine / plan["anchor"]).write_text("")
     # The grouped API admits explicit directory-level new-file patterns; it
     # rejects recursive '**'. Retain nested new-file delivery coverage within
     # a directory present when the session's allowlist is frozen.
-    (engine / "source/nested").mkdir()
+    (engine / "solution/nested").mkdir()
     # The accepted first implementation is *slower* than baseline: initialization
     # must accept correctness and let the ordinary loop improve it later.
     for workspace in (engine, Path(plan["template"]), context.baseline_workspace):

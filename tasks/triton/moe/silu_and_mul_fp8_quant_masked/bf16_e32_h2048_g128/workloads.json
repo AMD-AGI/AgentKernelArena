@@ -1,0 +1,17 @@
+{
+  "description": "Per-expert capacity (max_tokens) of a 32-expert rank with intermediate size 2048; expert 0 is full, expert 1 empty, the rest 50-100% full. Small capacities run faster than the 10 us floor and are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"max_tokens": 1}, "checks": ["correctness"], "source": "decode, one token per expert"},
+    {"id": "t7", "axes": {"max_tokens": 7}, "checks": ["correctness"], "source": "decode, odd capacity"},
+    {"id": "t33", "axes": {"max_tokens": 33}, "checks": ["correctness"], "source": "unaligned decode capacity"},
+    {"id": "t100", "axes": {"max_tokens": 100}, "checks": ["correctness"], "source": "unaligned capacity"},
+    {"id": "t160", "axes": {"max_tokens": 160}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, small batch"},
+    {"id": "t256", "axes": {"max_tokens": 256}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, 256 tokens per rank x EP1"},
+    {"id": "t512", "axes": {"max_tokens": 512}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, 128 tokens x EP4"},
+    {"id": "t1024", "axes": {"max_tokens": 1024}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, 128 tokens x EP8"},
+    {"id": "t2048", "axes": {"max_tokens": 2048}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, 128 tokens x EP16"},
+    {"id": "t4096", "axes": {"max_tokens": 4096}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, 128 tokens x EP32"},
+    {"id": "t8192", "axes": {"max_tokens": 8192}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, 128 tokens x EP64"},
+    {"id": "t16384", "axes": {"max_tokens": 16384}, "checks": ["correctness", "performance"], "source": "low-latency dispatch, 128 tokens x EP128"}
+  ]
+}

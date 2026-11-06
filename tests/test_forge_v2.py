@@ -1,7 +1,6 @@
 """Real CPU task-command coverage for the provider bridge (no GPU claims)."""
 from __future__ import annotations
 
-import importlib
 import json
 import os
 from pathlib import Path
@@ -17,9 +16,9 @@ sys.path.insert(0, str(ROOT))
 from agents.forge import adapter, bridge
 from agents.forge.task_context import TaskContext, bounded_spec
 from agents.forge.bundles import committed_candidate, copy_workspace, install_candidate
-from src.task_protocol import CaseManifest, RESULT_PREFIX, parse_command_result
 from src.task_spec import TaskSpec
 
+# A CPU stand-in for _aka_eval: the candidate multiplies by six across its entry and helper.
 RUNNER = r'''
 import json, sys
 from pathlib import Path
@@ -29,8 +28,9 @@ status = "PASS"
 reason = None
 if role == "candidate":
     try:
-        factor = int(Path("source/kernel.py").read_text().strip())
-        helper = int(Path("source/helper.py").read_text().strip())
+        entry = Path("solution/kernel.hip") if Path("solution/kernel.hip").exists() else Path("solution/kernel.py")
+        factor = int(entry.read_text().strip())
+        helper = int(Path("solution/helper.py").read_text().strip())
         if action != "compile" and factor * helper != 6:
             raise ValueError("wrong multiplication")
     except (ValueError, OSError) as exc:
@@ -49,28 +49,54 @@ print("ARENA_EVAL_RESULT=" + json.dumps(result))
 sys.exit(status != "PASS")
 '''
 
+#: What the source-pinned probe reports; production reads the installed engine.
+CAPABILITIES = {"backends": ["flydsl", "gluon", "hip", "triton"], "adapter_api": 1,
+                "rewrite_source_languages": ["cpp", "cuda", "hip", "triton"]}
 
-def fixture_task(tmp_path, *, language="flydsl", initial_state="implemented", initial_language=None):
+
+def entry_name(language):
+    return "kernel.hip" if language == "hip" else "kernel.py"
+
+
+def task_config(language, initial_state, baseline_language, *, source_owner="vllm-project/vllm"):
+    """The schema-v2 execution record the framework resolves from a v3 task.yaml."""
+    candidate = dict(language=language, initial_state=initial_state,
+                     editable=[dict(path="solution", scope="tree")],
+                     entrypoints=[dict(file=f"solution/{entry_name(language)}", kind="function", symbol="run")])
+    if initial_state == "implemented":
+        candidate["initial_language"] = language
+    return dict(schema_version=2, description="Multiply input by six.",
+                kernel_identity=dict(logical_operator="multiply_six", source_owner=source_owner),
+                candidate=candidate,
+                baseline=dict(kind="provided", language=baseline_language,
+                              source_files=[f"baseline/{entry_name(baseline_language)}"]),
+                evaluation=dict(runner=[sys.executable, "runner.py"], timeout_s=20),
+                contract=dict(schema_version=3, task_file="task.yaml", target_language=language,
+                              baseline_language=baseline_language,
+                              operator=dict(name="multiply_six", category="elementwise")))
+
+
+def fixture_task(tmp_path, *, language="flydsl", initial_state="implemented", baseline_language=None):
+    if baseline_language is None:
+        # A v3 candidate starts implemented exactly when the target is the baseline's language.
+        baseline_language = language if initial_state == "implemented" else (
+            "hip" if language == "triton" else "triton")
     ws, base = tmp_path / "workspace", tmp_path / "baseline"
     ws.mkdir()
-    (ws / "source").mkdir()
-    (ws / "source/kernel.py").write_text("2")
-    (ws / "source/helper.py").write_text("3")
+    (ws / "solution").mkdir()
+    (ws / f"solution/{entry_name(language)}").write_text("2")
+    (ws / "solution/helper.py").write_text("3")
+    (ws / "baseline").mkdir()
+    (ws / f"baseline/{entry_name(baseline_language)}").write_text("# vendored baseline\n")
     (ws / "runner.py").write_text(RUNNER)
-    (ws / "README.md").write_text("Multiply input by six using the declared backend.")
-    candidate = dict(language=language, initial_state=initial_state,
-                     editable=["source/kernel.py", "source/helper.py"],
-                     entrypoints=[dict(file="source/kernel.py", kind="function", symbol="not_a_builder")])
-    if initial_language:
-        candidate["initial_language"] = initial_language
-    config = dict(schema_version=2, candidate=candidate,
-                  evaluation=dict(runner=[sys.executable, "runner.py"], timeout_s=20))
+    (ws / "README.md").write_text("Multiply input by six using the run's target language.")
+    config = task_config(language, initial_state, baseline_language)
     (ws / "config.yaml").write_text("schema_version: 2\n")
     copy_workspace(ws, base)
     manifest = dict(protocol="arena-eval-v1", role="task", action="validate-task", status="PASS",
                     cases=[dict(test_case_id=name, shape=[2], dtype="float32", status="PASS",
                                 checks=["correctness", "performance"]) for name in ("a b", "a_b")])
-    document = dict(version=1, task_id="arbitrary/suite", task_config=config,
+    document = dict(version=1, task_id="elementwise/multiply_six/f32", task_config=config,
                     workspace=str(ws), baseline_workspace=str(base), manifest=manifest)
     path = tmp_path / "context.json"
     path.write_text(json.dumps(document))
@@ -79,7 +105,7 @@ def fixture_task(tmp_path, *, language="flydsl", initial_state="implemented", in
     copy_workspace(ws, template)
     copy_workspace(ws, engine)
     plan = dict(version=1, context=str(path), template=str(template), engine_root=str(engine),
-                workflow="optimize", anchor="source/kernel.py", deadline_unix=time.time()+60,
+                workflow="optimize", anchor=f"solution/{entry_name(language)}", deadline_unix=time.time()+60,
                 result=str(tmp_path / "result.json"), baseline=str(tmp_path / "perf.json"), program=str(engine / "program.md"))
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(json.dumps(plan))
@@ -114,8 +140,10 @@ def test_task_constraints_preserved_across_native_phases(tmp_path, phase):
     assert "Passing the driver does not waive these constraints" in program
     assert "A prohibited library operator remains prohibited even if it uses the target language internally" in program
     if phase.get("initialize"):
-        assert "Full task correctness and all declared implementation constraints are required" in program
+        assert "Full task correctness and all candidate rules are required" in program
         assert "no speedup is required" in program
+    assert "Implement it in flydsl" in program and "baseline/ (flydsl)" in program
+    assert "_aka_eval/CANDIDATE.md" in program and "Edit only solution/" in program
 
 
 def test_fresh_manifest_required_not_old_workspace_report(tmp_path):
@@ -146,7 +174,7 @@ def test_driver_rebuilds_and_checks_before_timing_and_isolates_roles(tmp_path, m
     assert bridge.run(path, plan["engine_root"], ["--ref-bench-mode"]) == 0
     assert "mean_ms: 4" in capsys.readouterr().out
     assert all(x[0] == "baseline" for x in calls)
-    assert (context.baseline_workspace / "source/kernel.py").read_text() == "2"
+    assert (context.baseline_workspace / "solution/kernel.py").read_text() == "2"
 
 
 def test_task_actions_leave_no_bytecode_in_the_searched_tree(tmp_path):
@@ -170,11 +198,11 @@ def test_task_actions_leave_no_bytecode_in_the_searched_tree(tmp_path):
 
 def test_wrong_candidate_and_incomplete_cases_cannot_emit_timing(tmp_path, capsys):
     _, plan, path = fixture_task(tmp_path)
-    (Path(plan["engine_root"]) / "source/helper.py").write_text("100")
+    (Path(plan["engine_root"]) / "solution/helper.py").write_text("100")
     assert bridge.run(path, plan["engine_root"], ["--bench-mode"]) == 1
     output = capsys.readouterr().out
     assert "case_ms:" not in output and "wrong multiplication" in output
-    (Path(plan["engine_root"]) / "source/helper.py").write_text("3")
+    (Path(plan["engine_root"]) / "solution/helper.py").write_text("3")
     (Path(plan["engine_root"]) / "drop_case").touch()
     assert bridge.run(path, plan["engine_root"], ["--bench-mode"]) == 1
     assert "manifest mismatch" in capsys.readouterr().out
@@ -184,7 +212,7 @@ def test_task_cannot_change_harness_by_editing_engine_copy(tmp_path):
     _, plan, path = fixture_task(tmp_path)
     engine = Path(plan["engine_root"])
     (engine / "runner.py").write_text('print("allclose: True")')
-    (engine / "source/helper.py").write_text("100")
+    (engine / "solution/helper.py").write_text("100")
     assert bridge.run(path, engine, []) == 1
 
 
@@ -223,7 +251,7 @@ def test_generated_driver_uses_own_directory_after_copy(tmp_path):
     (engine / "arena_forge_driver.py").write_text(bridge.render_driver(path, ROOT))
     lane = tmp_path / "lane"
     copy_workspace(engine, lane)
-    (engine / "source/helper.py").write_text("100")
+    (engine / "solution/helper.py").write_text("100")
     run = subprocess.run([sys.executable, str(lane / "arena_forge_driver.py"), "--bench-mode"],
                          cwd=tmp_path, capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr
@@ -298,10 +326,10 @@ def test_rewrite_binding_keeps_nested_paths_and_all_files(tmp_path, monkeypatch)
     engine = Path(plan["engine_root"])
     attempt = engine / ".forge_rewrite" / "current"
     copy_workspace(engine, attempt)
-    (engine / "source/helper.py").write_text("100")
+    (engine / "solution/helper.py").write_text("100")
     plan["workflow"] = "rewrite"
     path.write_text(json.dumps(plan))
-    monkeypatch.setenv("KERNELFORGE_REWRITE_CANDIDATE_KERNEL", str(attempt / "source/kernel.py"))
+    monkeypatch.setenv("KERNELFORGE_REWRITE_CANDIDATE_KERNEL", str(attempt / "solution/kernel.py"))
     assert bridge.run(path, engine, ["--bench-mode"]) == 0
     lane = tmp_path / "lane"
     copy_workspace(engine, lane)
@@ -314,69 +342,122 @@ def test_rewrite_binding_keeps_nested_paths_and_all_files(tmp_path, monkeypatch)
 def test_bundle_install_preserves_paths_and_rejects_escape(tmp_path):
     context, plan, _ = fixture_task(tmp_path)
     engine = Path(plan["engine_root"])
-    (engine / "source/kernel.py").write_text("1")
-    (engine / "source/helper.py").write_text("6")
+    (engine / "solution/kernel.py").write_text("1")
+    (engine / "solution/helper.py").write_text("6")
     records = install_candidate(context.spec, engine, context.workspace)
-    assert {record["path"] for record in records} == {"source/kernel.py", "source/helper.py"}
+    assert {record["path"] for record in records} == {"solution/kernel.py", "solution/helper.py"}
     assert not (context.workspace / "kernel.py").exists()
     external = tmp_path / "foreign.py"
     external.write_text("42")
-    (engine / "source/helper.py").unlink()
-    (engine / "source/helper.py").symlink_to(external)
-    before = (context.workspace / "source/kernel.py").read_text()
+    (engine / "solution/helper.py").unlink()
+    (engine / "solution/helper.py").symlink_to(external)
+    before = (context.workspace / "solution/kernel.py").read_text()
     with pytest.raises(ValueError):
         install_candidate(context.spec, engine, context.workspace)
-    assert (context.workspace / "source/kernel.py").read_text() == before
+    assert (context.workspace / "solution/kernel.py").read_text() == before
 
 
 def test_tree_bundle_propagates_deletions_but_not_harness(tmp_path):
     context, plan, _ = fixture_task(tmp_path)
-    config = context.spec.to_mapping()
-    config["candidate"]["editable"] = [dict(path="source", scope="tree")]
-    spec = TaskSpec.from_mapping(config, task_id=context.spec.task_id)
     engine = Path(plan["engine_root"])
-    (engine / "source/helper.py").unlink()
-    (engine / "source/new.py").write_text("3")
-    install_candidate(spec, engine, context.workspace)
-    assert not (context.workspace / "source/helper.py").exists()
-    assert (context.workspace / "source/new.py").read_text() == "3"
+    (engine / "solution/helper.py").unlink()
+    (engine / "solution/new.py").write_text("3")
+    install_candidate(context.spec, engine, context.workspace)
+    assert not (context.workspace / "solution/helper.py").exists()
+    assert (context.workspace / "solution/new.py").read_text() == "3"
+    assert (context.workspace / "baseline/kernel.py").read_text() == "# vendored baseline\n"
 
 
-def test_colocated_harness_protected_during_install(tmp_path):
+def test_symbol_scoped_candidates_are_not_installed(tmp_path):
     context, plan, _ = fixture_task(tmp_path)
-    original = 'def compute():\n    return 1\n\ndef test_compute():\n    assert compute() == 1\n'
-    (context.workspace / "source/kernel.py").write_text(original)
     config = context.spec.to_mapping()
-    config["candidate"]["editable"][0] = dict(path="source/kernel.py", scope="symbols", symbols=["compute"], allow_new_helpers=True)
+    config["candidate"]["editable"] = [dict(path="solution/kernel.py", scope="symbols", symbols=["run"])]
+    config["candidate"]["entrypoints"] = []
     spec = TaskSpec.from_mapping(config, task_id=context.spec.task_id)
-    engine = Path(plan["engine_root"])
-    (engine / "source/kernel.py").write_text(original.replace("return 1", "return 2").replace("== 1", "== 2"))
-    with pytest.raises(ValueError, match="protected statements"):
-        install_candidate(spec, engine, context.workspace)
-    (engine / "source/kernel.py").write_text(original.replace("return 1", "return 2"))
-    install_candidate(spec, engine, context.workspace)
+    with pytest.raises(ValueError, match="file and tree"):
+        install_candidate(spec, Path(plan["engine_root"]), context.workspace)
 
 
-@pytest.mark.parametrize("language", ["hip", "triton", "flydsl"])
+@pytest.mark.parametrize("language", ["hip", "triton", "flydsl", "gluon"])
 def test_auto_routes_verified_existing_targets_to_loop(tmp_path, language):
     context, _, _ = fixture_task(tmp_path, language=language)
     assert adapter.choose_workflow(context, target_verified=True) == "optimize"
 
 
-@pytest.mark.parametrize("state,initial", [("unimplemented", None), ("implemented", "triton")])
-def test_auto_routes_initialization_to_flydsl_rewrite(tmp_path, state, initial):
-    context, _, _ = fixture_task(tmp_path, initial_state=state, initial_language=initial)
-    assert adapter.choose_workflow(context, target_verified=False) == "rewrite"
+@pytest.mark.parametrize("baseline", ["triton", "hip"])
+def test_auto_routes_flydsl_initialization_to_the_native_rewrite(tmp_path, baseline):
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented", baseline_language=baseline)
+    assert adapter.choose_workflow(context, target_verified=False, capabilities=CAPABILITIES) == "rewrite"
     assert adapter.choose_workflow(context, target_verified=True) == "optimize"
     with pytest.raises(ValueError, match="verified"):
-        adapter.choose_workflow(context, target_verified=False, requested="optimize")
+        adapter.choose_workflow(context, target_verified=False, requested="optimize", capabilities=CAPABILITIES)
+    with pytest.raises(ValueError, match="needs rewrite"):
+        adapter.choose_workflow(context, target_verified=False, requested="initialize", capabilities=CAPABILITIES)
 
 
-@pytest.mark.parametrize("language", ["hip", "triton"])
-@pytest.mark.parametrize("state,initial", [("unimplemented", None), ("implemented", "pytorch")])
-def test_auto_initializes_hip_and_triton_using_forge(tmp_path, language, state, initial):
-    context, _, _ = fixture_task(tmp_path, language=language, initial_state=state, initial_language=initial)
-    assert adapter.choose_workflow(context, target_verified=False) == "initialize"
+@pytest.mark.parametrize("baseline", ["gluon", "tilelang"])
+def test_flydsl_rewrite_from_an_unreadable_baseline_language_fails_closed(tmp_path, baseline):
+    context, _, _ = fixture_task(tmp_path, initial_state="unimplemented", baseline_language=baseline)
+    with pytest.raises(adapter.ForgeRunError, match=f"this task's baseline is {baseline}"):
+        adapter.choose_workflow(context, target_verified=False, capabilities=CAPABILITIES)
+    unreported = {key: value for key, value in CAPABILITIES.items() if key != "rewrite_source_languages"}
+    with pytest.raises(adapter.ForgeRunError, match="does not report"):
+        adapter.choose_workflow(context, target_verified=False, capabilities=unreported)
+
+
+@pytest.mark.parametrize("language", ["hip", "triton", "gluon"])
+@pytest.mark.parametrize("baseline", ["triton", "hip", "flydsl", "tilelang"])
+def test_auto_initializes_hip_triton_and_gluon_using_forge(tmp_path, language, baseline):
+    if baseline == language:
+        pytest.skip("A candidate in the baseline's language starts implemented")
+    context, _, _ = fixture_task(tmp_path, language=language, initial_state="unimplemented",
+                                 baseline_language=baseline)
+    assert adapter.choose_workflow(context, target_verified=False, capabilities=CAPABILITIES) == "initialize"
+
+
+def test_unsupported_target_language_fails_before_any_engine_work(tmp_path, monkeypatch):
+    context, _, _ = fixture_task(tmp_path, language="tilelang")
+    monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
+    commands = mock_engine(monkeypatch)
+    with pytest.raises(adapter.ForgeRunError, match="does not support target language 'tilelang'"):
+        adapter.launch({}, "unused", str(context.workspace))
+    assert not commands
+    assert not list(tmp_path.glob("workspace-forge-*"))
+
+
+def test_context_requires_a_schema_v3_kernel_task(tmp_path):
+    context, _, _ = fixture_task(tmp_path)
+    data = json.loads(context.path.read_text())
+    # A schema-v2 package (the e2e serving tasks) carries no resolved contract.
+    del data["task_config"]["contract"]
+    context.path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="schema-v3"):
+        TaskContext.load(context.path)
+    data["task_config"] = task_config("triton", "implemented", "triton")
+    data["task_config"]["candidate"]["editable"] = [dict(path="solution/kernel.py")]
+    context.path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="only editable tree"):
+        TaskContext.load(context.path)
+
+
+@pytest.mark.parametrize("owner,framework", [
+    ("vllm-project/vllm", "vllm"), ("ROCm/aiter", "aiter"), ("sgl-project/sglang", "sglang"),
+    ("ROCm/FlyDSL", "standalone"), ("task-original", "standalone")])
+def test_engine_framework_identity_comes_from_the_baseline_provenance(tmp_path, owner, framework):
+    context, _, _ = fixture_task(tmp_path)
+    data = json.loads(context.path.read_text())
+    data["task_config"]["kernel_identity"]["source_owner"] = owner
+    context.path.write_text(json.dumps(data))
+    assert adapter.source_framework(TaskContext.load(context.path)) == framework
+
+
+def test_gpu_type_uses_normalized_arena_hardware_model():
+    from agents.forge.common import _resolve_gpu_type
+    assert _resolve_gpu_type({"target_gpu_model": "MI355X"}) == "mi355x"
+    assert _resolve_gpu_type({"target_gpu_model": "mi300"}) == "mi300x"
+    assert _resolve_gpu_type({"target_gpu_model": "MI325X"}) == "mi325x"
+    with pytest.raises(ValueError, match="target_gpu_model"):
+        _resolve_gpu_type({"target_gpu_model": ""})
 
 
 def test_action_budget_is_capped_by_remaining_campaign(tmp_path):
@@ -393,8 +474,7 @@ def mock_engine(monkeypatch, *, fail=False, port_ok=True, timeout=False, applyba
     def subprocess_run(command, **kwargs):
         if "--arena-probe" in command:
             return SimpleNamespace(returncode=0, stdout=json.dumps(
-                {"backends": ["flydsl", "hip", "triton"], "adapter_api": 1,
-                 "applyback_optional": applyback_optional}), stderr="")
+                {**CAPABILITIES, "applyback_optional": applyback_optional}), stderr="")
         return real_run(command, **kwargs)
     monkeypatch.setattr(adapter.subprocess, "run", subprocess_run)
     monkeypatch.setattr(adapter, "_resolve_gpu_arch", lambda _: "gfx950")
@@ -405,15 +485,15 @@ def mock_engine(monkeypatch, *, fail=False, port_ok=True, timeout=False, applyba
         engine = Path(workspace)
         result = {"improved": False}
         if "forge-rewrite-by-flydsl" in command:
-            root = engine / ".forge_rewrite/current/source"
+            root = engine / ".forge_rewrite/current/solution"
             root.mkdir(parents=True)
             (root / "kernel.py").write_text("1")
             (root / "helper.py").write_text("6")
             result.update(port_ok=port_ok, temporary_paths=[".forge_rewrite/current"], success=port_ok)
         else:
-            (engine / "source/kernel.py").write_text("1")
-            (engine / "source/helper.py").write_text("6")
-        target = ".forge_rewrite/current" if "forge-rewrite-by-flydsl" in command else "source"
+            (engine / "solution/kernel.py").write_text("1")
+            (engine / "solution/helper.py").write_text("6")
+        target = ".forge_rewrite/current" if "forge-rewrite-by-flydsl" in command else "solution"
         real_run(["git", "add", "-f", target], cwd=engine, check=True, capture_output=True)
         real_run(["git", "commit", "--quiet", "--allow-empty", "-m", "test selected candidate"], cwd=engine, check=True, capture_output=True)
         commit = real_run(["git", "rev-parse", "HEAD"], cwd=engine, check=True, capture_output=True, text=True).stdout.strip()
@@ -440,8 +520,18 @@ def test_launcher_delivers_complete_bundle_without_repeating_loop(tmp_path, monk
     budget = float(command[command.index("--max-hours") + 1]) * 3600
     assert 7200 - adapter.ENGINE_STARTUP_MARGIN_SEC - 120 < budget <= 7200 - adapter.ENGINE_STARTUP_MARGIN_SEC
     assert command[command.index("--model") + 1] == "chosen"
-    assert (context.workspace / "source/helper.py").read_text() == "6"
-    assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
+    if state == "implemented":
+        assert command[command.index("--kernel-backend") + 1] == "flydsl"
+        assert command[command.index("--operator-name") + 1] == "multiply_six"
+        assert command[command.index("--framework") + 1] == "vllm"
+    else:
+        # The PORT translates the vendored baseline, stated in its own language.
+        assert command[command.index("--source-language") + 1] == "triton"
+        assert command[command.index("--logical-op-name") + 1] == "multiply_six"
+        hint = Path(command[command.index("--source-kernel") + 1])
+        assert hint.read_text() == "# vendored baseline\n"
+    assert (context.workspace / "solution/helper.py").read_text() == "6"
+    assert (context.baseline_workspace / "solution/helper.py").read_text() == "3"
     assert '"arena_verdict": "pending"' in output
     assert not (context.workspace / "forge_driver.py").exists()
 
@@ -487,7 +577,7 @@ def test_launcher_reports_engine_failure_and_preserves_original(tmp_path, monkey
     mock_engine(monkeypatch, **kwargs)
     with pytest.raises(adapter.ForgeRunError):
         adapter.launch({}, "ignored.yaml", str(context.workspace))
-    assert (context.workspace / "source/helper.py").read_text() == "3"
+    assert (context.workspace / "solution/helper.py").read_text() == "3"
     statuses = list(tmp_path.glob("workspace-forge-*/arena_forge_status.json"))
     assert len(statuses) == 1
     assert json.loads(statuses[0].read_text())["status"] == "FAILED"
@@ -521,8 +611,8 @@ def test_unrequested_applyback_failure_still_delivers_the_port(tmp_path, monkeyp
     rewrite_result(monkeypatch, **APPLYBACK_FAILED)
     output = adapter.launch({}, "unused", str(context.workspace))
     assert '"status": "DELIVERED"' in output
-    assert (context.workspace / "source/kernel.py").read_text() == "1"
-    assert (context.workspace / "source/helper.py").read_text() == "6"
+    assert (context.workspace / "solution/kernel.py").read_text() == "1"
+    assert (context.workspace / "solution/helper.py").read_text() == "6"
     # Recorded rather than silently dropped: the run did leave a stage failed.
     status, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
     record = json.loads(status.read_text())["applyback_not_requested"]
@@ -543,7 +633,7 @@ def test_nonzero_exit_without_that_explanation_stays_a_failure(tmp_path, monkeyp
     rewrite_result(monkeypatch, **{**APPLYBACK_FAILED, **fields})
     with pytest.raises(adapter.ForgeRunError):
         adapter.launch({}, "unused", str(context.workspace))
-    assert (context.workspace / "source/kernel.py").read_text() == "2"
+    assert (context.workspace / "solution/kernel.py").read_text() == "2"
 
 
 def test_rewrite_delivers_the_flydsl_selection_not_the_applyback_commit(tmp_path, monkeypatch):
@@ -556,7 +646,7 @@ def test_rewrite_delivers_the_flydsl_selection_not_the_applyback_commit(tmp_path
     def with_applyback(*args, **kwargs):
         output = run(*args, **kwargs)
         engine = Path(kwargs["workspace"])
-        (engine / ".forge_rewrite/current/source/kernel.py").write_text("999")
+        (engine / ".forge_rewrite/current/solution/kernel.py").write_text("999")
         for command in (["add", "-f", ".forge_rewrite/current"], ["commit", "--quiet", "-m", "applyback"]):
             subprocess.run(["git", *command], cwd=engine, check=True, capture_output=True)
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=engine, check=True,
@@ -569,7 +659,7 @@ def test_rewrite_delivers_the_flydsl_selection_not_the_applyback_commit(tmp_path
 
     monkeypatch.setattr(adapter, "run_forge_subprocess", with_applyback)
     adapter.launch({}, "unused", str(context.workspace))
-    assert (context.workspace / "source/kernel.py").read_text() == "1"
+    assert (context.workspace / "solution/kernel.py").read_text() == "1"
 
 
 def test_rewrite_without_a_flydsl_selection_is_not_delivered(tmp_path, monkeypatch):
@@ -580,7 +670,7 @@ def test_rewrite_without_a_flydsl_selection_is_not_delivered(tmp_path, monkeypat
     rewrite_result(monkeypatch, flydsl_best_commit="")
     with pytest.raises(adapter.ForgeRunError, match="selected FlyDSL commit"):
         adapter.launch({}, "unused", str(context.workspace))
-    assert (context.workspace / "source/kernel.py").read_text() == "2"
+    assert (context.workspace / "solution/kernel.py").read_text() == "2"
 
 
 def timeout_engine(monkeypatch, *, publish, keep_content=None, port_ok=True):
@@ -601,7 +691,7 @@ def timeout_engine(monkeypatch, *, publish, keep_content=None, port_ok=True):
         engine = Path(kwargs["workspace"])
         port_commit, keep_commit = head(engine), ""
         if keep_content is not None:
-            (engine / ".forge_rewrite/current/source/kernel.py").write_text(keep_content)
+            (engine / ".forge_rewrite/current/solution/kernel.py").write_text(keep_content)
             for command in (["add", "-f", ".forge_rewrite/current"], ["commit", "--quiet", "-m", "keep"]):
                 subprocess.run(["git", *command], cwd=engine, check=True, capture_output=True)
             keep_commit = head(engine)
@@ -633,8 +723,8 @@ def test_timeout_recovers_the_published_keep(tmp_path, monkeypatch):
         "run_state.json": {"head_commit": port}})
     output = adapter.launch({}, "unused", str(context.workspace))
     assert '"delivery_selection": "timeout_recovered_keep"' in output
-    assert (context.workspace / "source/kernel.py").read_text() == "4"
-    assert (context.workspace / "source/helper.py").read_text() == "6"
+    assert (context.workspace / "solution/kernel.py").read_text() == "4"
+    assert (context.workspace / "solution/helper.py").read_text() == "6"
 
 
 def test_timeout_recovers_the_port_when_no_keep_was_published(tmp_path, monkeypatch):
@@ -643,7 +733,7 @@ def test_timeout_recovers_the_port_when_no_keep_was_published(tmp_path, monkeypa
         "run_state.json": {"head_commit": port, "best": {"commit_hash": ""}}})
     output = adapter.launch({}, "unused", str(context.workspace))
     assert '"delivery_selection": "timeout_recovered_search_head"' in output
-    assert (context.workspace / "source/kernel.py").read_text() == "1"
+    assert (context.workspace / "solution/kernel.py").read_text() == "1"
 
 
 @pytest.mark.parametrize("keep", [
@@ -657,7 +747,7 @@ def test_unattested_keep_record_falls_through_to_the_search_head(tmp_path, monke
         "best_result.json": keep, "run_state.json": {"head_commit": port}})
     output = adapter.launch({}, "unused", str(context.workspace))
     assert '"delivery_selection": "timeout_recovered_search_head"' in output
-    assert (context.workspace / "source/kernel.py").read_text() == "1"
+    assert (context.workspace / "solution/kernel.py").read_text() == "1"
 
 
 def test_keep_without_a_correctness_verdict_is_not_recovered(tmp_path, monkeypatch):
@@ -666,7 +756,7 @@ def test_keep_without_a_correctness_verdict_is_not_recovered(tmp_path, monkeypat
         "best_result.json": {"commit_hash": keep, "correctness_passed": False},
         "run_state.json": {"head_commit": port}})
     adapter.launch({}, "unused", str(context.workspace))
-    assert (context.workspace / "source/kernel.py").read_text() == "1"
+    assert (context.workspace / "solution/kernel.py").read_text() == "1"
 
 
 @pytest.mark.parametrize("kwargs, reason", [
@@ -679,15 +769,15 @@ def test_timeout_without_a_recoverable_candidate_preserves_the_original(tmp_path
     context = rewrite_at_wall(tmp_path, monkeypatch, **kwargs)
     with pytest.raises(adapter.ForgeRunError, match="deadline"):
         adapter.launch({}, "unused", str(context.workspace))
-    assert (context.workspace / "source/kernel.py").read_text() == "2", reason
+    assert (context.workspace / "solution/kernel.py").read_text() == "2", reason
     status, = tmp_path.glob("workspace-forge-*/arena_forge_status.json")
     assert json.loads(status.read_text())["timed_out"] is True
 
 
 def test_resume_checks_current_bundle_not_config_initial_stub(tmp_path, monkeypatch):
     context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
-    (context.workspace / "source/kernel.py").write_text("1")
-    (context.workspace / "source/helper.py").write_text("6")
+    (context.workspace / "solution/kernel.py").write_text("1")
+    (context.workspace / "solution/helper.py").write_text("6")
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
     commands = mock_engine(monkeypatch)
     adapter.launch({}, "ignored", str(context.workspace))
@@ -701,10 +791,10 @@ def test_completed_no_keep_search_retains_verified_input_bundle(tmp_path, monkey
     # Also cover resuming a generated implementation: the selected starting
     # candidate can differ from the independently frozen production baseline.
     if initial_state == "unimplemented":
-        (context.workspace / "source/kernel.py").write_text("3")
-        (context.workspace / "source/helper.py").write_text("2")
+        (context.workspace / "solution/kernel.py").write_text("3")
+        (context.workspace / "solution/helper.py").write_text("2")
     expected = {name: (context.workspace / name).read_bytes()
-                for name in ("source/kernel.py", "source/helper.py")}
+                for name in ("solution/kernel.py", "solution/helper.py")}
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
     mock_engine(monkeypatch, timeout=outcome == "timeout", fail=outcome == "exit_error")
     run = adapter.run_forge_subprocess
@@ -717,7 +807,7 @@ def test_completed_no_keep_search_retains_verified_input_bundle(tmp_path, monkey
         result.update(best_commit="", best_iteration=0, iteration_count=1)
         result_path.write_text(json.dumps(result))
         # This discarded working tree must never become the delivery.
-        (Path(kwargs["workspace"]) / "source/helper.py").write_text("999")
+        (Path(kwargs["workspace"]) / "solution/helper.py").write_text("999")
         return output
 
     monkeypatch.setattr(adapter, "run_forge_subprocess", no_keep)
@@ -733,7 +823,7 @@ def test_completed_no_keep_search_retains_verified_input_bundle(tmp_path, monkey
         assert ('"delivery_selection": "timeout_recovered_validated_input"' if outcome == "timeout"
                 else '"delivery_selection": "initial_validated_implementation"') in output
     assert {name: (context.workspace / name).read_bytes() for name in expected} == expected
-    assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
+    assert (context.baseline_workspace / "solution/helper.py").read_text() == "3"
 
 
 @pytest.mark.parametrize("result", [
@@ -755,12 +845,12 @@ def test_no_commit_fallback_rejects_incomplete_or_contradictory_result(tmp_path,
     monkeypatch.setattr(adapter, "run_forge_subprocess", omit_identity)
     with pytest.raises(adapter.ForgeRunError):
         adapter.launch({}, "unused", str(context.workspace))
-    assert (context.workspace / "source/helper.py").read_text() == "3"
+    assert (context.workspace / "solution/helper.py").read_text() == "3"
 
 
 def test_broken_changed_candidate_not_reclassified_as_empty(tmp_path, monkeypatch):
     context, _, _ = fixture_task(tmp_path, initial_state="unimplemented")
-    (context.workspace / "source/helper.py").write_text("100")
+    (context.workspace / "solution/helper.py").write_text("100")
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
     commands = mock_engine(monkeypatch)
     with pytest.raises(adapter.ForgeRunError, match="wrong multiplication"):
@@ -783,10 +873,18 @@ if status == "FAIL":
 @pytest.mark.parametrize("initial_state", ["implemented", "unimplemented"])
 def test_changed_numerical_candidate_reenters_initialization(tmp_path, monkeypatch, language, initial_state):
     context, _, _ = fixture_task(tmp_path, language=language, initial_state=initial_state)
-    (context.workspace / "source/helper.py").write_text("100")
+    (context.workspace / "solution/helper.py").write_text("100")
     classify_fixture_failure(context)
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
     commands = mock_engine(monkeypatch)
+    if language == "flydsl" and initial_state == "implemented":
+        # The PORT translates the baseline, which is FlyDSL itself here; the
+        # engine cannot repair a FlyDSL candidate from it, so Forge refuses.
+        with pytest.raises(adapter.ForgeRunError, match="this task's baseline is flydsl"):
+            adapter.launch({}, "unused", str(context.workspace))
+        assert not commands
+        assert (context.workspace / "solution/helper.py").read_text() == "100"
+        return
     adapter.launch({}, "unused", str(context.workspace))
     assert len(commands) == 1
     assert ("forge-rewrite-by-flydsl" in commands[0]) == (language == "flydsl")
@@ -799,7 +897,7 @@ def test_changed_numerical_candidate_reenters_initialization(tmp_path, monkeypat
     assert failed["failure_kind"] == "numerical_mismatch"
     assert len(failed["cases"]) == 2
     assert "initial_candidate_commit" not in status
-    assert (status_path.parent / "template/source/helper.py").read_text() == "100"
+    assert (status_path.parent / "template/solution/helper.py").read_text() == "100"
     assert "Historical input assessment" in (status_path.parent / "engine/arena_program.md").read_text()
     # prepare_loop regenerates this program after a successful initialization.
     # Retained failure evidence must describe the old input, not invalidate the
@@ -809,30 +907,30 @@ def test_changed_numerical_candidate_reenters_initialization(tmp_path, monkeypat
     loop_program = program_text(plan)
     assert "Optimize the existing candidate" in loop_program
     assert "do not override a later successful check" in loop_program
-    assert (context.workspace / "source/helper.py").read_text() == "6"
-    assert (context.baseline_workspace / "source/helper.py").read_text() == "3"
+    assert (context.workspace / "solution/helper.py").read_text() == "6"
+    assert (context.baseline_workspace / "solution/helper.py").read_text() == "3"
 
 
 @pytest.mark.parametrize("failure", ["runtime", "mixed", "missing_case", "compile", "crash", "unchanged"])
 def test_resume_recovery_does_not_hide_environment_or_evidence_errors(tmp_path, monkeypatch, failure):
     context, _, _ = fixture_task(tmp_path, language="hip")
-    (context.workspace / "source/helper.py").write_text("100")
+    (context.workspace / "solution/helper.py").write_text("100")
     classify_fixture_failure(context, kind="runtime_error" if failure == "runtime" else "numerical_mismatch",
                              mixed=failure == "mixed")
     if failure == "missing_case":
         (context.workspace / "drop_case").touch()
     elif failure == "compile":
-        (context.workspace / "source/kernel.py").write_text("not valid source")
+        (context.workspace / "solution/kernel.hip").write_text("not valid source")
     elif failure == "crash":
         (context.workspace / "runner.py").write_text('raise ModuleNotFoundError("fixture runtime unavailable")')
     elif failure == "unchanged":
-        (context.baseline_workspace / "source/helper.py").write_text("100")
+        (context.baseline_workspace / "solution/helper.py").write_text("100")
     monkeypatch.setenv("ARENA_TASK_CONTEXT", str(context.path))
     commands = mock_engine(monkeypatch)
     with pytest.raises(adapter.ForgeRunError):
         adapter.launch({}, "unused", str(context.workspace))
     assert not commands
-    assert (context.workspace / "source/helper.py").read_text() == "100"
+    assert (context.workspace / "solution/helper.py").read_text() == "100"
 
 
 @pytest.mark.parametrize("default_branch", ["main", "master"])
@@ -883,29 +981,6 @@ def test_internal_absolute_symlinks_rebind_to_snapshot(tmp_path):
     assert (destination / "alias.txt").resolve().is_relative_to(destination)
 
 
-def test_test_named_target_still_checks_colocated_harness_before_execution(tmp_path):
-    context, plan, _ = fixture_task(tmp_path, language="triton")
-    data = json.loads(context.path.read_text())
-    data["task_config"]["candidate"] = {
-        "language": "triton",
-        "editable": [{"path": "test_impl.py", "scope": "symbols",
-                      "symbols": ["compute"], "allow_new_helpers": True}],
-    }
-    context.path.write_text(json.dumps(data))
-    original = "def compute(x):\n    return x\n\ndef test_oracle():\n    assert compute(3) == 6\n"
-    template, engine = Path(plan["template"]), Path(plan["engine_root"])
-    for root in (template, engine):
-        (root / "test_impl.py").write_text(original)
-    # Real public task actions pass with a legal symbol edit; filename alone
-    # does not make the declared implementation a protected file.
-    (engine / "test_impl.py").write_text(original.replace("return x", "return x * 2"))
-    assert bridge.execute(plan, engine, role="candidate", action="correctness").passed
-    # The same native target exemption must never authorize its test body.
-    (engine / "test_impl.py").write_text(original.replace("assert compute(3) == 6", "assert True"))
-    with pytest.raises(ValueError, match="protected statements"):
-        bridge.execute(plan, engine, role="candidate", action="performance")
-
-
 def test_nested_session_children_are_reaped_after_timeout(tmp_path):
     """A grandchild calls setsid(), so killing only the parent group is insufficient."""
     script = r'''
@@ -943,10 +1018,10 @@ def test_delivery_reads_selected_commit_not_uncommitted_tail(tmp_path):
     engine = Path(plan["engine_root"])
     adapter._initialize_git(engine)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=engine, text=True).strip()
-    (engine / "source/kernel.py").write_text("100")
+    (engine / "solution/kernel.py").write_text("100")
     bundle = committed_candidate(context.spec, engine, commit, tmp_path / "selected")
-    assert (bundle / "source/kernel.py").read_text() == "2"
-    assert (bundle / "source/helper.py").read_text() == "3"
+    assert (bundle / "solution/kernel.py").read_text() == "2"
+    assert (bundle / "solution/helper.py").read_text() == "3"
     with pytest.raises(ValueError, match="full selected commit"):
         committed_candidate(context.spec, engine, "--all", tmp_path / "bad")
 
@@ -962,26 +1037,23 @@ def test_new_nested_tree_helpers_are_visible_to_git_in_rewrite_scratch(tmp_path)
     from agents.forge.bundles import allow_candidate_paths
     context, plan, _ = fixture_task(tmp_path)
     engine = Path(plan["engine_root"])
-    config = context.spec.to_mapping()
-    config["candidate"]["editable"] = [{"path": "source", "scope": "tree"}]
-    spec = TaskSpec.from_mapping(config, task_id=context.spec.task_id)
     adapter._initialize_git(engine)
-    allow_candidate_paths(engine, spec, prefix=".forge_rewrite/current")
-    target = engine / ".forge_rewrite/current/source/nested/helper.py"
+    allow_candidate_paths(engine, context.spec, prefix=".forge_rewrite/current")
+    target = engine / ".forge_rewrite/current/solution/nested/helper.py"
     target.parent.mkdir(parents=True)
     target.write_text("# new helper")
     result = subprocess.run(["git", "check-ignore", str(target)], cwd=engine, capture_output=True)
     assert result.returncode == 1
     subprocess.run(["git", "add", "--", str(target)], cwd=engine, check=True, capture_output=True)
     listed = subprocess.check_output(["git", "ls-files", "--cached"], cwd=engine, text=True)
-    assert ".forge_rewrite/current/source/nested/helper.py" in listed
+    assert ".forge_rewrite/current/solution/nested/helper.py" in listed
 
 
 def test_internal_candidate_symlink_cannot_change_declared_delivery_path(tmp_path):
     context, plan, _ = fixture_task(tmp_path)
     engine = Path(plan["engine_root"])
-    (engine / "source/real.py").write_text("2")
-    (engine / "source/kernel.py").unlink()
-    (engine / "source/kernel.py").symlink_to("real.py")
+    (engine / "solution/real.py").write_text("2")
+    (engine / "solution/kernel.py").unlink()
+    (engine / "solution/kernel.py").symlink_to("real.py")
     with pytest.raises(ValueError, match="Candidate symlink"):
         install_candidate(context.spec, engine, context.workspace)

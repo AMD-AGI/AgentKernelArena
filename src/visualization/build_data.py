@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.tasks import task_category
 from src.visualization.paths import DATA_ROOT, PROJECT_ROOT, REPORTS_ROOT
 
 
@@ -19,9 +20,18 @@ OUTPUT_JSON = DATA_ROOT / "data.json"
 OUTPUT_JS = DATA_ROOT / "data.js"
 
 STATUS_PATTERN = re.compile(
-    r"^(PASS|FAIL|PARTIAL|ACCEPTED|NOT_ACCEPTED|INCOMPLETE)\s+(\S+)\s+Score:\s*([0-9.]+)\s+Speedup:\s*([0-9.]+)x"
+    r"^(PASS|FAIL|PARTIAL|ACCEPTED|NOT_ACCEPTED|INCOMPLETE)\s+(\S+)(?:\s+\[([^\]\s]+)\])?\s+Score:\s*([0-9.]+)\s+Speedup:\s*([0-9.]+)x"
     r"(?:\s+Accepted:\s*(YES|NO|N/A)\s+Delivery:\s*(COMPLETE|INCOMPLETE|NOT_ACCEPTED|N/A))?\s*$"
 )
+
+
+def task_key(task_name: str, target_language: str | None) -> str:
+    """Results are keyed by (task, target language); one task runs once per language."""
+    return f"{task_name}|{target_language}" if target_language else task_name
+
+
+def display_name(task_name: str, target_language: str | None) -> str:
+    return f"{task_name} [{target_language}]" if target_language else task_name
 
 
 def parse_acceptance(value: str | None) -> bool | None:
@@ -46,8 +56,10 @@ def load_status_map(report_path: Path) -> dict[str, dict[str, Any]]:
         match = STATUS_PATTERN.match(line.strip())
         if not match:
             continue
-        status, task_name, score, speedup, accepted, delivery = match.groups()
-        status_map[task_name] = {
+        status, task_name, language, score, speedup, accepted, delivery = match.groups()
+        status_map[task_key(task_name, language)] = {
+            "taskName": task_name,
+            "targetLanguage": language,
             "status": status,
             "score_from_report": float(score),
             "speedup_from_report": float(speedup),
@@ -180,6 +192,7 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
     task_catalog: dict[str, dict[str, Any]] = {}
     all_statuses: set[str] = set()
     all_gpus: set[str] = set()
+    all_languages: set[str] = set()
     discovered_report_dirs = discover_report_directories(
         include_workspace_runs=include_workspace_runs
     )
@@ -206,10 +219,16 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
             for row in reader:
                 task_name = row["Task Name"].strip()
                 task_type = row["Task Type"].strip()
-                status_info = status_map.get(task_name, {})
+                language = (row.get("Target Language") or "").strip() or None
+                key = task_key(task_name, language)
+                status_info = status_map.get(key, {})
                 status = row.get("Status") or status_info.get("status", "UNKNOWN")
                 task = {
                     "taskName": task_name,
+                    "targetLanguage": language,
+                    "operator": (row.get("Operator") or "").strip() or None,
+                    "taskKey": key,
+                    "displayName": display_name(task_name, language),
                     "taskType": task_type,
                     "status": status,
                     "candidateAccepted": (parse_acceptance(row["Candidate Accepted"])
@@ -222,28 +241,39 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
                 }
                 tasks.append(task)
                 all_statuses.add(status)
+                if language:
+                    all_languages.add(language)
 
                 catalog_entry = task_catalog.setdefault(
-                    task_name,
+                    key,
                     {
                         "taskName": task_name,
+                        "targetLanguage": language,
+                        "taskKey": key,
+                        "displayName": display_name(task_name, language),
                         "taskType": task_type,
                         "presentInReports": [],
                     },
                 )
                 if catalog_entry["taskType"] != task_type:
                     warnings.append(
-                        f"Task type mismatch for {task_name}: "
+                        f"Task type mismatch for {catalog_entry['displayName']}: "
                         f"{catalog_entry['taskType']} vs {task_type} in {report_meta['label']}"
                     )
                 catalog_entry["presentInReports"].append(report_meta["id"])
 
-        missing_in_csv = set(status_map) - {task["taskName"] for task in tasks}
-        for task_name in sorted(missing_in_csv):
-            status_info = status_map[task_name]
-            inferred_task_type = task_name.split("/", 1)[0] if "/" in task_name else "unknown"
+        missing_in_csv = set(status_map) - {task["taskKey"] for task in tasks}
+        for key in sorted(missing_in_csv):
+            status_info = status_map[key]
+            task_name = status_info["taskName"]
+            language = status_info["targetLanguage"]
+            inferred_task_type = task_category(task_name) or "unknown"
             task = {
                 "taskName": task_name,
+                "targetLanguage": language,
+                "operator": None,
+                "taskKey": key,
+                "displayName": display_name(task_name, language),
                 "taskType": inferred_task_type,
                 "status": status_info["status"],
                 "candidateAccepted": status_info.get("candidateAccepted"),
@@ -254,16 +284,21 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
             }
             tasks.append(task)
             all_statuses.add(task["status"])
+            if language:
+                all_languages.add(language)
             task_catalog.setdefault(
-                task_name,
+                key,
                 {
                     "taskName": task_name,
+                    "targetLanguage": language,
+                    "taskKey": key,
+                    "displayName": display_name(task_name, language),
                     "taskType": inferred_task_type,
                     "presentInReports": [],
                 },
             )["presentInReports"].append(report_meta["id"])
             warnings.append(
-                f"{report_meta['label']}: recovered {task_name} from overall_report.txt only"
+                f"{report_meta['label']}: recovered {display_name(task_name, language)} from overall_report.txt only"
             )
 
         overall = breakdown.get("overall", {})
@@ -283,7 +318,8 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
                 "reportPath": report_meta["reportPath"],
                 "overall": overall,
                 "taskTypes": task_types,
-                "tasks": sorted(tasks, key=lambda item: item["taskName"]),
+                "targetLanguages": breakdown.get("target_languages", {}),
+                "tasks": sorted(tasks, key=lambda item: item["displayName"]),
                 "sourceFiles": {
                     "summaryCsv": artifact_path(summary_csv),
                     "breakdownJson": artifact_path(breakdown_json),
@@ -316,6 +352,7 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
             "taskCount": len(task_catalog),
             "statuses": sorted(all_statuses),
             "targetGpus": sorted(all_gpus),
+            "targetLanguages": sorted(all_languages),
             "scanRoot": PROJECT_ROOT.as_posix(),
             "includeWorkspaceRuns": include_workspace_runs,
             "discoveredReportDirectories": [
@@ -324,7 +361,7 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
             "warnings": warnings,
         },
         "reports": reports,
-        "taskCatalog": sorted(task_catalog.values(), key=lambda item: item["taskName"]),
+        "taskCatalog": sorted(task_catalog.values(), key=lambda item: item["displayName"]),
         "taskTypeTotals": dict(sorted(task_type_totals.items())),
     }
     return dataset

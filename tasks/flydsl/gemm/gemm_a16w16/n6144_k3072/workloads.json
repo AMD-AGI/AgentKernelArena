@@ -1,0 +1,227 @@
+{
+  "description": "Token counts of a 6144-wide projection with a 3072-wide input: decode batches and short prefills below the 10 us timing floor are correctness-only; prefill chunks and batched prefills up to 131072 tokens are timed.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "m2",
+      "axes": {
+        "m": 2
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode"
+    },
+    {
+      "id": "m4",
+      "axes": {
+        "m": 4
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode"
+    },
+    {
+      "id": "m16",
+      "axes": {
+        "m": 16
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode"
+    },
+    {
+      "id": "m32",
+      "axes": {
+        "m": 32
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode"
+    },
+    {
+      "id": "m48",
+      "axes": {
+        "m": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode"
+    },
+    {
+      "id": "m64",
+      "axes": {
+        "m": 64
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode / small prefill"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "m": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "small prefill"
+    },
+    {
+      "id": "m256",
+      "axes": {
+        "m": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "small prefill"
+    },
+    {
+      "id": "m300",
+      "axes": {
+        "m": 300
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "small prefill"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "m32768",
+      "axes": {
+        "m": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "m65536",
+      "axes": {
+        "m": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "m131072",
+      "axes": {
+        "m": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long batched prefill"
+    }
+  ]
+}

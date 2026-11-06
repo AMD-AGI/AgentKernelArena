@@ -1,0 +1,163 @@
+{
+ "description": "Row counts of the 4096x4096 mixed-precision cast GEMM; small batches run below the 10 us floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "m": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum, single row"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "m": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd tiny batch"
+  },
+  {
+   "id": "m17",
+   "axes": {
+    "m": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "just above one tile of 16 rows"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "m": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "below one 128-row tile"
+  },
+  {
+   "id": "m129",
+   "axes": {
+    "m": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row over a 128-row tile"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "m": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "m128",
+   "axes": {
+    "m": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one tile row (below the 10 us floor)"
+  },
+  {
+   "id": "m256",
+   "axes": {
+    "m": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  },
+  {
+   "id": "m512",
+   "axes": {
+    "m": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "m": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "m": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "m": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "m": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "m": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  },
+  {
+   "id": "m32768",
+   "axes": {
+    "m": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "activation rows"
+  }
+ ]
+}

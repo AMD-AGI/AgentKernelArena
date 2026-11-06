@@ -1,0 +1,100 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of a Kimi-K2-style mixture-of-experts model (384 experts, top-8) with bfloat16 activations
+  and int4 weight-only (WNA16) group-quantized expert weights: group size 32 along K, bfloat16 scale per group,
+  no zero point (weight = (nibble - 8) * scale, two nibbles per byte along K, even K element in the low nibble).
+  For each token t and selected expert e = topk_ids[t, k]: h = hidden_states[t] @ W13[e].T (gate = first 256,
+  up = last 256 of the 512 outputs), a = silu(gate) * up, y = (a @ W2[e].T) * topk_weights[t, k];
+  out[t] = sum over k of y, rounded to bfloat16. The router decisions (topk_ids, topk_weights) are given.
+operator:
+  name: fused_moe_wna16
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    top_k: {kind: const, value: 8, description: Experts selected per token.}
+    num_experts: {kind: const, value: 384, description: Routed experts held by the rank.}
+    hidden_size: {kind: const, value: 7168, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 256, description: Expert intermediate width per rank (2048 under tensor parallelism 8).}
+    group_size: {kind: const, value: 32, description: K elements sharing one weight scale.}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+    hidden_bytes: hidden_size // 2
+    intermediate_bytes: intermediate_size // 2
+    hidden_groups: hidden_size // group_size
+    intermediate_groups: intermediate_size // group_size
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w13_qweight:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_bytes]
+      dtype: uint8
+      role: weight
+      description: Packed int4 codes of the gate (rows 0..255) and up (rows 256..511) projections.
+      distribution: {kind: generator}
+    w13_scale:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_groups]
+      dtype: bfloat16
+      role: weight
+      description: Per-group scales of w13_qweight.
+      distribution: {kind: generator}
+    w2_qweight:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_bytes]
+      dtype: uint8
+      role: weight
+      description: Packed int4 codes of the down projection.
+      distribution: {kind: generator}
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_groups]
+      dtype: bfloat16
+      role: weight
+      description: Per-group scales of w2_qweight.
+      distribution: {kind: generator}
+    topk_weights:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: float32
+      description: Renormalized router weights of the selected experts.
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: int32
+      role: index
+      description: Selected experts of each token (distinct within a token).
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path:
+      - vllm/model_executor/layers/fused_moe/fused_moe.py
+      - vllm/model_executor/layers/fused_moe/moe_align_block_size.py
+      - vllm/model_executor/layers/fused_moe/configs/E=384,N=256,device_name=AMD_Instinct_MI355X,dtype=int4_w4a16.json
+    license: Apache-2.0
+    modifications: >-
+      fused_moe_kernel_gptq_awq, write_zeros_to_output and invoke_fused_moe_wna16_triton_kernel unchanged; the
+      Triton branch of get_moe_wna16_block_config (should_moe_wna16_use_cuda is false on ROCm); the MI355X tuned
+      table inlined with the closest-token-count lookup of try_get_optimal_moe_config; the int4 path of
+      fused_experts_impl (both GEMMs, shared cache13 buffer) wrapped in run() writing into the preallocated
+      output. moe_align_block_size, silu_and_mul and moe_sum are CUDA ops in vLLM; they are replaced by Triton
+      kernels written for this task (moe_align_block_size.py with vLLM's buffer sizing, moe_ops.py) with the same
+      contracts.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

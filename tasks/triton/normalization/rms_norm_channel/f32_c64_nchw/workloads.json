@@ -1,0 +1,143 @@
+{
+  "description": "Batch and image sizes of the KernelBench level-1 RMSNorm_ problem (64 channels); the smallest batch is extended downward and the tiny and unaligned cases are correctness-only.",
+  "cases": [
+    {
+      "id": "b1_1x1",
+      "axes": {
+        "batch": 1,
+        "height": 1,
+        "width": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single pixel (axis minimum)"
+    },
+    {
+      "id": "b3_17x19",
+      "axes": {
+        "batch": 3,
+        "height": 17,
+        "width": 19
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd batch, unaligned image"
+    },
+    {
+      "id": "b2_100x77",
+      "axes": {
+        "batch": 2,
+        "height": 100,
+        "width": 77
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned image"
+    },
+    {
+      "id": "b5_129x131",
+      "axes": {
+        "batch": 5,
+        "height": 129,
+        "width": 131
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned image above one block"
+    },
+    {
+      "id": "b1_64x64",
+      "axes": {
+        "batch": 1,
+        "height": 64,
+        "width": 64
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small image"
+    },
+    {
+      "id": "b4_128x128",
+      "axes": {
+        "batch": 4,
+        "height": 128,
+        "width": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench-sized image, small batch"
+    },
+    {
+      "id": "b16_128x128",
+      "axes": {
+        "batch": 16,
+        "height": 128,
+        "width": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench RMSNorm_ case"
+    },
+    {
+      "id": "b32_128x128",
+      "axes": {
+        "batch": 32,
+        "height": 128,
+        "width": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench RMSNorm_ case"
+    },
+    {
+      "id": "b64_256x256",
+      "axes": {
+        "batch": 64,
+        "height": 256,
+        "width": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench RMSNorm_ case"
+    },
+    {
+      "id": "b112_256x256",
+      "axes": {
+        "batch": 112,
+        "height": 256,
+        "width": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench RMSNorm_ case"
+    },
+    {
+      "id": "b32_512x512",
+      "axes": {
+        "batch": 32,
+        "height": 512,
+        "width": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench RMSNorm_ case"
+    }
+  ]
+}

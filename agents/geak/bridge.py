@@ -1,4 +1,4 @@
-"""GEAK's CLI bridge to public Arena v2 actions; never imports task modules."""
+"""GEAK's CLI bridge to the public Arena task actions; never imports task modules."""
 from __future__ import annotations
 
 import argparse
@@ -25,6 +25,7 @@ if __package__ in (None, ""):
 from src.harness_guard import WorkspaceSnapshot, verify_workspace_harness
 from src.task_execution import TaskExecutionError, run_action
 from src.task_protocol import CaseManifest, RESULT_PREFIX, parse_command_result
+from src.task_contract import TARGET_LANGUAGES
 from src.task_spec import TaskSpec, resolve_task_path
 
 
@@ -66,8 +67,11 @@ class TaskContext:
         if not isinstance(raw, dict) or type(raw.get("version")) is not int or raw["version"] != 1:
             raise ValueError("GEAK requires ARENA_TASK_CONTEXT version 1")
         spec = TaskSpec.from_mapping(raw["task_config"], task_id=raw["task_id"])
-        if spec.candidate.language not in {"hip", "triton", "flydsl"}:
-            raise ValueError("GEAK supports declared hip, triton, and flydsl candidates")
+        if spec.candidate.language not in TARGET_LANGUAGES:
+            # GEAK's lane takes any language name, so it is told the run's
+            # target; a backend-neutral serving candidate has no kernel lane.
+            raise ValueError(f"GEAK supports the {', '.join(TARGET_LANGUAGES)} target languages; "
+                             f"this task's candidate is {spec.candidate.language}")
         workspace = Path(raw["workspace"]).resolve(strict=True)
         baseline = Path(raw["baseline_workspace"]).resolve(strict=True)
         if (not workspace.is_dir() or not baseline.is_dir() or

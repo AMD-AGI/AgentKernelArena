@@ -1,0 +1,17 @@
+{
+  "description": "Element counts of 1D float16 copies; sizes below ~10M elements run under the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "n1", "axes": {"numel": 1}, "checks": ["correctness"], "source": "axis minimum"},
+    {"id": "n4096", "axes": {"numel": 4096}, "checks": ["correctness"], "source": "small identity copy"},
+    {"id": "n65536", "axes": {"numel": 65536}, "checks": ["correctness"], "source": "largest old identity suite size"},
+    {"id": "n129", "axes": {"numel": 129}, "checks": ["correctness"], "source": "old identity suite size"},
+    {"id": "n127", "axes": {"numel": 127}, "checks": ["correctness"], "source": "old identity suite size"},
+    {"id": "n1000003", "axes": {"numel": 1000003}, "checks": ["correctness"], "source": "non-power-of-two, odd size"},
+    {"id": "n1048576", "axes": {"numel": 1048576}, "checks": ["correctness"], "source": "block-copy size of the old suite"},
+    {"id": "n10485760", "axes": {"numel": 10485760}, "checks": ["correctness", "performance"], "source": "scaled copy"},
+    {"id": "n33554432", "axes": {"numel": 33554432}, "checks": ["correctness", "performance"], "source": "scaled copy (2^25)"},
+    {"id": "n134217728", "axes": {"numel": 134217728}, "checks": ["correctness", "performance"], "source": "scaled copy (2^27)"},
+    {"id": "n536870912", "axes": {"numel": 536870912}, "checks": ["correctness", "performance"], "source": "scaled copy (2^29)"},
+    {"id": "n1073741824", "axes": {"numel": 1073741824}, "checks": ["correctness", "performance"], "source": "scaled copy (2^30)"}
+  ]
+}

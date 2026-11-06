@@ -1,30 +1,20 @@
 #!/usr/bin/env python3
-"""Propagate committed perf-helper stubs into every task source.
+"""Audit committed benchmark entrypoints against the canonical helpers.
 
-Tasks are executed inside per-run workspaces (a copy of the task folder).
-Committed task sources keep small stubs so generated helper code does not pollute
-normal development diffs. During setup_workspace(), the framework replaces those
-stubs with the canonical helpers under src/tools/perf/.
+Schema-v3 kernel tasks (``task.yaml``) carry no benchmark code: the framework
+writes the evaluator and its timing helper (``src/tools/perf/aka_benchmark.py``)
+into each run workspace. The only schema-v2 tasks are the end-to-end serving
+tasks, whose measurement code also stays in ``src/tools/perf/``. This audit
+fails when a committed task would not receive that code:
 
-Run this script after adding tasks or changing marker/stub structure:
+  1. Every ``config.yaml`` task is either a serving recipe (an exact bootstrap
+     stub plus a hash-pinned workload; host preparation supplies the client) or
+     a serving client whose ``scripts/evaluate.py`` imports ``_aka_serving``
+     (``src.perf_helper_materialization`` copies the helpers beside it).
+  2. No generated helper copy is committed under ``tasks/``.
 
-    python src/tools/sync_perf_helpers.py            # apply
-    python src/tools/sync_perf_helpers.py --check     # verify source stubs (CI-friendly)
-
-Supported benchmark entrypoint families:
-  1. Every */rocmbench/**/performance_utils_pytest.py should be the committed
-     stub from src.perf_helper_materialization. setup_workspace() replaces it.
-  2. Every triton2triton/vllm/*/scripts/task_runner.py should contain the
-     committed stub block between AKA-GENERATED markers. setup_workspace()
-     replaces that block.
-  3. Migrated Python entrypoints import ``_aka_benchmark``; setup_workspace()
-     copies the canonical module beside the configured entrypoint.
-  4. Native HIP benchmark drivers include ``hip_graph_benchmark.hpp``;
-     setup_workspace() copies the canonical header beside the driver.
-  5. Serving clients use the canonical clean-action serving implementation.
-  6. Serving recipes have a hash-pinned workload and an exact bootstrap stub;
-     host preparation supplies their immutable serving client before execution.
-     This family is audited separately and is not a GPU qualification claim.
+It audits task sources only; it is not a GPU qualification. Run it with
+``make check-perf-helpers``.
 """
 import argparse
 import pathlib
@@ -35,28 +25,24 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.perf_helper_materialization import (  # noqa: E402
-    MARK_STARTS,
-    NATIVE_HIP_DRIVER,
-    NATIVE_HIP_INCLUDE,
-    ROCMBENCH_HELPER_STUB,
+    GENERATED_HELPER_NAMES,
     SERVING_RECIPE_RUNNER_STUB,
-    VLLM_HELPER_STUB_BLOCK,
-    configured_performance_entrypoints,
-    image_kernel_targets,
-    replace_marked_region,
-    rocmbench_targets,
-    vllm_targets,
+    SERVING_RUNNER,
 )
-from src.serving_task_preparation import recipe_identity
+from src.serving_task_preparation import recipe_identity  # noqa: E402
+
+# Files the framework writes into run workspaces; never task sources.
+GENERATED_NAMES = GENERATED_HELPER_NAMES | {"_aka_benchmark.py"}
+GENERATED_DIRECTORIES = frozenset({"_aka_eval"})
 
 
 def _serving_recipe(task: pathlib.Path, root: pathlib.Path) -> bool:
     """Audit a deferred serving entrypoint, without calling it GPU-qualified."""
     try:
-        task_id = task.relative_to(root/'tasks').as_posix()
+        task_id = task.relative_to(root / 'tasks').as_posix()
         recipe_identity(task, task_id)
-        config = (task/'config.yaml').read_text()
-        return ((task/'scripts/evaluate.py').read_text() == SERVING_RECIPE_RUNNER_STUB
+        config = (task / 'config.yaml').read_text()
+        return ((task / SERVING_RUNNER).read_text() == SERVING_RECIPE_RUNNER_STUB
                 and re.search(r'^schema_version: 2\s*$', config, re.MULTILINE) is not None
                 and re.search(r'^\s+kind: serving\s*$', config, re.MULTILINE) is not None
                 and re.search(r'^\s+recipe: recipe.json\s*$', config, re.MULTILINE) is not None)
@@ -64,128 +50,48 @@ def _serving_recipe(task: pathlib.Path, root: pathlib.Path) -> bool:
         return False
 
 
+def _serving_client(task: pathlib.Path) -> bool:
+    try:
+        return "_aka_serving" in (task / SERVING_RUNNER).read_text()
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
 def audit_task_benchmark_entrypoints(root: pathlib.Path) -> tuple[dict[str, int], list[str]]:
-    """Classify every task config's performance path or report it as unsupported."""
+    """Classify every committed task's benchmark path or report it as unsupported."""
 
     counts: dict[str, int] = {}
     problems: list[str] = []
-    task_dirs = sorted(path.parent for path in (root / "tasks").rglob("config.yaml"))
-    for task in task_dirs:
-        entrypoints = configured_performance_entrypoints(task)
-        family = 'serving_recipe' if _serving_recipe(task, root) else None
-
-        native_driver = task / NATIVE_HIP_DRIVER
-        if native_driver.is_file() and NATIVE_HIP_INCLUDE in native_driver.read_text():
-            family = "native_graph_driver"
-
-        if family is None:
-            for entrypoint in sorted(entrypoints):
-                try:
-                    text = entrypoint.read_text()
-                except (OSError, UnicodeDecodeError):
-                    continue
-                if "_aka_serving" in text:
-                    family = "serving_client"
-                    break
-                if "_aka_benchmark" in text:
-                    family = "canonical_python"
-                    break
-                if any(marker in text for marker in MARK_STARTS):
-                    family = "vllm_adapter"
-                    break
-
-        if family is None and (task / "performance_utils_pytest.py").is_file():
-            family = "rocmbench_adapter"
-
-        if family is None:
-            # An entrypoint may delegate its timing to one of the task's own
-            # modules rather than call the canonical helper itself, which is how
-            # a task keeps a single timing implementation shared by its harness
-            # and any other driver it ships. setup_workspace() already
-            # materializes the helper beside whichever file imports it, so the
-            # task is on the canonical family wherever that import lives.
-            for module in sorted(task.rglob("*.py")):
-                text = module.read_text(errors="replace")
-                if any(marker in text for marker in MARK_STARTS):
-                    family = "vllm_adapter"
-                    break
-                if "_aka_serving" in text:
-                    family = "serving_client"
-                    break
-                if "_aka_benchmark" in text:
-                    family = "canonical_python"
-                    break
-
-        if family is None:
-            relative = task.relative_to(root)
-            resolved = [str(path.relative_to(task)) for path in sorted(entrypoints)]
-            problems.append(
-                f"{relative}: unrecognized performance entrypoint(s): {resolved or ['<none>']}"
-            )
+    tasks = root / "tasks"
+    if kernel_tasks := sum(1 for _ in tasks.rglob("task.yaml")):
+        counts["kernel_v3"] = kernel_tasks
+    for task in sorted(path.parent for path in tasks.rglob("config.yaml")):
+        if _serving_recipe(task, root):
+            family = "serving_recipe"
+        elif _serving_client(task):
+            family = "serving_client"
+        else:
+            problems.append(f"{task.relative_to(root)}: schema-v2 task is neither a serving recipe "
+                            f"nor a serving client importing _aka_serving from {SERVING_RUNNER}")
             continue
         counts[family] = counts.get(family, 0) + 1
 
-    # Materialized helpers belong only in copied workspaces, never committed
-    # into task sources where they would drift from the canonical implementation.
-    for generated in sorted((root / "tasks").rglob("_aka_benchmark.py")):
-        problems.append(f"{generated.relative_to(root)}: generated Python helper is committed")
-    for generated in sorted((root / "tasks").rglob("hip_graph_benchmark.hpp")):
-        problems.append(f"{generated.relative_to(root)}: generated native helper is committed")
-
+    for path in sorted(tasks.rglob("*")):
+        if path.name in GENERATED_NAMES or (path.is_dir() and path.name in GENERATED_DIRECTORIES):
+            problems.append(f"{path.relative_to(root)}: generated helper is committed")
     return counts, problems
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--check", action="store_true", help="report drift without writing (exit 1 if any)")
-    args = ap.parse_args()
-
-    drift = []
-    wrote = 0
-
-    audit_counts, audit_problems = audit_task_benchmark_entrypoints(ROOT)
-    if audit_problems:
-        print(
-            f"ERROR: benchmark entrypoint audit failed ({len(audit_problems)} problem(s))",
-            file=sys.stderr,
-        )
-        for problem in audit_problems:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.parse_args()
+    counts, problems = audit_task_benchmark_entrypoints(ROOT)
+    if problems:
+        print(f"ERROR: benchmark entrypoint audit failed ({len(problems)} problem(s))", file=sys.stderr)
+        for problem in problems:
             print(f"  {problem}", file=sys.stderr)
-        return 2
-
-    for p in rocmbench_targets(ROOT):
-        if p.read_text() != ROCMBENCH_HELPER_STUB:
-            drift.append(str(p))
-            if not args.check:
-                p.write_text(ROCMBENCH_HELPER_STUB)
-                wrote += 1
-
-    inline_targets = list(vllm_targets(ROOT)) + list(image_kernel_targets(ROOT))
-    for p in inline_targets:
-        cur = p.read_text()
-        new = replace_marked_region(cur, VLLM_HELPER_STUB_BLOCK)
-        if new is None:
-            print(f"ERROR: missing AKA-GENERATED markers in {p}", file=sys.stderr)
-            return 2
-        if new != cur:
-            drift.append(str(p))
-            if not args.check:
-                p.write_text(new)
-                wrote += 1
-
-    if args.check:
-        if drift:
-            print(f"OUT OF SYNC ({len(drift)} files). Run: python src/tools/sync_perf_helpers.py")
-            for t in drift:
-                print(f"  {t}")
-            return 1
-        print(f"perf helper stubs in sync; benchmark entrypoints={audit_counts}")
-        return 0
-
-    print(f"synced {wrote} file(s) "
-          f"({len(rocmbench_targets(ROOT))} rocmbench + {len(vllm_targets(ROOT))} vllm "
-          f"+ {len(image_kernel_targets(ROOT))} image_kernel checked); "
-          f"benchmark entrypoints={audit_counts}")
+        return 1
+    print(f"benchmark entrypoints audited: {counts}")
     return 0
 
 

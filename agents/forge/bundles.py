@@ -1,7 +1,6 @@
 """Candidate bundles preserve declared paths and keep evaluators independent."""
 from __future__ import annotations
 
-import ast
 import hashlib
 import os
 from pathlib import Path
@@ -9,7 +8,7 @@ import re
 import shutil
 import subprocess
 
-from src.task_spec import EditScope, TaskSpec, resolve_task_path
+from src.task_spec import TaskSpec, resolve_task_path
 
 _TRANSIENT = {".git", "__pycache__", ".pytest_cache", "forge_experiments", ".forge_rewrite"}
 
@@ -89,7 +88,7 @@ def candidate_files(spec: TaskSpec, root: Path, *, required: bool = True) -> dic
             relative = entry.relative_to(root).as_posix()
             if any(part in _TRANSIENT for part in Path(relative).parts):
                 continue
-            if relative in protected and scope.scope != "symbols":
+            if relative in protected:
                 continue
             resolve_task_path(root, relative, must_exist=entry.exists())
             if entry.is_symlink():
@@ -102,52 +101,11 @@ def candidate_files(spec: TaskSpec, root: Path, *, required: bool = True) -> dic
     return files
 
 
-def _check_symbols(original: Path, candidate: Path, scope: EditScope) -> None:
-    """Keep colocated non-implementation statements intact, including tests.
-
-    Python imports can change as part of implementing the declared symbols;
-    new top-level functions/classes are allowed only with allow_new_helpers.
-    This complements the common evaluator's harness guard; it is not a sandbox.
-    """
-    if candidate.suffix != ".py":
-        raise ValueError("Forge symbol-scoped installation currently requires Python")
-    before, after = ast.parse(original.read_text()), ast.parse(candidate.read_text())
-    definitions = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-    old_names = {node.name for node in before.body if isinstance(node, definitions)}
-
-    def protected(tree, *, edited):
-        nodes = []
-        for node in tree.body:
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                continue
-            if isinstance(node, definitions):
-                if node.name in scope.symbols:
-                    continue
-                if edited and scope.allow_new_helpers and node.name not in old_names:
-                    if node.name.startswith("test_"):
-                        raise ValueError("New test functions are not implementation helpers")
-                    continue
-            nodes.append(ast.dump(node, include_attributes=False))
-        return nodes
-
-    if protected(before, edited=False) != protected(after, edited=True):
-        raise ValueError(f"Candidate changes protected statements in {scope.path}")
-
-
-def install_candidate(spec: TaskSpec, source: Path, destination: Path,
-                      *, reference: Path | None = None) -> list[dict]:
-    """Validate the complete bundle before changing destination; retain layout.
-
-    ``reference`` holds the unedited declaration a symbol scope is compared
-    against. It defaults to the destination, which is only the same file when
-    the caller hands over a freshly materialized copy of the task package.
-    """
+def install_candidate(spec: TaskSpec, source: Path, destination: Path) -> list[dict]:
+    """Validate the complete bundle before changing destination; retain layout."""
+    if any(scope.scope == "symbols" for scope in spec.candidate.editable):
+        raise ValueError("Forge installs file and tree candidate scopes only")
     files = candidate_files(spec, source)
-    origin = destination if reference is None else reference
-    for scope in spec.candidate.editable:
-        if scope.scope == "symbols":
-            _check_symbols(resolve_task_path(origin, scope.path, must_exist=True),
-                           files[scope.path], scope)
     for relative in files:
         resolve_task_path(destination, relative)
     # Propagate declared-tree deletions too, so a removed helper cannot survive
@@ -183,7 +141,7 @@ def committed_candidate(spec: TaskSpec, engine: Path, commit: str, destination: 
         mode, kind, oid = metadata.decode().split()
         relative = Path(os.fsdecode(raw_path)).relative_to(prefix).as_posix() if prefix else os.fsdecode(raw_path)
         scopes = [scope for scope in spec.candidate.editable if scope.contains(relative)]
-        if not scopes or (relative in protected and all(scope.scope != "symbols" for scope in scopes)):
+        if not scopes or relative in protected:
             continue
         if kind != "blob" or mode not in ("100644", "100755"):
             raise ValueError(f"Committed candidate is not a regular file: {relative}")

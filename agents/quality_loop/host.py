@@ -131,7 +131,7 @@ def finalize(config: QualityLoopConfig, run_id: str, logger: logging.Logger) -> 
         if record.get("state") == "completed" and not workflow._terminal_evidence_current(
             task_id, worktree / "tasks" / task_id
         ):
-            raise RuntimeError(f"stale or missing task validation evidence before publication: {task_id}")
+            raise RuntimeError(f"stale or missing QA audit evidence before publication: {task_id}")
 
     expected_paths = {
         f"tasks/{task_id}/{relative}"

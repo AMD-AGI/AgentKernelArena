@@ -1,7 +1,6 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 import json
 import logging
-import os
 import shlex
 import shutil
 import subprocess
@@ -217,7 +216,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
 
     Args:
         eval_config: Evaluator settings passed from main
-        task_config_dir: Path to the task configuration used to build the prompt
+        task_config_dir: The task's task.yaml (schema v3) or config.yaml (e2e, schema v2)
         workspace: Workspace directory where the agent runs
 
     Returns:

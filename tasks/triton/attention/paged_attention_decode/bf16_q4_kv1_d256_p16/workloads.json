@@ -1,0 +1,20 @@
+{
+  "description": "Decode steps of Qwen3.5-122B-A10B-FP8 served by vLLM on MI355X at TP=8 (4 query heads and 1 KV head per rank). Batch sizes span vLLM's decode CUDA-graph range and context lengths reach the session's max_model_len of 6144; the session's concurrency-64 shapes are s64_l1024..s64_l3072. Tiny batches with short contexts are correctness-only.",
+  "cases": [
+    {"id": "s1_l1", "axes": {"num_seqs": 1, "max_seq_len": 1}, "checks": ["correctness"], "source": "first decode token of a one-token prompt"},
+    {"id": "s3_l17", "axes": {"num_seqs": 3, "max_seq_len": 17}, "checks": ["correctness"], "source": "short contexts crossing a page by one token"},
+    {"id": "s37_l1000", "axes": {"num_seqs": 37, "max_seq_len": 1000}, "checks": ["correctness"], "source": "unaligned batch and context"},
+    {"id": "s64_l16", "axes": {"num_seqs": 64, "max_seq_len": 16}, "checks": ["correctness"], "source": "one page per sequence"},
+    {"id": "s8_l300", "axes": {"num_seqs": 8, "max_seq_len": 300}, "checks": ["correctness"], "source": "low-concurrency decode, short prompts"},
+    {"id": "s512_l257", "axes": {"num_seqs": 512, "max_seq_len": 257}, "checks": ["correctness"], "source": "large decode batch, short contexts"},
+    {"id": "s2_l32768", "axes": {"num_seqs": 2, "max_seq_len": 32768}, "checks": ["correctness"], "source": "long-context decode"},
+    {"id": "s1_l4096", "axes": {"num_seqs": 1, "max_seq_len": 4096}, "checks": ["correctness", "performance"], "source": "single-request decode"},
+    {"id": "s4_l6144", "axes": {"num_seqs": 4, "max_seq_len": 6144}, "checks": ["correctness", "performance"], "source": "low-concurrency decode at max_model_len"},
+    {"id": "s16_l2048", "axes": {"num_seqs": 16, "max_seq_len": 2048}, "checks": ["correctness", "performance"], "source": "decode, concurrency 16"},
+    {"id": "s64_l1024", "axes": {"num_seqs": 64, "max_seq_len": 1024}, "checks": ["correctness", "performance"], "source": "session qwen3_5-122b-decode-m64-ctx1024 (15.8% of GPU time)"},
+    {"id": "s64_l2048", "axes": {"num_seqs": 64, "max_seq_len": 2048}, "checks": ["correctness", "performance"], "source": "session qwen3_5-122b-decode-m64-ctx2048"},
+    {"id": "s64_l3072", "axes": {"num_seqs": 64, "max_seq_len": 3072}, "checks": ["correctness", "performance"], "source": "session qwen3_5-122b-decode-m64-ctx3072"},
+    {"id": "s128_l4096", "axes": {"num_seqs": 128, "max_seq_len": 4096}, "checks": ["correctness", "performance"], "source": "decode, concurrency 128"},
+    {"id": "s256_l6144", "axes": {"num_seqs": 256, "max_seq_len": 6144}, "checks": ["correctness", "performance"], "source": "decode, concurrency 256 at max_model_len"}
+  ]
+}

@@ -1,0 +1,41 @@
+schema_version: 3
+description: >-
+  Chunk-local cumulative sum of per-channel (vector) gates over the token axis: tokens are split
+  into consecutive chunks of 64 (the last chunk may be partial) and out[t] is the sum of g over the
+  tokens from the start of t's chunk up to and including t, independently for every head and gate
+  channel. Input and output are float32; the sum is accumulated in float32 or higher.
+operator:
+  name: chunk_local_cumsum_vector
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens of one packed sequence batch.}
+    num_heads: {kind: const, value: 32, description: Gate heads.}
+    gate_dim: {kind: const, value: 128, description: Gate channels per head (head dimension).}
+    chunk_size: {kind: const, value: 64, description: Tokens per cumulative-sum chunk.}
+  inputs:
+    g:
+      kind: tensor
+      shape: [n_tokens, num_heads, gate_dim]
+      dtype: float32
+      distribution: {kind: uniform, low: -1.0, high: 0.0}
+      description: Per-token, per-channel log-decay gates (non-positive), contiguous.
+  outputs:
+    out: {shape: [n_tokens, num_heads, gate_dim], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/third_party/flash_linear_attention/ops/cumsum.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      Simplified to the forward (non-reverse), single-sequence, non-varlen vector path with the
+      block width and warp count fixed instead of autotuned; wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

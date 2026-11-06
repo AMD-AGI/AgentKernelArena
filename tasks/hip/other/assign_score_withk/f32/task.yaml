@@ -1,0 +1,68 @@
+schema_version: 3
+description: >-
+  PAConv score assignment (MMCV assign_score_withk, sum aggregation, neighbor kernel input): for every
+  batch element b, center n, neighbor k and output channel o,
+  out[b, o, n, k] = sum_m scores[b, n, k, m] * (point_features[b, i, m, o] - center_features[b, c, m, o])
+  with i = knn_idx[b, n, k] and c = knn_idx[b, n, 0] (the first neighbor is the center). Entries whose
+  neighbor index i is outside [0, n_points) contribute 0. Output is float32.
+operator:
+  name: assign_score_withk
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Point clouds in the batch.}
+    n_centers: {kind: var, min: 1, max: 4096, description: Sampled centers per cloud.}
+    K: {kind: const, value: 16, description: Neighbors per center.}
+    M: {kind: const, value: 8, description: Weight matrices in the weight bank.}
+    O: {kind: const, value: 64, description: Output channels.}
+  derived_axes:
+    n_points: "4 * n_centers"
+  inputs:
+    scores:
+      kind: tensor
+      shape: [batch, n_centers, K, M]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Predicted scores that combine the weight bank.
+    point_features:
+      kind: tensor
+      shape: [batch, n_points, M, O]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Per-point features transformed by every weight matrix.
+    center_features:
+      kind: tensor
+      shape: [batch, n_points, M, O]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Per-point center-role features.
+    knn_idx:
+      kind: tensor
+      shape: [batch, n_centers, K]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Neighbor indices; entry 0 is the center; out-of-range entries are skipped.
+  outputs:
+    out: {shape: [batch, O, n_centers, K], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/assign_score_withk/src/assign_score_withk_cuda.hip
+    license: Apache-2.0
+    modifications: >-
+      Forward kernel only (the kernel is MMCV / PAConv, Apache-2.0). The per-m atomicAdd into a
+      zero-initialised output became a register accumulation followed by one store (the same additions
+      in the same order), because the evaluator poisons the output instead of zeroing it. The
+      aggregate argument (sum only), the backward kernels and the pybind wrapper were removed; the
+      entry is a one-op torch library registration writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.002}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

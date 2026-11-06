@@ -1,0 +1,48 @@
+schema_version: 3
+description: >-
+  RMSNorm of each bfloat16 token row followed by per-token dynamic FP8 quantization. y = x * rsqrt(mean(x^2) +
+  epsilon) * weight is kept in float32; each token gets scale = absmax(y) / 448 (1 for an all-zero row) and the codes
+  are y / scale in float8_e4m3fn. The scales are float32, one per token, shape [n_tokens, 1].
+operator: {name: rms_norm_dynamic_quant, category: normalization}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: float8_e4m3fn}
+    scale: {shape: [n_tokens, 1], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: >-
+      aiter/ops/triton/_triton_kernels/normalization/rmsnorm.py (_quant_rms_norm_kernel, _per_token_quant);
+      aiter/ops/triton/normalization/rmsnorm.py (rmsnorm2d_fwd_with_dynamicquant)
+    license: MIT
+    modifications: >-
+      The two kernels are unchanged. The launcher rmsnorm2d_fwd_with_dynamicquant is reduced to this scenario (no
+      smooth scale, no scale upper bound, no clamp, no intermediate dump, e4m3fn maximum 448, the helper functions
+      num_programs, block_size and use_blocked inlined, the device CU count read from the torch device properties)
+      and rewritten as run() writing into the preallocated outputs.
+compare:
+  out: {bound: baseline_relative}
+  scale: {bound: tolerance, atol: 0.0, rtol: 6.0e-7}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

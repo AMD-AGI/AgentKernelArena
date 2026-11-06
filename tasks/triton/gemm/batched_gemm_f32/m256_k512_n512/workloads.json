@@ -1,0 +1,16 @@
+{
+  "description": "Batch sizes of the KernelBench level 1 problem 3 product at its (m, k, n) = (256, 512, 512) case; the original cases scaled batch and inner sizes together, here only the batch varies (16 to 2048, 128x). Batches 1, 3 and 100 are correctness-only boundary shapes.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, a single product"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, odd batch"},
+    {"id": "b100", "axes": {"batch": 100}, "checks": ["correctness"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch not a multiple of 16"},
+    {"id": "b16", "axes": {"batch": 16}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 16"},
+    {"id": "b32", "axes": {"batch": 32}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 32"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 64 as in the original case_2"},
+    {"id": "b128", "axes": {"batch": 128}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 128"},
+    {"id": "b256", "axes": {"batch": 256}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 256"},
+    {"id": "b512", "axes": {"batch": 512}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 512"},
+    {"id": "b1024", "axes": {"batch": 1024}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 1024"},
+    {"id": "b2048", "axes": {"batch": 2048}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 3 (batched matrix multiplication) at m=256, k=512, n=512, batch 2048"}
+  ]
+}

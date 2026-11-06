@@ -1,0 +1,41 @@
+schema_version: 3
+description: >-
+  Gated SiLU followed by per-token-group FP8 quantization, as in the first-stage epilogue of a quantized MoE
+  expert. x holds [gate | up] along the last axis; y = silu(gate) * up over d = 2048 columns; every group of 128
+  consecutive columns of a token gets scale = max(absmax(y), 1e-10) / 448 and the codes are y / scale clamped to
+  [-448, 448] in float8_e4m3fn. The scales are stored column-major: out_scales[g, t] is the scale of group g of
+  token t, i.e. the transpose of the logical [token, group] scale matrix.
+operator: {name: silu_and_mul_fp8_group_quant, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 128, max: 524288, multiple_of: 128, description: Rows (tokens or padded expert slots).}
+    d: {kind: const, value: 2048, description: Width of the activated output.}
+  derived_axes:
+    two_d: 2 * d
+    n_groups: d // 128
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, two_d]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out_q: {shape: [n_tokens, d], dtype: float8_e4m3fn}
+    out_scales: {shape: [n_groups, n_tokens], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/quantization/utils/fp8_utils.py
+    license: Apache-2.0
+    modifications: >-
+      Launcher reduced to the fixed scenario (bfloat16 input, float8_e4m3fn, group 128, silu, no clamp, no ue8m0)
+      and rewritten as run() writing into preallocated outputs; the kernel is unchanged.
+compare:
+  out_q: {bound: baseline_relative}
+  out_scales: {bound: baseline_relative}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

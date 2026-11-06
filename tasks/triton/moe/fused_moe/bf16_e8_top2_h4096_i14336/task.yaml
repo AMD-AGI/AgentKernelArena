@@ -1,0 +1,86 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of Mixtral-8x7B without tensor parallelism, bfloat16 weights. For each token t and selected
+  expert e = topk_ids[t, k] (2 of 8 per token): h = hidden_states[t] @ w13[e].T (gate = first half, up = second half
+  of the 28672 outputs), a = silu(gate) * up, y = (a @ w2[e].T) * topk_weights[t, k]; out[t] = sum over k of y,
+  rounded to bfloat16. The router decisions (topk_ids, topk_weights) are given.
+operator:
+  name: fused_moe
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    top_k: {kind: const, value: 2, description: Experts selected per token.}
+    num_experts: {kind: const, value: 8, description: Experts of the layer.}
+    hidden_size: {kind: const, value: 4096, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 14336, description: Expert intermediate width.}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w13:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: Gate (first half) and up (second half) projections; normal, std 1 / sqrt(hidden_size).
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: Down projection; normal, std 1 / sqrt(intermediate_size).
+    topk_weights:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: float32, distribution: {kind: generator}}
+    topk_ids:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/moe/moe_align_block_size.py
+      - aiter/ops/triton/moe/moe_align_block_size.py
+      - op_tests/triton_tests/moe/test_moe_align_block_size.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_silu_fused.py
+      - aiter/ops/triton/moe/moe_op_silu_fused.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op.py
+      - aiter/ops/triton/moe/moe_op.py
+      - aiter/ops/triton/_triton_kernels/moe/reduce.py
+      - aiter/ops/triton/moe/reduce.py
+      - aiter/ops/triton/utils/moe_config_utils.py
+      - aiter/ops/triton/configs/moe/gfx950-MOE-DEFAULT.json
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/moe_common.py
+      - aiter/ops/triton/utils/device_info.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/_triton_kernels/moe/activations.py
+    license: MIT
+    modifications: >-
+      The Triton kernels _moe_align_block_size_stage{1..4}_kernel, _fused_moe_silu_kernel, _fused_moe_kernel and
+      _reduce_grouped with their helpers, copied verbatim except that _reduce_grouped loses its gfx1250-only
+      tensor-descriptor loads and _swiglu's parameter input is renamed. The launchers moe_align_block_size_triton,
+      fused_moe_silu, fused_moe and reduce_grouped keep only the unquantized, non-persistent Triton path (no
+      logging, quantization, persistent-kernel or Gluon switches); the align buffers are allocated as in
+      triton_moe_align_block_size of the AITER MoE align test. get_optimal_moe_config uses the gfx950
+      bfloat16 table embedded as a dict. run() chains align, the SiLU-fused gate/up GEMM, the routing-weighted
+      down GEMM and the top-k reduction (the reduction's split axis is the top-k slot), writing the preallocated
+      output.
+compare:
+  out: {bound: baseline_relative, k: 5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

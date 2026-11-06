@@ -1,0 +1,61 @@
+schema_version: 3
+description: >-
+  RoI point pooling (OpenPCDet / MMCV roipoint_pool3d, PointRCNN second stage): for each of n_boxes
+  boxes (cx, cy, cz, dx, dy, dz, heading; cz at the bottom) of a batch element, the first 512 points of
+  that element, in index order, that lie inside the box (cz <= z <= cz + dz and, rotated by -heading
+  about the box center, |local_x| < dx/2 and |local_y| < dy/2). pooled_features[b, m, s] is the point's
+  (x, y, z) followed by its 128 features. A box with fewer than 512 points repeats them cyclically (slot s
+  takes the point s mod count); a box with no point has pooled_empty_flag 1 and all-zero pooled features.
+operator:
+  name: roipoint_pool3d
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 8, description: Point clouds in the batch.}
+    n_points: {kind: var, min: 1, max: 16384, description: Points per cloud.}
+    n_boxes: {kind: var, min: 1, max: 512, description: Boxes (RoIs) per cloud.}
+    num_sampled: {kind: const, value: 512, description: Points sampled per box.}
+    channels: {kind: const, value: 128, description: Features per point.}
+  inputs:
+    points:
+      kind: tensor
+      shape: [batch, n_points, 3]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Point coordinates (x, y, z), none within 1e-3 of a box face.
+    point_features:
+      kind: tensor
+      shape: [batch, n_points, channels]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    boxes3d:
+      kind: tensor
+      shape: [batch, n_boxes, 7]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Boxes (cx, cy, cz, dx, dy, dz, heading), cz at the bottom.
+  outputs:
+    pooled_features: {shape: [batch, n_boxes, num_sampled, "3 + channels"], dtype: float32}
+    pooled_empty_flag: {shape: [batch, n_boxes], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/roipoint_pool3d/src/roipoint_pool3d_kernel.hip
+    license: Apache-2.0
+    modifications: >-
+      The kernels (OpenPCDet roipoint_pool3d as shipped in MMCV, Apache-2.0) are unchanged except that
+      they write the empty flag and the zero fill of an empty box themselves (the original wrapper
+      pre-zeroed both outputs). The pybind wrapper became a one-op torch library registration that
+      allocates the original scratch buffers (point-to-box assignment, sampled indices) and launches the
+      three kernels on the current stream.
+compare:
+  pooled_features: {bound: exact}
+  pooled_empty_flag: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

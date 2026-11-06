@@ -1,0 +1,57 @@
+schema_version: 3
+description: >-
+  Intra-chunk Gram matrices of Mamba2 chunked prefill (the SSD "CB" term). The token axis is split
+  into chunks of at most 256 tokens by cu_chunk_seqlens (the last chunk may be shorter). For every
+  chunk c and group g, out[c, g, i, j] = sum_n C[t_c + i, g, n] * B[t_c + j, g, n], where t_c is the
+  chunk's first token; rows and columns beyond the chunk's length are zero. C and B are bfloat16,
+  the products accumulate in float32 or higher, and the output is float32.
+operator:
+  name: ssd_bmm_chunk
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 409600, description: Tokens of one packed sequence batch.}
+    ngroups: {kind: const, value: 8, description: B/C groups.}
+    dstate: {kind: const, value: 128, description: SSM state size (contraction length).}
+    chunk_size: {kind: const, value: 256, description: Maximum tokens per chunk.}
+  derived_axes:
+    n_chunks: ceil_div(n_tokens, chunk_size)
+  inputs:
+    C:
+      kind: tensor
+      shape: [n_tokens, ngroups, dstate]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    B:
+      kind: tensor
+      shape: [n_tokens, ngroups, dstate]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    cu_chunk_seqlens:
+      kind: tensor
+      shape: [n_chunks + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Chunk start offsets 0, 256, 512, ... and n_tokens as the final entry.
+  outputs:
+    out: {shape: [n_chunks, ngroups, chunk_size, chunk_size], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/mamba/ops/ssd_bmm.py
+    license: Apache-2.0
+    modifications: >-
+      _bmm_chunk_fwd_kernel unchanged; the autotune is replaced by one fixed configuration (128x128
+      tile, K block 32, 4 warps, 2 stages) and the host wrapper by run(), which launches the
+      non-causal kernel with bfloat16 dot operands and a float32 output as vLLM's SSD prefill does.
+compare:
+  out: {bound: sqnr, min_db: 127}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

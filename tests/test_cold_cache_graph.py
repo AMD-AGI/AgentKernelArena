@@ -4,7 +4,6 @@ from __future__ import annotations
 from contextlib import nullcontext
 import importlib.util
 import json
-import math
 from pathlib import Path
 import sys
 import types
@@ -240,45 +239,3 @@ def test_cold_cache_is_never_scored_against_warm_or_rotating_weight_methods(meth
     candidate = [Case("a", [1], 1.0, {"benchmark_method": method})]
     assert not analyze_benchmark_method_consistency(baseline, candidate)[0]
     assert calculate_average_speedup(baseline, candidate) == 0
-
-
-def test_attention_example_cpu_oracle_uses_pristine_values_and_rejects_input_mutation():
-    root = HELPER.parents[3]
-    example_path = root / "src/tools/perf/examples/cold_cache_graph/paged_attention.py"
-    spec = importlib.util.spec_from_file_location("_cold_attention_example", example_path)
-    example = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(example)
-    checks = example.load_module(example.TASK / "_arena_checks.py", "_cold_fixture_checks")
-    fixture = object.__new__(example.AttentionFixture)
-    fixture.torch, fixture.harness, fixture.checks = torch, None, checks
-    # Tiny asymmetric fixture: one query/head, two cache slots, two head lanes.
-    # Exercise the actual task's oracle without GPU/BLAS dependencies.
-    fixture.args = (
-        torch.zeros(1, 1, 2, dtype=torch.float16),
-        torch.empty(1, 1, 2, dtype=torch.float16),
-        torch.zeros(1, 1, 2, 2, 1, dtype=torch.float16),
-        torch.zeros(1, 1, 2, 2, dtype=torch.float16),
-        torch.zeros(1, 1, dtype=torch.int32),
-        torch.tensor([2], dtype=torch.int32),
-        torch.tensor([0, 1], dtype=torch.int32), 1.0,
-    )
-    fixture.values = dict(enumerate(fixture.args)) | {"filter_by_query_len": False}
-    fixture.readonly = [0, 2, 3, 4, 5, 6]
-    fixture.initial = {i: fixture.args[i].clone() for i in fixture.readonly}
-    fixture.metadata = {i: (t.shape, t.stride(), t.dtype, t.device, t.data_ptr())
-                        for i, t in enumerate(fixture.args) if isinstance(t, torch.Tensor)}
-    fixture.generator = torch.Generator().manual_seed(23)
-    fixture.prepare()
-    q = fixture.pristine[0][0, 0].tolist()
-    k = fixture.pristine[2][0, 0, :, :, 0].tolist()
-    v = fixture.pristine[3][0, 0].tolist()
-    logits = [sum(q[d] * k[d][slot] for d in range(2)) for slot in range(2)]
-    weights = [math.exp(z - max(logits)) for z in logits]
-    wanted = [sum(weights[s] * v[d][s] for s in range(2)) / sum(weights) for d in range(2)]
-    torch.testing.assert_close(fixture.expected, torch.tensor([[wanted]], dtype=torch.float16),
-                               atol=0.001, rtol=0.001)
-    fixture.args[1].copy_(fixture.expected)
-    fixture.check("baseline", fixture.args[1])
-    fixture.args[0].zero_()
-    with pytest.raises(AssertionError, match="read-only input"):
-        fixture.check("candidate", fixture.args[1])

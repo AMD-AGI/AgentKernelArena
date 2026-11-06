@@ -1,0 +1,53 @@
+schema_version: 3
+description: >-
+  Affine LayerNorm of every row over the 256 features: mean and variance (biased) in high precision,
+  rstd = 1 / sqrt(var + epsilon), out = (x - mean) * rstd * weight + bias rounded to bfloat16. The per-row mean
+  and rstd are also written, in float32, as the training forward of the recommendation-model operator does.
+operator: {name: layer_norm, category: normalization}
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 8388608, description: Rows (sequence positions) in the batch.}
+    hidden_size: {kind: const, value: 256, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: -1.0, high: 1.0}
+    bias:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: -1.0, high: 1.0}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [n_rows, hidden_size], dtype: bfloat16}
+    mean: {shape: [n_rows], dtype: float32}
+    rstd: {shape: [n_rows], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: meta-recsys/generative-recommenders
+    revision: 4f1e433ae1b241df074403c2da0c314a949332dd
+    path: generative_recommenders/ops/triton/triton_layer_norm.py
+    license: Apache-2.0
+    modifications: >-
+      The _weighted_layer_norm_fwd kernel is unchanged. The unweighted kernel, the backward kernels, the custom-op
+      wrapper and the swish path are dropped; the autotune config helper is inlined with the AMD list and the
+      autotune key gains the row count; the launcher is rewritten as run() writing into the preallocated outputs.
+compare:
+  out: {bound: baseline_relative}
+  mean: {bound: baseline_relative, max_violation_fraction: 0.01}
+  rstd: {bound: tolerance, atol: 0.0, rtol: 3.0e-7}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

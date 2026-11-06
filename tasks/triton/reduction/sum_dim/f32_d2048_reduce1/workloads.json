@@ -1,0 +1,14 @@
+{
+  "description": "Batch sizes of a float32 sum over the middle axis of [B, 2048, 2047]; the smallest batches are correctness-only.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness"], "source": "axis minimum"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "odd small batch"},
+    {"id": "b37", "axes": {"batch": 37}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "b2", "axes": {"batch": 2}, "checks": ["correctness", "performance"], "source": "small batch"},
+    {"id": "b8", "axes": {"batch": 8}, "checks": ["correctness", "performance"], "source": "reduction suite, scaled down"},
+    {"id": "b32", "axes": {"batch": 32}, "checks": ["correctness", "performance"], "source": "reduction suite case 0"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "reduction suite case 1"},
+    {"id": "b128", "axes": {"batch": 128}, "checks": ["correctness", "performance"], "source": "reduction suite case 2"},
+    {"id": "b256", "axes": {"batch": 256}, "checks": ["correctness", "performance"], "source": "reduction suite, doubled batch"}
+  ]
+}

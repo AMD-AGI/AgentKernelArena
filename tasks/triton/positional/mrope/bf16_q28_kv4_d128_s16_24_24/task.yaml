@@ -1,0 +1,67 @@
+schema_version: 3
+description: >-
+  Multimodal rotary embedding (M-RoPE, Qwen2.5-VL), applied to q[T, 28 * 128] and k[T, 4 * 128], written to q_out and k_out
+  with NeoX (rotate-half) rotation over the full head. Each token carries three positions (temporal, height,
+  width) in positions[3, T]; rotary indices [0, 16) take their cos/sin from the temporal position, [16, 40)
+  from the height position and [40, 64) from the width position (mrope_section = [16, 24, 24]). The cache
+  rows are [cos(64) | sin(64)] float32.
+operator:
+  name: mrope
+  category: positional
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 28}
+    num_kv_heads: {kind: const, value: 4}
+    head_dim: {kind: const, value: 128}
+    max_position: {kind: const, value: 32768, description: Rows of the cos/sin cache.}
+  derived_axes:
+    q_width: num_q_heads * head_dim
+    k_width: num_kv_heads * head_dim
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, q_width]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [n_tokens, k_width]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    cos_sin_cache:
+      kind: tensor
+      shape: [max_position, head_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+    positions:
+      kind: tensor
+      shape: [3, n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 32768}
+  outputs:
+    q_out: {shape: [n_tokens, q_width], dtype: bfloat16}
+    k_out: {shape: [n_tokens, k_width], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/attention/rotary_triton.py
+    license: Apache-2.0
+    modifications: >-
+      The kernel _triton_mrope_forward_fused is copied with its stores redirected from q and k to the
+      outputs q_out and k_out (upstream rotates in place); the host wrapper triton_mrope_fused is replaced
+      by run(), which fixes the scenario (sections 16/24/24, non-interleaved, NeoX, full rotary dim).
+compare:
+  q_out: {bound: baseline_relative}
+  k_out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

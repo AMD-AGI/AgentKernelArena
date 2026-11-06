@@ -1,0 +1,54 @@
+schema_version: 3
+description: >-
+  Ball query of a point-cloud network (MMCV ball_query, PointNet++ grouping): for each of n_centers
+  query centers, the indices of the first 5 points of its batch element, in index order, whose squared
+  distance d2 to the center satisfies d2 == 0 or min_radius^2 <= d2 < max_radius^2. If fewer than 5
+  points match, the remaining slots repeat the first match; a center without any match yields zeros.
+  Outputs are int32 indices.
+operator:
+  name: ball_query
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 32, description: Point clouds in the batch.}
+    n_points: {kind: var, min: 1, max: 65536, description: Points per cloud.}
+    nsample: {kind: const, value: 5, description: Neighbors returned per center.}
+  derived_axes:
+    n_centers: "ceil_div(n_points, 4)"
+  inputs:
+    xyz:
+      kind: tensor
+      shape: [batch, n_points, 3]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Point coordinates (on a 1/4096 grid so in-ball squared distances are exact in float32).
+    center_xyz:
+      kind: tensor
+      shape: [batch, n_centers, 3]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Query centers (a random subset of the points).
+    min_radius: {kind: scalar, dtype: float32, default: 0.0}
+    max_radius: {kind: scalar, dtype: float32, default: 0.25}
+  outputs:
+    idx: {shape: [batch, n_centers, nsample], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/ball_query/src/ball_query_hip.hip
+    license: Apache-2.0
+    modifications: >-
+      The kernel (MMCV / Pointnet2.PyTorch ball query, Apache-2.0) is unchanged except that a ball
+      without a match now writes zeros itself (the original wrapper pre-zeroed the output). The
+      pybind wrapper became a one-op torch library registration writing into the preallocated idx;
+      the error-exit after the launch was removed.
+compare:
+  idx: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -4,6 +4,40 @@ Reference: [FlyDSL GitHub](https://github.com/ROCm/FlyDSL) | [Nightly Wheels](ht
 
 ---
 
+## Candidate entry point (schema v3)
+
+Your whole solution is the directory `solution/`; it is the only editable tree. The task fixes the
+call, not the implementation. Entry: `solution/kernel.py::run`. Build `@flyc.kernel`/`@flyc.jit` kernels in `solution/` (helper `.py` files form one flat package, imported relatively) and call the `@flyc.jit` launcher from `run` on the current stream.
+
+```python
+def run(*, <inputs>, <outputs>) -> None: ...
+```
+
+`_aka_eval/CANDIDATE.md` in the workspace states the exact signature, shapes and dtypes.
+The FlyDSL builder/factory functions are internal to your package; the evaluator only calls `run`.
+
+Candidate rules (enforced by the evaluator, not a sandbox):
+
+- `run` writes every output (and every mutable input) in place and returns `None`. Outputs are
+  preallocated and poisoned before each call; other inputs are read-only.
+- All computation runs in kernels you write in FlyDSL. Host code may only allocate, take views and
+  make same-dtype copies, and launch. PyTorch arithmetic, reductions, dtype conversions and library
+  operators raise at run time; so do other kernel languages and production packages.
+- No `eval`/`exec`, reflection, module mutation, I/O, printing, synchronization, host round trips
+  (`.item()`, `.cpu()`), randomness, global PyTorch state, or imports of task, reference, baseline or
+  evaluator modules. Keep no state derived from inputs across calls.
+- Attribute names `synchronize`, `item`, `cpu`, `tolist`, `numpy`, `Stream`, `Event`, `graph` and
+  `CUDAGraph` are rejected anywhere in candidate code (`torch.cuda.current_stream()` is allowed), as
+  are the `@` operator, `torch.matmul`/`mm`/`bmm`/`einsum`, `torch.rand*`, `torch.tensor`, `torch.nn`
+  and `torch.ops`. Only `torch`, the language's own packages and a few standard modules
+  (`math`, `functools`, `itertools`, `typing`, `dataclasses`, ...) import; helpers import relatively.
+- Every call is timed as one CUDA-graph replay after a 1 GiB cache flush, so launches must be
+  capturable on the current stream. Keep first-use compilation and any tuning deterministic and
+  cached per shape.
+
+---
+
+
 ## 1. Kernel Structure and Compilation Model
 
 FlyDSL kernels are Python functions decorated with `@flyc.kernel` that generate GPU code at build time via MLIR. A `@flyc.jit` wrapper provides the host launch entry point.
@@ -166,4 +200,4 @@ Guidelines:
 
 4. **Launch configuration**: Grid = (M, 1, 1) for row-parallel kernels (one block per row). Block = (BLOCK_THREADS, 1, 1).
 
-5. **Stream parameter**: Always accept `stream: fx.Stream = fx.Stream(None)` in the JIT wrapper for async execution compatibility.
+5. **Stream parameter**: Launches must go on the current stream so they stay capturable in the timing graph. Do not name stream/event objects in candidate code: the static audit rejects the `Stream` and `Event` attributes.

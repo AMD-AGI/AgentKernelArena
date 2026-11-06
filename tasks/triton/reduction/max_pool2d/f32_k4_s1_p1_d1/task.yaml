@@ -1,0 +1,46 @@
+schema_version: 3
+description: >-
+  2D max pooling of a float32 NCHW tensor with a 4x4 window, stride 1, implicit negative-infinity
+  padding of 1 and dilation 1: out[n, c, i, j] is the maximum of x[n, c, i + p - 1, j + q - 1] for p, q in 0..3
+  over the positions inside the image. The output is (height - 1) by (width - 1).
+operator:
+  name: max_pool2d
+  category: reduction
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Images in the batch.}
+    channels: {kind: const, value: 64, description: Feature channels.}
+    height: {kind: var, min: 4, max: 512, description: Input height.}
+    width: {kind: var, min: 4, max: 512, description: Input width.}
+  derived_axes:
+    out_height: height - 1
+    out_width: width - 1
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, channels, height, width]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+  outputs:
+    out: {shape: [batch, channels, out_height, out_width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: torch/_inductor/lowering.py (max_pool2d_with_indices lowering, generated Triton pointwise kernel)
+    license: BSD-3-Clause
+    notes: >-
+      Revision of the PyTorch v2.15.0 release. The operator is KernelBench level 1 problem 42
+      (Max_Pooling_2D) with kernel_size=4, stride=1, padding=1, dilation=1.
+    modifications: >-
+      Triton rewrite of the Inductor windowed-max pointwise kernel for F.max_pool2d as a standalone
+      @triton.jit kernel without torch._inductor imports, wrapped in the arena run() interface; the
+      indices output is not produced.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

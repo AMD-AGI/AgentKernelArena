@@ -1,230 +1,291 @@
+"""Held-out evaluation of finished schema-v3 candidates.
+
+The trusted evaluator is substituted by a CPU fixture that reports what the
+framework-written held-out contract asks for; these tests check the protocol
+(evidence binding, inputs, isolation, scoring), not GPU correctness or timing.
+"""
+import io
+import json
+import logging
+import shutil
 import tempfile
 import unittest
-import logging
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
 import yaml
 
-from src.held_out.generate_heldout import discover_tasks
-from src.held_out.injection import (
-    apply_injection,
-    replace_get_inputs,
-    replace_test_shapes,
-)
-from src.held_out.run_heldout_eval import (
-    _select_heldout_comparison_cases,
-    evaluate_single_task,
-    resolve_task_id,
-)
-from src.testcases import TestCaseResult
+from src.held_out import run_heldout_eval as heldout
+from src.task_contract import case_seeds, load_task_contract, render_workspace
+from src.task_execution import ExecutedAction
+from src.task_protocol import ActionResult
+from src.task_run import _completion_record
+from src.task_runtime import bind_session_runtime
+from src.task_session import TaskSession
+from src.task_spec import load_task_spec
+
+ROOT = Path(__file__).resolve().parents[1]
+PILOT = ROOT / "tasks/triton/normalization/rms_norm/bf16_h8192"
+PILOT_ID = "triton/normalization/rms_norm/bf16_h8192"
+RUNTIME = {"gpu_arch": "gfx950", "gpu_name": "CPU protocol fixture, no GPU", "torch": "fixture"}
+SALT = "0123456789abcdef"
+LOGGER = logging.getLogger(__name__)
 
 
-class HeldOutInjectionTests(unittest.TestCase):
-    def test_replaces_nested_test_shapes_without_touching_following_code(self) -> None:
-        source = """TEST_SHAPES = [
-    (64, [128, 256]),
-]
-AFTER = True
-"""
-        replacement = """TEST_SHAPES = [
-    (37, [131, 257]),
-]"""
-
-        modified = replace_test_shapes(source, replacement)
-
-        self.assertIn("(37, [131, 257])", modified)
-        self.assertNotIn("(64, [128, 256])", modified)
-        self.assertIn("AFTER = True", modified)
-
-    def test_replaces_get_inputs_function(self) -> None:
-        source = """def get_inputs():
-    return [1]
-
-def get_init_inputs():
-    return []
-"""
-        replacement = """def get_inputs():
-    return [37, 131]"""
-
-        modified = replace_get_inputs(source, replacement)
-
-        self.assertIn("return [37, 131]", modified)
-        self.assertNotIn("return [1]", modified)
-        self.assertIn("def get_init_inputs():", modified)
-
-    def test_applies_raw_replacement_to_workspace_file(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            workspace = Path(temporary_directory)
-            target = workspace / "test_kernel.py"
-            target.write_text("SHAPES = [(32, 32)]\n")
-
-            applied = apply_injection(
-                workspace,
-                {
-                    "file": "test_kernel.py",
-                    "find_marker": "raw_replace",
-                    "old_code": "[(32, 32)]",
-                    "replacement_code": "[(37, 131)]",
-                },
-            )
-
-            self.assertTrue(applied)
-            self.assertEqual(target.read_text(), "SHAPES = [(37, 131)]\n")
+def _contract():
+    return load_task_contract(PILOT / "task.yaml", task_id=PILOT_ID).resolved_contract("triton")
 
 
-class HeldOutDiscoveryTests(unittest.TestCase):
-    def test_discovers_only_supported_task_scopes(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            tasks_root = Path(temporary_directory)
-            supported = tasks_root / "hip2hip" / "GELU"
-            unsupported = tasks_root / "repository" / "aiter" / "example"
-            supported.mkdir(parents=True)
-            unsupported.mkdir(parents=True)
-            (supported / "config.yaml").write_text("task_type: hip2hip\n")
-            (unsupported / "config.yaml").write_text("task_type: repository\n")
-
-            discovered = discover_tasks(tasks_root)
-
-            self.assertEqual(discovered, [("hip2hip/GELU", supported)])
-
-    def test_resolves_task_id_from_task_result(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            workspace = Path(temporary_directory)
-            (workspace / "task_result.yaml").write_text(
-                yaml.safe_dump({"task_name": "triton2triton/vllm/triton_rms_norm"})
-            )
-
-            self.assertEqual(
-                resolve_task_id(workspace),
-                "triton2triton/vllm/triton_rms_norm",
-            )
-
-    def test_resolves_flattened_task_ids_from_workspace_names(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            cases = {
-                "hip2hip_layer_normalization_20261009_120000": "hip2hip/layer_normalization",
-                "hip2hip_gpumode_layer_normalization_20261008_120000":
-                    "hip2hip/layer_normalization",
-                "hip2hip_others_assign_score_withk_20261008_120000":
-                    "hip2hip/assign_score_withk",
-                "hip2hip_vllm_paged_attention_large_20261008_120000":
-                    "hip2hip/paged_attention_large",
-                "triton2triton_rocmbench_test_triton_flip_20261009_120000":
-                    "triton2triton/rocmbench/test_triton_flip",
-                "triton2triton_rocmbench_easy_test_add_kernel_20261009_120000":
-                    "triton2triton/rocmbench/easy/test_add_kernel",
-            }
-            for directory, expected in cases.items():
-                workspace = root / directory
-                workspace.mkdir()
-                self.assertEqual(resolve_task_id(workspace), expected)
+def completed_run(root: Path, *, accepted: bool = True) -> tuple[Path, Path]:
+    """A framework-complete run of the pilot task whose candidate was edited."""
+    run = root / "run_20261105_000000"
+    workspace = run / "triton_normalization_rms_norm_bf16_h8192_20261105_000000"
+    shutil.copytree(PILOT, workspace, ignore=shutil.ignore_patterns("__pycache__"))
+    render_workspace(PILOT, workspace, task_id=PILOT_ID, target_language="triton")
+    spec = load_task_spec(PILOT / "task.yaml", task_id=PILOT_ID, target_language="triton")
+    state = run / ".task-sessions" / workspace.name
+    session = TaskSession.create(spec, workspace, state, LOGGER)
+    with mock.patch("src.task_runtime._runtime_identity", return_value=RUNTIME):
+        bind_session_runtime(session)
+    kernel = workspace / "solution/kernel.py"
+    kernel.write_text(kernel.read_text() + "\n# tuned by the agent\n")
+    (workspace / "task_result.yaml").write_text(yaml.safe_dump({
+        "task_name": PILOT_ID, "candidate_accepted": accepted, "speedup_ratio": 1.5, "score": 0.3,
+        "evaluated_candidate_sources": session.candidate_source_evidence()["sources"]}))
+    (state / "completion.json").write_text(json.dumps(_completion_record(session, "codex")))
+    return run, workspace
 
 
-class HeldOutBenchmarkMethodTests(unittest.TestCase):
-    @staticmethod
-    def _case(time_ms: float, method: str) -> TestCaseResult:
-        return TestCaseResult(
-            test_case_id="case",
-            shape=[1],
-            execution_time_ms=time_ms,
-            metadata={"benchmark_method": method},
-        )
+class FakeEvaluator:
+    """Answers each action from the contract in the workspace it runs in."""
 
-    def test_candidate_event_fallback_cannot_replace_graph_baseline(self) -> None:
-        baseline = [self._case(2.0, "cuda_graph")]
-        optimized = [self._case(3.0, "cuda_event_fallback")]
+    def __init__(self, *, fail=(), times=None, during=None):
+        self.fail = set(fail)
+        self.times = times or {"baseline": 2.0, "candidate": 1.0}
+        self.during = during or {}
+        self.calls = []
+        self.contracts = []
 
-        selected, valid_optimized, consistent, mismatches = (
-            _select_heldout_comparison_cases(
-                baseline, optimized, logging.getLogger(__name__)
-            )
-        )
+    def __call__(self, spec, workspace, *, role, action, phase, manifest=None, logger=None):
+        contract = json.loads((workspace / "_aka_eval/contract.json").read_text())
+        self.calls.append((role, action, phase))
+        self.contracts.append(contract)
+        if (role, action) in self.during:
+            self.during[(role, action)](workspace)
+        rows = []
+        for case in contract["cases"]:
+            if action == "compile" or (action != "validate-task" and action not in case["checks"]):
+                continue
+            row = {"test_case_id": case["id"], "status": "PASS",
+                   "params": {"axes": case["axes"], "scalars": case["scalars"]}}
+            if action == "validate-task":
+                row["checks"] = case["checks"]
+            if action == "performance":
+                row.update(execution_time_ms=self.times[role], benchmark_method="cuda_graph")
+            rows.append(row)
+        failed = (role, action) in self.fail
+        result = ActionResult(role, action, "FAIL" if failed else "PASS", tuple(rows),
+                              "fixture failure" if failed else None)
+        return ExecutedAction(f"invocation-{len(self.calls)}", result, ())
 
-        self.assertEqual(selected[0].execution_time_ms, 2.0)
-        self.assertEqual(
-            selected[0].metadata["benchmark_method"],
-            "cuda_graph",
-        )
-        self.assertEqual(valid_optimized, optimized)
-        self.assertFalse(consistent)
-        self.assertEqual(len(mismatches), 1)
 
-    def test_missing_event_alternate_remains_unscoreable(self) -> None:
-        baseline = [self._case(2.0, "cuda_graph")]
-        optimized = [self._case(3.0, "cuda_event_fallback")]
+class HeldOutInputTests(unittest.TestCase):
+    def test_seeds_depend_on_the_salt_and_never_reuse_the_run_seeds(self):
+        seeds = heldout.heldout_seeds(SALT, PILOT_ID, "t2048")
+        self.assertEqual(seeds, heldout.heldout_seeds(SALT, PILOT_ID, "t2048"))
+        self.assertNotEqual(seeds, heldout.heldout_seeds("fedcba9876543210", PILOT_ID, "t2048"))
+        self.assertFalse(set(seeds) & set(case_seeds(PILOT_ID, "t2048")))
+        self.assertTrue(all(0 <= seed < 2 ** 31 for seed in seeds))
 
-        selected, _valid_optimized, consistent, mismatches = (
-            _select_heldout_comparison_cases(
-                baseline, optimized, logging.getLogger(__name__)
-            )
-        )
+    def test_contract_gets_new_seeds_for_every_case_and_validated_extra_cases(self):
+        original = _contract()
+        extra = [{"id": "h777", "axes": {"n_tokens": 777}, "checks": ["correctness"], "source": "held out"},
+                 {"id": "h65536", "axes": {"n_tokens": 65536}, "scalars": {"epsilon": 1e-5},
+                  "checks": ["correctness", "performance"]}]
+        contract = heldout.heldout_contract(original, salt=SALT, extra_cases=extra)
+        self.assertEqual([c["id"] for c in contract["cases"]],
+                         [c["id"] for c in original["cases"]] + ["h777", "h65536"])
+        old_seeds = {seed for case in original["cases"] for seed in case["seeds"]}
+        for case in contract["cases"]:
+            self.assertEqual(case["seeds"], heldout.heldout_seeds(SALT, PILOT_ID, case["id"]))
+            self.assertFalse(set(case["seeds"]) & old_seeds)
+        self.assertEqual(contract["cases"][-1]["scalars"], {"epsilon": 1e-5})
+        self.assertNotIn("source", contract["cases"][-2])
+        self.assertEqual({k: v for k, v in contract.items() if k != "cases"},
+                         {k: v for k, v in original.items() if k != "cases"})
+        self.assertEqual(len(original["cases"]), 9)  # The input is never modified.
 
-        self.assertEqual(selected[0].execution_time_ms, 2.0)
-        self.assertFalse(consistent)
-        self.assertEqual(len(mismatches), 1)
+    def test_extra_cases_outside_the_task_domain_are_rejected(self):
+        bad = {
+            "below minimum": {"id": "h", "axes": {"n_tokens": 0}, "checks": ["correctness"]},
+            "above maximum": {"id": "h", "axes": {"n_tokens": 262145}, "checks": ["correctness"]},
+            "not an int": {"id": "h", "axes": {"n_tokens": True}, "checks": ["correctness"]},
+            "const axis": {"id": "h", "axes": {"n_tokens": 5, "hidden_size": 8192}, "checks": ["correctness"]},
+            "missing axis": {"id": "h", "axes": {}, "checks": ["correctness"]},
+            "unknown scalar": {"id": "h", "axes": {"n_tokens": 5}, "scalars": {"eps": 1.0},
+                               "checks": ["correctness"]},
+            "bad scalar": {"id": "h", "axes": {"n_tokens": 5}, "scalars": {"epsilon": "small"},
+                           "checks": ["correctness"]},
+            "bad checks": {"id": "h", "axes": {"n_tokens": 5}, "checks": ["performance"]},
+            "existing id": {"id": "t2048", "axes": {"n_tokens": 5}, "checks": ["correctness"]},
+            "existing inputs": {"id": "h", "axes": {"n_tokens": 2048}, "checks": ["correctness"]},
+            "chosen seeds": {"id": "h", "axes": {"n_tokens": 5}, "checks": ["correctness"], "seeds": [1, 2]},
+        }
+        for name, case in bad.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                heldout.heldout_contract(_contract(), salt=SALT, extra_cases=[case])
+        with self.assertRaises(ValueError):
+            heldout.heldout_contract(_contract(), salt=SALT, extra_cases=[
+                {"id": "a", "axes": {"n_tokens": 5}, "checks": ["correctness"]},
+                {"id": "b", "axes": {"n_tokens": 5}, "checks": ["correctness"]}])
 
-    def test_evaluation_refuses_to_score_candidate_event_fallback(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            original_workspace = root / "original"
-            output_workspace = root / "heldout"
-            task_dir = root / "task"
-            (original_workspace / "hip").mkdir(parents=True)
-            task_dir.mkdir()
-            (original_workspace / "hip" / "candidate.hip").write_text("// candidate\n")
-            (original_workspace / "config.yaml").write_text(yaml.safe_dump({
-                "task_type": "torch2hip",
-                "target_file_path": "hip/candidate.hip",
-            }))
-            (original_workspace / "task_result.yaml").write_text(yaml.safe_dump({
-                "task_name": "torch2hip/example",
-            }))
+    def test_generalization_quadrants(self):
+        self.assertEqual(heldout.classify(True, True), "both_pass")
+        self.assertEqual(heldout.classify(True, False), "candidate_regression")
+        self.assertEqual(heldout.classify(False, True), "candidate_improvement")
+        self.assertEqual(heldout.classify(False, False), "both_fail")
 
-            baseline = [self._case(2.0, "cuda_graph")]
-            optimized = [self._case(3.0, "cuda_event_fallback")]
 
-            with (
-                mock.patch(
-                    "src.held_out.run_heldout_eval.apply_all_injections",
-                    return_value=True,
-                ),
-                mock.patch(
-                    "src.held_out.run_heldout_eval.measure_baseline",
-                    return_value=baseline,
-                ),
-                mock.patch(
-                    "src.held_out.run_heldout_eval.evaluate_compilation",
-                    return_value=(True, None),
-                ),
-                mock.patch(
-                    "src.held_out.run_heldout_eval.evaluate_correctness",
-                    return_value=(True, None),
-                ),
-                mock.patch(
-                    "src.held_out.run_heldout_eval.measure_performance",
-                    return_value=optimized,
-                ),
-            ):
-                result = evaluate_single_task(
-                    original_workspace,
-                    output_workspace,
-                    {"injections": []},
-                    task_dir,
-                    logging.getLogger(__name__),
-                )
+class HeldOutEvaluationTests(unittest.TestCase):
+    def setUp(self):
+        self._directory = tempfile.TemporaryDirectory()
+        self.root = Path(self._directory.name).resolve()
+        runtime = mock.patch("src.task_runtime._runtime_identity", return_value=RUNTIME)
+        runtime.start()
+        self.addCleanup(runtime.stop)
+        self.addCleanup(self._directory.cleanup)
 
-            self.assertEqual(result["orig_heldout_execution_time"], 2.0)
-            self.assertEqual(result["opt_execution_time"], 3.0)
-            self.assertEqual(result["speedup_ratio"], 0.0)
-            self.assertFalse(result["benchmark_method_consistent"])
-            self.assertEqual(len(result["benchmark_method_mismatches"]), 1)
-            self.assertEqual(result["score"], 0.0)
-            self.assertFalse(
-                (output_workspace / "orig" / "comparison_baseline_perf.yaml")
-                .exists()
-            )
+    def evaluate(self, evaluator, *, accepted=True, cases=None, change=None):
+        run, workspace = completed_run(self.root, accepted=accepted)
+        if change:
+            change(workspace)
+        cases_file = None
+        if cases is not None:
+            cases_file = self.root / "cases.json"
+            cases_file.write_text(json.dumps({"cases": cases}))
+        before = {p.relative_to(run).as_posix(): p.read_bytes() for p in run.rglob("*") if p.is_file()}
+        output = self.root / "out" / workspace.name
+        with mock.patch.object(heldout, "run_action", evaluator):
+            result = heldout.evaluate_task(workspace, output, salt=SALT, cases_file=cases_file, logger=LOGGER)
+        after = {p.relative_to(run).as_posix(): p.read_bytes() for p in run.rglob("*") if p.is_file()}
+        self.assertEqual(before, after, "held-out evaluation must not write into the original run")
+        self.assertEqual(yaml.safe_load((output / "heldout_task_result.yaml").read_text()), result)
+        return result, output, workspace
+
+    def test_accepted_candidate_runs_on_heldout_inputs_with_interleaved_timing(self):
+        evaluator = FakeEvaluator()
+        result, output, _ = self.evaluate(
+            evaluator, cases=[{"id": "h777", "axes": {"n_tokens": 777}, "checks": ["correctness"]}])
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["generalization_status"], "both_pass")
+        self.assertEqual(result["speedup_ratio"], 2.0)
+        self.assertGreater(result["score"], 0)
+        self.assertEqual(result["extra_case_ids"], ["h777"])
+        self.assertEqual((result["salt"], result["runtime_identity"]), (SALT, RUNTIME))
+        self.assertEqual(result["original_run_speedup_ratio"], 1.5)
+        self.assertEqual([call[:2] for call in evaluator.calls], [
+            ("task", "validate-task"), ("baseline", "compile"), ("baseline", "correctness"),
+            ("candidate", "compile"), ("candidate", "correctness"), ("baseline", "performance"),
+            ("candidate", "performance"), ("baseline", "performance"), ("candidate", "performance")])
+        self.assertEqual(len(list((output / "actions").glob("*.json"))), 9)
+        contract = evaluator.contracts[0]
+        self.assertIn("h777", [case["id"] for case in contract["cases"]])
+        original = {case["id"]: case["seeds"] for case in _contract()["cases"]}
+        self.assertTrue(all(case["seeds"] != original.get(case["id"]) for case in contract["cases"]))
+        held = output / "workspace"
+        self.assertIn("# tuned by the agent", (held / "solution/kernel.py").read_text())
+        self.assertEqual((held / "baseline/kernel.py").read_bytes(), (PILOT / "baseline/kernel.py").read_bytes())
+        self.assertFalse((held / "task_result.yaml").exists())
+
+    def test_candidate_failure_is_a_regression_without_a_speedup(self):
+        evaluator = FakeEvaluator(fail={("candidate", "correctness")})
+        result, _, _ = self.evaluate(evaluator)
+        self.assertEqual(result["generalization_status"], "candidate_regression")
+        self.assertEqual((result["speedup_ratio"], result["score"]), (0.0, 0.0))
+        self.assertIn("candidate correctness", result["error"])
+        self.assertNotIn("performance", [call[1] for call in evaluator.calls])
+
+    def test_baseline_failure_on_heldout_inputs_is_reported_as_such(self):
+        result, _, _ = self.evaluate(FakeEvaluator(fail={("baseline", "correctness")}))
+        self.assertEqual(result["generalization_status"], "candidate_improvement")
+        self.assertEqual(result["speedup_ratio"], 0.0)
+
+    def test_failed_timing_round_gives_no_speedup(self):
+        result, _, _ = self.evaluate(FakeEvaluator(fail={("candidate", "performance")}))
+        self.assertEqual(result["generalization_status"], "both_pass")
+        self.assertEqual((result["speedup_ratio"], result["score"]), (0.0, 0.0))
+        self.assertIn("candidate performance", result["error"])
+
+    def test_missing_evidence_and_protocol_violations_are_evaluation_errors(self):
+        def edit_candidate(workspace):
+            (workspace / "solution/kernel.py").write_text("def run(**_): pass\n")
+
+        def rewrite_contract(workspace):
+            path = workspace / "_aka_eval/contract.json"
+            path.write_text(path.read_text().replace('"seeds"', '"seeds" '))
+
+        def edit_candidate_during_compile(workspace):
+            (workspace / "solution/kernel.py").write_text("def run(**_): pass\n")
+
+        def omit_case(spec, workspace, **kwargs):
+            executed = FakeEvaluator()(spec, workspace, **kwargs)
+            result = executed.result
+            return ExecutedAction(executed.invocation_id, ActionResult(
+                result.role, result.action, result.status, result.cases[1:]), ())
+
+        scenarios = {
+            "not accepted": dict(evaluator=FakeEvaluator(), accepted=False, match="accepted"),
+            "candidate changed after scoring": dict(evaluator=FakeEvaluator(), change=edit_candidate,
+                                                    match="completion"),
+            "invalid extra case": dict(evaluator=FakeEvaluator(), match="domain",
+                                       cases=[{"id": "h", "axes": {"n_tokens": 0}, "checks": ["correctness"]}]),
+            "contract rewritten by an action": dict(
+                evaluator=FakeEvaluator(during={("candidate", "compile"): rewrite_contract}), match="contract.json"),
+            "candidate rewritten by an action": dict(
+                evaluator=FakeEvaluator(during={("baseline", "compile"): edit_candidate_during_compile}),
+                match="changed the candidate"),
+            "evaluator ignores the held-out cases": dict(evaluator=omit_case, match="held-out contract"),
+        }
+        for name, scenario in scenarios.items():
+            with self.subTest(name):
+                shutil.rmtree(self.root / "run_20261105_000000", ignore_errors=True)
+                shutil.rmtree(self.root / "out", ignore_errors=True)
+                match = scenario.pop("match")
+                result, _, _ = self.evaluate(scenario.pop("evaluator"), **scenario)
+                self.assertEqual(result["generalization_status"], "evaluation_error")
+                self.assertEqual((result["speedup_ratio"], result["score"]), (0.0, 0.0))
+                self.assertIn(match, result["error"])
+
+    def test_a_changed_scoring_runtime_is_an_evaluation_error(self):
+        run, workspace = completed_run(self.root)
+        with mock.patch("src.task_runtime._runtime_identity", return_value={**RUNTIME, "torch": "another build"}), \
+                mock.patch.object(heldout, "run_action", FakeEvaluator()):
+            result = heldout.evaluate_task(workspace, self.root / "out", salt=SALT, logger=LOGGER)
+        self.assertEqual(result["generalization_status"], "evaluation_error")
+        self.assertIn("runtime", result["error"])
+
+    def test_command_line_evaluates_every_v3_workspace_and_never_reuses_output(self):
+        run, workspace = completed_run(self.root)
+        cases = self.root / "cases" / PILOT_ID
+        cases.mkdir(parents=True)
+        (cases / heldout.CASES_FILE).write_text(json.dumps(
+            {"cases": [{"id": "h5", "axes": {"n_tokens": 5}, "checks": ["correctness"]}]}))
+        with mock.patch.object(heldout, "run_action", FakeEvaluator()):
+            code = heldout.main(["--run-dir", str(run), "--salt", SALT, "--cases-dir", str(self.root / "cases")])
+        self.assertEqual(code, 0)
+        output = run.parent / (run.name + "_heldout")
+        summary = yaml.safe_load((output / "heldout_summary.yaml").read_text())
+        self.assertEqual(summary["salt"], SALT)
+        self.assertEqual(summary["quadrant_counts"]["both_pass"], 1)
+        self.assertEqual(summary["conditional_correctness"]["rate_pct"], 100.0)
+        self.assertEqual(summary["heldout_speedup"]["geomean"], 2.0)
+        task = yaml.safe_load((output / workspace.name / "heldout_task_result.yaml").read_text())
+        self.assertEqual(task["extra_case_ids"], ["h5"])
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            heldout.main(["--run-dir", str(run)])
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            heldout.main(["--run-dir", str(run), "--output-suffix", "_other", "--salt", "not-hex"])
 
 
 if __name__ == "__main__":

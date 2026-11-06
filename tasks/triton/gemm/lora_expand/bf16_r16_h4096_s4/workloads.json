@@ -1,0 +1,121 @@
+{
+ "description": "Token counts for one punica SGMV LoRA expand at rank 16, output width 4096 and four active adapters. Batches below about 4096 tokens run faster than the 10 us timing floor and are checked for correctness only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, one token"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "t48",
+   "axes": {
+    "n_tokens": 48
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 48"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short prefill chunk (below the 10 us floor)"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t163840",
+   "axes": {
+    "n_tokens": 163840
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t409600",
+   "axes": {
+    "n_tokens": 409600
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  }
+ ]
+}

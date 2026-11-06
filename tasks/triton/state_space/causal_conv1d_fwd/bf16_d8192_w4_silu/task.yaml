@@ -1,0 +1,84 @@
+schema_version: 3
+description: >-
+  Varlen causal depthwise convolution of width 4 over packed sequences, with bias and SiLU:
+  out[t, c] = silu(bias[c] + sum_{j<4} w[c, j] * z[t + j, c]), where z is the sequence's initial
+  conv state (zeros when has_initial_state is 0) followed by its tokens. Each sequence's conv-state
+  cache slot is then overwritten, in place, with the last 3 elements of z.
+operator:
+  name: causal_conv1d_fwd
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Total tokens of all packed sequences.}
+    dim: {kind: const, value: 8192, description: Convolution channels.}
+    width: {kind: const, value: 4, description: Kernel width.}
+  derived_axes:
+    state_len: width - 1
+    n_seqs: ceil_div(n_tokens, 256)
+    cache_lines: 2 * ceil_div(n_tokens, 256)
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [dim, width]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    bias:
+      kind: tensor
+      shape: [dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    conv_states:
+      kind: tensor
+      shape: [cache_lines, state_len, dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    query_start_loc:
+      kind: tensor
+      shape: [n_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    cache_indices:
+      kind: tensor
+      shape: [n_seqs]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    has_initial_state:
+      kind: tensor
+      shape: [n_seqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_tokens, dim], dtype: bfloat16}
+  mutable: [conv_states]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/mamba/ops/causal_conv1d.py
+    license: Apache-2.0
+    modifications: >-
+      _causal_conv1d_fwd_kernel vendored with the CUDA-only launch_pdl hooks removed. vLLM's
+      host-side wrapper (CPU round trip building the sequence/chunk launch map) is replaced by a
+      small Triton kernel that builds the map on the device, and a run() entry point that launches
+      both kernels on channel-last views of the packed (n_tokens, dim) tensors.
+compare:
+  out: {bound: baseline_relative}
+  conv_states: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

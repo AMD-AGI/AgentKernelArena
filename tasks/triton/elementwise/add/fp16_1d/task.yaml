@@ -1,0 +1,37 @@
+schema_version: 3
+description: >-
+  Element-wise sum of two one-dimensional float16 tensors, out = x + y, rounded to float16.
+operator:
+  name: add
+  category: elementwise
+interface:
+  axes:
+    numel: {kind: var, min: 1, max: 1073741824, description: Number of elements.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [numel]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    y:
+      kind: tensor
+      shape: [numel]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [numel], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/triton benchmark suite (add_kernel, test_add_kernel.py)
+    revision: unrecorded in the old task package
+    path: test_add_kernel.py
+    license: MIT
+    modifications: Wrapped in the arena run() interface (block size 1024, grid over ceil_div(numel, 1024)).
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

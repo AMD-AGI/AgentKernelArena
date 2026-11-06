@@ -1,0 +1,133 @@
+{
+ "description": "Batch sizes M of a (M, 256, 64) float16 mean over axis 1 (the original task's (64, 256, 64) case scaled in M); batches below 1024 take under 10 us and are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "M": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single slice"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "M": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch"
+  },
+  {
+   "id": "m50",
+   "axes": {
+    "M": 50
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "M": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two batch"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "M": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "M": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "M": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "medium batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "M": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "medium batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "M": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  },
+  {
+   "id": "m32768",
+   "axes": {
+    "M": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  },
+  {
+   "id": "m65536",
+   "axes": {
+    "M": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  },
+  {
+   "id": "m102400",
+   "axes": {
+    "M": 102400
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "largest batch of the (M, 256, 64) mean over axis 1 case of the original task"
+  }
+ ]
+}

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.candidate_verification import apply_review, bind_policy, finalize, policy, verify_candidate
+from src.candidate_verification import apply_review, bind_policy, policy, verify_candidate
 from tests.test_task_session_v2 import RUNNER, create
 
 
@@ -49,9 +49,10 @@ def test_review_reads_frozen_sources_and_preserves_original(tmp_path):
     def backend(prompt, root, settings, logger):
         assert 'UNTRUSTED' in prompt
         assert 'every compute kernel used by the model' in prompt
+        assert '_aka_eval/contract.json' not in prompt
         assert 'separate unit test for each' in prompt
         assert 'valid general implementation' in prompt
-        assert 'Missing evidence or unclear generality is\nINCONCLUSIVE' in prompt
+        assert 'Missing evidence or unclear generality is INCONCLUSIVE' in prompt
         assert 'return 3' in (root/'baseline/kernel.py').read_text()
         assert 'return 1 + 2' in (root/'candidate/kernel.py').read_text()
         assert json.loads((root/'evaluation.json').read_text()) == measured
@@ -105,6 +106,43 @@ def test_measured_source_identity_and_deadline_fail_closed(tmp_path, monkeypatch
     monkeypatch.setenv('ARENA_TASK_DEADLINE', '1')
     report = verify_candidate(session, result(session), {}, logging.getLogger(__name__))
     assert 'budget' in report['error']
+
+
+def test_review_of_a_v3_workspace_binds_the_solution_and_the_frozen_task(tmp_path):
+    import shutil
+    from src.task_contract import render_workspace
+    from src.task_session import TaskSession
+    from src.task_spec import load_task_spec
+
+    root = Path(__file__).resolve().parents[1]
+    pilot, task_id = root/'tasks/triton/normalization/rms_norm/bf16_h8192', 'triton/normalization/rms_norm/bf16_h8192'
+    workspace = tmp_path/'workspace'
+    shutil.copytree(pilot, workspace, ignore=shutil.ignore_patterns('__pycache__'))
+    render_workspace(pilot, workspace, task_id=task_id, target_language='triton')
+    spec = load_task_spec(pilot/'task.yaml', task_id=task_id, target_language='triton')
+    session = TaskSession.create(spec, workspace, tmp_path/'state')
+    kernel = workspace/'solution/kernel.py'
+    kernel.write_text(kernel.read_text() + '\n# candidate change\n')
+    measured = {**result(session), 'measurement_kind': 'kernel'}
+    assert set(measured['evaluated_candidate_sources']) == {
+        path.relative_to(workspace).as_posix() for path in (workspace/'solution').rglob('*') if path.is_file()}
+
+    def backend(prompt, review, settings, logger):
+        assert 'the candidate lives in solution/' in prompt
+        assert 'every compute kernel used by the model' not in prompt
+        assert '# candidate change' in (review/'candidate/solution/kernel.py').read_text()
+        assert '# candidate change' not in (review/'baseline/solution/kernel.py').read_text()
+        for frozen in ('_aka_eval/contract.json', '_aka_eval/CANDIDATE.md', 'reference.py', 'baseline/kernel.py'):
+            assert (review/'baseline'/frozen).read_bytes() == (review/'candidate'/frozen).read_bytes()
+        value = draft(review)
+        for check in value['checks'].values():
+            check['evidence'] = [dict(file='candidate/solution/kernel.py', line=1)]
+        return value
+
+    report = verify_candidate(session, measured, {'candidate_verification': {'timeout_seconds': 30}},
+                              logging.getLogger(__name__), backend=backend)
+    assert report['status'] == 'PASS', report
+    assert report['required'] and report['implementation_changed'] is True
 
 
 def test_noop_review_caps_gain_without_discarding_samples():

@@ -1,11 +1,15 @@
+# Languages are verified on MI355X (gfx950) only; this architecture is implemented but unverified.
+# The shipped task declares required_arch gfx950 and is skipped on other GPUs: select a task whose
+# platform_support includes this GPU, or change it in an untracked local copy.
 # Minimal first-run example for GEAK on MI300/MI300X (gfx942).
 # Complete agents/geak/README.md setup first, and export GEAK_HOME
 # on the host (the Docker runner mounts/forwards it and installs the SDK).
 agent:
   template: geak
 
+target_language: triton   # triton | gluon | hip | flydsl
 tasks:
-  - hip2hip/GELU
+  - triton/normalization/rms_norm/bf16_h8192
 
 target_gpu_model: MI300
 log_directory: logs

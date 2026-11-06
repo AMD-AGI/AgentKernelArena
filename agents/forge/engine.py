@@ -54,9 +54,19 @@ def probe() -> dict:
     # adapter asks for the standalone kernel only where the engine accepts that.
     rewrite = cli.main.commands["forge-rewrite-by-flydsl"]
     applyback_optional = "applyback" in {parameter.name for parameter in rewrite.params}
+    # The PORT states which source languages it ingests. An engine that does
+    # not publish them cannot be told the baseline's language, so the adapter
+    # refuses a FlyDSL rewrite there instead of letting the engine guess.
+    try:
+        from kernelforge.rewrite_by_flydsl.protocol import SUPPORTED_SOURCE_LANGUAGES
+        rewrite_sources = sorted(str(name) for name in SUPPORTED_SOURCE_LANGUAGES)
+    except ImportError:
+        rewrite_sources = None
+    from agents.forge.adapter import INITIALIZATION_LANGUAGES
     return {"adapter_api": ADAPTER_API, "version": version,
-            "initialization_targets": ["flydsl", "hip", "triton"],
+            "initialization_targets": sorted([*INITIALIZATION_LANGUAGES, "flydsl"]),
             "backends": sorted(KERNEL_BACKENDS), "rewrite_target": "flydsl",
+            "rewrite_source_languages": rewrite_sources,
             "applyback_optional": applyback_optional}
 
 

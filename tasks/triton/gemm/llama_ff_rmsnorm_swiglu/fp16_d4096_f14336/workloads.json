@@ -1,0 +1,112 @@
+{
+ "description": "Token counts through one Llama-3-8B feed-forward block (hidden 4096, intermediate 14336). The two weight matrices (235 MB) are read at every batch size, so even a single token takes the baseline well above the 10 us floor.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "t8",
+   "axes": {
+    "n_tokens": 8
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, batch 8"
+  },
+  {
+   "id": "t32",
+   "axes": {
+    "n_tokens": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, batch 32"
+  },
+  {
+   "id": "t100",
+   "axes": {
+    "n_tokens": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "t128",
+   "axes": {
+    "n_tokens": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small prefill"
+  },
+  {
+   "id": "t512",
+   "axes": {
+    "n_tokens": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  }
+ ]
+}

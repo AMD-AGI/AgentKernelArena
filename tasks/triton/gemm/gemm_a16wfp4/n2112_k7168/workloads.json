@@ -1,0 +1,153 @@
+{
+  "description": "Token counts of the N=2112, K=7168 projection. Smaller counts (decode) are correctness-only.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum, single-token decode"
+    },
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd decode batch"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk"
+    },
+    {
+      "id": "m129",
+      "axes": {
+        "m": 129
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "just above one 128-row block"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    },
+    {
+      "id": "m32768",
+      "axes": {
+        "m": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    },
+    {
+      "id": "m65536",
+      "axes": {
+        "m": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the N=2112, K=7168 projection"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "description": "Batch and image sizes of KernelBench level-2 problem 85 (Conv2d_GroupNorm_Scale_MaxPool_Clamp: batch 128 at 128x128, and the batch/spatial escalation of its benchmark inputs), plus a 128 x 256 x 256 batch to reach a 100x size span. Odd, non-square and minimal shapes are correctness-only.",
+  "cases": [
+    {"id": "b1_h6_w6", "axes": {"batch": 1, "height": 6, "width": 6}, "checks": ["correctness"], "source": "smallest input in the domain: one image, one pooled output per channel"},
+    {"id": "b1_h6_w130", "axes": {"batch": 1, "height": 6, "width": 130}, "checks": ["correctness"], "source": "single image, smallest height (one pooled row)"},
+    {"id": "b3_h64_w64", "axes": {"batch": 3, "height": 64, "width": 64}, "checks": ["correctness"], "source": "odd small batch at 64x64"},
+    {"id": "b2_h37_w125", "axes": {"batch": 2, "height": 37, "width": 125}, "checks": ["correctness"], "source": "non-square image, sizes not multiples of 16 or of the pool window"},
+    {"id": "b5_h130_w97", "axes": {"batch": 5, "height": 130, "width": 97}, "checks": ["correctness"], "source": "non-square image with a cropped pooling tail"},
+    {"id": "b16_h64_w64", "axes": {"batch": 16, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench L2-85 benchmark input (16, 8, 64, 64)"},
+    {"id": "b32_h128_w128", "axes": {"batch": 32, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L2-85 benchmark input (32, 8, 128, 128)"},
+    {"id": "b64_h128_w128", "axes": {"batch": 64, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L2-85 benchmark input (64, 8, 128, 128)"},
+    {"id": "b128_h128_w128", "axes": {"batch": 128, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L2-85 problem shape (128, 8, 128, 128)"},
+    {"id": "b64_h256_w256", "axes": {"batch": 64, "height": 256, "width": 256}, "checks": ["correctness", "performance"], "source": "KernelBench L2-85 benchmark input (64, 8, 256, 256)"},
+    {"id": "b128_h256_w256", "axes": {"batch": 128, "height": 256, "width": 256}, "checks": ["correctness", "performance"], "source": "problem batch 128 at the largest benchmark resolution 256x256"}
+  ]
+}

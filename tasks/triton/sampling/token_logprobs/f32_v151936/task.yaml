@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Log-probabilities of selected tokens without materializing the log-softmax. For every row of
+  float32 logits, logprobs[i, j] = logits[i, token_ids[i, j]] - logsumexp(logits[i, :]), the numerically
+  stable log-softmax evaluated at the 21 requested token ids of the row (the sampled token followed by
+  the top-20 candidates), in float32.
+operator:
+  name: token_logprobs
+  category: sampling
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 3200, description: Logits rows of the step (sampled tokens or prompt-logprob chunk rows).}
+    n_ids: {kind: const, value: 21, description: Token ids per row (sampled token and 20 logprob candidates).}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen2/Qwen3 family).}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_rows, vocab_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Logits of each row.
+    token_ids:
+      kind: tensor
+      shape: [n_rows, n_ids]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Vocabulary ids whose log-probabilities are requested for each row.
+  outputs:
+    logprobs: {shape: [n_rows, n_ids], dtype: float32}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/logprob.py
+    license: Apache-2.0
+    modifications: >-
+      Only _topk_log_softmax_kernel and compute_token_logprobs were taken from the file; the launcher
+      writes into the preallocated output instead of allocating it, imports of the vLLM triton shim were
+      replaced by triton directly, and a run() entry was added. The kernel is unchanged.
+compare:
+  logprobs: {bound: sqnr, min_db: 135}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

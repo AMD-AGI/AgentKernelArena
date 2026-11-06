@@ -1,885 +1,384 @@
 ---
 myst:
     html_meta:
-        "description": "The unified AgentKernelArena task definition, config.yaml v2 design, command and evaluation contracts, migration guide, and task authoring workflow."
-        "keywords": "AgentKernelArena, task schema, task definition, task authoring, baseline, candidate, sanitizer"
+        "description": "The AgentKernelArena schema-v3 kernel task contract: operator interface, PyTorch reference, vendored baseline, workloads, run-selected target language, evaluation and QA rules."
+        "keywords": "AgentKernelArena, task schema, task.yaml, target language, baseline, reference, workloads, qa_auditor"
 ---
 
 # Task definition, schema, and authoring
 
-Read this document before adding or modifying a task, its configuration,
-reference, input generator, harness, or benchmark. It is the canonical task
-contract and replaces the previous task-family-specific configuration guidance.
+Read this document before adding or modifying a kernel task. It is the canonical
+task contract. The end-to-end serving tasks under `tasks/e2e/` keep their own
+schema-v2 contract, described in [e2e kernel tasks](e2e-kernel-tasks.md).
 
-## Status and scope
+## What a task is
 
-**All retained tasks use schema v2.** Task-package GPU qualification, framework
-regression results and agent execution coverage are separate, source-bound
-claims; see the [dated verification record](../reference/verification-2026-09-15.md)
-for their evidence and qualification limits, including the completed 180-pair
-agent matrix and its separately recorded candidate outcomes.
-The final canonical counts and independent set reconciliation are located in
-that record's [primary proofs](../reference/verification-2026-09-15.md#retained-primary-proofs).
-That record separates completed native attempts from candidate acceptance and
-speedup. An agent failure does not waive task checks or by itself invalidate a
-candidate that the shared evaluator independently accepts. Missing original
-native terminal evidence cannot be replaced by a candidate report or model text.
+A kernel task describes **one operator in one scenario** and nothing about how a
+candidate must implement it:
 
-The shared declaration parser, action/result protocol, materialization,
-baseline session, evaluator and validator are connected through
-`src/task_run.py`. Normal runs and quality_loop use the same final evaluation
-and initial validation entrypoints. CPU process fixtures cover their integration;
-this does not certify GPU task quality or an agent's optimization capability.
-The migrated task families include SIKL, HIP, Triton, FlyDSL, generation, and
-image-backed tasks. Legacy execution/report compatibility remains for old
-workspaces and external configs; new or changed tasks in this repository must use v2.
-Do not replace a config without implementing its task-owned actions.
-See [Migration](#migration) before changing
-an executable task. Task config version 2, runner protocol 1 and validator report
-version 4 are separate contracts.
+| Part | File | Role |
+| --- | --- | --- |
+| Interface | `task.yaml` | Axes, inputs, outputs and the call signature every implementation uses. |
+| Reference | `reference.py` | High-precision PyTorch (float32/float64) used **only** to judge correctness. |
+| Baseline | `baseline/` | The implementation to beat, in any supported language, vendored into the task. |
+| Workloads | `workloads.json` | The correctness and performance cases, taken from production use. |
+| Inputs | `inputs.py` (optional) | Task-owned generators and layout transforms for inputs a built-in distribution cannot express. |
 
-The design uses one task `config.yaml`, task-owned evaluation scripts, and
-optional workload data. It does not require a second `definition.yaml`, an
-agent-specific driver, or a Python callback API. All task families use the same
-schema, including existing optimization, generation, and image-backed
-tasks and the new SIKL operator-to-FlyDSL tasks.
+**The task never names the candidate's language.** The run configuration selects
+it (`target_language`, below). The same task can be optimized in Triton, Gluon,
+HIP or FlyDSL, and every language is scored against the same baseline on the
+same workloads, so their speedups are comparable.
 
-Use the existing task directory as the package boundary. A typical layout is:
+A *scenario* fixes everything except the varying axes: dtypes, constant
+dimensions, layouts and attributes. Two scenarios of one operator are two tasks,
+for example `tasks/triton/gemm/gemm_a8w8/n4096_k4096/` and `.../n1280_k8192/`.
 
 ```text
-tasks/<suite>/<task>/
-  config.yaml
-  README.md                 # optional extended task instructions
-  source/                   # editable implementation files
-  scripts/                  # protected evaluation/reference/input code
-  workload.json             # optional case data
+tasks/<baseline_language>/<category>/<operator>/<scenario>/
+  task.yaml
+  workloads.json
+  reference.py
+  inputs.py            # optional
+  baseline/
+    kernel.py          # Triton, Gluon, FlyDSL or TileLang baseline
+    kernel.hip         # or a HIP baseline (plus headers)
+    LICENSE            # when the upstream license is not Apache-2.0
+  README.md
 ```
 
-Other layouts, including a root-level `kernel.py` or a combined source/harness
-file, are supported when their paths and edit boundaries are explicit.
+`<baseline_language>` is the task's `baseline.language` (`triton`, `gluon`,
+`hip`, `flydsl` or `tilelang`). It records what the vendored baseline is written
+in, not what a candidate must use: every target language can optimize every
+task. `<category>` is the task's `operator.category`, one of: activation,
+attention, convolution, elementwise, embedding, gemm, kv_cache, moe,
+normalization, positional, quantization, reduction, sampling, sorting,
+state_space, other. `<operator>` is its `operator.name`. The CPU pre-check
+`python3 -m src.tools.check_task tasks/<...>/<scenario>` rejects a
+package filed anywhere else, so scenarios of one operator with baselines in
+different languages sit under different language directories.
 
-## What a task defines
+The path below `tasks/` is the task ID. Correctness inputs are drawn from seeds
+derived from it, so moving a task, including to follow a baseline replaced by
+one in another language, changes its inputs and needs a fresh QA audit.
 
-A task is a reproducible optimization problem for an operator or implementation
-region. An operator may launch multiple GPU kernels. One task may cover multiple
-shapes and input distributions; it must not silently score only a convenient
-subset.
+The names `config.yaml`, `solution/` and `_aka_eval/` are reserved: the
+framework generates them in each run workspace.
 
-| Concept | Task responsibility |
-| --- | --- |
-| Semantics | State what is computed, the input/output interface, layouts, dtypes, supported cases, and allowed implementation dependencies. |
-| Candidate | Identify the implementation to produce or improve, its language, editable boundary, entrypoints, and initial state. |
-| Baseline | Identify the implementation used for performance comparison. Preserve it independently of candidate edits. |
-| Reference | Supply the mathematical or statistical oracle and the task's comparison rule in protected evaluation code. |
-| Workloads | Supply reproducible case identities, parameters, seeds, and input generation or bundled input data. |
-| Evaluation | Supply commands that build, check, and time the declared role and emit machine-readable results. |
-| Optional analysis/export | Supply task-specific sanitizer or export commands when the corresponding common tooling needs them. |
-
-The numerical reference and performance baseline are distinct roles, even when
-one implementation serves both. A production AITER operator can be the baseline
-while a task-local FP32 calculation supplies the reference. GEMM element-wise
-checks, MoE SQNR checks, and sampling distribution checks need not share a
-numerical rule.
-
-The run configuration chooses the agent, GPU, budget, and evaluation-tool
-policy. Agents decide how to search. The centralized evaluator owns acceptance,
-timing aggregation, scores, and final reports. An agent's success message is not
-an evaluation result.
-
-## Minimal configuration
-
-An existing HIP implementation can use:
+## `task.yaml`
 
 ```yaml
-schema_version: 2
-description: Optimize the HIP implementation while preserving its semantics.
-candidate:
-  language: hip
-  editable: [source/kernel.hip]
-evaluation:
-  runner: [python3, scripts/evaluate.py]
+schema_version: 3
+description: >-
+  out = x * rsqrt(mean(x^2) + epsilon) * weight over the hidden axis, rounded to bfloat16.
+operator: {name: rms_norm, category: normalization}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144}
+    hidden_size: {kind: const, value: 8192}
+  derived_axes: {}                       # optional: name -> integer expression over axes
+  inputs:
+    x: {kind: tensor, shape: [n_tokens, hidden_size], dtype: bfloat16,
+        distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    weight: {kind: tensor, shape: [hidden_size], dtype: bfloat16, role: weight,
+             distribution: {kind: uniform, low: 0.5, high: 1.5}}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+  mutable: []                            # inputs the operator updates in place
+  generator: {file: inputs.py, symbol: make_inputs}      # optional
+  layout: {file: inputs.py, symbol: to_kernel_layout}    # optional
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton                       # triton | gluon | hip | flydsl | tilelang
+  entry: baseline/kernel.py              # baseline/kernel.hip for HIP
+  provenance:
+    source: vllm-project/vllm
+    revision: v0.11.0                    # a commit or release, never a branch
+    path: vllm/model_executor/layers/batch_invariant.py
+    license: Apache-2.0
+    modifications: Wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative}        # one entry per output and mutable input
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}
 ```
 
-Defaults keep common tasks short:
+### Axes and shapes
 
-- The task ID is its full directory path relative to `tasks/`, retained when the
-  task is copied into a run workspace. Directory names do not select behavior.
-- `candidate.initial_state` defaults to `implemented`.
-- For an implemented candidate, `candidate.initial_language` defaults to
-  `candidate.language`; declare it when converting an existing implementation.
-- `baseline.kind` defaults to `initial_candidate` for an implemented candidate,
-  and to `provided` for an unimplemented candidate. The latter still requires a
-  working task-provided baseline command path.
-- `baseline.correctness_policy` defaults to `required`.
-- `evaluation.timeout_s` defaults to `3600` per action.
-- Evaluation tools and exports are disabled/absent unless configured.
-- A task-local `README.md`, when present, provides additional instructions.
+- A `var` axis varies across workload cases within `[min, max]` and, when given,
+  `multiple_of`. A `const` axis is fixed by the scenario. At least one axis is
+  `var`.
+- Shapes are lists of integers, axis names, or integer expressions using `+ - *
+  // %`, `min`, `max` and `ceil_div`.
 
-Only `schema_version`, `candidate`, and `evaluation` are always required.
-`candidate.language` and a nonempty `candidate.editable` are required.
-Evaluation must provide a runner or explicit commands for every action below.
-Descriptions and explicit entrypoints are recommended; a file-level C++ task
-need not invent a single function entrypoint when its harness builds a library.
+### Inputs
 
-## Schema reference
+Inputs are tensors or scalars, in call order. A tensor declares `shape`, `dtype`
+and a `distribution`:
 
-### Task metadata and candidate
-
-| Field | Type/default | Meaning |
+| Distribution | Parameters | Use |
 | --- | --- | --- |
-| `schema_version` | Integer, required: `2` | Selects this task contract and its command/result protocol. Unknown versions must be rejected. |
-| `description` | Optional string | Agent-independent objective and semantic summary. |
-| `instructions` | Optional list of relative paths | Additional protected instruction/contract files. No provider prompt syntax is required. |
-| `kernel_identity` | Optional mapping | `logical_operator` and `source_owner` identify the operator and upstream owner for reports/exports. They never implicitly determine an entrypoint symbol. |
-| `candidate.language` | Required string | Required final implementation backend, such as `hip`, `triton`, or `flydsl`. It is not inferred from a `.py` extension. |
-| `candidate.initial_state` | `implemented` or `unimplemented` | Whether the starting candidate is an existing implementation or a generation target. |
-| `candidate.initial_language` | Optional string | Starting implementation backend. Omit for an unimplemented candidate; it describes the candidate, not the baseline. |
-| `candidate.editable` | Nonempty list | Relative implementation paths or scoped edit declarations; see below. |
-| `candidate.entrypoints` | Optional list | Objects with `file`, `kind`, and, where applicable, `symbol`. Kinds are `function`, `builder`, `class`, or `executable`. |
+| `normal` | `mean`, `std` | Floating activations and weights. |
+| `uniform` | `low`, `high` | Bounded floating values. |
+| `log_uniform` | `log2_low`, `log2_high`, `signed` | Values spanning magnitudes. |
+| `randint` | `low`, `high` (exclusive) | Integer data. |
+| `permutation` | | A one-dimensional permutation of `0..n-1`. |
+| `zeros` | | Only for `role: state` (a cache before its first write). |
+| `generator` | | Produced by the task's `generator` function. |
 
-Unknown core fields and invalid types must fail schema validation. A backend
-name does not promise that every agent or analysis tool supports it; capability
-checks must report unsupported combinations explicitly.
+`role` is `activation` (default), `weight`, `state`, `index` or `metadata`.
 
-A string in `candidate.editable` means an entire implementation file. Use a
-scoped declaration for files containing both implementation and harness code:
+Inputs that a built-in distribution cannot express (quantized codes with
+scales, routing tables, `cu_seqlens`, paged KV caches) use `generator`. The
+function receives the case (`id`, `axes` including constants and derived axes,
+`scalars`), the already generated built-in inputs, a seeded `torch.Generator`
+and the device, and returns exactly its inputs:
 
-```yaml
-candidate:
-  language: triton
-  editable:
-    - path: benchmark.py
-      scope: symbols
-      symbols: [compute_kernel]
-      allow_new_helpers: true
-  entrypoints:
-    - {file: benchmark.py, kind: function, symbol: compute_kernel}
+```python
+def make_inputs(case, inputs, generator, device):
+    ...
+    return {"topk_ids": ids, "topk_weights": weights}
 ```
 
-A mapping's `scope` is `file`, `symbols`, or `tree`. `symbols` requires a nonempty
-symbol list; `allow_new_helpers` defaults to `false` and applies only to
-implementation helpers under a symbol-scoped boundary. `configuration_symbols`
-optionally names a subset of `symbols`, never an entrypoint, that only builds
-configuration data, for example a `_launch_config` helper returning tile sizes,
-`num_warps` and `num_stages`. Protected code may call such a helper and must
-validate what it returns before use. `tree` permits an
-implementation subtree, not its tests or build/evaluation policy. Broad tree
-access must not override a protected harness path. Generated build artifacts
-are not editable source declarations.
+Use only the generator for randomness. Seeds are derived by the framework from
+the task ID and case ID; tasks never choose them.
 
-Symbol-scoped Python targets and new helpers pass a definition-policy check
-before their implementation is excluded from the harness digest. Ordinary
-functions and passive helper classes are supported; compiler decorators must
-resolve through the protected imports (currently Triton `jit`, `autotune`, and
-`heuristics`, including aliases). New pytest fixtures/test hooks, unknown or
-dynamic decorators, executable defaults/annotations, and executable helper-class
-bodies/metaclasses are not implementation helpers. New module-level `__getattr__`
-and `__dir__` are forbidden automatic inspection hooks; same-named ordinary class
-methods remain allowed. This policy covers
-existing targets as well as new helpers: retaining `@triton.jit`
-does not permit an outer helper decorator that replaces the kernel binding.
-Calls in allowed compiler decorator arguments use
-supported Triton configuration operations, unshadowed `range`, or original
-protected function definitions. Existing editable non-entrypoint configuration
-helpers must pass a restricted body check: configuration data/local assignments,
-returns, and branches using protected predicates or supported configuration
-operations. Initial aliases, kernel entrypoints, and newly introduced factories
-do not gain permission to run at definition time. Symbols listed in
-`configuration_symbols` use a stricter launch-time policy: they must stay
-undecorated functions whose values come only from metadata parameters, local
-configuration data, literal collections, arithmetic and branches. Unshadowed
-`min`, `max`, `abs`, `bool`, `int`, `float`, `len`, `triton.cdiv` and
-`triton.next_power_of_2` calls are allowed. Global objects, helper/protected
-function calls, arbitrary attributes, callbacks and comprehensions are rejected;
-defaults must be literal data and annotations use simple builtin types or
-strings. The protected caller must supply plain scalar/container metadata and
-validate the returned configuration before launch. Declared launch helpers are
-not definition-time factories and cannot be called from editable compiler
-decorators, which could supply arbitrary objects instead of metadata.
-Every editable Python file,
-whatever its scope, also may not add runtime patching: calls to `globals()`,
-`vars()`, `setattr`/`delattr`, `exec`/`eval`/`__import__` (including qualified
-`builtins` calls and imported aliases), `importlib` or frame
-inspection (`sys._getframe`, `inspect.currentframe`), reads of code-object and
-frame internals (`__code__`, `__globals__`, `f_back`, ...), assignments to an
-imported module or object (`torch.Tensor.contiguous = ...`) or through an
-attribute chain (`t.Tensor.contiguous = ...`), and rebinding an imported name.
-Every editable C/C++/HIP file may not add identifiable library operator calls
-outside comments and string/character literals: hipBLAS, hipBLASLt, rocBLAS,
-Tensile or MIOpen calls, and the
-ATen/torch matrix products, softmax, losses, norms and reductions a task asks
-the candidate to implement (`at::matmul`, `torch::mm`, `at::layer_norm`,
-member operators such as `.bmm(`, `.softmax(` and `.sum(` on declared or inferred
-Tensor receivers). Same-named members on custom C++ types remain allowed.
-Receiver inference covers explicit Tensor declarations, aliases, standard
-Tensor factories and simple Tensor-derived expressions; it is not a C++ type
-checker. Semantic review still checks the full dependency contract. The host
-code of a Triton candidate, outside
-its `@triton.jit` functions, may not add PyTorch or library operators either
-(`torch.matmul`, `F.softmax`, `x @ w`, `torch.ops.*`, `aiter`, `flash_attn`, ...).
-Sites the starting file already has stay allowed. The guard reports its
-effective policy in the validator context. It is a structural integrity check,
-not isolation of arbitrary Python code; reference/test manipulation remains
-forbidden and subject to semantic review.
+Production kernels often receive weights in a prepared layout (preshuffled
+tiles, padded scales). The optional `layout` function maps the logical inputs to
+the kernel-facing inputs, outside timing:
 
-Entrypoint files must lie within the candidate boundary. Declared symbols must
-exist in the final candidate. Initial validation verifies the starting
-implementation's interface; a translation may intentionally introduce a new
-final entrypoint, and a verified unimplemented candidate has none yet. A builder
-is a host entrypoint that prepares a case-specific launch; its tile/split
-choices may vary by case. Its
-signature and the returned launch interface belong in the task's instructions
-and harness. A builder symbol is not necessarily a GPU kernel symbol.
-
-### Baseline and reference
-
-| Field | Type/default | Meaning |
-| --- | --- | --- |
-| `baseline.kind` | `initial_candidate` or `provided` | Use a frozen starting implementation, or a separately provided baseline selected by the task runner. |
-| `baseline.language` | Optional string | Baseline implementation backend when useful; production dispatch may involve multiple backends. |
-| `baseline.source_files` | Optional list of relative paths | Read-only production/reference material for the agent. Merely copying these files does not establish what the baseline command executes. |
-| `baseline.correctness_policy` | `required` or `diagnostic` | Whether a baseline numerical mismatch rejects initial task validation. Candidate correctness is always required. |
-| `baseline.diagnostic_reason` | Required for `diagnostic` | Explain why this implementation remains a useful performance reference despite its known numerical mismatch. |
-
-For `initial_candidate`, the framework freezes the original implementation and
-runs baseline actions in a separate workspace containing that snapshot.
-Candidate actions run in the working candidate workspace. Both expose the same
-relative task layout; the runner must not look outside its assigned workspace
-to find the other role. `initial_candidate` is invalid for an unimplemented
-candidate.
-
-For `provided`, the runner explicitly invokes the declared baseline, including
-its required runtime dependencies. For example, SIKL baseline scripts call the
-installed AITER package; the materialized `aiter_source/` tree is explanatory
-source. Record the actual runtime version and dispatch used. Avoid a source
-copy that shadows the installed package on Python's import path.
-
-Reference code, input generators, tolerances, and comparison functions remain
-protected task files. They are not editable candidate dependencies. State the
-allowed dependency policy in the task instructions and enforce it in the
-harness; do not put a family-specific numerical tolerance in the common schema.
-
-### Evaluation commands and timeouts
-
-| Field | Type/default | Meaning |
-| --- | --- | --- |
-| `evaluation.runner` | Nonempty argv list | Common command prefix; the framework appends the role/action arguments in the next section. |
-| `evaluation.workloads` | Optional relative file path | Case data consumed by the runner. Existing JSON/JSONL data can stay in its current format. Omit when the runner constructs its cases. |
-| `evaluation.timeout_s` | Positive integer, default `3600` | Total deadline for each action, including all commands in that action. |
-| `evaluation.task` | Optional action mapping | Overrides for `validate-task`: `commands` and/or `timeout_s`. |
-| `evaluation.baseline.<action>` | Optional action mapping | Overrides for baseline `compile`, `correctness`, or `performance`. |
-| `evaluation.candidate.<action>` | Optional action mapping | Overrides for candidate `compile`, `correctness`, or `performance`. |
-
-Each `commands` value is a nonempty list of argv lists. An override replaces the
-runner invocation for that action; role/action arguments are not appended to an
-override. Commands execute sequentially and stop on the first failure. An
-omitted timeout inherits `evaluation.timeout_s`. A timeout-only override still
-uses the runner. Without a runner, all seven actions require explicit commands.
-
-```yaml
-evaluation:
-  runner: [python3, scripts/evaluate.py]
-  timeout_s: 3600
-  candidate:
-    compile:
-      commands:
-        - [python3, scripts/build_candidate.py]
-      timeout_s: 600
+```python
+def to_kernel_layout(case, inputs):
+    inputs = dict(inputs)
+    inputs["w"] = preshuffle(inputs["w"])
+    return inputs
 ```
 
-Commands run with the workspace root as their working directory. V2 argv lists
-are not shell command strings: pipes, redirects, and environment setup belong in
-an explicit task-local wrapper when needed. A zero exit code means that action
-succeeded; failures must exit nonzero. Missing required commands, timeouts,
-malformed results, and stale result files are errors, not implicit skips.
+The reference receives the logical inputs; baseline and candidate receive the
+kernel-facing inputs. Declared shapes describe the kernel-facing tensors. A
+layout transform cannot change a mutable input. Activation preparation belongs
+in the kernel and is timed.
 
-### Workspace, platform, tools, and exports
+### Outputs and mutable inputs
 
-These optional fields use the same schema for small isolated tasks and larger
-image-backed tasks. Declared pinned Git sources remain an acquisition option;
-the unmaintained `tasks/repository` suite has been removed.
+The evaluator allocates every output from its declaration and poisons it (NaN
+for floating dtypes, random bytes otherwise) before every call. An operator that
+updates state in place (a KV-cache write) declares that input in `mutable`; its
+final value is checked like an output, and the evaluator restores its initial
+value before every call.
 
-| Field | Meaning |
-| --- | --- |
-| `workspace.sources` | List of declared source acquisitions. An image source has `kind: image`, `image_path`, `destination`, and optional `exclude`. A Git source has `kind: git`, `url`, immutable `revision`, and `destination`. |
-| `workspace.setup` | Ordered list of argv lists, run after materialization and before baseline capture. Setup must be repeatable and must not be silently delegated to an agent. |
-| `workspace.timeout_s` | Positive integer, default `3600`, bounding source materialization and setup together. A timeout aborts setup before baseline capture. |
-| `platform_support` | `required_arch` accepts one exact architecture string or a nonempty list of alternatives; `status` defaults to `active` and also accepts `skip`. A skipped task must provide a nonempty `skip_reason`. Omission declares no architecture restriction; it does not prove sanitizer support. |
-| `evaluation_profile` | Optional analysis-tool profile overrides when inference from candidate language, paths, and artifact kind is insufficient. See the tool guide for supported keys. |
-| `evaluation_tools` | Optional task-side tool commands/options. Only the run config enables tools and sets their policy/runtime. |
-| `exports` | Optional list of `{format, output, command, timeout_s}` objects. `command` is an argv list, `output` is a relative artifact path, and `timeout_s` defaults to `60`. |
+### Comparison
 
-For example, `required_arch: [gfx942, gfx950]` permits either architecture;
-`required_arch: gfx950` remains valid for a single architecture. Empty lists,
-duplicate names, and wildcards are invalid. Main scheduling, quality-loop
-planning, and actual runtime binding use the same rule. Supporting another
-architecture requires real task validation there with the full workload and
-numerical gates; merely adding its name is not qualification. Record the tested
-source, image, and GPU separately for each architecture. An existing baseline
-session cannot resume on a different GPU architecture or runtime, even when both
-architectures are allowed by the task.
+`compare` names every output and mutable input:
 
-A Git revision must be a pinned commit, not a floating branch. Image source
-paths name locations in the selected runtime image; the framework records that
-image's immutable identity and materialized source evidence. An image source
-path may be absolute **inside the image**. This is an acquisition exception,
-not permission to use absolute checkout/host paths in evaluation commands.
-Each source `exclude` is a path relative to that source root, including its
-descendants. It is not a basename pattern: `jit` does not exclude `aiter/jit`.
-Exclude disposable runtime caches explicitly while retaining required source.
+| Bound | Parameters | Meaning |
+| --- | --- | --- |
+| `baseline_relative` (default) | `k` (2), `max_violation_fraction` (0), `baseline_min_sqnr_db` (25) | Each element within `k ×` the baseline's own error (or its per-row RMS over the elements that are nonzero in the reference or the baseline; rows with fewer than 8 such elements use the whole output's RMS) plus one output rounding; the mean error must be unbiased relative to the baseline's. |
+| `exact` | | Bitwise equality. Required for integer, boolean and packed outputs. |
+| `tolerance` | `atol`, `rtol`, `max_violation_fraction` | Fixed tolerances. |
+| `sqnr` | `min_db` | Signal-to-noise ratio of the whole output. |
+| `output_rounding` | `max_violation_fraction` | Within twice the output dtype's rounding of the reference. |
 
-All other task paths are relative to the task workspace root after setup.
-Reject absolute paths, traversal, and symlink resolutions escaping that root.
-Keep directory components when installing generated candidates: a declaration
-of `source/kernel.py` must not be installed as root-level `kernel.py`.
-An invalid submitted path must still produce a failed evaluation report. The
-framework records `candidate_source_error` instead of following an escaping
-path to hash it; that submission cannot receive acceptance or a speedup.
-Repository destinations also count toward paths: `upstream/src/kernel.hip`
-always refers to that path from the workspace root, never an implicitly changed
-repository working directory. Source destinations must not overwrite task
-configuration or harness files.
+Use the default unless the operator needs another rule; the QA auditor reports
+every departure as a warning that README.md must justify. `k` stays within
+`[1, 8]`; `max_violation_fraction` within `[0, 0.01]`. Tune them per task, never
+globally. Elements admitted by `max_violation_fraction` must still lie within 16 times the bound, so it absorbs accumulation-order outliers, not skipped or zeroed elements. `element_order: any_in_full_rows` compares sorted rows (top-k ids with
+ties).
 
-Exports run through common framework post-processing after final evaluation.
-`ARENA_FINAL_RESULT_PATH` retains its existing name and points to the
-framework-owned **evaluation result before exports**, not the final delivery
-report. Exporters can read compilation/correctness/tool gates, workload and
-timing consistency, case counts, timings, and scores. They must not require
-`candidate_accepted`, `exports`, or `delivery_status`: those fields are written
-after all exports finish and candidate/protected-source checks are repeated.
-Exporters do not supply correctness or scores. Each exporter documents the status
-it accepts, its required inputs, and output format. Failed candidates must not be exported
-as accepted solutions. Preserve failure reports as diagnostics. Exporters must
-honor the configured candidate/workload paths instead of assuming `kernel.py`
-and `workload.json`. Export failures are reported separately from numerical
-correctness. An SIKL solution export must work for any supported optimizing
-agent, not only Forge.
+Under `baseline_relative`, the baseline itself must pass a sanity check: no
+non-finite or unwritten element, and SQNR against the reference of at least
+`baseline_min_sqnr_db` (default 25 dB). Without it a wrong baseline would loosen
+every candidate's bound.
 
-## Command and result protocol
+## `reference.py`
 
-The common runner is a CLI contract, not a required Python module interface.
-Task scripts may delegate to pytest, CMake, native executables, or existing
-harnesses. No particular filename is required.
+```python
+import torch
 
-The framework sets `ARENA_EVAL_PHASE` to `task_validation` or
-`candidate_evaluation`. During task validation, implemented candidates are
-checked in their declared initial language/interface; final evaluation enforces
-the requested target language/interface. This phase is framework-controlled,
-not inferred from an agent's success message or whether a target file exists.
-An agent invoking checks during optimization uses `candidate_evaluation`.
+def reference(*, x, weight, epsilon):
+    x64 = x.double()
+    return x64 * torch.rsqrt(x64.square().mean(-1, keepdim=True) + epsilon) * weight.double()
+```
 
-| Arguments appended to `evaluation.runner` | Responsibility |
-| --- | --- |
-| `validate-task` | Check task data, references, dependency availability, candidate initial state, and enumerate the complete case manifest. It does not certify an optimized candidate. |
-| `baseline compile` | Build/syntax-check the selected baseline and verify the executable dependency path. |
-| `baseline correctness` | Compare baseline outputs against the task's reference using the task's rule. |
-| `baseline performance` | Measure the selected baseline over the declared cases. |
-| `candidate compile` | Actually build or syntax-check candidate targets; prepare required JIT/build validation. |
-| `candidate correctness` | Execute the candidate and compare against the task's reference for all declared correctness cases. |
-| `candidate performance` | Measure the candidate's actual timed execution over the declared performance cases. |
+- Keyword arguments are the logical inputs. Return the outputs, then the mutable
+  inputs' final values: one tensor, a tuple in that order, or a dict by name.
+- Compute in float64 (or float32 where float64 is impractical) with PyTorch only.
+  Import only `torch`, the standard library math helpers and other task-root
+  helper files; never the baseline, a kernel language or a production package.
+- Implement exact semantics for quantized outputs: the same rounding mode,
+  scale computation and packing as the operator.
 
-The same input definitions and timing policy apply to baseline and candidate.
-Correctness and performance can have different documented case sets, but every
-performance case must have associated correctness coverage. Baseline and
-candidate performance manifests must match exactly by ID, shape, dtype, and
-semantic parameters. The framework must obtain the manifest independently of
-the candidate's claimed performance rows.
+## `baseline/`
 
-### Structured command results
+The baseline is the code a candidate must beat. **All of it lives in the task.**
 
-Alongside human-readable logs, each invocation must emit exactly one stdout
-line beginning with `ARENA_EVAL_RESULT=` followed by a JSON object. This envelope
-is parsed by the v2 executor; legacy parsers do not accept it. Its fields are:
+- Vendor it from its production source (AITER, vLLM, SGLang, FlyDSL, ...) and
+  record `provenance`: source, a fixed revision, path(s), license and your
+  modifications. Keep the upstream copyright header. Add `baseline/LICENSE` when
+  the license is not Apache-2.0.
+- It may not import a production package (`aiter`, `vllm`, `sglang`,
+  `sgl_kernel`, ...), call `torch.ops`, load a binary, read absolute paths or
+  spawn processes.
+- Assembly (`.co`) and Composable Kernel baselines cannot be vendored as source.
+  Write a functionally equivalent Triton baseline instead and say so in README.md.
+  A vendored or rewritten baseline may be slower than the production function;
+  it is still the task's baseline.
+- Production dispatch logic and tuned configuration tables are part of the
+  baseline when they are Python; copy them as is.
+- It implements the same entry point as a candidate (below), in its language.
 
-| Field | Meaning |
-| --- | --- |
-| `protocol` | Required string `arena-eval-v1`; distinct from task/report schema versions. |
-| `role` | `task`, `baseline`, or `candidate`; must match the invocation. |
-| `action` | `validate-task`, `compile`, `correctness`, or `performance`; must match the invocation. |
-| `status` | `PASS` or `FAIL`. Only the framework decides lifecycle skips and diagnostic acceptance. |
-| `cases` | Array of case records. `validate-task` enumerates the manifest with each case's `checks` list (`correctness`, `performance`, or both). Correctness/performance records cover their declared manifest. A whole-build compilation check may use an empty array. |
-| `reason` | Required explanation for a failure; optional on success. |
-| `failure_kind` | Optional failure classification. A diagnostic baseline numerical failure must use `numerical_mismatch` at the report level and on every failed case. Missing or other classifications cannot use that exception. |
-| `metadata` | Optional object with task-specific diagnostic evidence; it cannot override status, identity, coverage, or timing checks. |
+When the run's target language equals the baseline's, the candidate starts as a
+copy of the baseline, so the baseline must also satisfy the candidate rules
+below. The QA auditor checks this.
 
-Each case uses a stable `test_case_id` and declared `shape`, `dtype`, and
-`params` as applicable. Correctness records include `status` and task-defined
-`metrics`; no universal error formula is imposed. Performance records include
-`status`, finite positive `execution_time_ms`, and `benchmark_method` using the
-shared methodology's supported device-timing modes. Additional task metrics
-belong in `metrics`/`metadata`, not new top-level acceptance switches.
-
-For example, after the prefix a candidate performance command could emit this
-object on a single line:
+## `workloads.json`
 
 ```json
 {
-  "protocol": "arena-eval-v1",
-  "role": "candidate",
-  "action": "performance",
-  "status": "PASS",
-  "cases": [{
-    "test_case_id": "m16_n32_k6144",
-    "shape": [16, 32, 6144],
-    "dtype": "bfloat16",
-    "params": {"transpose_b": true},
-    "status": "PASS",
-    "execution_time_ms": 0.012,
-    "benchmark_method": "cuda_graph"
-  }]
+  "description": "Prefill token counts of ... ; decode batches are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t2048", "axes": {"n_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"}
+  ]
 }
 ```
 
-This is an illustrative result, not a measured latency. Its outer status cannot
-override a failed case, missing/duplicate case, nonzero exit, timeout, malformed
-JSON, or invalid timing. For a multi-command action, each command emits its own
-matching envelope; the framework requires all commands to pass and merges
-case records, rejecting duplicates. Wrappers around legacy harnesses translate
-fresh legacy output to this envelope and preserve failure exit codes.
+Each case names every `var` axis, optional `scalars`, its `checks` (`[correctness]`
+or `[correctness, performance]`) and its production `source`. Take workloads
+from real production use; the framework records the source but cannot verify
+it. The framework enforces, when it loads the task:
 
-The framework records config/source identities, actual environment, action,
-command, exit status, and tool evidence. Commands never author or overwrite
-`task_result.yaml` or `validation_report.yaml`. Scores and speedup aggregation
-remain in the centralized evaluator; defining v2 must not silently change the
-existing scoring formula. See the [result reference](../reference/api-reference.md#result-schema-task_resultyaml)
-and [benchmark methodology](../reference/benchmark-methodology.md).
+- **4 to 16 performance cases**, whose var-axis size (the product of the var
+  axes) spans at least **100×**. One or two shapes let an agent tune for them
+  alone; too many lengthen every timing round.
+- **Boundary correctness cases**, three distinct ones: a var axis at its
+  declared minimum, a var axis that is not a power of two, and a var axis that
+  is not a multiple of 16 (in units of its `multiple_of`) and larger than 16.
+  Correctness cases have no upper limit.
+- Unique case IDs and axis/scalar combinations, and values inside the declared
+  domain.
 
-The `validate-task` report must include `metadata.candidate_state` with
-`implemented` or `unimplemented`, determined by checking the actual initial
-implementation files and their interface. The framework rejects missing or
-conflicting state evidence and a mismatch with the configuration declaration.
-This is task-check evidence, not an agent-controlled permission to skip final
-evaluation. The validator also audits the state check itself.
+The QA auditor additionally requires every performance case to take the
+baseline **at least 10 µs**: below that, launch overhead dominates the
+measurement. Real shapes that run faster (decode with M=1) stay correctness-only.
+A task whose production shapes are all below 10 µs is not a kernel task.
 
-During final evaluation, successful compilation and correctness evidence bind
-to the same candidate source content subsequently measured. A source change
-invalidates earlier checks and requires compilation/correctness again. Command
-logs and failure evidence are retained outside the candidate workspace.
+## The candidate interface
 
-## Initial task validation and final candidate evaluation
+Every implementation, in every language, is one call:
 
-These are separate lifecycle stages for every task family.
+```python
+def run(*, x, weight, epsilon, out) -> None: ...
+```
 
-| Stage | Implemented initial candidate | Unimplemented initial candidate |
+It takes the inputs, then the outputs, by keyword; writes every output (and every
+mutable input) in place; and returns `None`.
+
+| Language | Entry | Build |
 | --- | --- | --- |
-| Initial task validation | Validate the existing candidate as its declared initial language, plus baseline, reference, inputs, and harness. | Verify the declared generation state; validate baseline, reference, inputs, and harness. Candidate symbols/build/correctness may be deferred by the framework. |
-| Final candidate evaluation | Require the requested final language, real entrypoints, compilation, correctness, and performance. | The same requirements; no generation-state exemption remains. |
+| Triton, Gluon, FlyDSL (and TileLang baselines) | `kernel.py::run` | Imported as one flat package; helper `.py` files import relatively (`from .helpers import ...`). |
+| HIP | `kernel.hip`, registering `run` | Built with `torch.utils.cpp_extension` for the GPU's architecture. |
 
-`initial_state` is an author declaration, not a perpetual bypass. The validator
-must confirm it against the actual starting files and entrypoints. A missing
-candidate may be a declared generation target; missing baseline/reference
-files are not. Once a candidate is submitted, its commands must execute that
-candidate and must fail if it is absent or incomplete. They must not silently
-fall back to the baseline.
+A HIP implementation registers exactly one op whose arguments are the call keys
+and whose written tensors are `Tensor(a!)`:
 
-With `baseline.correctness_policy: diagnostic`, a baseline correctness command
-still reports the real numerical mismatch and exits nonzero. The framework
-may accept that specifically identified mismatch during initial validation and
-must preserve it in the finalized report. Compilation failures, crashes,
-missing cases, nonfinite outputs where finite outputs are required, and
-unavailable dependencies are not covered by this policy. Candidate correctness
-always uses the full task rule. Establish evidence that a valid candidate can
-satisfy the task; baseline executability alone does not establish feasibility.
-
-The deterministic validator/report normalizer derives lifecycle decisions from
-the captured session evidence. A verified empty starting candidate uses
-`candidate_unimplemented` in the version-4 report. The model reviews task
-semantics and writes `validation_report.draft.yaml`; the framework verifies its
-request/evidence identity and writes the official report. A new prompt-only
-`SKIP` reason is insufficient.
-
-Session state, the original harness boundary and action evidence are retained
-outside the candidate workspace. Resume verifies that state and preserves the
-original baseline; it does not capture a modified candidate as a fresh baseline.
-Completion queries are read-only. Extra files matching protected harness patterns
-make the query return incomplete and remain available for inspection. Actual
-evaluation retains its existing logged cleanup of agent-added harness files.
-Optimization completion records bind the final report to the delivered candidate.
-An agent CLI failure is recorded independently, and any retained candidate still
-receives the ordinary final checks. Export failures remain separate from numeric
-scores and make the delivery incomplete.
-Run-level text, CSV, JSON and dashboard summaries retain `candidate_accepted`
-and `delivery_status` separately from numerical correctness, timing and scores.
-Acceptance and delivery have independent counts; missing fields in historical
-reports remain unknown/N/A rather than being inferred from a positive score.
-An export that invalidates the delivered candidate is shown as `NOT_ACCEPTED`,
-while an accepted candidate with a failed export is shown as `INCOMPLETE`.
-
-## Benchmark and edit-boundary contracts
-
-- Inputs, references, expected outputs, tolerances, case sets, and timing policy
-  are protected from optimization agents. Implementation changes cannot alter
-  the acceptance rule.
-- Preserve equivalent work, output allocation, scratch preparation, state
-  restoration, and synchronization boundaries for baseline and candidate.
-  Document what runs inside the timed invocation and what is prepared once.
-- Verify the actual timed/replayed path according to the task's numerical
-  contract. Output finiteness or a changed output alone does not establish that
-  the operator was computed correctly. A production baseline diagnostic must
-  not relax candidate replay correctness.
-- Keep sanitized builds and their timing separate from official scoring builds.
-  Associate each tool result with the actual candidate and covered cases/kernels.
-- Use canonical timing helpers from `src/tools/perf/`; do not hand-edit committed
-  helper stubs or `AKA-GENERATED` regions. See the
-  [performance helper instructions](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/tools/perf/README.md).
-- Use a shared path/edit-boundary interpretation across the validator, prompt
-  builder, harness guard, and agent installation path. A policy about whether a
-  boundary violation stops a run is separate from declaring that boundary;
-  schema migration does not silently change that run policy.
-
-## Agent contract
-
-Tasks must not import `agents/`, depend on one agent's prompt format, require
-agent credentials, or special-case a model/provider. Task-local evaluation code
-must remain usable after materialization without importing Arena's `src/` tree;
-framework helpers are materialized through the existing shared mechanism.
-
-Agents receive the configured workspace, editable paths, instructions, target
-language/entrypoints, evaluation commands, and read-only baseline material.
-They submit changes under the declared boundary. The framework independently
-validates and scores the resulting files, then performs configured exports.
-Agent logs and search histories are supplementary artifacts.
-
-Scratch repositories, generated drivers, search budgets, and PORT/OPTIMIZE
-phases are agent-internal choices. An agent that uses scratch must install all
-candidate files back to their configured relative destinations before final
-evaluation. It must not require tasks to ship `scripts/forge_driver.py` or
-infer builder names from operator identity. A unified Forge integration can
-choose a workflow from actual candidate state and language/backend capabilities:
-an empty candidate needs generation even when its target language matches the
-baseline's; an existing candidate may be optimized or translated. The current
-[Forge integration](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md) exposes one agent identity and
-adapts its internal workflows to this contract. Its supported conversions and
-initialization paths require their own runtime qualification; schema support
-alone does not establish an engine capability.
-
-## Optional sanitizers and evaluation tools
-
-After the agent finishes, the framework fixes the candidate version for final
-evaluation. Tools run after ordinary candidate compilation/correctness and
-before official performance measurement, using isolated tool environments and
-the same candidate identity. Their instrumented builds never supply official
-performance timings.
-
-Run config decides what is enabled:
-
-```yaml
-evaluation_tools:
-  enabled: [gpu_asan]
-  policy: advisory
-  timeout_s: 600
+```cpp
+#define TORCH_LIBRARY_EXPAND(ns, m) TORCH_LIBRARY(ns, m)
+TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m) {
+  m.def("run(Tensor x, Tensor weight, float epsilon, Tensor(a!) out) -> ()", &run);
+}
 ```
 
-Task config supplies an optional dedicated invocation:
+Each run workspace's `_aka_eval/CANDIDATE.md` states the exact signature.
 
-```yaml
-evaluation_tools:
-  tools:
-    gpu_asan:
-      timeout_s: 300
-      options:
-        command: [python3, scripts/check_memory.py]
+### Candidate rules
+
+All computation runs in kernels written in the target language. The evaluator
+enforces:
+
+- **Static rules.** Imports are limited to the language's packages, `torch` and
+  a few standard modules; no other kernel language, production package, task,
+  reference, baseline or evaluator module. No `eval`/`exec`, reflection, frame
+  access, module mutation, `global`, I/O, printing, synchronization, host round
+  trips (`.item()`, `.cpu()`), randomness or global PyTorch state. HIP sources
+  include only HIP, ATen/c10, `torch/library.h`, standard and own headers, call
+  no BLAS/MIOpen/ATen compute and keep no mutable static state.
+- **Runtime rules.** During every candidate call, PyTorch may only allocate,
+  take views and make same-dtype copies; arithmetic, reductions, dtype
+  conversions and library operators raise. Triton, Gluon and FlyDSL candidates
+  must launch at least one of their own kernels per call, in their language
+  (a Triton target may not launch Gluon kernels and vice versa).
+- **Timing.** Each call is captured into a CUDA graph and timed per replay after
+  a 1 GiB cache flush. Launches must be capturable on the current stream.
+
+These checks are task-contract enforcement, not a security sandbox.
+
+## Evaluation
+
+The framework writes `_aka_eval/` (the evaluator), `config.yaml` (its internal
+execution record) and `solution/` into each workspace. The seven actions are:
+
+```sh
+python3 -m _aka_eval.evaluate validate-task
+python3 -m _aka_eval.evaluate baseline {compile|correctness|performance}
+python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
 ```
 
-The command must actually build/instrument and exercise the candidate and emit
-the selected tool's required evidence. Tool commands use the existing
-plugin-specific protocol, not the ordinary `ARENA_EVAL_RESULT` envelope. A
-successful script exit alone does not prove instrumentation or coverage.
+- **Correctness** runs every case twice, with two framework seeds, on the same
+  buffers: the second call loads new inputs into the first call's storage, so a
+  cached or stale result fails. Read-only inputs must be unchanged afterwards.
+- **Performance** times each performance case with
+  `benchmark_cuda_graph_cold_cache_samples` (10 warmups, 100 samples, median),
+  alternating the two input draws between samples and checking every timed
+  sample's outputs.
+- **Scoring.** The per-case speedup is baseline time over candidate time; the
+  task's speedup is their geometric mean. Any failed correctness case scores 0.
+  The final evaluation remeasures the baseline next to the candidate.
 
-| Concern | Required distinction |
-| --- | --- |
-| Global memory | Actual memory-access checking requires a supported instrumented artifact/runtime. Loading a library is not evidence that its kernels were checked. |
-| Concurrency | Record which kernels, launches, and cases were analyzed. One checked dispatch is not full coverage of a multi-kernel operator. |
-| Floating point | Tool-specific semantic checks supplement the task's numerical correctness rule; they do not replace it with a universal tolerance. |
-
-Under `advisory`, findings and incomplete checks remain visible while performance
-can continue. Under `required`, every selected applicable tool must be ready,
-complete, and clean to permit performance. `not_applicable`, unsupported,
-unavailable runtime, missing adapter, and a detected bug remain distinguishable.
-A tool's policy does not rewrite ordinary numerical correctness.
-
-A task may register adapters for multiple known tools; only the run-enabled
-subset executes. Disabled known adapters remain dormant. Unknown tool names
-or malformed options must still be rejected. Task config cannot enable tools,
-change run policy/runtime identities, weaken evidence requirements, or increase
-the run-level timeout. The common merger validates registered adapters even
-when disabled and includes only the run-enabled subset in the execution plan.
-
-Infer the common profile from the candidate declaration. Keep explicit
-`evaluation_profile` overrides only where necessary, and verify capabilities
-against actual builds/runtime evidence. No schema can create missing FlyDSL
-instrumentation support. Consult the maintained
-[evaluation-tool guide](use-evaluation-tools.md) for current supported
-language/GPU paths, attestation formats, runtime isolation, and limitations.
-
-## More task examples
-
-These examples show v2 authoring patterns, not executable migrations. Entrypoint
-names and script paths must be adapted to the real task. Optional blocks appear
-only when the task needs them.
-
-### Generate HIP from a PyTorch reference
+## Run configuration
 
 ```yaml
-schema_version: 2
-description: Implement the supplied PyTorch GELU semantics in HIP.
-instructions: [docs/operator.md]
-candidate:
-  language: hip
-  initial_state: unimplemented
-  editable: [hip/kernel.hip]
-baseline:
-  kind: provided
-  language: pytorch
-  source_files: [pytorch_code_module/reference.py]
-evaluation:
-  runner: [python3, scripts/evaluate.py]
-```
-
-`baseline` actions execute the provided PyTorch implementation; `candidate`
-actions execute the HIP implementation. The runner may reuse existing compile,
-correctness, and timing scripts behind these role-specific commands.
-
-### Translate an existing Triton implementation to FlyDSL
-
-```yaml
-schema_version: 2
-description: Replace the Triton implementation with an equivalent FlyDSL implementation.
-candidate:
-  language: flydsl
-  initial_language: triton
-  editable: [source/kernel.py]
-baseline:
-  kind: initial_candidate
-evaluation:
-  runner: [python3, scripts/evaluate.py]
-```
-
-The frozen baseline remains Triton. Initial validation must not require the
-unchanged Triton source to be FlyDSL; final candidate validation must enforce
-the target language. If the target is instead a separate empty file, use
-`unimplemented` plus a `provided` baseline.
-
-### Reimplement a production SIKL GEMM
-
-```yaml
-schema_version: 2
-description: Implement BF16 C = A @ B.T in FlyDSL for every declared M case.
-kernel_identity:
-  logical_operator: gemm_a16w16_nt_n32_k6144
-  source_owner: aiter
-workspace:
-  sources:
-    - kind: image
-      image_path: /sgl-workspace/aiter/aiter
-      destination: aiter_source/aiter
-      exclude: [jit/build, jit/flydsl_cache, __pycache__]
-platform_support:
-  required_arch: gfx950
-  status: active
-candidate:
-  language: flydsl
-  initial_state: unimplemented
-  editable: [kernel.py]
-  entrypoints:
-    - {file: kernel.py, kind: builder, symbol: build_gemm_a16w16_nt_n32_k6144_module}
-baseline:
-  kind: provided
-  source_files: [aiter_source/aiter/tuned_gemm.py]
-evaluation:
-  runner: [python3, scripts/evaluate.py]
-  workloads: workload.json
-```
-
-The copied AITER package provides source context. Baseline actions use the
-installed package in the pinned runtime; they do not import this copy. Preserve
-the package's Python JIT sources while excluding generated build/cache trees.
-Copying the whole upstream repository is unnecessary for this task contract.
-
-The existing SIKL suite uses two package layouts, each covering its declared
-case set. The builder layout above (root `workload.json`, `scripts/evaluate.py`)
-holds 22 BF16 GEMM tasks, four MXFP4 MoE tasks, one paged top-k task and three
-sparse flash MLA tasks. The functional layout (`scripts/workload.json` embedding
-the bundle definition and rows, `scripts/task_runner.py`) holds 15
-blockwise-scaled FP8 GEMM tasks and one fused mHC post→pre task; one runner copy
-serves all of them, reading the operands held across timed calls from the
-workload policy's `persistent_inputs`. Both layouts declare an unimplemented
-FlyDSL builder in a root `kernel.py`, export accepted candidates as SIKL
-solutions, and share the same schema. A MoE runner keeps its routing,
-quantization, reference, comparison, and multi-kernel timing logic in task
-files; the top-k runner its declared valid lengths, routing-plan checks and
-destination-passing output, and the MLA runner its per-pool lengths, index
-patterns and per-shape base draws. A task whose production baseline lives in sglang
-declares `kernel_identity.source_owner: sglang` and acquires the relevant
-sglang subtrees instead of the AITER package. No family acquires a separate
-task config schema.
-
-If the production baseline has a documented numerical mismatch, explicitly add
-`correctness_policy: diagnostic` and `diagnostic_reason` under `baseline` after
-reviewing that evidence. This example does not silently enable that exception.
-The floating-point deepseek-v4-flash tasks declare it as a family policy: their reference is an
-FP32 PyTorch computation that the production baseline is not required to meet,
-and each reason adds the measured evidence where a mismatch was observed.
-The paged top-k task requires baseline correctness: integer selections, padding,
-and the ordered short-row path have no floating-point numerical exception.
-An optional common export declaration can be added to either family:
-
-```yaml
-exports:
-  - format: sikl-solution
-    output: artifacts/solution.json
-    command: [python3, scripts/export_solution.py]
-```
-
-## How to add or modify a task
-
-1. **Read the contract.** Read the status and migration sections. Use the shared
-   v2 loader, evaluator, and validator, with a task-owned runner implementing
-   every required action. A config declaration alone is not an implementation.
-2. **Define the problem.** Describe semantics, input/output interface, allowed
-   dependencies, target language, editable boundary, and whether a candidate
-   already exists. Inspect a nearby task's implementation, not just its config.
-3. **Prepare the task files.** Use one `config.yaml`; keep reference, input,
-   comparison, and harness logic in protected task-local scripts. An existing
-   layout is acceptable. Bundle data or declare pinned source/setup steps.
-4. **Declare baseline and cases.** Identify what baseline actions actually
-   execute. Establish stable case IDs, representative inputs, and a reproducible
-   manifest. Keep numerical reference and performance baseline roles explicit.
-5. **Implement the commands.** Use a common runner or explicit action overrides.
-   Existing harnesses can be wrapped. Verify failures propagate and outputs
-   satisfy the declared protocol. Do not replace real checks with text searches.
-6. **Verify evaluation quality.** Exercise a known-correct candidate and a
-   deliberately incorrect implementation in a disposable workspace. Verify the
-   actual timed path, state reset, complete case coverage, and output parsing.
-   For initial stubs, keep candidate feasibility evidence separately rather than
-   installing a solution into the committed generation target.
-7. **Add optional tooling/export.** Only declare commands that exist and support
-   their documented scope. Check them on the intended GPU/runtime. Do not turn
-   unsupported tools into clean results.
-8. **Run task validation.** Every new task or material contract/harness change
-   requires a fresh framework-finalized validator report on compatible GPU
-   hardware before submitting a PR. A CPU-only check is not GPU qualification.
-9. **Review the change.** Include relevant docs and focused regression coverage
-   for behavioral changes. Preserve user-owned workspaces/logs, and do not commit
-   generated artifacts or cloned runtime dependencies. Keep validation reports,
-   build output, campaign summaries, and one-off run configs out of the task
-   package. Follow the [commit checklist](https://github.com/AMD-AGI/AgentKernelArena/blob/main/CONTRIBUTING.md#repository-cleanliness-before-committing)
-   and retain qualification evidence separately from the versioned source.
-
-Example validator run config (replace the selector and choose matching hardware):
-
-```yaml
-agent:
-  template: task_validator
-tasks:
-  - <task-path-relative-to-tasks>
+agent: {template: claude_code}
 target_gpu_model: MI355X
-log_directory: logs
-workspace_directory_prefix: workspace
+target_language: triton            # triton | gluon | hip | flydsl
+tasks:
+  - triton/normalization                          # Triton-baseline normalization tasks
+  - "*/attention"                                 # attention tasks of every baseline language
+  - {path: triton/gemm/gemm_a8w8, target_language: hip}   # per-task override
 ```
 
-```bash
-make docker-run CONFIG=<validator-config>
-```
+A schema-v3 task cannot run without a target language. A task selected twice
+with different languages is rejected. The e2e serving tasks ignore
+`target_language`.
 
-Require `validation_report.yaml` finalized by the framework with
-`overall_status: PASS`. WARN requires an explicit maintainer-approved
-justification and is not a clean pass. FAIL, timeout, partial/stale reports, and
-architecture skips do not satisfy the gate. See the
-[validator guide](task-validator.md) for current execution and report details.
-Documentation-only changes that do not alter task code/configuration are checked
-as documentation; they do not qualify any task on GPU.
+The candidate starts as a copy of the baseline when the target language equals
+the baseline's, and otherwise as an unimplemented template with the baseline as
+read-only reference.
 
-## Serving measurement extension
+Language support by architecture:
 
-An e2e task uses the same seven schema-v2 actions and `arena-eval-v1` envelope.
-Declare `evaluation.measurement` with `kind: serving`, a relative `runtime_lock`,
-3–100 fixed `pairs`, an optional `minimum_speedup_ratio` (finite and at least 1),
-and optionally a positive `max_p99_tpot_ms`. The gain threshold caps positive
-ratios below that cutoff at 1.0 for scoring while preserving raw measurements. The host-owned
-runtime reconstructs each action in a fresh pinned container. Only this declared
-measurement accepts `serving_wall_clock`; kernel tasks retain device timing.
-The model-wide serving adapter uses `candidate.language: gpu` to allow the
-implementation backends available in its pinned image, and an editable source
-tree with a compute-replacement manifest. This does not grant permission to
-change runtime settings or the protected harness. A task that requires a specific
-backend should continue to declare that backend explicitly.
-See [e2e task setup, budget and evidence requirements](e2e-kernel-tasks.md).
-Imported benchmark YAML without a task `config.yaml` is catalog data and is not
-an executable or qualified task.
+| Language | MI355X (gfx950) | Other architectures |
+| --- | --- | --- |
+| Triton, Gluon, HIP, FlyDSL | Verified | Implemented; not verified. Report problems with the failing configuration. |
 
-A serving recipe may additionally declare a relative `measurement.recipe`
-descriptor. It still has its own schema-v2 task directory, implementation
-boundary and protected original workload. Before starting the agent, the
-host-owned Docker runner combines it with the run config's explicit
-`serving_runtime.bindings` entry and prepares a complete immutable package through
-the shared adapter. The prepared package replaces the recipe directory only in
-the container view, read-only; it does not modify committed tasks. Its evaluator
-and inputs are task-local and self-contained. An unresolved recipe is never a
-passing task or an optimization-time setup action. The runtime lock and recipe
-descriptor must be outside editable paths. Task qualification applies to the
-exact prepared model/image/hardware binding, not merely the recipe declaration.
+A language whose toolchain is missing fails the run before it starts.
 
-## Migration
+## Quality assurance
 
-### Current runtime versus the selected contract
+Every new or changed task needs a framework-finalized `qa_report.yaml` with
+`status: PASS` from the QA auditor on MI355X before its PR. See
+[QA auditor](qa-auditor.md) for the rubric. In short: findings are itemized;
+any **blocking** finding fails the task; warnings never block but carry a reason
+and a fix.
 
-Orchestration selects the v2 path by `schema_version: 2`. That path uses
-`TaskSpec`, bounded materialization, `TaskSession`, `ARENA_EVAL_RESULT`, the
-shared evaluator and captured-evidence validator. All retained tasks
-have migrated. Compatibility paths for old workspaces and external legacy
-configs still understand `compile_command`/`correctness_command` and their
-existing timing formats; they are not a second schema for new tasks.
-Integration tests do not qualify Forge/GEAK workflows, SIKL GPU numerical
-behavior, or optional GPU tools; those require their own runtime evidence.
+## Writing a task
 
-When converting an external legacy task, inspect its working commands and
-implementation. Legacy command fields are lists of shell command **strings**,
-unlike v2 lists of argv lists. Do not mechanically split a shell string on
-whitespace; wrap existing shell behavior or translate it deliberately. The old
-validator's `torch2hip` placeholder exception belongs only to legacy reports.
-V2 uses the same initial-state lifecycle for every task family.
-
-### Mapping existing tasks into v2
-
-| Existing field/behavior | V2 destination or migration action |
-| --- | --- |
-| `task_type`, `repository_language` | Explicit candidate language, initial state/language, and workspace source declarations. Existing directory names/selectors may remain organizational labels. |
-| `source_file_path`, `target_file_path`, `editable_sources` | Explicit `candidate.editable` and, where applicable, `candidate.entrypoints`. Inspect roles: a PyTorch source file can be a reference while the HIP target file is the actual candidate. |
-| `target_kernel_functions` | Explicit entrypoint symbols and/or symbol-scoped edit boundaries. Preserve existing harness protection. |
-| `rewrite_source_file` | Read-only `baseline.source_files`; the baseline runner defines actual execution. |
-| `kernel_identity` | Retain operator/owner metadata; remove implicit builder-name derivation. |
-| `compile_command`, `correctness_command`, `performance_command` | A task-local CLI wrapper or role/action overrides with argv lists and v2 results. Preserve the original checks and timing policy. |
-| `compile_timeout`, `correctness_timeout`, `performance_timeout` | Action-specific `timeout_s` overrides; preserve intentional budgets. |
-| `repo_url`, `repo_subdir`, `image_repo_path`, `image_repo_exclude` | `workspace.sources`, with pinned revisions/image identity and workspace-relative destination-prefixed paths. |
-| `post_clone_install`, `post_clone_install_mode` | Explicit repeatable `workspace.setup`; preserve needed setup during fresh/resumed materialization. |
-| `prompt.instructions`, `prompt.cheatsheet`, `prompt.source_code` | Agent-independent description/instruction files and declared readable sources. Inspect custom source overrides; do not drop task semantics. |
-| `task_result_template` | No v2 task-authored result template. The centralized result schema remains authoritative. |
-| Forge-only driver/export behavior | Agent-internal CLI adaptation; task-neutral export commands in framework post-processing. |
-| `evaluation_profile`, `evaluation_tools` | Reuse tool contracts; infer candidate metadata from v2 and support dormant known task adapters. |
-| `platform_support` | Retain its architecture/skip meaning; a skipped task is not a validator pass. |
-
-### Runtime migration acceptance
-
-When migrating an external legacy task or extending the v2 runtime, verify the
-following together:
-
-- One shared schema/path normalization used by discovery, workspace setup,
-  prompting, edit-boundary enforcement, evaluator, validator, and agents.
-  Reject ambiguous mixed v1/v2 configs and unsupported schema versions.
-- The seven command actions, phase context, result parser, timeout semantics,
-  manifest pairing, baseline snapshots, and non-fallback candidate execution.
-- Deterministic initial-state/diagnostic policies and report normalization,
-  including target-symbol handling. Do not rely on agent prompts for exceptions.
-- Common installation/export paths that retain relative directories and do not
-  impose Forge-specific filenames or naming conventions.
-- Tool profile mapping and disabled-adapter selection with existing runtime,
-  evidence, and policy protections intact.
-- Representative coverage of an existing HIP task, PyTorch-to-HIP generation,
-  Triton-to-FlyDSL conversion, a symbol-scoped task, image tasks,
-  and both SIKL operator families. Compare before/after cases, rules, timing,
-  and scores on compatible hardware; test with more than one agent integration.
-
-Keep one authored schema for all tasks. Compatibility with historical reports
-does not justify new legacy configs or an SIKL-specific schema. Do not silently
-change task semantics or benchmark thresholds as part of field migration.
+1. Choose the operator and one scenario; collect its production shapes.
+2. Write `reference.py` in float64 PyTorch.
+3. Vendor the baseline into `baseline/` with provenance, or write a Triton
+   equivalent of an assembly/CK kernel. Wrap it in `run()`.
+4. Write `task.yaml` and `workloads.json`; add `inputs.py` if needed.
+5. Check it loads: `python3 -c "from src.task_contract import load_task_contract;
+   load_task_contract(Path('tasks/.../task.yaml'), task_id='...')"`.
+6. Run the QA auditor on MI355X (`make docker-run CONFIG=<qa config>`) until
+   `qa_report.yaml` passes.

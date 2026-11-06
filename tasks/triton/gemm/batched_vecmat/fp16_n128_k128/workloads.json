@@ -1,0 +1,18 @@
+{
+  "description": "Row counts of the rocmbench batched vector-matrix product at its N = K = 128 test shape. That shape (M = 128) runs below the 10 us timing floor, so the performance cases scale the batch of products from 1280 to 131072 rows (42 MB to 4.3 GB of b, 102x span). Smaller row counts are correctness-only.",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness"], "source": "rocmbench batched_vecmat at n=k=128, a single product"},
+    {"id": "m3", "axes": {"m": 3}, "checks": ["correctness"], "source": "rocmbench batched_vecmat at n=k=128, odd row count"},
+    {"id": "m100", "axes": {"m": 100}, "checks": ["correctness"], "source": "rocmbench batched_vecmat at n=k=128, rows not a multiple of the 16-row tile"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness"], "source": "rocmbench batched_vecmat at n=k=128, the original test_vecmat shape M=N=K=128"},
+    {"id": "m1000", "axes": {"m": 1000}, "checks": ["correctness"], "source": "rocmbench batched_vecmat at n=k=128, 1000 rows"},
+    {"id": "m1280", "axes": {"m": 1280}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 1280 rows"},
+    {"id": "m2048", "axes": {"m": 2048}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 2048 rows"},
+    {"id": "m4096", "axes": {"m": 4096}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 4096 rows"},
+    {"id": "m8192", "axes": {"m": 8192}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 8192 rows"},
+    {"id": "m16384", "axes": {"m": 16384}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 16384 rows"},
+    {"id": "m32768", "axes": {"m": 32768}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 32768 rows"},
+    {"id": "m65536", "axes": {"m": 65536}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 65536 rows"},
+    {"id": "m131072", "axes": {"m": 131072}, "checks": ["correctness", "performance"], "source": "rocmbench batched_vecmat at n=k=128, 131072 rows"}
+  ]
+}

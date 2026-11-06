@@ -1,0 +1,133 @@
+{
+ "description": "Token counts scored by a BERT-base-sized masked-language-model head (hidden 512, vocabulary 4096): the old suite's 1024 to 8192 rows extended up to 128 sequences of 512 tokens.",
+ "cases": [
+  {
+   "id": "n1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single token"
+  },
+  {
+   "id": "n3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd tiny batch"
+  },
+  {
+   "id": "n48",
+   "axes": {
+    "n_tokens": 48
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch of 48 tokens"
+  },
+  {
+   "id": "n1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned token count"
+  },
+  {
+   "id": "n512",
+   "axes": {
+    "n_tokens": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "one BERT sequence of 512 tokens"
+  },
+  {
+   "id": "n1024",
+   "axes": {
+    "n_tokens": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "old suite 64x4x4 rows"
+  },
+  {
+   "id": "n2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "old suite 128x4x4 rows"
+  },
+  {
+   "id": "n4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "old suite 256x4x4 rows"
+  },
+  {
+   "id": "n8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "old suite 512x4x4 rows"
+  },
+  {
+   "id": "n16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 32 sequences of 512 tokens"
+  },
+  {
+   "id": "n32768",
+   "axes": {
+    "n_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences of 512 tokens"
+  },
+  {
+   "id": "n65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 128 sequences of 512 tokens"
+  }
+ ]
+}

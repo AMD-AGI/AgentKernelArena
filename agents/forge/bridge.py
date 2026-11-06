@@ -91,8 +91,7 @@ def evaluation_workspace(context: TaskContext, plan: dict, engine_root: Path, ro
             yield root
         return
     candidate = bound_candidate_root(plan, engine_root)
-    installed = install_candidate(context.spec, candidate, engine_root,
-                                  reference=Path(plan["template"]))
+    installed = install_candidate(context.spec, candidate, engine_root)
     try:
         yield engine_root
     finally:

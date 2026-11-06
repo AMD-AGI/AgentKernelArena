@@ -1,0 +1,40 @@
+schema_version: 3
+description: >-
+  Gated activation of a fused gate/up projection: for each token row of 2*d values,
+  out = 0.5 * g * (1 + erf(g / sqrt(2))) applied to the first d values (g), multiplied by the last d values (up),
+  evaluated in high precision and rounded to bfloat16.
+operator:
+  name: gelu_and_mul
+  category: activation
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens in the batch.}
+    d: {kind: const, value: 4096, description: Width of each half of the input row.}
+  derived_axes:
+    two_d: 2 * d
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, two_d]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+  outputs:
+    out: {shape: [n_tokens, d], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/activation.py
+    license: MIT
+    modifications: >-
+      Gated-GELU variant of fused_silu_mul_kernel and its launch heuristics (activation
+      device functions _gelu/_gelu_tanh taken unchanged), product computed in float32 and
+      rounded once; wrapped in the arena run() interface.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

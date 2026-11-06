@@ -1,0 +1,66 @@
+schema_version: 3
+description: >-
+  3-D convolution of a float32 NCDHW clip (3 to 16 channels, 3x3x3 kernel, stride 1, no padding,
+  plus bias), softmax over the 16 output channels at every position, then two 2x2x2 stride-2
+  floor-mode max pools; float32 output of shape
+  [batch, 16, (depth - 2) // 4, (height - 2) // 4, (width - 2) // 4].
+operator:
+  name: conv3d_softmax_maxpool2
+  category: convolution
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Clips in the batch.}
+    height: {kind: var, min: 6, max: 256, description: Input frame height.}
+    width: {kind: var, min: 6, max: 256, description: Input frame width.}
+    depth: {kind: const, value: 16, description: Input frames per clip.}
+    in_channels: {kind: const, value: 3}
+    out_channels: {kind: const, value: 16}
+    kernel_size: {kind: const, value: 3}
+  derived_axes:
+    pooled_depth: (depth - kernel_size + 1) // 4
+    pooled_height: (height - kernel_size + 1) // 4
+    pooled_width: (width - kernel_size + 1) // 4
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_channels, depth, height, width]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_channels, in_channels, kernel_size, kernel_size, kernel_size]
+      dtype: float32
+      role: weight
+      description: nn.Conv3d default initialization range, 1 / sqrt(in_channels * 27).
+      distribution: {kind: uniform, low: -0.1111111111111111, high: 0.1111111111111111}
+    bias:
+      kind: tensor
+      shape: [out_channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.1111111111111111, high: 0.1111111111111111}
+  outputs:
+    out: {shape: [batch, out_channels, pooled_depth, pooled_height, pooled_width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: torch/_inductor/kernel/conv.py
+    license: BSD-3-Clause
+    notes: >-
+      Revision of the PyTorch v2.15.0 release whose Inductor conv3d_template the convolution kernel
+      follows. The operator is KernelBench level 2 problem 6 (Conv3d_Softmax_MaxPool_MaxPool).
+    modifications: >-
+      Triton rewrite of the Inductor conv3d_template implicit GEMM for this module, as standalone
+      @triton.jit kernels with the arena run() interface: the reduction runs over the flattened
+      (in_channel, kd, kh, kw) axis of the NCDHW input with IEEE float32 dot products, bias and the
+      channel softmax run in the epilogue, and the two 2x2x2 max pools run as one 4x4x4 stride-4
+      max-pool kernel.
+compare:
+  out: {bound: sqnr, min_db: 130}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

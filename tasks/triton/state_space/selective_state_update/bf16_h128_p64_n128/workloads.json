@@ -1,0 +1,122 @@
+{
+ "description": "Decode batches of a Nemotron-H style Mamba2 layer (128 heads, head dim 64, state 128, 8 groups). State traffic is 4 MB per sequence (bfloat16, read and written), so batches below about 10 are correctness-only.",
+ "cases": [
+  {
+   "id": "b1",
+   "axes": {
+    "batch": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single-sequence decode"
+  },
+  {
+   "id": "b3",
+   "axes": {
+    "batch": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "b8",
+   "axes": {
+    "batch": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small decode batch (below the timing floor)"
+  },
+  {
+   "id": "b100",
+   "axes": {
+    "batch": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode batch"
+  },
+  {
+   "id": "b10",
+   "axes": {
+    "batch": 10
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small decode batch"
+  },
+  {
+   "id": "b32",
+   "axes": {
+    "batch": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b64",
+   "axes": {
+    "batch": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b128",
+   "axes": {
+    "batch": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b256",
+   "axes": {
+    "batch": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b512",
+   "axes": {
+    "batch": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large decode batch"
+  },
+  {
+   "id": "b1024",
+   "axes": {
+    "batch": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "maximum concurrent decode sequences"
+  }
+ ]
+}

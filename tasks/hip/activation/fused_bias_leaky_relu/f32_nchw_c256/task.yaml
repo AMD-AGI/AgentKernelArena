@@ -1,0 +1,46 @@
+schema_version: 3
+description: >-
+  Fused bias, leaky ReLU and gain of a float32 NCHW feature map (StyleGAN2 FusedLeakyReLU):
+  out[n, c, h, w] = scale * leaky_relu(x[n, c, h, w] + bias[c], negative_slope).
+operator:
+  name: fused_bias_leaky_relu
+  category: activation
+interface:
+  axes:
+    n: {kind: var, min: 1, max: 256, description: Images in the batch.}
+    channels: {kind: const, value: 256, description: Feature channels.}
+    height: {kind: const, value: 128}
+    width: {kind: const, value: 128}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n, channels, height, width]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    bias:
+      kind: tensor
+      shape: [channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    negative_slope: {kind: scalar, dtype: float32, default: 0.2}
+    scale: {kind: scalar, dtype: float32, default: 1.4142135623730951}
+  outputs:
+    out: {shape: [n, channels, height, width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task FusedLeakyReLU (provided HIP baseline)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/FusedLeakyReLU/hip/hip_10190_FusedLeakyReLU_ref.hip
+    license: Apache-2.0
+    modifications: >-
+      Float32-only; pybind module and half/double variants removed; allocation moved out of the
+      launcher so the kernels write the preallocated output; registered as the run() torch op.
+compare:
+  out: {bound: sqnr, min_db: 135}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

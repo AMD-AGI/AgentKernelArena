@@ -14,7 +14,7 @@ class AgentType(Enum):
     CLAUDE_CODE = "claude_code"
     CODEX = "codex"
     DEEPSEEK_HARNESS = "deepseek_harness"
-    TASK_VALIDATOR = "task_validator"
+    QA_AUDITOR = "qa_auditor"
     GEAK = "geak"
     FORGE = "forge"
 
@@ -68,8 +68,8 @@ def load_agent_launcher(agent_type: AgentType, logger: logging.Logger) -> Callab
             from agents.codex import launch_agent  # noqa: F401
         elif agent_type == AgentType.DEEPSEEK_HARNESS:
             from agents.deepseek_harness import launch_agent  # noqa: F401
-        elif agent_type == AgentType.TASK_VALIDATOR:
-            from agents.task_validator import launch_agent  # noqa: F401
+        elif agent_type == AgentType.QA_AUDITOR:
+            from agents.qa_auditor import launch_agent  # noqa: F401
         elif agent_type == AgentType.GEAK:
             from agents.geak import launch_agent  # noqa: F401
         elif agent_type == AgentType.FORGE:
@@ -105,10 +105,10 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
     agent_name = agent_type.value
 
     # Map agents to their post-processing functions
-    if agent_type == AgentType.TASK_VALIDATOR:
-        from agents.task_validator.validation_postprocessing import validation_post_processing
-        logger.info(f"Using validation_post_processing for agent: {agent_name}")
-        return validation_post_processing
+    if agent_type == AgentType.QA_AUDITOR:
+        from agents.qa_auditor.postprocessing import audit_post_processing
+        logger.info(f"Using audit_post_processing for agent: {agent_name}")
+        return audit_post_processing
     elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.DEEPSEEK_HARNESS, AgentType.GEAK, AgentType.FORGE]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing

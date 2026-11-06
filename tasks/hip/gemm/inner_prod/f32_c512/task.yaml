@@ -1,0 +1,58 @@
+schema_version: 3
+description: >-
+  Channel-weighted inner product of an image feature vector with every pixel of a sound feature map (the
+  InnerProd head of a sound-source separation network):
+  out[b, 0, h, w] = sum_c (feat_img[b, 0, c] * scale[c]) * feat_sound[b, c, h, w] + bias, all float32,
+  over 512 channels. Equivalent to torch.bmm(feat_img * scale, feat_sound.view(B, C, H * W)) + bias.
+operator:
+  name: inner_prod
+  category: gemm
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Samples in the batch.}
+    height: {kind: var, min: 1, max: 256, description: Rows of the sound feature map.}
+    width: {kind: var, min: 1, max: 64, description: Columns of the sound feature map.}
+    channels: {kind: const, value: 512, description: Feature channels (the contracted axis).}
+  inputs:
+    feat_img:
+      kind: tensor
+      shape: [batch, 1, channels]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    feat_sound:
+      kind: tensor
+      shape: [batch, channels, height, width]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    scale:
+      kind: tensor
+      shape: [channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.0}
+    bias:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+  outputs:
+    out: {shape: [batch, 1, height, width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task InnerProd (gpumode 11709)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/InnerProd/hip/hip_11709_InnerProd_ref.hip
+    license: task-original
+    modifications: >-
+      Only the forward kernel is kept (the forward_nosum and forward_pixelwise modes removed); the host-side
+      contiguous copy, output allocation and pybind module removed; the kernel writes the preallocated
+      output; registered as the run() torch op.
+compare:
+  out: {bound: sqnr, min_db: 121.5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

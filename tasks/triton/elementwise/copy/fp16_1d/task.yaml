@@ -1,0 +1,33 @@
+schema_version: 3
+description: >-
+  Contiguous copy of a one-dimensional float16 tensor, out = x; a memory-bandwidth reference operator.
+operator:
+  name: copy
+  category: elementwise
+interface:
+  axes:
+    numel: {kind: var, min: 1, max: 1073741824, description: Number of elements.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [numel]
+      dtype: float16
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [numel], dtype: float16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: PyTorch Inductor (Triton code generated for Tensor.copy_ on a float16 1D tensor)
+    revision: unrecorded in the old task package
+    path: generated kernel
+    license: BSD-3-Clause
+    modifications: Wrapped in the arena run() interface; grid computed from the autotuned XBLOCK.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

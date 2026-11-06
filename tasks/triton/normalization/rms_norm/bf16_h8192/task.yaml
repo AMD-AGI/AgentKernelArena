@@ -1,0 +1,41 @@
+schema_version: 3
+description: >-
+  Root-mean-square normalization of each token row: out = x * rsqrt(mean(x^2) + epsilon) * weight,
+  the mean taken over the hidden axis in high precision, the result rounded to bfloat16.
+operator:
+  name: rms_norm
+  category: normalization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 8192, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: v0.11.0
+    path: vllm/model_executor/layers/batch_invariant.py
+    license: Apache-2.0
+    modifications: Wrapped in the arena run() interface writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

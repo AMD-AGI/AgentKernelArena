@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  Dynamic per-token FP8 quantization of a bfloat16 activation: each row gets the float32 scale
+  max|x| / 448 over its hidden axis and codes = float8_e4m3fn(x / scale) with round-to-nearest-even.
+  The scale is an output of shape [n_tokens, 1].
+operator:
+  name: per_token_quant_fp8
+  category: quantization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 8192, description: Quantized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    qx: {shape: [n_tokens, hidden_size], dtype: float8_e4m3fn}
+    scale: {shape: [n_tokens, 1], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/quant/quant.py, aiter/ops/triton/_triton_kernels/quant/quant.py
+    license: MIT
+    modifications: >-
+      Wrapped in the run() interface; the output allocations moved to the evaluator, and
+      tl.assume(pid > 0) was removed because program 0 violates it.
+compare:
+  qx: {bound: baseline_relative}
+  scale: {bound: tolerance, atol: 0.0, rtol: 7.5e-7}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

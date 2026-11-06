@@ -1,0 +1,41 @@
+schema_version: 3
+description: >-
+  Top-k selection over the vocabulary axis: for each row of float32 logits return the k = 8 largest values,
+  sorted in descending order, and their int64 column indices.
+operator:
+  name: topk
+  category: sorting
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 4096, description: Rows (sequences) in the batch.}
+    vocab_size: {kind: const, value: 128256, description: "Row length, the Llama-3 vocabulary size."}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, vocab_size]
+      dtype: float32
+      distribution: {kind: generator}
+    k: {kind: scalar, dtype: int32, default: 8, description: "Number of selected elements; 8 in every case."}
+  outputs:
+    out_values: {shape: [n_rows, 8], dtype: float32}
+    out_indices: {shape: [n_rows, 8], dtype: int64}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD AgentKernelArena triton2triton task geak_eval/L2/topk (from ROCm/aiter aiter/ops/triton/topk.py, FlagGems topk)
+    revision: 88771390a954c1cb0010ef795069e1370718daa7
+    path: tasks/triton2triton/geak_eval/L2/topk/kernel.py
+    license: MIT
+    modifications: >-
+      Removed the benchmark harness and logging helper imports; the one-stage and two-stage dispatchers write
+      into the preallocated outputs instead of allocating them; wrapped in the arena run() interface.
+      Chunk sizes, warp tables and the 8192-element one-stage threshold are those of the earlier arena task.
+compare:
+  out_values: {bound: exact}
+  out_indices: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

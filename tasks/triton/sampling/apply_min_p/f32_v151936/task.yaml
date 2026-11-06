@@ -1,0 +1,54 @@
+schema_version: 3
+description: >-
+  Min-p filtering of each token's logits row, in place. For a row whose request has min_p != 0,
+  every logit below max(row) + log(min_p) is set to -inf and the others are kept unchanged
+  (min-p sampling in log space). Rows whose request has min_p == 0 are not modified. The request
+  of row i is expanded_idx_mapping[i], an index into the per-request min_p table.
+operator:
+  name: apply_min_p
+  category: sampling
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 4096, description: Logits rows (tokens) of the sampling step.}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen2/Qwen3 family).}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Logits, filtered in place.
+    expanded_idx_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: permutation}
+      description: Request-state index of each row (a permutation, so every request state is used once).
+    min_p:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-request-state min_p; 0 disables the filter for that request.
+  outputs: {}
+  mutable: [logits]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/min_p.py
+    license: Apache-2.0
+    modifications: >-
+      Imports of the vLLM triton shim replaced by triton directly; a run() entry that calls
+      apply_min_p was added. The kernel is unchanged.
+compare:
+  logits: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,13 @@
+{
+  "description": "Decode batch sizes of MiniMax-Text-01 lightning-attention layers (64 heads, head size 128); the 4 MiB float32 state of every sequence is read and written once, so the smallest batches are correctness-only.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness"], "source": "single decode sequence"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "b37", "axes": {"batch": 37}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "b8", "axes": {"batch": 8}, "checks": ["correctness", "performance"], "source": "decode batch"},
+    {"id": "b24", "axes": {"batch": 24}, "checks": ["correctness", "performance"], "source": "decode batch"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "decode batch"},
+    {"id": "b200", "axes": {"batch": 200}, "checks": ["correctness", "performance"], "source": "large decode batch"},
+    {"id": "b800", "axes": {"batch": 800}, "checks": ["correctness", "performance"], "source": "large decode batch"}
+  ]
+}

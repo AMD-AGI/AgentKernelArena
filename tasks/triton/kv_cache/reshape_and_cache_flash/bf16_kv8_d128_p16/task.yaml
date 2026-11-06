@@ -1,0 +1,71 @@
+schema_version: 3
+description: >-
+  Scatter of per-token key and value vectors into paged KV caches (NHD layout): for every token t with
+  slot = slot_mapping[t] >= 0, key_cache[slot // 16, slot % 16] = key[t] and value_cache[slot // 16,
+  slot % 16] = value[t]. Slots equal to -1 (padding) are skipped and every other cache entry is left
+  unchanged. Pure bfloat16 copy, no scaling.
+operator:
+  name: reshape_and_cache_flash
+  category: kv_cache
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 409600, description: Tokens whose K/V are written.}
+    n_kv_heads: {kind: const, value: 8, description: KV heads.}
+    head_size: {kind: const, value: 128, description: Head dimension of K and V.}
+    block_size: {kind: const, value: 16, description: Tokens per cache block.}
+  derived_axes:
+    n_blocks: ceil_div(n_tokens, block_size) * 5 // 4
+  inputs:
+    key:
+      kind: tensor
+      shape: [n_tokens, n_kv_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    value:
+      kind: tensor
+      shape: [n_tokens, n_kv_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    key_cache:
+      kind: tensor
+      shape: [n_blocks, block_size, n_kv_heads, head_size]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Paged key cache with prior contents; untouched slots must survive.
+    value_cache:
+      kind: tensor
+      shape: [n_blocks, block_size, n_kv_heads, head_size]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Paged value cache with prior contents; untouched slots must survive.
+    slot_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Cache slot of each token; -1 marks a padding token.
+  outputs: {}
+  mutable: [key_cache, value_cache]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/triton_reshape_and_cache_flash.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface. The FP8 cache branch with its scale arguments, the head-major
+      (5-D key cache) layout branch and the platform checks are removed because this scenario is a
+      bfloat16 NHD cache; the launch configuration is vLLM's ROCm one (8 warps, 4 stages).
+compare:
+  key_cache: {bound: exact}
+  value_cache: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

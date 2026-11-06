@@ -1,0 +1,16 @@
+{
+  "description": "Batch sizes of the KernelBench LayerNorm problem (features 64, 256 x 256) extended to 128; batches 3, 20 and 50 are correctness-only boundary cases.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness", "performance"], "source": "single sample"},
+    {"id": "b2", "axes": {"batch": 2}, "checks": ["correctness", "performance"], "source": "small batch"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "odd batch"},
+    {"id": "b4", "axes": {"batch": 4}, "checks": ["correctness", "performance"], "source": "KernelBench LayerNorm batch"},
+    {"id": "b8", "axes": {"batch": 8}, "checks": ["correctness", "performance"], "source": "KernelBench LayerNorm batch"},
+    {"id": "b16", "axes": {"batch": 16}, "checks": ["correctness", "performance"], "source": "KernelBench LayerNorm batch"},
+    {"id": "b20", "axes": {"batch": 20}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "b32", "axes": {"batch": 32}, "checks": ["correctness", "performance"], "source": "KernelBench LayerNorm batch"},
+    {"id": "b50", "axes": {"batch": 50}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "KernelBench LayerNorm batch"},
+    {"id": "b128", "axes": {"batch": 128}, "checks": ["correctness", "performance"], "source": "large batch"}
+  ]
+}

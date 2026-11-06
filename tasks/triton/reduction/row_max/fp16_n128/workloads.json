@@ -1,0 +1,143 @@
+{
+ "description": "Row counts of an (M, 128) float16 row-max. The original task reduced a single 128-row block; timed cases scale the rows so each moves 34 MB to 3.4 GB. Fewer rows run below 10 us and are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "M": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single row"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "M": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd row count"
+  },
+  {
+   "id": "m50",
+   "axes": {
+    "M": 50
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "row count not a multiple of the 128-row block"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "M": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two row count"
+  },
+  {
+   "id": "m128",
+   "axes": {
+    "M": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "original single-block test (128 x 64) row count"
+  },
+  {
+   "id": "m131072",
+   "axes": {
+    "M": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  },
+  {
+   "id": "m262144",
+   "axes": {
+    "M": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  },
+  {
+   "id": "m524288",
+   "axes": {
+    "M": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  },
+  {
+   "id": "m1048576",
+   "axes": {
+    "M": 1048576
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  },
+  {
+   "id": "m2097152",
+   "axes": {
+    "M": 2097152
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  },
+  {
+   "id": "m4194304",
+   "axes": {
+    "M": 4194304
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  },
+  {
+   "id": "m8388608",
+   "axes": {
+    "M": 8388608
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  },
+  {
+   "id": "m13107200",
+   "axes": {
+    "M": 13107200
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "rows of 128 float16 values, 256 B per row"
+  }
+ ]
+}

@@ -1,0 +1,81 @@
+schema_version: 3
+description: >-
+  DeepSeek-V4 decode top-k with paged transform. For each row b with valid length L = seq_lens[b]
+  (0 <= L <= 262208), select the positions of scores[b, :L]: all of 0 .. L - 1 in order when
+  L <= 512, otherwise the 512 positions with the largest float32 scores, in any order. Write each
+  selected position p as the KV slot page_tables[b, p // page_size] * page_size + p % page_size
+  and fill the remaining slots of the row with -1. Only the valid prefix may influence the result;
+  metadata is the top-k v2 routing plan, which routes no row to a cluster path.
+operator:
+  name: topk_transform_paged
+  category: sorting
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 2048, description: "Decode query rows (requests times draft tokens)."}
+    width: {kind: const, value: 262208, description: "Score columns: the c4-compressed KV capacity of a 1M-token context, 4097 pages of 64."}
+    num_pages: {kind: const, value: 4097, description: Page-table entries per row.}
+    topk: {kind: const, value: 512, description: Selected positions per row.}
+  derived_axes:
+    plan_rows: batch + 1
+  inputs:
+    scores:
+      kind: tensor
+      shape: [batch, width]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Indexer logits; only the first seq_lens[b] columns of row b are valid.
+    seq_lens:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Valid length of each row, in [0, width].
+    page_tables:
+      kind: tensor
+      shape: [batch, num_pages]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Page id of each 64-position page of the row.
+    page_size: {kind: scalar, dtype: int64, default: 64, description: Positions per page; 64 in every case.}
+    metadata:
+      kind: tensor
+      shape: [plan_rows, 2]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: "Top-k v2 plan: row 0 = (cluster_threshold, N), rows 1..N routed (batch_id, seq_len); routes no row."
+  outputs:
+    out_page_indices: {shape: [batch, topk], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path:
+      - python/sglang/kernels/jit/csrc/deepseek_v4/topk_v2.cuh
+      - python/sglang/kernels/jit/include/sgl_kernel/deepseek_v4/topk_impl.cuh
+      - python/sglang/kernels/jit/include/sgl_kernel/utils.cuh
+      - python/sglang/kernels/jit/include/sgl_kernel/type.cuh
+      - python/sglang/kernels/jit/include/sgl_kernel/vec.cuh
+      - python/sglang/kernels/jit/include/sgl_kernel/warp.cuh
+      - python/sglang/kernels/ops/attention/dsv4/topk.py
+    license: Apache-2.0
+    modifications: >-
+      The ROCm build of topk_transform_paged_v2 (the DeepSeek-V4 decode top-k on ROCm): the USE_ROCM
+      branches of topk_v2.cuh and topk_impl.cuh are selected, dropping the CUDA-only cluster kernels,
+      the ragged prefill kernel and the plan kernel (a no-op on ROCm); the sgl_kernel helpers the
+      kernels use are flattened into sgl_kernel_utils.cuh. The tvm-ffi host dispatcher
+      TopKKernel::transform_paged is rewritten for ATen tensors with the same checks and launch choice
+      and registered as the arena run op writing the preallocated out_page_indices. Device code is
+      otherwise unchanged.
+compare:
+  out_page_indices: {bound: exact}
+element_order: any_in_full_rows
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,17 @@
+{
+  "description": "Row counts m of the tall a [m, 16] in the KernelBench level 1 problem 9 (tall-skinny matrix multiplication) product, at its k = 16 inner size and its m = 16384 case's output width n = 16384. The original cases made the output square (n = m, up to 65536^2, 17 GB); a scenario fixes n, so m varies alone, up to the problem's tallest m of 65536 (a 4 GB output). Rows 640 to 65536 are timed (102x, 42 MB to 4.3 GB of output writes); 1, 3, 100 and 5000 are correctness-only boundary shapes.",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness"], "source": "single row (axis minimum)"},
+    {"id": "m3", "axes": {"m": 3}, "checks": ["correctness"], "source": "odd row count, not a power of two"},
+    {"id": "m100", "axes": {"m": 100}, "checks": ["correctness"], "source": "row count not a multiple of 16"},
+    {"id": "m5000", "axes": {"m": 5000}, "checks": ["correctness"], "source": "row count not a multiple of the row tile"},
+    {"id": "m640", "axes": {"m": 640}, "checks": ["correctness", "performance"], "source": "smallest timed row count at k = 16, n = 16384 (42 MB output)"},
+    {"id": "m1024", "axes": {"m": 1024}, "checks": ["correctness", "performance"], "source": "row count 1024 at k = 16, n = 16384"},
+    {"id": "m2048", "axes": {"m": 2048}, "checks": ["correctness", "performance"], "source": "row count 2048 at k = 16, n = 16384"},
+    {"id": "m4096", "axes": {"m": 4096}, "checks": ["correctness", "performance"], "source": "row count 4096 at k = 16, n = 16384"},
+    {"id": "m8192", "axes": {"m": 8192}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 9 case_0 tall side m = 8192 (k = 16) at n = 16384"},
+    {"id": "m16384", "axes": {"m": 16384}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 9 case_1, the 16384 x 16 @ 16 x 16384 product"},
+    {"id": "m32768", "axes": {"m": 32768}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 9 tall side m = 32768 (its cases 2 and 4, there with k = 32 and 64) at k = 16, n = 16384"},
+    {"id": "m65536", "axes": {"m": 65536}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 9 case_3 tall side m = 65536 (k = 16) at n = 16384"}
+  ]
+}

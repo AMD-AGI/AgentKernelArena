@@ -21,23 +21,6 @@ def fingerprint(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
-def case_manifest(definition: dict, rows: list[dict]) -> list[dict]:
-    cases = []
-    for row in rows:
-        axes = {**{k: a["value"] for k, a in definition["axes"].items() if a["type"] == "const"},
-                **row["workload"]["axes"]}
-        cases.append({
-            "test_case_id": row["workload"]["uuid"],
-            "shape": {name: [axes[d] if isinstance(d, str) else d for d in spec["shape"]]
-                      for name, spec in definition["inputs"].items() if spec.get("shape") is not None},
-            "dtype": json.dumps({name: spec["dtype"] for name, spec in definition["inputs"].items()}, sort_keys=True),
-            "params": {"axes": axes, "scalars": {name: value["value"] for name, value in
-                       row["workload"]["inputs"].items() if value["type"] == "scalar"}},
-            "checks": ["correctness", "performance"], "status": "PASS",
-        })
-    return cases
-
-
 def relative_path(raw: str) -> str:
     path = PurePosixPath(raw)
     if (not raw or path.is_absolute() or ".." in path.parts or "\\" in raw
@@ -88,9 +71,9 @@ def source_files(solution: dict) -> dict[str, str]:
     path, symbol = entry.split("::")
     if path not in files or not symbol.isidentifier():
         raise ImportProblem("invalid_entry_point", f"Missing source or invalid symbol: {entry}")
-    # Namespace loading preserves package-relative imports. Absolute local
-    # imports would collide between baseline and reference; never silently bind
-    # the wrong helper. External package imports (torch, aiter, etc.) are retained.
+    # A vendored baseline is one flat package, so local helpers import
+    # relatively; an absolute local import would bind the wrong module. Emission
+    # rejects production-package imports (aiter, vllm, ...): tasks vendor code.
     local_roots = {PurePosixPath(p).parts[0].removesuffix(".py") for p in files}
     for path, content in files.items():
         for node in ast.walk(ast.parse(content)):
@@ -138,6 +121,9 @@ def solution_targets(solution: dict) -> list[dict]:
     return [{"hardware_id": t} for t in targets]
 
 
+LICENSE_FILES = ("LICENSE", "LICENSE.txt", "LICENSE.md")
+
+
 @dataclass(frozen=True)
 class TaskSpec:
     task_id: str
@@ -146,6 +132,8 @@ class TaskSpec:
     baseline: dict
     reference: dict
     origins: dict[str, str]
+    # The bundle's own license text, when it ships one; it becomes baseline/LICENSE.
+    license_text: str | None = None
 
     def contract(self) -> dict:
         return {"definition": self.definition, "rows": self.rows,
@@ -153,7 +141,8 @@ class TaskSpec:
 
     @property
     def digest(self) -> str:
-        return fingerprint({**self.contract(), "baseline": self.baseline, "reference": self.reference})
+        return fingerprint({**self.contract(), "baseline": self.baseline, "reference": self.reference,
+                            "license_text": self.license_text})
 
     def summary(self) -> dict:
         return {"task_id": self.task_id, "op_type": self.definition["op_type"],
@@ -253,6 +242,8 @@ def inspect_bundle(root: Path, selections: dict | None = None) -> list[TaskSpec]
         for path in sorted((root / "solutions" / role).rglob("*.json")):
             data = read_json(path)
             solutions.setdefault((role, data.get("definition")), []).append((data, path))
+    license_text = next((path.read_text() for name in LICENSE_FILES
+                         if (path := root / name).is_file()), None)
     tasks, seen_definitions = [], set()
     for path in sorted((root / "workloads").rglob("*.jsonl")):
         rows = []
@@ -298,7 +289,8 @@ def inspect_bundle(root: Path, selections: dict | None = None) -> list[TaskSpec]
             source_files(chosen[role])
             solution_targets(chosen[role])
             origins[role] = str(source.relative_to(root))
-        tasks.append(TaskSpec(name, definition, rows, chosen["baseline"], chosen["reference"], origins))
+        tasks.append(TaskSpec(name, definition, rows, chosen["baseline"], chosen["reference"], origins,
+                              license_text))
     if not tasks:
         raise ImportProblem("empty_bundle", "No workloads/**/*.jsonl files found")
     return tasks

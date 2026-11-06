@@ -1,0 +1,20 @@
+{
+  "description": "KernelBench level-3 MiniGPTBlock input shapes (embedding 768, 8 heads, seq_len up to the block's max_seqlen 1024), plus single-sequence and small-batch shapes that extend the performance span to 512x in batch * seq_len. Every performance case runs four float32 GEMMs over the 7.1 M block weights, which keep even the 128-token case well above the 10 us floor.",
+  "cases": [
+    {"id": "c_b1_t1", "axes": {"batch": 1, "seq_len": 1}, "checks": ["correctness"], "source": "axis minimum: one token, attention reduces to v"},
+    {"id": "c_b128_t2", "axes": {"batch": 128, "seq_len": 2}, "checks": ["correctness"], "source": "maximum batch of two-token sequences"},
+    {"id": "c_b3_t77", "axes": {"batch": 3, "seq_len": 77}, "checks": ["correctness"], "source": "odd batch, unaligned sequence length"},
+    {"id": "c_b5_t129", "axes": {"batch": 5, "seq_len": 129}, "checks": ["correctness"], "source": "one token past two 64-token attention blocks"},
+    {"id": "c_b2_t1000", "axes": {"batch": 2, "seq_len": 1000}, "checks": ["correctness"], "source": "unaligned long sequences"},
+    {"id": "c_b1_t1024", "axes": {"batch": 1, "seq_len": 1024}, "checks": ["correctness"], "source": "the block's max_seqlen (1024), single sequence"},
+    {"id": "p_b1_t128", "axes": {"batch": 1, "seq_len": 128}, "checks": ["correctness", "performance"], "source": "single short prompt"},
+    {"id": "p_b1_t512", "axes": {"batch": 1, "seq_len": 512}, "checks": ["correctness", "performance"], "source": "single sequence at the module's default seq_len (512)"},
+    {"id": "p_b4_t256", "axes": {"batch": 4, "seq_len": 256}, "checks": ["correctness", "performance"], "source": "small batch at KernelBench's short seq_len (256)"},
+    {"id": "p_b2_t1024", "axes": {"batch": 2, "seq_len": 1024}, "checks": ["correctness", "performance"], "source": "two full-context (1024) sequences"},
+    {"id": "p_b16_t256", "axes": {"batch": 16, "seq_len": 256}, "checks": ["correctness", "performance"], "source": "KernelBench get_inputs (16, 256)"},
+    {"id": "p_b32_t256", "axes": {"batch": 32, "seq_len": 256}, "checks": ["correctness", "performance"], "source": "KernelBench get_inputs (32, 256)"},
+    {"id": "p_b16_t1024", "axes": {"batch": 16, "seq_len": 1024}, "checks": ["correctness", "performance"], "source": "KernelBench get_inputs (16, 1024)"},
+    {"id": "p_b64_t512", "axes": {"batch": 64, "seq_len": 512}, "checks": ["correctness", "performance"], "source": "KernelBench get_inputs (64, 512)"},
+    {"id": "p_b128_t512", "axes": {"batch": 128, "seq_len": 512}, "checks": ["correctness", "performance"], "source": "KernelBench get_inputs (128, 512), the module's default batch_size and seq_len"}
+  ]
+}

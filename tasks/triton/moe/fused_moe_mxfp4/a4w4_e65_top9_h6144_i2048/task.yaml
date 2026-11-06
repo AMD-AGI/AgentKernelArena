@@ -1,0 +1,113 @@
+schema_version: 3
+description: >-
+  Routed mixture-of-experts layer with MXFP4 activations and weights (AITER fused_moe, QuantType.per_1x32,
+  a4w4) for 65 experts, top 9, hidden 6144, intermediate 2048, SiLU, routing weights applied after the down
+  projection, bfloat16 in and out. For a token x routed to expert e with weight w: x_q = MXFP4(x); gate = x_q . W1[e, :2048]; up = x_q . W1[e, 2048:]
+  (exact sums); h = bf16(silu(gate) * up); partial = MXFP4(h) . W2[e]; out = bf16(sum over the token's 9 slots
+  of w * partial). MXFP4(.) is AITER's dynamic MXFP4 quantizer over blocks of 32 consecutive values: the block
+  scale is 2^(floor(log2(amax rounded to a power of two, up when its mantissa is at least 1.75)) - 2), exponent
+  clamped to [-127, 127], and each value divided by the scale rounds to the nearest E2M1 value (0, 0.5, 1, 1.5,
+  2, 3, 4, 6), ties to the even code, saturating at 6 (see mxfp4_numerics.py). Weights are E2M1 codes packed two
+  per byte along the reduction axis (even index in the low nibble) in plain row-major layout, w1 [65, 4096, 3072]
+  (gate rows, then up rows) and w2 [65, 6144, 1024], with one uint8 E8M0 scale (2^(s - 127)) per 32 reduction
+  values, w1_scale [65, 4096, 192] and w2_scale [65, 6144, 64]. topk_ids rows hold distinct expert ids.
+operator:
+  name: fused_moe_mxfp4
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 8192, description: Tokens reaching this rank.}
+    top_k: {kind: const, value: 9, description: Experts per token.}
+    num_experts: {kind: const, value: 65, description: Experts held by this rank.}
+    hidden_size: {kind: const, value: 6144, description: 'Model hidden size: W1 reduction width and W2 output width.'}
+    intermediate_size: {kind: const, value: 2048, description: Expert intermediate width; W1 has 2 * intermediate_size rows.}
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1:
+      kind: tensor
+      shape: [num_experts, 2 * intermediate_size, hidden_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: Packed E2M1 codes of [gate | up], two per byte along hidden_size.
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, 2 * intermediate_size, hidden_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: E8M0 scale (biased exponent) of each 32 consecutive w1 values.
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: Packed E2M1 codes of the down projection, two per byte along intermediate_size.
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: E8M0 scale (biased exponent) of each 32 consecutive w2 values.
+    topk_weights:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Routing weight of each selected expert (softmax probability, not renormalized).
+    topk_ids:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct expert ids selected for each token.
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_mxfp4_silu_fused.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_mxfp4.py
+      - aiter/ops/triton/moe/moe_op_mxfp4_silu_fused.py
+      - aiter/ops/triton/moe/moe_op_mxfp4.py
+      - aiter/ops/triton/_triton_kernels/quant/quant.py
+      - aiter/ops/triton/quant/quant.py
+      - aiter/ops/triton/_triton_kernels/moe/reduce.py
+      - aiter/ops/triton/moe/reduce.py
+      - aiter/ops/triton/_triton_kernels/moe/activations.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/moe_common.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/configs/moe/gfx950-MOE-MX_FP4.json
+      - aiter/ops/triton/utils/moe_config_utils.py
+    license: MIT
+    modifications: >-
+      Triton kernels vendored unchanged except: the logging repr= of triton.jit is dropped, and the stage-1
+      epilogue of _fused_moe_kernel_mxfp4_silu applies SiLU(gate) * up to its float32 accumulator instead of to
+      gate and up rounded to bfloat16 (one line removed, as the production FlyDSL stage 1 and the source task's
+      reference compute it). Launchers reduced to MXFP4 activations and weights without swizzled scales and
+      without the logger; dynamic_mxfp4_quant writes into caller-provided buffers, whose scale buffers get one
+      spare row so the GEMMs' unmasked read of the padding sentinel's scale row stays in bounds; the top-k slots
+      are added by reduce_grouped in its split-k mode (Triton path); _swiglu's parameter input is renamed x; the
+      gfx950 MX_FP4 tile table is inlined and selected by token count as get_optimal_moe_config does. AITER's
+      sequential Triton moe_align_block_size is replaced by an atomic-counter Triton version written for this
+      task (routing.py) with the same output contract. Wrapped in the arena run() interface writing into the
+      preallocated output.
+compare:
+  out: {bound: baseline_relative, max_violation_fraction: 0.01}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

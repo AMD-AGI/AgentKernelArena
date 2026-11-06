@@ -1,8 +1,9 @@
 # DeepSeek Harness on MI355X (gfx950). See agents/deepseek_harness/README.md.
 agent:
   template: deepseek_harness
+target_language: triton   # triton | gluon | hip | flydsl
 tasks:
-  - hip2hip/GELU
+  - triton/normalization/rms_norm/bf16_h8192
 target_gpu_model: MI355X
 log_directory: logs
 workspace_directory_prefix: workspace

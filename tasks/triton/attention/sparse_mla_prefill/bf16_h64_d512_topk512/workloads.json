@@ -1,0 +1,153 @@
+{
+ "description": "DeepSeek-V4-Flash sparse-attention prefill on MI355X: 64 heads, head size 512, index_topk 512. Query counts follow the traced prefill token buckets; KV pool is a representative 8192 rows.",
+ "cases": [
+  {
+   "id": "q1",
+   "axes": {
+    "n_queries": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum; the single row is empty"
+  },
+  {
+   "id": "q3",
+   "axes": {
+    "n_queries": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tiny odd chunk"
+  },
+  {
+   "id": "q64",
+   "axes": {
+    "n_queries": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "DeepSeek-V4-Flash prefill chunk sq64"
+  },
+  {
+   "id": "q100",
+   "axes": {
+    "n_queries": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two, not a multiple of 16"
+  },
+  {
+   "id": "q1073",
+   "axes": {
+    "n_queries": 1073
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "DeepSeek-V4-Flash prefill chunk sq1073"
+  },
+  {
+   "id": "q128",
+   "axes": {
+    "n_queries": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q256",
+   "axes": {
+    "n_queries": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q512",
+   "axes": {
+    "n_queries": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q1024",
+   "axes": {
+    "n_queries": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q2048",
+   "axes": {
+    "n_queries": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q4096",
+   "axes": {
+    "n_queries": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q8192",
+   "axes": {
+    "n_queries": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q16384",
+   "axes": {
+    "n_queries": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill query-token bucket"
+  },
+  {
+   "id": "q7211",
+   "axes": {
+    "n_queries": 7211
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "DeepSeek-V4-Flash prefill chunk sq7211"
+  }
+ ]
+}

@@ -1,0 +1,43 @@
+schema_version: 3
+description: >-
+  Batched vector-matrix product out[m, n] = sum_k a[m, k] * b[m, n, k]: each of the m rows of a is
+  contracted with its own [128, 128] matrix b[m] (stored n-major, k contiguous). float16 inputs, the
+  128-term reduction accumulated in float32, the result rounded to float16.
+operator: {name: batched_vecmat, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Independent vector-matrix products (rows of a and out).}
+    n: {kind: const, value: 128, description: Output width (vectors in each matrix of b).}
+    k: {kind: const, value: 128, description: Contracted dimension.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [m, n, k]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD-AGI/AgentKernelArena (rocmbench test_batched_vecmat, after the Triton project's test_vecmat unit test)
+    revision: 65b06fd5955f5d910188011a468680a767bd7717
+    path: tasks/triton2triton/rocmbench/easy/test_batched_vecmat/test_batched_vecmat.py
+    license: MIT
+    modifications: >-
+      batched_vecmat kernel copied unchanged (at this revision it already carries the repository's repair of
+      the rocmbench original: float32 accumulator and reduction instead of the input dtype, ceil-divided k
+      loop, masked loads and stores for partial tiles); run() is the timed batched_vecmat_triton_wrapper
+      (block 16 x 32 x 64) writing into the preallocated output instead of allocating a zeroed one.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

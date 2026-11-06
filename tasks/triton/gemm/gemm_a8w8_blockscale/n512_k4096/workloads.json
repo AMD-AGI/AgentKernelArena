@@ -1,0 +1,233 @@
+{
+  "description": "Token counts through a 512x4096 block-scaled FP8 projection. Small batches (the original task rows of 1 to 256, plus boundary sizes) are correctness-only: with one 128-row tile per 64 output columns the call stays near the 10 us floor below about 512 tokens.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum, single-token decode"
+    },
+    {
+      "id": "m2",
+      "axes": {
+        "m": 2
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd decode batch"
+    },
+    {
+      "id": "m4",
+      "axes": {
+        "m": 4
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned-table M bound (original task row)"
+    },
+    {
+      "id": "m5",
+      "axes": {
+        "m": 5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd decode batch"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned-table M bound (original task row)"
+    },
+    {
+      "id": "m16",
+      "axes": {
+        "m": 16
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned-table M bound (original task row)"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "just above one 16-row tile"
+    },
+    {
+      "id": "m32",
+      "axes": {
+        "m": 32
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned-table M bound (original task row)"
+    },
+    {
+      "id": "m64",
+      "axes": {
+        "m": 64
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned-table M bound (original task row)"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "below one 128-row tile"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "m": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned-table M bound (original task row)"
+    },
+    {
+      "id": "m256",
+      "axes": {
+        "m": 256
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned-table M bound (original task row)"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m32768",
+      "axes": {
+        "m": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large batched prefill"
+    },
+    {
+      "id": "m65536",
+      "axes": {
+        "m": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large batched prefill"
+    }
+  ]
+}

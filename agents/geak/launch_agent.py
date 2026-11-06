@@ -1,4 +1,4 @@
-"""One schema-v2 integration using GEAK's upstream multi-agent Workflow engine."""
+"""Arena's integration of GEAK's upstream multi-agent Workflow engine."""
 from __future__ import annotations
 
 import json
@@ -184,7 +184,10 @@ def launch_agent(eval_config: dict, task_config_dir: str, workspace: str) -> str
     context = TaskContext.load(Path(context_path))
     if context.workspace != Path(workspace).resolve(strict=True):
         raise ValueError("GEAK workspace does not match ARENA_TASK_CONTEXT")
-    if load_task_spec(Path(task_config_dir), task_id=context.spec.task_id).to_mapping() != context.spec.to_mapping():
+    # A schema-v3 task.yaml resolves only for the run's target language.
+    declared = load_task_spec(Path(task_config_dir), task_id=context.spec.task_id,
+                              target_language=context.spec.target_language)
+    if declared.to_mapping() != context.spec.to_mapping():
         raise ValueError("GEAK task config does not match ARENA_TASK_CONTEXT")
     checkout_value = os.environ.get("GEAK_HOME")
     if not checkout_value and os.environ.get("GEAK_V4_WORKFLOW_DIR"):

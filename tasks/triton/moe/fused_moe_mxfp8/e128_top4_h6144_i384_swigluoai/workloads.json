@@ -1,0 +1,16 @@
+{
+  "description": "Token counts per step of the MiniMax-M3 MXFP8 MoE layer (128 experts per rank, top-4, hidden 6144, intermediate 384 at tensor-parallel 8): decode batches, chunked prefill and large prefill batches. Single-token decode and unaligned batches are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"num_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"num_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t100", "axes": {"num_tokens": 100}, "checks": ["correctness"], "source": "unaligned decode batch"},
+    {"id": "t1000", "axes": {"num_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill chunk"},
+    {"id": "t4", "axes": {"num_tokens": 4}, "checks": ["correctness", "performance"], "source": "decode, small batch"},
+    {"id": "t16", "axes": {"num_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode batch"},
+    {"id": "t64", "axes": {"num_tokens": 64}, "checks": ["correctness", "performance"], "source": "decode batch (original task case)"},
+    {"id": "t256", "axes": {"num_tokens": 256}, "checks": ["correctness", "performance"], "source": "small prefill chunk"},
+    {"id": "t1024", "axes": {"num_tokens": 1024}, "checks": ["correctness", "performance"], "source": "chunked prefill"},
+    {"id": "t4096", "axes": {"num_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t16384", "axes": {"num_tokens": 16384}, "checks": ["correctness", "performance"], "source": "large prefill batch (original task case)"}
+  ]
+}

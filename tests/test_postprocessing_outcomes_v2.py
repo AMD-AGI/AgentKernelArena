@@ -22,8 +22,8 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         ("SIKL-task/accepted", True, "COMPLETE", True, "ACCEPTED"),
         ("SIKL-task/export_failed", True, "INCOMPLETE", True, "INCOMPLETE"),
         ("SIKL-task/export_mutated", False, "INCOMPLETE", True, "NOT_ACCEPTED"),
-        ("hip2hip/rejected", False, "NOT_ACCEPTED", False, "NOT_ACCEPTED"),
-        ("hip2hip/legacy", None, None, True, "PASS"),
+        ("normalization/rms_norm/rejected", False, "NOT_ACCEPTED", False, "NOT_ACCEPTED"),
+        ("normalization/rms_norm/legacy", None, None, True, "PASS"),
     ]
     workspaces = []
     executions = [("COMPLETED", True), ("FAILED", True), ("FAILED", False),
@@ -64,7 +64,7 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
     for key, count in expected_counts.items():
         assert overall[key] == count
         assert sum(group[key] for group in summary["task_types"].values()) == count
-    assert summary["task_types"]["hip2hip"]["candidate_acceptance_unknown_count"] == 1
+    assert summary["task_types"]["normalization"]["candidate_acceptance_unknown_count"] == 1
     assert summary["task_types"]["SIKL-task"]["candidate_rejected_count"] == 1
 
     csv_path = reports / "overall_summary.csv"

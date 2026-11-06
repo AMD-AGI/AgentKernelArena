@@ -1,0 +1,34 @@
+schema_version: 3
+description: >-
+  Count the token assignments of every expert from a mixture-of-experts routing table: expert_num_tokens[e] is the
+  number of entries of topk_ids [n_tokens, 8] equal to e, for the 256 experts. Entries equal to -1 mark assignments
+  that are not served and are not counted. The result is an exact int32 histogram.
+operator: {name: count_expert_tokens, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 524288, description: Tokens in the batch.}
+    top_k: {kind: const, value: 8, description: Experts chosen per token.}
+    num_experts: {kind: const, value: 256, description: Experts of the layer.}
+  inputs:
+    topk_ids:
+      {kind: tensor, shape: [n_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+  outputs:
+    expert_num_tokens: {shape: [num_experts], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/fused_moe/utils.py
+    license: Apache-2.0
+    modifications: >-
+      The _count_expert_num_tokens kernel and the launch code of count_expert_num_tokens, without the optional
+      expert_map remapping; the launcher writes the preallocated output instead of allocating it (run() interface).
+compare:
+  expert_num_tokens: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

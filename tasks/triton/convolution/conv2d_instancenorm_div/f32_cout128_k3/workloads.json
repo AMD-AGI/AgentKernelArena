@@ -1,0 +1,16 @@
+{
+  "description": "Batch and image sizes of KernelBench level-2 problem 17 (Conv2d_InstanceNorm_Divide: batch 128 at 128x128, and the batch/spatial escalation of its benchmark inputs), extended down to small inference batches at 64x64 to reach a 100x size span. Odd, non-square and minimal shapes are correctness-only.",
+  "cases": [
+    {"id": "b1_h3_w40", "axes": {"batch": 1, "height": 3, "width": 40}, "checks": ["correctness"], "source": "single image, smallest height (one output row per plane)"},
+    {"id": "b3_h64_w64", "axes": {"batch": 3, "height": 64, "width": 64}, "checks": ["correctness"], "source": "odd small batch at 64x64"},
+    {"id": "b2_h37_w53", "axes": {"batch": 2, "height": 37, "width": 53}, "checks": ["correctness"], "source": "non-square image, sizes not multiples of 16"},
+    {"id": "b5_h100_w75", "axes": {"batch": 5, "height": 100, "width": 75}, "checks": ["correctness"], "source": "non-square image, odd width"},
+    {"id": "b4_h64_w64", "axes": {"batch": 4, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "small inference batch at the benchmark resolution 64x64"},
+    {"id": "b16_h64_w64", "axes": {"batch": 16, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "inference batch 16 at 64x64"},
+    {"id": "b32_h64_w64", "axes": {"batch": 32, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench L2-17 benchmark input (32, 64, 64, 64)"},
+    {"id": "b64_h64_w64", "axes": {"batch": 64, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench L2-17 benchmark input (64, 64, 64, 64)"},
+    {"id": "b128_h64_w64", "axes": {"batch": 128, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench L2-17 benchmark input (128, 64, 64, 64)"},
+    {"id": "b64_h128_w128", "axes": {"batch": 64, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L2-17 benchmark input (64, 64, 128, 128)"},
+    {"id": "b128_h128_w128", "axes": {"batch": 128, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L2-17 problem shape (128, 64, 128, 128)"}
+  ]
+}

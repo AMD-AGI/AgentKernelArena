@@ -6,7 +6,7 @@ import os
 import re
 
 from agents.prompt_input import prompt_input
-from agents.task_validator.launch_agent import _run_backend
+from agents.backend_cli import run_backend as _run_backend
 
 
 def review(prompt, workspace, config, logger):

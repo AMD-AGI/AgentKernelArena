@@ -1,0 +1,15 @@
+{
+  "description": "Token counts of sqrt-softplus MoE routing (384 experts, top-8, renormalized, route scale 2.5). Decode batches and small prefill chunks run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t64", "axes": {"n_tokens": 64}, "checks": ["correctness"], "source": "decode, batch 64"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness"], "source": "prefill chunk"},
+    {"id": "t2560", "axes": {"n_tokens": 2560}, "checks": ["correctness", "performance"], "source": "short prefill chunk"},
+    {"id": "t8192", "axes": {"n_tokens": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t32768", "axes": {"n_tokens": 32768}, "checks": ["correctness", "performance"], "source": "large prefill chunk"},
+    {"id": "t131072", "axes": {"n_tokens": 131072}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t262144", "axes": {"n_tokens": 262144}, "checks": ["correctness", "performance"], "source": "batched prefill"}
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "description": "Numbers of looked-up rows of a 32768 x 4096 float32 table; small batches are correctness-only (below the 10 us timing floor).",
+  "cases": [
+    {"id": "n1", "axes": {"n_idx": 1}, "checks": ["correctness"], "source": "single-token decode lookup"},
+    {"id": "n3", "axes": {"n_idx": 3}, "checks": ["correctness"], "source": "odd small batch"},
+    {"id": "n48", "axes": {"n_idx": 48}, "checks": ["correctness"], "source": "decode batch 48"},
+    {"id": "n1000", "axes": {"n_idx": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "n2048", "axes": {"n_idx": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "n8192", "axes": {"n_idx": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "n32768", "axes": {"n_idx": 32768}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "n131072", "axes": {"n_idx": 131072}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "n262144", "axes": {"n_idx": 262144}, "checks": ["correctness", "performance"], "source": "large batched prefill"}
+  ]
+}

@@ -1,0 +1,80 @@
+schema_version: 3
+description: >-
+  GRU-style gated selection of two float32 feature rows (the GateGRUSelectionLayer of a text-matching
+  network): reset = sigmoid(Wr [x1, x2] + br), update = sigmoid(Wu [x1, x2] + bu),
+  proposal = tanh(Wp [reset * x1, x2] + bp), out = (1 - update) * x1 + update * proposal.
+operator:
+  name: gate_gru_selection
+  category: gemm
+interface:
+  axes:
+    rows: {kind: var, min: 1, max: 65536, description: Feature rows (all leading dimensions flattened).}
+    d_model: {kind: const, value: 512, description: Feature width of each input row.}
+    d_concat: {kind: const, value: 1024, description: Concatenated gate input width (twice d_model).}
+  inputs:
+    x1:
+      kind: tensor
+      shape: [rows, d_model]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    x2:
+      kind: tensor
+      shape: [rows, d_model]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    reset_weight:
+      kind: tensor
+      shape: [d_model, d_concat]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+    reset_bias:
+      kind: tensor
+      shape: [d_model]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+    update_weight:
+      kind: tensor
+      shape: [d_model, d_concat]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+    update_bias:
+      kind: tensor
+      shape: [d_model]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+    proposal_weight:
+      kind: tensor
+      shape: [d_model, d_concat]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+    proposal_bias:
+      kind: tensor
+      shape: [d_model]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+  outputs:
+    out: {shape: [rows, d_model], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena torch2hip/hip2hip task GateGRUSelectionLayer (gpumode problem 5334)
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/GateGRUSelectionLayer/pytorch_code_module/py_5334_GateGRUSelectionLayer.py
+    license: task-original
+    modifications: >-
+      Hand-written HIP kernels for the operator defined by that PyTorch module (the old provided HIP
+      baseline delegated the GEMMs to ATen and is not a valid kernel baseline): two tiled fp32 GEMM kernels,
+      registered as the run() torch op.
+compare:
+  out: {bound: sqnr, min_db: 130}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

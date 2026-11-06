@@ -1,0 +1,42 @@
+schema_version: 3
+description: >-
+  Batched int8 GEMM with dequantization: out[b] = (x[b] @ w[b]^T) * (x_scale[b] * w_scale[b]) with int8 x
+  [batch, m, 8192] and int8 w [batch, 1280, 8192], an exact integer accumulation, a float32 per-row scale
+  x_scale [batch, m, 1] and per-output-channel scale w_scale [batch, 1, 1280], rounded to bfloat16.
+operator: {name: batched_gemm_a8w8, category: gemm}
+interface:
+  axes:
+    batch: {kind: const, value: 16, description: Independent GEMMs in the batch.}
+    m: {kind: var, min: 1, max: 8192, description: Rows of each activation matrix.}
+    n: {kind: const, value: 1280, description: Output channels per batch element.}
+    k: {kind: const, value: 8192, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [batch, m, k], dtype: int8, distribution: {kind: generator}}
+    x_scale: {kind: tensor, shape: [batch, m, 1], dtype: float32, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [batch, n, k], dtype: int8, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [batch, 1, n], dtype: float32, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [batch, m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/batched/batched_gemm_a8w8.py
+      - aiter/ops/triton/gemm/batched/batched_gemm_a8w8.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-BATCHED_GEMM-A8W8.json
+    license: MIT
+    modifications: >-
+      Kernel unchanged except that the two scale-offset expressions are parenthesized so out-of-range tail rows
+      wrap with the modulo instead of reading past the scale tensors; launcher reduced to the no-bias path
+      writing into the preallocated output; kernel_repr helper and the gfx950 tuned-config table inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

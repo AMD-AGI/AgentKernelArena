@@ -18,12 +18,13 @@ from .contracts import (
 )
 
 from .task_declarations import (
-    candidate_framework, candidate_paths, candidate_symbols, is_v2_task,
+    candidate_framework, candidate_paths, candidate_symbols, is_v2_task, is_v3_task,
 )
 
 
 _LANGUAGE_ALIASES = {
     "triton": KernelLanguage.TRITON,
+    "gluon": KernelLanguage.GLUON,
     "hip": KernelLanguage.HIP,
     "rocm": KernelLanguage.HIP,
     "cuda": KernelLanguage.HIP,
@@ -109,7 +110,7 @@ def _infer_artifact_kind(
     suffixes = {Path(path).suffix.lower() for path in source_files}
     if suffixes and suffixes <= {".hsaco", ".co"}:
         return ArtifactKind.HSACO_PRECOMPILED
-    if language in {KernelLanguage.TRITON, KernelLanguage.FLYDSL}:
+    if language in {KernelLanguage.TRITON, KernelLanguage.GLUON, KernelLanguage.FLYDSL}:
         return ArtifactKind.PYTHON_JIT
     if language == KernelLanguage.HIP:
         return ArtifactKind.SOURCE_AOT
@@ -175,8 +176,9 @@ def resolve_task_profile(task_config: Mapping[str, Any]) -> TaskProfile:
         source_files = candidate_paths(task_config)
         target_functions = candidate_symbols(task_config)
         declared_language = str(task_config["candidate"]["language"]).strip().lower()
-        # Legacy CUDA-source aliases cannot establish an AMD HIP build path for
-        # a v2 candidate whose declared final backend is CUDA (or another DSL).
+        # Exact mapping: triton, gluon, hip and flydsl. Any other declared
+        # language (gpu, tilelang, other, ...) is UNKNOWN, which every tool
+        # reports as unsupported. Legacy aliases such as cuda never apply.
         language = {item.value: item for item in KernelLanguage}.get(
             declared_language, KernelLanguage.UNKNOWN
         )
@@ -238,6 +240,9 @@ def resolve_task_profile(task_config: Mapping[str, Any]) -> TaskProfile:
     if v2:
         evidence = {
             "schema_version": 2,
+            "target_language": (
+                (task_config.get("contract") or {}).get("target_language") if is_v3_task(task_config) else None
+            ),
             "candidate": deepcopy(dict(task_config["candidate"])),
             "kernel_identity": deepcopy(task_config.get("kernel_identity", {})),
             "workspace_sources": deepcopy(task_config.get("workspace", {}).get("sources", [])),
@@ -298,6 +303,26 @@ def resolve_builtin_capability(
     tool_name = tool.value if isinstance(tool, ToolName) else str(tool).lower().replace("-", "_")
     runtime_check = runtime or CapabilityCheck.ready()
     ready = CapabilityCheck.ready
+
+    # Gluon and unmapped languages (gpu, tilelang, other) are unsupported, not
+    # "not applicable": the policy skips not_applicable tools, so only an
+    # explicit unsupported state keeps a required tool from passing silently.
+    if tool_name in {item.value for item in ToolName} and (
+        profile.language == KernelLanguage.GLUON
+        or (profile.language == KernelLanguage.UNKNOWN and profile.artifact_kind != ArtifactKind.HSACO_PRECOMPILED)
+    ):
+        gluon = profile.language == KernelLanguage.GLUON
+        return ToolCapability(
+            tool_name,
+            CapabilityCheck.blocked(
+                CapabilityState.UNSUPPORTED,
+                f"{tool_name.upper()}_{'GLUON' if gluon else 'LANGUAGE'}_UNSUPPORTED",
+                "this tool has not been qualified on Gluon kernels"
+                if gluon else "the candidate language is not one of triton, hip or flydsl",
+            ),
+            ready(),
+            runtime_check,
+        )
 
     if tool_name == ToolName.TRITON_FPSAN.value:
         if profile.language != KernelLanguage.TRITON:

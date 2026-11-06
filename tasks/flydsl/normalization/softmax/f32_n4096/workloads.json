@@ -1,0 +1,141 @@
+{
+  "description": "Row counts at 4096 columns, from the FlyDSL softmax benchmark (up to 512 rows) extended to attention-score-sized row counts (batch x heads x queries); small batches are correctness-only.",
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "n_rows": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single row"
+    },
+    {
+      "id": "r3",
+      "axes": {
+        "n_rows": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd small batch"
+    },
+    {
+      "id": "r32",
+      "axes": {
+        "n_rows": 32
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "FlyDSL softmax benchmark"
+    },
+    {
+      "id": "r37",
+      "axes": {
+        "n_rows": 37
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch"
+    },
+    {
+      "id": "r128",
+      "axes": {
+        "n_rows": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "FlyDSL softmax benchmark"
+    },
+    {
+      "id": "r512",
+      "axes": {
+        "n_rows": 512
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "FlyDSL softmax benchmark"
+    },
+    {
+      "id": "r1000",
+      "axes": {
+        "n_rows": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch"
+    },
+    {
+      "id": "r2048",
+      "axes": {
+        "n_rows": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention score rows (batch x heads x queries)"
+    },
+    {
+      "id": "r4096",
+      "axes": {
+        "n_rows": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention score rows (batch x heads x queries)"
+    },
+    {
+      "id": "r8192",
+      "axes": {
+        "n_rows": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention score rows (batch x heads x queries)"
+    },
+    {
+      "id": "r32768",
+      "axes": {
+        "n_rows": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention score rows (batch x heads x queries)"
+    },
+    {
+      "id": "r131072",
+      "axes": {
+        "n_rows": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention score rows (batch x heads x queries)"
+    },
+    {
+      "id": "r262144",
+      "axes": {
+        "n_rows": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention score rows (batch x heads x queries)"
+    }
+  ]
+}

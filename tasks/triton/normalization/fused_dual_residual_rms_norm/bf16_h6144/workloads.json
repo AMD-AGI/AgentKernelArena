@@ -1,0 +1,13 @@
+{"description": "Token counts at hidden size 6144; small decode batches are correctness-only.",
+ "cases": [
+  {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+  {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+  {"id": "t48", "axes": {"n_tokens": 48}, "checks": ["correctness"], "source": "decode, batch 48"},
+  {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+  {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+  {"id": "t3072", "axes": {"n_tokens": 3072}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+  {"id": "t12288", "axes": {"n_tokens": 12288}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+  {"id": "t49152", "axes": {"n_tokens": 49152}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+  {"id": "t131072", "axes": {"n_tokens": 131072}, "checks": ["correctness", "performance"], "source": "batched prefill"}
+ ]
+}

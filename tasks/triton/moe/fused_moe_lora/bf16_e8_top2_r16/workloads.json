@@ -1,0 +1,19 @@
+{
+  "description": "Batch token counts of vLLM's fused MoE LoRA benchmark (benchmarks/kernels/benchmark_fused_moe_lora_one_shot.py, mixtral preset, M in 16..16384) plus intermediate and 32768-token prefill batches; decode-sized (up to 128 tokens) and odd batches are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t16", "axes": {"n_tokens": 16}, "checks": ["correctness"], "source": "vLLM fused MoE LoRA benchmark, M=16"},
+    {"id": "t64", "axes": {"n_tokens": 64}, "checks": ["correctness"], "source": "vLLM fused MoE LoRA benchmark, M=64"},
+    {"id": "t100", "axes": {"n_tokens": 100}, "checks": ["correctness"], "source": "vLLM fused MoE LoRA kernel test, num_tokens=100"},
+    {"id": "t1500", "axes": {"n_tokens": 1500}, "checks": ["correctness"], "source": "unaligned mixed prefill/decode batch"},
+    {"id": "t128", "axes": {"n_tokens": 128}, "checks": ["correctness"], "source": "decode, batch 128"},
+    {"id": "t256", "axes": {"n_tokens": 256}, "checks": ["correctness", "performance"], "source": "vLLM fused MoE LoRA benchmark, M=256"},
+    {"id": "t512", "axes": {"n_tokens": 512}, "checks": ["correctness", "performance"], "source": "decode, batch 512"},
+    {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness", "performance"], "source": "vLLM fused MoE LoRA benchmark, M=1024"},
+    {"id": "t2048", "axes": {"n_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t4096", "axes": {"n_tokens": 4096}, "checks": ["correctness", "performance"], "source": "vLLM fused MoE LoRA benchmark, M=4096"},
+    {"id": "t16384", "axes": {"n_tokens": 16384}, "checks": ["correctness", "performance"], "source": "vLLM fused MoE LoRA benchmark, M=16384"},
+    {"id": "t32768", "axes": {"n_tokens": 32768}, "checks": ["correctness", "performance"], "source": "batched prefill, max_num_batched_tokens 32768"}
+  ]
+}

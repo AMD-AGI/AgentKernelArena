@@ -39,8 +39,8 @@ subtrees:
       title: Optimize kernels through serving throughput
     - file: how-to/sikl-task-builder
       title: Generate tasks from SIKL data
-    - file: how-to/task-validator
-      title: Validate tasks
+    - file: how-to/qa-auditor
+      title: Audit tasks with the QA auditor
     - file: how-to/quality-loop
       title: Audit and harden tasks
     - file: how-to/held-out-evaluation
@@ -69,11 +69,9 @@ subtrees:
 - caption: Historical verification
   entries:
     - file: reference/verification-2026-09-15
-      title: Task and agent verification record
+      title: Earlier verification record (historical)
     - file: reference/runtime-upgrade-qualification
       title: Earlier runtime qualification
-    - file: reference/pr107-main-integration
-      title: Task-schema integration record
 
 - caption: About
   entries:

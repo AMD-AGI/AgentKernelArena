@@ -1,13 +1,11 @@
 """Definition-time hooks cannot hide inside excluded implementation helpers."""
 from pathlib import Path
 import ast
-import shutil
 
 import pytest
 import yaml
 
 from src.harness_guard import describe_workspace_harness, snapshot_workspace_harness, verify_workspace_harness
-from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
 from src.task_spec import load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,17 +105,12 @@ def test_test_environment_hooks_cannot_be_new_helpers(tmp_path, declaration):
         verify_workspace_harness(snapshot)
 
 
-@pytest.mark.parametrize("task", ['triton2triton/rocmbench/hard/moe_gemm'])
 @pytest.mark.parametrize("name,args,return_statement", [
     ("__getattr__", "name", "raise AttributeError(name)"),
     ("__dir__", "", "return list(globals())"),
 ])
-def test_actual_tasks_reject_automatic_module_inspection_hooks(tmp_path, task, name, args, return_statement):
-    workspace = tmp_path / "task"
-    shutil.copytree(ROOT / "tasks" / task, workspace)
-    materialize_perf_helpers_in_workspace(workspace)
-    snapshot = snapshot_workspace_harness(workspace)
-    source = workspace / "moe_gemm.py"
+def test_module_inspection_hooks_cannot_be_new_helpers(tmp_path, name, args, return_statement):
+    _, source, snapshot = fixture_workspace(tmp_path)
     source.write_text(source.read_text() + f'''
 def {name}({args}):
     import _arena_reference
@@ -225,16 +218,12 @@ def test_editable_config_factory_has_a_separate_restricted_body_policy(tmp_path,
             verify_workspace_harness(snapshot)
 
 
-@pytest.mark.parametrize("task", ['triton2triton/rocmbench/hard/moe_gemm'])
-def test_exact_reported_fixture_rejected_on_retained_moe_task(tmp_path, task):
-    workspace = tmp_path / "task"; shutil.copytree(ROOT / "tasks" / task, workspace)
-    materialize_perf_helpers_in_workspace(workspace)
-    snapshot = snapshot_workspace_harness(workspace)
-    source = workspace / "moe_gemm.py"; original = source.read_text()
-    # Normal JIT helper is accepted without changing the protected tests.
+def test_autouse_fixture_helper_is_rejected_while_a_jit_helper_is_accepted(tmp_path):
+    _, source, snapshot = fixture_workspace(tmp_path)
+    original = source.read_text()
+    # A normal JIT helper is accepted without changing the protected symbols.
     source.write_text(original + "\n@triton.jit\ndef helper(x): return x + 1\n")
     verify_workspace_harness(snapshot)
-    # Exact definition that passed the old guard in the isolated CPU proof.
     source.write_text(original + '''
 @pytest.fixture(autouse=True)
 def arena_new_helper(monkeypatch):
@@ -243,8 +232,8 @@ def arena_new_helper(monkeypatch):
 ''')
     with pytest.raises(RuntimeError, match="Unsupported decorator"):
         verify_workspace_harness(snapshot)
-    source.write_text(original.replace("def test_correctness(", "def test_changed_correctness("))
-    with pytest.raises(RuntimeError, match="moe_gemm.py"):
+    source.write_text(original.replace("def reference(", "def changed_reference("))
+    with pytest.raises(RuntimeError, match="kernel.py"):
         verify_workspace_harness(snapshot)
 
 

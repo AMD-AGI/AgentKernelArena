@@ -1,0 +1,17 @@
+{
+  "description": "Batch sizes of the KernelBench level 2 problem 99 module (nn.Linear(8192, 8192), GELU, softmax over the features). The original cases escalated the batch from 256 to 4096; the performance cases extend it down to 32 (32 to 4096, 128x). Every batch reads the 256 MiB weight, so even batch 32 stays far above the 10 us floor. Batches 1, 3, 100 and 1000 are correctness-only boundary shapes, covering each block-size bucket of the baseline.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), a single row (boundary shape added for correctness)"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), odd batch (boundary shape added for correctness)"},
+    {"id": "b100", "axes": {"batch": 100}, "checks": ["correctness"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), batch not a multiple of 16 (boundary shape added for correctness)"},
+    {"id": "b1000", "axes": {"batch": 1000}, "checks": ["correctness"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), batch not a multiple of the 128-row tile (boundary shape added for correctness)"},
+    {"id": "b32", "axes": {"batch": 32}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), batch 32, added below the original 256-4096 escalation to reach the 100x span"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), batch 64, added below the original 256-4096 escalation to reach the 100x span"},
+    {"id": "b128", "axes": {"batch": 128}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), batch 128, added below the original 256-4096 escalation to reach the 100x span"},
+    {"id": "b256", "axes": {"batch": 256}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), original case_0"},
+    {"id": "b512", "axes": {"batch": 512}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), original case_1"},
+    {"id": "b1024", "axes": {"batch": 1024}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), original case_2 (the module's batch_size)"},
+    {"id": "b2048", "axes": {"batch": 2048}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), original case_3"},
+    {"id": "b4096", "axes": {"batch": 4096}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 99 (Matmul_GELU_Softmax), original case_4"}
+  ]
+}

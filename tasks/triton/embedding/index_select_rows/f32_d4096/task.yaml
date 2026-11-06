@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Row gather along dimension 0, out[i, :] = table[idx[i], :], the embedding-lookup / index_select
+  pattern, for a float32 table with 4096 columns. Every index lies in [0, table_rows).
+operator:
+  name: index_select_rows
+  category: embedding
+interface:
+  axes:
+    n_idx: {kind: var, min: 1, max: 262144, description: Number of gathered rows (token ids in the batch).}
+    table_rows: {kind: const, value: 32768, description: Rows of the source table (vocabulary size).}
+    row_width: {kind: const, value: 4096, description: Columns of the table (embedding width).}
+  inputs:
+    table:
+      kind: tensor
+      shape: [table_rows, row_width]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    idx:
+      kind: tensor
+      shape: [n_idx]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 32768}
+  outputs:
+    out: {shape: [n_idx, row_width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: v2.5.0
+    path: torch/_inductor/codegen/triton.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the pointwise indirect-load kernel TorchInductor generates for
+      torch.index_select(table, 0, idx); standalone, writes into the preallocated output.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

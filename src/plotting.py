@@ -179,12 +179,7 @@ def plot_performance_comparison(
         return None
     
     # Match test cases
-    matched = match_test_cases(
-        baseline_cases,
-        optimized_cases,
-        logger,
-        allow_index_fallback=(len(baseline_cases) == len(optimized_cases) == 1),
-    )
+    matched = match_test_cases(baseline_cases, optimized_cases, logger)
     
     if not matched:
         log.warning("No matched test cases found, skipping plotting")

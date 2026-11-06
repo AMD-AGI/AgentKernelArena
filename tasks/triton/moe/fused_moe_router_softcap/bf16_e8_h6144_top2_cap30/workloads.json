@@ -1,0 +1,17 @@
+{
+  "description": "Token counts of a Grok-1 MoE router (8 experts, hidden 6144, top-2, soft-cap 30). Token counts below 512 take the upstream CUDA-core kernel, 512 and above the tensor-core kernel. Decode batches and small prefill chunks run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t100", "axes": {"n_tokens": 100}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "t256", "axes": {"n_tokens": 256}, "checks": ["correctness"], "source": "decode, batch 256 (CUDA-core kernel)"},
+    {"id": "t77_nocap", "axes": {"n_tokens": 77}, "scalars": {"moe_softcapping": 0.0}, "checks": ["correctness"], "source": "soft-capping disabled (moe_softcapping = 0), supported by the upstream kernels"},
+    {"id": "t512", "axes": {"n_tokens": 512}, "checks": ["correctness"], "source": "smallest batch on the tensor-core kernel"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t2560", "axes": {"n_tokens": 2560}, "checks": ["correctness", "performance"], "source": "short prefill chunk"},
+    {"id": "t8192", "axes": {"n_tokens": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t32768", "axes": {"n_tokens": 32768}, "checks": ["correctness", "performance"], "source": "large prefill chunk"},
+    {"id": "t131072", "axes": {"n_tokens": 131072}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t262144", "axes": {"n_tokens": 262144}, "checks": ["correctness", "performance"], "source": "batched prefill"}
+  ]
+}

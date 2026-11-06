@@ -1,0 +1,52 @@
+schema_version: 3
+description: >-
+  DeepSeek-V3 biased grouped top-k routing of float32 router logits over 256 experts in 8 groups.
+  Selection scores are sigmoid(logits) + correction_bias; each group is scored by the sum of its two
+  largest selection scores, the 4 best groups are kept (other experts are masked to 0), and the 8 experts
+  with the largest selection score are chosen. The output weights are the unbiased sigmoid scores of the
+  chosen experts, renormalized to sum to 1 and multiplied by route_scale. Weights are float32 and expert
+  ids int32; the order of the 8 entries within a row is unspecified.
+operator:
+  name: biased_grouped_topk
+  category: moe
+element_order: any_in_full_rows
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens routed in the batch.}
+    n_experts: {kind: const, value: 256, description: Routed experts.}
+    topk: {kind: const, value: 8, description: Experts selected per token.}
+  inputs:
+    gating_output:
+      kind: tensor
+      shape: [n_tokens, n_experts]
+      dtype: float32
+      distribution: {kind: generator}
+    correction_bias:
+      kind: tensor
+      shape: [n_experts]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    route_scale: {kind: scalar, dtype: float32, default: 2.5}
+  outputs:
+    topk_weights: {shape: [n_tokens, topk], dtype: float32}
+    topk_ids: {shape: [n_tokens, topk], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: csrc/kernels/topk_softmax_kernels_group.cu
+    license: MIT
+    modifications: >-
+      Triton rewrite of the biased_grouped_topk_hip routing semantics (one program per token) for the
+      fixed 256-expert, 8-group, top-4-group, top-8 DeepSeek-V3 configuration; no upstream code is copied.
+compare:
+  topk_weights: {bound: sqnr, min_db: 125}
+  topk_ids: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

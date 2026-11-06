@@ -64,6 +64,22 @@ def _digest(value: object) -> str:
                                      allow_nan=False).encode()).hexdigest()
 
 
+def package_digest(manifest: dict[str, dict]) -> str:
+    """Content identity of a task package: paths, kinds, file contents and the executable bit.
+
+    Other permission bits follow the checkout's umask (0644 on one host, 0664 on another), so a
+    package hash that included them would make the same package look different, and every QA report
+    look stale, on another machine.
+    """
+    normalized = {}
+    for relative, item in manifest.items():
+        entry = {key: value for key, value in item.items() if key != "mode"}
+        if item.get("kind") == "file":
+            entry["executable"] = bool(item["mode"] & 0o111)
+        normalized[relative] = entry
+    return _digest(normalized)
+
+
 def _file_digest(path: Path, deadline: _Deadline) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -375,8 +391,9 @@ def materialize_task_workspace(spec: TaskSpec, config_path: Path, workspace: Pat
     workspace = workspace.parent.resolve() / workspace.name
     if workspace.is_relative_to(task_root) or task_root.is_relative_to(workspace):
         raise MaterializationError("Task package and workspace must be separate directories")
-    if config_path.name != "config.yaml":
-        raise MaterializationError("A task package must use config.yaml")
+    v3 = spec.contract is not None
+    if config_path.name != ("task.yaml" if v3 else "config.yaml"):
+        raise MaterializationError("A task package must use config.yaml (schema v2) or task.yaml (schema v3)")
     for source in config.get("workspace", {}).get("sources", []):
         if source["kind"] == "image":
             origin = Path(source["image_path"]).resolve()
@@ -387,7 +404,7 @@ def materialize_task_workspace(spec: TaskSpec, config_path: Path, workspace: Pat
     identity = {
         "task_id": spec.task_id, "workspace": str(workspace),
         "original_config_sha256": _file_digest(config_path, deadline),
-        "task_spec_sha256": _digest(config), "task_package_sha256": _digest(task_manifest),
+        "task_spec_sha256": _digest(config), "task_package_sha256": package_digest(task_manifest),
         "runtime": _runtime_identity(),
     }
     if os.path.lexists(workspace):
@@ -402,6 +419,13 @@ def materialize_task_workspace(spec: TaskSpec, config_path: Path, workspace: Pat
         record["workspace_inode"] = {"device": workspace.stat().st_dev, "inode": workspace.stat().st_ino}
         _copy_tree(task_root, workspace, task_manifest, deadline, state)
         _verify_copy(task_manifest, _tree_manifest(workspace, deadline), task_root, workspace)
+        generated_files: list[str] = []
+        if v3:
+            from .task_contract import SOLUTION_DIR, render_workspace
+
+            generated_files = render_workspace(task_root, workspace, task_id=spec.task_id,
+                                               target_language=spec.target_language)
+            record["generated_files"] = sorted(generated_files)
         acquired_files = set()
         for source in config.get("workspace", {}).get("sources", []):
             deadline.remaining()
@@ -452,23 +476,29 @@ def materialize_task_workspace(spec: TaskSpec, config_path: Path, workspace: Pat
             _run(argv, workspace, deadline, state, f"setup-{index:03d}", env)
         _validate_paths(spec, workspace, deadline)
         helper_record = state / "perf_helpers.json"
-        helper_code = (
-            "import json, pathlib, sys; "
-            "from src.perf_helper_materialization import materialize_perf_helpers_in_workspace; "
-            "root=pathlib.Path(sys.argv[1]); "
-            "files=materialize_perf_helpers_in_workspace(root); "
-            "pathlib.Path(sys.argv[2]).write_text(json.dumps([str(p.relative_to(root)) for p in files]))"
-        )
-        _run([sys.executable, "-c", helper_code, str(workspace), str(helper_record)],
-             Path(__file__).resolve().parents[1], deadline, state, "perf-helpers", env)
+        if v3:
+            # The v3 evaluator carries its own copy of the canonical timing helper.
+            helper_record.write_text("[]")
+        else:
+            helper_code = (
+                "import json, pathlib, sys; "
+                "from src.perf_helper_materialization import materialize_perf_helpers_in_workspace; "
+                "root=pathlib.Path(sys.argv[1]); "
+                "files=materialize_perf_helpers_in_workspace(root); "
+                "pathlib.Path(sys.argv[2]).write_text(json.dumps([str(p.relative_to(root)) for p in files]))"
+            )
+            _run([sys.executable, "-c", helper_code, str(workspace), str(helper_record)],
+                 Path(__file__).resolve().parents[1], deadline, state, "perf-helpers", env)
         _validate_paths(spec, workspace, deadline)
         if load_task_spec(workspace / "config.yaml", task_id=spec.task_id).to_mapping() != config:
             raise MaterializationError("Materialized task configuration differs from its parsed specification")
-        if _file_digest(workspace / "config.yaml", deadline) != identity["original_config_sha256"]:
+        if _file_digest(workspace / config_path.name, deadline) != identity["original_config_sha256"]:
             raise MaterializationError("Setup modified the task configuration")
         if any(os.path.lexists(workspace / name) for name in _STALE_OUTPUTS):
             raise MaterializationError("Setup produced reserved completion reports; these are not fresh evaluation evidence")
         immutable = acquired_files | {path for path, item in task_manifest.items() if item["kind"] != "directory"}
+        if v3:
+            immutable.update(path for path in generated_files if not path.startswith(SOLUTION_DIR + "/"))
         immutable.update(spec.baseline.source_files)
         immutable.update(config.get("instructions", []))
         immutable.update(json.loads(helper_record.read_text()))

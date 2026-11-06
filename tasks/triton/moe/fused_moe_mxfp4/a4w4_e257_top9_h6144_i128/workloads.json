@@ -1,0 +1,19 @@
+{
+  "description": "GLM-5 MXFP4 routed MoE per TP8 rank (257 experts with the fused shared expert, top-9, hidden 6144, intermediate 256) at the token counts of AITER's tuned GLM-5 FP4 fused_moe table (1..32768) up to 16384; odd and unaligned batches are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness", "performance"], "source": "decode, batch 1 (AITER glm5_fp4_tuned_fmoe token 1)"},
+    {"id": "t2", "axes": {"n_tokens": 2}, "checks": ["correctness"], "source": "decode, batch 2"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t4", "axes": {"n_tokens": 4}, "checks": ["correctness", "performance"], "source": "decode, batch 4 (AITER glm5_fp4_tuned_fmoe token 4)"},
+    {"id": "t16", "axes": {"n_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode, batch 16 (AITER glm5_fp4_tuned_fmoe token 16)"},
+    {"id": "t17", "axes": {"n_tokens": 17}, "checks": ["correctness"], "source": "decode, odd batch above the fused-routing bound"},
+    {"id": "t64", "axes": {"n_tokens": 64}, "checks": ["correctness", "performance"], "source": "decode, batch 64 (AITER glm5_fp4_tuned_fmoe token 64)"},
+    {"id": "t100", "axes": {"n_tokens": 100}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "t256", "axes": {"n_tokens": 256}, "checks": ["correctness", "performance"], "source": "decode, batch 256 (AITER glm5_fp4_tuned_fmoe token 256)"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill chunk"},
+    {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk (AITER glm5_fp4_tuned_fmoe token 1024)"},
+    {"id": "t4096", "axes": {"n_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk (AITER glm5_fp4_tuned_fmoe token 4096)"},
+    {"id": "t8000", "axes": {"n_tokens": 8000}, "checks": ["correctness"], "source": "unaligned prefill chunk with int32 routing indices"},
+    {"id": "t16384", "axes": {"n_tokens": 16384}, "checks": ["correctness", "performance"], "source": "prefill chunk (AITER glm5_fp4_tuned_fmoe token 16384)"}
+  ]
+}

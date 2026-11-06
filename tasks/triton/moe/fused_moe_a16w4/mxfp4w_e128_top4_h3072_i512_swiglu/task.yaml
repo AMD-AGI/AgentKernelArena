@@ -1,0 +1,105 @@
+schema_version: 3
+description: >-
+  GPT-OSS mixture-of-experts block with bfloat16 tokens and MXFP4 expert weights. For each token t and each of its
+  4 routed experts e = topk_ids[t, j]: g = x[t] @ W1[e]^T (2 * 512 outputs, gate = g[:512], up = g[512:]);
+  act = min(gate, 7) * sigmoid(1.702 * min(gate, 7)) * (clamp(up, -7, 7) + 1); y = act @ W2[e]^T;
+  out[t] = sum_j topk_weights[t, j] * y, rounded to bfloat16. W1 [E, 1024, 3072] and W2 [E, 3072, 512] are MXFP4:
+  e2m1 codes packed two per byte along the contracted axis (low nibble first) with one e8m0 scale byte
+  (2^(byte - 127)) per 32 contracted elements. Kernel-facing weights interleave the gate/up rows of W1 and store
+  both scale tensors in the gfx950 MX-scale tile order (see inputs.py).
+operator: {name: fused_moe_a16w4, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 65536, description: Tokens in the batch.}
+    num_experts: {kind: const, value: 128, description: Routed experts on this rank.}
+    topk: {kind: const, value: 4, description: Experts per token.}
+    hidden_size: {kind: const, value: 3072, description: Model width (GPT-OSS 2880 padded for MXFP4).}
+    inter_size: {kind: const, value: 512, description: Expert intermediate width per rank.}
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1:
+      kind: tensor
+      shape: [num_experts, 2 * inter_size, hidden_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, 2 * inter_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, inter_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, inter_size, hidden_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    topk_weights:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: float32
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/moe/moe_op_gemm_a16w4.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_gemm_a16w4.py
+      - aiter/ops/triton/_triton_kernels/moe/activations.py
+      - aiter/ops/triton/moe/moe_routing/routing.py
+      - aiter/ops/triton/moe/moe_routing/bitmatrix.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/routing.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/bitmatrix.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/expt_data.py
+      - aiter/ops/triton/moe/reduce.py
+      - aiter/ops/triton/_triton_kernels/moe/reduce.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+    license: MIT
+    notes: >-
+      The production function of the source task is AITER's CK-Tile two-stage MoE (fused_moe with
+      QuantType.per_1x32, bf16 activations and fp4x2 weights), which cannot be vendored as source. The baseline is
+      AITER's Triton bf16 x MXFP4 MoE GEMM (a port of the triton_kernels matmul_ogs path vLLM runs GPT-OSS with),
+      with AITER's routing kernels; vLLM's AITER W4A16 MoE backend (aiter_triton_kernel_w4a16_moe_forward in
+      vllm/model_executor/layers/fused_moe/experts/aiter_mxfp4_w4a8_moe.py) makes the same two GEMM calls after
+      routing from router logits. pack_bitmatrix comes from vllm-project/vllm at commit
+      edbc4969a76b25c531f7b9bb16b79984e65ef023,
+      vllm/model_executor/layers/fused_moe/experts/gpt_oss_triton_kernels_moe.py (Apache-2.0); the AITER kernels
+      are themselves adapted from the triton_kernels package (MIT).
+    modifications: >-
+      Kernels kept as in AITER (imports made local; the profiling-only launch_metadata hook removed; the _swiglu
+      parameter named after the builtin input renamed). The routing
+      host code is AITER's routing() after its top-k step, with the top-k kernel replaced by vLLM's pack_bitmatrix
+      over the given topk_ids and the scratchpads that kernel zeroes allocated with zeros; tensor-descriptor (gfx1250)
+      paths disabled. The two GEMMs run as in vLLM's triton_kernel_fused_experts (gather + fused SwiGLU with
+      alpha 1.702 and limit 7, then gate-weighted GEMM2), the bias inputs are absent, and the final top-k reduction
+      writes into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,116 @@
+schema_version: 3
+description: >-
+  Single-token (decode) sliding-window grouped-query attention over a paged FP8 KV cache with
+  1024-token pages. For sequence s with context length L = context_lengths[s], the decoded token at
+  position L - 1 attends to the keys at positions max(0, L - 1 - sliding_window) .. L - 1 (distance
+  at most sliding_window, i.e. sliding_window + 1 keys):
+  out[s, h] = softmax(scale * q[s, h] . K_w^T) . V_w. All 16 query heads share the single KV head
+  (head size 128). Token t of sequence s lives in page block_tables[s, t // 1024] at slot t % 1024;
+  keys are stored as key_cache[page, kv_head, d // 16, slot, d % 16] and values as
+  value_cache[page, kv_head, d, slot], both float8_e4m3fn codes dequantized by multiplying with the
+  per-tensor key_scale[0] and value_scale[0]. Pages outside a sequence's window are mapped to the
+  null page 0; the null page and pages no sequence references hold NaN, slots of a referenced page
+  outside the window hold finite data, and neither may affect the result. Queries are bfloat16 and
+  the result is rounded to bfloat16.
+operator:
+  name: paged_attention_decode_swa
+  category: attention
+interface:
+  axes:
+    num_seqs: {kind: var, min: 1, max: 4096, description: Sequences decoded in the step (one query token each).}
+    max_context_len: {kind: var, min: 1, max: 131072, description: 'Longest context in the batch; the others are between half of it and all of it.'}
+    num_query_heads: {kind: const, value: 16, description: Query heads per tensor-parallel rank (group size 16).}
+    num_kv_heads: {kind: const, value: 1, description: KV heads per tensor-parallel rank.}
+    head_size: {kind: const, value: 128, description: Head dimension of queries and the KV cache.}
+    block_size: {kind: const, value: 1024, description: Tokens per KV-cache page.}
+    x: {kind: const, value: 16, description: Head-dimension elements per 16-byte FP8 key vector.}
+  derived_axes:
+    max_blocks_per_seq: ceil_div(max_context_len, block_size)
+    num_blocks: 2 * num_seqs + 1
+  inputs:
+    query:
+      kind: tensor
+      shape: [num_seqs, num_query_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    key_cache:
+      kind: tensor
+      shape: [num_blocks, num_kv_heads, head_size // x, block_size, x]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: FP8 keys, element d of the token in (page, slot) at [page, kv_head, d // x, slot, d % x].
+    value_cache:
+      kind: tensor
+      shape: [num_blocks, num_kv_heads, head_size, block_size]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: FP8 values, element d of the token in (page, slot) at [page, kv_head, d, slot].
+    block_tables:
+      kind: tensor
+      shape: [num_seqs, max_blocks_per_seq]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Physical page of each logical 1024-token block; 0 (the null page) outside the window.
+    context_lengths:
+      kind: tensor
+      shape: [num_seqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Context length of each sequence including the decoded token, in [1, max_context_len].
+    key_scale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-tensor dequantization multiplier of key_cache.
+    value_scale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-tensor dequantization multiplier of value_cache.
+    scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: 'Softmax scale, head_size ** -0.5.'}
+    sliding_window: {kind: scalar, dtype: int32, default: 256, description: Largest attended key distance; 256 in every case.}
+  outputs:
+    out: {shape: [num_seqs, num_query_heads, head_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path:
+      - kernels/pa_decode_swa.py
+      - kernels/dpp_utils.py
+      - python/flydsl/expr/buffer_ops.py
+      - python/flydsl/expr/vector.py
+      - python/flydsl/expr/meta.py
+    license: Apache-2.0
+    modifications: >-
+      compile_pa_decode_sw and compile_pa_decode_sw_reduce are kept as carried by the AgentKernelArena
+      task flydsl2flydsl/pa_decode_swa_kernel, except that its in-kernel FNUZ-to-OCP conversion of
+      the loaded FP8 bytes (added there for FNUZ caches) is removed: this task stores OCP
+      float8_e4m3fn caches, the encoding gfx950's FP8 MFMA consumes. run() launches the partition kernel and the partition
+      reduce as the source task's harness did (bf16 query, one query token, per-tensor KV scales, no
+      partition fusion), allocating the per-partition statistics and partial outputs per call and
+      passing the caches as byte views on the current stream. The helper modules are flat sibling
+      files imported relatively; buffer_ops and vector are taken from the installed FlyDSL when
+      present, otherwise from the bundled copies of FlyDSL's legacy python/flydsl/expr helpers as
+      the source task adapted them to the current FlyDSL API (cache-policy bits through the ROCDL
+      aux attribute, pointer extraction through the typed iterator), with three further changes:
+      buffer_ops reads the architecture from FlyDSL instead of the environment, vector names its
+      dialect re-exports explicitly, and meta builds unknown MLIR debug locations instead of
+      inspecting the Python stack.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

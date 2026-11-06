@@ -1,0 +1,14 @@
+{
+  "description": "Row counts of a [N, 64] bfloat16 flip; smaller matrices run under the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "r1", "axes": {"n_rows": 1}, "checks": ["correctness"], "source": "axis minimum; single-row case of the old suite"},
+    {"id": "r64", "axes": {"n_rows": 64}, "checks": ["correctness"], "source": "single tile of the old suite"},
+    {"id": "r1000", "axes": {"n_rows": 1000}, "checks": ["correctness"], "source": "non-power-of-two"},
+    {"id": "r16385", "axes": {"n_rows": 16385}, "checks": ["correctness"], "source": "not a multiple of the tile or of 16"},
+    {"id": "r262144", "axes": {"n_rows": 262144}, "checks": ["correctness", "performance"], "source": "scaled matrix"},
+    {"id": "r2097152", "axes": {"n_rows": 2097152}, "checks": ["correctness", "performance"], "source": "scaled matrix"},
+    {"id": "r8388608", "axes": {"n_rows": 8388608}, "checks": ["correctness", "performance"], "source": "scaled matrix"},
+    {"id": "r16777216", "axes": {"n_rows": 16777216}, "checks": ["correctness", "performance"], "source": "scaled matrix"},
+    {"id": "r33554432", "axes": {"n_rows": 33554432}, "checks": ["correctness", "performance"], "source": "scaled matrix"}
+  ]
+}

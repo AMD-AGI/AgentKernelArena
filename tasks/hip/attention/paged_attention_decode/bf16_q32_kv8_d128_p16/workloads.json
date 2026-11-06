@@ -1,0 +1,25 @@
+{
+  "description": "Decode steps of Llama-3.1-8B-Instruct served by vLLM on MI355X (TP=1: 32 query heads, 8 KV heads, head size 128, 16-token BF16 pages). The session ran concurrency 64 with 1024-token prompts and outputs and max_model_len 6144, so its decode batches are s64_l1024..s64_l2048; batch sizes span vLLM's decode range up to its default limit of 256 sequences and contexts reach max_model_len, plus a single 32k-token request. Contexts are ragged between half of max_seq_len and all of it. Tiny batches with short contexts are correctness-only.",
+  "cases": [
+    {"id": "s1_l1", "axes": {"num_seqs": 1, "max_seq_len": 1}, "checks": ["correctness"], "source": "first decode token of a one-token prompt"},
+    {"id": "s3_l17", "axes": {"num_seqs": 3, "max_seq_len": 17}, "checks": ["correctness"], "source": "short contexts crossing a page by one token"},
+    {"id": "s37_l1000", "axes": {"num_seqs": 37, "max_seq_len": 1000}, "checks": ["correctness"], "source": "unaligned batch and context"},
+    {"id": "s64_l16", "axes": {"num_seqs": 64, "max_seq_len": 16}, "checks": ["correctness"], "source": "one page per sequence"},
+    {"id": "s4_l300", "axes": {"num_seqs": 4, "max_seq_len": 300}, "checks": ["correctness"], "source": "low-concurrency decode, short prompts, two partitions"},
+    {"id": "s1_l1024", "axes": {"num_seqs": 1, "max_seq_len": 1024}, "checks": ["correctness"], "source": "single-request decode right after a 1024-token prompt"},
+    {"id": "s512_l257", "axes": {"num_seqs": 512, "max_seq_len": 257}, "checks": ["correctness"], "source": "large decode batch, short contexts"},
+    {"id": "s1_l16385", "axes": {"num_seqs": 1, "max_seq_len": 16385}, "checks": ["correctness"], "source": "65 partitions: first context needing two cross-partition reduction loops"},
+    {"id": "s1_l131072", "axes": {"num_seqs": 1, "max_seq_len": 131072}, "checks": ["correctness"], "source": "Llama-3.1 128k context, the ROCm kernel's limit (eight reduction loops)"},
+    {"id": "s2_l6144", "axes": {"num_seqs": 2, "max_seq_len": 6144}, "checks": ["correctness", "performance"], "source": "low-concurrency decode at the session's max_model_len"},
+    {"id": "s1_l32768", "axes": {"num_seqs": 1, "max_seq_len": 32768}, "checks": ["correctness", "performance"], "source": "single long-context request"},
+    {"id": "s8_l4096", "axes": {"num_seqs": 8, "max_seq_len": 4096}, "checks": ["correctness", "performance"], "source": "decode, concurrency 8"},
+    {"id": "s16_l2048", "axes": {"num_seqs": 16, "max_seq_len": 2048}, "checks": ["correctness", "performance"], "source": "decode, concurrency 16, session prompt and output lengths"},
+    {"id": "s64_l1024", "axes": {"num_seqs": 64, "max_seq_len": 1024}, "checks": ["correctness", "performance"], "source": "session shape llama3_1-8b-decode-m64-ctx1024 (26.85% of GPU time in the paged-attention leaf), 1024 as the longest context"},
+    {"id": "s64_l1536", "axes": {"num_seqs": 64, "max_seq_len": 1536}, "checks": ["correctness", "performance"], "source": "session shape llama3_1-8b-decode-m64-ctx1536, 1536 as the longest context"},
+    {"id": "s64_l2048", "axes": {"num_seqs": 64, "max_seq_len": 2048}, "checks": ["correctness", "performance"], "source": "session shape llama3_1-8b-decode-m64-ctx2048: contexts of 1024 to 2048 tokens, the session steady state"},
+    {"id": "s32_l6144", "axes": {"num_seqs": 32, "max_seq_len": 6144}, "checks": ["correctness", "performance"], "source": "decode, concurrency 32 at max_model_len"},
+    {"id": "s128_l4096", "axes": {"num_seqs": 128, "max_seq_len": 4096}, "checks": ["correctness", "performance"], "source": "decode, concurrency 128"},
+    {"id": "s256_l2048", "axes": {"num_seqs": 256, "max_seq_len": 2048}, "checks": ["correctness", "performance"], "source": "decode, concurrency 256, session prompt and output lengths"},
+    {"id": "s256_l6144", "axes": {"num_seqs": 256, "max_seq_len": 6144}, "checks": ["correctness", "performance"], "source": "decode, vLLM's default 256 sequences at max_model_len (about 1.2M cached tokens)"}
+  ]
+}

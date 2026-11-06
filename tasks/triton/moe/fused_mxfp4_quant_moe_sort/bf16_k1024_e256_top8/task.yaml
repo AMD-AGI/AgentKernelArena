@@ -1,0 +1,55 @@
+schema_version: 3
+description: >-
+  Dynamic MXFP4 quantization of the stage-1 output of a mixture-of-experts layer, fused with the expert sorting of its
+  block scales. x [n_tokens * 8, 1024] bfloat16 holds one row per (token, expert slot). Every row is quantized in groups
+  of 32 columns to packed FP4 (E2M1) codes x_fp4 [n_tokens * 8, 512] with one E8M0 scale per group (power-of-two scale
+  from the group maximum rounded to the nearest exponent, minus the exponent of the largest FP4 value). The scales are
+  written in the sorted order of sorted_ids (entry = (slot << 24) | token, padded per expert to blocks of 32 rows with
+  the sentinel (8 << 24) | n_tokens) in the tiled scale layout of the MoE GEMM, [rows / 32, 4, 4, 16, 4] bytes viewed as
+  [sorted_len, 32]: the scale of sorted row 32 * R + 16 * a + m and group 8 * Cb + 4 * c + n is stored at
+  [R, Cb, n, m, 2 * c + a]. Scales of sentinel rows are zero.
+operator: {name: fused_mxfp4_quant_moe_sort, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    top_k: {kind: const, value: 8, description: Experts chosen per token.}
+    num_experts: {kind: const, value: 256, description: Experts of the layer.}
+    hidden_size: {kind: const, value: 1024, description: Quantized width (intermediate size of the expert MLP).}
+  derived_axes:
+    num_rows: n_tokens * top_k
+    sorted_len: >-
+      ((n_tokens * top_k) % num_experts) * (ceil_div((n_tokens * top_k) // num_experts + 1, 32) * 32) +
+      (num_experts - (n_tokens * top_k) % num_experts) * (ceil_div((n_tokens * top_k) // num_experts, 32) * 32)
+  inputs:
+    x:
+      kind: tensor
+      shape: [num_rows, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.05}
+    sorted_ids:
+      {kind: tensor, shape: [sorted_len], dtype: int32, role: index, distribution: {kind: generator}}
+    num_valid_ids:
+      {kind: tensor, shape: [2], dtype: int32, role: metadata, distribution: {kind: generator}}
+    token_num: {kind: scalar, dtype: int32, default: 1, description: Number of tokens (rows of x are token_num * top_k).}
+  outputs:
+    x_fp4: {shape: [num_rows, hidden_size // 2], dtype: uint8}
+    x_scales_sorted: {shape: [sorted_len, hidden_size // 32], dtype: uint8}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/quant/fused_mxfp4_quant.py (_fused_dynamic_mxfp4_quant_moe_sort_kernel), aiter/ops/triton/quant/fused_mxfp4_quant.py (fused_dynamic_mxfp4_quant_moe_sort)
+    license: MIT
+    modifications: >-
+      Kernel unchanged; the launcher writes the preallocated x_fp4 and x_scales_sorted outputs (run() interface)
+      and derives topk from the row count instead of taking it as an argument.
+compare:
+  x_fp4: {bound: exact}
+  x_scales_sorted: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

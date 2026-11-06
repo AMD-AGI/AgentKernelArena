@@ -387,81 +387,101 @@ raise RuntimeError('failed before writing the artifact')
     assert summary["overall"]["correctness_pass_count"] == 1
 
 
-@pytest.mark.parametrize("semantic_pass", [True, False])
-def test_real_validator_launcher_uses_initial_evidence_and_semantic_gate(tmp_path, monkeypatch, semantic_pass):
-    import importlib
-    from datetime import datetime, timezone
-    from agents.task_validator.report_schema import HARD_BENCHMARK_REVIEW_FIELDS, ADVISORY_BENCHMARK_REVIEW_FIELDS
-    from agents.task_validator.report_v2 import DRAFT_FILENAME, SEMANTIC_CHECKS
+@pytest.mark.parametrize("valid", [True, False])
+def test_real_auditor_launcher_audits_initial_evidence_without_a_review_backend(tmp_path, valid):
+    from agents.qa_auditor.launch_agent import launch_agent
+    from agents.qa_auditor.report import load_report
+    from src.preprocessing import is_task_complete
 
-    launcher = importlib.import_module("agents.task_validator.launch_agent")
-
-    def backend(prompt, workspace, *_args, **_kwargs):
-        # Exercise the real generated prompt and finalizers; only the model's
-        # semantic judgment is a fixture. Never count this as actual LLM/GPU validation.
-        raw = json.loads(prompt.rsplit("```json\n", 1)[1].split("```", 1)[0])
-        raw["validation_timestamp"] = datetime.now(timezone.utc).isoformat()
-        raw["overall_status"] = "PASS"
-        for name in ("source_files_exist", "target_symbols_found", *SEMANTIC_CHECKS):
-            raw["checks"][name].update(status="PASS", details="CPU fixture review",
-                                       evidence=[{"path": "evaluate.py", "finding": "Fixture reviewed"}])
-        raw["checks"]["benchmark_integrity"].update({key: True for key in (
-            *HARD_BENCHMARK_REVIEW_FIELDS, *ADVISORY_BENCHMARK_REVIEW_FIELDS)})
-        raw["checks"]["harness_integrity"].update(guard_coverage_reviewed=True, editable_targets_preserved=True)
-        if not semantic_pass:
-            raw["checks"]["correctness_implementation_review"]["status"] = "FAIL"
-        (Path(workspace) / DRAFT_FILENAME).write_text(json.dumps(raw))
-        return launcher.BackendResult(output="CPU fixture review", returncode=0, timed_out=False)
-
-    monkeypatch.setattr(launcher, "_launch_codex", backend)
-    path = package(tmp_path, empty=True, provided=3)
-    complete, workspace = run(tmp_path, path, launcher.launch_agent, agent="task_validator")
-    report = yaml.safe_load((workspace / "validation_report.yaml").read_text())
-    assert complete
-    assert report["overall_status"] == ("PASS" if semantic_pass else "FAIL"), report["validation_errors"]
-    assert report["framework_status"] == "PASS", report["framework_errors"]
-    assert report["checks"]["correctness_implementation_review"]["status"] == (
-        "PASS" if semantic_pass else "FAIL")
-    assert report["task_name"] == "suite/protocol_fixture"
-    assert report["checks"]["correctness"]["status"] == "PASS"
-    assert report["candidate_initial_checks"]["correctness"]["status"] == "SKIP"
+    # A deterministic-only audit of a schema-v2 fixture: no model, GPU or controls run.
+    path = package(tmp_path, empty=True, provided=3 if valid else 4)
+    complete, workspace = run_task_v2(
+        eval_config={"agent": {"template": "qa_auditor", "backend": "none"}},
+        agent=SimpleNamespace(value="qa_auditor"), agent_launcher=launch_agent,
+        task_name="suite/protocol_fixture", task_config_dir=str(path), run_directory=tmp_path / "run",
+        timestamp="fixture", logger=logging.getLogger("test_task_run_v2"))
+    report = load_report(workspace)
+    assert complete and report["task_id"] == "suite/protocol_fixture"
+    assert report["status"] == ("PASS" if valid else "FAIL")
+    assert report["checks"]["QA-INITIAL"] == ("PASS" if valid else "FAIL")
+    assert report["checks"]["QA-README"] == "WARN"
+    assert report["checks"]["QA-REVIEW-UNAVAILABLE"] == "WARN"
+    assert report["target_language"] is None
     assert not (workspace / "task_result.yaml").exists()
+    assert is_task_complete(tmp_path / "run", "suite/protocol_fixture", "fixture", "qa_auditor")
 
 
-@pytest.mark.parametrize("request_id", [None, "controller-owned-validation-id"])
-def test_validation_session_preserves_controller_request_id(tmp_path, request_id):
-    from src.task_run import validate_task_session
+def honest_auditor(findings=()):
+    """A launcher that writes a correct report for the framework's request."""
+    def launcher(*, eval_config, workspace, **_):
+        from agents.qa_auditor.report import build_report, write_report
+        write_report(Path(workspace), build_report(
+            task_id=eval_config["_task_id"], findings=list(findings), task_package_sha256="fixture",
+            target_language=None, request_id=eval_config["_task_validation_request_id"]))
+    return launcher
+
+
+@pytest.mark.parametrize("request_id", [None, "controller-owned-audit-id"])
+def test_audit_session_preserves_controller_request_id(tmp_path, request_id):
+    from src.task_run import audit_task_session
     session = create(tmp_path)
     observed = []
+    auditor = honest_auditor()
+
     def launcher(*, eval_config, **kwargs):
         observed.append(eval_config["_task_validation_request_id"])
-    report = validate_task_session(session, eval_config={},
-                                   task_config_dir=str(session.workspace / "config.yaml"),
-                                   agent_launcher=launcher, validation_request_id=request_id)
-    assert observed[0]
-    assert report["validation_request_id"] == observed[0]
+        assert os.environ["ARENA_EVAL_PHASE"] == "task_validation"
+        auditor(eval_config=eval_config, **kwargs)
+
+    report = audit_task_session(session, eval_config={}, task_config_dir=str(session.workspace / "config.yaml"),
+                                agent_launcher=launcher, audit_request_id=request_id)
+    assert observed[0] and report["audit_request_id"] == observed[0]
     if request_id is not None:
         assert observed == [request_id]
-    # The absence of semantic review still cannot authorize a PASS.
-    assert report["overall_status"] == "FAIL"
+    assert report["status"] == "PASS"
+    assert "ARENA_EVAL_PHASE" not in os.environ
 
 
-@pytest.mark.parametrize("tamper", ["candidate", "action", "new_action"])
-def test_semantic_validator_cannot_change_sources_or_recorded_actions(tmp_path, tamper):
-    from src.task_run import validate_task_session
-    session = create(tmp_path)
-    def launcher(**kwargs):
+@pytest.mark.parametrize("tamper,message", [
+    ("candidate", "changed the initial candidate"),
+    ("action", "changed captured action or context evidence"),
+    ("new_action", "changed captured action or context evidence"),
+    ("no_report", "returned no complete report"),
+    ("stale_request", "returned no complete report"),
+    ("crash", "Auditor launcher failed: RuntimeError"),
+])
+def test_audit_cannot_change_sources_or_evidence_or_skip_its_report(tmp_path, tamper, message):
+    from agents.qa_auditor.report import build_report, load_report, write_report
+    from src.task_run import _state_directory
+    path = package(tmp_path)
+    warning = {"id": "QA-README", "severity": "warning", "title": "t", "detail": "d", "evidence": {}, "fix": "f"}
+    auditor = honest_auditor([warning])
+
+    def launcher(*, eval_config, workspace, **kwargs):
+        workspace = Path(workspace)
+        state = _state_directory(workspace)
         if tamper == "candidate":
-            (session.workspace / "kernel.py").write_text("def compute():\n    return 99\n")
+            (workspace / "kernel.py").write_text("def compute():\n    return 99\n")
         elif tamper == "action":
-            path = next(session.state_directory.glob("action-*.json"))
-            path.write_text(path.read_text() + "\n")
-        else:
-            (session.state_directory / "action-fabricated.json").write_text("{}")
-    report = validate_task_session(session, eval_config={},
-                                   task_config_dir=str(session.workspace / "config.yaml"),
-                                   agent_launcher=launcher)
-    assert report["framework_status"] == "FAIL"
-    assert report["overall_status"] == "FAIL"
-    errors = " ".join(report["framework_errors"])
-    assert "Validator changed" in errors
+            action = next(state.glob("action-*.json"))
+            action.write_text(action.read_text() + "\n")
+        elif tamper == "new_action":
+            (state / "action-fabricated.json").write_text("{}")
+        elif tamper == "crash":
+            raise RuntimeError("review backend crashed")
+        if tamper == "stale_request":
+            write_report(workspace, build_report(task_id=eval_config["_task_id"], findings=[],
+                                                 task_package_sha256=None, target_language=None,
+                                                 request_id="an-earlier-audit"))
+        elif tamper != "no_report":
+            auditor(eval_config=eval_config, workspace=str(workspace), **kwargs)
+
+    complete, workspace = run(tmp_path, path, launcher, agent="qa_auditor")
+    report = load_report(workspace)
+    assert complete and report["status"] == "FAIL"
+    audit = [finding for finding in report["findings"] if finding["id"] == "QA-AUDIT"]
+    assert audit and message in " ".join(finding["detail"] for finding in audit)
+    if tamper in ("candidate", "action", "new_action"):
+        # The auditor's own findings survive next to the framework's blocking finding.
+        assert report["checks"]["QA-README"] == "WARN"
+    assert report["task_package_sha256"] and report["task_package_sha256"] != "fixture"

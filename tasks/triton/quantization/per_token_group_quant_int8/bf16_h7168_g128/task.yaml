@@ -1,0 +1,42 @@
+schema_version: 3
+description: >-
+  Per-token-group INT8 quantization of a bfloat16 activation: each contiguous group of 128 elements of a
+  row gets the float32 scale max(max|x|, 1e-10) / 127; codes = int8(clamp(x / scale, -128, 127)) with the
+  float32 quotient truncated toward zero. Scales are float32, row-major [n_tokens, hidden_size / 128].
+operator:
+  name: per_token_group_quant_int8
+  category: quantization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 7168, description: Quantized width.}
+    num_groups: {kind: const, value: 56, description: Groups of 128 per row.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    x_q: {shape: [n_tokens, hidden_size], dtype: int8}
+    x_s: {shape: [n_tokens, num_groups], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/quantization/utils/int8_utils.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface; group size 128 and eps 1e-10 are fixed by the scenario, the INT8
+      range comes from the output dtype, and the output allocations moved to the evaluator;
+      the scale and quotient divisions use tl.div_rn (IEEE round-to-nearest) instead of / so the codes match
+      the float32 reference bit-for-bit on ROCm.
+compare:
+  x_q: {bound: exact}
+  x_s: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,70 @@
+schema_version: 3
+description: >-
+  Fused QKV split and NeoX rotary embedding. The fused projection qkv[T, (q_heads + 2 * kv_heads) * head_dim]
+  is split into q (the first q_heads heads), k and v (kv_heads heads each). NeoX-style (rotate-half)
+  RoPE is applied to every q and k head with cos/sin rows gathered by positions[t] (the tables hold the
+  first-half angles, shared by both halves of the head); v is copied unrotated.
+operator:
+  name: fused_qkv_split_rope
+  category: positional
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 32}
+    num_kv_heads: {kind: const, value: 8}
+    head_dim: {kind: const, value: 128}
+    max_position: {kind: const, value: 131072, description: Rows of the cos/sin tables.}
+  derived_axes:
+    qkv_width: (num_q_heads + 2 * num_kv_heads) * head_dim
+    half_dim: head_dim // 2
+  inputs:
+    qkv:
+      kind: tensor
+      shape: [n_tokens, qkv_width]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    cos:
+      kind: tensor
+      shape: [max_position, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin:
+      kind: tensor
+      shape: [max_position, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 131072}
+  outputs:
+    q: {shape: [n_tokens, num_q_heads, head_dim], dtype: bfloat16}
+    k: {shape: [n_tokens, num_kv_heads, head_dim], dtype: bfloat16}
+    v: {shape: [n_tokens, num_kv_heads, head_dim], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/rope/fused_qkv_split_qk_rope.py
+    license: MIT
+    modifications: >-
+      The kernel and the rotate helpers it imports (aiter/ops/triton/_triton_kernels/rope/rope.py) are
+      inlined into one file; the Python launch wrapper is replaced by run(), which writes into the
+      preallocated q, k and v and fixes NeoX rotation, no NoPE, front-part frequency reuse and
+      position-gathered cos/sin rows.
+compare:
+  q: {bound: baseline_relative}
+  k: {bound: baseline_relative}
+  v: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,34 @@
+schema_version: 3
+description: >-
+  Reverse each row of a float32 matrix along the last dimension, out[i, j] = x[i, 63 - j].
+operator:
+  name: flip
+  category: elementwise
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 16777216, description: Rows of the matrix.}
+    n_cols: {kind: const, value: 64, description: Row width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, n_cols]
+      dtype: float32
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_rows, n_cols], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/triton benchmark suite (flip_kernel, test_triton_flip.py)
+    revision: unrecorded in the old task package
+    path: test_triton_flip.py
+    license: MIT
+    modifications: Grid over tiles of 64 rows (the original kernel flipped a single tile) with tl.flip along columns; wrapped in run().
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

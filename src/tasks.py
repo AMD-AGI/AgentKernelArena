@@ -6,47 +6,49 @@ from typing import Dict, Optional
 
 
 def get_task_config(tasks_root: str = "tasks", category: Optional[str] = None) -> Dict[str, str]:
-    """
-    Automatically scan all task folders under the tasks directory.
-    If config.yaml exists, register it to task_config_list.
+    """Find every task under ``tasks_root``.
 
-    Task naming strategy:
-    - Uses relative path from tasks_root as the unique task name
-    - Example: tasks/triton2triton/vllm/triton_rms_norm/config.yaml
-      -> task_name: "triton2triton/vllm/triton_rms_norm"
-    - This ensures uniqueness even when folder names collide
+    A schema-v3 kernel task declares ``task.yaml``; a schema-v2 e2e serving task
+    keeps ``config.yaml``. The task name is the directory's path relative to
+    ``tasks_root``, for example ``tasks/triton/normalization/rms_norm/bf16_h8192/task.yaml``
+    -> ``triton/normalization/rms_norm/bf16_h8192``.
 
     Args:
         tasks_root: Root directory for tasks (default: "tasks")
-        category: Optional path prefix to filter tasks (e.g., "hip2hip" or
-            "repository/rocprim")
+        category: Optional path prefix to filter tasks, matched as a glob over whole
+            path components (e.g. "triton", "triton/normalization", "*/normalization"
+            for one category under every baseline language, or "e2e")
 
     Returns:
-        dict: {task_name: config_path}
-            - task_name: Relative path from tasks_root to the task folder
-            - config_path: Relative path to config.yaml from project root
+        dict: {task_name: path of its task.yaml or config.yaml}
     """
     task_config_dict = {}
     root = Path(tasks_root)
+    prefix = f"{category}/" if category else ""
 
-    # If category is specified, only scan that category
-    if category:
-        pattern = f"{category}/**/config.yaml"
-    else:
-        pattern = "**/config.yaml"
+    # Schema-v3 kernel tasks declare task.yaml; schema-v2 serving tasks keep
+    # config.yaml. A directory must not declare both.
+    for name in ("task.yaml", "config.yaml"):
+        for config_path in root.glob(f"{prefix}**/{name}"):
+            task_name = config_path.parent.relative_to(root).as_posix()
+            if task_name in task_config_dict:
+                raise ValueError(f"Task {task_name} declares both task.yaml and config.yaml")
+            task_config_dict[task_name] = str(config_path)
 
-    for config_path in root.glob(pattern):
-        # Get task name as relative path from tasks_root to the task folder
-        # This ensures uniqueness across different categories
-        # Example: triton2triton/vllm/triton_rms_norm
-        task_folder = config_path.parent
-        task_name = str(task_folder.relative_to(root))
+    return dict(sorted(task_config_dict.items()))
 
-        # Store relative path from project root to config.yaml
-        relative_path = str(config_path)
 
-        # Register to task_config_dict
-        task_config_dict[task_name] = relative_path
+def task_category(task_name: str) -> str:
+    """The operator category in a task name, "e2e" for a serving task, else the first segment.
 
-    return task_config_dict
+    Kernel task names are <baseline_language>/<category>/<operator>/<scenario>,
+    so the category is the second segment; returns "" when there is no slash.
+    """
+    from src.task_contract import BASELINE_LANGUAGES
 
+    if not isinstance(task_name, str) or "/" not in task_name:
+        return ""
+    parts = task_name.split("/")
+    if len(parts) >= 4 and parts[0] in BASELINE_LANGUAGES:
+        return parts[1]
+    return parts[0]

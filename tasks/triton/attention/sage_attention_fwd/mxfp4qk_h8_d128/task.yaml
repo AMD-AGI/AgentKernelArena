@@ -1,0 +1,58 @@
+schema_version: 3
+description: >-
+  Causal multi-head attention out = softmax(scale * q k^T) v with scale = head_dim^-0.5, computed in
+  the SageAttention v2 MXFP4 style: q and k are Hadamard-rotated (block 64), k is mean-smoothed, q is
+  block-mean smoothed, both are quantized to MXFP4 (E2M1 values, E8M0 scales per 32) and v to FP8
+  with a per-channel scale, so the result approximates full-precision attention. The operator takes and
+  returns bfloat16 [batch, seq, heads, head_dim] tensors and quantizes internally; the reference is
+  plain float64 attention.
+operator: {name: sage_attention_fwd, category: attention}
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 16, description: Sequences in the batch.}
+    seqlen: {kind: var, min: 1, max: 16384, description: Query and key length (self-attention).}
+    num_heads: {kind: const, value: 8, description: Query and key/value heads (MHA).}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, seqlen, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [batch, seqlen, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [batch, seqlen, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [batch, seqlen, num_heads, head_dim], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: >-
+      aiter/ops/triton/_triton_kernels/attention/fav3_sage_attention_mxfp4.py,
+      aiter/ops/triton/attention/fav3_sage_attention_mxfp4_wrapper.py,
+      aiter/ops/triton/_triton_kernels/quant/sage_attention_quant.py,
+      aiter/ops/triton/_triton_kernels/moe/quant_moe.py
+    license: MIT
+    modifications: >-
+      Wrapped in the run() interface (causal, q smoothing, Hadamard block 64, K smoothing, bshd, no
+      LSE, no block-sparse). The quantization kernels carry the previous task's numerical repairs:
+      nearest-even E2M1 conversion with OCP power-of-two scales, a two-component MXFP4 expansion of Q and K
+      evaluated as four feature products, and a zero-safe V quantizer. The host-side torch operations of
+      the AITER wrapper (Hadamard matrix, V abs-max, K mean and subtraction, concatenation of the expansion
+      components) are Triton kernels; the MXFP4 downcast kernel writes each component to two slots of the
+      expanded operand instead of a concatenation.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.001}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

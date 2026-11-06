@@ -81,10 +81,11 @@ scored timing. These prompt corrections do not establish a performance gain.
 
 ## Validation and limits
 
-Runtime checks have exercised existing HIP and Triton kernels and PyTorch
-baselines on a 16 GB `gfx1201` GPU. A passing baseline for a generation or
-conversion task does not validate a generated target kernel. Runtime command
-checks also do not replace a framework-finalized `task_validator` report.
+Runtime checks on a 16 GB `gfx1201` GPU predate the schema-v3 kernel tasks;
+Triton, Gluon, HIP and FlyDSL are verified on MI355X only, and RDNA4 is
+implemented but unverified. A passing baseline does not validate a generated
+target kernel. Runtime command checks also do not replace a framework-finalized
+`qa_report.yaml` from the QA auditor.
 
 Known limits of existing tasks with this image include:
 
@@ -95,15 +96,14 @@ Known limits of existing tasks with this image include:
 - Per-workgroup LDS (`gfx1201`): vLLM persistent matmul can request 96 KiB of
   shared memory against the 64 KiB per-workgroup limit. Increasing board VRAM
   does not increase this separate LDS limit.
-- Native FlyDSL tasks: some use APIs absent from the bundled FlyDSL version;
-  others explicitly require a CDNA architecture in `platform_support`.
-- Image-bound tasks: existing `image_kernel` contracts can refer to source
-  trees and Python package paths from a different image. Those paths are not
-  interchangeable with this image's packages.
+- Architecture restrictions: the shipped kernel tasks declare `required_arch`
+  in `platform_support` (currently `gfx950`) and are skipped on `gfx1201`.
+  FlyDSL may use APIs absent from the bundled version or require a CDNA
+  architecture.
 
 Keep task shapes, correctness tolerances, and timing policy intact when
-investigating failures. Honor architecture restrictions, and qualify task or
-harness changes with the [task validator](../../docs/how-to/task-validator.md).
+investigating failures. Honor architecture restrictions, and qualify task
+changes with the [QA auditor](../../docs/how-to/qa-auditor.md).
 Only `gfx1201` is configured here; this does not establish support for every task
 category, other Radeon architectures, full vLLM serving, or evaluation-tool
 sidecars. Existing task contracts and benchmark helpers are unchanged. Agent

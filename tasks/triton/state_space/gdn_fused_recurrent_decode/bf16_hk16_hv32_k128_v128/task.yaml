@@ -1,0 +1,91 @@
+schema_version: 3
+description: >-
+  Single-token decode step of the gated delta rule (Gated DeltaNet) for a batch of sequences, with 16
+  query/key heads, 32 value heads and head dimensions 128, directly on the packed q|k|v projection.
+  Per sequence and value head the float32 [V, K] state of the sequence's pool slot is decayed by
+  exp(g), corrected with the L2-normalized key, updated with the gated delta, read out with the
+  L2-normalized, scaled query into the bfloat16 output, and written back to its slot in place. A
+  negative slot index marks a padded sequence: its output is zero and no state is touched.
+operator:
+  name: gdn_fused_recurrent_decode
+  category: state_space
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 800, description: Sequences decoded in one step.}
+    num_k_heads: {kind: const, value: 16, description: Query/key heads (grouped-value-attention groups).}
+    num_heads: {kind: const, value: 32, description: Value heads.}
+    head_dim_k: {kind: const, value: 128, description: Query/key head dimension.}
+    head_dim_v: {kind: const, value: 128, description: Value head dimension.}
+  derived_axes:
+    qkv_dim: 2 * num_k_heads * head_dim_k + num_heads * head_dim_v
+    pool_slots: batch + 2
+  inputs:
+    mixed_qkv:
+      kind: tensor
+      shape: [batch, qkv_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed q (num_k_heads x K) | k (num_k_heads x K) | v (num_heads x V) projection of each token.
+    a:
+      kind: tensor
+      shape: [batch, num_heads]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Decay-gate projection; g = -exp(A_log) * softplus(a + dt_bias).
+    b:
+      kind: tensor
+      shape: [batch, num_heads]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Update-rate projection; beta = sigmoid(b).
+    A_log:
+      kind: tensor
+      shape: [num_heads]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.0, high: 2.7}
+    dt_bias:
+      kind: tensor
+      shape: [num_heads]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    scale: {kind: scalar, dtype: float32, default: 0.08838834764831845}
+    ssm_state:
+      kind: tensor
+      shape: [pool_slots, num_heads, head_dim_v, head_dim_k]
+      dtype: float32
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Recurrent-state pool; the slot of every unpadded sequence is read and overwritten.
+    ssm_state_indices:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct pool slot of each sequence; -1 for padded sequences (every 16th).
+  outputs:
+    out: {shape: [batch, 1, num_heads, head_dim_v], dtype: bfloat16}
+  mutable: [ssm_state]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/attention/fla/fused_recurrent.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      fused_recurrent_gated_delta_rule_packed_decode_kernel with fla's exp inlined as tl.exp; the host
+      wrapper's argument validation was dropped and the wrapper became run() writing into the
+      preallocated output, with in-kernel q/k L2 normalization enabled (the model's setting).
+compare:
+  # Calibrated overrides, justified with measurements in README.md ("Comparison").
+  out: {bound: baseline_relative, max_violation_fraction: 1.0e-4}
+  ssm_state: {bound: baseline_relative, k: 8, max_violation_fraction: 1.0e-3}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

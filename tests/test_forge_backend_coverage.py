@@ -1,68 +1,70 @@
-"""Public v2 task coverage and explicit limits of the audited Forge engine."""
+"""Every schema-v3 task and run target language has an explicit Forge route (CPU, no GPU claims)."""
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from agents.forge.adapter import ForgeRunError, require_supported_backend
-from agents.forge.common import _infer_backend
-from src.task_spec import TaskConfigError, TaskSpec, load_task_spec
+from agents.forge.adapter import (INITIALIZATION_LANGUAGES, TARGET_LANGUAGES, ForgeRunError,
+                                  choose_workflow, require_supported_backend)
+from agents.forge.task_context import require_kernel_task
+from src.task_contract import TARGET_LANGUAGES as RUN_TARGET_LANGUAGES
+from src.task_spec import TaskSpec, load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-# CPU fixture for audited Hyperloom 0425bde3, not the runtime's source of truth.
-# Production launch uses the actual registry returned by the source-pinned probe.
-KNOWN_BACKENDS = {'aiter', 'ck', 'flydsl', 'fusion', 'gluon', 'hip', 'hipblaslt', 'triton'}
-EXPLICITLY_UNSUPPORTED = {
-    'tilelang': 'No native backend in the pinned KernelForge release',
-    'gpu': 'No backend-neutral whole-model backend in the pinned KernelForge release',
-}
+# CPU fixture for the KernelForge registry and rewrite protocol; production
+# launch uses the values the source-pinned probe reads from the installed engine.
+CAPABILITIES = {"backends": ["aiter", "assembly", "ck", "flydsl", "fusion", "gluon", "hip", "hipblaslt", "triton"],
+                "rewrite_source_languages": ["cpp", "cuda", "hip", "triton"]}
 
 
-def test_every_task_is_validated_and_its_forge_capability_is_explicit():
-    paths = sorted((ROOT/'tasks').rglob('config.yaml'))
-    assert paths, 'No task configs found'
-    checked = []
-    unsupported = set()
+def _context(spec):
+    contract = require_kernel_task(spec)
+    return SimpleNamespace(spec=spec, target_language=contract["target_language"],
+                           baseline_language=contract["baseline_language"])
+
+
+def test_forge_targets_are_the_run_target_languages():
+    assert set(TARGET_LANGUAGES) == set(RUN_TARGET_LANGUAGES)
+    assert set(INITIALIZATION_LANGUAGES) == set(TARGET_LANGUAGES) - {"flydsl"}
+
+
+@pytest.mark.parametrize("language", RUN_TARGET_LANGUAGES)
+def test_every_v3_task_has_an_explicit_forge_route(language):
+    paths = sorted((ROOT / "tasks").rglob("task.yaml"))
+    assert paths, "No schema-v3 tasks found"
     for path in paths:
-        task_id = path.parent.relative_to(ROOT/'tasks').as_posix()
-        # No exception-catching skips: malformed or unmigrated configs fail here.
-        spec = load_task_spec(path, task_id=task_id)
-        language = _infer_backend(spec.to_mapping())
-        assert language == spec.candidate.language
-        if language in EXPLICITLY_UNSUPPORTED:
-            unsupported.add(language)
-            with pytest.raises(ForgeRunError, match=f'has no {language} backend'):
-                require_supported_backend(spec, {'backends': sorted(KNOWN_BACKENDS)})
+        task_id = path.parent.relative_to(ROOT / "tasks").as_posix()
+        # No exception-catching skips: malformed packages fail here.
+        spec = load_task_spec(path, task_id=task_id, target_language=language)
+        context = _context(spec)
+        assert require_supported_backend(spec, CAPABILITIES) == language
+        assert choose_workflow(context, target_verified=True) == "optimize"
+        if spec.candidate.initial_state == "implemented":
+            continue
+        if language != "flydsl":
+            assert choose_workflow(context, target_verified=False, capabilities=CAPABILITIES) == "initialize"
+        elif context.baseline_language in CAPABILITIES["rewrite_source_languages"]:
+            assert choose_workflow(context, target_verified=False, capabilities=CAPABILITIES) == "rewrite"
         else:
-            assert require_supported_backend(spec, {'backends': sorted(KNOWN_BACKENDS)}) == language
-        checked.append(task_id)
-    assert len(checked) == len(paths)
-    assert len(set(checked)) == len(paths)
-    assert unsupported == set(EXPLICITLY_UNSUPPORTED), 'Review stale capability exclusions'
-    assert not set(EXPLICITLY_UNSUPPORTED) & KNOWN_BACKENDS
+            with pytest.raises(ForgeRunError, match="FlyDSL rewrite reads"):
+                choose_workflow(context, target_verified=False, capabilities=CAPABILITIES)
 
 
-def _config(language='triton'):
-    return {'schema_version': 2, 'candidate': {'language': language, 'editable': ['kernel.py']},
-            'evaluation': {'runner': ['python3', 'evaluate.py']}}
+def test_schema_v2_serving_tasks_are_explicitly_outside_forge():
+    paths = sorted((ROOT / "tasks" / "e2e").rglob("config.yaml"))
+    for path in paths:
+        spec = load_task_spec(path, task_id=path.parent.relative_to(ROOT / "tasks").as_posix())
+        with pytest.raises(ValueError, match="schema-v3"):
+            require_kernel_task(spec)
 
 
-@pytest.mark.parametrize('language', ['hip', 'triton', 'flydsl', 'tilelang', 'gpu'])
-def test_v2_backend_is_declared_language(language):
-    assert _infer_backend(_config(language)) == language
-
-
-@pytest.mark.parametrize('changes', [{'task_type': 'triton2triton'},
-                                    {'kernel_identity': {'kernel_kind': 'flydsl'}},
-                                    {'candidate': {'editable': ['kernel.py']}}])
-def test_invalid_v2_contract_is_not_recovered_using_legacy_hints(changes):
-    with pytest.raises(TaskConfigError):
-        _infer_backend({**_config(), **changes})
-
-
-@pytest.mark.parametrize('language', ['tilelang', 'gpu'])
+@pytest.mark.parametrize("language", ["tilelang", "gpu"])
 def test_capability_check_uses_reported_registry_without_aliases(language):
-    spec = TaskSpec.from_mapping(_config(language), task_id='arbitrary/operator')
-    with pytest.raises(ForgeRunError, match=f'has no {language} backend'):
-        require_supported_backend(spec, {'backends': ['flydsl', 'triton']})
-    # If a future audited upstream actually supplies it, preserve its name.
-    assert require_supported_backend(spec, {'backends': [language]}) == language
+    spec = TaskSpec.from_mapping({"schema_version": 2,
+                                  "candidate": {"language": language, "editable": ["kernel.py"]},
+                                  "evaluation": {"runner": ["python3", "evaluate.py"]}},
+                                 task_id="arbitrary/operator")
+    with pytest.raises(ForgeRunError, match=f"has no {language} backend"):
+        require_supported_backend(spec, {"backends": ["flydsl", "triton"]})
+    # If a future upstream actually supplies it, preserve its name.
+    assert require_supported_backend(spec, {"backends": [language]}) == language

@@ -1,0 +1,47 @@
+schema_version: 3
+description: >-
+  SmoothQuant dynamic per-token INT8 quantization: y = x * smooth_scale[h] in float32, row scale
+  amax(|y|) / 127 (1 for an all-zero row), codes = int8(clamp(y / scale, -128, 127)) with the float32
+  quotient truncated toward zero. Scales are float32 [n_tokens, 1].
+operator:
+  name: smoothquant_int8
+  category: quantization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 5120, description: Quantized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+    x_scale:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: log_uniform, log2_low: -3.0, log2_high: 3.0, signed: false}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: int8}
+    y_scale: {shape: [n_tokens, 1], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/normalization/rmsnorm.py
+    license: MIT
+    modifications: >-
+      Triton rewrite of the Composable Kernel smoothquant_fwd (aiter/ops/quant.py): the per-token
+      quantization step of the Triton _quant_rms_norm_kernel without the normalization, with the
+      truncating division-based quantization of the task contract.
+compare:
+  out: {bound: exact}
+  y_scale: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

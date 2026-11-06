@@ -1,0 +1,104 @@
+schema_version: 3
+description: >-
+  Single-step Mamba2 selective state update (decode). For every sequence b, head h and channel p,
+  with dt = softplus(dt[b, h] + dt_bias[h]) and the state slot s = state_batch_indices[b]:
+  state[s, h, p, :] = state[s, h, p, :] * exp(A[h] * dt) + B[b, g, :] * dt * x[b, h, p], then
+  out[b, h, p] = (sum_n state[s, h, p, n] * C[b, g, n] + D[h] * x[b, h, p]) * silu(z[b, h, p]),
+  where g = h // (heads / groups). The state is updated in place; every input is bfloat16 except
+  the float32 per-head parameters A, dt_bias and D.
+operator:
+  name: selective_state_update
+  category: state_space
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 1024, description: Decoding sequences (one token each).}
+    nheads: {kind: const, value: 128, description: SSM heads.}
+    headdim: {kind: const, value: 64, description: Channels per head.}
+    dstate: {kind: const, value: 128, description: SSM state size.}
+    ngroups: {kind: const, value: 8, description: B/C groups (16 heads per group).}
+  inputs:
+    state:
+      kind: tensor
+      shape: [batch, nheads, headdim, dstate]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: SSM state cache, one slot per sequence, updated in place.
+    x:
+      kind: tensor
+      shape: [batch, nheads, headdim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    dt:
+      kind: tensor
+      shape: [batch, nheads]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Raw step size (before bias and softplus).
+    dt_bias:
+      kind: tensor
+      shape: [nheads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -6.9, high: -2.3}
+      description: Inverse softplus of step sizes in [1e-3, 1e-1], the Mamba2 initialization.
+    A:
+      kind: tensor
+      shape: [nheads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -16.0, high: -1.0}
+      description: Negative state decay rate, -exp(A_log) with A_log = log U(1, 16).
+    B:
+      kind: tensor
+      shape: [batch, ngroups, dstate]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    C:
+      kind: tensor
+      shape: [batch, ngroups, dstate]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    D:
+      kind: tensor
+      shape: [nheads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    z:
+      kind: tensor
+      shape: [batch, nheads, headdim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Output gate input; the output is multiplied by silu(z).
+    state_batch_indices:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: index
+      distribution: {kind: permutation}
+      description: State slot of each sequence (a permutation of the slots).
+  outputs:
+    out: {shape: [batch, nheads, headdim], dtype: bfloat16}
+  mutable: [state]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/mamba/ops/mamba_ssm.py
+    license: Apache-2.0
+    modifications: >-
+      _selective_scan_update_kernel and softplus taken from the task's earlier simplified copy of this
+      kernel (same body as the checkout's (including its fast_exp helper from triton_helpers.py), without the stochastic-rounding argument and without the
+      tuned-config lookup, which is replaced by the file's default (BLOCK_SIZE_M, num_warps)
+      heuristic); the host wrapper is reduced to run(), which broadcasts the per-head parameters
+      to stride-0 views as vLLM's Mamba2 mixer does and launches the kernel with state_batch_indices.
+compare:
+  out: {bound: baseline_relative}
+  state: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

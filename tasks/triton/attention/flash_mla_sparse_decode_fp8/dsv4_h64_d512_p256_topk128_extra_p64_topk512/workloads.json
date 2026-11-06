@@ -1,0 +1,176 @@
+{
+ "description": "DeepSeek-V4 C4A-layer decode batches: request contexts between ctx/2 and ctx set a sliding window of min(c, 128) tokens and an indexer top-k of min(512, c // 4) compressed entries per request; rows 1-10 carry the index-contract edge cases. Small batches read too little KV for the 10 us timing floor (a long context does not help: the top-k caps the compressed entries at 512) and are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_c1",
+   "axes": {
+    "batch": 1,
+    "ctx": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "minimum: one request with a single token, no compressed entry"
+  },
+  {
+   "id": "b3_c4",
+   "axes": {
+    "batch": 3,
+    "ctx": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, at most one compressed entry"
+  },
+  {
+   "id": "b7_c127",
+   "axes": {
+    "batch": 7,
+    "ctx": 127
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "all edge rows; windows up to 127 tokens, 16..31 compressed entries"
+  },
+  {
+   "id": "b17_c129",
+   "axes": {
+    "batch": 17,
+    "ctx": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch above 16 and not a multiple of 16; full window, 32 compressed entries"
+  },
+  {
+   "id": "b5_c2048",
+   "axes": {
+    "batch": 5,
+    "ctx": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "exactly 512 compressed entries: the top-k keeps all of them"
+  },
+  {
+   "id": "b33_c2052",
+   "axes": {
+    "batch": 33,
+    "ctx": 2052
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "513 compressed entries: the first real top-k selection"
+  },
+  {
+   "id": "b9_c8191",
+   "axes": {
+    "batch": 9,
+    "ctx": 8191
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "8k context, top-512 of up to 2047 compressed entries"
+  },
+  {
+   "id": "b200_c1000",
+   "axes": {
+    "batch": 200,
+    "ctx": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "many rows of a 1k-context batch (125..250 compressed entries)"
+  },
+  {
+   "id": "b16_c1048576",
+   "axes": {
+    "batch": 16,
+    "ctx": 1048576
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "1M context: top-512 of up to 262144 compressed entries"
+  },
+  {
+   "id": "b1024_c256",
+   "axes": {
+    "batch": 1024,
+    "ctx": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "short-context high-concurrency decode"
+  },
+  {
+   "id": "b512_c1024",
+   "axes": {
+    "batch": 512,
+    "ctx": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "1k-context serving batch (128..256 compressed entries)"
+  },
+  {
+   "id": "b256_c8192",
+   "axes": {
+    "batch": 256,
+    "ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8k-context serving batch (full top-512)"
+  },
+  {
+   "id": "b2048_c2048",
+   "axes": {
+    "batch": 2048,
+    "ctx": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "max-concurrency decode, 2k contexts"
+  },
+  {
+   "id": "b1024_c16384",
+   "axes": {
+    "batch": 1024,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16k contexts filling a 17M-token KV pool"
+  },
+  {
+   "id": "b128_c262144",
+   "axes": {
+    "batch": 128,
+    "ctx": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "256k long-context batch filling a 34M-token KV pool"
+  }
+ ]
+}

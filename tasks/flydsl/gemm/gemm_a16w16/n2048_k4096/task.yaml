@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Dense bfloat16 GEMM in the NT layout, out = a @ b.T, with a[m, 4096] activations, a [2048, 4096]
+  row-major weight b and a bfloat16 output, accumulated in high precision.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows of a (tokens in the batch).}
+    n: {kind: const, value: 2048, description: Output features (rows of b).}
+    k: {kind: const, value: 4096, description: Reduction length.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/hgemm_splitk.py
+    license: Apache-2.0 (kernel); MIT (tuned dispatch table from ROCm/aiter)
+    notes: >-
+      Per-M tile and split-K choices come from the bf16 gfx950 tuned catalogue of ROCm/aiter at
+      commit 652f2d4b768239aefd515c929e84817681ff598d (aiter/configs/bf16_tuned_gemm.csv and
+      aiter/configs/model_configs/*bf16_tuned_gemm.csv, rows for N=2048, K=4096), which names the
+      FlyDSL kernels of aiter/ops/flydsl/gemm_kernels.py.
+    modifications: >-
+      Kernel adapted to the installed FlyDSL release (bundled buffer_ops.py and vector.py adapters),
+      the tensor shim inlined, numpy removed, host launcher replaced by run() that selects the
+      configuration for M from the tuned table and launches it on the current stream; the
+      split-K semaphores are allocated once per device.
+compare:
+  out: {bound: baseline_relative, k: 8}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

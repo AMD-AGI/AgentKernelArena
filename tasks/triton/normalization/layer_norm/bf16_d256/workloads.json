@@ -1,0 +1,100 @@
+{
+ "description": "Rows (sequence positions of all sequences in the batch) normalized at hidden size 256. Small batches take less than 10 us and are correctness-only.",
+ "cases": [
+  {
+   "id": "n1",
+   "axes": {
+    "n_rows": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum"
+  },
+  {
+   "id": "n3",
+   "axes": {
+    "n_rows": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd tiny batch"
+  },
+  {
+   "id": "n300",
+   "axes": {
+    "n_rows": 300
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short batch of sequences"
+  },
+  {
+   "id": "n4100",
+   "axes": {
+    "n_rows": 4100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "n32768",
+   "axes": {
+    "n_rows": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "128 sequences of 256 positions"
+  },
+  {
+   "id": "n131072",
+   "axes": {
+    "n_rows": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512 sequences of 256 positions"
+  },
+  {
+   "id": "n524288",
+   "axes": {
+    "n_rows": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "2048 sequences of 256 positions"
+  },
+  {
+   "id": "n2097152",
+   "axes": {
+    "n_rows": 2097152
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large training batch"
+  },
+  {
+   "id": "n4194304",
+   "axes": {
+    "n_rows": 4194304
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "very large training batch"
+  }
+ ]
+}

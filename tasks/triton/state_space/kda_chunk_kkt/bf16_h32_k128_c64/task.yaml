@@ -1,0 +1,68 @@
+schema_version: 3
+description: >-
+  Gated intra-chunk Gram matrices of Kimi Delta Attention (KDA) chunked prefill. Tokens are split
+  into chunks of 64 (the last may be partial). For head h and the tokens i, j of one chunk,
+  A[i, h, j] = beta[i, h] * sum_k k[i, h, k] * k[j, h, k] * 2^(g[i, h, k] - g[j, h, k]) for i > j and
+  Aqk[i, h, j] = scale * sum_k q[i, h, k] * k[j, h, k] * 2^(g[i, h, k] - g[j, h, k]) for i >= j; both
+  are zero elsewhere (above the diagonal and in the padding of a partial chunk). g is the
+  chunk-local cumulative per-channel log2-decay. q, k and beta are bfloat16, g and both outputs are
+  float32, and the dot products accumulate in float32 or higher.
+operator:
+  name: kda_chunk_kkt
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens of one packed sequence batch.}
+    num_heads: {kind: const, value: 32, description: Heads.}
+    head_dim: {kind: const, value: 128, description: Key head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Queries, contiguous; std 1/sqrt(head_dim) like L2-normalized queries.
+    k:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, contiguous; std 1/sqrt(head_dim) like L2-normalized keys.
+    g:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log2-decay per channel (non-increasing within every 64-token chunk).
+    beta:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: bfloat16
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: Delta-rule write strength sigmoid(b), contiguous.
+    scale: {kind: scalar, dtype: float32, default: 0.08838834764831845}
+  outputs:
+    A: {shape: [n_tokens, num_heads, chunk_size], dtype: float32}
+    Aqk: {shape: [n_tokens, num_heads, chunk_size], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/third_party/flash_linear_attention/ops/kda.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      chunk_kda_scaled_dot_kkt_fwd and its sub_inter and sub_intra kernels, single sequence (no
+      varlen metadata, no batch axis); the sub_inter kernel also stores the zero sub-blocks on and
+      above the diagonal instead of the host torch.zeros that production uses to pre-clear the
+      outputs; wrapped in the run() interface writing into the preallocated outputs.
+compare:
+  A: {bound: baseline_relative, k: 8, max_violation_fraction: 6.0e-4}
+  Aqk: {bound: sqnr, min_db: 127}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

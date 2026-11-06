@@ -1,0 +1,123 @@
+{
+  "description": "Verification steps of speculative decoding with 4 draft tokens per request over the Qwen vocabulary of 151936; each draft position reads two probability rows, so steps of fewer than about 5 requests run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "n_reqs": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum: a single request, 4 draft tokens"
+    },
+    {
+      "id": "r3",
+      "axes": {
+        "n_reqs": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd small decode batch"
+    },
+    {
+      "id": "r37",
+      "axes": {
+        "n_reqs": 37
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch that is not a multiple of 16"
+    },
+    {
+      "id": "r5",
+      "axes": {
+        "n_reqs": 5
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "small decode batch of speculative decoding with 4 draft tokens per request"
+    },
+    {
+      "id": "r10",
+      "axes": {
+        "n_reqs": 10
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch of speculative decoding with 4 draft tokens per request"
+    },
+    {
+      "id": "r20",
+      "axes": {
+        "n_reqs": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch of speculative decoding with 4 draft tokens per request"
+    },
+    {
+      "id": "r40",
+      "axes": {
+        "n_reqs": 40
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch of speculative decoding with 4 draft tokens per request"
+    },
+    {
+      "id": "r80",
+      "axes": {
+        "n_reqs": 80
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch of speculative decoding with 4 draft tokens per request"
+    },
+    {
+      "id": "r160",
+      "axes": {
+        "n_reqs": 160
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large decode batch of speculative decoding with 4 draft tokens per request"
+    },
+    {
+      "id": "r320",
+      "axes": {
+        "n_reqs": 320
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large decode batch of speculative decoding with 4 draft tokens per request"
+    },
+    {
+      "id": "r512",
+      "axes": {
+        "n_reqs": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "very large decode batch of speculative decoding with 4 draft tokens per request"
+    }
+  ]
+}

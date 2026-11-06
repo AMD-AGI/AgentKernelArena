@@ -1,0 +1,43 @@
+schema_version: 3
+description: >-
+  Furthest point sampling of a 3-D point cloud: starting from point 0, repeatedly select the point
+  whose squared distance to the already selected set is largest; n_samples = n_points // 4 indices
+  per batch element. Equal distances resolve to the smallest point index.
+operator:
+  name: furthest_point_sample
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 32, description: Point clouds in the batch.}
+    n_points: {kind: var, min: 16, max: 16384, description: Points per cloud.}
+  derived_axes:
+    n_samples: max(1, n_points // 4)
+  inputs:
+    points_xyz:
+      kind: tensor
+      shape: [batch, n_points, 3]
+      dtype: float32
+      distribution: {kind: generator}
+  outputs:
+    idx: {shape: [batch, n_samples], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 1464c935
+    path: tasks/hip2hip/furthest_point_sample/src/furthest_point_sample_cuda.hip
+    license: Apache-2.0
+    modifications: >-
+      Coordinate-input kernel only (the pairwise-distance variant is removed); registered as the
+      arena run op writing the preallocated idx (TORCH_LIBRARY_EXPAND instead of pybind); the
+      running-minimum buffer is allocated and initialised inside the op; equal distances resolve to
+      the smaller index; a barrier closes the race on the shared reduction slot; host-side
+      error printing and exit removed.
+compare:
+  idx: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

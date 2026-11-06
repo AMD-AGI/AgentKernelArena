@@ -46,7 +46,7 @@
       report.id,
       {
         report,
-        tasksByName: new Map((report.tasks || []).map((task) => [task.taskName, task])),
+        tasksByName: new Map((report.tasks || []).map((task) => [task.taskKey || task.taskName, task])),
       },
     ])
   );
@@ -194,11 +194,11 @@
       .map((catalogItem) => {
         const cells = visibleReports.map((report) => {
           const entry = reportContexts.get(report.id);
-          return entry?.tasksByName.get(catalogItem.taskName) || null;
+          return entry?.tasksByName.get(catalogItem.taskKey || catalogItem.taskName) || null;
         });
         const populatedCells = cells.filter(Boolean);
         const matchesSearch =
-          !state.search || catalogItem.taskName.toLowerCase().includes(state.search);
+          !state.search || (catalogItem.displayName || catalogItem.taskName).toLowerCase().includes(state.search);
         const matchesTaskType = state.selectedTaskTypes.has(catalogItem.taskType);
         const matchesStatus = populatedCells.some((cell) =>
           state.selectedStatuses.has((cell.status || "UNKNOWN").toUpperCase())
@@ -213,7 +213,7 @@
           : -1;
 
         return {
-          taskName: catalogItem.taskName,
+          taskName: catalogItem.displayName || catalogItem.taskName,
           taskType: catalogItem.taskType,
           cells,
           populatedCells,

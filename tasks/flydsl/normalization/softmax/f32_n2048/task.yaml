@@ -1,0 +1,36 @@
+schema_version: 3
+description: >-
+  Row-wise softmax of float32 logits over 2048 columns: out = exp(x - max(x)) / sum(exp(x - max(x)))
+  along the last axis, accumulated in high precision and written as float32.
+operator:
+  name: softmax
+  category: normalization
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 524288, description: Rows (independent softmax problems).}
+    n_cols: {kind: const, value: 2048, description: Softmax width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, n_cols]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+  outputs:
+    out: {shape: [n_rows, n_cols], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/softmax_kernel.py, kernels/kernels_common.py
+    license: Apache-2.0
+    modifications: >-
+      Inlined the dtype and wavefront-size helpers from kernels_common.py; added run() that builds the
+      launcher once per width (functools.lru_cache) and launches on the current stream, in chunks of at most 2 GiB of rows (buffer resources cap a tensor at 4 GiB minus 1 byte).
+compare:
+  out: {bound: sqnr, min_db: 128}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

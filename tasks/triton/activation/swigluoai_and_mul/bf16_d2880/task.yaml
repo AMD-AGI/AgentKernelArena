@@ -1,0 +1,37 @@
+schema_version: 3
+description: >-
+  GPT-OSS clamped SwiGLU of a gate/up activation. The input row holds the gate half followed by
+  the up half; with g = min(gate, 7) and u = clamp(up, -7, 7),
+  out = g * sigmoid(1.702 * g) * (u + 1), computed in float32 and rounded to bfloat16.
+operator: {name: swigluoai_and_mul, category: activation}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Token rows.}
+    intermediate_size: {kind: const, value: 2880, description: Width d of each half.}
+  derived_axes:
+    two_d: 2 * intermediate_size
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, two_d]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 3.0}
+  outputs:
+    out: {shape: [n_tokens, intermediate_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: csrc/kernels/activation_kernels.cu
+    license: MIT
+    modifications: >-
+      Triton rewrite of swiglu_act_and_mul_kernel (aiter.swiglu_and_mul, a HIP C++ kernel) in the
+      arena run() interface.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

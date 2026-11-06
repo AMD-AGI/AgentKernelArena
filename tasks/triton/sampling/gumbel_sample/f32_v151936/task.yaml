@@ -1,0 +1,74 @@
+schema_version: 3
+description: >-
+  Gumbel-max sampling of one token per logits row. For row i of request state s =
+  expanded_idx_mapping[i]: if temperature[s] == 0 the sampled token is argmax(logits[i]); otherwise it is
+  argmax(logits[i, v] + g[v]) with g[v] = -log(-log(u[v])) and u[v] drawn from Triton's Philox-4x32-10 stream
+  (tl.randint(seed[s], pos[i]) is the stream key, tl.rand(key, v) the uniform draw, clamped to at least
+  4.6566127342e-10, with -log(-log1p(-u)) evaluated in float32 or better). The logits are already scaled by
+  the temperature; the temperature only selects greedy versus stochastic rows. Output int64 token ids, compared exactly.
+operator:
+  name: gumbel_sample
+  category: sampling
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 6400, description: Logits rows (sampled tokens) of the step.}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen2/Qwen3 family).}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Temperature-scaled logits (read-only).
+    expanded_idx_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: permutation}
+      description: Request-state index of each row (a permutation, so every request state is used once).
+    temperature:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-request-state temperature; exactly 0 selects the greedy argmax, any other value the Gumbel path.
+    seed:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: metadata
+      distribution: {kind: randint, low: 0, high: 4611686018427387904}
+      description: Per-request-state 64-bit sampling seed.
+    pos:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: metadata
+      distribution: {kind: randint, low: 0, high: 1099511627776}
+      description: Per-row position that, with the seed, derives the row's noise stream (64-bit, high bits used).
+  outputs:
+    out: {shape: [n_tokens], dtype: int64}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/gumbel.py
+    license: Apache-2.0
+    modifications: >-
+      The apply_temperature, processed-logits and fp64 variants were removed (production calls
+      gumbel_sample with apply_temperature=False and the fp32 path); imports of the vLLM triton shim
+      replaced by triton directly; the torch argmax/gather that combines the per-block winners was
+      replaced by a small Triton kernel because run() may not compute with PyTorch; a run() entry
+      writing into the preallocated output was added. The sampling kernel is otherwise unchanged.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

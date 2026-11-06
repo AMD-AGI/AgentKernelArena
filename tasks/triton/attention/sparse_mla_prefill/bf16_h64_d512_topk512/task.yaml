@@ -1,0 +1,63 @@
+schema_version: 3
+description: >-
+  DeepSeek-V4 sparse-attention (DSA) prefill. Each query token attends to the KV rows named by its
+  row of a ragged CSR index list (indices[indptr[i]:indptr[i+1]]) with an online softmax over those
+  rows: out[i, h] = softmax_j(scale * q[i, h] . kv[idx_j]) @ kv[idx_j]. The MLA latent row
+  (512 = 448 NoPE + 64 RoPE) is both key and value, there is a single latent KV head, all 64 query heads
+  share it, and a row with no indices produces zeros. indices holds the rows' indices back to back
+  from offset 0; its tail beyond indptr[n_queries] is unused capacity.
+operator: {name: sparse_mla_prefill, category: attention}
+interface:
+  axes:
+    n_queries: {kind: var, min: 1, max: 16384, description: Prefill query tokens.}
+    num_heads: {kind: const, value: 64, description: Query heads.}
+    head_dim: {kind: const, value: 512, description: MLA latent width (448 NoPE + 64 RoPE).}
+    num_kv: {kind: const, value: 8192, description: Latent KV rows in the pool.}
+    topk: {kind: const, value: 512, description: Maximum selected rows per query (index_topk).}
+  derived_axes:
+    index_capacity: n_queries * topk
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_queries, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv:
+      kind: tensor
+      shape: [num_kv, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    indices:
+      kind: tensor
+      shape: [index_capacity]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    indptr:
+      kind: tensor
+      shape: [n_queries + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    scale: {kind: scalar, dtype: float32, default: 0.04419417382415922}
+  outputs:
+    out: {shape: [n_queries, num_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
+    license: Apache-2.0
+    modifications: >-
+      Only _sparse_attn_prefill_ragged_kernel and the launch code of
+      _rocm_sparse_attn_prefill_ragged_triton, wrapped in run() writing into the preallocated out;
+      the optional attention-sink path is compiled out (HAS_ATTN_SINK=False) and the dense-to-ragged
+      packing kernel is not needed because the task supplies CSR indices directly.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

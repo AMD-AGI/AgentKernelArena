@@ -595,11 +595,11 @@ agent_list_contains() {
     return 1
 }
 
-# task_validator delegates to a backend CLI; read which one.
-read_validator_backend() {
-    local cfg="$HOST_ROOT/agents/task_validator/agent_config.yaml"
+# qa_auditor delegates its model review to a backend CLI; read which one.
+read_auditor_backend() {
+    local cfg="$HOST_ROOT/agents/qa_auditor/agent_config.yaml"
     [[ -f "$cfg" ]] || { printf 'claude_code\n'; return; }
-    sed -nE 's/^backend:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$cfg" | head -n 1
+    sed -nE 's/^[[:space:]]+backend:[[:space:]]*["'"'"']?([A-Za-z0-9_]+).*/\1/p' "$cfg" | head -n 1
 }
 
 read_run_agent_setting() {
@@ -623,7 +623,7 @@ read_run_agent_setting() {
 
 # Decide which agent CLIs to provision into the container.
 # AKA_AGENTS env (comma/space list) overrides; else derive from config's
-# agent.template (task_validator -> its backend); else all three.
+# agent.template (qa_auditor -> its review backend); else all three.
 resolve_optimizer_agents() {
     local config="${1:-}"
     if [[ -n "${AKA_AGENTS:-}" ]]; then
@@ -636,10 +636,12 @@ resolve_optimizer_agents() {
         printf 'codex claude_code cursor\n'
         return
     fi
-    if [[ "$tmpl" == "task_validator" ]]; then
+    if [[ "$tmpl" == "qa_auditor" ]]; then
         local run_backend
         run_backend="$(read_run_agent_setting "$config" backend)"
-        tmpl="${run_backend:-$(read_validator_backend)}"
+        tmpl="${run_backend:-$(read_auditor_backend)}"
+        # A deterministic-only audit needs no model CLI in the container.
+        [[ "$tmpl" == "none" ]] && { printf '\n'; return; }
     fi
     case "$tmpl" in
         claude|claude_code) printf 'claude_code\n' ;;
@@ -1767,7 +1769,12 @@ container_preflight() {
     local config_name="${1:-$DEFAULT_RUN_CONFIG}"
     container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
-    container_check_agents $(resolve_required_agents "$config_name")
+    # A deterministic-only audit (qa_auditor with backend none) needs no agent CLI.
+    local required
+    required="$(resolve_required_agents "$config_name")"
+    if [[ -n "${required// /}" ]]; then
+        container_check_agents $required
+    fi
     # GEAK aliases all use the same v2 SDK and pinned engine.
     case "$(read_agent_template "$config_name")" in
         geak|geak_v4)

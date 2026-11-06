@@ -113,7 +113,7 @@ def test_run_validation_accepts_time_for_resumable_cli_agents(agent):
     assert validate_run_budget_mode(agent, {"budget_mode": "time"}) == "time"
 
 
-@pytest.mark.parametrize("agent", ["geak", "forge", "task_validator"])
+@pytest.mark.parametrize("agent", ["geak", "forge", "qa_auditor"])
 def test_run_validation_rejects_time_for_other_agents(agent):
     assert validate_run_budget_mode(agent, {"template": agent}) == "iterations"
     with pytest.raises(ValueError, match="not supported"):

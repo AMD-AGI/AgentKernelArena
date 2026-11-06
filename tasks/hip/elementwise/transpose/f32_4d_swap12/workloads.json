@@ -1,0 +1,143 @@
+{
+  "description": "Heads/sequence transposes of a [4, 32, seq, 128] fp32 activation; shorter sequences run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "s1",
+      "axes": {
+        "seq": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum"
+    },
+    {
+      "id": "s3",
+      "axes": {
+        "seq": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd sequence length"
+    },
+    {
+      "id": "s17",
+      "axes": {
+        "seq": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "just above 16"
+    },
+    {
+      "id": "s100",
+      "axes": {
+        "seq": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16"
+    },
+    {
+      "id": "s1000",
+      "axes": {
+        "seq": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned sequence length"
+    },
+    {
+      "id": "s256",
+      "axes": {
+        "seq": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 256, 128] activation swap of heads and sequence"
+    },
+    {
+      "id": "s512",
+      "axes": {
+        "seq": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 512, 128] activation swap of heads and sequence"
+    },
+    {
+      "id": "s1024",
+      "axes": {
+        "seq": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 1024, 128] activation swap of heads and sequence"
+    },
+    {
+      "id": "s2048",
+      "axes": {
+        "seq": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 2048, 128] activation swap of heads and sequence"
+    },
+    {
+      "id": "s4096",
+      "axes": {
+        "seq": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 4096, 128] activation swap of heads and sequence"
+    },
+    {
+      "id": "s8192",
+      "axes": {
+        "seq": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 8192, 128] activation swap of heads and sequence"
+    },
+    {
+      "id": "s16384",
+      "axes": {
+        "seq": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 16384, 128] activation swap of heads and sequence"
+    },
+    {
+      "id": "s32768",
+      "axes": {
+        "seq": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4, 32, 32768, 128] activation swap of heads and sequence"
+    }
+  ]
+}

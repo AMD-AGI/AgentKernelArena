@@ -1,0 +1,123 @@
+{
+  "description": "Token counts of one FFN layer at hidden 2048 and intermediate 8192 (the 128-token case is the old suite's batch). Weights alone (67 MB) take about 15 us to stream, so even decode batches exceed the 10 us floor.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "m3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd tiny batch"
+    },
+    {
+      "id": "m16",
+      "axes": {
+        "n_tokens": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, batch 16"
+    },
+    {
+      "id": "m48",
+      "axes": {
+        "n_tokens": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, non power of two"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "n_tokens": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode / small prefill, batch 128 (old suite)"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "n_tokens": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill, not a multiple of the 128-row tile"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "n_tokens": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    }
+  ]
+}

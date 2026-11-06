@@ -1,0 +1,133 @@
+{
+ "description": "Batch sizes of the KernelBench level 2 problem 66 linear layer (16384 x 16384 weight) followed by the softmax over its 16384 outputs; the original five cases (64 to 1024 rows) are extended down to 8 rows for a 128x performance span. Every case streams the 1 GiB weight. Batches 1, 3, 100 and 1000 are correctness-only boundary shapes.",
+ "cases": [
+  {
+   "id": "b1",
+   "axes": {
+    "batch": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, a single row"
+  },
+  {
+   "id": "b3",
+   "axes": {
+    "batch": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, odd batch"
+  },
+  {
+   "id": "b100",
+   "axes": {
+    "batch": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch not a multiple of 16"
+  },
+  {
+   "id": "b1000",
+   "axes": {
+    "batch": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch not a multiple of the 128-row tile"
+  },
+  {
+   "id": "b8",
+   "axes": {
+    "batch": 8
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 8"
+  },
+  {
+   "id": "b16",
+   "axes": {
+    "batch": 16
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 16"
+  },
+  {
+   "id": "b32",
+   "axes": {
+    "batch": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 32"
+  },
+  {
+   "id": "b64",
+   "axes": {
+    "batch": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 64 as in the original case_0"
+  },
+  {
+   "id": "b128",
+   "axes": {
+    "batch": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 128 as in the original case_1 (the module's batch_size)"
+  },
+  {
+   "id": "b256",
+   "axes": {
+    "batch": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 256 as in the original case_2"
+  },
+  {
+   "id": "b512",
+   "axes": {
+    "batch": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 512 as in the original case_3"
+  },
+  {
+   "id": "b1024",
+   "axes": {
+    "batch": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 66 (Matmul_Dropout_Softmax, dropout in eval mode), in_features = out_features = 16384, batch 1024 as in the original case_4"
+  }
+ ]
+}

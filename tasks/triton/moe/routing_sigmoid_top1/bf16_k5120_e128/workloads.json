@@ -1,0 +1,153 @@
+{
+ "description": "Token counts routed through the 128-expert Llama-4 router (hidden 5120). The router reads 10 KB of activations per token, so only prefill-sized batches take more than 10 us and are timed; decode batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "t17",
+   "axes": {
+    "n_tokens": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd small batch"
+  },
+  {
+   "id": "t300",
+   "axes": {
+    "n_tokens": 300
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode/prefill batch"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk; below the 10 us timing floor"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t32768",
+   "axes": {
+    "n_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large prefill chunk"
+  },
+  {
+   "id": "t131072",
+   "axes": {
+    "n_tokens": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t262144",
+   "axes": {
+    "n_tokens": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t524288",
+   "axes": {
+    "n_tokens": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t4097",
+   "axes": {
+    "n_tokens": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk"
+  }
+ ]
+}

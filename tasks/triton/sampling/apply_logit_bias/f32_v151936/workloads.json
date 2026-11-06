@@ -1,0 +1,143 @@
+{
+ "description": "Logit rows of a speculative-decoding step with per-request sampling constraints (Qwen vocabulary); small batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, one request"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd token count"
+  },
+  {
+   "id": "t17",
+   "axes": {
+    "n_tokens": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, 17 tokens"
+  },
+  {
+   "id": "t37",
+   "axes": {
+    "n_tokens": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, 37 tokens"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode batch"
+  },
+  {
+   "id": "t128",
+   "axes": {
+    "n_tokens": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, 32 requests with 3 draft tokens"
+  },
+  {
+   "id": "t256",
+   "axes": {
+    "n_tokens": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, 64 requests with 3 draft tokens"
+  },
+  {
+   "id": "t512",
+   "axes": {
+    "n_tokens": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, 128 requests with 3 draft tokens"
+  },
+  {
+   "id": "t1024",
+   "axes": {
+    "n_tokens": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, 256 requests with 3 draft tokens"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, 512 requests with 3 draft tokens"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, 1024 requests with 3 draft tokens"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prompt-logprob chunk or 2048-request decode"
+  },
+  {
+   "id": "t12800",
+   "axes": {
+    "n_tokens": 12800
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, 3200 requests with 3 draft tokens"
+  }
+ ]
+}

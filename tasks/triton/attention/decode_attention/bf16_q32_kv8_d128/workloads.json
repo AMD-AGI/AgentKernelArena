@@ -1,0 +1,156 @@
+{
+ "description": "Decode steps of a GQA 32/8 model (head_dim 128): batch size and longest context vary; each sequence's KV length is ragged in [max_ctx/2, max_ctx] and its cache slots are scattered. Tiny contexts are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_c1",
+   "axes": {
+    "batch": 1,
+    "max_ctx": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "first decode step, one-token context"
+  },
+  {
+   "id": "b3_c77",
+   "axes": {
+    "batch": 3,
+    "max_ctx": 77
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short odd batch"
+  },
+  {
+   "id": "b5_c1000",
+   "axes": {
+    "batch": 5,
+    "max_ctx": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned context"
+  },
+  {
+   "id": "b48_c333",
+   "axes": {
+    "batch": 48,
+    "max_ctx": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch 48, short unaligned contexts"
+  },
+  {
+   "id": "b17_c2050",
+   "axes": {
+    "batch": 17,
+    "max_ctx": 2050
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch and context"
+  },
+  {
+   "id": "b1_c16384",
+   "axes": {
+    "batch": 1,
+    "max_ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single long-context stream"
+  },
+  {
+   "id": "b4_c8192",
+   "axes": {
+    "batch": 4,
+    "max_ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "few long-context streams"
+  },
+  {
+   "id": "b16_c4096",
+   "axes": {
+    "batch": 16,
+    "max_ctx": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small decode batch, 4k contexts"
+  },
+  {
+   "id": "b32_c8192",
+   "axes": {
+    "batch": 32,
+    "max_ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "medium decode batch, 8k contexts"
+  },
+  {
+   "id": "b64_c8192",
+   "axes": {
+    "batch": 64,
+    "max_ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 64, 8k contexts"
+  },
+  {
+   "id": "b128_c4096",
+   "axes": {
+    "batch": 128,
+    "max_ctx": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large decode batch, 4k contexts"
+  },
+  {
+   "id": "b128_c8192",
+   "axes": {
+    "batch": 128,
+    "max_ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large decode batch, 8k contexts"
+  },
+  {
+   "id": "b128_c16384",
+   "axes": {
+    "batch": 128,
+    "max_ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large decode batch, 16k contexts"
+  }
+ ]
+}

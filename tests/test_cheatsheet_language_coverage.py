@@ -100,20 +100,28 @@ def test_reference_collection_keeps_defaults_and_architecture_overrides():
     }
 
 
-def test_tilelang_resolves_for_the_mhc_task():
-    """The exact task that failed in production must now build a prompt cheatsheet."""
-    task = (
-        PROJECT_ROOT
-        / "tasks/image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre/config.yaml"
-    )
-    if not task.is_file():
-        pytest.skip("tilelang mHC task not present in this checkout")
-
-    spec = load_task_spec(task, task_id="image_kernel/mi355x_vllm_tilelang_mhc_fused_post_pre")
-    language = spec.candidate.language
-    assert language == "tilelang"
+def test_tilelang_baselines_have_a_substantial_cheatsheet():
+    """TileLang is a baseline language: an agent reading such a baseline needs its guide."""
     knowledge = _config().get("knowledge", {})
-
-    assert language in knowledge, f"{language} still unregistered"
-    body = (PROJECT_ROOT / knowledge[language]).read_text(encoding="utf-8")
+    assert "tilelang" in knowledge, "tilelang still unregistered"
+    body = (PROJECT_ROOT / knowledge["tilelang"]).read_text(encoding="utf-8")
     assert len(body) > 2000, "a stub cheatsheet is not useful guidance for the agent"
+
+
+def test_every_v3_target_language_has_a_substantial_cheatsheet_with_the_run_entry_point():
+    from src.task_contract import TARGET_LANGUAGES
+
+    knowledge = _config().get("knowledge", {})
+    for language in TARGET_LANGUAGES:
+        assert language in knowledge, f"{language} has no knowledge cheatsheet"
+        body = (PROJECT_ROOT / knowledge[language]).read_text(encoding="utf-8")
+        assert len(body) > 2000
+        assert "run(*, <inputs>, <outputs>)" in body, f"{language} cheatsheet lacks the v3 entry point"
+        assert "solution/" in body
+
+
+def test_gluon_cheatsheet_covers_the_core_constructs():
+    body = (PROJECT_ROOT / _config()["knowledge"]["gluon"]).read_text(encoding="utf-8")
+    for needle in ("@gluon.jit", "gl.BlockedLayout", "gl.arange", "layout=", "gl.constexpr", "num_warps"):
+        assert needle in body
+    assert "AKLR" not in body

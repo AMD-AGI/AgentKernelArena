@@ -14,28 +14,12 @@ from src.preprocessing import (
     get_task_workspace_path,
     is_task_complete,
     setup_rocm_env,
-    setup_workspace,
 )
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
-from src.evaluator import (
-    evaluate_compilation,
-    evaluate_kernel,
-    measure_baseline,
-    write_task_result,
-)
 from src.runtime_env import apply_subprocess_python_path
 from src.task_spec import required_gpu_arches
-from src.perf_helper_materialization import materialize_perf_helpers_in_workspace
-from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 from src.tools.agent_cost import AgentCostCollector
 from src.tools.agent_time_budget import validate_run_budget_mode
-from src.eval_tools.config import EvalToolsConfig
-from src.eval_tools.contracts import SourceEvidence
-from src.eval_tools.evidence import (
-    SubmissionEvidence,
-    capture_submission_evidence,
-    load_submission_evidence,
-)
 
 
 QUEUE_DIR_NAME = ".parallel"
@@ -223,24 +207,37 @@ def _configure_logging(
     return logger
 
 
-def _discover_tasks(tasks: list[str]) -> dict[str, str]:
+def _discover_tasks(tasks: list, overrides: dict[str, str] | None = None) -> dict[str, str]:
+    """Resolve selectors; ``{path, target_language}`` entries record per-task languages.
+
+    A path prefix may select several tasks; each selected task runs once, so a
+    task cannot be selected again with a different target language.
+    """
     if not tasks:
         raise ValueError("No task selectors were configured")
-
-    if "all" in tasks:
-        discovered = get_task_config()
-        if not discovered:
-            raise ValueError("Task selector 'all' matched no task configs")
-        return discovered
+    from src.task_contract import TARGET_LANGUAGES
 
     task_config_dict: dict[str, str] = {}
-    for category in tasks:
-        discovered = get_task_config(category=category)
+    for selector in tasks:
+        language = None
+        if isinstance(selector, dict):
+            if set(selector) - {"path", "target_language"} or "path" not in selector:
+                raise ValueError("A task entry mapping takes path and optional target_language")
+            language = selector.get("target_language")
+            selector = selector["path"]
+            if language is not None and language not in TARGET_LANGUAGES:
+                raise ValueError(f"target_language must be one of {TARGET_LANGUAGES}")
+        if not isinstance(selector, str) or not selector:
+            raise ValueError("Task selectors are nonempty path prefixes or 'all'")
+        discovered = get_task_config() if selector == "all" else get_task_config(category=selector)
         if not discovered:
-            raise ValueError(
-                f"Configured task selector {category!r} matched no task configs"
-            )
-        task_config_dict.update(discovered)
+            raise ValueError(f"Configured task selector {selector!r} matched no task configs")
+        for task_name, path in discovered.items():
+            if overrides is not None and language is not None:
+                if overrides.get(task_name, language) != language:
+                    raise ValueError(f"Task {task_name} is selected with two target languages")
+                overrides[task_name] = language
+            task_config_dict[task_name] = path
     return task_config_dict
 
 
@@ -393,7 +390,18 @@ def _build_context(
             return None
 
     try:
-        configured_tasks = _discover_tasks(tasks)
+        from src.task_contract import TARGET_LANGUAGES
+
+        if config.get("target_language") is not None and config["target_language"] not in TARGET_LANGUAGES:
+            raise ValueError(f"target_language must be one of {TARGET_LANGUAGES}")
+        overrides: dict[str, str] = {}
+        configured_tasks = _discover_tasks(tasks, overrides)
+        config["_task_target_languages"] = overrides
+        if agent.value != "qa_auditor" and config.get("target_language") is None and any(
+                Path(path).name == "task.yaml" and name not in overrides
+                for name, path in configured_tasks.items()):
+            raise ValueError("Schema-v3 tasks need target_language in the run config "
+                             f"(one of {TARGET_LANGUAGES}) or per task")
     except ValueError as error:
         logger.error("Task discovery failed: %s", error)
         return None
@@ -441,26 +449,6 @@ def _filter_completed_tasks(
     if skipped_tasks:
         logger.info(f"Skipped tasks: {skipped_tasks}")
     return tasks_to_run
-
-
-def _submission_evidence_for_task(
-    *,
-    workspace: Path,
-    task_config: dict[str, Any],
-    run_directory: Path,
-) -> SubmissionEvidence:
-    """Capture or verify the immutable pre-agent source snapshot for one task."""
-
-    storage = run_directory / ".eval-tool-evidence" / workspace.name
-    if storage.exists():
-        evidence = load_submission_evidence(storage)
-        if evidence.workspace != workspace.resolve():
-            raise RuntimeError(
-                "submission evidence belongs to a different workspace: "
-                f"{evidence.workspace} != {workspace.resolve()}"
-            )
-        return evidence
-    return capture_submission_evidence(workspace, task_config, storage)
 
 
 def run_task(
@@ -516,6 +504,7 @@ def _run_task(
     task_index: int,
     total_tasks: int,
 ) -> tuple[bool, Path | None]:
+    """Run one schema-v3 kernel task or schema-v2 serving task through the shared lifecycle."""
     workspace_path: Path | None = None
     logger.info("=" * 80)
     logger.info(f"Task {task_index}/{total_tasks}: {task_name}")
@@ -524,196 +513,34 @@ def _run_task(
     try:
         with open(task_config_dir, "r") as handle:
             declaration = yaml.safe_load(handle) or {}
-        if "schema_version" in declaration:
-            if type(declaration["schema_version"]) is not int or declaration["schema_version"] != 2:
-                raise ValueError(f"Unsupported task schema version: {declaration['schema_version']!r}")
-            from src.task_run import run_task_v2
+        expected = 3 if Path(task_config_dir).name == "task.yaml" else 2
+        if type(declaration.get("schema_version")) is not int or declaration["schema_version"] != expected:
+            raise ValueError(f"Unsupported task schema version: {declaration.get('schema_version')!r}")
+        from src.task_run import run_task_v2
 
-            return run_task_v2(
-                eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
-                task_name=task_name, task_config_dir=task_config_dir,
-                run_directory=run_directory, timestamp=timestamp, logger=logger,
-            )
-        workspace_path = setup_workspace(
-            task_config_dir,
-            run_directory,
-            timestamp,
-            logger,
-            task_name=task_name,
+        return run_task_v2(
+            eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
+            task_name=task_name, task_config_dir=task_config_dir,
+            run_directory=run_directory, timestamp=timestamp, logger=logger,
         )
-
-        with open(task_config_dir, "r") as f:
-            task_config = yaml.safe_load(f) or {}
-
-        task_type = task_config.get("task_type", "")
-        is_validator = agent == AgentType.TASK_VALIDATOR
-        eval_tools_config = EvalToolsConfig.from_mapping(eval_config)
-        submission_evidence: SubmissionEvidence | None = None
-        if not is_validator and eval_tools_config.enabled:
-            submission_evidence = _submission_evidence_for_task(
-                workspace=workspace_path,
-                task_config=task_config,
-                run_directory=run_directory,
-            )
-            logger.info(
-                "Captured immutable submission evidence: %s",
-                submission_evidence.storage_dir,
-            )
-
-        # Task packages may include a previously committed validator report.
-        # It is evidence about an older source snapshot, not completion evidence
-        # for this run. Remove the copied report before launching the validator
-        # so an agent/backend failure cannot be mistaken for a successful run.
-        if is_validator:
-            stale_validator_files = (
-                workspace_path / "validation_report.yaml",
-                workspace_path / ".validation_complete",
-            )
-            removed_stale = False
-            for stale_file in stale_validator_files:
-                if stale_file.exists():
-                    stale_file.unlink()
-                    removed_stale = True
-            if removed_stale:
-                logger.info("Removed copied stale validator completion artifacts before validation")
-
-        baseline_cases = []
-        if is_validator:
-            logger.info("task_validator run: skipping baseline/evaluation/perf-plot benchmark pipeline")
-        elif task_type == "torch2hip":
-            logger.info("torch2hip task: skipping baseline compilation, measuring PyTorch baseline directly...")
-            baseline_cases = measure_baseline(workspace_path, task_config, logger)
-        else:
-            logger.info("Compiling original kernel for baseline measurement...")
-            pass_compilation, comp_error = evaluate_compilation(workspace_path, task_config, logger)
-            if not pass_compilation:
-                logger.warning(f"Baseline compilation failed: {comp_error}")
-                logger.warning("Baseline measurement will be skipped")
-                baseline_cases = []
-            else:
-                logger.info("Measuring baseline performance...")
-                baseline_cases = measure_baseline(workspace_path, task_config, logger)
-
-        harness_snapshot = snapshot_workspace_harness(
-            workspace_path, task_root=Path(task_config_dir).parent
-        )
-
-        logger.info(f"Launching agent: {agent.value}")
-        agent_launcher(
-            eval_config=eval_config,
-            task_config_dir=task_config_dir,
-            workspace=str(workspace_path),
-        )
-        logger.info("Agent execution completed")
-
-        if not is_validator:
-            # Agents work inside the task workspace and could accidentally modify
-            # protected harness/test files or generated perf helpers. Verify the
-            # harness is untouched, then re-materialize perf helpers from
-            # src/tools/perf/ so benchmark methodology stays canonical.
-            verify_workspace_harness(harness_snapshot, logger=logger)
-            materialize_perf_helpers_in_workspace(workspace_path, logger=logger)
-            logger.info("Running centralized evaluation...")
-            tool_manager = None
-            tool_source_evidence = None
-            if eval_tools_config.enabled:
-                assert submission_evidence is not None
-                submission_evidence.verify()
-                tool_source_evidence = SourceEvidence(
-                    original_root=str(submission_evidence.files_dir),
-                    original_fingerprint=submission_evidence.fingerprint,
-                    candidate_fingerprint=submission_evidence.candidate_fingerprint(),
-                    metadata={
-                        "manifest": str(
-                            submission_evidence.storage_dir / "manifest.json"
-                        ),
-                        "declared_file_count": len(
-                            submission_evidence.manifest.get("entries", [])
-                        ),
-                    },
-                )
-                # Imported lazily so legacy runs with no evaluation tools do not
-                # initialize sockets or tool plugins.
-                from src.eval_tools.factory import (
-                    create_default_manager,
-                    task_artifact_root,
-                )
-
-                tool_manager = create_default_manager()
-                tool_artifact_root = task_artifact_root(workspace_path)
-            else:
-                tool_artifact_root = None
-            evaluation_results = evaluate_kernel(
-                workspace_path,
-                task_config,
-                baseline_cases,
-                logger,
-                tool_manager=tool_manager,
-                eval_tools_config=eval_tools_config,
-                tool_source_evidence=tool_source_evidence,
-                tool_artifact_root=tool_artifact_root,
-                gpu_arch=os.environ.get("PYTORCH_ROCM_ARCH"),
-            )
-            verify_workspace_harness(harness_snapshot, logger=logger)
-            write_task_result(
-                workspace_path,
-                evaluation_results,
-                baseline_cases,
-                task_name,
-                agent.value,
-                logger,
-            )
-
-        if not is_task_complete(run_directory, task_name, timestamp, agent.value):
-            expected_report = "validation_report.yaml" if is_validator else "task_result.yaml"
-            logger.error(f"Task {task_name} did not produce expected completion report: {expected_report}")
-            return False, workspace_path
-
-        if is_validator:
-            with (workspace_path / "validation_report.yaml").open() as report_handle:
-                validation_report = yaml.safe_load(report_handle) or {}
-            logger.info(
-                "Task validation audit completed: %s (overall=%s)",
-                task_name,
-                validation_report.get("overall_status", "FAIL"),
-            )
-        else:
-            logger.info(f"Task {task_name} completed successfully")
-        return True, workspace_path
     except Exception as e:
         logger.error(f"Task {task_name} failed with error: {e}", exc_info=True)
-        if agent == AgentType.TASK_VALIDATOR:
-            # Workspace materialization can fail after creating the task
-            # directory (for example when an image_repo_path is unavailable).
-            # Persist that operational failure as a complete validator report
-            # so parallel resume does not retry it forever and post-processing
-            # can distinguish it from a task audit finding.
-            report_workspace = workspace_path or get_task_workspace_path(
-                run_directory, task_name, timestamp
-            )
+        if agent == AgentType.QA_AUDITOR:
+            # Setup can fail after creating the workspace. Persist that failure
+            # as a complete audit report so a resumed run does not retry it
+            # forever and post-processing can report it as a blocking finding.
+            report_workspace = workspace_path or get_task_workspace_path(run_directory, task_name, timestamp)
             if report_workspace.is_dir():
                 try:
-                    from agents.task_validator.report_schema import finalize_report
+                    from agents.qa_auditor.report import build_report, write_report
 
-                    finalize_report(
-                        report_workspace,
-                        expected_task_name=task_name,
-                        framework_error=(
-                            "task setup/execution failed before validation: "
-                            f"{type(e).__name__}: {e}"
-                        ),
-                    )
-                    logger.info(
-                        "Recorded validator setup/execution failure for %s",
-                        task_name,
-                    )
+                    write_report(report_workspace, build_report(
+                        task_id=task_name, findings=[], task_package_sha256=None, target_language=None,
+                        request_id=None, framework_errors=[
+                            f"task setup/execution failed before the audit: {type(e).__name__}: {e}"]))
                     return True, report_workspace
                 except Exception:
-                    logger.error(
-                        "Could not finalize validator failure report for %s",
-                        task_name,
-                        exc_info=True,
-                    )
+                    logger.error("Could not write the audit failure report for %s", task_name, exc_info=True)
         return False, workspace_path
 
 
@@ -866,7 +693,7 @@ def run_serial(args: argparse.Namespace) -> int:
 
     if not task_config_dict:
         context["logger"].info("All tasks are already completed. Nothing to run.")
-        if context["agent"] == AgentType.TASK_VALIDATOR:
+        if context["agent"] == AgentType.QA_AUDITOR:
             workspace_paths = collect_existing_workspace_paths(
                 context["run_directory"],
                 all_task_config_dict,
@@ -898,8 +725,8 @@ def run_serial(args: argparse.Namespace) -> int:
         if not completed:
             execution_failed = True
 
-    if context["agent"] == AgentType.TASK_VALIDATOR and context["resume_mode"]:
-        # Validator summaries are gates, so a resumed run must include reports
+    if context["agent"] == AgentType.QA_AUDITOR and context["resume_mode"]:
+        # Audit summaries are gates, so a resumed run must include reports
         # from both prior and newly completed workspaces.
         workspace_paths = collect_existing_workspace_paths(
             context["run_directory"],

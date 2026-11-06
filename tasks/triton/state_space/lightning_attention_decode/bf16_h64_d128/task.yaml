@@ -1,0 +1,74 @@
+schema_version: 3
+description: >-
+  Single-token decode of MiniMax lightning (linear) attention with a per-head exponentially decayed
+  KV state. For batch entry b, state slot s = slot_idx[b] and head h with decay slope r[h]:
+  state[s, h] = outer(k[b, h], v[b, h]) + exp(-r[h]) * state[s, h] (float32, updated in place) and
+  out[b, h] = q[b, h] contracted with the new state[s, h] over the key dimension. q, k and v are
+  bfloat16; out is bfloat16 with the heads concatenated. Slots are unique.
+operator:
+  name: lightning_attention_decode
+  category: state_space
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 800, description: Decode sequences (one token each).}
+    num_heads: {kind: const, value: 64, description: Linear-attention heads.}
+    head_dim: {kind: const, value: 128, description: Key and value head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [batch, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [batch, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv_cache:
+      kind: tensor
+      shape: [batch, num_heads, head_dim, head_dim]
+      dtype: float32
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Per-slot, per-head KV state history (key dimension first), one slot per sequence.
+    slope_rate:
+      kind: tensor
+      shape: [num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Positive per-head decay slopes.
+    slot_idx:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: index
+      distribution: {kind: permutation}
+      description: State slot of every sequence (a permutation, so slots are unique).
+  outputs:
+    out: {shape: [batch, num_heads * head_dim], dtype: bfloat16}
+  mutable: [kv_cache]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/lightning_attn.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface: the output is written into the preallocated buffer through
+      its strides and the padding slot id is a constant; no host-side reshape or copy.
+compare:
+  out: {bound: baseline_relative}
+  kv_cache: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

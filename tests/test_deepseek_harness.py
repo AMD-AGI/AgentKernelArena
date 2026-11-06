@@ -254,6 +254,32 @@ def test_v2_prompt_context_and_run_settings_reach_cli(runtime, monkeypatch):
     assert launcher._load_config() == defaults
 
 
+@pytest.mark.parametrize("language", ["triton", "gluon", "hip"])
+def test_v3_prompt_is_built_from_the_workspace_execution_record(runtime, tmp_path, language):
+    """The shared CLI prompt path (claude_code, codex, cursor, deepseek_harness) on a v3 task."""
+    import shutil
+    from src.task_contract import render_workspace
+
+    _, _, workspace = runtime
+    task_root = Path(__file__).resolve().parents[1] / "tasks/triton/normalization/rms_norm/bf16_h8192"
+    task_id = "triton/normalization/rms_norm/bf16_h8192"
+    shutil.rmtree(workspace)
+    shutil.copytree(task_root, workspace, ignore=shutil.ignore_patterns("__pycache__"))
+    render_workspace(task_root, workspace, task_id=task_id, target_language=language)
+    launcher.launch_agent({"target_gpu_model": "MI355X", "_task_id": task_id,
+                           "agent": {"timeout_seconds": 45, "max_iterations": 1}},
+                          str(task_root / "task.yaml"), str(workspace))
+    prompt = json.loads((workspace / "observed.json").read_text())["prompt"]
+    entry = "solution/kernel.hip" if language == "hip" else "solution/kernel.py"
+    assert f"Task: {task_id}" in prompt
+    assert f"Required final implementation backend: {language}" in prompt
+    assert "- solution: implementation subtree" in prompt and f"{entry}:run (function)" in prompt
+    assert "python3 -m _aka_eval.evaluate candidate correctness" in prompt
+    assert f"Candidate contract: rms_norm in {language}" in prompt  # _aka_eval/CANDIDATE.md
+    state = "implemented" if language == "triton" else "unimplemented"
+    assert f"Initial candidate state: {state}" in prompt
+
+
 @pytest.mark.parametrize("overrides", [
     {"timeout_seconds": 0}, {"timeout_seconds": True}, {"max_iterations": -1},
     {"model": ""}, {"reasoning_effort": "invalid"}, {"protocol": "invalid"},

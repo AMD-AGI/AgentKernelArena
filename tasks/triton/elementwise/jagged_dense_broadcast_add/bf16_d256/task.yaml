@@ -1,0 +1,55 @@
+schema_version: 3
+description: >-
+  Jagged tensor plus a per-sequence dense row: out[r, :] = jagged[r, :] + dense[b, :] for every row r
+  of sequence b, where seq_offsets[b] <= r < seq_offsets[b + 1]; the sum is rounded to bfloat16.
+operator:
+  name: jagged_dense_broadcast_add
+  category: elementwise
+interface:
+  axes:
+    batch: {kind: const, value: 64, description: Number of jagged sequences.}
+    total_rows: {kind: var, min: 1, max: 4194304, description: Rows of the jagged tensor (the sum of all sequence lengths).}
+    hidden: {kind: const, value: 256, description: Embedding width.}
+  inputs:
+    max_seq_len: {kind: scalar, dtype: int64, default: 1}
+    seq_offsets:
+      kind: tensor
+      shape: [batch + 1]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+    jagged:
+      kind: tensor
+      shape: [total_rows, hidden]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    dense:
+      kind: tensor
+      shape: [batch, hidden]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [total_rows, hidden], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AgentKernelArena (triton2flydsl/generative_recommenders/jagged_dense_broadcast_add task)
+    revision: 5887b5fb6476a1c167649f7d4a0acdcbe065292e
+    path: tasks/triton2flydsl/generative_recommenders/jagged_dense_broadcast_add/jagged_dense_broadcast_add.py
+    license: Apache-2.0
+    notes: >-
+      That file is an extraction of generative_recommenders/ops/triton/triton_jagged.py from
+      meta-recsys/generative-recommenders (Meta Platforms, Apache-2.0); the upstream commit it was
+      taken from was not recorded.
+    modifications: >-
+      Forward-only extraction of jagged_dense_broadcast_add_kernel with its host launcher; the
+      generative_recommenders.common helpers are inlined and the launcher writes into the
+      preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

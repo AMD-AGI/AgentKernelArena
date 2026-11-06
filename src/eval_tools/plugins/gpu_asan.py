@@ -20,6 +20,7 @@ from .attestation import BuildAttestation
 from .base import (
     artifact_path,
     blocked_check,
+    unsupported_language_check,
     command_from_context,
     parsed_to_run_result,
     ready_check,
@@ -63,7 +64,10 @@ class GpuAsanPlugin:
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
         is_hip = profile.language == KernelLanguage.HIP
 
-        if profile.framework in {"rocblas", "rccl"}:
+        unsupported = unsupported_language_check(profile.language, "gpu_asan")
+        if unsupported is not None:
+            engine = unsupported
+        elif profile.framework in {"rocblas", "rccl"}:
             engine = blocked_check(
                 CapabilityState.UNSUPPORTED,
                 "gpu_asan_library_kernel_out_of_scope",

@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Batched float32 matrix multiplication out[q] = a[q] @ b[q] (torch.bmm) with a [batch, 256, 512] and
+  b [batch, 512, 512], all row-major, products and accumulation in IEEE float32 (no TF32 or reduced-precision
+  inputs), output float32.
+operator: {name: batched_gemm_f32, category: gemm}
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 4096, description: Independent matrix products.}
+    m: {kind: const, value: 256, description: Rows of each matrix of a and out.}
+    k: {kind: const, value: 512, description: Contracted dimension.}
+    n: {kind: const, value: 512, description: Columns of each matrix of b and out.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [batch, m, k]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    b:
+      kind: tensor
+      shape: [batch, k, n]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+  outputs:
+    out: {shape: [batch, m, n], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_bmm.py.jinja
+      - torch/_inductor/kernel/bmm.py
+      - torch/_inductor/heuristics/template/triton.py
+      - torch/_inductor/runtime/runtime_utils.py
+      - torch/_inductor/select_algorithm.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the Inductor bmm template (the kernel Inductor's max-autotune generates for
+      torch.bmm) as a standalone @triton.jit kernel: the template rendered for contiguous float32 operands
+      with M, N, K and strides as constexprs and a runtime batch, Inductor's store suffix for a contiguous
+      output, the bmm_grid launch grid, one fixed ROCm config (128x128x32, 8 warps, 2 stages, GROUP_M 16,
+      matrix_instr_nonkdim 16) instead of autotuning, allow_tf32=False expressed as input_precision="ieee",
+      wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 1.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

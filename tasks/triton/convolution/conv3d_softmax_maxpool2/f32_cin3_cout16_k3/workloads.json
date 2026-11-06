@@ -1,0 +1,22 @@
+{
+  "description": "16-frame RGB clips: the KernelBench level 2 problem 6 batches at 32x32, C3D 112x112 crops and 128x171 frames, and 224x224 clips (VideoMAE, X3D-M input size). Shapes estimated below 15 us on MI355X are correctness-only.",
+  "cases": [
+    {"id": "b1_h6_w6", "axes": {"batch": 1, "height": 6, "width": 6}, "checks": ["correctness"], "source": "smallest valid 6x6 frame: a 1x1 pooled frame"},
+    {"id": "b3_h37_w45", "axes": {"batch": 3, "height": 37, "width": 45}, "checks": ["correctness"], "source": "unaligned frame, pooling drops 3 and 3 trailing rows/columns"},
+    {"id": "b17_h34_w33", "axes": {"batch": 17, "height": 34, "width": 33}, "checks": ["correctness"], "source": "unaligned batch, exact pooled height"},
+    {"id": "b2_h18_w66", "axes": {"batch": 2, "height": 18, "width": 66}, "checks": ["correctness"], "source": "non-square frame, exact pooled height and width"},
+    {"id": "b16_h32_w32", "axes": {"batch": 16, "height": 32, "width": 32}, "checks": ["correctness"], "source": "KernelBench level 2 problem 6, batch 16 (near the 10 us floor)"},
+    {"id": "b64_h16_w16", "axes": {"batch": 64, "height": 16, "width": 16}, "checks": ["correctness"], "source": "KernelBench level 2 problem 6, 16x16 frames (near the 10 us floor)"},
+    {"id": "b1_h112_w112", "axes": {"batch": 1, "height": 112, "width": 112}, "checks": ["correctness"], "source": "C3D single 16x112x112 clip (near the 10 us floor)"},
+    {"id": "b32_h32_w32", "axes": {"batch": 32, "height": 32, "width": 32}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 6, batch 32"},
+    {"id": "b1_h224_w224", "axes": {"batch": 1, "height": 224, "width": 224}, "checks": ["correctness", "performance"], "source": "single 16x224x224 clip inference"},
+    {"id": "b64_h32_w32", "axes": {"batch": 64, "height": 32, "width": 32}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 6, batch 64"},
+    {"id": "b128_h32_w32", "axes": {"batch": 128, "height": 32, "width": 32}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 6 default shape, batch 128"},
+    {"id": "b16_h112_w112", "axes": {"batch": 16, "height": 112, "width": 112}, "checks": ["correctness", "performance"], "source": "C3D 16x112x112 crops, batch 16"},
+    {"id": "b8_h224_w224", "axes": {"batch": 8, "height": 224, "width": 224}, "checks": ["correctness", "performance"], "source": "16x224x224 clips, batch 8"},
+    {"id": "b32_h128_w171", "axes": {"batch": 32, "height": 128, "width": 171}, "checks": ["correctness", "performance"], "source": "C3D full 16x128x171 frames, batch 32"},
+    {"id": "b64_h112_w112", "axes": {"batch": 64, "height": 112, "width": 112}, "checks": ["correctness", "performance"], "source": "C3D 16x112x112 crops, batch 64"},
+    {"id": "b32_h224_w224", "axes": {"batch": 32, "height": 224, "width": 224}, "checks": ["correctness", "performance"], "source": "16x224x224 clips, batch 32"},
+    {"id": "b128_h224_w224", "axes": {"batch": 128, "height": 224, "width": 224}, "checks": ["correctness", "performance"], "source": "16x224x224 clips, batch 128"}
+  ]
+}

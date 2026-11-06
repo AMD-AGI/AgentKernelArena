@@ -7,14 +7,13 @@ from src.task_protocol import performance_cases
 from tests.test_task_session_v2 import create
 
 
-def test_v2_runs_through_existing_scoring_without_legacy_commands(tmp_path):
+def test_v2_runs_every_step_through_the_session_actions(tmp_path):
     session = create(tmp_path)
     assert session.validate_initial().accepted
     baseline = performance_cases(session.results[("task_validation", "baseline", "performance")].result)
-    with patch("src.evaluator.evaluate_compilation", side_effect=AssertionError("legacy compilation")), \
-         patch("src.evaluator.evaluate_correctness", side_effect=AssertionError("legacy correctness")), \
-         patch("src.evaluator.measure_performance", side_effect=AssertionError("legacy timing")):
+    with patch.object(session, "candidate_action", wraps=session.candidate_action) as action:
         result = evaluate_kernel(session.workspace, session.spec.to_mapping(), baseline, task_session=session)
+    assert [call.args[0] for call in action.call_args_list] == ["compile", "correctness", "performance"]
     assert result["pass_compilation"]
     assert result["pass_correctness"]
     assert result["average_speedup"] == 1.0
@@ -22,7 +21,7 @@ def test_v2_runs_through_existing_scoring_without_legacy_commands(tmp_path):
     assert result["benchmark_method_consistent"]
 
 
-def test_v2_missing_context_cannot_revert_to_legacy_evaluation(tmp_path):
+def test_evaluation_requires_the_framework_session(tmp_path):
     session = create(tmp_path)
     with pytest.raises(ValueError, match="TaskSession"):
         evaluate_kernel(session.workspace, session.spec.to_mapping(), [])

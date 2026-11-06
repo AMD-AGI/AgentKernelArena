@@ -1,0 +1,17 @@
+{
+  "description": "Token counts per step of a 128-expert top-8 layer at hidden size 2816 and per-rank intermediate size 352: decode batches, chunked prefill and large prefill batches.",
+  "cases": [
+    {"id": "t1", "axes": {"num_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"num_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t100", "axes": {"num_tokens": 100}, "checks": ["correctness"], "source": "unaligned decode batch"},
+    {"id": "t1000", "axes": {"num_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill chunk"},
+    {"id": "t4", "axes": {"num_tokens": 4}, "checks": ["correctness", "performance"], "source": "decode, small batch"},
+    {"id": "t16", "axes": {"num_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode batch"},
+    {"id": "t64", "axes": {"num_tokens": 64}, "checks": ["correctness", "performance"], "source": "decode, concurrency 64"},
+    {"id": "t256", "axes": {"num_tokens": 256}, "checks": ["correctness", "performance"], "source": "small prefill chunk"},
+    {"id": "t1080", "axes": {"num_tokens": 1080}, "checks": ["correctness", "performance"], "source": "chunked prefill step"},
+    {"id": "t2048", "axes": {"num_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t7218", "axes": {"num_tokens": 7218}, "checks": ["correctness", "performance"], "source": "chunked prefill step"},
+    {"id": "t16384", "axes": {"num_tokens": 16384}, "checks": ["correctness", "performance"], "source": "batched prefill"}
+  ]
+}

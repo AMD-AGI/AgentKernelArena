@@ -14,18 +14,21 @@ resume, and inspect a run.
 
 ## Choose or create a run configuration
 
-A run configuration selects the agent, tasks, and target GPU. The repository
+A run configuration selects the agent, tasks, the target language for kernel
+tasks, and the target GPU. The repository
 ships quickstarts and specialized examples, including:
 
 | Configuration | Purpose |
 | --- | --- |
-| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code GELU task; inspect the physical model before tuning. |
-| `example_configs/quickstart_claude_mi300x.yaml` | Claude Code GELU task with the MI300X hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi325x.yaml` | Claude Code GELU task with the MI325X hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi300a.yaml` | Claude Code GELU task with the MI300A hardware profile (`gfx942`). |
-| `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code GELU task on MI355X (`gfx950`). |
-| `example_configs/benchmark_cursor_mi355x.yaml` | Curated Cursor Agent benchmark on MI355X; use only after installing and authenticating Cursor Agent. |
+| `example_configs/quickstart_claude_mi300.yaml` | Generic MI300-series (`gfx942`) Claude Code RMSNorm task; inspect the physical model before tuning. |
+| `example_configs/quickstart_claude_mi300x.yaml` | Claude Code RMSNorm task with the MI300X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi325x.yaml` | Claude Code RMSNorm task with the MI325X hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi300a.yaml` | Claude Code RMSNorm task with the MI300A hardware profile (`gfx942`). |
+| `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code RMSNorm task on MI355X (`gfx950`). |
+| `example_configs/benchmark_cursor_mi355x.yaml` | Cursor Agent over a whole task category on MI355X; use only after installing and authenticating Cursor Agent. |
 | `example_configs/evaluation_tools_advisory_mi355x.yaml` | Default-disabled template for experimental `gfx950` evaluation-tool sidecars. It still requires task-specific adapters before opt-in. |
+| `example_configs/qa_audit_all_mi355x.yaml` | [QA audit](qa-auditor.md) of every task on MI355X. |
+| `example_configs/e2e_*_qa_mi355x.yaml` | QA audit of an end-to-end serving task. |
 
 For a first run, select the quickstart that matches the physical GPU:
 
@@ -56,10 +59,12 @@ use Cursor Agent. Install and authenticate Cursor before selecting it:
 agent:
   template: cursor          # one agent template per run
 
+target_language: triton     # triton | gluon | hip | flydsl
+
 tasks:
-  - hip2hip/GELU
-  - triton2triton/vllm/triton_rms_norm
-  # - hip2hip                 # all tasks under a category
+  - triton/normalization/rms_norm/bf16_h8192
+  - {path: gemm/gemm_a8w8, target_language: hip}   # per-task override
+  # - normalization           # all tasks under a category
   # - all                     # every available task
 
 target_gpu_model: MI300
@@ -69,15 +74,39 @@ workspace_directory_prefix: workspace
 
 ### Select tasks
 
-Each entry in `tasks` is a path relative to the `tasks/` directory. You can
-select tasks at any level of granularity.
+Each entry in `tasks` is a path relative to the `tasks/` directory. Kernel
+tasks are filed as `<baseline_language>/<category>/<operator>/<scenario>`, where
+the first directory is the language of the vendored baseline, not the language
+the agent writes. A path prefix matches whole directories, and `*` matches any one
+directory, so you can select tasks at any level of granularity.
 
 | Entry | Selects |
 | --- | --- |
 | `all` | Every task in `tasks/` |
-| `hip2hip` | All tasks under `tasks/hip2hip/` |
-| `triton2triton/vllm` | All tasks under that subdirectory |
-| `hip2hip/GELU` | A single task |
+| `flydsl` | All tasks whose baseline is FlyDSL |
+| `triton/normalization` | One category, Triton baselines only |
+| `"*/normalization"` | One category, every baseline language |
+| `"*/normalization/rms_norm"` | All scenarios of one operator |
+| `triton/normalization/rms_norm/bf16_h8192` | A single task |
+| `{path: triton/gemm/gemm_a8w8, target_language: hip}` | The selected tasks, in a per-task language |
+
+Quote an entry that starts with `*`: unquoted, YAML reads it as an alias.
+
+### Select the target language
+
+Kernel tasks name no implementation language. Set `target_language` to
+`triton`, `gluon`, `hip` or `flydsl` for the run, or per task with a
+`{path, target_language}` entry, which overrides the run value. A kernel task
+with no language fails task discovery, and a task selected twice with different
+languages is rejected. The `qa_auditor` agent and the `tasks/e2e/` serving tasks
+need no `target_language`.
+
+When the language equals the baseline's, the candidate starts as a copy of the
+baseline; otherwise it starts as an unimplemented template with the baseline as
+a read-only reference. All four languages are verified on MI355X (`gfx950`);
+other architectures are implemented but unverified. A language whose toolchain
+is missing fails the run before it starts. See the
+[task contract](add-task.md#run-configuration).
 
 See [Configuration and API reference](../reference/api-reference.md) for the full
 set of run-configuration fields.
@@ -150,7 +179,7 @@ make docker-parallel-run \
 ```
 
 The Docker parallel path is verified for `cursor`, `claude_code`, `codex`, and
-`task_validator`. Other integrations require their documented runtime
+`qa_auditor`. Other integrations require their documented runtime
 dependencies and worker-visible GPU configuration. See
 [Run tasks in parallel across multiple GPUs](parallel-run.md) for scheduling,
 GPU isolation, resume behavior, and failure handling.
@@ -183,10 +212,14 @@ For each task, the framework:
 After all tasks finish, a post-processing step aggregates the per-task results
 into a run report.
 
-`task_validator` runs the same initial task/baseline/candidate checks and reviews
-their captured evidence. It performs no optimization or kernel scoring; it
-writes a framework-finalized `validation_report.yaml` per task and aggregates
-a `validation_summary.yaml`.
+`qa_auditor` runs the same initial task/baseline/candidate checks, a control
+suite and an optional model review. It performs no optimization or kernel
+scoring; it writes a framework-finalized `qa_report.yaml` per task and
+aggregates a `qa_summary.json`. See [Audit tasks with the QA auditor](qa-auditor.md).
+
+For kernel tasks the final evaluation remeasures the baseline interleaved with
+the candidate under cold-cache CUDA-graph timing, and the task's speedup is the
+geometric mean of its performance cases' speedups.
 
 Run the same configuration again with one agent capability changed and a new
 `--run-suffix` to form a controlled A/B pair. See
@@ -242,14 +275,14 @@ workspace_<gpu>_<agent>/
 Each `task_result.yaml` contains the scored outcome:
 
 ```yaml
-task_name: hip2hip/GELU
+task_name: triton/normalization/rms_norm/bf16_h8192
 pass_compilation: true
 pass_correctness: true
 base_execution_time: 1.82        # ms
 best_optimized_execution_time: 1.15
 speedup_ratio: 1.58
 optimization_summary: "..."
-score: 278.0
+score: 0.335
 ```
 
 Candidate acceptance, agent execution and source changes describe different

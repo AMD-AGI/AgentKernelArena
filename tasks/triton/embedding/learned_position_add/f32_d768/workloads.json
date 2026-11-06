@@ -1,0 +1,13 @@
+{
+  "description": "Batch sizes of 512-token sequences at width 768 (GPT-2 / BERT-style learned positions); small batches are correctness-only (below the 10 us timing floor).",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness"], "source": "single-sequence inference"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "odd small batch"},
+    {"id": "b37", "axes": {"batch": 37}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "b16", "axes": {"batch": 16}, "checks": ["correctness", "performance"], "source": "small serving batch"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "inference batch"},
+    {"id": "b256", "axes": {"batch": 256}, "checks": ["correctness", "performance"], "source": "training micro-batch"},
+    {"id": "b1024", "axes": {"batch": 1024}, "checks": ["correctness", "performance"], "source": "large training batch"},
+    {"id": "b2048", "axes": {"batch": 2048}, "checks": ["correctness", "performance"], "source": "large training batch"}
+  ]
+}

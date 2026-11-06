@@ -140,8 +140,8 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
     Launch Claude Code agent with real-time output streaming.
 
     Args:
-        eval_config: Evaluator settings passed from main (includes task metadata like task_type)
-        task_config_dir: Path to the task configuration used to build the prompt
+        eval_config: Evaluator settings passed from main (target GPU, run agent settings, _task_id)
+        task_config_dir: The task's task.yaml (schema v3) or config.yaml (e2e, schema v2)
         workspace: Workspace directory where the agent will run and read/write files
 
     Returns:

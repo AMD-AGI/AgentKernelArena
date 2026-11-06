@@ -1,0 +1,14 @@
+{
+  "description": "Image-based distillation batches with 10 classes at 64x64 resolution. Batches of 16 images and more exceed the 10 us timing floor; smaller and odd batches are correctness-only.",
+  "cases": [
+    {"id": "n1", "axes": {"n": 1}, "checks": ["correctness"], "source": "single image"},
+    {"id": "n3", "axes": {"n": 3}, "checks": ["correctness"], "source": "odd batch"},
+    {"id": "n17", "axes": {"n": 17}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "n100", "axes": {"n": 100}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "n16", "axes": {"n": 16}, "checks": ["correctness", "performance"], "source": "original task batch of 16 at 64x64"},
+    {"id": "n64", "axes": {"n": 64}, "checks": ["correctness", "performance"], "source": "distillation training batch"},
+    {"id": "n256", "axes": {"n": 256}, "checks": ["correctness", "performance"], "source": "large distillation batch"},
+    {"id": "n1024", "axes": {"n": 1024}, "checks": ["correctness", "performance"], "source": "accumulated evaluation batch"},
+    {"id": "n2048", "axes": {"n": 2048}, "checks": ["correctness", "performance"], "source": "accumulated evaluation batch"}
+  ]
+}

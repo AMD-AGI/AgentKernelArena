@@ -1,0 +1,60 @@
+schema_version: 3
+description: >-
+  Backward pass of bfloat16 RMSNorm y = x * rsigma * gamma, rsigma = rsqrt(mean(x^2) + epsilon) per token, given the
+  forward's per-token rsigma and the output gradient dy. dx = dy * rsigma * gamma - rsigma^3 * x * mean(dy * x * gamma)
+  over the hidden axis, rounded to bfloat16; dgamma = sum over tokens of dy * x * rsigma, in float32.
+operator:
+  name: rms_norm_backward
+  category: normalization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Normalized width.}
+  inputs:
+    dy:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    gamma:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    rsigma:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: float32
+      distribution: {kind: generator}
+  outputs:
+    dx: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+    dgamma: {shape: [hidden_size], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: >-
+      aiter/ops/triton/_triton_kernels/normalization/rmsnorm.py (_rmsnorm_bwd_triton, _rmsnorm_bwd_dg_reduce_triton);
+      aiter/ops/triton/normalization/rmsnorm.py (_rmsnorm_backward)
+    license: MIT
+    modifications: >-
+      The two kernels are unchanged. The launcher _rmsnorm_backward is reduced to this scenario (contiguous inputs,
+      the non-blocked path, the helper functions num_programs, block_size and use_blocked inlined, the device CU count
+      read from the torch device properties) and rewritten as run() writing into the preallocated outputs; the
+      per-program partial-dgamma scratch is allocated inside run().
+compare:
+  dx: {bound: baseline_relative}
+  dgamma: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

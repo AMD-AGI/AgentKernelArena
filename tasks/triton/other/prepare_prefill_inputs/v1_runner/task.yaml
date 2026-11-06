@@ -1,0 +1,82 @@
+schema_version: 3
+description: >-
+  Copies the prefill token ids of a scheduled batch of prefilling requests into the flat model input
+  (vLLM v1 model runner). Request b owns input_ids[query_start_loc[b]:query_start_loc[b+1]] and the
+  persistent slot s = idx_mapping[b], with num_computed_tokens[s] < prefill_len[s]. Its input ids are
+  all_token_ids[s, c : c + query_len] with c = num_computed_tokens[s], and next_prefill_tokens[k, s] =
+  all_token_ids[s, c + query_len + k] for each lookahead k when that position is below prefill_len[s],
+  else 0. Every other element of next_prefill_tokens is unchanged.
+operator:
+  name: prepare_prefill_inputs
+  category: other
+interface:
+  axes:
+    num_reqs: {kind: var, min: 1, max: 1024, description: Requests scheduled in the step.}
+    query_len: {kind: var, min: 1, max: 65536, description: Mean number of new tokens per request; individual requests range from 1 to twice this.}
+    max_num_reqs: {kind: const, value: 1024, description: Persistent request slots (maximum concurrent requests).}
+    max_model_len: {kind: const, value: 131072, description: Token capacity of a persistent request row.}
+    num_lookahead: {kind: const, value: 3, description: Prefill tokens stored ahead for speculative decoding.}
+  derived_axes:
+    total_tokens: "num_reqs * query_len"
+  inputs:
+    idx_mapping:
+      kind: tensor
+      shape: [num_reqs]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct persistent request slot of each batch entry.
+    query_start_loc:
+      kind: tensor
+      shape: [num_reqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Exclusive prefix sums of the query lengths; the last entry is total_tokens.
+    all_token_ids:
+      kind: tensor
+      shape: [max_num_reqs, max_model_len]
+      dtype: int32
+      distribution: {kind: randint, low: 0, high: 151936}
+      description: Prompt and generated token ids of every persistent slot.
+    prefill_len:
+      kind: tensor
+      shape: [max_num_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prompt length of every persistent slot.
+    num_computed_tokens:
+      kind: tensor
+      shape: [max_num_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Computed tokens of every persistent slot.
+    next_prefill_tokens:
+      kind: tensor
+      shape: [num_lookahead, max_num_reqs]
+      dtype: int32
+      role: state
+      distribution: {kind: randint, low: 0, high: 151936}
+      description: Next prefill tokens per slot with prior contents; unscheduled slots must survive.
+  outputs:
+    input_ids: {shape: [total_tokens], dtype: int32}
+  mutable: [next_prefill_tokens]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/input_batch.py (_prepare_prefill_inputs_kernel, prepare_prefill_inputs)
+    license: Apache-2.0
+    modifications: Wrapped in the run() interface; the kernel and its launch parameters are unchanged.
+compare:
+  input_ids: {bound: exact}
+  next_prefill_tokens: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

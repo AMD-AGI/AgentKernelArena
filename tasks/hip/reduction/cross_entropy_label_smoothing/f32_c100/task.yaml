@@ -1,0 +1,58 @@
+schema_version: 3
+description: >-
+  Label-smoothed cross entropy of float32 logits with integer class labels, per-class weights and
+  an ignored label: the per-row losses
+  losses[row] = -((1 - smooth_eps - smooth_eps / C) * w[t] * lsm[t] + (smooth_eps / C) * sum_c w[c] * lsm[c])
+  with lsm = log_softmax(x) (reduction 'none'; 0 for rows whose label equals ignore_index), and their
+  mean out over the rows that are not ignored, one float32 scalar (0 when every row is ignored).
+operator:
+  name: cross_entropy_label_smoothing
+  category: reduction
+interface:
+  axes:
+    rows: {kind: var, min: 1, max: 1048576, description: "Positions (batch x pixels or tokens) whose class distribution is scored."}
+    num_classes: {kind: const, value: 100}
+  inputs:
+    x:
+      kind: tensor
+      shape: [rows, num_classes]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+    target:
+      kind: tensor
+      shape: [rows]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 100}
+    weight:
+      kind: tensor
+      shape: [num_classes]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    ignore_index: {kind: scalar, dtype: int64, default: 0}
+    smooth_eps: {kind: scalar, dtype: float32, default: 0.1}
+  outputs:
+    losses: {shape: [rows], dtype: float32}
+    out: {shape: [], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task CrossEntropyLossLabelSmoothing (provided HIP baseline)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/CrossEntropyLossLabelSmoothing/hip/hip_12501_CrossEntropyLossLabelSmoothing_ref.hip
+    license: Apache-2.0
+    modifications: >-
+      Float32 logits with integer labels, class weights and no smooth_dist only; the row kernel
+      writes its per-row losses into the caller's losses output instead of a scratch buffer; the
+      pybind module and host-side reduction (at::sum, a host read of the valid-row count, torch
+      division) are replaced by two reduction kernels writing the preallocated scalar output, so
+      the call is graph-capturable; registered as the run() torch op.
+compare:
+  losses: {bound: sqnr, min_db: 122.0}
+  out: {bound: tolerance, atol: 1.0e-6, rtol: 2.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

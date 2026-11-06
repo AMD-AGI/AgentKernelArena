@@ -6,12 +6,11 @@ editable candidate or requiring Triton/GPU execution.
 
 import ast
 from pathlib import Path
-import shutil
 
 import pytest
+import yaml
 
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
-from src.task_spec import load_task_spec
 from test_harness_guard_v2 import LAUNCH_RETURN, launch_workspace
 
 
@@ -151,23 +150,44 @@ def test_branch_local_data_must_be_definitely_assigned(tmp_path):
         verify_workspace_harness(before, discard_added=False)
 
 
-def test_bmm_launch_configuration_cannot_be_used_as_a_definition_time_factory(tmp_path):
-    """An editable decorator must not supply helper objects to the scalar caller."""
-    original = Path(__file__).resolve().parents[1] / 'tasks/triton2triton/vllm/triton_bmm'
+KERNEL_SOURCE = (
+    "import triton\n\n"
+    "@triton.jit\ndef kernel(x, n):\n    return x\n\n"
+    "def _launch_config(dtype_name, batch, m, n, k):\n"
+    "    return {'BLOCK': 64, 'num_warps': 4, 'num_stages': 2}\n\n"
+    "def launch(x, n):\n    cfg = _launch_config('bfloat16', 1, n, n, n)\n"
+    "    return kernel(x, n, BLOCK=cfg['BLOCK'])\n"
+)
+
+
+def kernel_workspace(tmp_path):
+    """A kernel and a configuration-only symbol it is launched with, both editable."""
     root = tmp_path / 'task'
-    shutil.copytree(original, root, ignore=shutil.ignore_patterns('__pycache__', 'build'))
-    spec = load_task_spec(root / 'config.yaml', task_id='triton2triton/vllm/triton_bmm')
-    before = snapshot_workspace_harness(root, task_spec=spec)
-    source = root / 'source/triton_bmm.py'
+    (root / 'source').mkdir(parents=True)
+    source = root / 'source/kernel.py'
+    source.write_text(KERNEL_SOURCE)
+    config = {"schema_version": 2, "candidate": {"language": "triton", "editable": [{
+        "path": "source/kernel.py", "scope": "symbols", "symbols": ["kernel", "_launch_config"],
+        "allow_new_helpers": True, "configuration_symbols": ["_launch_config"]}]},
+        "evaluation": {"runner": ["python3", "evaluate.py"]}}
+    (root / 'config.yaml').write_text(yaml.safe_dump(config))
+    (root / 'evaluate.py').write_text("# protected custom evaluation runner\n")
+    return root, source
+
+
+def test_launch_configuration_cannot_be_used_as_a_definition_time_factory(tmp_path):
+    """An editable decorator must not supply helper objects to the scalar caller."""
+    root, source = kernel_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
     tree = ast.parse(source.read_text())
     config = next(node for node in tree.body
                   if isinstance(node, ast.FunctionDef) and node.name == '_launch_config')
     tree.body.remove(config)
     # This is valid pure-data code when the protected caller supplies its normal
     # scalar metadata. An editable definition-time caller could pass a class.
-    config.body.insert(1, ast.parse("if dtype_name == 'probe':\n    probe = m[0]\n").body[0])
+    config.body.insert(0, ast.parse("if dtype_name == 'probe':\n    probe = m[0]\n").body[0])
     kernel = next(node for node in tree.body
-                  if isinstance(node, ast.FunctionDef) and node.name == 'bmm_kernel')
+                  if isinstance(node, ast.FunctionDef) and node.name == 'kernel')
     kernel.decorator_list = [ast.parse(
         "triton.jit(do_not_specialize=["
         "_launch_config('probe', 1, ConfigProbe, 16, 16)['num_stages']])",
@@ -180,3 +200,13 @@ def test_bmm_launch_configuration_cannot_be_used_as_a_definition_time_factory(tm
     # __class_getitem__ during decorator evaluation.
     with pytest.raises(RuntimeError, match='Unapproved definition-time factory'):
         verify_workspace_harness(before, discard_added=False)
+
+
+def test_launch_configuration_with_scalar_callers_is_accepted(tmp_path):
+    root, source = kernel_workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    source.write_text(source.read_text().replace(
+        "    return {'BLOCK': 64, 'num_warps': 4, 'num_stages': 2}\n",
+        "    if n >= 4096:\n        return {'BLOCK': 128, 'num_warps': 8, 'num_stages': 2}\n"
+        "    return {'BLOCK': 64, 'num_warps': 4, 'num_stages': 2}\n"))
+    verify_workspace_harness(before, discard_added=False)

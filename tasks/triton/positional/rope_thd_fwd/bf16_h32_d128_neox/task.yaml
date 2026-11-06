@@ -1,0 +1,59 @@
+schema_version: 3
+description: >-
+  Variable-length (thd) NeoX rotary embedding forward on packed activations x[T, heads, head_dim] split into
+  sequences by cu_seqlens. Within every sequence the token at position p is rotated with angles freqs[p]
+  (one angle per rotated pair, shared by both halves of the head): out = x * cos + rotate_half(x) * sin,
+  with cos and sin computed from the float32 angle table, rounded to bfloat16 on store. The whole head is
+  rotated (no un-rotated slice).
+operator:
+  name: rope_thd_fwd
+  category: positional
+interface:
+  axes:
+    n_tokens: {kind: var, min: 8, max: 262144, description: Total packed tokens of the batch.}
+    num_seqs: {kind: const, value: 8, description: Sequences packed into the batch.}
+    num_heads: {kind: const, value: 32}
+    head_dim: {kind: const, value: 128}
+    max_position: {kind: const, value: 262144, description: Rows of the angle table (at least the longest sequence).}
+  derived_axes:
+    half_dim: head_dim // 2
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    cu_seqlens:
+      kind: tensor
+      shape: [num_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    freqs:
+      kind: tensor
+      shape: [max_position, 1, 1, half_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_tokens, num_heads, head_dim], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/rope/rope.py (_rope_kernel_thd_fwd) and aiter/ops/triton/rope/rope.py (rope_thd_fwd)
+    license: MIT
+    modifications: >-
+      The thd forward kernel and the rotate helpers it uses are inlined into one file; the Python launch
+      wrapper is replaced by run(), which writes into the preallocated out and fixes NeoX rotation, no NoPE,
+      front-part frequency reuse and out-of-place output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

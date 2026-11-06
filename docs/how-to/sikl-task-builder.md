@@ -1,22 +1,24 @@
 # Build Arena tasks from a SIKL bundle
 
 `sikl_task_builder` turns a local SIKL dataset folder into standard, self-contained
-Arena tasks under `tasks/SIKL-task/`. It combines deterministic import tools, a
-Codex agent that reviews generation (and repairs legacy input adapters), and an independent `task_validator`.
-Only accepted tasks reach the output directory. Future bundles using the supported
-schema can use the same workflow without a new handwritten task adapter per JSONL.
+schema-v3 Arena tasks under `tasks/SIKL-task/`. It combines deterministic import
+tools, a Codex agent that reviews generation (and repairs input distributions),
+and an independent audit by the [QA auditor](qa-auditor.md). Only accepted tasks
+reach the output directory. Future bundles using the supported schema can use the
+same workflow without a new handwritten task adapter per JSONL.
 
 This is an agent workflow **before task discovery**, invoked with its own Make
 command. It is not an `agent.template` for `main.py`: its input is a dataset
-folder and its output is multiple tasks. The resulting tasks use the shared
-[`schema_version: 2` task contract](add-task.md), with an explicit candidate,
-provided baseline, and `arena-eval-v1` runner. They can be selected by ordinary optimization runs.
-It does not require KernelForge or a task-specific SIKL integration.
+folder and its output is multiple tasks. The resulting tasks use the
+[schema-v3 task contract](add-task.md): `task.yaml`, `workloads.json`,
+`reference.py`, an optional `inputs.py`, `README.md` and a vendored `baseline/`.
+They name no candidate language; the optimization run selects it with its
+top-level `target_language`. It does not require KernelForge or a task-specific
+SIKL integration.
 
 The builder's configurable `output_dir` defaults to the legacy-named
-`tasks/SIKL-task/`. This is an output location for newly generated tasks; the
-bundled production-operator suite is selected separately as `Aiter-task/...`.
-Set `output_dir` in the [builder configuration](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/sikl_task_builder/agent_config.yaml)
+`tasks/SIKL-task/`. Set `output_dir` in the
+[builder configuration](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/sikl_task_builder/agent_config.yaml)
 to choose another directory below `tasks/`. Generated task IDs follow that
 directory, and existing curated task packages must not be overwritten.
 
@@ -26,6 +28,7 @@ Pass an extracted directory, not a tar file:
 
 ```text
 bundle/
+├── LICENSE                     # needed when the baseline is not Apache-2.0
 ├── definitions/**/*.json
 ├── workloads/**/*.jsonl
 └── solutions/
@@ -36,42 +39,55 @@ bundle/
 A JSONL contains **cases**, not kernel source. The builder joins its `definition`
 name to a definition and one baseline solution. A definition describes
 axes, shapes, dtypes and outputs; a solution contains its entry point and source
-files. One JSONL for one definition becomes one task, with every row retained.
-For example, 21 JSONLs of 13 rows each become 21 tasks covering 273 cases, rather
-than 273 independent kernels. `solutions/kernel-forges` submissions are not
-performance baselines or numerical references and are ignored.
+files. One JSONL for one definition becomes one task. Rows with identical axes
+and scalars are merged into one case; the rest are kept. For example, 21 JSONLs
+of 13 rows each become 21 tasks, rather than 273 independent kernels.
+`solutions/kernel-forges` submissions are not performance baselines or numerical
+references and are ignored.
+
+The builder derives the workload file deterministically: every distinct row is
+a case, a size-ranked selection of those cases are performance cases (at least
+the contract's minimum, spanning its minimum size ratio) and the rest are
+correctness-only. When the contract's boundary rule (minimum, non-power-of-two
+and unaligned cases) is not met, it adds the fewest in-domain correctness-only
+boundary controls. A bundle that cannot satisfy the contract fails as
+`needs_spec`.
 
 For **input schema v2**, `definition.reference` contains Python source exporting
-`run`. Optional `definition.initialize` and `definition.compare` contain separate
-Python modules exporting `run` too. All supplied callback bytes are preserved:
+`run`, and optional `definition.initialize` and `definition.compare` contain
+separate Python modules exporting `run` too:
 
-- `initialize(inputs, seed=...)` fills preallocated buffers in place and returns
-  that same dictionary. The adapter checks tensor identity, storage, strides,
-  shapes, dtypes, devices and unchanged scalar literals. Seeds are deterministic
-  per UUID and fit the callback's nonnegative 63-bit range.
-- `compare(actual, expected)` returns `None` on success or raises `AssertionError`.
-  It owns the numerical rule; the builder's legacy `rtol`/`atol` do not override it.
-  It receives one tensor for a single output, or a mapping keyed by the declared
-  names for multiple outputs. Tuple/list returns follow the definition's output
-  insertion order; dictionary returns are aligned by name. The tensor values
-  and supplied callback source are unchanged.
-  With a comparison callback, infinities must match the independent reference
-  in position and sign (component-wise for complex tensors), and the callback
-  must accept them. NaNs in either result are always rejected. Without a
-  comparison callback, all outputs must remain finite.
+- `reference` becomes `reference.py` unchanged. It must be one self-contained
+  file importing only PyTorch and the standard library.
+- `initialize(inputs, seed=...)` is preserved unchanged and wrapped by a
+  generated `inputs.py`; it owns the input distribution and the generator agent
+  cannot edit it.
+- `compare` is **not** carried over. Outputs use the task contract's bounds
+  (`exact` for non-floating outputs, `baseline_relative` otherwise), and the
+  generated README says so.
 - Solution `spec.target` lists `{arch, hardware_id}` objects. The declared GPU
   architecture must match the selected runtime. Legacy `target_hardware` lists
   remain supported; mixing both forms is rejected.
 
-An absent version or explicit version 1 uses the legacy reference solution and
-input policy. Unknown versions and ambiguous legacy/embedded references fail.
-The input schema version is independent of task schema 2 and validator report 4.
+An absent version or explicit version 1 uses the legacy reference solution.
+Unknown versions and ambiguous legacy/embedded references fail.
 
-Supported solutions use Python, Triton or FlyDSL Python-hosted return-value entrypoints, positive integer
-constant/variable dimensions, shape entries that are dimensions or axis names,
-scalar literals, and `random` inputs. Dimension constraints support comparisons
-of axis names and integer literals. Package-relative multi-file Python imports
-are preserved. Ambiguous solutions require explicit selection:
+The baseline is vendored unchanged as one flat package under `baseline/`,
+beside a generated `baseline/kernel.py` that adapts its return-value entry point
+to the contract's in-place `run()` interface. Its language (Triton, Gluon or
+FlyDSL) is resolved from the solution declaration and its imports. The builder
+rejects a baseline that imports a production package (such as `aiter`, `vllm` or
+`sglang`), uses a forbidden process, network, dynamic-import or file API, or
+records no license. `baseline.provenance` records the bundle's source, a fixed
+revision and the SPDX license. A baseline license other than Apache-2.0 needs
+the bundle's `LICENSE` text, which becomes `baseline/LICENSE`; when the solution
+records carry no license, set `license` in the builder configuration to the
+bundle's actual SPDX identifier.
+
+Supported solutions use positive integer constant/variable dimensions, shape
+entries that are dimensions or axis names, scalar literals, and `random` inputs.
+Dimension constraints support comparisons of axis names and integer literals.
+Ambiguous solutions require explicit selection:
 
 ```yaml
 selections:
@@ -82,24 +98,17 @@ selections:
 
 Duplicate UUIDs/keys, mixed definitions within one JSONL, multiple JSONLs for the
 same definition, path traversal, symlinks, missing references, opaque dimension
-expressions, unsupported input descriptors, destination-passing interfaces, and
-absolute imports of local solution modules fail explicitly. Unknown descriptive
-fields are preserved; they do not automatically acquire runtime meaning.
-
-Each generated task explicitly scopes its supported axis and scalar combinations
-to the supplied workload rows, keeping every row and literal unchanged. Broader
-options documented by an upstream operator definition do not implicitly expand
-that benchmark domain. Tensor values still vary through the task initializer and
-the in-place replay-refill checks; the scope is not a fixed set of tensor values.
+expressions, unsupported input descriptors, destination-passing interfaces,
+nested baseline layouts and absolute imports of local solution modules fail
+explicitly.
 
 The conversion preserves metadata and source text. **It cannot reconstruct the
-original tensors from `{"type": "random"}`.** Inputs use an explicit versioned
-synthesis policy when no initializer is supplied. Supplied initializers own the
-distribution and remain protected from authoring repairs. Legacy built-in policies cover floating-point GEMM and declared
-per-1x32 MXFP4 MoE: quantized/shuffled weights, block scales, and normalized unique
-top-k routing. Other policies need an input adapter supported by the definition
-and original code. An unresolved baseline/reference disagreement cannot be
-repaired by rewriting the reference or relaxing tolerances.
+original tensors from `{"type": "random"}`.** Without a supplied initializer,
+tensor inputs get a default synthesis distribution (normal for floating dtypes,
+bounded integers otherwise) that the generator agent may repair in
+`inputs.py` and `task.yaml`; review it against the operator's semantics. An
+unresolved baseline/reference disagreement cannot be repaired by rewriting the
+reference or relaxing the error bound.
 
 ## Run
 
@@ -119,44 +128,45 @@ make docker-sikl-task-builder INPUT='/path/to/extracted bundle'
 The default configuration is
 [`agents/sikl_task_builder/agent_config.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/sikl_task_builder/agent_config.yaml).
 It selects MI355X and the existing Docker image policy. Copy it to change the
-hardware, generator/validator settings, numerical policy, task selection or
-budgets, then pass `CONFIG=path/to/config.yaml`. Relative paths resolve from the
+hardware, generator/validator settings, task selection, `license` or budgets,
+then pass `CONFIG=path/to/config.yaml`. Relative paths resolve from the
 repository. `output_dir` must be below `tasks/`; `artifact_root` must be inside the
 repository and outside `tasks/`. Input/output/artifact trees must not overlap.
 
-The generator currently uses Codex. The validator supports Codex or Claude Code.
-A null model uses that backend's configured default. The Docker launcher checks
-and mounts the required CLIs and login state. All source dependencies (including
-AITER for the example bundle) must exist in the selected runtime; the agent does
-not get an automatic dependency-installation or source-rewriting escape hatch.
-`target_language` accepts `triton` (default) or `flydsl`. The seeded candidate is
-declared `implemented`, with the selected baseline's actual `initial_language`.
+The generator currently uses Codex. The `validator` section selects the QA
+auditor's model review: `codex`, `claude_code`, or `none` (deterministic checks
+only). A null model uses that backend's configured default. The Docker launcher
+checks and mounts the required CLIs and login state. All source dependencies must
+exist in the selected runtime; the agent does not get an automatic
+dependency-installation or source-rewriting escape hatch.
+
+There is no `target_language` option and no seeds, timing or tolerance setting:
+those belong to the framework's task contract and the optimization run's
+configuration.
 
 ## Workflow and tools
 
 1. Inspect and join source records; snapshot the bundle, configuration and runtime
    identity, and compute fingerprints.
-2. Emit a deterministic draft outside `tasks/`. Start `source/kernel.py` from the
-   selected production baseline. This is the initial benchmark implementation,
-   not an optimized solution in the requested target language.
+2. Emit a deterministic draft outside `tasks/`, with the vendored baseline,
+   `reference.py`, workloads and generated `README.md`.
 3. Invoke the generation agent. `describe_task` exposes the authoring boundary:
-   no files are editable when an initializer is supplied; otherwise only
-   `scripts/task_inputs.py` can be repaired. Tools inspect the contract, run
-   checks, and diagnose validator feedback.
-4. Check file/source fidelity. In a fresh GPU workspace, independently run
-   baseline-vs-reference, compilation, correctness, and performance checks over
-   **every** case. Candidate exceptions never fall back to the baseline.
-5. Create a framework `TaskSession`, execute all seven initial role/actions, and
-   launch the official `task_validator` with the captured context. The shared
-   finalizer verifies actual command output, case coverage and semantic review.
-   A complete report-v4 `PASS`, successful independent commands,
-   unchanged harness, and matching task digest are all required. `WARN`, timeout,
-   partial report, or a model-written `PASS` without finalization is insufficient.
-   The outer controller also checks the task identity and fresh validation request
-   ID, so a finalized report from another attempt cannot authorize installation.
-6. Feed failures back for up to three repairs by default. Every repair requires
-   fresh validation. Install only the exact accepted draft by atomic directory
-   rename; never replace a differing existing task.
+   `README.md`, correctness-only workload cases, and (when no initializer is
+   supplied) `inputs.py` plus the input distributions and generator declaration
+   in `task.yaml`. Everything else is the controller's emission, and
+   `check_contract` rejects any other change.
+4. In a fresh GPU workspace, the shared `TaskSession` runs the initial actions
+   over every case, and `audit_task_session` runs the QA auditor on that captured
+   evidence. The draft is materialized for the baseline's language, so the
+   candidate path gets an exact copy of the baseline as a positive control.
+5. Accept the draft only when the framework-finalized `qa_report.yaml` is current
+   for this validation request and task, has status `PASS` (no blocking findings;
+   warnings do not block), the audit left the task files unchanged, and the task
+   digest matches. A timeout, partial report, or model-written `PASS` without
+   finalization is insufficient.
+6. Feed blocking findings back for up to three repairs by default. Every repair
+   requires a fresh audit. Install only the exact accepted draft by atomic
+   directory rename; never replace a differing existing task.
 
 The agent can invoke these tools from the provided prompt:
 
@@ -171,60 +181,38 @@ python3 -m agents.sikl_task_builder.tools \
 | `describe_task` | Full linked contract and editable boundary |
 | `materialize_task` | Deterministic skeleton; refuses to overwrite an existing draft |
 | `check_contract` | File, source, case and syntax diagnostics |
-| `check_task --mode source-check` | Baseline vs original reference; also accepts compile/correctness/performance |
-| `validate_task` | Fresh independent checks plus formal validation and evidence ID |
+| `check_task --mode <mode>` | One evaluator action (`validate-task`, `source-check` (default; baseline correctness), `compile`, `correctness`, `performance`) against the task's own case manifest |
+| `validate_task` | Fresh initial actions plus QA audit and evidence ID |
 | `read_validation --validation-id <id>` | Evidence corresponding to an agent-invoked validation |
 
-Agent-invoked validation is diagnostic. The controller runs its own validation
+Agent-invoked validation is diagnostic. The controller runs its own audit
 before installation and does not accept agent-supplied report paths or aggregates.
-Numerical policy, cases, original sources and timing code are fixed during a run.
-The runner checks tensor/scalar contracts, output validity, input non-mutation, and
-the output of the exact CUDA graph replay used for timing, after poisoning its
-captured output buffers to detect stale results. It then refills inputs in place
-and validates that same replay against a freshly computed reference. Task
-validation preserves legal infinities when corrupting finite reference values,
-so the infinity guard cannot conceal a comparison callback that ignores errors.
-FP8 checks and negative-value generation use widened temporary tensors while
-callbacks retain the declared output dtype. Task validation checks deterministic
-inputs, reference self-comparison, and rejection
-of deliberately incorrect finite outputs for every case. Canonical performance
-helpers are materialized by the normal workspace machinery.
+The reference, baseline, performance selection and error bounds are fixed
+during a run.
 
 ## Outputs, repair limits and resume
 
 ```text
 tasks/SIKL-task/<definition>/
-├── config.yaml
-├── source/kernel.py
-├── source/implementation/       # initial baseline source
-└── scripts/
-    ├── task_runner.py
-    ├── task_api.py
-    ├── task_inputs.py
-    ├── baseline/               # unchanged original code
-    ├── reference/              # unchanged original code
-    ├── initialize/             # supplied callback, when present
-    ├── compare/                # supplied callback, when present
-    ├── workload.json           # all original cases and fixed policy
-    └── provenance.json
+├── task.yaml
+├── workloads.json
+├── reference.py
+├── inputs.py              # generator-owned inputs, or the initialize wrapper
+├── sikl_initialize.py     # supplied initialize callback, when present
+├── README.md
+└── baseline/              # vendored original code, kernel.py adapter, LICENSE when required
 ```
 
 Generated tasks do not import this builder, Arena's `src/`, or the original input
-folder. During later optimization, Arena protects `config.yaml` and `scripts/`;
-only the configured files under `source/` are editable.
+folder. The framework writes the evaluator and timing helper into each run
+workspace; no benchmark code is committed with the task.
 
-`scripts/task_runner.py validate-task` emits the complete UUID manifest.
-`scripts/task_runner.py <baseline|candidate> <compile|correctness|performance>`
-emits one structured result and exits nonzero on failure. Baseline actions load
-only the protected baseline; a broken candidate cannot substitute a baseline
-result. Compilation launches every case to exercise lazy GPU compilation.
-
-Run state, source snapshot, generator logs, validator workspaces and content-bound
+Run state, source snapshot, generator logs, audit workspaces and content-bound
 `evidence.json` files remain under `sikl_task_builder_runs/<run-id>/`. Review
-`summary.json` for installed, failed, `needs_spec` (unresolved source-check failure)
-or `platform_deferred` (declared hardware mismatch) tasks. A partial campaign
-returns a nonzero exit code. A malformed bundle fails at inspection before any
-agent runs. Runtime/dependency errors retain their diagnostics.
+`summary.json` for installed, failed, `needs_spec` (an unresolved source-check
+failure or a bundle that cannot meet the task contract) or `platform_deferred`
+(declared hardware mismatch) tasks. A partial campaign returns a nonzero exit
+code. A malformed bundle fails at inspection before any agent runs.
 
 ```bash
 make docker-sikl-task-builder INPUT='/path/to/extracted bundle' \
@@ -242,9 +230,7 @@ with writable artifact/output subdirectories and isolated agent home state.
 This preserves workflow boundaries, not a hostile-code security sandbox; source
 code is executed during GPU validation in the repository's privileged runtime.
 Use trusted bundles and review any generated input adapter and its evidence.
-Schema-v2 callbacks execute in that same runtime, after metadata-only inspection;
-they introduce no new mounts, downloads, credentials or external execution service.
 
 This workflow does not commit tasks or create PRs. Review generated tasks and
-retain their finalized GPU validation evidence when contributing them, as required
-by the [task authoring guide](add-task.md).
+retain their finalized QA audit evidence when contributing them, as required by
+the [task authoring guide](add-task.md) and the [QA auditor guide](qa-auditor.md).

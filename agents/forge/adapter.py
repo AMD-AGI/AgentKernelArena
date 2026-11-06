@@ -1,4 +1,4 @@
-"""Unified Forge launcher: task facts select an internal engine workflow."""
+"""Forge launcher: the candidate's starting state selects an internal engine workflow."""
 from __future__ import annotations
 
 import hashlib
@@ -20,6 +20,7 @@ from agents.forge import bridge
 from agents.forge.common import _read_forge_result, _resolve_gpu_arch, _resolve_gpu_type, run_forge_subprocess
 from agents.forge.task_context import TaskContext
 from agents.forge.bundles import allow_candidate_paths, candidate_files, committed_candidate, copy_workspace, install_candidate
+from src.task_contract import BASELINE_DIR
 from src.task_spec import resolve_task_path
 from src.tools.agent_cost import report_agent_usage
 
@@ -37,20 +38,65 @@ def _digest(spec, root: Path):
             for name, path in candidate_files(spec, root, required=False).items()}
 
 
-def choose_workflow(context: TaskContext, *, target_verified: bool, requested: str = "auto") -> str:
-    if requested not in ("auto", "optimize", "rewrite"):
-        raise ValueError("Forge workflow must be auto, optimize, or rewrite")
-    requires_initialization = not target_verified
-    if requested == "optimize" and requires_initialization:
+#: Run target languages Forge accepts. Each also needs a backend in the installed engine.
+TARGET_LANGUAGES = ("flydsl", "gluon", "hip", "triton")
+#: Targets KernelForge's correctness-only implementer initializes before forge-loop.
+#: A FlyDSL target is initialized by the engine's native PORT (forge-rewrite-by-flydsl).
+INITIALIZATION_LANGUAGES = ("gluon", "hip", "triton")
+#: The engine-owned Arena workflows, in the order a run can select them.
+WORKFLOWS = ("optimize", "initialize", "rewrite")
+
+
+def require_target_language(context: TaskContext) -> str:
+    language = context.target_language
+    if language not in TARGET_LANGUAGES:
+        raise ForgeRunError(f"Forge does not support target language {language!r}; "
+                            f"supported targets are {', '.join(TARGET_LANGUAGES)}")
+    return language
+
+
+def rewrite_source_language(context: TaskContext, capabilities: dict | None) -> str:
+    """The baseline language the FlyDSL PORT reads, or a fail-closed error.
+
+    The engine states the source languages its rewrite ingests; the baseline
+    must be one of them, because the PORT translates that file.
+    """
+    language = context.baseline_language
+    accepted = (capabilities or {}).get("rewrite_source_languages")
+    if not isinstance(accepted, list):
+        raise ForgeRunError("The installed KernelForge does not report its FlyDSL rewrite source languages")
+    if language not in accepted:
+        raise ForgeRunError(f"KernelForge's FlyDSL rewrite reads {', '.join(accepted)} sources; "
+                            f"this task's baseline is {language}")
+    return language
+
+
+def choose_workflow(context: TaskContext, *, target_verified: bool, requested: str = "auto",
+                    capabilities: dict | None = None) -> str:
+    """Optimize a verified target implementation; otherwise initialize it first.
+
+    ``target_verified`` is the outcome of the candidate's complete correctness
+    check, run only when the starting candidate is implemented in the target
+    language (the baseline's own language) or was changed by an earlier
+    invocation. An unimplemented template is never verified.
+    """
+    if requested not in ("auto", *WORKFLOWS):
+        raise ValueError("Forge workflow must be auto, optimize, initialize, or rewrite")
+    language = require_target_language(context)
+    if target_verified:
+        workflow = "optimize"
+    elif language == "flydsl":
+        rewrite_source_language(context, capabilities)
+        workflow = "rewrite"
+    elif language in INITIALIZATION_LANGUAGES:
+        workflow = "initialize"
+    else:  # pragma: no cover - TARGET_LANGUAGES and the two paths above agree
+        raise ForgeRunError(f"Forge cannot initialize a {language} candidate")
+    if requested == "optimize" and workflow != "optimize":
         raise ValueError("Forge optimize requires a verified current implementation in the target language")
-    if requested == "rewrite" and target_verified:
-        raise ValueError("Candidate already satisfies the target contract; use auto or optimize")
-    if requires_initialization and context.spec.candidate.language not in ("flydsl", "hip", "triton"):
-        raise ValueError(f"Forge initialization to {context.spec.candidate.language} is unsupported; "
-                         "reviewed initialization backends are FlyDSL, HIP and Triton")
-    if not requires_initialization:
-        return "optimize"
-    return "rewrite" if context.spec.candidate.language == "flydsl" else "initialize"
+    if requested not in ("auto", workflow):
+        raise ValueError(f"Forge {requested} does not apply: this candidate needs {workflow}")
+    return workflow
 
 
 def _config(eval_config: dict) -> dict:
@@ -89,19 +135,31 @@ def _initialize_git(root: Path) -> None:
 
 
 def _anchor(context: TaskContext) -> str:
-    if context.spec.candidate.entrypoints:
-        return context.spec.candidate.entrypoints[0].file
-    for scope in context.spec.candidate.editable:
-        if scope.scope != "tree":
-            return scope.path
-    files = candidate_files(context.spec, context.workspace, required=False)
-    if not files:
-        raise ValueError("Forge requires an entrypoint file when the candidate is an empty tree")
-    return next(iter(files))
+    """The candidate entry file, ``solution/kernel.py`` or ``solution/kernel.hip``."""
+    return context.spec.candidate.entrypoints[0].file
+
+
+def baseline_entry(context: TaskContext) -> str:
+    return f"{BASELINE_DIR}/kernel.hip" if context.baseline_language == "hip" else f"{BASELINE_DIR}/kernel.py"
+
+
+def source_framework(context: TaskContext) -> str:
+    """The engine's KB framework identity, from the baseline's recorded upstream source.
+
+    The engine keys experience records by vllm, sglang or aiter, and calls any
+    other origin standalone. The provenance source is a repository name such
+    as ``vllm-project/vllm`` or ``ROCm/aiter``.
+    """
+    owner = str(context.spec.to_mapping().get("kernel_identity", {}).get("source_owner", ""))
+    tokens = set(re.split(r"[^a-z0-9]+", owner.lower()))
+    for framework in ("aiter", "sglang", "vllm"):
+        if framework in tokens:
+            return framework
+    return "standalone"
 
 
 def require_supported_backend(spec, capabilities: dict) -> str:
-    """Preserve the task language; an unrelated backend is not a substitute."""
+    """Preserve the run's target language; an unrelated backend is not a substitute."""
     language = spec.candidate.language
     if language not in capabilities["backends"]:
         raise ForgeRunError(f"KernelForge has no {language} backend")
@@ -239,35 +297,32 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
     if config.get("model"):
         command.extend(["--model", config["model"]])
     symbols = [entry.symbol for entry in context.spec.candidate.entrypoints if entry.symbol]
-    identity = context.spec.to_mapping().get("kernel_identity", {})
-    operator = identity.get("logical_operator") or context.spec.task_id
+    framework = source_framework(context)
     if plan["workflow"] != "rewrite":
         files = candidate_files(context.spec, root)
         command += ["--kernel", str(root / plan["anchor"]),
-                    "--kernel-backend", context.spec.candidate.language,
+                    "--kernel-backend", context.target_language,
                     "--source-files", ",".join(map(str, files.values())),
-                    "--target-functions", ",".join(symbols), "--operator-name", operator,
-                    "--framework", identity.get("source_owner", "standalone"),
-                    # An Arena task is a source tree carrying its own reference
-                    # and harness, which is what this value means upstream. Do
-                    # not drop it for being redundant with --source-files: that
-                    # only resolves multi-file handling, and a single-file
-                    # candidate would resolve to no task type at all, losing the
-                    # colocated test/reference protection and the entry-point
-                    # prompt sections with it.
+                    "--target-functions", ",".join(symbols), "--operator-name", context.operator,
+                    "--framework", framework,
+                    # The candidate tree and its colocated evaluator form a source
+                    # tree, which is what this value means upstream. Do not drop it
+                    # for being redundant with --source-files: that only resolves
+                    # multi-file handling, and a single-file candidate would
+                    # resolve to no task type at all, losing the colocated
+                    # protection and the entry-point prompt sections with it.
                     "--task-type", "repository",
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
                     "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]
     else:
         command += ["--source-kernel", plan["source"], "--flydsl-kernel-name", plan["anchor"],
-                    "--logical-op-name", operator, "--no-prepare-driver",
+                    "--logical-op-name", context.operator, "--no-prepare-driver",
+                    "--source-language", plan["source_language"],
                     "--max-port-attempts", str(config["max_port_attempts"]),
                     "--supervisor-backend", config["supervisor_backend"] or config["agent_backend"]]
-        if identity.get("source_owner") in ("aiter", "vllm", "sglang"):
-            command += ["--framework", identity["source_owner"]]
-        if context.spec.candidate.initial_language in ("triton", "hip", "cuda", "cpp"):
-            command += ["--source-language", context.spec.candidate.initial_language]
+        if framework != "standalone":
+            command += ["--framework", framework]
         if plan.get("applyback_optional"):
             # Arena delivers the standalone candidate and scores it itself; the
             # framework patch is work this campaign would discard, and the
@@ -307,6 +362,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
     started = time.time()
     config = _config(eval_config)
     context = TaskContext.load(workspace=Path(workspace))
+    require_target_language(context)
     deadline = started + config["timeout_seconds"]
     logger = logging.getLogger(__name__)
     # A fresh sibling keeps provider scratch and reports outside the editable
@@ -375,23 +431,19 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
                 status["initial_candidate_failure"] = result.to_mapping()
                 status["candidate_requires_repair"] = True
         plan["workflow"] = choose_workflow(context, target_verified=target_verified,
-                                           requested=config["workflow"])
+                                           requested=config["workflow"], capabilities=capabilities)
         status["workflow"] = plan["workflow"]
         if plan["workflow"] == "initialize":
             from agents.forge.initialization import materialize_targets
             materialize_targets(context.spec, engine, plan["anchor"])
         if plan["workflow"] == "rewrite":
-            if Path(plan["anchor"]).suffix != ".py":
-                raise ForgeRunError("FlyDSL rewrite requires a Python candidate entry file")
-            sources = context.spec.baseline.source_files
-            source = resolve_task_path(template, sources[0], must_exist=True) if sources else template / plan["anchor"]
-            if not source.is_file():
-                # A spec-only task is valid. The source hint is the task contract;
-                # the independently provided baseline still executes normally.
-                source = template / "README.md"
-            hint = engine / ("arena_source_hint" + (source.suffix if source.is_file() else ".txt"))
-            hint.write_text(source.read_text() if source.is_file() else context.spec.to_mapping().get("description", ""))
+            # The PORT translates the task's vendored baseline; the framework's
+            # frozen baseline still executes independently as the denominator.
+            source = resolve_task_path(template, baseline_entry(context), must_exist=True)
+            hint = engine / ("arena_source_hint" + source.suffix)
+            hint.write_text(source.read_text())
             plan["source"] = str(hint)
+            plan["source_language"] = rewrite_source_language(context, capabilities)
             # Remove candidate shadows at the engine root. The complete candidate
             # bundle will live under the producer's current attempt directory.
             for path in candidate_files(context.spec, engine, required=False).values():

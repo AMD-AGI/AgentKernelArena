@@ -1,0 +1,47 @@
+schema_version: 3
+description: >-
+  Dense bfloat16 GEMM without bias, out = a @ b.T, where a is [m, k] and b is the row-major [n, k] weight
+  (the nn.Linear layout), accumulated in float32 and rounded to bfloat16.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows of a (tokens in the batch).}
+    n: {kind: const, value: 512, description: Output features.}
+    k: {kind: const, value: 4096, description: Reduction width.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/kernels/splitk_hgemm.py (with tensor_shim.py, buffer_ops.py, vector.py), tuned rows of aiter/configs/model_configs/dsv4_bf16_tuned_gemm.csv and qwen3_5_397b_bf16_tuned_gemm.csv for N=512, K=4096 on gfx950
+    license: MIT
+    modifications: >-
+      Kernel and helper modules copied with relative imports; environment-variable switches, the numpy stride
+      computation and the star import of the vector dialect replaced by their defaults and explicit imports.
+      A run() wrapper replaces aiter.ops.flydsl.gemm_kernels (cached per tile configuration, semaphores
+      allocated once) and dispatches on M through the table in kernel.py; see README.md for how the rows were
+      derived and where they differ from the production dispatch.
+      FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the cache-policy operand is passed as the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp / RawPtrBufferStoreOp (the runtime's op constructors take no positional aux value); no change to the kernel algorithm.
+compare:
+  out: {bound: baseline_relative, k: 8}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

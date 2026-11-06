@@ -1,0 +1,72 @@
+schema_version: 3
+description: >-
+  out = max_pool2d(tanh(conv2d(x, conv_weight, conv_bias)) * scaling_factor + bias, 4) on a float32
+  NCHW batch: a 3x3 convolution from 8 to 64 channels (stride 1, no padding, no dilation, one group,
+  with bias), tanh, multiplication by a scalar, addition of a per-channel bias of shape [64, 1, 1]
+  and a 4x4 max pool with stride 4 (floor mode). Products and accumulation are float32 (no TF32/XF32).
+operator:
+  name: conv2d_tanh_scale_bias_maxpool
+  category: convolution
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Images in the batch.}
+    height: {kind: var, min: 6, max: 256, description: Input image height.}
+    width: {kind: var, min: 6, max: 256, description: Input image width.}
+    in_channels: {kind: const, value: 8, description: Input channels.}
+    out_channels: {kind: const, value: 64, description: Output channels.}
+    kernel_size: {kind: const, value: 3, description: Square filter size.}
+    pool_size: {kind: const, value: 4, description: Max-pool window and stride.}
+  derived_axes:
+    pooled_height: (height - kernel_size + 1) // pool_size
+    pooled_width: (width - kernel_size + 1) // pool_size
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_channels, height, width]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    conv_weight:
+      kind: tensor
+      shape: [out_channels, in_channels, kernel_size, kernel_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.11785113019775793, high: 0.11785113019775793}
+    conv_bias:
+      kind: tensor
+      shape: [out_channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.11785113019775793, high: 0.11785113019775793}
+    scaling_factor: {kind: scalar, dtype: float32, default: 2.0, description: Multiplies tanh of the convolution output.}
+    bias:
+      kind: tensor
+      shape: [out_channels, 1, 1]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [batch, out_channels, pooled_height, pooled_width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: torch/_inductor/kernel/conv.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the kernels torch.compile(mode="max-autotune") builds for this module with
+      Inductor's Triton convolution template: one implicit-GEMM kernel whose 72-term float32
+      reduction runs over (input channel, filter row, filter column) in OIHW weight order in slices
+      of 16 with IEEE float32 dot products, with the convolution bias, tanh (libdevice), the scaling,
+      the bias addition and the 4x4 max pool fused into its epilogue (Inductor emits the pool as a
+      second kernel over a materialized intermediate). The M tile covers one pooled output row (four
+      convolution rows) of 16 pooled columns so the pool reduces in registers. Fixed tile
+      configuration (256 x 64 x 16, 8 warps, 2 stages), no autotuning; wrapped in the arena run()
+      interface writing the preallocated output.
+compare:
+  out: {bound: sqnr, min_db: 130}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

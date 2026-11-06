@@ -1,0 +1,40 @@
+schema_version: 3
+description: >-
+  Dynamic per-token INT8 quantization of a float16 activation: each row gets the float32 scale
+  max(max|x|, 1e-10) / 127 and codes = int8(round(x * (127 / max(max|x|, 1e-10)))) with the float32
+  product rounded to the nearest integer, ties away from zero. Scales are float32 [n_tokens, 1].
+operator:
+  name: per_token_quant_int8
+  category: quantization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 8192, description: Quantized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: float16
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: int8}
+    scale: {shape: [n_tokens, 1], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/quantization/utils/int8_utils.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface writing into the preallocated outputs; the ROCm round_int8 is
+      used directly (platform dispatch, shape flattening and output allocation removed).
+compare:
+  out: {bound: exact}
+  scale: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

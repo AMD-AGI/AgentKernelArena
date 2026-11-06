@@ -1,0 +1,26 @@
+{
+  "description": "Token counts of AITER's tuned shape lists for a 2624-wide projection of a 6144-wide hidden state (decode batches, prefill chunks) up to 65536 tokens.",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m2", "axes": {"m": 2}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m3", "axes": {"m": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "m4", "axes": {"m": 4}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m8", "axes": {"m": 8}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m16", "axes": {"m": 16}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m32", "axes": {"m": 32}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m48", "axes": {"m": 48}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m64", "axes": {"m": 64}, "checks": ["correctness"], "source": "decode, tuned size"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness"], "source": "small prefill, tuned size"},
+    {"id": "m196", "axes": {"m": 196}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "m256", "axes": {"m": 256}, "checks": ["correctness"], "source": "small prefill, tuned size"},
+    {"id": "m512", "axes": {"m": 512}, "checks": ["correctness", "performance"], "source": "small prefill"},
+    {"id": "m1024", "axes": {"m": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m2048", "axes": {"m": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m3000", "axes": {"m": 3000}, "checks": ["correctness", "performance"], "source": "short prefill, not a power of two"},
+    {"id": "m4096", "axes": {"m": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m8192", "axes": {"m": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m16384", "axes": {"m": 16384}, "checks": ["correctness", "performance"], "source": "prefill chunk, tuned size"},
+    {"id": "m32768", "axes": {"m": 32768}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "m65536", "axes": {"m": 65536}, "checks": ["correctness", "performance"], "source": "long batched prefill"}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "description": "Power-of-two token counts of the original task (decode batches to prefill chunks) extended with larger prefill batches up to 32768 tokens (the output stays below 2 GiB, which the kernel's 32-bit buffer offsets need).",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m2", "axes": {"m": 2}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m3", "axes": {"m": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "m4", "axes": {"m": 4}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m8", "axes": {"m": 8}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m16", "axes": {"m": 16}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m32", "axes": {"m": 32}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m64", "axes": {"m": 64}, "checks": ["correctness", "performance"], "source": "decode / small prefill"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness", "performance"], "source": "small prefill"},
+    {"id": "m196", "axes": {"m": 196}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "m256", "axes": {"m": 256}, "checks": ["correctness", "performance"], "source": "small prefill"},
+    {"id": "m512", "axes": {"m": 512}, "checks": ["correctness", "performance"], "source": "small prefill"},
+    {"id": "m1024", "axes": {"m": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m2048", "axes": {"m": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m3000", "axes": {"m": 3000}, "checks": ["correctness", "performance"], "source": "short prefill, not a power of two"},
+    {"id": "m4096", "axes": {"m": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m8192", "axes": {"m": 8192}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "m16384", "axes": {"m": 16384}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "m32768", "axes": {"m": 32768}, "checks": ["correctness", "performance"], "source": "long batched prefill"}
+  ]
+}

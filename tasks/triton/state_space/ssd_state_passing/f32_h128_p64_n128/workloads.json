@@ -1,0 +1,18 @@
+{
+  "description": "Chunk counts of packed prefill batches of a hybrid Mamba2 model (128 heads of 64 x 128 state, chunk 256) whose sequences resume from cached states; a lone chunk and ragged shapes are correctness-only.",
+  "cases": [
+    {"id": "c1_s1", "axes": {"n_chunks": 1, "n_seqs": 1}, "checks": ["correctness"], "source": "a single chunk resumed from a cached state"},
+    {"id": "c3_s2", "axes": {"n_chunks": 3, "n_seqs": 2}, "checks": ["correctness"], "source": "two short sequences"},
+    {"id": "c5_s3", "axes": {"n_chunks": 5, "n_seqs": 3}, "checks": ["correctness"], "source": "three short sequences"},
+    {"id": "c37_s37", "axes": {"n_chunks": 37, "n_seqs": 37}, "checks": ["correctness"], "source": "every sequence fits one chunk"},
+    {"id": "c100_s7", "axes": {"n_chunks": 100, "n_seqs": 7}, "checks": ["correctness"], "source": "unaligned batch of uneven sequences"},
+    {"id": "c8_s1", "axes": {"n_chunks": 8, "n_seqs": 1}, "checks": ["correctness", "performance"], "source": "one 2048-token prefill"},
+    {"id": "c16_s2", "axes": {"n_chunks": 16, "n_seqs": 2}, "checks": ["correctness", "performance"], "source": "small prefill batch"},
+    {"id": "c32_s2", "axes": {"n_chunks": 32, "n_seqs": 2}, "checks": ["correctness", "performance"], "source": "prefill batch"},
+    {"id": "c64_s4", "axes": {"n_chunks": 64, "n_seqs": 4}, "checks": ["correctness", "performance"], "source": "prefill batch"},
+    {"id": "c128_s4", "axes": {"n_chunks": 128, "n_seqs": 4}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "c256_s8", "axes": {"n_chunks": 256, "n_seqs": 8}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "c512_s8", "axes": {"n_chunks": 512, "n_seqs": 8}, "checks": ["correctness", "performance"], "source": "large batched prefill"},
+    {"id": "c512_s16", "axes": {"n_chunks": 512, "n_seqs": 16}, "checks": ["correctness", "performance"], "source": "large batched prefill"}
+  ]
+}

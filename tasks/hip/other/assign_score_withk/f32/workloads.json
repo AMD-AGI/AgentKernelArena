@@ -1,0 +1,155 @@
+{
+ "description": "PAConv score assignment with 16 neighbors, 8 weight matrices and 64 channels; centers are a quarter of the points; tiny batches are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_n1",
+   "axes": {
+    "batch": 1,
+    "n_centers": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single center"
+  },
+  {
+   "id": "b3_n37",
+   "axes": {
+    "batch": 3,
+    "n_centers": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small unaligned batch"
+  },
+  {
+   "id": "b5_n100",
+   "axes": {
+    "batch": 5,
+    "n_centers": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small batch"
+  },
+  {
+   "id": "b2_n513",
+   "axes": {
+    "batch": 2,
+    "n_centers": 513
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned centers"
+  },
+  {
+   "id": "b7_n250",
+   "axes": {
+    "batch": 7,
+    "n_centers": 250
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "b1_n1024",
+   "axes": {
+    "batch": 1,
+    "n_centers": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single cloud, 1024 centers (timing near the 10 us floor; correctness-only)"
+  },
+  {
+   "id": "b2_n1024",
+   "axes": {
+    "batch": 2,
+    "n_centers": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small training batch"
+  },
+  {
+   "id": "b4_n1024",
+   "axes": {
+    "batch": 4,
+    "n_centers": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch"
+  },
+  {
+   "id": "b8_n1024",
+   "axes": {
+    "batch": 8,
+    "n_centers": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch"
+  },
+  {
+   "id": "b16_n1024",
+   "axes": {
+    "batch": 16,
+    "n_centers": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "PAConv scene-seg batch"
+  },
+  {
+   "id": "b16_n4096",
+   "axes": {
+    "batch": 16,
+    "n_centers": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "dense centers"
+  },
+  {
+   "id": "b32_n4096",
+   "axes": {
+    "batch": 32,
+    "n_centers": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of dense centers"
+  },
+  {
+   "id": "b64_n4096",
+   "axes": {
+    "batch": 64,
+    "n_centers": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "upper bound"
+  }
+ ]
+}

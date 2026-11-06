@@ -1,0 +1,28 @@
+{
+  "description": "Sliding-window (256) decode steps with group-16 queries over 1024-token FP8 pages. The window bounds the work per sequence, so kernel time grows with the batch; the context length moves the window across pages and tiles and sets the block-table width. Decode batches up to 128 sequences run below the 10 us timing floor and are correctness-only; timed batches span 256 to 4096 sequences with contexts of 1K to 32K tokens.",
+  "cases": [
+    {"id": "s1_l1", "axes": {"num_seqs": 1, "max_context_len": 1}, "checks": ["correctness"], "source": "first decode token of a one-token prompt"},
+    {"id": "s3_l300", "axes": {"num_seqs": 3, "max_context_len": 300}, "checks": ["correctness"], "source": "short contexts around the window length"},
+    {"id": "s37_l1000", "axes": {"num_seqs": 37, "max_context_len": 1000}, "checks": ["correctness"], "source": "unaligned batch, window inside the first page"},
+    {"id": "s8_l257", "axes": {"num_seqs": 8, "max_context_len": 257}, "checks": ["correctness"], "source": "contexts at most one window long"},
+    {"id": "s16_l1025", "axes": {"num_seqs": 16, "max_context_len": 1025}, "checks": ["correctness"], "source": "windows crossing the first page boundary"},
+    {"id": "s1_l1024", "axes": {"num_seqs": 1, "max_context_len": 1024}, "checks": ["correctness"], "source": "source task case_0000 (one sequence, 1024 tokens)"},
+    {"id": "s1_l2048", "axes": {"num_seqs": 1, "max_context_len": 2048}, "checks": ["correctness"], "source": "source task case_0001 (one sequence, 2048 tokens)"},
+    {"id": "s2_l1024", "axes": {"num_seqs": 2, "max_context_len": 1024}, "checks": ["correctness"], "source": "source task case_0002 batch (two sequences, 1024 tokens)"},
+    {"id": "s4_l1024", "axes": {"num_seqs": 4, "max_context_len": 1024}, "checks": ["correctness"], "source": "source task case_0003 batch (four sequences, 1024 tokens)"},
+    {"id": "s8_l1024", "axes": {"num_seqs": 8, "max_context_len": 1024}, "checks": ["correctness"], "source": "source task case_0004 batch (eight sequences, 1024 tokens)"},
+    {"id": "s8_l2048", "axes": {"num_seqs": 8, "max_context_len": 2048}, "checks": ["correctness"], "source": "batch of eight at a 2048-token context"},
+    {"id": "s5_l131072", "axes": {"num_seqs": 5, "max_context_len": 131072}, "checks": ["correctness"], "source": "long-context decode at a 128K context"},
+    {"id": "s128_l4096", "axes": {"num_seqs": 128, "max_context_len": 4096}, "checks": ["correctness"], "source": "decode, concurrency 128"},
+    {"id": "s256_l1024", "axes": {"num_seqs": 256, "max_context_len": 1024}, "checks": ["correctness", "performance"], "source": "decode, concurrency 256, short contexts"},
+    {"id": "s256_l16384", "axes": {"num_seqs": 256, "max_context_len": 16384}, "checks": ["correctness", "performance"], "source": "decode, concurrency 256, 16K contexts"},
+    {"id": "s512_l2048", "axes": {"num_seqs": 512, "max_context_len": 2048}, "checks": ["correctness", "performance"], "source": "decode, concurrency 512"},
+    {"id": "s512_l32768", "axes": {"num_seqs": 512, "max_context_len": 32768}, "checks": ["correctness", "performance"], "source": "decode, concurrency 512, 32K contexts"},
+    {"id": "s1024_l4096", "axes": {"num_seqs": 1024, "max_context_len": 4096}, "checks": ["correctness", "performance"], "source": "decode, concurrency 1024"},
+    {"id": "s1024_l32768", "axes": {"num_seqs": 1024, "max_context_len": 32768}, "checks": ["correctness", "performance"], "source": "decode, concurrency 1024, 32K contexts"},
+    {"id": "s2048_l2048", "axes": {"num_seqs": 2048, "max_context_len": 2048}, "checks": ["correctness", "performance"], "source": "decode, concurrency 2048"},
+    {"id": "s2048_l8192", "axes": {"num_seqs": 2048, "max_context_len": 8192}, "checks": ["correctness", "performance"], "source": "decode, concurrency 2048, 8K contexts"},
+    {"id": "s4096_l1024", "axes": {"num_seqs": 4096, "max_context_len": 1024}, "checks": ["correctness", "performance"], "source": "decode, concurrency 4096, short contexts"},
+    {"id": "s4096_l4096", "axes": {"num_seqs": 4096, "max_context_len": 4096}, "checks": ["correctness", "performance"], "source": "decode, concurrency 4096"}
+  ]
+}

@@ -1,0 +1,125 @@
+schema_version: 3
+description: >-
+  Draft-model inputs of EAGLE speculative decoding (vLLM v1 model runner). Request b owns the target
+  tokens query_start_loc[b]:query_start_loc[b+1] and the persistent slot s = idx_mapping[b]; its rejected
+  tail num_rejected[b] is dropped, leaving n = query length - num_rejected tokens starting at q =
+  query_start_loc[b]. draft_input_ids[q : q+n-1] = target_input_ids[q+1 : q+n] (the ids shifted by one),
+  and draft_input_ids[q+n-1] is last_sampled[s] if num_sampled[b] > 0, else next_prefill_tokens[s].
+  draft_positions[q : q+n] = target_positions[q : q+n]. last_token_indices[b] = q+n-1,
+  draft_query_start_loc[b] = q and draft_seq_lens[b] = seq_lens[b]. The padding entries are
+  draft_query_start_loc[num_reqs:] = query_start_loc[num_reqs], draft_seq_lens[num_reqs:] = 0 and
+  last_token_indices[num_reqs:] = 0; draft_current_step is reset to 0. Draft id and position slots of
+  rejected tokens are unchanged.
+operator:
+  name: prepare_eagle_inputs
+  category: other
+interface:
+  axes:
+    num_reqs: {kind: var, min: 1, max: 1024, description: Requests scheduled in the step.}
+    query_len: {kind: var, min: 1, max: 65536, description: Mean number of new tokens per request; individual requests range from 1 to twice this.}
+    max_num_reqs: {kind: const, value: 1024, description: Persistent request slots (maximum concurrent requests).}
+  derived_axes:
+    total_tokens: "num_reqs * query_len"
+  inputs:
+    target_input_ids:
+      kind: tensor
+      shape: [total_tokens]
+      dtype: int32
+      distribution: {kind: randint, low: 0, high: 151936}
+    target_positions:
+      kind: tensor
+      shape: [total_tokens]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+      description: Position of every target token within its request.
+    idx_mapping:
+      kind: tensor
+      shape: [num_reqs]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct persistent request slot of each batch entry.
+    last_sampled:
+      kind: tensor
+      shape: [max_num_reqs, 1]
+      dtype: int64
+      distribution: {kind: randint, low: 0, high: 151936}
+      description: Last sampled token of every persistent slot.
+    next_prefill_tokens:
+      kind: tensor
+      shape: [max_num_reqs]
+      dtype: int32
+      distribution: {kind: randint, low: 0, high: 151936}
+      description: Next prompt token of every persistent slot.
+    num_sampled:
+      kind: tensor
+      shape: [num_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Tokens sampled for each request this step (0 while it is still prefilling).
+    num_rejected:
+      kind: tensor
+      shape: [num_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Rejected draft tokens of each request; fewer than its query length.
+    query_start_loc:
+      kind: tensor
+      shape: [num_reqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Exclusive prefix sums of the query lengths; the last entry is total_tokens.
+    seq_lens:
+      kind: tensor
+      shape: [num_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Sequence length of each request.
+    draft_input_ids:
+      kind: tensor
+      shape: [total_tokens]
+      dtype: int32
+      role: state
+      distribution: {kind: zeros}
+      description: Persistent draft input buffer, zero before the step.
+    draft_positions:
+      kind: tensor
+      shape: [total_tokens]
+      dtype: int64
+      role: state
+      distribution: {kind: zeros}
+      description: Persistent draft position buffer, zero before the step.
+  outputs:
+    last_token_indices: {shape: [max_num_reqs], dtype: int64}
+    draft_current_step: {shape: [1], dtype: int64}
+    draft_query_start_loc: {shape: [max_num_reqs + 1], dtype: int32}
+    draft_seq_lens: {shape: [max_num_reqs], dtype: int32}
+  mutable: [draft_input_ids, draft_positions]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/spec_decode/autoregressive/speculator.py (_prepare_prefill_inputs_kernel, prepare_prefill_inputs)
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface; the kernel and its launch parameters are unchanged. max_num_reqs is
+      taken from the output shape, and the InputBuffers/InputBatch objects are replaced by their tensors.
+compare:
+  last_token_indices: {bound: exact}
+  draft_current_step: {bound: exact}
+  draft_query_start_loc: {bound: exact}
+  draft_seq_lens: {bound: exact}
+  draft_input_ids: {bound: exact}
+  draft_positions: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

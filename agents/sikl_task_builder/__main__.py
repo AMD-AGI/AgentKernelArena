@@ -31,7 +31,8 @@ def main(argv=None):
         if not source.is_dir():
             raise ValueError(f"Missing input directory: {source}")
         values = [str(source), str(args.config.resolve()), str(artifacts.relative_to(REPO)),
-                  str(output.relative_to(REPO)), " ".join(sorted({"codex", config.validator.get("backend", "codex")}))]
+                  str(output.relative_to(REPO)),
+                  " ".join(sorted({"codex", config.review_backend()} - {"none"}))]
         if any("\n" in v or ":" in v for v in values):
             raise ValueError("Mount paths cannot contain newline or colon characters")
         artifacts.mkdir(parents=True, exist_ok=True)

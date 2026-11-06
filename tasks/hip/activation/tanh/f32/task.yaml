@@ -1,0 +1,37 @@
+schema_version: 3
+description: >-
+  Scaled hyperbolic tangent of a flat float32 tensor: out = tanh(a * x) * scale, elementwise,
+  in float32.
+operator:
+  name: tanh
+  category: activation
+interface:
+  axes:
+    numel: {kind: var, min: 1, max: 536870912, description: Number of elements.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [numel]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    a: {kind: scalar, dtype: float32, default: 1.0}
+    scale: {kind: scalar, dtype: float32, default: 10.0}
+  outputs:
+    out: {shape: [numel], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 1464c935
+    path: tasks/hip2hip/TanH/hip/hip_11178_TanH_ref.hip
+    license: Apache-2.0
+    modifications: >-
+      float32 path only; registered as the arena run op writing into the preallocated output
+      (TORCH_LIBRARY_EXPAND instead of pybind); kernel code unchanged.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

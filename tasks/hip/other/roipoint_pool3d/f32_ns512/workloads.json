@@ -1,0 +1,169 @@
+{
+ "description": "PointRCNN-style second stage: 2K to 16K sampled points per cloud, 16 to 512 RoIs, 1 to 8 clouds; tiny scenes are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_n1_m1",
+   "axes": {
+    "batch": 1,
+    "n_points": 1,
+    "n_boxes": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single point, single box"
+  },
+  {
+   "id": "b2_n37_m5",
+   "axes": {
+    "batch": 2,
+    "n_points": 37,
+    "n_boxes": 5
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small unaligned scene"
+  },
+  {
+   "id": "b3_n1000_m7",
+   "axes": {
+    "batch": 3,
+    "n_points": 1000,
+    "n_boxes": 7
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned scene"
+  },
+  {
+   "id": "b1_n600_m40",
+   "axes": {
+    "batch": 1,
+    "n_points": 600,
+    "n_boxes": 40
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "sparse boxes, few points"
+  },
+  {
+   "id": "b2_n4096_m100",
+   "axes": {
+    "batch": 2,
+    "n_points": 4096,
+    "n_boxes": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "test-time RoIs (100 per cloud)"
+  },
+  {
+   "id": "b1_n2048_m16",
+   "axes": {
+    "batch": 1,
+    "n_points": 2048,
+    "n_boxes": 16
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small scene, 16 RoIs"
+  },
+  {
+   "id": "b1_n16384_m128",
+   "axes": {
+    "batch": 1,
+    "n_points": 16384,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "PointRCNN sampled cloud (16384 points), 128 RoIs"
+  },
+  {
+   "id": "b2_n8192_m64",
+   "axes": {
+    "batch": 2,
+    "n_points": 8192,
+    "n_boxes": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "two sampled clouds"
+  },
+  {
+   "id": "b4_n16384_m64",
+   "axes": {
+    "batch": 4,
+    "n_points": 16384,
+    "n_boxes": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch, 64 RoIs"
+  },
+  {
+   "id": "b4_n16384_m128",
+   "axes": {
+    "batch": 4,
+    "n_points": 16384,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch, 128 RoIs"
+  },
+  {
+   "id": "b8_n8192_m128",
+   "axes": {
+    "batch": 8,
+    "n_points": 8192,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large training batch"
+  },
+  {
+   "id": "b2_n16384_m512",
+   "axes": {
+    "batch": 2,
+    "n_points": 16384,
+    "n_boxes": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512 RoIs of the first stage"
+  },
+  {
+   "id": "b8_n16384_m128",
+   "axes": {
+    "batch": 8,
+    "n_points": 16384,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "largest batch"
+  }
+ ]
+}

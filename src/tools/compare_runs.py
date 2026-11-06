@@ -169,25 +169,29 @@ def compare_overall(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> lis
     return lines
 
 
-def compare_task_types(run1_data: Dict[str, Any], run2_data: Dict[str, Any]) -> list:
+def compare_task_types(
+    run1_data: Dict[str, Any], run2_data: Dict[str, Any],
+    key: str = 'task_types', title: str = 'TASK TYPE BREAKDOWN COMPARISON',
+) -> list:
     """
-    Compare task type breakdowns between two runs.
+    Compare grouped breakdowns between two runs: by task type (operator
+    category, key='task_types') or by target language (key='target_languages').
     
     Returns:
         List of formatted comparison lines
     """
-    types1 = run1_data.get('task_types', {})
-    types2 = run2_data.get('task_types', {})
+    types1 = run1_data.get(key, {})
+    types2 = run2_data.get(key, {})
     
     # Get all unique task types from both runs
     all_types = set(types1.keys()) | set(types2.keys())
     
     if not all_types:
-        return ["No task type data available for comparison."]
+        return [f"No {key.replace('_', ' ')} data available for comparison.", ""]
     
     lines = [
         "=" * 80,
-        "TASK TYPE BREAKDOWN COMPARISON",
+        title,
         "=" * 80,
         "",
     ]
@@ -318,6 +322,9 @@ def generate_comparison_report(run1_path: Path, run2_path: Path, output_path: Op
     
     lines.extend(compare_overall(run1_data, run2_data))
     lines.extend(compare_task_types(run1_data, run2_data))
+    if run1_data.get('target_languages') or run2_data.get('target_languages'):
+        lines.extend(compare_task_types(
+            run1_data, run2_data, key='target_languages', title='TARGET LANGUAGE BREAKDOWN COMPARISON'))
     
     lines.extend([
         "=" * 80,

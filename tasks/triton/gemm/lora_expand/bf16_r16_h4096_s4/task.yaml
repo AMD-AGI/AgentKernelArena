@@ -1,0 +1,60 @@
+schema_version: 3
+description: >-
+  Punica SGMV LoRA expand with four active adapters: out[t] = x[t] @ lora_b[a].T for every token t assigned to adapter
+  slot a, where x [n_tokens, 16] and lora_b [4, 4096, 16] are bfloat16, the products accumulate in float32 and out
+  [n_tokens, 4096] is rounded to bfloat16 (the add_inputs=False overwrite mode of vLLM's lora_expand). Tokens are
+  routed by vLLM's LoRA metadata: token indices sorted by adapter, the token count and start offset of each adapter
+  group, and the adapter slot of each group. Every token belongs to an active adapter.
+operator: {name: lora_expand, category: gemm}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 524288, description: Tokens in the batch.}
+    rank: {kind: const, value: 16, description: LoRA rank (contracted dimension).}
+    hidden_size: {kind: const, value: 4096, description: Output width.}
+    n_adapters: {kind: const, value: 4, description: Adapter slots active in the batch.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, rank]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    lora_b:
+      kind: tensor
+      shape: [n_adapters, hidden_size, rank]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.02}
+    token_indices_sorted:
+      {kind: tensor, shape: [n_tokens], dtype: int64, role: index, distribution: {kind: generator}}
+    num_tokens_per_lora:
+      {kind: tensor, shape: [n_adapters], dtype: int32, role: metadata, distribution: {kind: generator}}
+    lora_token_start_loc:
+      {kind: tensor, shape: [n_adapters + 1], dtype: int32, role: metadata, distribution: {kind: generator}}
+    lora_ids:
+      {kind: tensor, shape: [n_adapters], dtype: int32, role: metadata, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path:
+      - vllm/lora/ops/triton_ops/lora_expand_op.py
+      - vllm/lora/ops/triton_ops/kernel_utils.py
+      - vllm/lora/ops/triton_ops/utils.py
+    license: Apache-2.0
+    modifications: >-
+      Kernels (mm_k, do_expand_kernel, _lora_expand_kernel) as adapted by the previous task package, with comments
+      removed. Host launcher reduced to one slice and the default expand configuration of get_lora_op_configs (block
+      64 x 128, 4 warps, 2 stages) with BLOCK_K set to the rank (16) instead of 32, without
+      the pointer-table preparation (_get_lora_b_ptr) that only multi-slice calls need; wrapped in the run()
+      interface.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

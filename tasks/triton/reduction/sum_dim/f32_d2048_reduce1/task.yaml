@@ -1,0 +1,35 @@
+schema_version: 3
+description: >-
+  Sum of a float32 tensor over its middle axis, keeping the reduced dimension:
+  out[b, 0, m] = sum over n of x[b, n, m], accumulated in float32.
+operator:
+  name: sum_dim
+  category: reduction
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Leading batch dimension.}
+    reduce_size: {kind: const, value: 2048, description: Length of the reduced (middle) axis.}
+    inner_size: {kind: const, value: 2047, description: Contiguous innermost axis with odd width}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, reduce_size, inner_size]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+  outputs:
+    out: {shape: [batch, 1, inner_size], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: v2.5.0
+    path: torch/_inductor/codegen/triton.py (generated Triton reduction for torch.sum(x, dim=1, keepdim=True))
+    license: BSD-3-Clause
+    modifications: Triton rewrite of the torch.compile (Inductor) reduction kernel for torch.sum over a non-innermost axis, as a standalone @triton.jit kernel wrapped in run().
+compare:
+  out: {bound: baseline_relative, k: 3, max_violation_fraction: 0.001}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

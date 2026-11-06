@@ -51,6 +51,26 @@ def test_read_only_guard_preserves_additions_but_evaluation_keeps_logged_cleanup
     assert "debug_test.py" in caplog.text
 
 
+def test_guard_requires_a_task_specification(tmp_path):
+    (tmp_path / "config.yaml").write_text("task_type: triton2triton\n")
+    (tmp_path / "kernel.py").write_text("def kernel(): return 1\n")
+    with pytest.raises(ValueError, match="task specification"):
+        snapshot_workspace_harness(tmp_path)
+    with pytest.raises(ValueError, match="task specification"):
+        describe_workspace_harness(tmp_path)
+
+
+def test_file_added_inside_a_protected_directory_is_discarded(tmp_path, caplog):
+    root, _ = workspace(tmp_path)
+    before = snapshot_workspace_harness(root)
+    (root / "tests").mkdir()
+    sneaky = root / "tests/conftest_override.py"
+    sneaky.write_text("def pytest_collection_modifyitems(items): items.clear()\n")
+    verify_workspace_harness(before, logger=logging.getLogger(__name__))
+    assert not sneaky.exists()
+    assert "tests/conftest_override.py" in caplog.text
+
+
 def test_symbol_edits_only_mask_named_implementation_and_permitted_new_helpers(tmp_path):
     root, source = workspace(tmp_path, symbols=True, helpers=True)
     before = snapshot_workspace_harness(root)

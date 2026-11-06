@@ -13,6 +13,8 @@ import shlex
 import subprocess
 from typing import Callable
 
+from src.task_contract import BASELINE_DIR, EVAL_DIR, SOLUTION_DIR
+
 from .bridge import Bridge, copy_file, copy_tree, write_json
 from .argument_transport import DECODER_JS, FIXED_ARGS_GUARD_JS, decode_workflow_args
 
@@ -103,14 +105,41 @@ def adapt_lane(source: str) -> str:
     return source
 
 
+def author_mode(spec) -> bool:
+    """Author a target implementation unless the candidate starts implemented in it.
+
+    A schema-v3 candidate starts as a copy of the baseline exactly when the
+    run's target language is the baseline's; otherwise it is a template.
+    """
+    candidate = spec.candidate
+    return candidate.initial_state == "unimplemented" or candidate.initial_language != candidate.language
+
+
+def task_layout(spec) -> str:
+    contract = spec.contract
+    if contract is None:
+        return ("Read the task's config.yaml, README.md if present, declared instructions and entrypoints.\n"
+                "Keep all relative paths, multifile interfaces, and symbol-scoped restrictions exactly as declared:")
+    entry = spec.candidate.entrypoints[0].file
+    start = (f"The candidate starts as an unimplemented template: author a complete {contract['target_language']} "
+             f"implementation; the {contract['baseline_language']} baseline is semantic guidance only."
+             if author_mode(spec) else
+             "The candidate starts as a copy of the baseline in the target language: optimize it.")
+    return (f"Schema-v3 task. Edit only {SOLUTION_DIR}/; its entry point is {entry}::run and other files there "
+            "form one flat package imported relatively.\n"
+            f"Read README.md and {EVAL_DIR}/CANDIDATE.md (the exact run() signature, interface and candidate "
+            f"rules). The baseline to beat is {BASELINE_DIR}/ ({contract['baseline_language']}); it, task.yaml, "
+            f"workloads.json, the reference, any inputs.py, config.yaml and {EVAL_DIR}/ are read-only and must "
+            "never be imported into the candidate.\n" + start + "\nFramework execution record:")
+
+
 def arena_contract(bridge: Bridge, python: str) -> str:
     command = shlex.join([python, str(Path(__file__).with_name("bridge.py")),
                           "--job", str(bridge.job_path)])
     spec = bridge.spec.to_mapping()
     return f"""Arena task contract (takes precedence over upstream layout/harness examples)
 Target language: {bridge.spec.candidate.language}. Initial state: {bridge.spec.candidate.initial_state}.
-Read the task's config.yaml, README.md if present, declared instructions and entrypoints.
-Keep all relative paths, multifile interfaces, and symbol-scoped restrictions exactly as declared:
+{task_layout(bridge.spec)}
 {json.dumps(spec, indent=2)}
 
 All task files outside candidate.editable are immutable, including colocated protected code.
@@ -186,7 +215,7 @@ def prepare_engine(checkout: Path, bridge: Bridge, *, python: str, options: dict
     baseline = [{"name": row["test_case_id"], "baseline_ms": row["execution_time_ms"],
                  "ms": row["execution_time_ms"], "speedup": 1.0} for row in cases]
     candidate = bridge.spec.candidate
-    author = candidate.initial_state == "unimplemented" or candidate.initial_language != candidate.language
+    author = author_mode(bridge.spec)
     args = {
         "kernel_path": str(bridge.eval_dir / "original"),
         "workflow_dir": str(workflow), "kernel_lane_script": str(lane),

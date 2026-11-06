@@ -1,0 +1,131 @@
+schema_version: 3
+description: >-
+  Manifold-constrained hyper-connection (mHC) layer boundary with 4 residual streams and hidden size
+  4096 (DeepSeek-V4-Flash): the post block of one layer, next_residual[j] = post_mix[j] * x +
+  sum_i comb_mix[i, j] * residual[i], stored in bfloat16, followed by the next layer's pre block on
+  that stored residual: an RMS-scaled float32 projection of the flattened residual to 24 mixes,
+  sigmoid pre gates (+ pre_eps), next_post_mix = sigmoid * post_multiplier, next_comb_mix = softmax
+  + sinkhorn_eps with Sinkhorn row/column normalization (row-major 4x4 matrix per token), and the
+  gated stream sum passed through an output RMSNorm with norm_weight, rounded to bfloat16.
+operator:
+  name: mhc_fused_post_pre_rmsnorm
+  category: other
+interface:
+  axes:
+    tokens: {kind: var, min: 1, max: 65536, description: Tokens in the batch.}
+    hc_mult: {kind: const, value: 4, description: Residual (hyper-connection) streams.}
+    hidden_size: {kind: const, value: 4096, description: Hidden size of each stream.}
+  derived_axes:
+    hc_hidden: hc_mult * hidden_size
+    mixes: hc_mult * (hc_mult + 2)
+  inputs:
+    x:
+      kind: tensor
+      shape: [tokens, hidden_size]
+      dtype: bfloat16
+      description: Current layer (attention or MLP) output.
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    residual:
+      kind: tensor
+      shape: [tokens, hc_mult, hidden_size]
+      dtype: bfloat16
+      description: Incoming residual streams.
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    post_mix:
+      kind: tensor
+      shape: [tokens, hc_mult]
+      dtype: float32
+      description: Incoming post gates (post_multiplier * sigmoid of the previous pre block).
+      distribution: {kind: uniform, low: 0.1, high: 1.9}
+    comb_mix:
+      kind: tensor
+      shape: [tokens, hc_mult, hc_mult]
+      dtype: float32
+      description: Incoming stream-combination matrix [source, destination], near doubly stochastic.
+      distribution: {kind: generator}
+    proj_weight:
+      kind: tensor
+      shape: [mixes, hc_hidden]
+      dtype: float32
+      role: weight
+      description: Projection of the flattened residual to the pre, post and combination logits.
+      distribution: {kind: normal, mean: 0.0, std: 0.0078125}
+    mix_scale:
+      kind: tensor
+      shape: [3]
+      dtype: float32
+      role: weight
+      description: Scale of the pre, post and combination logit groups.
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    mix_bias:
+      kind: tensor
+      shape: [mixes]
+      dtype: float32
+      role: weight
+      description: Bias of every logit.
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    norm_weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      description: Output RMSNorm weight.
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    rms_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+    pre_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+    sinkhorn_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+    post_multiplier: {kind: scalar, dtype: float32, default: 2.0}
+    sinkhorn_iters: {kind: scalar, dtype: int32, default: 20}
+    norm_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    next_post_mix:
+      shape: [tokens, hc_mult]
+      dtype: float32
+      description: Post gates for the next layer's post block.
+    next_comb_mix:
+      shape: [tokens, hc_mult * hc_mult]
+      dtype: float32
+      description: Next stream-combination matrix [source, destination], row-major per token.
+    layer_input:
+      shape: [tokens, hidden_size]
+      dtype: bfloat16
+      description: RMS-normalized gated stream sum, the next layer's input.
+    next_residual:
+      shape: [tokens, hc_mult, hidden_size]
+      dtype: bfloat16
+      description: New residual streams.
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: >-
+      aiter/ops/triton/fusions/mhc.py (mhc_post_pre), aiter/ops/triton/_triton_kernels/fusions/mhc.py,
+      aiter/ops/triton/configs/gfx950-MHC_FUSED_SINKHORN-C=4096.json,
+      aiter/ops/triton/utils/mhc_config_utils.py (get_mhc_config),
+      aiter/ops/triton/normalization/rmsnorm.py (_rmsnorm_forward) and
+      aiter/ops/triton/_triton_kernels/normalization/rmsnorm.py (_rms_norm_kernel)
+    license: MIT
+    modifications: >-
+      The four kernels mhc_post_pre launches and AITER's _rms_norm_kernel are copied unchanged, except
+      that the split kernel's launch-name repr helper is dropped. The mhc_post_pre launcher is kept
+      as is, but three things are removed: the tuned gfx950 C=4096 configuration file is inlined
+      together with get_mhc_config's M selection rule (no file I/O), the logger, and the gfx942-only
+      BLOCK_M override. AITER's Triton mHC path does not fuse the output RMSNorm, which the
+      production HIP mhc_fused_post_pre does with norm_weight, so it runs as a third launch:
+      _rmsnorm_forward writes into the preallocated output. run() passes the float32 (mixes, K)
+      projection weight to the launcher as a transposed view; the kernel rounds it to bfloat16 as
+      upstream does. It also selects the HIP-compatible exp-domain Sinkhorn
+      (asymmetric_exp_domain=True), keeps the un-normalized layer input in a float32 buffer, and
+      writes the preallocated outputs, the Sinkhorn matrix through a (tokens, 4, 4) view.
+compare:
+  next_post_mix: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-4}
+  next_comb_mix: {bound: baseline_relative}
+  layer_input: {bound: baseline_relative, max_violation_fraction: 1.0e-5}
+  next_residual: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

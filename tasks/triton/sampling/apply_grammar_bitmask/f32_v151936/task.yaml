@@ -1,0 +1,57 @@
+schema_version: 3
+description: >-
+  In-place structured-output masking of float32 logits with a packed grammar bitmask. Bitmask row m
+  constrains logits row logits_indices[m]: token v stays allowed when bit (v % 32) of
+  bitmask[m, v // 32] is 1, otherwise its logit is set to -inf. Logits rows not named by
+  logits_indices, and all allowed logits, are unchanged.
+operator:
+  name: apply_grammar_bitmask
+  category: sampling
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 12800, description: Logit rows in the batch.}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen family).}
+    bitmask_words: {kind: const, value: 4748, description: int32 words per bitmask row (vocab_size / 32).}
+  derived_axes:
+    n_masks: n_tokens - n_tokens // 4
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Logits, masked in place.
+    logits_indices:
+      kind: tensor
+      shape: [n_masks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Logits row constrained by each bitmask row (distinct rows).
+    bitmask:
+      kind: tensor
+      shape: [n_masks, bitmask_words]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Packed allowed-token bits, 32 tokens per int32 word.
+  outputs: {}
+  mutable: [logits]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/structured_outputs.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel copied unchanged; the worker's asynchronous host-to-device copies and mapping construction
+      are dropped, and the launch (block size 8192) is wrapped in run() on the prepared tensors.
+compare:
+  logits: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

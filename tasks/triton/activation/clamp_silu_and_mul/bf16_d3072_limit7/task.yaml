@@ -1,0 +1,40 @@
+schema_version: 3
+description: >-
+  Clamped SwiGLU of a fused gate/up projection: each bfloat16 input row holds the gate in its first
+  intermediate_size columns and the up projection in the last intermediate_size columns;
+  gate = min(gate, swiglu_limit), up = clamp(up, -swiglu_limit, swiglu_limit),
+  out = silu(gate) * up, computed in float32 and rounded to bfloat16.
+operator:
+  name: clamp_silu_and_mul
+  category: activation
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 524288, description: Tokens in the batch.}
+    intermediate_size: {kind: const, value: 1536, description: Width of the gate (and of the up) half.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, 2 * intermediate_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 4.0}
+    swiglu_limit: {kind: scalar, dtype: float32, default: 7.0}
+  outputs:
+    out: {shape: [n_tokens, intermediate_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/fusions/fused_clamp_act_mul.py
+    license: MIT
+    modifications: >-
+      Standalone port (the AITER logger, FP8/MXFP8 quantized-output branches, activation selection and
+      optional weight multiply are removed; SiLU without weights is kept) wrapped in the run()
+      interface writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

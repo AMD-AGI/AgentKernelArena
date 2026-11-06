@@ -1,0 +1,16 @@
+{
+  "description": "Batch sizes of KernelBench level 2 problem 59 (Matmul_Swish_Scaling) at in_features = out_features = 32768. The original sweep was 32 to 512 rows; it is extended down to a single row so that the performance cases span 512x. Every batch reads the whole 4 GiB float32 weight, so even one row takes well over 10 us. Batches 3, 100 and 1000 are correctness-only boundary and partial-tile shapes.",
+  "cases": [
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "KernelBench level 2 problem 59 module, odd batch"},
+    {"id": "b100", "axes": {"batch": 100}, "checks": ["correctness"], "source": "KernelBench level 2 problem 59 module, batch not a multiple of 16"},
+    {"id": "b1000", "axes": {"batch": 1000}, "checks": ["correctness"], "source": "KernelBench level 2 problem 59 module, partial last row tile"},
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 module, a single row (sweep extension)"},
+    {"id": "b4", "axes": {"batch": 4}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 module, batch 4 (sweep extension)"},
+    {"id": "b16", "axes": {"batch": 16}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 module, batch 16 (sweep extension)"},
+    {"id": "b32", "axes": {"batch": 32}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 get_inputs, case_0"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 get_inputs, case_1"},
+    {"id": "b128", "axes": {"batch": 128}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 get_inputs, case_2 (the module's batch_size)"},
+    {"id": "b256", "axes": {"batch": 256}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 get_inputs, case_3"},
+    {"id": "b512", "axes": {"batch": 512}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 59 get_inputs, case_4"}
+  ]
+}

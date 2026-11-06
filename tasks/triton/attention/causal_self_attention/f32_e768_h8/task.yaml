@@ -1,0 +1,75 @@
+schema_version: 3
+description: >-
+  minGPT CausalSelfAttention forward in float32 (eval mode, dropout off), embedding 768, 8 heads of
+  size 96. qkv = x c_attn_weight^T + c_attn_bias ([batch, seq_len, 3 * 768]) is split into q, k and v
+  (in that order along the last axis), each viewed as 8 heads of 96 columns, head h owning columns
+  [96 h, 96 (h + 1)). Per batch item and head, att = softmax(q k^T / sqrt(96)) with key j hidden from
+  query i when j > i (causal), y = att v; the heads are concatenated side by side and
+  out = y c_proj_weight^T + c_proj_bias. Every product and the softmax are computed to float32
+  (IEEE) accuracy; the result is float32.
+operator:
+  name: causal_self_attention
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 128, description: Sequences per call.}
+    seq_len: {kind: var, min: 1, max: 1024, description: "Tokens per sequence (the module's max_seqlen is 1024)."}
+    n_embd: {kind: const, value: 768, description: Embedding width.}
+    n_head: {kind: const, value: 8, description: Attention heads (head size n_embd / n_head = 96).}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, seq_len, n_embd]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: Input activations (KernelBench draws torch.rand).
+    c_attn_weight:
+      kind: tensor
+      shape: [3 * n_embd, n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: "nn.Linear(768, 2304).weight; rows [0, 768) produce q, [768, 1536) k, [1536, 2304) v."
+    c_attn_bias:
+      kind: tensor
+      shape: [3 * n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: nn.Linear(768, 2304).bias.
+    c_proj_weight:
+      kind: tensor
+      shape: [n_embd, n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: nn.Linear(768, 768).weight of the output projection.
+    c_proj_bias:
+      kind: tensor
+      shape: [n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: nn.Linear(768, 768).bias of the output projection.
+  outputs:
+    out: {shape: [batch, seq_len, n_embd], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 97959a7a0a8b78d9ff54cc8f5201f0c13e0d1789
+    path: tasks/torch2hip/kernelbench/level3/l3n43_MinGPTCausalAttention/pytorch_code_module/py_l3n43_MinGPTCausalAttention.py
+    license: task-original
+    modifications: >-
+      Hand-written Triton implementation of the KernelBench level-3 MinGPTCausalAttention module (minGPT
+      CausalSelfAttention, eval mode), which had no kernel baseline: a grouped-tile float32 GEMM with
+      bias for the qkv and output projections, and a causal flash-attention kernel that reads q, k and v
+      in place from the qkv rows and writes the heads side by side. All matrix products use IEEE float32
+      inputs with float32 accumulation.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 0.001}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

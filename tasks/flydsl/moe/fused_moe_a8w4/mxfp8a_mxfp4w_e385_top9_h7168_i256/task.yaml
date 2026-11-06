@@ -1,0 +1,121 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of a mixture-of-experts model with MXFP8 activations and MXFP4 expert weights (A8W4), with
+  the shared expert fused as expert 384. The hidden states are quantized to MXFP8 per token and 32-wide block
+  (e8m0 = max(exponent of max|x| rounded up at 1.5x - 8, 0), code = float8_e4m3fn(x * 2^(127 - e8m0))). For each
+  token t and selected expert e = topk_ids[t, k]: h = dequant(x_q[t]) @ dequant(w1[e]).T (gate = first 256, up =
+  last 256 of the 512 outputs), a = silu(gate) * up, requantized to MXFP8 the same way,
+  y = (dequant(a_q) @ dequant(w2[e]).T) * topk_weights[t, k]; out[t] = sum over k of y, rounded to bfloat16.
+  W1 and W2 are MXFP4: e2m1 codes packed two per byte along the contracted axis (low nibble first) with one e8m0
+  scale byte (2^(byte - 127)) per 32 contracted elements; the kernel-facing weights and scales are in AITER's
+  preshuffled layouts (see inputs.py). The router decisions (topk_ids, topk_weights) are given.
+operator:
+  name: fused_moe_a8w4
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    top_k: {kind: const, value: 9, description: Experts per token (8 routed plus the fused shared expert).}
+    num_experts: {kind: const, value: 385, description: 384 routed experts plus the shared expert.}
+    hidden_size: {kind: const, value: 7168, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 256, description: Expert intermediate width per rank (tensor parallelism 8).}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: >-
+        Unit normal; standard deviation 512 in the range-control case (t2_range), whose stage-1 activation
+        and output exceed the float16 range.
+    w1:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: Gate (rows 0-255) and up (rows 256-511) e2m1 codes of every expert; kernel-facing in shuffle_weight (16, 16) order.
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e8m0 scale bytes of w1, one per 32 hidden elements; kernel-facing in e8m0_shuffle order.
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: Down-projection e2m1 codes of every expert; kernel-facing in shuffle_weight_a16w4 order.
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e8m0 scale bytes of w2, one per 32 intermediate elements; kernel-facing in shuffle_scale_a16w4 order.
+    topk_weights:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: float32
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: >-
+      AMD AgentKernelArena torch2flydsl task moe_a8w4_kernel (its FlyDSL implementation, whose stage-1/stage-2
+      GEMM builders are adapted from the Apache-2.0 FlyDSL MoE kernels of ROCm/aiter mixed_moe_gemm_2stage), with
+      ROCm/FlyDSL kernels
+    revision: 57c91a61fabb39f6b0f372e229d8beb005dbf6b2
+    path:
+      - tasks/torch2flydsl/moe_a8w4_kernel/kernel.py
+      - tasks/torch2flydsl/moe_a8w4_kernel/flydsl_compat/buffer_ops.py
+      - tasks/torch2flydsl/moe_a8w4_kernel/flydsl_compat/vector.py
+      - tasks/torch2flydsl/moe_a8w4_kernel/flydsl_compat/meta.py
+      - tasks/flydsl2flydsl/moe_sorting_kernel/kernels/moe_sorting_kernel.py
+      - tasks/flydsl2flydsl/silu_and_mul_fq_kernel/kernel.py
+    license: >-
+      Apache-2.0 (the FlyDSL device kernels and the buffer/vector/meta helpers); MIT (mx_ops.py, after
+      silu_and_mul_fq, and the host launch helpers and GateMode of moe_gemm.py, from AITER's
+      aiter/ops/flydsl/moe_kernels.py and moe_common.py)
+    notes: >-
+      The sorting kernel, the buffer/vector/meta helpers and the silu_and_mul_fq kernel are ROCm/FlyDSL
+      kernels/moe_sorting_kernel.py, python/flydsl/expr/{buffer_ops,vector,meta}.py and kernels/silu_and_mul_fq.py
+      at FlyDSL commit 28a18d328b4882c999864b2df2f8f9fe3fcc8b47 as vendored in those AgentKernelArena tasks. The
+      source task timed this FlyDSL two-stage A8W4 MoE with weight quantization, AITER host utilities (HIP
+      activation quantization, CK sorting, Triton scale sorting) and a PyTorch top-k sum inside each call. In
+      production (aiter.fused_moe with fp8 activations and fp4x2 weights for Kimi-K2, the kimik2_fp8fp4 tuned
+      table) AITER runs its own FlyDSL a8w4 stage kernels; the baseline keeps the source task's kernels and their
+      tile configuration (32 x 256 x 256, separated gate/up, per-slot stage-2 output).
+    modifications: >-
+      moe_gemm.py is the source task's device-kernel module (compile_mixed_moe_gemm1/2 and their launch-argument
+      helpers) with its environment switches fixed at their defaults, the layout parser rewritten without re, and
+      the compute-unit count read from PyTorch. The source task's AITER host steps are replaced by FlyDSL kernels:
+      moe_sorting.py is FlyDSL's sorting kernel (helpers made relative, get_warp_size inlined, no
+      num_local_tokens); mx_ops.py adds MXFP8 row quantization, the moe_mxfp4_sort sorted-scale layout and the
+      top-k sum, written after silu_and_mul_fq. Weight quantization and preshuffling moved to the task's layout
+      transform (load-time preparation). The bundled buffer_ops/vector/meta copies (used when the installed FlyDSL
+      lacks them) detect the architecture without os and build unknown MLIR locations. kernel.py chains sorting,
+      quantization, stage 1, requantization, stage 2 and the top-k sum in the run() interface, keeping the source
+      launcher's tiles and its stage-2 persistence rule (persistent grid above 256 M blocks).
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

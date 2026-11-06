@@ -15,7 +15,7 @@ def write_report(report_dir: Path, *, agent: str, gpu: str, score: float) -> Non
     report_dir.mkdir(parents=True)
     (report_dir / "overall_summary.csv").write_text(
         "Task Name,Task Type,Score,Speedup,Optimization_summary\n"
-        f"hip2hip/GELU,hip2hip,{score},1.5,optimized GELU\n"
+        f"activation/gelu/bf16,activation,{score},1.5,optimized GELU\n"
     )
     (report_dir / "task_type_breakdown.json").write_text(
         json.dumps(
@@ -30,19 +30,19 @@ def write_report(report_dir: Path, *, agent: str, gpu: str, score: float) -> Non
                     "correctness_pass_rate": 1.0,
                     "compilation_pass_rate": 1.0,
                 },
-                "task_types": {"hip2hip": {"total_score": score}},
+                "task_types": {"activation": {"total_score": score}},
             }
         )
     )
     (report_dir / "overall_report.txt").write_text(
-        f"PASS hip2hip/GELU Score: {score} Speedup: 1.5x\n"
+        f"PASS activation/gelu/bf16 Score: {score} Speedup: 1.5x\n"
     )
 
 
 class VisualizationBuildTests(unittest.TestCase):
     def test_local_reports_are_default_and_workspace_reports_are_opt_in(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
-            project_root = Path(temporary_directory)
+            project_root = Path(temporary_directory).resolve()
             runtime_root = project_root / ".visualization"
             reports_root = runtime_root / "reports"
             data_root = runtime_root / "dashboard"
@@ -105,7 +105,7 @@ class VisualizationBuildTests(unittest.TestCase):
 class VisualizationServerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary_directory.name)
+        self.root = Path(self.temporary_directory.name).resolve()
         self.frontend = self.root / "src" / "visualization" / "frontend"
         self.data = self.root / ".visualization" / "dashboard"
         self.reports = self.root / ".visualization" / "reports"

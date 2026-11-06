@@ -1,0 +1,143 @@
+{
+ "description": "Logit rows of a sampling step with grammar-constrained requests (Qwen vocabulary); small batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, one grammar request"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "t17",
+   "axes": {
+    "n_tokens": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, 17 rows"
+  },
+  {
+   "id": "t37",
+   "axes": {
+    "n_tokens": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, 37 rows"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "t128",
+   "axes": {
+    "n_tokens": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch with structured outputs"
+  },
+  {
+   "id": "t256",
+   "axes": {
+    "n_tokens": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch with structured outputs"
+  },
+  {
+   "id": "t512",
+   "axes": {
+    "n_tokens": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch with structured outputs"
+  },
+  {
+   "id": "t1024",
+   "axes": {
+    "n_tokens": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch with structured outputs"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch with structured outputs"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large decode batch with speculative rows"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prompt-logprob chunk or large speculative batch"
+  },
+  {
+   "id": "t12800",
+   "axes": {
+    "n_tokens": 12800
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large speculative batch"
+  }
+ ]
+}

@@ -177,6 +177,8 @@ it does not mean the ordinary correctness command is automatically reused.
 | Editable Triton Python/JIT | Ready with comparison adapter and instrumentation attestation | Ready with dedicated command, fresh JIT cache, XNACK, and build attestation | Trusted `triton_aot` capsule replay is implemented on `gfx950`; whole-Python JIT remains unsupported, and capsule capture/binding to the correctness run is not automatic, so use it only as advisory evidence | Not applicable |
 | HIP source controlled by the task | Not applicable | Ready only after recompiling the candidate with `-fsanitize=address -shared-libsan --offload-arch=gfx950:xnack+`, then attesting that artifact | Ready with a dedicated native launcher | Source port and comparison adapter required; both reference and candidate paths must explicitly use `fpsan::Value` |
 | FlyDSL Python/JIT | Unsupported; FlyDSL does not use the Triton FpSan pipeline | Unsupported; the current ROCDL pipeline does not insert AMD GPU ASan instrumentation | Trusted `flydsl_aot` capsule replay is implemented on `gfx950` and detects the seeded LDS race; automatic capsule capture/binding to the correctness run is not ready, so use it only as advisory evidence | Not applicable |
+| Gluon (`target_language: gluon`) | Unsupported; not qualified on Gluon kernels | Unsupported | Unsupported | Unsupported |
+| Any other or unknown candidate language | Unsupported (`..._LANGUAGE_UNSUPPORTED`) | Unsupported | Unsupported | Unsupported |
 | Editable Triton source inside AITER | Engine may be eligible for the explicitly selected source only, with a dedicated comparison adapter; this does not sanitize AITER library kernels | Unsupported by the current default AITER runtime path | Unsupported by the current Python/AITER runtime | Not applicable |
 | AITER or another precompiled HSACO/library kernel | Cannot retrofit instrumentation | Unsupported unless the exact kernel source is rebuilt and attested; preloading the runtime is insufficient | Unsupported by the current evaluator runtime | Cannot retrofit value semantics |
 | rocBLAS or RCCL internal kernel | Do not enable; library internals are outside the selected submission | The stock library is not instrumented and is not covered | Not a supported general library-runtime path | Do not enable |
@@ -420,11 +422,24 @@ docker image inspect --format '{{.Id}}' <selected-image>
 ## Add a task adapter
 
 Read [Task definition, schema, and authoring](add-task.md) before changing a task
-or its analysis harness. All retained tasks use that v2 command-based contract.
+or its analysis harness. Schema-v3 kernel tasks are the retained task format.
 The shared evaluator invokes optional tools after candidate correctness and
-before performance; the profile/evidence adapters read the task's v2 candidate
-and protected-file declarations. This page documents tool configuration,
-evidence requirements, and capability limits.
+before performance; the profile/evidence adapters read the candidate and
+protected-file declarations of the execution config that the framework resolves
+for the run. This page documents tool configuration, evidence requirements, and
+capability limits.
+
+For a schema-v3 kernel task the candidate is the `solution/` tree (the only
+editable tree; its entry is the host function `run()`, so no GPU dispatch symbol
+is declared), and the protected set includes `_aka_eval/` and `task.yaml`. The
+language is the run's `target_language`: `triton`, `hip` and `flydsl` map to the
+tool lanes below, while `gluon` and any unknown language report `unsupported`,
+so a `required` tool cannot pass silently. The `task.yaml` schema has no
+`evaluation_profile` or `evaluation_tools` fields, and the execution config the
+framework generates contains none, so a v3 task cannot register task-level
+adapters; the `evaluation_profile` and task-level `evaluation_tools` examples in
+this section describe task kinds whose execution config carries them and are not
+verified against a v3 kernel task.
 
 Run-level configuration chooses tools, policy, optional image-identity
 assertions, and maximum timeout. A task may register adapters for known tools,
@@ -526,7 +541,7 @@ directory. Native HIP rocJITsu applies the same containment rule to
 `race_report` and requires the report filename to remain `race.log`. AOT replay
 does not accept a task-configured race-report path.
 
-For v2 tasks, evidence includes every declared candidate path, protected task
+For tasks with an execution config, evidence includes every declared candidate path, protected task
 input, and directly referenced local command input. Use
 `evaluation_profile.submission_paths` for additional evidence files, not to
 replace that set or declare edit permission. Paths must be workspace-relative
@@ -729,7 +744,7 @@ for audit without relying on the digest alone.
 
 ## Artifact and evidence layout
 
-For a v2 task run, the relevant files are:
+For a task run, the relevant files are:
 
 ```text
 <repository-root>/
@@ -769,7 +784,7 @@ For a v2 task run, the relevant files are:
         └── task_result.yaml               # nested tool_evaluation summary
 ```
 
-At final evaluation initialization, v2 captures the original declared files
+At final evaluation initialization, the framework captures the original declared files
 from the session's frozen baseline into `tool_submission/`; an existing capture
 is loaded and verified before use. This is separate from the candidate being
 analyzed. Legacy runs use `.eval-tool-evidence/<task-workspace-name>/`, captured
@@ -825,9 +840,9 @@ and presence of a tools mapping; it does not prove that every tool completed or
 that its result is clean. The serialized `plan` makes the inputs auditable but
 does not by itself change resume scheduling.
 
-The top-level `--resume-run` and `--resume-latest` paths verify a v2 task's saved
+The top-level `--resume-run` and `--resume-latest` paths verify a task's saved
 session, completion record, result digest, and candidate source identity before
-treating it as complete. Legacy optimization workspaces without v2 state retain
+treating it as complete. Legacy optimization workspaces without session state retain
 the `task_result.yaml` existence check. Neither path currently rebuilds the tool
 plan from this run's tool configuration and calls the fingerprint check. Until
 that check is wired into run scheduling:
@@ -943,7 +958,7 @@ pre-create evidence unless the adapter independently verifies its provenance.
 Filesystem placement and a SHA-256 inside an agent-writable JSON file are
 integrity checks, not signatures.
 
-The v2 `tool_submission` copy, captured from the frozen baseline at final
+The `tool_submission` copy, captured from the frozen baseline at final
 evaluation initialization, is checked against its loaded manifest. Legacy runs
 instead capture `.eval-tool-evidence` before the agent. These checks detect
 ordinary mutation, but both layouts remain on the writable run mount and are

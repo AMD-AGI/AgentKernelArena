@@ -88,6 +88,6 @@ def create_session(*, spec: TaskSpec, workspace: Path, artifact_dir: Path,
     try:
         from src.task_session import TaskSession
     except ImportError as exc:
-        raise RuntimeError("quality_loop v2 requires the shared src.task_session.TaskSession") from exc
+        raise RuntimeError("quality_loop requires the shared src.task_session.TaskSession") from exc
     session = TaskSession.create(spec, workspace, artifact_dir, logger=logger)
     return EvaluationSession(session, eval_config=eval_config, logger=logger)

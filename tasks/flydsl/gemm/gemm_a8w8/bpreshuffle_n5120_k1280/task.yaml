@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Per-token / per-channel scaled fp8 GEMM, out = (xq @ w^T) * x_scale * w_scale, with fp8 (e4m3fn) activations
+  xq [m, 1280], fp8 weights w [5120, 1280] supplied in the AITER (16, 16) preshuffled layout, float32 scales
+  x_scale [m, 1] and w_scale [5120, 1], float32 accumulation and a bfloat16 output.
+operator: {name: gemm_a8w8, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 5120, description: Output channels.}
+    k: {kind: const, value: 1280, description: Contracted dimension.}
+  inputs:
+    xq: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    x_scale: {kind: tensor, shape: [m, 1], dtype: float32, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [n, 1], dtype: float32, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/preshuffle_gemm.py
+    license: Apache-2.0 (kernel); MIT (tuned dispatch table from ROCm/aiter)
+    notes: >-
+      Per-M tile, async-copy, occupancy and LDS-stage choices come from the gfx950 rows for N=5120, K=1280 of
+      aiter/configs/a8w8_bpreshuffle_tuned_gemm.csv in ROCm/aiter at commit
+      652f2d4b768239aefd515c929e84817681ff598d, which name FlyDSL kernels of
+      aiter/ops/flydsl/gemm_kernels.py (flydsl_preshuffle_gemm_a8).
+    modifications: >-
+      Kernel code kept as in the FlyDSL preshuffle GEMM, with the raw buffer-resource operations the installed
+      FlyDSL release lacks inlined; host launcher replaced by run(), which selects the configuration for M from the
+      tuned table, caches the compiled launcher per configuration and launches on the current stream. The rows the
+      table assigns to a CK kernel (M = 256, 1024) use the neighbouring FlyDSL row.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

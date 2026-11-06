@@ -1,0 +1,98 @@
+schema_version: 3
+description: >-
+  Multi-head latent attention (MLA) decode-side RoPE and cache write. For each token the interleaved
+  (GPT-J style) rotary embedding of the rope part is applied with cos/sin rows gathered by position,
+  to q_pe for every query head and to k_pe; q_out is [q_nope | rotated q_pe], k_pe_out is the rotated
+  k_pe, and [k_nope | rotated k_pe] is written to the cache slot given by slot_mapping (unique,
+  non-negative slots). Other cache slots keep their value.
+operator:
+  name: fused_qk_rope_cache_mla
+  category: kv_cache
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 128}
+    num_kv_heads: {kind: const, value: 1}
+    kv_lora_dim: {kind: const, value: 512, description: Latent width of q_nope and k_nope.}
+    rope_dim: {kind: const, value: 64}
+    max_position: {kind: const, value: 32768, description: Rows of the cos/sin tables.}
+    num_slots: {kind: const, value: 32768, description: Token slots in the paged MLA cache.}
+  derived_axes:
+    cache_dim: kv_lora_dim + rope_dim
+    half_rope: rope_dim // 2
+  inputs:
+    q_nope:
+      kind: tensor
+      shape: [n_tokens, num_q_heads, kv_lora_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    q_pe:
+      kind: tensor
+      shape: [n_tokens, num_q_heads, rope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k_nope:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, kv_lora_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k_pe:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, rope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 32768}
+    slot_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+    cos:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    kv_cache:
+      kind: tensor
+      shape: [num_slots, num_kv_heads, cache_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+  outputs:
+    q_out: {shape: [n_tokens, num_q_heads, cache_dim], dtype: bfloat16}
+    k_pe_out: {shape: [n_tokens, num_kv_heads, rope_dim], dtype: bfloat16}
+  mutable: [kv_cache]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/fusions/fused_kv_cache.py (_fused_qk_rope_cat_and_cache_mla_kernel), aiter/ops/triton/_triton_kernels/kv_cache.py, aiter/ops/triton/_triton_kernels/rope/rope.py, aiter/ops/triton/fusions/fused_kv_cache.py
+    license: MIT
+    modifications: >-
+      Kernel and helpers copied; the FP4 cache branches of _store_mla_kv_cache removed; the
+      fused_qk_rope_cat_and_cache_mla launch wrapper reduced to run() for the bfloat16,
+      non-shuffled, interleaved-RoPE configuration, writing preallocated outputs.
+compare:
+  q_out: {bound: baseline_relative}
+  k_pe_out: {bound: baseline_relative}
+  kv_cache: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

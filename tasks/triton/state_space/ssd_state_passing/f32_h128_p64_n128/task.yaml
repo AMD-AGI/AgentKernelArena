@@ -1,0 +1,69 @@
+schema_version: 3
+description: >-
+  Mamba2 (SSD) state passing, the inter-chunk recurrence of chunked selective-state-space prefill. The chunks
+  of a packed batch are grouped into sequences (no chunk crosses a sequence); sequence b owns chunks
+  last_chunk_indices[b-1] + 1 .. last_chunk_indices[b] (from 0 for b = 0). Every state is a flattened
+  head_dim x state_dim matrix per head. Within a sequence, with S = initial_states[b, h] before its first
+  chunk, for each chunk c in order: S = exp(dA_cumsum[h, c, chunk_size - 1]) * S + states[c, h] and
+  out[c, h] = S. So out is the state at the end of every chunk, starting each sequence from its own initial
+  state. All values are float32 and the recurrence accumulates in float32 or higher.
+operator:
+  name: ssd_state_passing
+  category: state_space
+interface:
+  axes:
+    n_chunks: {kind: var, min: 1, max: 512, description: Chunks of all packed sequences.}
+    n_seqs: {kind: var, min: 1, max: 64, description: Sequences of the batch (at most n_chunks).}
+    num_heads: {kind: const, value: 128, description: SSM heads.}
+    head_dim: {kind: const, value: 64, description: Channels per head.}
+    state_dim: {kind: const, value: 128, description: SSM state size.}
+    chunk_size: {kind: const, value: 256, description: Tokens per chunk.}
+  derived_axes:
+    dim: head_dim * state_dim
+  inputs:
+    states:
+      kind: tensor
+      shape: [n_chunks, num_heads, dim]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Intra-chunk state contribution of every chunk (output of the chunk state stage).
+    dA_cumsum:
+      kind: tensor
+      shape: [num_heads, n_chunks, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative sum of dt * A with a negative per-head A; only the last entry of a chunk is read.
+    last_chunk_indices:
+      kind: tensor
+      shape: [n_seqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Index of the last chunk of every sequence; increasing, the last equal to n_chunks - 1.
+    initial_states:
+      kind: tensor
+      shape: [n_seqs, num_heads, dim]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Cached state each sequence starts from.
+  outputs:
+    out: {shape: [n_chunks, num_heads, dim], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/mamba/ops/ssd_state_passing.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel copied unchanged except that fast_exp (vllm/model_executor/layers/mamba/ops/triton_helpers.py) is
+      inlined; the autotune is replaced by a fixed BLOCK_SIZE of 1024 and the launch wrapper is specialised to
+      the scenario (initial states always present) and wrapped in the run() interface with a preallocated output.
+compare:
+  out: {bound: sqnr, min_db: 135}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

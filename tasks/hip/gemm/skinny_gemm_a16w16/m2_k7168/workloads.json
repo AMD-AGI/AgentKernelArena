@@ -1,0 +1,90 @@
+{
+  "description": "Output widths of decode projections; widths whose weight read is below ~10 us are correctness-only.",
+  "cases": [
+    {
+      "id": "n16",
+      "axes": {
+        "n_out": 16
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "two-token decode (K=7168), axis minimum"
+    },
+    {
+      "id": "n256",
+      "axes": {
+        "n_out": 256
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "two-token decode (K=7168)"
+    },
+    {
+      "id": "n1000",
+      "axes": {
+        "n_out": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "two-token decode (K=7168), unaligned output width"
+    },
+    {
+      "id": "n2560",
+      "axes": {
+        "n_out": 2560
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "two-token decode (K=7168)"
+    },
+    {
+      "id": "n16160",
+      "axes": {
+        "n_out": 16160
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "two-token decode (K=7168)"
+    },
+    {
+      "id": "n65536",
+      "axes": {
+        "n_out": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "two-token decode (K=7168)"
+    },
+    {
+      "id": "n151936",
+      "axes": {
+        "n_out": 151936
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "two-token decode (K=7168)"
+    },
+    {
+      "id": "n256000",
+      "axes": {
+        "n_out": 256000
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "two-token decode (K=7168)"
+    }
+  ]
+}

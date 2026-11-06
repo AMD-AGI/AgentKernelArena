@@ -1,0 +1,106 @@
+schema_version: 3
+description: >-
+  Repetition, frequency and presence penalties applied in place to the logits of speculative-decode
+  rows. Row i belongs to request state s = expanded_idx_mapping[i] and sits at position
+  p = expanded_local_pos[i] of its group (a target token followed by the draft tokens). Its output-token
+  counts are output_bin_counts[s] plus one for each of the draft tokens
+  token_ids[i - p + 1 .. i] (the draft tokens before it in the group). A token is penalized by
+  repetition when it is in the prompt (bit set in the packed prompt_bin_mask[s]) or its count is
+  positive: the logit is divided by repetition_penalty when positive and multiplied by it otherwise.
+  Then frequency_penalty * count and presence_penalty * (count > 0) are subtracted. Rows whose request
+  has repetition_penalty == 1, frequency_penalty == 0 and presence_penalty == 0 are not modified.
+operator:
+  name: apply_penalties
+  category: sampling
+interface:
+  axes:
+    n_reqs: {kind: var, min: 1, max: 1024, description: Requests of the decode step.}
+    tokens_per_req: {kind: const, value: 4, description: Rows per request (one target token plus 3 draft tokens).}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen2/Qwen3 family).}
+  derived_axes:
+    n_tokens: n_reqs * tokens_per_req
+    n_mask_words: ceil_div(vocab_size, 32)
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Logits, penalized in place.
+    expanded_idx_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Request-state index of each row (the 4 rows of a request are consecutive).
+    token_ids:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Input token ids of the step; the draft tokens of a group are the entries after its first.
+    expanded_local_pos:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Position of each row inside its group (0 to 3).
+    repetition_penalty:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-request-state repetition penalty; 1 disables it.
+    frequency_penalty:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-request-state frequency penalty; 0 disables it.
+    presence_penalty:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-request-state presence penalty; 0 disables it.
+    prompt_bin_mask:
+      kind: tensor
+      shape: [n_reqs, n_mask_words]
+      dtype: int32
+      role: state
+      distribution: {kind: generator}
+      description: Bitset of the prompt tokens of each request state; token t is bit t % 32 of word t // 32.
+    output_bin_counts:
+      kind: tensor
+      shape: [n_reqs, vocab_size]
+      dtype: int32
+      role: state
+      distribution: {kind: generator}
+      description: Number of times each token was generated so far by each request state.
+  outputs: {}
+  mutable: [logits]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/penalties.py
+    license: Apache-2.0
+    modifications: >-
+      Only the penalties kernel and apply_penalties were taken from the file (the penalty state class and
+      the bincount kernel were left out); imports of the vLLM triton shim replaced by triton directly; a
+      run() entry that calls apply_penalties was added. The kernel is unchanged.
+compare:
+  logits: {bound: baseline_relative, k: 4, max_violation_fraction: 0.0005}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

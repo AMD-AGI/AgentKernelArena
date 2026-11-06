@@ -1,0 +1,60 @@
+schema_version: 3
+description: >-
+  out = swish(x @ weight^T + bias) * scaling_factor in float32: a linear layer from 32768 to 32768
+  features (nn.Linear with float32 accuracy: an IEEE float32 GEMM, not TF32 or bfloat16 inputs), the
+  swish z * sigmoid(z), and a multiplication by the scalar scaling_factor (2.0).
+operator:
+  name: matmul_swish_scale
+  category: gemm
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 1024, description: Rows of x and out.}
+    in_features: {kind: const, value: 32768, description: Linear input features (the contracted dimension).}
+    out_features: {kind: const, value: 32768, description: Linear output features.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_features]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_features, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.0055242717, high: 0.0055242717}
+    bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.0055242717, high: 0.0055242717}
+    scaling_factor: {kind: scalar, dtype: float32, default: 2.0}
+  outputs:
+    out: {shape: [batch, out_features], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm.py
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/heuristics/template/triton.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the kernel Inductor's max-autotune generates for this module, as a standalone
+      @triton.jit kernel without torch._inductor imports: the mm template rendered for addmm(bias, x,
+      weight.t()) with N, K and the strides as constexprs and a runtime M, its addmm epilogue plus the fused
+      t * sigmoid(t) * scaling_factor store suffix, the mm_grid launch grid, one fixed ROCm config per
+      batch bucket from ROCmConfigHeuristic.mm_configs (2 stages, matrix_instr_nonkdim 16) instead of
+      autotuning, allow_tf32=False expressed as input_precision="ieee", the template's USE_FAST_ACCUM
+      accumulation form acc = tl.dot(a, b, acc); wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 0.01}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

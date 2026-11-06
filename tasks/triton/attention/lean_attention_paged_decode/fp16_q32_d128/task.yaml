@@ -1,0 +1,70 @@
+schema_version: 3
+description: >-
+  Decode attention over a paged KV cache, one softmax(q k^T * sm_scale) v per head and request, with
+  every request's keys and values gathered through a per-head table of 16-token blocks. Each request
+  carries 16 query rows; keys and values have one head per query head (32 heads, head size 128).
+  Requests of a batch are packed back to back along the KV axis with ragged lengths.
+operator:
+  name: lean_attention_paged_decode
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Decode requests.}
+    ctx_len: {kind: var, min: 16, max: 32768, multiple_of: 16, description: Mean KV length per request; requests are ragged around it.}
+    num_heads: {kind: const, value: 32, description: Query heads and KV heads.}
+    head_size: {kind: const, value: 128, description: Head dimension.}
+  derived_axes:
+    query_rows: 16 * batch
+    total_tokens: batch * ctx_len
+    total_blocks: batch * ctx_len // 16
+  inputs:
+    q:
+      kind: tensor
+      shape: [num_heads, query_rows, head_size]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    k:
+      kind: tensor
+      shape: [num_heads, total_tokens, head_size]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    v:
+      kind: tensor
+      shape: [num_heads, total_tokens, head_size]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    kv_block_tables:
+      kind: tensor
+      shape: [num_heads, total_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    batch_num_block_n:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    sm_scale: {kind: scalar, dtype: float32, default: 0.5}
+  outputs:
+    out: {shape: [num_heads, query_rows, head_size], dtype: float16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/attention/lean_atten_paged.py, aiter/ops/triton/attention/lean_atten_paged.py
+    license: MIT
+    modifications: >-
+      Wrapped in the run() interface; the Mp/Lp/Op scratch and the zeroed lock array are allocated
+      inside run(); the persistent grid is min(CU count, tile count) so that tiny shapes keep a valid
+      stream-K split; the test-only harness code was removed; comments dropped, host_block/finishing_block written as
+      boolean expressions and the PV accumulate written as acc += tl.dot(p, v), launched with num_warps=4.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

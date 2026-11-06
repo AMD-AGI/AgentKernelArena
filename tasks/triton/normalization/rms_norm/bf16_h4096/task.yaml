@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Root-mean-square normalization of each token row: out = x * rsqrt(mean(x^2) + epsilon) * weight,
+  the mean taken over the hidden axis in high precision, the result rounded to bfloat16.
+operator:
+  name: rms_norm
+  category: normalization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 524288, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/normalization/rmsnorm.py and aiter/ops/triton/_triton_kernels/normalization/rmsnorm.py
+    license: MIT
+    modifications: >-
+      Forward path only (the quantizing, fused-add and backward paths, the rsigma output and the autograd wrapper
+      are dropped); the helper for the number of compute units is inlined; the dispatch is wrapped in run() writing
+      into the preallocated output. The kernels' per-row inverse-RMS scratch buffer is allocated inside run().
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

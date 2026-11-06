@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Causal multi-head attention forward over a batch of equal-length sequences,
+  out[b, i, h] = softmax_j<=i(q[b, i, h] . k[b, j, h] / sqrt(head_dim)) . v[b, j, h],
+  with q, k, v and out in the flash_attn_func layout [batch, seq_len, heads, head_dim], bfloat16.
+operator:
+  name: flash_attention_fwd
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Sequences in the batch.}
+    seq_len: {kind: var, min: 128, max: 16384, multiple_of: 128, description: Tokens per sequence.}
+    n_heads: {kind: const, value: 32, description: Attention heads (no GQA).}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, seq_len, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [batch, seq_len, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [batch, seq_len, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [batch, seq_len, n_heads, head_dim], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/flash_attn_func.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped the builder in run() (launcher cached per configuration, launched on the current stream
+      with flattened views of the tensors); environment-variable tuning knobs replaced by their defaults;
+      dtype helper inlined; buffer_ops taken from the installed FlyDSL when present, otherwise from the
+      bundled copy (buffer_ops.py, trimmed to the functions used, no environment access).
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

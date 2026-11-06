@@ -1,0 +1,45 @@
+schema_version: 3
+description: >-
+  Learned absolute position embedding added to the token embeddings,
+  out[b, s, :] = x[b, s, :] + pos_embedding[s, :] (positions arange(seq_len)), in float32.
+operator:
+  name: learned_position_add
+  category: embedding
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 2048, description: Sequences in the batch.}
+    seq_len: {kind: const, value: 512, description: Tokens per sequence (positions 0..seq_len-1).}
+    hidden_size: {kind: const, value: 768, description: Embedding width.}
+    max_positions: {kind: const, value: 1024, description: Rows of the learned position table.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, seq_len, hidden_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    pos_embedding:
+      kind: tensor
+      shape: [max_positions, hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.02}
+  outputs:
+    out: {shape: [batch, seq_len, hidden_size], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: v2.5.0
+    path: torch/_inductor/codegen/triton.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the pointwise broadcast-add kernel TorchInductor generates for
+      x + F.embedding(arange(seq_len), pos_embedding); the position gather is fused as an
+      identity row lookup, standalone and writing into the preallocated output.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

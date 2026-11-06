@@ -1,0 +1,172 @@
+{
+ "description": "Flattened element counts of float32 activation tensors; the sizes below 3 Mi elements run under the 10 us timing floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "n1",
+   "axes": {
+    "numel": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single element"
+  },
+  {
+   "id": "n7",
+   "axes": {
+    "numel": 7
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd tiny"
+  },
+  {
+   "id": "n1000",
+   "axes": {
+    "numel": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned small"
+  },
+  {
+   "id": "n4097",
+   "axes": {
+    "numel": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one past a power of two"
+  },
+  {
+   "id": "n1048583",
+   "axes": {
+    "numel": 1048583
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned 1 Mi + 7"
+  },
+  {
+   "id": "n131072",
+   "axes": {
+    "numel": 131072
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "128 Ki, aligned small"
+  },
+  {
+   "id": "n1024",
+   "axes": {
+    "numel": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "hip2hip case [1024]"
+  },
+  {
+   "id": "n4096",
+   "axes": {
+    "numel": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "hip2hip case [4096]"
+  },
+  {
+   "id": "n32768",
+   "axes": {
+    "numel": 32768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "hip2hip case [64,128]x4"
+  },
+  {
+   "id": "n5242880",
+   "axes": {
+    "numel": 5242880
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "flattened activation, 5 Mi elements"
+  },
+  {
+   "id": "n16777216",
+   "axes": {
+    "numel": 16777216
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "flattened 16x128x64x64 feature map (old hip2hip case, 16 Mi)"
+  },
+  {
+   "id": "n33554432",
+   "axes": {
+    "numel": 33554432
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "flattened activation, 32 Mi elements"
+  },
+  {
+   "id": "n67108864",
+   "axes": {
+    "numel": 67108864
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "flattened activation, 64 Mi elements"
+  },
+  {
+   "id": "n134217728",
+   "axes": {
+    "numel": 134217728
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "flattened 32x256x128x128 feature map (largest hip2hip case)"
+  },
+  {
+   "id": "n268435456",
+   "axes": {
+    "numel": 268435456
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "flattened activation, 256 Mi elements"
+  },
+  {
+   "id": "n536870912",
+   "axes": {
+    "numel": 536870912
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "flattened activation, 512 Mi elements"
+  }
+ ]
+}

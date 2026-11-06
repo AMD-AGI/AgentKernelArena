@@ -24,14 +24,15 @@ class BackendConfig:
     timeout_seconds: int = 3600
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any] | None) -> "BackendConfig":
+    def from_dict(cls, raw: dict[str, Any] | None, *,
+                  names: tuple[str, ...] = ("codex",), role: str = "backend") -> "BackendConfig":
         raw = raw or {}
         name = str(raw.get("name", "codex")).strip().lower()
-        if name != "codex":
-            raise ValueError("quality_loop currently supports only the codex backend")
+        if name not in names:
+            raise ValueError(f"quality_loop {role} supports only: {', '.join(names)}")
         timeout = int(raw.get("timeout_seconds", 3600))
         if timeout <= 0:
-            raise ValueError("backend.timeout_seconds must be positive")
+            raise ValueError(f"{role}.timeout_seconds must be positive")
         model = raw.get("model", "gpt-5.6-terra")
         return cls(
             name=name,
@@ -39,6 +40,11 @@ class BackendConfig:
             effort=str(raw.get("effort", "medium")),
             timeout_seconds=timeout,
         )
+
+
+# The QA auditor's semantic review runs through agents.backend_cli; "none"
+# keeps only its deterministic checks (the review then reports a warning).
+AUDITOR_BACKENDS = ("codex", "claude_code", "none")
 
 
 @dataclass(frozen=True)
@@ -71,7 +77,10 @@ class QualityLoopConfig:
     target_gpu_model: str = "MI300"
     backend: BackendConfig = field(default_factory=BackendConfig)
     reviewer: BackendConfig = field(default_factory=BackendConfig)
-    validator: BackendConfig = field(default_factory=BackendConfig)
+    auditor: BackendConfig = field(default_factory=BackendConfig)
+    # Optimization language for schema-v3 tasks; None optimizes in each task's
+    # audit language (its baseline language when that is a target language).
+    target_language: str | None = None
     github: GitHubConfig = field(default_factory=GitHubConfig)
     max_repair_attempts: int = 1
     mode: str = "optimize"
@@ -89,8 +98,9 @@ class QualityLoopConfig:
         tasks = raw.get("tasks", ["all"])
         if isinstance(tasks, str):
             tasks = [tasks]
-        if not isinstance(tasks, list) or not tasks:
-            raise ValueError("tasks must be a non-empty string or list")
+        if not isinstance(tasks, list) or not tasks or any(not isinstance(t, str) for t in tasks):
+            raise ValueError("tasks must be a non-empty task selector or list of selectors; "
+                             "the top-level target_language applies to every selected task")
         target = str(raw.get("target_gpu_model", "")).strip()
         if not target:
             raise ValueError("target_gpu_model is required")
@@ -111,12 +121,22 @@ class QualityLoopConfig:
         repair_attempts = audit.get("max_repair_attempts", 1)
         if type(repair_attempts) is not int or not 1 <= repair_attempts <= 3:
             raise ValueError("quality_loop.max_repair_attempts must be an integer from 1 to 3")
-        from agents.task_validator.report_schema import CHECK_NAMES
+        from agents.qa_auditor.rubric import CHECKS, WARNING
         repair_warnings = audit.get("repair_warnings", [])
+        warning_ids = {check_id for check_id, check in CHECKS.items() if check.severity == WARNING}
         if (not isinstance(repair_warnings, list)
-                or any(not isinstance(name, str) or name not in CHECK_NAMES for name in repair_warnings)
+                or any(not isinstance(name, str) or name not in warning_ids for name in repair_warnings)
                 or len(set(repair_warnings)) != len(repair_warnings)):
-            raise ValueError("quality_loop.repair_warnings must list distinct validator check names")
+            raise ValueError("quality_loop.repair_warnings must list distinct QA warning check ids: "
+                             + ", ".join(sorted(warning_ids)))
+        if "validator" in audit:
+            raise ValueError("quality_loop.validator was replaced by quality_loop.auditor (the QA auditor)")
+        if "target_language" in audit:
+            raise ValueError("Set target_language at the top level of the quality_loop config")
+        from src.task_contract import TARGET_LANGUAGES
+        target_language = raw.get("target_language")
+        if target_language is not None and target_language not in TARGET_LANGUAGES:
+            raise ValueError(f"target_language must be null or one of {TARGET_LANGUAGES}")
         confirmations = int(audit.get("easy_confirmation_runs", 3))
         if confirmations < 1:
             raise ValueError("easy_confirmation_runs must be at least 1")
@@ -136,8 +156,9 @@ class QualityLoopConfig:
             tasks=tuple(str(task) for task in tasks),
             target_gpu_model=target,
             backend=BackendConfig.from_dict(audit.get("backend")),
-            reviewer=BackendConfig.from_dict(audit.get("reviewer", audit.get("backend"))),
-            validator=BackendConfig.from_dict(audit.get("validator")),
+            reviewer=BackendConfig.from_dict(audit.get("reviewer", audit.get("backend")), role="reviewer"),
+            auditor=BackendConfig.from_dict(audit.get("auditor"), names=AUDITOR_BACKENDS, role="auditor"),
+            target_language=target_language,
             github=GitHubConfig.from_dict(audit.get("github")),
             max_repair_attempts=repair_attempts,
             mode=mode,

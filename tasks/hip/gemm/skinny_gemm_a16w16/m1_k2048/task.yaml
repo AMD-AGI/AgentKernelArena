@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Decode-time skinny GEMM (GEMV) with a bfloat16 weight: out[1, N] = x[1, K] @ weight[N, K]^T,
+  accumulated in high precision and rounded to bfloat16. No bias.
+operator:
+  name: skinny_gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    n_out: {kind: var, min: 16, max: 716800, description: Output features (rows of the weight).}
+    tokens: {kind: const, value: 1, description: Decode batch (one token).}
+    k: {kind: const, value: 2048, description: Hidden (reduction) size.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [tokens, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [n_out, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [tokens, n_out], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: csrc/rocm/skinny_gemms.cu
+    license: Apache-2.0
+    modifications: >-
+      Reduced to the wvSplitK kernels and the wave64 (gfx9) dispatch; the bias argument, the
+      gfx11/gfx12 paths, the other skinny-GEMM ops and the vLLM helper headers are removed;
+      the op writes the preallocated output and takes the CU count from the device properties; the dtype checks use at::kHalf/at::kBFloat16 (the torch namespace constants are not available with the torch 2.11 ROCm headers), and a stray orphaned `return out_c;` fragment left by the reduction is removed.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

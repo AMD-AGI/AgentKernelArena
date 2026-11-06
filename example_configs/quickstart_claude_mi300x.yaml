@@ -1,9 +1,15 @@
+# Languages are verified on MI355X (gfx950) only; this architecture is implemented but unverified.
+# The shipped task declares required_arch gfx950 and is skipped on other GPUs: select a task whose
+# platform_support includes this GPU, or change it in an untracked local copy.
 # Minimal first-run example for Claude Code on MI300X (gfx942).
 agent:
   template: claude_code
 
+# The target language is selected by the run, not by the task.
+target_language: triton   # triton | gluon | hip | flydsl
+
 tasks:
-  - hip2hip/GELU
+  - triton/normalization/rms_norm/bf16_h8192
 
 target_gpu_model: MI300X
 log_directory: logs

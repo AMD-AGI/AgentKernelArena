@@ -1,0 +1,49 @@
+schema_version: 3
+description: >-
+  LayerNorm of each token row: out = (x - mean) * rsqrt(var + epsilon) * weight + bias with the mean and biased
+  variance taken over the hidden axis in high precision and the result rounded to bfloat16.
+operator:
+  name: layer_norm
+  category: normalization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 6144, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    bias:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/normalization/norm.py and aiter/ops/triton/normalization/norm.py
+    license: MIT
+    modifications: >-
+      Kernel copied unchanged (_layernorm_kernel); the launcher (layer_norm) is inlined into run() writing into the
+      preallocated output, allocating the mean and rstd scratch buffers per call as upstream does.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

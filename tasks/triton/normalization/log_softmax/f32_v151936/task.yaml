@@ -1,0 +1,34 @@
+schema_version: 3
+description: >-
+  Row-wise log-softmax of float32 logits over the vocabulary axis: out = x - max(x) - log(sum(exp(x - max(x)))),
+  computed in float32.
+operator:
+  name: log_softmax
+  category: normalization
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 8192, description: Rows (sequences or prompt positions) of logits.}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, vocab_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 4.0}
+  outputs:
+    out: {shape: [n_rows, vocab_size], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/batch_invariant.py
+    license: Apache-2.0
+    modifications: Only the log-softmax kernel is kept, wrapped in the arena run() interface writing into the preallocated output.
+compare:
+  out: {bound: sqnr, min_db: 135}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

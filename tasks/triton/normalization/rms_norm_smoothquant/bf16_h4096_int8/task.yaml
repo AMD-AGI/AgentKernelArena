@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  RMSNorm followed by SmoothQuant and dynamic per-token INT8 quantization of bfloat16 rows. For every token,
+  hidden = x * rsqrt(mean(x^2) + epsilon) * weight * x_scale is computed in float32 (no intermediate rounding), the
+  token scale is y_scale = max|hidden| / 127 (1 when the row is all zero) and the codes are round(hidden / y_scale)
+  with halves rounded away from zero, in [-127, 127] as int8.
+operator: {name: rms_norm_smoothquant, category: normalization}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 409600, description: "Tokens in the batch."}
+    hidden_size: {kind: const, value: 4096, description: "Normalized width."}
+  inputs:
+    x: {kind: tensor, shape: [n_tokens, hidden_size], dtype: bfloat16, distribution: {kind: generator}}
+    weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    x_scale:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.25, high: 2.0}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: int8}
+    y_scale: {shape: [n_tokens], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/normalization/rmsnorm.py and aiter/ops/triton/normalization/rmsnorm.py
+    license: MIT
+    modifications: >-
+      Kernels _quant_rms_norm_kernel and _per_token_quant reduced to this scenario (SmoothQuant, INT8, no scale upper
+      bound, no clamp, no intermediate dump, unblocked rows of at most 32768 elements), the CK-style rounding step
+      added before the INT8 conversion (round to nearest instead of truncation), the launcher
+      rmsnorm2d_fwd_with_smoothquant rewritten as run() writing into the preallocated outputs.
+compare:
+  out: {bound: exact}
+  y_scale: {bound: tolerance, atol: 0.0, rtol: 1.0e-6}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

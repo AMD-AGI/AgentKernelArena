@@ -1,0 +1,67 @@
+schema_version: 3
+description: >-
+  Two-layer MLP with a sigmoid output over the vertical stack of two float32 inputs:
+  out = sigmoid(relu(vstack(x, y) @ fc1_weight^T + fc1_bias) @ fc2_weight^T + fc2_bias), with 128 input features,
+  2048 hidden units and one output. The first n_rows output rows belong to x, the rest to y.
+operator:
+  name: feedforward_vstack_mlp
+  category: gemm
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 32768, description: Rows of each of x and y; the stacked batch has 2 * n_rows rows.}
+    in_features: {kind: const, value: 128, description: Input features.}
+    hidden_size: {kind: const, value: 2048, description: Hidden units of the first layer.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, in_features]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    y:
+      kind: tensor
+      shape: [n_rows, in_features]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    fc1_weight:
+      kind: tensor
+      shape: [hidden_size, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.08838835, high: 0.08838835}
+    fc1_bias:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.08838835, high: 0.08838835}
+    fc2_weight:
+      kind: tensor
+      shape: [1, hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.05}
+    fc2_bias:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+  outputs:
+    out: {shape: [2 * n_rows, 1], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task Feedforward (gpumode 10024)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/Feedforward/hip/hip_10024_Feedforward_ref.hip
+    license: task-original
+    modifications: >-
+      Float32-only (the half and double paths removed); the host-side contiguous copies and the pybind module
+      removed; the kernel writes the preallocated output; registered as the run() torch op.
+compare:
+  out: {bound: sqnr, min_db: 128}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

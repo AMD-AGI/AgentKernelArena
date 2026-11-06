@@ -1,0 +1,62 @@
+schema_version: 3
+description: >-
+  SageAttention v1 causal self-attention including its in-operator quantization: the operator takes
+  bfloat16 q, k, v, smooths K by subtracting its mean over the sequence, quantizes Q and the smoothed K
+  to int8 with one scale per block (256 query rows, 128 key rows; the softmax scale and log2(e) are
+  folded into Q before quantization), quantizes V to float8 e4m3 with one scale per head channel, and
+  runs flash attention over the quantized operands (int8 QK, fp8 PV). The result approximates
+  out = softmax(softmax_scale * q k^T, causal) v rounded to bfloat16; quantization error is part of the
+  operator, and the comparison tolerates it relative to the baseline's own error.
+operator:
+  name: sage_attention_fwd
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 8, description: Sequences in the batch.}
+    seqlen: {kind: var, min: 64, max: 65536, description: Query and key length (self-attention over tokens).}
+    n_heads: {kind: const, value: 8, description: Attention heads (query and KV heads are equal).}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, seqlen, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [batch, seqlen, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [batch, seqlen, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    softmax_scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: "Softmax scale, 1/sqrt(head_dim)."}
+  outputs:
+    out: {shape: [batch, seqlen, n_heads, head_dim], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/attention/fav3_sage_attention.py
+      - aiter/ops/triton/_triton_kernels/quant/sage_attention_quant.py
+      - aiter/ops/triton/quant/sage_attention_quant_wrappers.py
+      - aiter/ops/triton/attention/fav3_sage.py
+    license: MIT
+    modifications: >-
+      sage_fwd, sage_quant_kernel and their helpers are unchanged except that sage_quant_kernel fuses
+      the K - mean(K) subtraction into the K quantization. The torch reductions of the AITER wrapper
+      (K mean over the sequence, per-channel absolute maximum of V) became a new Triton kernel,
+      _sage_kv_stats_kernel, so that no PyTorch compute remains in run(). The wrappers fav3_sage and
+      sage_quant were merged into run(), specialized to causal bshd attention without LSE, with the
+      gfx950 forward configuration of get_sage_fwd_configs.
+compare:
+  out: {bound: baseline_relative, k: 3, max_violation_fraction: 0.001}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,123 @@
+{
+ "description": "Token counts of the GLM-5 MXFP4 MoE layer at intermediate 512 (257 experts, top 9) from AITER's tuned token list (the old task scored powers of two from 1 to 4096); odd and unaligned batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "num_tokens": 1
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 1, axis minimum; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "num_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd decode batch (not a power of two)"
+  },
+  {
+   "id": "t4",
+   "axes": {
+    "num_tokens": 4
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 4; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "t16",
+   "axes": {
+    "num_tokens": 16
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 16; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "t64",
+   "axes": {
+    "num_tokens": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 64; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "t77",
+   "axes": {
+    "num_tokens": 77
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch (not a multiple of 16)"
+  },
+  {
+   "id": "t256",
+   "axes": {
+    "num_tokens": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode/prefill batch 256; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "num_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk"
+  },
+  {
+   "id": "t1024",
+   "axes": {
+    "num_tokens": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk 1024; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "num_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk 4096; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "num_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk 8192; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  }
+ ]
+}

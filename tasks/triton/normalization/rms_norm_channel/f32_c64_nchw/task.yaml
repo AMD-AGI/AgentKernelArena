@@ -1,0 +1,41 @@
+schema_version: 3
+description: >-
+  RMS normalization of each pixel across the channel axis of a float32 NCHW tensor, with no learnable weight:
+  out = x / sqrt(mean over channels of x^2 + epsilon), the mean taken over the 64 channels at each (sample, row,
+  column) position.
+operator:
+  name: rms_norm_channel
+  category: normalization
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 128, description: Samples in the batch.}
+    channels: {kind: const, value: 64, description: Normalized channel count.}
+    height: {kind: var, min: 1, max: 512, description: Image rows.}
+    width: {kind: var, min: 1, max: 512, description: Image columns.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, channels, height, width]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [batch, channels, height, width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: torch/_inductor/lowering.py (reduction over dim 1 of x ** 2 with the pointwise division fused)
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the kernel TorchInductor produces for the KernelBench RMSNorm_ module, x / sqrt(mean(x ** 2,
+      dim=1, keepdim=True) + eps): one program per block of 128 pixels of a sample loads the strided [64, 128]
+      channel tile once, reduces over channels, and writes the normalized tile; not a verbatim Inductor dump.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.001}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

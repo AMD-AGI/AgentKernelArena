@@ -1,0 +1,74 @@
+schema_version: 3
+description: >-
+  Output pass of Kimi Delta Attention (KDA) chunked prefill for one sequence of n_tokens tokens in
+  chunks of 64 (the last may be partial), 32 heads, key and value dimension 128. For every chunk c,
+  head and token i of the chunk: o_i = scale * sum_k q_ik * 2^g_ik * h_c[:, k] + sum over tokens
+  j <= i of the chunk of A_ij * v_j, where h_c [V, K] is the state at the start of the chunk, g the
+  chunk-local cumulative log2-decay per key channel and A the intra-chunk attention matrix, of
+  which only the lower triangle (diagonal included) is read. q, v, h, A and o are bfloat16, g is
+  float32; the sums accumulate in float32 or higher.
+operator:
+  name: kda_chunk_fwd_o
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens of the sequence.}
+    num_heads: {kind: const, value: 32, description: KDA heads.}
+    head_dim_k: {kind: const, value: 128, description: Query/key head dimension.}
+    head_dim_v: {kind: const, value: 128, description: Value head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  derived_axes:
+    n_chunks: ceil_div(n_tokens, chunk_size)
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Queries, L2-normalized in the model (element standard deviation 128^-1/2).
+    v:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim_v]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Delta-rule corrected values (v_new of the chunk state pass).
+    g:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim_k]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log2-decay per key channel (non-positive, non-increasing in every chunk).
+    h:
+      kind: tensor
+      shape: [n_chunks, num_heads, head_dim_v, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: Recurrent state at the start of every chunk, [chunk, head, value, key].
+    A:
+      kind: tensor
+      shape: [n_tokens, num_heads, chunk_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: Intra-chunk attention matrix; row i holds the weights of tokens j of its chunk, entries above the diagonal are arbitrary.
+    scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: head_dim_k^-1/2.}
+  outputs:
+    o: {shape: [n_tokens, num_heads, head_dim_v], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/models/kimi_k3/amd/ops/third_party/kda/chunk.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      chunk_gla_fwd_kernel_o copied unchanged except that its autotune decorator is replaced by one
+      fixed entry of its configuration space (BK 64, BV 64, 4 warps, 2 stages); chunk_gla_fwd_o_gk
+      reduced to one sequence (no cu_seqlens) and wrapped in run() writing into the preallocated o.
+compare:
+  o: {bound: baseline_relative, k: 4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,18 @@
+{
+  "description": "Row counts m of a float32 [m, 4096] @ [4096, 4096] product. The KernelBench level 1 square (problem 1) and standard (problem 2) matmuls both include exactly this 4096^3 case; the other row counts span the sizes those problems, the irregular-shape problem 8 and the rocm-examples HIP matrix multiplication use for m (16 to 8205), at the fixed n = k = 4096. Rows 64 to 8192 are timed (128x); 16, 48, 100, 4099 and 8205 are correctness-only boundary shapes.",
+  "cases": [
+    {"id": "m16", "axes": {"m": 16}, "checks": ["correctness"], "source": "rocm-examples HIP matrix_multiplication control shape, 16 rows (axis minimum)"},
+    {"id": "m48", "axes": {"m": 48}, "checks": ["correctness"], "source": "non-power-of-two row count, 48 (the column count of the rocm-examples HIP matrix_multiplication 16 x 32 x 48 control shape)"},
+    {"id": "m100", "axes": {"m": 100}, "checks": ["correctness"], "source": "row count not a multiple of 16"},
+    {"id": "m4099", "axes": {"m": 4099}, "checks": ["correctness"], "source": "KernelBench level 1 problem 8 (matmul with irregular shapes), m = 4099"},
+    {"id": "m8205", "axes": {"m": 8205}, "checks": ["correctness"], "source": "KernelBench level 1 problem 8 (matmul with irregular shapes), m = 8205"},
+    {"id": "m64", "axes": {"m": 64}, "checks": ["correctness", "performance"], "source": "small row block at n = k = 4096"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness", "performance"], "source": "small row block at n = k = 4096"},
+    {"id": "m256", "axes": {"m": 256}, "checks": ["correctness", "performance"], "source": "rocm-examples HIP matrix_multiplication smallest row count (256) at n = k = 4096"},
+    {"id": "m512", "axes": {"m": 512}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 2 (standard matmul) case_0 row count 512 at n = k = 4096"},
+    {"id": "m1024", "axes": {"m": 1024}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problems 1 and 2, row count 1024 at n = k = 4096"},
+    {"id": "m2048", "axes": {"m": 2048}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 2 case_3 (2048 x 4096 @ 4096 x 2048), row count 2048 at n = 4096"},
+    {"id": "m4096", "axes": {"m": 4096}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 1 case_3 and problem 2 case_4, the 4096 x 4096 @ 4096 x 4096 product"},
+    {"id": "m8192", "axes": {"m": 8192}, "checks": ["correctness", "performance"], "source": "KernelBench level 1 problem 8 row scale (up to 8205) at n = k = 4096"}
+  ]
+}

@@ -1,0 +1,64 @@
+schema_version: 3
+description: >-
+  Linear layer with a scaled residual in float32: y = x @ weight.T + bias, out = y * scaling_factor + y,
+  for x [batch, 4096] and weight [4096, 4096] (nn.Linear layout), products and accumulation in IEEE float32
+  (no TF32 or reduced-precision inputs), output float32.
+operator:
+  name: matmul_scale_residual
+  category: gemm
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 32768, description: Rows of x and out.}
+    in_features: {kind: const, value: 4096, description: Contracted dimension.}
+    out_features: {kind: const, value: 4096, description: Rows of weight; columns of out.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_features]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_features, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.015625, high: 0.015625}
+    bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.015625, high: 0.015625}
+    scaling_factor: {kind: scalar, dtype: float32, default: 0.5}
+  outputs:
+    out: {shape: [batch, out_features], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm.py
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/heuristics/template/triton.py
+      - torch/_inductor/fx_passes/post_grad.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the kernel Inductor's max-autotune generates for this module on ROCm (its mm
+      template with the bias add, scaling and residual add fused as the epilogue), written by hand as a
+      standalone @triton.jit kernel (no GPU was available to run Inductor): the template rendered for the
+      contiguous activation and the transposed nn.Linear weight, N, K and the strides as constexprs and the
+      batch a runtime size, the template's M >= BLOCK_M contiguity test passed in as a constexpr; the
+      zero-size early exit dropped (batch >= 1); the epilogue as Inductor's store suffix with the scaling
+      factor as a runtime float32 scalar; the mm_grid launch grid; one mm config from the ROCm mm_configs
+      list chosen per batch (the largest tile that launches at least 256 tiles) and scaled by Inductor's
+      config-scaling rule instead of autotuning; allow_tf32=False written as input_precision="ieee";
+      wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 5.0e-3}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

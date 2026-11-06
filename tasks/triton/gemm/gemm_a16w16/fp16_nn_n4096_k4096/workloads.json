@@ -1,0 +1,164 @@
+{
+ "description": "Row counts of a 4096x4096 float16 GEMM: tile-test sizes of the Triton GEMM test suites (128 to 4096 square) and batch sizes up to 16384; unaligned and tiny rows are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "m": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single row, tile-boundary minimum"
+  },
+  {
+   "id": "m2",
+   "axes": {
+    "m": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tiny batch"
+  },
+  {
+   "id": "m17",
+   "axes": {
+    "m": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned small batch"
+  },
+  {
+   "id": "m33",
+   "axes": {
+    "m": 33
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned small batch"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "m": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "m": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "m64",
+   "axes": {
+    "m": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small batch, weight-streaming bound"
+  },
+  {
+   "id": "m128",
+   "axes": {
+    "m": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "square GEMM test size"
+  },
+  {
+   "id": "m256",
+   "axes": {
+    "m": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "square GEMM test size"
+  },
+  {
+   "id": "m512",
+   "axes": {
+    "m": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "square GEMM test size"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "m": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "square GEMM test size"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "m": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "square GEMM test size"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "m": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "square 4096 GEMM"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "m": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "m": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch"
+  }
+ ]
+}

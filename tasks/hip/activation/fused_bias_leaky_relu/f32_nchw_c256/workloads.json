@@ -1,0 +1,156 @@
+{
+  "description": "Batch sizes through a 256-channel 128x128 StyleGAN2 feature map; single images and small batches are correctness-only where below the 10 us timing floor.",
+  "cases": [
+    {
+      "id": "n1",
+      "axes": {
+        "n": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single image"
+    },
+    {
+      "id": "n3",
+      "axes": {
+        "n": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd batch"
+    },
+    {
+      "id": "n48",
+      "axes": {
+        "n": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "batch 48"
+    },
+    {
+      "id": "n100",
+      "axes": {
+        "n": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch"
+    },
+    {
+      "id": "n2",
+      "axes": {
+        "n": 2
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "small training batch"
+    },
+    {
+      "id": "n8",
+      "axes": {
+        "n": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "training batch per GPU"
+    },
+    {
+      "id": "n32",
+      "axes": {
+        "n": 32
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "StyleGAN2 training batch"
+    },
+    {
+      "id": "n128",
+      "axes": {
+        "n": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large batch"
+    },
+    {
+      "id": "n256",
+      "axes": {
+        "n": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "maximum batch"
+    },
+    {
+      "id": "n3_slope0p1_scale0p5",
+      "axes": {
+        "n": 3
+      },
+      "scalars": {
+        "negative_slope": 0.1,
+        "scale": 0.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "slope/scale settings of the original task's test cases"
+    },
+    {
+      "id": "n1_slope0p35_scale1p25",
+      "axes": {
+        "n": 1
+      },
+      "scalars": {
+        "negative_slope": 0.35,
+        "scale": 1.25
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "slope/scale settings of the original task's test cases"
+    },
+    {
+      "id": "n5_slope0p5_scale2p0",
+      "axes": {
+        "n": 5
+      },
+      "scalars": {
+        "negative_slope": 0.5,
+        "scale": 2.0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "slope/scale settings of the original task's test cases"
+    },
+    {
+      "id": "n8_slope0p75_scale3p0",
+      "axes": {
+        "n": 8
+      },
+      "scalars": {
+        "negative_slope": 0.75,
+        "scale": 3.0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "slope/scale settings of the original task's test cases"
+    }
+  ]
+}

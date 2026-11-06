@@ -1,0 +1,14 @@
+{
+  "description": "Prefill token counts of Kimi-Linear-style KDA layers (32 heads, key and value head size 128, chunk 64); small batches are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "single token"},
+    {"id": "t17", "axes": {"n_tokens": 17}, "checks": ["correctness"], "source": "short prompt"},
+    {"id": "t65", "axes": {"n_tokens": 65}, "checks": ["correctness"], "source": "short prefill, one full chunk plus one token"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness", "performance"], "source": "short prefill"},
+    {"id": "t4096", "axes": {"n_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t16384", "axes": {"n_tokens": 16384}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t65536", "axes": {"n_tokens": 65536}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t131072", "axes": {"n_tokens": 131072}, "checks": ["correctness", "performance"], "source": "long-context prefill"}
+  ]
+}

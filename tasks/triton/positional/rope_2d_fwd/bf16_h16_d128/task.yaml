@@ -1,0 +1,74 @@
+schema_version: 3
+description: >-
+  Two-dimensional rotary embedding of image tokens x[b, height*width, heads, head_dim], NeoX style.
+  The token axis is a row-major height x width grid. The first half of the head dimension is rotated
+  (rotate-half within that half) by the cos/sin of the token's row (height position) and the second
+  half, likewise, by the cos/sin of its column (width position); each table holds head_dim // 2
+  entries per position. For a half h with cos/sin c, s and rotate_half(v) = (-v_second, v_first):
+  out_h = h * c + rotate_half(h) * s. The result is rounded to bfloat16.
+operator:
+  name: rope_2d_fwd
+  category: positional
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 2048, description: Images in the batch.}
+    height: {kind: const, value: 16, description: Token grid rows.}
+    width: {kind: const, value: 16, description: Token grid columns.}
+    num_heads: {kind: const, value: 16}
+    head_dim: {kind: const, value: 128}
+  derived_axes:
+    seq_len: height * width
+    half_dim: head_dim // 2
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, seq_len, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    cos_h:
+      kind: tensor
+      shape: [1, height, 1, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin_h:
+      kind: tensor
+      shape: [1, height, 1, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    cos_w:
+      kind: tensor
+      shape: [1, width, 1, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin_w:
+      kind: tensor
+      shape: [1, width, 1, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [batch, seq_len, num_heads, head_dim], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/rope/rope.py
+    license: MIT
+    modifications: >-
+      The kernel _rope_fwd_2d_kernel_neox (called by aiter/ops/triton/rope/rope.py::rope_fwd_2d) is
+      copied unchanged except that its masked cos/sin loads gain other=0.0, making the unused half
+      defined instead of relying on the backend's masked-load value; the Python launch wrapper is
+      replaced by run(), which writes into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,49 @@
+schema_version: 3
+description: >-
+  Unpacks a padded batch of variable-length sequences (vLLM unpack_seq): packed[b, t] for t < lengths[b]
+  is copied, sequence after sequence, into the rows of out [n_tokens, hidden]; padding rows are dropped.
+  Values are copied bit for bit.
+operator:
+  name: unpack_seq
+  category: other
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Total tokens of all sequences.}
+    batch: {kind: const, value: 8, description: Sequences in the batch.}
+    hidden: {kind: const, value: 4096, description: Feature width.}
+  derived_axes:
+    max_len: "min(n_tokens, ceil_div(3 * n_tokens, 2 * batch))"
+  inputs:
+    packed:
+      kind: tensor
+      shape: [batch, max_len, hidden]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    lengths:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Length of each sequence; sums to n_tokens, the longest equals max_len.
+  outputs:
+    out: {shape: [n_tokens, hidden], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/common.py (_unpack_seq_triton_kernel, unpack_seq_triton)
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface writing into the preallocated output; the launch parameters
+      (block sizes, warps) of the unpack_seq_triton wrapper are kept, but the output allocation comes
+      from the output's shape instead of lengths.sum().item().
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

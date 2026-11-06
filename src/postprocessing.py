@@ -71,6 +71,12 @@ def _acceptance_label(value: Any) -> str:
     return "YES" if value is True else "NO" if value is False else "N/A"
 
 
+def _task_label(task: Dict[str, Any]) -> str:
+    """Task id plus the target language: results are keyed by (task, language)."""
+    language = task.get('target_language')
+    return f"{task['task_name']} [{language}]" if language else str(task['task_name'])
+
+
 def _build_general_report_lines(
     aggregate_result: Dict[str, Any], 
     run_metadata: Optional[Dict[str, str]] = None,
@@ -184,7 +190,7 @@ def _build_general_report_lines(
         if task.get('pass_compilation') and task.get('pass_correctness'):
             speedup = task.get('speedup_ratio', 0.0)
             if speedup > 0:
-                speedups.append((speedup, task.get('task_name', '')))
+                speedups.append((speedup, _task_label(task)))
     
     if speedups:
         best_speedup, best_task = max(speedups, key=lambda x: x[0])
@@ -202,7 +208,7 @@ def _build_general_report_lines(
         status = _task_status(task)
         outcome = _outcome_fields(task)
         lines.append(
-            f"{status:<12} {task['task_name']:<40} Score: {task['score']:>6.4f}  Speedup: {task['speedup_ratio']:.2f}x"
+            f"{status:<12} {_task_label(task):<48} Score: {task['score']:>6.4f}  Speedup: {task['speedup_ratio']:.2f}x"
             f"  Accepted: {_acceptance_label(outcome['candidate_accepted'])}"
             f"  Delivery: {outcome['delivery_status'] or 'N/A'}"
         )
@@ -223,7 +229,7 @@ def _get_run_directory(workspace_paths: List[str]) -> Path:
     Extract run directory from workspace paths.
     
     Workspace paths are task directories like:
-    workspace_MI300_cursor/run_20250115_143022/task_hip2hip_silu_20250115_143022/
+    workspace_MI300_cursor/run_20250115_143022/task_activation_silu_triton_20250115_143022/
     
     Returns the run directory: workspace_MI300_cursor/run_20250115_143022/
     """
@@ -330,22 +336,25 @@ def _compute_speedup_stats(speedup_values: List[float]) -> Dict[str, float]:
 
 
 def _extract_task_type(task_name: str) -> str:
-    """
-    Extract task type from task name.
-    
-    Task names are like: hip2hip/silu, triton2triton/vllm/xxx, etc.
-    Returns the first part before the first slash, or empty string if no slash.
-    """
-    if isinstance(task_name, str) and "/" in task_name:
-        return task_name.split("/", 1)[0]
-    return ""
+    """The operator category (or "e2e") of a task name; see src.tasks.task_category."""
+    from src.tasks import task_category
+    return task_category(task_name)
 
 
-def _aggregate_by_task_type(task_details: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def _task_group_key(task: Dict[str, Any], by: str) -> str:
+    if by == 'target_language':
+        return task.get('target_language') or 'unknown'
+    return task.get('operator_category') or _extract_task_type(task.get('task_name', '')) or 'unknown'
+
+
+def _aggregate_by_task_type(
+    task_details: List[Dict[str, Any]], by: str = 'task_type'
+) -> Dict[str, Dict[str, Any]]:
     """
-    Aggregate statistics by task type.
+    Aggregate statistics by task type (operator category) or, with
+    by='target_language', by the language the candidates were written in.
     
-    Returns a dictionary mapping task_type -> statistics dict.
+    Returns a dictionary mapping group -> statistics dict.
     """
     type_stats = defaultdict(lambda: {
         'count': 0,
@@ -359,9 +368,7 @@ def _aggregate_by_task_type(task_details: List[Dict[str, Any]]) -> Dict[str, Dic
     })
     
     for task in task_details:
-        task_type = _extract_task_type(task.get('task_name', ''))
-        if not task_type:
-            task_type = 'unknown'
+        task_type = _task_group_key(task, by)
         
         stats = type_stats[task_type]
         stats['count'] += 1
@@ -531,6 +538,9 @@ def general_post_processing(
 
         task_info = {
             'task_name': task_name,
+            'target_language': None,
+            'operator': None,
+            'operator_category': None,
             'workspace_path': str(workspace_path),
             'score': 0.0,
             'pass_compilation': False,
@@ -553,6 +563,8 @@ def general_post_processing(
 
             # Extract information
             task_info['task_name'] = result_data.get('task_name', task_name)
+            for key in ('target_language', 'operator', 'operator_category'):
+                task_info[key] = result_data.get(key)
             task_info['measurement_kind'] = result_data.get('measurement_kind', 'kernel')
             task_info['pass_compilation'] = result_data.get('pass_compilation', False)
             task_info['pass_correctness'] = result_data.get('pass_correctness', False)
@@ -648,6 +660,7 @@ def general_post_processing(
     # Aggregate statistics by task type
     aggregate_result.update(_outcome_counts(task_details))
     task_type_breakdown = _aggregate_by_task_type(task_details)
+    language_breakdown = _aggregate_by_task_type(task_details, by='target_language')
 
     # Determine run directory and create reports subdirectory
     try:
@@ -691,7 +704,8 @@ def general_post_processing(
             },
             'measurement_groups': measurement_groups,
             'mixed_measurements': mixed_measurements,
-            'task_types': task_type_breakdown
+            'task_types': task_type_breakdown,
+            'target_languages': language_breakdown,
         }
         if mixed_measurements:
             for key in list(json_data['overall']):
@@ -726,7 +740,9 @@ def export_task_results_csv(
 
     CSV columns:
       - Task Name
-      - Task Type
+      - Task Type (operator category, or e2e)
+      - Target Language
+      - Operator
       - Score
       - Speedup
       - Status (final outcome when available; otherwise numerical status)
@@ -754,11 +770,9 @@ def export_task_results_csv(
         result_file = workspace / "task_result.yaml"
 
         task_name = task.get("task_name", workspace.name)
-        task_type = (
-            task_name.split("/", 1)[0]
-            if isinstance(task_name, str) and "/" in task_name
-            else ""
-        )
+        task_type = _extract_task_type(task_name)
+        target_language = task.get("target_language") or ""
+        operator = task.get("operator") or ""
         score = task.get("score", 0.0) if isinstance(task.get("score", 0.0), (int, float)) else 0.0
         speedup = task.get("speedup_ratio", 0.0) if isinstance(task.get("speedup_ratio", 0.0), (int, float)) else 0.0
         optimization_summary = ""
@@ -774,8 +788,9 @@ def export_task_results_csv(
                 status = _task_status(result_data)
                 optimization_summary = result_data.get("optimization_summary", "") or ""
                 task_name = result_data.get("task_name", task_name)
-                if "/" in task_name:
-                    task_type = task_name.split("/", 1)[0]
+                task_type = result_data.get("operator_category") or _extract_task_type(task_name)
+                target_language = result_data.get("target_language") or ""
+                operator = result_data.get("operator") or ""
             except Exception:
                 score = 0.0
                 speedup = 0.0
@@ -791,6 +806,8 @@ def export_task_results_csv(
         rows.append({
             "Task Name": task_name,
             "Task Type": task_type,
+            "Target Language": target_language,
+            "Operator": operator,
             "Measurement": task.get("measurement_kind", "kernel"),
             "Score": f"{float(score):.4f}",
             "Speedup": f"{float(speedup):.4f}",
@@ -806,7 +823,7 @@ def export_task_results_csv(
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["Task Name", "Task Type", "Measurement", "Score", "Speedup", "Status",
+            fieldnames=["Task Name", "Task Type", "Target Language", "Operator", "Measurement", "Score", "Speedup", "Status",
                         "Candidate Accepted", "Delivery Status", "Agent Execution",
                         "Candidate Changed", "Optimization Outcome", "Optimization_summary"]
         )

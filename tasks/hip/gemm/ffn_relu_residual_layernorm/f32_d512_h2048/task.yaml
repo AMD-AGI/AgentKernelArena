@@ -1,0 +1,76 @@
+schema_version: 3
+description: >-
+  Position-wise feed-forward block of a Transformer layer in float32, evaluated in inference mode
+  (dropout is the identity): out = LayerNorm(W2 @ relu(W1 @ x + b1) + b2 + x) over the model axis,
+  with the biased variance and affine gamma/beta.
+operator:
+  name: ffn_relu_residual_layernorm
+  category: gemm
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 65536, description: Tokens (batch times sequence length).}
+    d_model: {kind: const, value: 512, description: Model width.}
+    d_hidden: {kind: const, value: 2048, description: Feed-forward hidden width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, d_model]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1_weight:
+      kind: tensor
+      shape: [d_hidden, d_model]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.04419417382415922, high: 0.04419417382415922}
+    w1_bias:
+      kind: tensor
+      shape: [d_hidden]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.04419417382415922, high: 0.04419417382415922}
+    w2_weight:
+      kind: tensor
+      shape: [d_model, d_hidden]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.022097086912079608, high: 0.022097086912079608}
+    w2_bias:
+      kind: tensor
+      shape: [d_model]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.022097086912079608, high: 0.022097086912079608}
+    ln_gamma:
+      kind: tensor
+      shape: [d_model]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    ln_beta:
+      kind: tensor
+      shape: [d_model]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    eps: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [n_tokens, d_model], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task PositionWiseFeedForward (provided HIP baseline)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/PositionWiseFeedForward/hip/hip_14044_PositionWiseFeedForward_ref.hip
+    license: Apache-2.0
+    modifications: >-
+      Float32-only; pybind module, ATen dtype dispatch and the ATen dropout call removed (inference mode);
+      the output is written into the preallocated tensor by the LayerNorm kernel; registered as the run()
+      torch op.
+compare:
+  out: {bound: sqnr, min_db: 130}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

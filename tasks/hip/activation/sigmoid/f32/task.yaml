@@ -1,0 +1,38 @@
+schema_version: 3
+description: >-
+  Scaled sigmoid of a float32 tensor, out = sigmoid(a * x) * max_value, evaluated elementwise over
+  the flattened tensor and written as float32.
+operator:
+  name: sigmoid
+  category: activation
+interface:
+  axes:
+    numel: {kind: var, min: 1, max: 536870912, description: Number of elements of the flattened tensor.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [numel]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 3.0}
+    a: {kind: scalar, dtype: float32, default: 1.0}
+    max_value: {kind: scalar, dtype: float32, default: 10.0}
+  outputs:
+    out: {shape: [numel], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/Sigmoid/hip/hip_11184_Sigmoid.hip
+    license: Apache-2.0
+    modifications: >-
+      Reduced to the float32 path; the extension entry point became a one-op torch library
+      registration writing into the preallocated output; environment-variable tuning knobs were
+      replaced by their defaults and the device query by hipDeviceGetAttribute.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

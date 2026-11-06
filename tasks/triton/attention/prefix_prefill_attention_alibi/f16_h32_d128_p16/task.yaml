@@ -1,0 +1,110 @@
+schema_version: 3
+description: >-
+  Prefix-prefill (extend) attention with ALiBi positional bias over a paged KV cache, as served for
+  ALiBi models such as Bloom and MPT. Every sequence has ctx_len cached tokens, stored in a block table
+  indexed paged cache (K: [pages, heads, head_dim/x, page_size, x] vectorized, V: [pages, heads,
+  head_dim, page_size]), and q_len new tokens whose K/V arrive dense. New token i sits at position
+  ctx_len + i and attends to every key at a position up to its own. The score of key j is
+  sm_scale * q k + alibi_slope[head] * (j - position), a non-positive linear bias, and
+  out = softmax(score) v, rounded to float16. Pages may be mapped in any physical order, and the unused
+  slots of the last page hold arbitrary finite data.
+operator:
+  name: prefix_prefill_attention_alibi
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Sequences in the batch.}
+    q_len: {kind: var, min: 1, max: 16384, description: New (extend) tokens per sequence.}
+    ctx_len: {kind: var, min: 1, max: 131072, description: Cached prefix tokens per sequence.}
+    n_heads: {kind: const, value: 32, description: "Attention heads (multi-head attention, one KV head per query head)."}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+    page_size: {kind: const, value: 16, description: Tokens per physical KV-cache page.}
+    x: {kind: const, value: 8, description: Vector width of the K cache (16 bytes of float16).}
+    head_dim_chunks: {kind: const, value: 16, description: head_dim / x.}
+  derived_axes:
+    n_tokens: batch * q_len
+    max_blocks: ceil_div(ctx_len, page_size)
+    n_pages: batch * max_blocks
+    n_offsets: batch + 1
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed new-token queries, sequence after sequence.
+    k:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed new-token keys.
+    v:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed new-token values.
+    k_cache:
+      kind: tensor
+      shape: [n_pages, n_heads, head_dim_chunks, page_size, x]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Paged K cache; element (page, h, c, slot, i) is dimension c * x + i of a cached key.
+    v_cache:
+      kind: tensor
+      shape: [n_pages, n_heads, head_dim, page_size]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Paged V cache; element (page, h, d, slot).
+    b_loc:
+      kind: tensor
+      shape: [batch, max_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Block table; a random bijection of the logical pages onto physical pages.
+    b_start_loc:
+      kind: tensor
+      shape: [n_offsets]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Offset of every sequence's first new token in q/k/v (cumulative, batch + 1 entries).
+    b_seq_len:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Total length (ctx_len + q_len) of every sequence.
+    alibi_slopes:
+      kind: tensor
+      shape: [n_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: ALiBi slopes of the geometric sequence 2^(-8 (h + 1) / n_heads).
+    sm_scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: "Softmax scale, 1/sqrt(head_dim)."}
+  outputs:
+    out: {shape: [n_tokens, n_heads, head_dim], dtype: float16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/prefix_prefill.py
+    license: Apache-2.0
+    modifications: >-
+      _fwd_kernel_alibi as adapted by the retired triton_paged_prefix_prefill_alibi task (fp8 cache
+      scales, input-precision and skip-decode parameters removed). The host wrapper context_attention_fwd
+      became run() writing the preallocated output, with max_input_len taken from the uniform query
+      length.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

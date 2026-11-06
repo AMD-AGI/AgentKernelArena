@@ -1,0 +1,55 @@
+schema_version: 3
+description: >-
+  Decay gate of Kimi Delta Attention (KDA). For every token t, head h and channel d,
+  out[t, h, d] = -exp(A_log[h]) * softplus(g[t, h, d] + dt_bias[h, d]) with the softplus of beta 1 and
+  threshold 20 (the identity above the threshold). The gate input is bfloat16, the parameters and
+  the output are float32, and the activation is computed in float32 or higher.
+operator:
+  name: kda_gate
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens of one packed sequence batch.}
+    num_heads: {kind: const, value: 32, description: Heads.}
+    head_dim: {kind: const, value: 128, description: Gate channels per head.}
+  inputs:
+    g:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Gate projection output, contiguous.
+    A_log:
+      kind: tensor
+      shape: [num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.0, high: 2.772588722239781}
+      description: Log of the per-head decay rate, initialized as log(U(1, 16)).
+    dt_bias:
+      kind: tensor
+      shape: [num_heads, head_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: Per-channel bias added before the softplus.
+  outputs:
+    out: {shape: [n_tokens, num_heads, head_dim], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/third_party/flash_linear_attention/ops/kda.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      kda_gate_fwd_kernel and fused_kda_gate with the optional lower-bound sigmoid branch removed
+      and beta, threshold and the bias fixed to the production values; wrapped in the run()
+      interface writing into the preallocated output.
+compare:
+  out: {bound: sqnr, min_db: 130}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

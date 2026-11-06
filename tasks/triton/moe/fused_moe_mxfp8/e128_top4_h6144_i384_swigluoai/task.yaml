@@ -1,0 +1,88 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of MiniMax-M3 with MXFP8 weights (FP8-E4M3 values with one UE8M0 scale per 1x32 block along
+  the reduction axis). The bfloat16 activations are quantized to MXFP8 per token, then for each token t and
+  selected expert e = topk_ids[t, k]: g = x_q[t] @ w13[e].T in float32 accumulation, rounded to bfloat16
+  (gate = first half, up = second half of the 768 outputs); a = gate' * sigmoid(alpha * gate') * (up' + beta) with
+  gate' = min(gate, limit) and up' = clamp(up, -limit, limit), rounded to bfloat16 and quantized to MXFP8 per 1x32
+  block; y = (a_q @ w2[e].T) * topk_weights[t, k] in float32. out[t] is the sum over k of y, rounded to bfloat16.
+  The MXFP8 quantizer sets the block scale exponent to ceil(log2(amax / 448)) + 127 (clamped to 0..254), divides
+  by it, clamps to +-448 and rounds to float8_e4m3fn. Both bfloat16 roundings are part of the operator, also in a
+  fused implementation: they decide the activation's MXFP8 codes. The router decisions are given.
+operator:
+  name: fused_moe_mxfp8
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    top_k: {kind: const, value: 4, description: Experts selected per token.}
+    num_experts: {kind: const, value: 128, description: Experts of the layer (per tensor-parallel rank).}
+    hidden_size: {kind: const, value: 6144, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 384, description: Per-rank expert intermediate width.}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+    hidden_blocks: hidden_size // 32
+    intermediate_blocks: intermediate_size // 32
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    w13:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+    w13_scale:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_blocks]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_blocks]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    topk_weights:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: float32, role: weight, distribution: {kind: generator}}
+    topk_ids:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+    alpha: {kind: scalar, dtype: float32, default: 1.702}
+    beta: {kind: scalar, dtype: float32, default: 1.0}
+    limit: {kind: scalar, dtype: float32, default: 7.0}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path:
+      - python/sglang/kernels/ops/moe/mxfp8_moe_amd_gfx95.py
+      - python/sglang/kernels/ops/quantization/mxfp8_amd_gfx95.py
+      - python/sglang/kernels/ops/moe/minimax_m3_swiglu.py
+    license: Apache-2.0
+    modifications: >-
+      _mxfp8_grouped_gemm_kernel, _grouped_gemm_mxfp8, _combine_topk_routes_kernel, the MXFP8 quantization kernel and the
+      swigluoai kernel without their PyTorch fallbacks, expert-parallel and no-combine branches, and the default
+      (two-kernel activation) sequence of fused_moe_mxfp8_native wrapped in run() writing into the preallocated
+      output. moe_align_block_size is a JIT-compiled CUDA kernel in SGLang; it is replaced by a Triton kernel written
+      for this repository (align_kernels.py, shared with the bfloat16 fused_moe task) with the same contract.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 5.0e-3}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

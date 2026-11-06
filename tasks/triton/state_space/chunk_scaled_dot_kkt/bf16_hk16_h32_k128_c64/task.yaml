@@ -1,0 +1,57 @@
+schema_version: 3
+description: >-
+  Intra-chunk scaled key Gram matrix of Gated DeltaNet chunked prefill. Tokens are split into
+  chunks of 64 (the last may be partial). For value head h (sharing key head h // 2) and the
+  tokens i, j of one chunk, out[i, h, j] = beta[i, h] * dot(k[i, h // 2], k[j, h // 2])
+  * exp(g[i, h] - g[j, h]) for i > j and 0 otherwise (strictly lower triangle, zeros in padding
+  and above the diagonal). g is the chunk-local cumulative log-decay. Keys and beta are
+  bfloat16, the product accumulates in float32 or higher, and the output is float32.
+operator:
+  name: chunk_scaled_dot_kkt
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 409600, description: Tokens of one packed sequence batch.}
+    num_key_heads: {kind: const, value: 16, description: Key heads.}
+    num_heads: {kind: const, value: 32, description: Value heads (two per key head).}
+    head_dim: {kind: const, value: 128, description: Key head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  inputs:
+    k:
+      kind: tensor
+      shape: [n_tokens, num_key_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, contiguous; std 1/sqrt(head_dim) like L2-normalized keys.
+    beta:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: bfloat16
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: Delta-rule write strength sigmoid(b), contiguous.
+    g:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log-decay (non-increasing within every 64-token chunk).
+  outputs:
+    out: {shape: [n_tokens, num_heads, chunk_size], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/third_party/flash_linear_attention/ops/chunk_scaled_dot_kkt.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      Removed the variable-length path, the gate-less variant, the RDNA dtype switch and the autotune
+      (fixed block 64, 8 warps, 3 stages); 3-D single-batch tensors; wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 4.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

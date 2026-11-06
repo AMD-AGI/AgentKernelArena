@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Fused MoE router of Grok-1: logits = x @ router_weight^T accumulated in float32, soft-capped as
+  moe_softcapping * tanh(logits / moe_softcapping), then the 2 experts with the largest capped logit are
+  selected. Output weights are the softmax probabilities over all 8 experts of the selected experts (not
+  renormalized over the top 2), in descending order, as float32; ids are int32.
+operator:
+  name: fused_moe_router_softcap
+  category: moe
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens routed in the batch.}
+    n_experts: {kind: const, value: 8, description: Routed experts.}
+    hidden_size: {kind: const, value: 6144, description: Model hidden size.}
+    topk: {kind: const, value: 2, description: Experts selected per token.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+    router_weight:
+      kind: tensor
+      shape: [n_experts, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    moe_softcapping: {kind: scalar, dtype: float32, default: 30.0}
+  outputs:
+    topk_weights: {shape: [n_tokens, topk], dtype: float32}
+    topk_ids: {shape: [n_tokens, topk], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/srt/layers/moe/router.py
+    license: Apache-2.0
+    modifications: >-
+      Standalone copy of the two router kernels and their launchers plus the upstream dispatcher inlined into
+      run(); outputs are caller-provided, the correction-bias path is unused, the deterministic-inference
+      flag is dropped and the HIP warp cap is inlined.
+compare:
+  topk_weights: {bound: sqnr, min_db: 90}
+  topk_ids: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,17 @@
+{
+  "description": "Image batches of the KernelBench level-2 problem 52 block (64 to 128 channels, 3x3 conv, Mish, BatchNorm2d): its five test shapes from batch 16 at 64x64 to batch 64 at 128x128, plus batches 2 and 4 at 64x64 for the 100x size span. A single image, odd and non-square sizes and a 1-pixel-high output are correctness-only boundary cases.",
+  "cases": [
+    {"id": "b1_h64_w64", "axes": {"batch": 1, "height": 64, "width": 64}, "checks": ["correctness"], "source": "single image (batch minimum), below the timing floor"},
+    {"id": "b2_h3_w5", "axes": {"batch": 2, "height": 3, "width": 5}, "checks": ["correctness"], "source": "smallest valid height (1x3 output)"},
+    {"id": "b3_h40_w40", "axes": {"batch": 3, "height": 40, "width": 40}, "checks": ["correctness"], "source": "odd batch, partial last tile"},
+    {"id": "b2_h100_w75", "axes": {"batch": 2, "height": 100, "width": 75}, "checks": ["correctness"], "source": "non-square, unaligned image"},
+    {"id": "b5_h34_w130", "axes": {"batch": 5, "height": 34, "width": 130}, "checks": ["correctness"], "source": "wide non-square image"},
+    {"id": "b2_h64_w64", "axes": {"batch": 2, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "batch 2 at the smallest KernelBench test resolution"},
+    {"id": "b4_h64_w64", "axes": {"batch": 4, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "batch 4 at the smallest KernelBench test resolution"},
+    {"id": "b16_h64_w64", "axes": {"batch": 16, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench L2-52 test shape (16, 64, 64, 64)"},
+    {"id": "b32_h64_w64", "axes": {"batch": 32, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench L2-52 test shape (32, 64, 64, 64)"},
+    {"id": "b64_h64_w64", "axes": {"batch": 64, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench L2-52 test shape (64, 64, 64, 64)"},
+    {"id": "b32_h128_w128", "axes": {"batch": 32, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L2-52 test shape (32, 64, 128, 128)"},
+    {"id": "b64_h128_w128", "axes": {"batch": 64, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L2-52 test shape (64, 64, 128, 128)"}
+  ]
+}

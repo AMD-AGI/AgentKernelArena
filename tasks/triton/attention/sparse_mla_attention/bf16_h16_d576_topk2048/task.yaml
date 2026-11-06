@@ -1,0 +1,63 @@
+schema_version: 3
+description: >-
+  DeepSeek-V3.2 sparse multi-head latent attention over a paged latent KV cache. Token t attends to
+  the cache rows named by topk_indices[t] (flat position p = block * block_size + slot; -1 marks an
+  unused entry): s_j = softmax_j(softmax_scale * q[t, h, :] . kv[p_j, :]) over the full 576-wide row
+  (512 latent + 64 rope), and out[t, h, :] = sum_j s_j * kv[p_j, :512]. There is one latent KV head
+  shared by all 16 query heads and no further masking.
+operator: {name: sparse_mla_attention, category: attention}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Query tokens of one prefill sequence.}
+    num_heads: {kind: const, value: 16, description: Query heads per rank (128 heads at TP8).}
+    kv_lora_rank: {kind: const, value: 512, description: Latent width.}
+    rope_rank: {kind: const, value: 64, description: Rotary width appended to the latent.}
+    block_size: {kind: const, value: 64, description: KV cache block size (also the top-k tile).}
+    topk: {kind: const, value: 2048, description: Selected cache rows per token (index_topk).}
+  derived_axes:
+    head_size: kv_lora_rank + rope_rank
+    num_blocks: ceil_div(n_tokens, block_size)
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv:
+      kind: tensor
+      shape: [num_blocks, block_size, 1, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    topk_indices:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    cu_seqlens_q:
+      kind: tensor
+      shape: [2]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    softmax_scale: {kind: scalar, dtype: float32, default: 0.041666666666666664}
+  outputs:
+    out: {shape: [n_tokens, num_heads, kv_lora_rank], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/attention/unified_attention_sparse_mla.py, aiter/ops/triton/attention/unified_attention_sparse_mla.py
+    license: MIT
+    modifications: >-
+      Wrapped in the run() interface writing into the preallocated out. The kernel never reads its
+      block-table or per-sequence-length arguments, so run() passes cu_seqlens_q in their place
+      instead of two dummy tensors; ALL_DECODE follows the token count (one sequence).
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

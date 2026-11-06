@@ -2,11 +2,11 @@
 """
 Centralized evaluator for AgentKernelArena.
 
-This module provides standardized evaluation of optimized kernels:
-- Compilation checking
-- Correctness validation
-- Performance measurement
-- Baseline measurement for speedup calculation
+Every task runs through a framework ``TaskSession``: the candidate's compile,
+correctness and performance actions execute through the task's declared runner
+(the generated ``_aka_eval`` evaluator for schema-v3 kernel tasks, the serving
+runner for schema-v2 e2e tasks), and the baseline measured during initial
+validation (remeasured beside the candidate for schema v3) sets the speedup.
 """
 import logging
 import math
@@ -14,9 +14,6 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Mapping, TYPE_CHECKING
 
-from .evaluator_utils import inspect_target_definitions, run_command
-from .jit_rebuild import force_jit_rebuild
-from .performance import measure_performance, measure_baseline
 from .testcases import (
     TestCaseResult,
     analyze_benchmark_method_consistency,
@@ -32,10 +29,6 @@ if TYPE_CHECKING:
     from .eval_tools.contracts import SourceEvidence
     from .eval_tools.manager import EvalToolManager
 
-# Default timeouts for run_command (seconds). Repository CMake builds can exceed a few minutes.
-_DEFAULT_COMPILE_TIMEOUT_S = 3600
-_DEFAULT_CORRECTNESS_TIMEOUT_S = 3600
-
 
 def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
     """Return only test cases with valid positive execution time."""
@@ -48,88 +41,6 @@ def _valid_perf_cases(cases: List[TestCaseResult]) -> List[TestCaseResult]:
         ):
             valid_cases.append(case)
     return valid_cases
-
-
-def evaluate_compilation(
-    workspace: Path,
-    task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
-) -> Tuple[bool, Optional[str]]:
-    """
-    Evaluate kernel compilation.
-    
-    Args:
-        workspace: Workspace directory
-        task_config: Task configuration dict
-        logger: Optional logger
-        
-    Returns:
-        Tuple of (passed: bool, error_message: Optional[str])
-    """
-    log = logger or logging.getLogger(__name__)
-    rebuild_env = force_jit_rebuild(task_config, log, workspace)
-    compile_commands = task_config.get('compile_command', [])
-    
-    if not compile_commands:
-        log.warning("No compile_command found in task config")
-        return False, "No compile_command specified"
-
-    compile_timeout = int(task_config.get("compile_timeout", _DEFAULT_COMPILE_TIMEOUT_S))
-    
-    for cmd in compile_commands:
-        success, stdout, stderr = run_command(cmd, workspace, timeout=compile_timeout, logger=log, extra_env=rebuild_env)
-        if not success:
-            error_msg = f"Compilation failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
-            return False, error_msg
-    
-    return True, None
-
-
-def evaluate_correctness(
-    workspace: Path,
-    task_config: Dict[str, Any],
-    logger: Optional[logging.Logger] = None
-) -> Tuple[bool, Optional[str]]:
-    """
-    Evaluate kernel correctness.
-    
-    Args:
-        workspace: Workspace directory
-        task_config: Task configuration dict
-        logger: Optional logger
-        
-    Returns:
-        Tuple of (passed: bool, error_message: Optional[str])
-    """
-    log = logger or logging.getLogger(__name__)
-    rebuild_env = force_jit_rebuild(task_config, log, workspace)
-    correctness_commands = task_config.get('correctness_command', [])
-    
-    if not correctness_commands:
-        log.warning("No correctness_command found in task config")
-        return False, "No correctness_command specified"
-
-    correctness_timeout = int(
-        task_config.get("correctness_timeout", _DEFAULT_CORRECTNESS_TIMEOUT_S)
-    )
-    
-    for cmd in correctness_commands:
-        success, stdout, stderr = run_command(
-            cmd, workspace, timeout=correctness_timeout, logger=log, extra_env=rebuild_env
-        )
-        if not success:
-            error_msg = f"Correctness test failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
-            return False, error_msg
-        
-        # Check for explicit failure indicators in output
-        output_lower = (stdout + stderr).lower()
-        if 'fail' in output_lower and 'pass' not in output_lower:
-            # Might have "FAIL" but also check if it says "PASS" somewhere
-            if 'correctness: pass' not in output_lower:
-                error_msg = f"Correctness test reported failure\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}"
-                return False, error_msg
-    
-    return True, None
 
 
 def evaluate_kernel(
@@ -148,14 +59,17 @@ def evaluate_kernel(
     performance_block_reason: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Standardized evaluation of optimized kernel.
-    
+    Standardized evaluation of the candidate through its framework TaskSession.
+
     Args:
-        workspace: Workspace directory containing optimized kernel
-        task_config: Task configuration dict
-        baseline_cases: Baseline test case results (from measure_baseline)
+        workspace: Workspace directory containing the candidate
+        task_config: The session's execution configuration (``spec.to_mapping()``)
+        baseline_cases: Baseline performance cases from initial task validation;
+            replaced by the remeasured baseline (schema v3) or the serving pairs
         logger: Optional logger
-        
+        task_session: The framework session that owns the case manifest, the
+            frozen baseline and the harness snapshot (required)
+
     Returns:
         Dict with evaluation results:
         - pass_compilation: bool
@@ -168,6 +82,8 @@ def evaluate_kernel(
         - tool_policy_satisfied: bool
         - tool_evaluation: Optional[dict]
     """
+    if task_session is None:
+        raise ValueError("Evaluation requires the framework TaskSession and original case manifest")
     log = logger or logging.getLogger(__name__)
     log.info("=" * 80)
     log.info("Starting centralized kernel evaluation")
@@ -194,12 +110,7 @@ def evaluate_kernel(
     
     # 1. Compilation check
     log.info("Step 1: Checking compilation...")
-    if task_session is None:
-        if task_config.get("schema_version") == 2:
-            raise ValueError("V2 evaluation requires the framework TaskSession and original case manifest")
-        pass_compilation, comp_error = evaluate_compilation(workspace, task_config, logger)
-    else:
-        pass_compilation, comp_error = _session_check(task_session, "compile")
+    pass_compilation, comp_error = _session_check(task_session, "compile")
     results['pass_compilation'] = pass_compilation
     results['compilation_error_message'] = comp_error
     
@@ -209,35 +120,7 @@ def evaluate_kernel(
     
     # 2. Correctness check
     log.info("Step 2: Checking correctness...")
-    # The as-shipped torch2flydsl starter is allowed during baseline and task
-    # package validation, both of which bypass this optimized-kernel pipeline.
-    # Once an optimization agent has run, however, its declared targets must no
-    # longer be unconditional NotImplementedError stubs; otherwise a harness
-    # could silently time and validate its reference fallback.
-    if task_session is None and task_config.get("task_type") == "torch2flydsl":
-        missing_names, stub_names = inspect_target_definitions(workspace, task_config)
-        target_errors = []
-        if missing_names:
-            target_errors.append(
-                "missing declared top-level target definition(s): "
-                + ", ".join(missing_names)
-            )
-        if stub_names:
-            target_errors.append(
-                "unimplemented target stub(s): " + ", ".join(stub_names)
-            )
-        if target_errors:
-            corr_error = "Invalid torch2flydsl optimization submission: " + "; ".join(
-                target_errors
-            )
-            results['correctness_error_message'] = corr_error
-            log.warning(corr_error)
-            return results
-
-    if task_session is None:
-        pass_correctness, corr_error = evaluate_correctness(workspace, task_config, logger)
-    else:
-        pass_correctness, corr_error = _session_check(task_session, "correctness")
+    pass_correctness, corr_error = _session_check(task_session, "correctness")
     results['pass_correctness'] = pass_correctness
     results['correctness_error_message'] = corr_error
     
@@ -291,57 +174,72 @@ def evaluate_kernel(
         log.warning("Skipping invalid performance measurement: %s", performance_block_reason)
         return results
     log.info("Step 4: Measuring performance...")
-    if task_session is None:
-        optimized_cases = measure_performance(workspace, task_config, logger)
-    else:
-        from .task_protocol import performance_cases
+    from .task_protocol import performance_cases
 
-        try:
-            from .measurement import measurement_kind, paired_throughput
-            if measurement_kind(task_config) == "serving":
-                pairs = []
-                from .measurement import serving_pair_count
-                declared_pairs = task_config["evaluation"]["measurement"]["pairs"]
-                count = serving_pair_count(task_config, final_evaluation_pairs)
-                for index in range(count):
-                    measured = {}
-                    for role in (("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")):
-                        if role == "candidate":
-                            performance = task_session.candidate_action("performance").result
-                        else:
-                            performance = task_session.baseline_action("performance").result
-                        if not performance.passed:
-                            raise ValueError(performance.reason or "Serving performance failed")
-                        measured[role] = performance_cases(performance)
-                    pairs.append((measured["baseline"], measured["candidate"]))
-                results["serving_measurement"] = paired_throughput(pairs,
-                    minimum_speedup_ratio=task_config["evaluation"]["measurement"].get("minimum_speedup_ratio", 1.0))
-                results["serving_measurement"].update(
-                    declared_pairs=declared_pairs,
-                    pair_count_override=final_evaluation_pairs,
-                    statistical_significance="not_assessed")
-                save_performance_results(pairs[-1][0], workspace, "baseline_perf.yaml", logger)
-                results["serving_measurement"]["raw_pairs"] = [
-                    {"baseline": [vars(c) for c in b], "candidate": [vars(c) for c in cnd]}
-                    for b, cnd in pairs]
-                baseline_cases[:] = pairs[-1][0]
-                optimized_cases = pairs[-1][1]
-                limit = (task_config.get("evaluation", {}).get("measurement", {})).get("max_p99_tpot_ms")
-                if limit is not None:
-                    latencies = [c.metadata.get("metrics", {}).get("p99_tpot_ms") for _, rows in pairs for c in rows]
-                    if any(value is None for value in latencies):
-                        raise ValueError("Serving latency limit declared but a measurement omitted p99_tpot_ms")
-                    if any(value > limit for value in latencies):
-                        raise ValueError("Serving latency limit exceeded")
-            else:
-                performance = task_session.candidate_action("performance").result
+    try:
+        from .measurement import measurement_kind, paired_throughput
+        if measurement_kind(task_config) == "serving":
+            pairs = []
+            from .measurement import serving_pair_count
+            declared_pairs = task_config["evaluation"]["measurement"]["pairs"]
+            count = serving_pair_count(task_config, final_evaluation_pairs)
+            for index in range(count):
+                measured = {}
+                for role in (("baseline", "candidate") if index % 2 == 0 else ("candidate", "baseline")):
+                    if role == "candidate":
+                        performance = task_session.candidate_action("performance").result
+                    else:
+                        performance = task_session.baseline_action("performance").result
+                    if not performance.passed:
+                        raise ValueError(performance.reason or "Serving performance failed")
+                    measured[role] = performance_cases(performance)
+                pairs.append((measured["baseline"], measured["candidate"]))
+            results["serving_measurement"] = paired_throughput(pairs,
+                minimum_speedup_ratio=task_config["evaluation"]["measurement"].get("minimum_speedup_ratio", 1.0))
+            results["serving_measurement"].update(
+                declared_pairs=declared_pairs,
+                pair_count_override=final_evaluation_pairs,
+                statistical_significance="not_assessed")
+            save_performance_results(pairs[-1][0], workspace, "baseline_perf.yaml", logger)
+            results["serving_measurement"]["raw_pairs"] = [
+                {"baseline": [vars(c) for c in b], "candidate": [vars(c) for c in cnd]}
+                for b, cnd in pairs]
+            baseline_cases[:] = pairs[-1][0]
+            optimized_cases = pairs[-1][1]
+            limit = (task_config.get("evaluation", {}).get("measurement", {})).get("max_p99_tpot_ms")
+            if limit is not None:
+                latencies = [c.metadata.get("metrics", {}).get("p99_tpot_ms") for _, rows in pairs for c in rows]
+                if any(value is None for value in latencies):
+                    raise ValueError("Serving latency limit declared but a measurement omitted p99_tpot_ms")
+                if any(value > limit for value in latencies):
+                    raise ValueError("Serving latency limit exceeded")
+        elif task_session.spec.contract is not None:
+            # Schema-v3: remeasure the baseline next to the candidate in
+            # alternating fresh processes (B, C, B, C) and average each
+            # arm per case, so device drift cannot favor either side.
+            rounds = {"baseline": [], "candidate": []}
+            for role in ("baseline", "candidate", "baseline", "candidate"):
+                if role == "candidate":
+                    performance = task_session.candidate_action("performance").result
+                else:
+                    performance = task_session.baseline_action("performance").result
                 if not performance.passed:
-                    raise ValueError(performance.reason or "Candidate performance failed")
-                optimized_cases = performance_cases(performance)
-        except (ValueError, RuntimeError, OSError) as exc:
-            results['speedup_calculation_error_message'] = str(exc)
-            log.warning("V2 candidate performance failed: %s", exc)
-            optimized_cases = []
+                    raise ValueError(performance.reason or f"{role} performance failed")
+                rounds[role].append(performance_cases(performance))
+            baseline_cases[:] = _mean_cases(rounds["baseline"])
+            optimized_cases = _mean_cases(rounds["candidate"])
+            results["interleaved_rounds"] = {
+                role: [[{"id": c.test_case_id, "ms": c.execution_time_ms} for c in run] for run in runs]
+                for role, runs in rounds.items()}
+        else:
+            performance = task_session.candidate_action("performance").result
+            if not performance.passed:
+                raise ValueError(performance.reason or "Candidate performance failed")
+            optimized_cases = performance_cases(performance)
+    except (ValueError, RuntimeError, OSError) as exc:
+        results['speedup_calculation_error_message'] = str(exc)
+        log.warning("V2 candidate performance failed: %s", exc)
+        optimized_cases = []
     
     if optimized_cases:
         # Save optimized results
@@ -480,6 +378,24 @@ def evaluate_kernel(
     return results
 
 
+def _mean_cases(runs: List[List[TestCaseResult]]) -> List[TestCaseResult]:
+    """Per-case mean time over repeated runs with identical case identities."""
+    first = runs[0]
+    by_id = [{case.test_case_id: case for case in run} for run in runs]
+    if any(set(rows) != set(by_id[0]) for rows in by_id):
+        raise ValueError("Repeated performance runs reported different cases")
+    merged = []
+    for case in first:
+        times = [rows[case.test_case_id].execution_time_ms for rows in by_id]
+        methods = {rows[case.test_case_id].metadata.get("benchmark_method") for rows in by_id}
+        if len(methods) != 1:
+            raise ValueError(f"Case {case.test_case_id} changed timing method between runs")
+        metadata = dict(case.metadata)
+        metadata["round_times_ms"] = times
+        merged.append(TestCaseResult(case.test_case_id, case.shape, sum(times) / len(times), metadata))
+    return merged
+
+
 def _session_check(session: "TaskSession", action: str) -> Tuple[bool, Optional[str]]:
     try:
         result = session.candidate_action(action).result
@@ -582,7 +498,11 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
     from .candidate_verification import verify_candidate, apply_review
     apply_review(result, verify_candidate(session, result, eval_config, log))
     agent_name = eval_config.get("agent", {}).get("template", "unknown")
-    write_task_result(session.workspace, result, baseline_cases, session.spec.task_id, agent_name, log)
+    contract = session.spec.contract or {}
+    write_task_result(session.workspace, result, baseline_cases, session.spec.task_id, agent_name, log,
+                      target_language=session.spec.target_language or session.spec.candidate.language,
+                      operator=(contract.get("operator") or {}).get("name"),
+                      operator_category=(contract.get("operator") or {}).get("category"))
     task_result_scoring(str(session.workspace))
     return yaml.safe_load((session.workspace / "task_result.yaml").read_text())
 
@@ -594,7 +514,10 @@ def write_task_result(
     task_name: str,
     agent_name: str,
     logger: Optional[logging.Logger] = None,
-    create_plots: bool = True
+    create_plots: bool = True,
+    target_language: Optional[str] = None,
+    operator: Optional[str] = None,
+    operator_category: Optional[str] = None,
 ) -> None:
     """
     Write standardized task_result.yaml file and optionally create performance plots.
@@ -607,6 +530,9 @@ def write_task_result(
         agent_name: Name of the agent that generated the kernel
         logger: Optional logger
         create_plots: Whether to create performance comparison plots
+        target_language: Language the candidate was written in (the run's target)
+        operator: Schema-v3 operator name (None for tasks without a contract)
+        operator_category: Schema-v3 operator category (None without a contract)
     """
     log = logger or logging.getLogger(__name__)
     
@@ -649,6 +575,9 @@ def write_task_result(
 
     task_result = {
         'task_name': task_name,
+        'target_language': target_language,
+        'operator': operator,
+        'operator_category': operator_category,
         'pass_compilation': evaluation_results['pass_compilation'],
         'compilation_error_message': evaluation_results.get('compilation_error_message'),
         'pass_correctness': evaluation_results['pass_correctness'],

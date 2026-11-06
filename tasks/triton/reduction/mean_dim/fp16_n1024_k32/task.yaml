@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  Mean over the middle axis of a float16 tensor viewed as (M, N, K): out[m, k] = mean over n of x[m, n, k],
+  accumulated in float32 and rounded to float16. This is torch.mean(x, dim=1) for a contiguous x, with
+  the reduced axis N = 1024 and K = 32 trailing elements.
+operator:
+  name: mean_dim
+  category: reduction
+interface:
+  axes:
+    M: {kind: var, min: 1, max: 51200, description: Elements before the reduced axis.}
+    N: {kind: const, value: 1024, description: Reduced axis length.}
+    K: {kind: const, value: 32, description: Elements after the reduced axis.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [M, N, K]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [M, K], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/batch_invariant.py
+    license: Apache-2.0
+    modifications: >-
+      mean_kernel and the launch geometry of mean_dim wrapped in the arena run() interface writing into
+      the preallocated output (M, N, K taken from the input shape); the loaded values are converted to
+      float32 before the sum so the accumulation is float32 for float16 inputs.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

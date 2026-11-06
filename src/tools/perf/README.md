@@ -1,50 +1,40 @@
 # Canonical performance-benchmark helpers
 
-This directory is the single source of truth for graph-first device timing.
-Committed task sources keep small imports, stubs, or generated marker regions;
-`setup_workspace()` materializes the canonical code into each run workspace.
-The resulting task remains self-contained and does not import `src`.
+This directory is the single source of truth for benchmark code that runs inside
+task workspaces. Task sources never carry copies of it: the framework writes the
+canonical code into each run workspace, so a workspace stays self-contained and
+does not import `src`.
 
 ## Files
 
-- `aka_benchmark.py` — self-contained Python implementation (standard library
-  plus PyTorch). It is copied as `_aka_benchmark.py` beside importing
-  performance entrypoints. Its optional `prepare_fn` supports stateful kernels
-  by restoring inputs before, and outside, each measured replay/event interval.
-  It also contains the conservative HIP-source current-stream preflight used by
-  compiled-extension tasks.
-- `performance_utils_pytest.py` — thin ROCmBench adapter. Task sources keep a
-  stub; run workspaces receive this file and a sibling `_aka_benchmark.py`.
-- `vllm_cuda_graph_block.py` — thin compatibility functions injected between
-  the vLLM/image AKA-GENERATED markers. A sibling `_aka_benchmark.py` supplies
-  their implementation.
-- `native_hip_graph_benchmark.hpp` — self-contained HIP runtime implementation,
-  materialized as `scripts/native/hip_graph_benchmark.hpp` when requested by a
-  native benchmark driver.
+- `aka_benchmark.py` — graph-first device timing (standard library plus
+  PyTorch). Schema-v3 kernel tasks receive it as `_aka_eval/_aka_benchmark.py`
+  when `src/task_contract.py::render_workspace` writes the evaluator; the
+  evaluator times every performance case with
+  `benchmark_cuda_graph_cold_cache_samples` and `ReadOnlyCacheFlush`.
+- `serving.py`, `serving_bundle.py`, `serving_backends.py`,
+  `serving_scenarios.py`, `serving_request_plan.py` — the end-to-end serving
+  client, compute-bundle installation and evidence, and scenario composition.
+  `src/perf_helper_materialization.py` copies them (as `_aka_serving*.py`, with
+  `src/measurement.py` as `_aka_measurement.py`) beside a serving task's
+  `scripts/evaluate.py`. Serving tasks declare a separate wall-clock
+  measurement contract; it does not change device-timing rules for kernel tasks.
+- `catalog_serving.py`, `catalog_checks.py`, `catalog_instructions.md` — the
+  runner, checks and instructions of prepared serving recipe packages
+  (`src/magpie_catalog.py`, `src/serving_task_preparation.py`).
 
 ## Workflow
 
 1. Edit canonical helper code here.
-2. Run `make check-perf-helpers`. The check validates stubs and audits every
-   configured task performance entrypoint.
-3. If marker or stub structure changes, run `make sync-perf-helpers`.
+2. Run `make check-perf-helpers`. It audits that every committed schema-v2 task
+   is a serving recipe or serving client and that no generated helper copy is
+   committed under `tasks/`.
+3. Run the relevant tests (`tests/test_aka_benchmark.py`, the serving tests).
 
-Do not commit `_aka_benchmark.py` or `hip_graph_benchmark.hpp` copies under
-`tasks/`, and do not hand-edit generated helper regions. Use
-`make materialize-perf-workspace WORKSPACE=...` for an existing copied
-workspace, or `make materialize-perf-task TASK=tasks/...` for local inspection.
+Do not commit `_aka_benchmark.py`, `_aka_serving*.py` or `_aka_eval/` copies
+under `tasks/`, and do not hand-edit generated copies in workspaces.
 
-See `docs/reference/benchmark-methodology.md` for measurement and fairness
-rules, including paired graph/Event baseline selection and the opt-in
-cold-weight timing of `benchmark_cuda_graph_cold_weights_samples()`.
-
-New kernel benchmarks should start with the runnable
-[cold-cache graph example](examples/cold_cache_graph/README.md), using
-`ReadOnlyCacheFlush` and `benchmark_cuda_graph_cold_cache_samples`. Its separate
-`cuda_graph_cold_cache` method evicts caches before each single-invocation replay,
-outside the Event interval. The example also shows balanced A/B rounds, pristine
-correctness checks, raw samples and a paired confidence interval. Existing task
-policies remain unchanged until an explicit, GPU-qualified migration.
+See `docs/reference/benchmark-methodology.md` for measurement and fairness rules.
 
 ## Observing measured outputs
 
@@ -62,26 +52,18 @@ before each eager re-invocation. The collector never makes a post-timing call
 to obtain its initial output. A failed benchmark clears any previous binding.
 Automatic graph-to-Event fallback with a collector still fails closed; Event
 collection must be explicitly selected. Both methods require actual GPU timing.
-Task harnesses must check the last measured value before re-invoking, then check
-the returned replay value with the task's reference and numerical policy.
+A caller must check the last measured value before re-invoking, then check the
+returned replay value with the task's reference and numerical policy.
 
 For evolving state, set `timed_run.before_sample` to a callback accepting the
 number of logical calls in that sample's replay. The helper invokes it on the
 measurement stream, after `prepare_fn` (when present) and before the start event
 of each reported sample. It is not called during warmup, capture, estimation,
-graph priming, or `rerun()`. The task may retain a private copy of the last
-sample's starting state and use that state plus the replay count for an
-independent reference after timing. The callback must only observe state; it
-must not reset inputs or run the reference. It does not change graph batching.
+graph priming, or `rerun()`. The callback must only observe state; it must not
+reset inputs or run the reference. It does not change graph batching.
 Apply the same observation and state policy to baseline and candidate. An
 observer exception rejects the measurement and leaves the collector unbound.
 
-Serving tasks use the same workspace materialization mechanism for the canonical
-client adapter in `src/tools/perf/serving.py`. They declare a separate wall-clock measurement
-contract; this does not change device-timing rules for kernel tasks.
-`serving_bundle.py` is the task-local source for multi-file compute replacement,
-source hashing and execution evidence. It is materialized beside the adapter;
-do not edit the generated `_aka_serving_bundle.py` copies.
 To check the results of the reported samples themselves, set
 `timed_run.after_sample` to a callback accepting the sample's outputs (the
 captured outputs under CUDA-graph timing, the return value under Event timing).

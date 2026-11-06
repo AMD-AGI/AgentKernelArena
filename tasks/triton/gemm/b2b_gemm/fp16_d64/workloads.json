@@ -1,0 +1,156 @@
+{
+  "description": "Query-row and key-row counts of a chained dot with head size 64; the original tile-sweep shapes (at most 4096 x 4096) are folded into one production-like range. Small shapes are correctness-only.",
+  "cases": [
+    {
+      "id": "m1_n1",
+      "axes": {
+        "n_rows": 1,
+        "n_keys": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum"
+    },
+    {
+      "id": "m3_n5",
+      "axes": {
+        "n_rows": 3,
+        "n_keys": 5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd tiny shape"
+    },
+    {
+      "id": "m100_n130",
+      "axes": {
+        "n_rows": 100,
+        "n_keys": 130
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of the tile sizes"
+    },
+    {
+      "id": "m1000_n333",
+      "axes": {
+        "n_rows": 1000,
+        "n_keys": 333
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned rows and keys"
+    },
+    {
+      "id": "m257_n4100",
+      "axes": {
+        "n_rows": 257,
+        "n_keys": 4100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned rows, keys beyond one power of two"
+    },
+    {
+      "id": "m1024_n2048",
+      "axes": {
+        "n_rows": 1024,
+        "n_keys": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, medium sequence"
+    },
+    {
+      "id": "m2048_n2048",
+      "axes": {
+        "n_rows": 2048,
+        "n_keys": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, medium sequence"
+    },
+    {
+      "id": "m4096_n2048",
+      "axes": {
+        "n_rows": 4096,
+        "n_keys": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, medium sequence"
+    },
+    {
+      "id": "m4096_n4096",
+      "axes": {
+        "n_rows": 4096,
+        "n_keys": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, long sequence"
+    },
+    {
+      "id": "m8192_n4096",
+      "axes": {
+        "n_rows": 8192,
+        "n_keys": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, long sequence"
+    },
+    {
+      "id": "m8192_n8192",
+      "axes": {
+        "n_rows": 8192,
+        "n_keys": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, long sequence"
+    },
+    {
+      "id": "m16384_n8192",
+      "axes": {
+        "n_rows": 16384,
+        "n_keys": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, long sequence"
+    },
+    {
+      "id": "m16384_n16384",
+      "axes": {
+        "n_rows": 16384,
+        "n_keys": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "attention-like chained product, long sequence"
+    }
+  ]
+}

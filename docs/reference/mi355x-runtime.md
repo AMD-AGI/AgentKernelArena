@@ -62,5 +62,5 @@ those paths cannot be supplied or overridden by task configuration.
 Keep current validation reports, source/config fingerprints, scheduler outcomes
 and old/new comparison data outside the repository. Report completed checks and
 remaining limitations in the PR. Each changed task needs a fresh full
-framework-finalized validator PASS; initial actions, CPU tests and interrupted
+framework-finalized QA auditor `qa_report.yaml` with `status: PASS`; initial actions, CPU tests and interrupted
 runs do not replace that requirement.

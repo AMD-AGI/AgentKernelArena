@@ -1,0 +1,21 @@
+{
+  "description": "Token counts of one Kimi-K2 A8W4 MoE layer on a tensor-parallel-8 rank (7168/256, fp8 activations x fp4x2 weights, per_1x32): AITER's kimik2_fp8fp4 MoE tune tokens 1 to 131072 (the E385/top-9 rows tune 512 to 131072), decode batches from 4 to 256 and chunked-prefill sizes up to 16384 tokens; one-token decode (below the 10 us floor), odd sizes and a bfloat16 output-range control are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"num_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t2_range", "axes": {"num_tokens": 2}, "checks": ["correctness"], "source": "bfloat16 range control (hidden states with standard deviation 512, outputs beyond the float16 range), the source task's output-range case"},
+    {"id": "t3", "axes": {"num_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t4", "axes": {"num_tokens": 4}, "checks": ["correctness", "performance"], "source": "decode, batch 4"},
+    {"id": "t16", "axes": {"num_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode, batch 16 (source task case)"},
+    {"id": "t17", "axes": {"num_tokens": 17}, "checks": ["correctness"], "source": "decode, first batch past the single-kernel sorting path"},
+    {"id": "t37", "axes": {"num_tokens": 37}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "t64", "axes": {"num_tokens": 64}, "checks": ["correctness", "performance"], "source": "decode, batch 64"},
+    {"id": "t200", "axes": {"num_tokens": 200}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "t256", "axes": {"num_tokens": 256}, "checks": ["correctness", "performance"], "source": "decode, batch 256"},
+    {"id": "t1000", "axes": {"num_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t1024", "axes": {"num_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t2048", "axes": {"num_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t3000", "axes": {"num_tokens": 3000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t4096", "axes": {"num_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t16384", "axes": {"num_tokens": 16384}, "checks": ["correctness", "performance"], "source": "chunked prefill, 16384-token chunk"}
+  ]
+}

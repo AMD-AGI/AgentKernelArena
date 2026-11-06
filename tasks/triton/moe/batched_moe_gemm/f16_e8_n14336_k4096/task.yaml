@@ -1,0 +1,53 @@
+schema_version: 3
+description: >-
+  Batched mixture-of-experts GEMM over expert-major padded token buffers: for every expert e,
+  C[e, :n_e] = A[e, :n_e] @ B[e]^T with float32 accumulation, rounded to float16, where n_e is
+  expert_num_tokens[e]. Rows of C at or beyond n_e (padding, and every row of an empty expert) are zero.
+operator:
+  name: batched_moe_gemm
+  category: moe
+interface:
+  axes:
+    n_experts: {kind: const, value: 8, description: Experts (Mixtral 8x7B).}
+    max_tokens: {kind: var, min: 1, max: 8192, description: Rows of the padded per-expert token buffer.}
+    hidden_size: {kind: const, value: 4096, description: Reduction width K.}
+    intermediate_size: {kind: const, value: 14336, description: Output width N.}
+  inputs:
+    A:
+      kind: tensor
+      shape: [n_experts, max_tokens, hidden_size]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    B:
+      kind: tensor
+      shape: [n_experts, intermediate_size, hidden_size]
+      dtype: float16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    expert_num_tokens:
+      kind: tensor
+      shape: [n_experts]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+  outputs:
+    C: {shape: [n_experts, max_tokens, intermediate_size], dtype: float16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/fused_moe/experts/fused_batched_moe.py
+    license: Apache-2.0
+    modifications: >-
+      Simplified single-kernel adaptation of batched_triton_kernel, expert_triton_kernel and moe_mmk without
+      quantization scales or activation handling; padded rows are written as zeros by the kernel; wrapped in
+      the arena run() interface writing into the preallocated output.
+compare:
+  C: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

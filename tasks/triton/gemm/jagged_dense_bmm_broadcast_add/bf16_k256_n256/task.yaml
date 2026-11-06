@@ -1,0 +1,68 @@
+schema_version: 3
+description: >-
+  Jagged-dense batched matrix multiplication with a broadcast bias, as in HSTU: the rows of the jagged
+  matrix jagged[total_rows, 256] are packed groups (group g owns rows seq_offsets[g] to seq_offsets[g + 1]);
+  out[r, :] = jagged[r, :] @ dense[g] + bias[g] for each row r of group g, with a per-group weight dense[g]
+  of shape [256, 256] and bias[g] of 256 entries, accumulated in float32 and rounded to bfloat16. Groups may
+  be empty. max_seq_len is the length of the longest group.
+operator:
+  name: jagged_dense_bmm_broadcast_add
+  category: gemm
+interface:
+  axes:
+    total_rows: {kind: var, min: 1, max: 2097152, description: Rows of the jagged matrix (sum of the group lengths).}
+    max_seq_len: {kind: var, min: 1, max: 65536, description: Length of the longest group.}
+    n_groups: {kind: const, value: 64, description: Groups (sequences) in the batch.}
+    k: {kind: const, value: 256, description: Contracted dimension (input features).}
+    n: {kind: const, value: 256, description: Output features.}
+  inputs:
+    seq_offsets:
+      kind: tensor
+      shape: [n_groups + 1]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+      description: Cumulative group lengths; seq_offsets[0] = 0 and seq_offsets[n_groups] = total_rows.
+    jagged:
+      kind: tensor
+      shape: [total_rows, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    dense:
+      kind: tensor
+      shape: [n_groups, k, n]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0625}
+    bias:
+      kind: tensor
+      shape: [n_groups, n]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    max_seq_len: {kind: scalar, dtype: int32, default: 65536, description: 'Length of the longest group (every case sets it to its max_seq_len axis), known to the host as a serving framework knows it.'}
+  outputs:
+    out: {shape: [total_rows, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: meta-recsys/generative-recommenders
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: generative_recommenders/ops/triton/triton_jagged.py
+    license: Apache-2.0
+    modifications: >-
+      Forward-only Triton kernel jagged_dense_bmm_broadcast_add_kernel, taken from the standalone extraction
+      in the AMD AgentKernelArena triton2flydsl task (revision above, path
+      tasks/triton2flydsl/generative_recommenders/jagged_dense_bmm_broadcast_add/jagged_dense_bmm_broadcast_add.py;
+      the upstream commit of the extraction was not recorded). The autotune decorator and its inlined
+      helpers, the elementwise-bias variant, the HAS_BIAS and ALLOW_TF32 flags and the host-side contiguous
+      switch are removed; a single fixed tile configuration from the old autotune space is used; wrapped in
+      the run() interface writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

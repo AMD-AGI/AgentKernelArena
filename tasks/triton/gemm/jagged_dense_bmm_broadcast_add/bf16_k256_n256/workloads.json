@@ -1,0 +1,194 @@
+{
+ "description": "Jagged batches of 64 sequences at feature width 256: 32K to 2M packed rows with the longest sequence 1K to 64K; small batches (the old suite had 64 to 1000 rows) are correctness-only.",
+ "cases": [
+  {
+   "id": "r1_m1",
+   "axes": {
+    "total_rows": 1,
+    "max_seq_len": 1
+   },
+   "scalars": {
+    "max_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum, one row"
+  },
+  {
+   "id": "r48_m3",
+   "axes": {
+    "total_rows": 48,
+    "max_seq_len": 3
+   },
+   "scalars": {
+    "max_seq_len": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "fewer rows than groups, most groups empty"
+  },
+  {
+   "id": "r333_m16",
+   "axes": {
+    "total_rows": 333,
+    "max_seq_len": 16
+   },
+   "scalars": {
+    "max_seq_len": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned row count"
+  },
+  {
+   "id": "r1000_m100",
+   "axes": {
+    "total_rows": 1000,
+    "max_seq_len": 100
+   },
+   "scalars": {
+    "max_seq_len": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch of short histories"
+  },
+  {
+   "id": "r64_m1",
+   "axes": {
+    "total_rows": 64,
+    "max_seq_len": 1
+   },
+   "scalars": {
+    "max_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "every group holds one row"
+  },
+  {
+   "id": "r5000_m129",
+   "axes": {
+    "total_rows": 5000,
+    "max_seq_len": 129
+   },
+   "scalars": {
+    "max_seq_len": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "longest group just past a tile of 128"
+  },
+  {
+   "id": "r32768_m1024",
+   "axes": {
+    "total_rows": 32768,
+    "max_seq_len": 1024
+   },
+   "scalars": {
+    "max_seq_len": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences, 32768 jagged rows, longest 1024"
+  },
+  {
+   "id": "r65536_m2048",
+   "axes": {
+    "total_rows": 65536,
+    "max_seq_len": 2048
+   },
+   "scalars": {
+    "max_seq_len": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences, 65536 jagged rows, longest 2048"
+  },
+  {
+   "id": "r131072_m4096",
+   "axes": {
+    "total_rows": 131072,
+    "max_seq_len": 4096
+   },
+   "scalars": {
+    "max_seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences, 131072 jagged rows, longest 4096"
+  },
+  {
+   "id": "r262144_m8192",
+   "axes": {
+    "total_rows": 262144,
+    "max_seq_len": 8192
+   },
+   "scalars": {
+    "max_seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences, 262144 jagged rows, longest 8192"
+  },
+  {
+   "id": "r524288_m16384",
+   "axes": {
+    "total_rows": 524288,
+    "max_seq_len": 16384
+   },
+   "scalars": {
+    "max_seq_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences, 524288 jagged rows, longest 16384"
+  },
+  {
+   "id": "r1048576_m32768",
+   "axes": {
+    "total_rows": 1048576,
+    "max_seq_len": 32768
+   },
+   "scalars": {
+    "max_seq_len": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences, 1048576 jagged rows, longest 32768"
+  },
+  {
+   "id": "r2097152_m65536",
+   "axes": {
+    "total_rows": 2097152,
+    "max_seq_len": 65536
+   },
+   "scalars": {
+    "max_seq_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64 sequences, 2097152 jagged rows, longest 65536"
+  }
+ ]
+}

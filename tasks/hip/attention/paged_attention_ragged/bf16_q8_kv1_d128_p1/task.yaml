@@ -1,0 +1,102 @@
+schema_version: 3
+description: >-
+  Single-token (decode) grouped-query attention over a token-granular paged KV pool addressed by
+  ragged (CSR) page lists, as SGLang's AITER backend calls it: out[s, h] = softmax(scale * q[s, h] .
+  K_s^T) . V_s, where the tokens of sequence s, in order, are the pool slots
+  kv_indices[kv_indptr[s] : kv_indptr[s + 1]] (one token per page) and K_s, V_s are
+  key_cache[slot, kv_head] and value_cache[slot, kv_head]. Each of the 8 query heads attends to the
+  single KV head (head size 128). Context lengths are ragged, between 1 and max_seq_len, and
+  max_context_len equals the longest. Slots that hold no token of any sequence (slot 0 included) are
+  NaN and must not affect the result; kv_indices entries past kv_indptr[num_seqs] are 0. Queries and
+  the cache are bfloat16 and the result is rounded to bfloat16.
+operator:
+  name: paged_attention_ragged
+  category: attention
+interface:
+  axes:
+    num_seqs: {kind: var, min: 1, max: 1024, description: Sequences decoded in the step (one query token each).}
+    max_seq_len: {kind: var, min: 1, max: 131072, description: Longest context in the batch.}
+    num_query_heads: {kind: const, value: 8, description: Query heads per tensor-parallel rank.}
+    num_kv_heads: {kind: const, value: 1, description: KV heads per tensor-parallel rank (group size 8).}
+    head_size: {kind: const, value: 128, description: Head dimension of queries and the KV cache.}
+  derived_axes:
+    num_slots: num_seqs * max_seq_len + 1
+  inputs:
+    query:
+      kind: tensor
+      shape: [num_seqs, num_query_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    key_cache:
+      kind: tensor
+      shape: [num_slots, num_kv_heads, head_size]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: Token pool of keys, one token per slot; slot 0 is the padding slot.
+    value_cache:
+      kind: tensor
+      shape: [num_slots, num_kv_heads, head_size]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: Token pool of values, one token per slot.
+    kv_indptr:
+      kind: tensor
+      shape: [num_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: CSR offsets into kv_indices; kv_indptr[s + 1] - kv_indptr[s] is the context length of sequence s.
+    kv_indices:
+      kind: tensor
+      shape: [num_slots - 1]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Pool slot of each token of each sequence, in token order; 0 past kv_indptr[num_seqs].
+    scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: 'Softmax scale, head_size ** -0.5.'}
+    max_context_len: {kind: scalar, dtype: int32, default: 131072, description: 'Longest context in the batch (every case sets it to max_seq_len); the partition grid covers ceil(max_context_len / 256) partitions.'}
+  outputs:
+    out: {shape: [num_seqs, num_query_heads, head_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - csrc/cpp_itfs/pa/pa_ragged.cuh
+      - csrc/cpp_itfs/pa/pa_kernels.cuh
+      - csrc/cpp_itfs/pa/pa_common.cuh
+      - csrc/cpp_itfs/pa/pa_ragged.cpp.jinja
+      - csrc/cpp_itfs/pa/pa_ragged.py
+      - csrc/include/aiter_hip_common.h
+      - csrc/include/dtype_fp8.cuh
+    license: MIT
+    modifications: >-
+      paged_attention_ll4mi_QKV_mfma16_kernel, paged_attention_ll4mi_reduce_kernel and the default
+      (GOLDEN) _paged_attention_kernel and _paged_attention_ll4mi_reduce_kernel are unchanged except
+      that the experimental kernel (selected only by QKV_VERSION=EXPERIMENTAL) and the reduce's FP8
+      output store are not vendored. The AITER and Composable Kernel headers are replaced by
+      pa_compat.h: the gfx9 WARP_SIZE, the Fp8KVCacheDataType enum and minimal ck_tile mask,
+      parameter and ComposedAttention types (scale applied in QueryTransform, no logits soft cap).
+      kernel.hip is the pa_ragged.cpp.jinja host code rendered for this scenario (gqa_ratio 8, head
+      size 128, block size 1, partition size 256, bfloat16 everywhere) with the stride and partition
+      handling of pa_ragged.py for SGLang's decode call (cache viewed as [-1, 1, kv_heads, head_size]
+      NHD), except that max_num_partitions = ceil(max_context_len / 256) comes from the batch's
+      longest context, as vLLM's ROCm decode path sizes it, instead of SGLang's model-length
+      constant; it takes ATen tensors, allocates the workspace per call, launches on the current HIP
+      stream and picks the reduce's npar_loops (1-8) at run time. The reduce's ENABLE_LAST_PAGE_LENS
+      template argument is the literal false that pa_ragged.cpp.jinja renders for block_size 1, not
+      a block_size comparison, because torch's extension builder hipifies the source and its
+      kernel-launch parser cannot read a comparison inside a launch's template arguments. The ck_tile types follow Composable
+      Kernel's fmha block_masking.hpp and variants.hpp (ROCm/composable_kernel, MIT). LICENSE.h holds
+      the AITER MIT license as a comment-only header.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

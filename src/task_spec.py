@@ -361,6 +361,15 @@ def _optional_fields(obj: dict) -> None:
     for field in ("evaluation_profile", "evaluation_tools"):
         if field in obj and not isinstance(obj[field], dict):
             raise TaskConfigError(f"{field} must be a mapping")
+    if "contract" in obj:
+        # Written only by task_contract when it resolves a schema-v3 package for
+        # one target language; a task author never declares it.
+        contract = _mapping(obj["contract"], "contract", {
+            "schema_version", "task_file", "target_language", "baseline_language", "operator"})
+        if contract.get("schema_version") != 3 or contract.get("task_file") != "task.yaml":
+            raise TaskConfigError("contract identifies a schema-v3 task.yaml")
+        if contract.get("target_language") != obj["candidate"]["language"]:
+            raise TaskConfigError("contract.target_language must equal candidate.language")
 
 
 @dataclass(frozen=True)
@@ -377,7 +386,7 @@ class TaskSpec:
         obj = _mapping(config, "task config", {
             "schema_version", "description", "instructions", "kernel_identity",
             "candidate", "baseline", "evaluation", "workspace", "platform_support",
-            "evaluation_profile", "evaluation_tools", "exports",
+            "evaluation_profile", "evaluation_tools", "exports", "contract",
         })
         if type(obj.get("schema_version")) is not int or obj["schema_version"] != 2:
             raise TaskConfigError("Expected schema_version: 2; migrate legacy configuration explicitly")
@@ -399,6 +408,15 @@ class TaskSpec:
                    for e in candidate.editable):
                 raise TaskConfigError(f"Editable declaration includes protected task input: {path}")
         return cls(task_id, candidate, baseline, actions, obj)
+
+    @property
+    def contract(self) -> dict | None:
+        """The schema-v3 resolution record, or None for a schema-v2 task."""
+        return deepcopy(self._config.get("contract"))
+
+    @property
+    def target_language(self) -> str | None:
+        return (self._config.get("contract") or {}).get("target_language")
 
     def action(self, role: str, action: str) -> ActionSpec:
         for spec in self.actions:
@@ -437,8 +455,22 @@ def _unique_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode) -> dict:
 _UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
 
 
-def load_task_spec(config_path: Path, *, task_id: str) -> TaskSpec:
-    """The caller supplies the stable discovery ID, never a scratch folder name."""
+def load_task_spec(config_path: Path, *, task_id: str, target_language: str | None = None) -> TaskSpec:
+    """The caller supplies the stable discovery ID, never a scratch folder name.
+
+    A schema-v3 ``task.yaml`` names no implementation language; it resolves to
+    an execution specification only for the run's ``target_language``. A
+    schema-v2 package (the e2e serving tasks) declares its own backend and
+    ignores the run's target language.
+    """
+    if Path(config_path).name == "task.yaml":
+        from .task_contract import execution_config
+
+        if target_language is None:
+            raise TaskConfigError("A schema-v3 task needs the run's target_language")
+        return TaskSpec.from_mapping(
+            execution_config(Path(config_path), task_id=task_id, target_language=target_language),
+            task_id=task_id)
     with Path(config_path).open(encoding="utf-8") as handle:
         try:
             config = yaml.load(handle, Loader=_UniqueKeyLoader)

@@ -1,0 +1,153 @@
+{
+ "description": "Row counts (tokens x top-8 experts) at d=512, the Kimi-K2.5 TP4 MoE local width; counts below about 9000 rows run under the 10 us timing floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "t32",
+   "axes": {
+    "n_tokens": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch 4 x top-8"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned"
+  },
+  {
+   "id": "t4097",
+   "axes": {
+    "n_tokens": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "just above the n_rows > 4096 dispatch threshold"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "dispatch threshold"
+  },
+  {
+   "id": "t16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill tokens x top-8 experts"
+  },
+  {
+   "id": "t32768",
+   "axes": {
+    "n_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill tokens x top-8 experts"
+  },
+  {
+   "id": "t65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill tokens x top-8 experts"
+  },
+  {
+   "id": "t131072",
+   "axes": {
+    "n_tokens": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill tokens x top-8 experts"
+  },
+  {
+   "id": "t262144",
+   "axes": {
+    "n_tokens": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large aggregate batch"
+  },
+  {
+   "id": "t524288",
+   "axes": {
+    "n_tokens": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large aggregate batch"
+  },
+  {
+   "id": "t1048576",
+   "axes": {
+    "n_tokens": 1048576
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large aggregate batch"
+  },
+  {
+   "id": "t2097152",
+   "axes": {
+    "n_tokens": 2097152
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large aggregate batch"
+  }
+ ]
+}

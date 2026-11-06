@@ -1,4 +1,5 @@
-# One Forge integration for all v2 tasks. These are agent search controls.
+# Forge search controls for schema-v3 kernel tasks. workflow: auto picks optimize,
+# initialize or rewrite from the candidate's starting state (see README.md).
 workflow: auto
 model: claude-opus-5
 agent_backend: claude
@@ -7,10 +8,10 @@ permission_mode: acceptEdits
 timeout_seconds: 87300
 session_timeout_seconds: 3600
 max_port_attempts: 3
-# HIP/Triton initialization uses Forge's own correctness-only implementer.
+# HIP/Triton/Gluon initialization uses Forge's own correctness-only implementer.
 # Reserve the remaining campaign budget for the ordinary optimization loop.
 initialization_max_attempts: 3
-# Applies to HIP/Triton initialization and the native FlyDSL PORT phase.
+# Applies to HIP/Triton/Gluon initialization and the native FlyDSL PORT phase.
 initialization_budget_fraction: 0.4
 # Empty follows agent_backend; no accidental provider/model mismatch.
 supervisor_backend: ""

@@ -1,0 +1,85 @@
+schema_version: 3
+description: >-
+  Vision attention block in float32 on a channel-major image x[batch, embed_dim=128, hw] (the H*W
+  positions flattened): every position is a token of 128 channels. qkv = token @ in_proj_weight^T +
+  in_proj_bias is split into q, k and v of 4 heads of 32 channels; each head computes
+  softmax(q k^T / sqrt(32)) v over all hw positions of its image (no mask); the heads, concatenated,
+  go through out_proj (attention @ out_proj_weight^T + out_proj_bias); the residual token is added and
+  the sum is layer-normalized over the 128 channels (biased variance, epsilon inside the square root)
+  with norm_weight and norm_bias. The result is written back channel-major as out[batch, embed_dim, hw].
+operator:
+  name: vision_attention_block
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 16, description: Images per call.}
+    hw: {kind: var, min: 49, max: 16384, description: Flattened spatial positions H*W of each image (tokens).}
+    embed_dim: {kind: const, value: 128, description: Channels per position (the attention embedding width).}
+    num_heads: {kind: const, value: 4, description: Attention heads of embed_dim / num_heads = 32 channels.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, embed_dim, hw]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    in_proj_weight:
+      kind: tensor
+      shape: [3 * embed_dim, embed_dim]
+      dtype: float32
+      role: weight
+      description: Rows 0-127 project q, 128-255 k and 256-383 v (nn.MultiheadAttention in_proj_weight).
+      distribution: {kind: normal, mean: 0.0, std: 0.125}
+    in_proj_bias:
+      kind: tensor
+      shape: [3 * embed_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    out_proj_weight:
+      kind: tensor
+      shape: [embed_dim, embed_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0884}
+    out_proj_bias:
+      kind: tensor
+      shape: [embed_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    norm_weight:
+      kind: tensor
+      shape: [embed_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    norm_bias:
+      kind: tensor
+      shape: [embed_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5, description: LayerNorm epsilon.}
+  outputs:
+    out: {shape: [batch, embed_dim, hw], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD-AGI/AgentKernelArena (KernelBench level 3, problem 31 VisionAttention)
+    revision: 561eb644df85cc1c3b4eaee9801e3f6a5dc812f5
+    path: tasks/torch2hip/kernelbench/level3/l3n31_VisionAttention/pytorch_code_module/py_l3n31_VisionAttention.py
+    license: task-original
+    modifications: >-
+      Hand-written Triton kernels for the operator that PyTorch module defines (nn.MultiheadAttention
+      with 4 heads over the image positions, then nn.LayerNorm of the residual sum); the old task had no
+      kernel baseline, only the PyTorch module. Three launches: the q/k/v input projection reading the
+      channel-major image, a non-causal float32 flash-attention kernel, and the output projection with
+      the bias, residual and LayerNorm fused into its epilogue, storing channel-major. IEEE float32
+      matrix products throughout. Parameters are explicit inputs; embed_dim fixed at 128 and 4 heads.
+compare:
+  out: {bound: sqnr, min_db: 125}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

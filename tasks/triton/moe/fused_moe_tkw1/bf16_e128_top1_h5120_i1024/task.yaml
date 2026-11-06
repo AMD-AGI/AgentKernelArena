@@ -1,0 +1,91 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of a Llama-4-style mixture-of-experts model (128 experts, top-1, bfloat16 weights) with the
+  router weight applied in the first stage (tkw1). For each token t with selected expert e = topk_ids[t, 0] and
+  routing weight r = topk_weights[t, 0]: h = hidden_states[t] @ w13[e].T, gate = r * h[:1024], up = r * h[1024:],
+  a = silu(gate) * up, out[t] = a @ w2[e].T, rounded to bfloat16. The routing weight scales both stage-1
+  projections before the activation and is not applied again after the down projection. The router decisions
+  (topk_ids, topk_weights) are given.
+operator:
+  name: fused_moe_tkw1
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    top_k: {kind: const, value: 1, description: Experts selected per token.}
+    num_experts: {kind: const, value: 128, description: Routed experts held by the rank.}
+    hidden_size: {kind: const, value: 5120, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 1024, description: Expert intermediate width per rank (8192 under tensor parallelism 8).}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w13:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size]
+      dtype: bfloat16
+      role: weight
+      description: Gate (rows 0..1023) and up (rows 1024..2047) projections of each expert.
+      distribution: {kind: generator}
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size]
+      dtype: bfloat16
+      role: weight
+      description: Down projection of each expert.
+      distribution: {kind: generator}
+    topk_weights:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: float32
+      description: Sigmoid router score of the selected expert.
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: int32
+      role: index
+      description: Selected expert of each token.
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_silu_fused.py
+      - aiter/ops/triton/moe/moe_op_silu_fused.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op.py
+      - aiter/ops/triton/moe/moe_op.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_align_block_size.py
+      - aiter/ops/triton/moe/moe_align_block_size.py
+      - aiter/ops/triton/utils/moe_config_utils.py
+      - aiter/ops/triton/configs/moe/gfx950-MOE-DEFAULT.json
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/moe_common.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+    license: MIT
+    modifications: >-
+      Triton rewrite of the production CK/assembly function aiter fused_moe with doweight_stage1=True (the
+      tkw1 MoE) by AITER's own Triton MoE kernels: moe_align_block_size_triton, then fused_moe_silu with
+      mul_routed_weight=True (gate/up GEMM, router weight, SiLU-and-mul) and fused_moe with
+      mul_routed_weight=False (down GEMM), wrapped in run() writing the down GEMM straight into the
+      preallocated output (top_k is 1, so there is no top-k sum). The device kernels are unchanged; the
+      launchers are reduced to their unquantized, non-persistent path (logger, persistent and GPTQ/AWQ
+      branches and the module setters removed); the gfx950 tuned table is inlined in get_optimal_moe_config;
+      get_num_xcds (8 on gfx950) is inlined. Buffer allocation follows AITER's Triton MoE tests.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

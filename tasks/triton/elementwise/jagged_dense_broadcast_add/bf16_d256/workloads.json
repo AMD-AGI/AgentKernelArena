@@ -1,0 +1,182 @@
+{
+  "description": "Jagged batches of 64 sequences at embedding width 256, from about 40 thousand to 4 million rows; max_seq_len is twice the mean sequence length.",
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "total_rows": 1
+      },
+      "scalars": {
+        "max_seq_len": 2
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum"
+    },
+    {
+      "id": "r3",
+      "axes": {
+        "total_rows": 3
+      },
+      "scalars": {
+        "max_seq_len": 2
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "fewer rows than sequences"
+    },
+    {
+      "id": "r100",
+      "axes": {
+        "total_rows": 100
+      },
+      "scalars": {
+        "max_seq_len": 4
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16"
+    },
+    {
+      "id": "r1000",
+      "axes": {
+        "total_rows": 1000
+      },
+      "scalars": {
+        "max_seq_len": 32
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned total"
+    },
+    {
+      "id": "r33333",
+      "axes": {
+        "total_rows": 33333
+      },
+      "scalars": {
+        "max_seq_len": 1042
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned total"
+    },
+    {
+      "id": "r40960",
+      "axes": {
+        "total_rows": 40960
+      },
+      "scalars": {
+        "max_seq_len": 1280
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "640 mean rows per sequence over 64 sequences"
+    },
+    {
+      "id": "r81920",
+      "axes": {
+        "total_rows": 81920
+      },
+      "scalars": {
+        "max_seq_len": 2560
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "1280 mean rows per sequence over 64 sequences"
+    },
+    {
+      "id": "r163840",
+      "axes": {
+        "total_rows": 163840
+      },
+      "scalars": {
+        "max_seq_len": 5120
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "2560 mean rows per sequence over 64 sequences"
+    },
+    {
+      "id": "r327680",
+      "axes": {
+        "total_rows": 327680
+      },
+      "scalars": {
+        "max_seq_len": 10240
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "5120 mean rows per sequence over 64 sequences"
+    },
+    {
+      "id": "r655360",
+      "axes": {
+        "total_rows": 655360
+      },
+      "scalars": {
+        "max_seq_len": 20480
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "10240 mean rows per sequence over 64 sequences"
+    },
+    {
+      "id": "r1310720",
+      "axes": {
+        "total_rows": 1310720
+      },
+      "scalars": {
+        "max_seq_len": 40960
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "20480 mean rows per sequence over 64 sequences"
+    },
+    {
+      "id": "r2621440",
+      "axes": {
+        "total_rows": 2621440
+      },
+      "scalars": {
+        "max_seq_len": 81920
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "40960 mean rows per sequence over 64 sequences"
+    },
+    {
+      "id": "r4194304",
+      "axes": {
+        "total_rows": 4194304
+      },
+      "scalars": {
+        "max_seq_len": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "65536 mean rows per sequence over 64 sequences"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+schema_version: 3
+description: >-
+  L2 normalization of every row over the last axis, without mean subtraction:
+  out = x / sqrt(sum(x^2) + epsilon), the sum taken over the 128 features in high precision and the
+  result rounded to bfloat16. Used on the query/key heads of gated delta net (GDN) linear attention.
+operator: {name: l2_norm, category: normalization}
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 16777216, description: Rows to normalize (tokens times heads).}
+    head_dim: {kind: const, value: 128, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [n_rows, head_dim], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/attention/fla/l2norm.py
+    license: MIT
+    modifications: >-
+      Only the l2norm_fwd_kernel path used for feature widths up to 512 is kept; the launcher is rewritten as
+      run() writing into the preallocated output. The kernel is unchanged. The file is adapted upstream from
+      flash-linear-attention (MIT), so the MIT license text is included.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -4,6 +4,40 @@ Reference: [Triton documentation](https://triton-lang.org/main/) | [Python API](
 
 ---
 
+## Candidate entry point (schema v3)
+
+Your whole solution is the directory `solution/`; it is the only editable tree. The task fixes the
+call, not the implementation. Entry: `solution/kernel.py::run`. Put `@triton.jit` kernels there (helper `.py` files in `solution/` form one flat package and import relatively: `from .helpers import ...`) and launch them from `run`.
+
+```python
+def run(*, <inputs>, <outputs>) -> None: ...
+```
+
+`_aka_eval/CANDIDATE.md` in the workspace states the exact signature, shapes and dtypes.
+A Triton target imports `triton` and `triton.language` only (not `triton.experimental`, `triton.tools`, `triton.testing` or `triton_kernels`) and may not launch Gluon kernels. The baseline's language does not matter.
+
+Candidate rules (enforced by the evaluator, not a sandbox):
+
+- `run` writes every output (and every mutable input) in place and returns `None`. Outputs are
+  preallocated and poisoned before each call; other inputs are read-only.
+- All computation runs in kernels you write in Triton. Host code may only allocate, take views and
+  make same-dtype copies, and launch. PyTorch arithmetic, reductions, dtype conversions and library
+  operators raise at run time; so do other kernel languages and production packages.
+- No `eval`/`exec`, reflection, module mutation, I/O, printing, synchronization, host round trips
+  (`.item()`, `.cpu()`), randomness, global PyTorch state, or imports of task, reference, baseline or
+  evaluator modules. Keep no state derived from inputs across calls.
+- Attribute names `synchronize`, `item`, `cpu`, `tolist`, `numpy`, `Stream`, `Event`, `graph` and
+  `CUDAGraph` are rejected anywhere in candidate code (`torch.cuda.current_stream()` is allowed), as
+  are the `@` operator, `torch.matmul`/`mm`/`bmm`/`einsum`, `torch.rand*`, `torch.tensor`, `torch.nn`
+  and `torch.ops`. Only `torch`, the language's own packages and a few standard modules
+  (`math`, `functools`, `itertools`, `typing`, `dataclasses`, ...) import; helpers import relatively.
+- Every call is timed as one CUDA-graph replay after a 1 GiB cache flush, so launches must be
+  capturable on the current stream. Keep first-use compilation and any tuning deterministic and
+  cached per shape.
+
+---
+
+
 ## 1. Block / Tile Size Selection and Autotuning
 
 Block sizes are the fundamental knob for Triton performance. Each program instance handles a tile of the input. Block sizes must be powers of 2 and should match the hardware's preferred access granularity.

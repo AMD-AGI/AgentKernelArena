@@ -32,8 +32,10 @@ repository.
       * :doc:`Configure agents and models <how-to/agents>`
       * :doc:`Task definition, schema, and authoring <how-to/add-task>`
       * :doc:`Optimize kernels through serving throughput <how-to/e2e-kernel-tasks>`
-      * :doc:`Validate tasks <how-to/task-validator>`
-      * :doc:`Audit and repair tasks <how-to/quality-loop>`
+      * :doc:`Audit tasks with the QA auditor <how-to/qa-auditor>`
+      * :doc:`Generate tasks from SIKL data <how-to/sikl-task-builder>`
+      * :doc:`Repair tasks automatically <how-to/quality-loop>`
+      * :doc:`Evaluate on held-out inputs <how-to/held-out-evaluation>`
 
    .. grid-item-card:: Examples
 

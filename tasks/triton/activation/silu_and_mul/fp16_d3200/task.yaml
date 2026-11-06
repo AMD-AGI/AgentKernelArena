@@ -1,0 +1,37 @@
+schema_version: 3
+description: >-
+  Gated activation of a fused gate/up projection, out = silu(x[:, :d]) * x[:, d:] with d = 3200,
+  where the SiLU is evaluated in float32 and the product is written as float16.
+operator:
+  name: silu_and_mul
+  category: activation
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 3200, description: Width d of each half of the input row.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, 2 * hidden_size]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/activation.py
+    license: MIT
+    modifications: >-
+      Kernel from aiter/ops/triton/_triton_kernels/activation.py and the tile-selection dispatch of
+      fused_silu_mul combined into one module wrapped in the run() interface; logging and shape
+      assertions removed. The kernel text is unchanged.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

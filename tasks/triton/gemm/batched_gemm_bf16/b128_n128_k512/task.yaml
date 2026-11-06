@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Batched bf16 GEMM out[b] = x[b] @ w[b]^T with x [batch, m, 512] and w [batch, 128, 512] for 128 batch
+  elements (attention heads), accumulated in float32 and rounded to bfloat16; no bias.
+operator: {name: batched_gemm_bf16, category: gemm}
+interface:
+  axes:
+    batch: {kind: const, value: 128, description: Independent GEMMs in the batch (attention heads).}
+    m: {kind: var, min: 1, max: 25600, description: Rows (tokens) of each activation matrix.}
+    n: {kind: const, value: 128, description: Output width per batch element.}
+    k: {kind: const, value: 512, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [batch, m, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    w:
+      kind: tensor
+      shape: [batch, n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.044}
+  outputs:
+    out: {shape: [batch, m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/batched/batched_gemm_bf16.py
+      - aiter/ops/triton/gemm/batched/batched_gemm_bf16.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/configs/gemm/gfx950-BATCHED_GEMM-A16W16.json
+    license: MIT
+    modifications: >-
+      Kernel unchanged; launcher reduced to the Triton backend, no bias and NUM_KSPLIT = 1 (the only value in the
+      gfx950 table), writing into the preallocated output; kernel_repr helper, the config table and the
+      config lookup / split-K parameter normalization inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

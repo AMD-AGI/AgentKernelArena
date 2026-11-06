@@ -1,0 +1,133 @@
+{
+  "description": "Speculative decode steps (a target token plus 3 draft tokens per request) over the Qwen vocabulary of 151936; fewer than about 10 requests run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "n_reqs": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum: a single request"
+    },
+    {
+      "id": "r3",
+      "axes": {
+        "n_reqs": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd small decode batch"
+    },
+    {
+      "id": "r17",
+      "axes": {
+        "n_reqs": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch"
+    },
+    {
+      "id": "r100",
+      "axes": {
+        "n_reqs": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch"
+    },
+    {
+      "id": "r10",
+      "axes": {
+        "n_reqs": 10
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 10 requests (40 rows)"
+    },
+    {
+      "id": "r20",
+      "axes": {
+        "n_reqs": 20
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 20 requests"
+    },
+    {
+      "id": "r40",
+      "axes": {
+        "n_reqs": 40
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 40 requests"
+    },
+    {
+      "id": "r80",
+      "axes": {
+        "n_reqs": 80
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 80 requests"
+    },
+    {
+      "id": "r160",
+      "axes": {
+        "n_reqs": 160
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 160 requests"
+    },
+    {
+      "id": "r320",
+      "axes": {
+        "n_reqs": 320
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 320 requests"
+    },
+    {
+      "id": "r640",
+      "axes": {
+        "n_reqs": 640
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 640 requests"
+    },
+    {
+      "id": "r1024",
+      "axes": {
+        "n_reqs": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode with 3 draft tokens, 1024 requests (4096 rows)"
+    }
+  ]
+}
