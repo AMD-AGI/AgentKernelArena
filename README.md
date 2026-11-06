@@ -181,6 +181,13 @@ See the [documentation index](docs/index.rst) for the full guide and [configurat
 | `docker/` | Runtime recipes and evaluator-side tool images |
 | `tests/` | Framework and task regression coverage |
 
+## Maintainers
+
+- **Lead maintainer:** Wenwen (Vincent) Ouyang ([@irvineoy](https://github.com/irvineoy))
+- **Maintainers:** Sina Rafati ([@sinarafati-amd](https://github.com/sinarafati-amd)), Sharareh Younesian ([@sharareh-y](https://github.com/sharareh-y))
+
+Review ownership is defined in [`.github/CODEOWNERS`](.github/CODEOWNERS). See the [contributor graph](https://github.com/AMD-AGI/AgentKernelArena/graphs/contributors) for everyone who has contributed code, tasks and documentation.
+
 ## Citation and license
 
 If you use AgentKernelArena in research, please cite:
@@ -199,5 +206,7 @@ If you use AgentKernelArena in research, please cite:
   url = {https://arxiv.org/abs/2605.16819}
 }
 ```
+
+GitHub's **Cite this repository** button reads [`CITATION.cff`](CITATION.cff), which lists this paper as the preferred citation.
 
 Report the repository revision, task selection, hardware and evaluation configuration with your results. AgentKernelArena is licensed under [Apache 2.0](LICENSE).

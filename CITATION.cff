@@ -1,0 +1,69 @@
+cff-version: 1.2.0
+message: >-
+  If you use AgentKernelArena in research, please cite the paper listed under
+  preferred-citation. Report the repository revision, task selection, hardware
+  and evaluation configuration with your results.
+title: AgentKernelArena
+type: software
+abstract: >-
+  An RL-ready environment for evaluating GPU kernel optimization agents with
+  isolated workspaces, gated compilation, correctness and performance checks,
+  centralized scoring and held-out generalization testing.
+authors:
+  - given-names: Wenwen
+    family-names: Ouyang
+    alias: Vincent Ouyang
+    affiliation: AMD
+  - given-names: Sina
+    family-names: Rafati
+    affiliation: AMD
+  - given-names: Sharareh
+    family-names: Younesian
+    affiliation: AMD
+  - name: AgentKernelArena contributors
+repository-code: https://github.com/AMD-AGI/AgentKernelArena
+license: Apache-2.0
+keywords:
+  - GPU kernels
+  - AI coding agents
+  - benchmark
+  - reinforcement learning
+  - ROCm
+preferred-citation:
+  type: article
+  title: >-
+    AgentKernelArena: Generalization-Aware Benchmarking of GPU Kernel
+    Optimization Agents
+  authors:
+    - given-names: Sharareh
+      family-names: Younesian
+    - given-names: Wenwen
+      family-names: Ouyang
+    - given-names: Sina
+      family-names: Rafati
+    - given-names: Mehdi
+      family-names: Rezagholizadeh
+    - given-names: Sharon
+      family-names: Zhou
+    - given-names: Ji
+      family-names: Liu
+    - given-names: Yue
+      family-names: Liu
+    - given-names: Yuchen
+      family-names: Yang
+    - given-names: Hao
+      family-names: Li
+    - given-names: Ziqiong
+      family-names: Liu
+    - given-names: Dong
+      family-names: Li
+    - given-names: Vikram
+      family-names: Appia
+    - given-names: Zhenyu
+      family-names: Gu
+    - given-names: Emad
+      family-names: Barsoum
+  journal: arXiv preprint arXiv:2605.16819
+  year: 2026
+  doi: 10.48550/arXiv.2605.16819
+  url: https://arxiv.org/abs/2605.16819
