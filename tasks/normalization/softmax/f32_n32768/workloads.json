@@ -1,0 +1,133 @@
+{
+  "description": "Row counts at 32768 columns; the KernelBench softmax suite uses 2048 and 4096 rows at this width. Single rows and small odd batches are correctness-only.",
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "n_rows": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single row"
+    },
+    {
+      "id": "r3",
+      "axes": {
+        "n_rows": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd small batch"
+    },
+    {
+      "id": "r37",
+      "axes": {
+        "n_rows": 37
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch"
+    },
+    {
+      "id": "r128",
+      "axes": {
+        "n_rows": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    },
+    {
+      "id": "r256",
+      "axes": {
+        "n_rows": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    },
+    {
+      "id": "r512",
+      "axes": {
+        "n_rows": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    },
+    {
+      "id": "r1000",
+      "axes": {
+        "n_rows": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch"
+    },
+    {
+      "id": "r1024",
+      "axes": {
+        "n_rows": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    },
+    {
+      "id": "r2048",
+      "axes": {
+        "n_rows": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    },
+    {
+      "id": "r4096",
+      "axes": {
+        "n_rows": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    },
+    {
+      "id": "r8192",
+      "axes": {
+        "n_rows": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    },
+    {
+      "id": "r16384",
+      "axes": {
+        "n_rows": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched rows"
+    }
+  ]
+}

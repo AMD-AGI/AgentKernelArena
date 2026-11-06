@@ -1,0 +1,19 @@
+{
+  "description": "Batch sizes of KernelBench level 2 problem 37 (Matmul_Swish_Sum_GroupNorm) at in_features 1024, out_features 4096, 64 groups. The original sweep was 4096 to 65536 rows; it is extended down to 256 so that the performance cases span 256x. Batches 1, 3, 100, 128 and 1000 are correctness-only boundary and partial-tile shapes.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness"], "source": "KernelBench level 2 problem 37 module, a single row"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "KernelBench level 2 problem 37 module, odd batch"},
+    {"id": "b100", "axes": {"batch": 100}, "checks": ["correctness"], "source": "KernelBench level 2 problem 37 module, batch not a multiple of 16"},
+    {"id": "b128", "axes": {"batch": 128}, "checks": ["correctness"], "source": "KernelBench level 2 problem 37 module, batch 128 (below the performance range)"},
+    {"id": "b1000", "axes": {"batch": 1000}, "checks": ["correctness"], "source": "KernelBench level 2 problem 37 module, partial last row tile"},
+    {"id": "b256", "axes": {"batch": 256}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 module, batch 256 (sweep extension)"},
+    {"id": "b512", "axes": {"batch": 512}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 module, batch 512 (sweep extension)"},
+    {"id": "b1024", "axes": {"batch": 1024}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 module, batch 1024 (sweep extension)"},
+    {"id": "b2048", "axes": {"batch": 2048}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 module, batch 2048 (sweep extension)"},
+    {"id": "b4096", "axes": {"batch": 4096}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 get_inputs, case_0"},
+    {"id": "b8192", "axes": {"batch": 8192}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 get_inputs, case_1"},
+    {"id": "b16384", "axes": {"batch": 16384}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 get_inputs, case_2"},
+    {"id": "b32768", "axes": {"batch": 32768}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 get_inputs, case_3 (the module's batch_size)"},
+    {"id": "b65536", "axes": {"batch": 65536}, "checks": ["correctness", "performance"], "source": "KernelBench level 2 problem 37 get_inputs, case_4"}
+  ]
+}

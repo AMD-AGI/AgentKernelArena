@@ -1,0 +1,327 @@
+{
+ "description": "Batch prefill and extend for Grok-2 attention at TP8 (8 query heads, 1 KV head, head 128, soft cap 30) on a 16-token paged cache: fresh prompts from 1k to the 128k maximum context, batches filling 8k-16k-token prefill budgets, a chunked-prefill continuation and prefix-cache hits (new tokens on a cached prefix, kv_len > qo_len). Query and prefix lengths within a batch are deterministic pair offsets around qo_len and kv_len - qo_len (inputs.py). Short prompts, short extends and small batches finish below the 10 us timing floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "c_b1_q1_kv1",
+   "axes": {
+    "batch": 1,
+    "qo_len": 1,
+    "kv_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: a one-token prompt"
+  },
+  {
+   "id": "c_b1_q16_kv16",
+   "axes": {
+    "batch": 1,
+    "qo_len": 16,
+    "kv_len": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "exactly one full page"
+  },
+  {
+   "id": "c_b3_q77_kv77",
+   "axes": {
+    "batch": 3,
+    "qo_len": 77,
+    "kv_len": 77
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned lengths, odd batch, partial last pages"
+  },
+  {
+   "id": "c_b2_q64_kv64",
+   "axes": {
+    "batch": 2,
+    "qo_len": 64,
+    "kv_len": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AITER test_batch_prefill / retired task correctness case (batch 2, 64 tokens)"
+  },
+  {
+   "id": "c_b1_q48_kv80",
+   "axes": {
+    "batch": 1,
+    "qo_len": 48,
+    "kv_len": 80
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "retired task correctness case: 48 new tokens on a 32-token cached prefix"
+  },
+  {
+   "id": "c_b5_q300_kv300",
+   "axes": {
+    "batch": 5,
+    "qo_len": 300,
+    "kv_len": 300
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned short prompts, odd batch"
+  },
+  {
+   "id": "c_b3_q77_kv1100",
+   "axes": {
+    "batch": 3,
+    "qo_len": 77,
+    "kv_len": 1100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, unaligned new tokens on ragged ~1k-token cached prefixes"
+  },
+  {
+   "id": "c_b6_q1_kv333",
+   "axes": {
+    "batch": 6,
+    "qo_len": 1,
+    "kv_len": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one new token per sequence on ragged cached prefixes (prefix-cache hit on all but the last prompt token)"
+  },
+  {
+   "id": "c_b2_q16_kv4096",
+   "axes": {
+    "batch": 2,
+    "qo_len": 16,
+    "kv_len": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one page of new tokens per sequence on ~4k-token cached prefixes"
+  },
+  {
+   "id": "c_b2_q1000_kv1000",
+   "axes": {
+    "batch": 2,
+    "qo_len": 1000,
+    "kv_len": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned 1k-token prompts"
+  },
+  {
+   "id": "c_b7_q1023_kv1024",
+   "axes": {
+    "batch": 7,
+    "qo_len": 1023,
+    "kv_len": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AITER test_batch_prefill shape (batch 7, qo_len 1023, kv_len 1024): one cached token"
+  },
+  {
+   "id": "c_b64_q100_kv100",
+   "axes": {
+    "batch": 64,
+    "qo_len": 100,
+    "kv_len": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "maximum batch of short prompts"
+  },
+  {
+   "id": "c_b64_q37_kv1061",
+   "axes": {
+    "batch": 64,
+    "qo_len": 37,
+    "kv_len": 1061
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "maximum batch of short extends on ~1k-token cached prefixes"
+  },
+  {
+   "id": "c_b16_q256_kv256",
+   "axes": {
+    "batch": 16,
+    "qo_len": 256,
+    "kv_len": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch of short prompts, below the 10 us timing floor"
+  },
+  {
+   "id": "c_b4_q512_kv512",
+   "axes": {
+    "batch": 4,
+    "qo_len": 512,
+    "kv_len": 512
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "retired task performance case (batch 4, 512 tokens), below the 10 us timing floor"
+  },
+  {
+   "id": "c_b7_q2047_kv2047",
+   "axes": {
+    "batch": 7,
+    "qo_len": 2047,
+    "kv_len": 2047
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, prompts one short of a power of two"
+  },
+  {
+   "id": "p_b1_q1024_kv1024",
+   "axes": {
+    "batch": 1,
+    "qo_len": 1024,
+    "kv_len": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 1k-token prompt"
+  },
+  {
+   "id": "p_b2_q2048_kv2048",
+   "axes": {
+    "batch": 2,
+    "qo_len": 2048,
+    "kv_len": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "retired task performance case (batch 2, 2048 tokens)"
+  },
+  {
+   "id": "p_b8_q1024_kv1024",
+   "axes": {
+    "batch": 8,
+    "qo_len": 1024,
+    "kv_len": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 1k-token prompts, 8k-token prefill batch"
+  },
+  {
+   "id": "p_b4_q512_kv4096",
+   "axes": {
+    "batch": 4,
+    "qo_len": 512,
+    "kv_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefix-cache hits: 512-token follow-up turns on ~3.5k-token cached conversations"
+  },
+  {
+   "id": "p_b1_q8192_kv8192",
+   "axes": {
+    "batch": 1,
+    "qo_len": 8192,
+    "kv_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 8k-token prompt"
+  },
+  {
+   "id": "p_b4_q4096_kv4096",
+   "axes": {
+    "batch": 4,
+    "qo_len": 4096,
+    "kv_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 4k prompts filling a 16k-token chunked-prefill budget"
+  },
+  {
+   "id": "p_b2_q8192_kv8192",
+   "axes": {
+    "batch": 2,
+    "qo_len": 8192,
+    "kv_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "two 8k prompts filling a 16k-token chunked-prefill budget"
+  },
+  {
+   "id": "p_b1_q8192_kv32768",
+   "axes": {
+    "batch": 1,
+    "qo_len": 8192,
+    "kv_len": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "chunked prefill: the fourth 8k-token chunk of a long prompt (24k tokens cached)"
+  },
+  {
+   "id": "p_b1_q32768_kv32768",
+   "axes": {
+    "batch": 1,
+    "qo_len": 32768,
+    "kv_len": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "long-context 32k prompt, unchunked prefill"
+  },
+  {
+   "id": "p_b1_q131072_kv131072",
+   "axes": {
+    "batch": 1,
+    "qo_len": 131072,
+    "kv_len": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "Grok-2 maximum context (128k), unchunked prefill"
+  }
+ ]
+}

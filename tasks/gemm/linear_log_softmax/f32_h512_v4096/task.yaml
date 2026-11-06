@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Masked-language-model head of BERT in float32: out = log_softmax(x @ weight^T + bias) over the vocabulary
+  axis, with 512 hidden units and a 4096-entry vocabulary (nn.Linear followed by nn.LogSoftmax(dim=-1)).
+operator:
+  name: linear_log_softmax
+  category: gemm
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 65536, description: Token rows (batch x sequence positions) scored by the head.}
+    hidden_size: {kind: const, value: 512, description: Hidden size of the encoder output.}
+    vocab_size: {kind: const, value: 4096, description: Vocabulary size (classes of the log_softmax).}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [vocab_size, hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.04419417, high: 0.04419417}
+    bias:
+      kind: tensor
+      shape: [vocab_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.04419417, high: 0.04419417}
+  outputs:
+    out: {shape: [n_tokens, vocab_size], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task MaskedLanguageModel (gpumode 8325)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/MaskedLanguageModel/hip/hip_8325_MaskedLanguageModel_ref.hip
+    license: task-original
+    modifications: >-
+      Float32-only (the double path and the type dispatch removed); the 4D input view, the host-side
+      contiguous copy, output allocation and pybind module removed; the kernel writes the preallocated output;
+      registered as the run() torch op.
+compare:
+  out: {bound: baseline_relative, k: 6, max_violation_fraction: 1.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

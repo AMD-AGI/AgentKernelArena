@@ -1,0 +1,14 @@
+{
+  "description": "Row counts of a 4096-class cross entropy (the original task's 32768 x 4096 case and its neighbours). Counts below 2048 rows are under the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness"], "source": "single sample"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "odd batch"},
+    {"id": "b100", "axes": {"batch": 100}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "b1000", "axes": {"batch": 1000}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "b2048", "axes": {"batch": 2048}, "checks": ["correctness", "performance"], "source": "small training batch of tokens"},
+    {"id": "b8192", "axes": {"batch": 8192}, "checks": ["correctness", "performance"], "source": "original task batch (8192 x 1024 case scaled to 4096 classes)"},
+    {"id": "b32768", "axes": {"batch": 32768}, "checks": ["correctness", "performance"], "source": "original task case 32768 x 4096"},
+    {"id": "b131072", "axes": {"batch": 131072}, "checks": ["correctness", "performance"], "source": "large token batch"},
+    {"id": "b204800", "axes": {"batch": 204800}, "checks": ["correctness", "performance"], "source": "large token batch"}
+  ]
+}

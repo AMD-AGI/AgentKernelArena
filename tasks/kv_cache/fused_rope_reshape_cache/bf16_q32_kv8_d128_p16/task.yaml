@@ -1,0 +1,102 @@
+schema_version: 3
+description: >-
+  Fused rotary embedding and paged KV-cache write (flash layout). For each token, NeoX-style
+  (rotate-half) RoPE is applied to every query head and key head with cos/sin rows gathered by
+  position (the table holds the first half of the angles, shared by both halves of the head);
+  q_out and k_out receive the rotated values, the rotated key and the unrotated value are written
+  to cache slot slot_mapping[t] (block slot // block_size, offset slot % block_size). A negative
+  slot means padding and writes nothing. Other cache slots keep their value.
+operator:
+  name: fused_rope_reshape_cache
+  category: kv_cache
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 32}
+    num_kv_heads: {kind: const, value: 8}
+    head_dim: {kind: const, value: 128}
+    block_size: {kind: const, value: 16, description: Tokens per cache block.}
+    max_position: {kind: const, value: 131072, description: Rows of the cos/sin tables.}
+    num_slots: {kind: const, value: 262144, description: Token slots in the paged cache.}
+  derived_axes:
+    num_blocks: num_slots // block_size
+    half_dim: head_dim // 2
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, num_q_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: randint, low: 0, high: 131072}
+    cos_cache:
+      kind: tensor
+      shape: [max_position, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin_cache:
+      kind: tensor
+      shape: [max_position, half_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    slot_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    key_cache:
+      kind: tensor
+      shape: [num_blocks, block_size, num_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+    value_cache:
+      kind: tensor
+      shape: [num_blocks, block_size, num_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+  outputs:
+    q_out: {shape: [n_tokens, num_q_heads, head_dim], dtype: bfloat16}
+    k_out: {shape: [n_tokens, num_kv_heads, head_dim], dtype: bfloat16}
+  mutable: [key_cache, value_cache]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/fused_rope_cache_kernel.py
+    license: Apache-2.0
+    modifications: >-
+      Restricted to the bfloat16, NeoX, flash-layout, unscaled configuration (fp8 and non-flash paths
+      and the KScale/VScale arguments removed); position and slot indices are read with the layout
+      API (int32 data viewed as float32 and bitcast) instead of raw buffer intrinsics; the builder
+      is wrapped in run() with a per-shape lru_cache.
+compare:
+  q_out: {bound: baseline_relative}
+  k_out: {bound: baseline_relative}
+  key_cache: {bound: baseline_relative}
+  value_cache: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

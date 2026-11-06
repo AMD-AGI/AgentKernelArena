@@ -1,0 +1,14 @@
+{
+  "description": "Token counts of SmoothQuant INT8 activation quantization at hidden size 5120; batches below about 2048 tokens may run under the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t48", "axes": {"n_tokens": 48}, "checks": ["correctness"], "source": "decode, batch 48"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t2048", "axes": {"n_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t8192", "axes": {"n_tokens": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t32768", "axes": {"n_tokens": 32768}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t131072", "axes": {"n_tokens": 131072}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t204800", "axes": {"n_tokens": 204800}, "checks": ["correctness", "performance"], "source": "batched prefill"}
+  ]
+}

@@ -1,0 +1,122 @@
+{
+ "description": "Token counts merged per call (chunked prefill with prefix caching, cascade attention); 32 heads, head size 128. Small batches fall under the 10 us floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "n1",
+   "axes": {
+    "num_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, one token"
+  },
+  {
+   "id": "n7",
+   "axes": {
+    "num_tokens": 7
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "n100",
+   "axes": {
+    "num_tokens": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned small batch"
+  },
+  {
+   "id": "n777",
+   "axes": {
+    "num_tokens": 777
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned chunk (below the timing floor)"
+  },
+  {
+   "id": "n1536",
+   "axes": {
+    "num_tokens": 1536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small prefill chunk"
+  },
+  {
+   "id": "n4096",
+   "axes": {
+    "num_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "n16384",
+   "axes": {
+    "num_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "n32768",
+   "axes": {
+    "num_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large prefill chunk"
+  },
+  {
+   "id": "n65536",
+   "axes": {
+    "num_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batched prefill"
+  },
+  {
+   "id": "n131072",
+   "axes": {
+    "num_tokens": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "offline batched prefill"
+  },
+  {
+   "id": "n196608",
+   "axes": {
+    "num_tokens": 196608
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "offline batched prefill"
+  }
+ ]
+}

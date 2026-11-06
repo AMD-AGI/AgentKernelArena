@@ -1,0 +1,65 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of a mixture-of-experts model with bfloat16 weights. For each token t and selected expert
+  e = topk_ids[t, k]: h = hidden_states[t] @ w13[e].T (gate = first half, up = second half of the 1024 outputs),
+  a = silu(gate) * up, y = (a @ w2[e].T) * topk_weights[t, k]; out[t] = sum over k of y, rounded to bfloat16. The
+  router decisions (topk_ids, topk_weights) are given.
+operator:
+  name: fused_moe
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    top_k: {kind: const, value: 8, description: Experts selected per token.}
+    num_experts: {kind: const, value: 256, description: Experts of the layer.}
+    hidden_size: {kind: const, value: 2048, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 512, description: Expert intermediate width.}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w13:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0221}
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0442}
+    topk_weights:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: float32, role: weight, distribution: {kind: generator}}
+    topk_ids:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/moe/fused_moe_triton_kernels.py
+    license: Apache-2.0
+    modifications: >-
+      The bfloat16 path of fused_moe_kernel (quantization, bias, tensor-descriptor, swap-AB, expert-filter, LoRA,
+      all-reduce, SwiGLU-fusion and PDL branches removed), invoke_fused_moe_kernel without those options,
+      act_and_mul_kernel reduced to SiLU, _moe_sum_reduce_kernel without PDL, the unquantized branch of
+      get_default_config (python/sglang/srt/layers/moe/moe_runner/triton_utils/fused_moe_triton_config.py) and the
+      sequence of the Triton fused-MoE runner wrapped in run() writing into the preallocated output.
+      moe_align_block_size is a JIT-compiled CUDA kernel in SGLang; it is replaced by a Triton kernel written for this
+      task (align_kernels.py) with the same contract.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

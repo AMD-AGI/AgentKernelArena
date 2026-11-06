@@ -1,0 +1,94 @@
+schema_version: 3
+description: >-
+  Manifold-constrained hyper-connection (mHC) layer boundary with 4 residual streams: the post
+  block of one layer, residual_cur[j] = sum_i comb_res_mix[i, j] * residual[i] + post_layer_mix[j] * x,
+  rounded to bfloat16, followed by the next layer's pre block on that residual (RMS-scaled
+  projection by fn, sigmoid pre and post mixes, a softmax and Sinkhorn-normalised comb_mix, and
+  layer_input = sum_j pre_mix[j] * residual_cur[j]). No output RMSNorm.
+operator:
+  name: mhc_fused_post_pre
+  category: other
+interface:
+  axes:
+    tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    hc_mult: {kind: const, value: 4, description: Residual streams.}
+    hidden_size: {kind: const, value: 7168, description: Hidden size of each stream.}
+  derived_axes:
+    hc_hidden: hc_mult * hidden_size
+    mix_dim: hc_mult * (hc_mult + 2)
+  inputs:
+    x:
+      kind: tensor
+      shape: [tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    residual:
+      kind: tensor
+      shape: [tokens, hc_mult, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    post_layer_mix:
+      kind: tensor
+      shape: [tokens, hc_mult, 1]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 2.0}
+    comb_res_mix:
+      kind: tensor
+      shape: [tokens, hc_mult, hc_mult]
+      dtype: float32
+      distribution: {kind: generator}
+    fn:
+      kind: tensor
+      shape: [mix_dim, hc_hidden]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.001}
+    hc_scale:
+      kind: tensor
+      shape: [3]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    hc_base:
+      kind: tensor
+      shape: [mix_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    rms_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+    hc_pre_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+    hc_sinkhorn_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+    hc_post_mult_value: {kind: scalar, dtype: float32, default: 2.0}
+    sinkhorn_repeat: {kind: scalar, dtype: int32, default: 20}
+  outputs:
+    residual_cur: {shape: [tokens, hc_mult, hidden_size], dtype: bfloat16}
+    post_mix_cur: {shape: [tokens, hc_mult, 1], dtype: float32}
+    comb_mix_cur: {shape: [tokens, hc_mult, hc_mult], dtype: float32}
+    layer_input_cur: {shape: [tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: tilelang
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/kernels/mhc/tilelang.py and vllm/model_executor/kernels/mhc/tilelang_kernels.py
+    license: Apache-2.0
+    modifications: >-
+      mhc_fused_post_pre_tilelang specialised to a ROCm GPU without DeepGEMM and without fused
+      output RMSNorm (n_splits=1, tile_n=1 defaults, the TileLang prenorm-GEMM dispatch kept);
+      kernels copied unchanged except the CUDA-only PDL hooks are disabled, the platform
+      imports are removed, and the block-wide dot-product reductions of the three projection
+      kernels go through shared memory (a two-stage sum over per-thread partials) instead of
+      warp_reduce_sum with 32-lane warps, which gives wrong sums on 64-lane AMD wavefronts; the
+      wrapper writes the preallocated outputs, and the small-batch call passes split_k where
+      upstream passes n_splits.
+compare:
+  residual_cur: {bound: baseline_relative}
+  post_mix_cur: {bound: baseline_relative, k: 8, max_violation_fraction: 0.001}
+  comb_mix_cur: {bound: baseline_relative, k: 8, max_violation_fraction: 0.001}
+  layer_input_cur: {bound: baseline_relative, max_violation_fraction: 1.0e-5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

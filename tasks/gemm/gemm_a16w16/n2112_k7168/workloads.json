@@ -1,0 +1,18 @@
+{
+  "description": "Token counts M of a bf16 GEMM with N=2112, K=7168; decode-sized batches run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "m3", "axes": {"m": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "m16", "axes": {"m": 16}, "checks": ["correctness"], "source": "decode, batch 16"},
+    {"id": "m33", "axes": {"m": 33}, "checks": ["correctness"], "source": "unaligned small batch"},
+    {"id": "m64", "axes": {"m": 64}, "checks": ["correctness"], "source": "decode, batch 64"},
+    {"id": "m100", "axes": {"m": 100}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness", "performance"], "source": "decode, batch 128"},
+    {"id": "m512", "axes": {"m": 512}, "checks": ["correctness", "performance"], "source": "decode, large batch"},
+    {"id": "m1000", "axes": {"m": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "m1024", "axes": {"m": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m4096", "axes": {"m": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m16384", "axes": {"m": 16384}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "m32768", "axes": {"m": 32768}, "checks": ["correctness", "performance"], "source": "batched prefill"}
+  ]
+}

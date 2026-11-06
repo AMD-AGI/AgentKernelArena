@@ -1,0 +1,63 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of a mixture-of-experts model with bfloat16 weights. For each token t and selected expert
+  e = topk_ids[t, k]: h = hidden_states[t] @ w13[e].T (gate = first half, up = second half of the 704 outputs),
+  a = gelu_tanh(gate) * up with the tanh approximation of GELU, y = (a @ w2[e].T) * topk_weights[t, k];
+  out[t] = sum over k of y, rounded to bfloat16. The router decisions (topk_ids, topk_weights) are given.
+operator:
+  name: fused_moe
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    top_k: {kind: const, value: 8, description: Experts selected per token.}
+    num_experts: {kind: const, value: 128, description: Experts held by the rank.}
+    hidden_size: {kind: const, value: 2816, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 352, description: Expert intermediate width per rank (after tensor parallelism 2).}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w13:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0188}
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0533}
+    topk_weights:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: float32, role: weight, distribution: {kind: generator}}
+    topk_ids:
+      {kind: tensor, shape: [num_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/fused_moe/fused_moe.py
+    license: Apache-2.0
+    modifications: >-
+      The bfloat16 path of fused_moe_kernel (quantization, bias, tensor-descriptor, swap-AB and naive-assignment
+      branches removed), invoke_fused_moe_triton_kernel without those options, the bfloat16 branch of
+      get_default_config, and the sequence of fused_experts_impl wrapped in run() writing into the preallocated
+      output. moe_align_block_size, gelu_tanh_and_mul and moe_sum are CUDA ops in vLLM; they are replaced by Triton
+      kernels written for this task (align_kernels.py, moe_ops.py) with the same contracts.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

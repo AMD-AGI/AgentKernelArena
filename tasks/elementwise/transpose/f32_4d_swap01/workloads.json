@@ -1,0 +1,143 @@
+{
+  "description": "Sequence/batch transposes of a [seq, 4, 32, 128] fp32 activation; shorter sequences run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "s1",
+      "axes": {
+        "seq": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum"
+    },
+    {
+      "id": "s3",
+      "axes": {
+        "seq": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd sequence length"
+    },
+    {
+      "id": "s17",
+      "axes": {
+        "seq": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "just above 16"
+    },
+    {
+      "id": "s100",
+      "axes": {
+        "seq": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16"
+    },
+    {
+      "id": "s1000",
+      "axes": {
+        "seq": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned sequence length"
+    },
+    {
+      "id": "s256",
+      "axes": {
+        "seq": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[256, 4, 32, 128] activation swap of sequence and batch"
+    },
+    {
+      "id": "s512",
+      "axes": {
+        "seq": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[512, 4, 32, 128] activation swap of sequence and batch"
+    },
+    {
+      "id": "s1024",
+      "axes": {
+        "seq": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[1024, 4, 32, 128] activation swap of sequence and batch"
+    },
+    {
+      "id": "s2048",
+      "axes": {
+        "seq": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[2048, 4, 32, 128] activation swap of sequence and batch"
+    },
+    {
+      "id": "s4096",
+      "axes": {
+        "seq": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[4096, 4, 32, 128] activation swap of sequence and batch"
+    },
+    {
+      "id": "s8192",
+      "axes": {
+        "seq": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[8192, 4, 32, 128] activation swap of sequence and batch"
+    },
+    {
+      "id": "s16384",
+      "axes": {
+        "seq": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[16384, 4, 32, 128] activation swap of sequence and batch"
+    },
+    {
+      "id": "s32768",
+      "axes": {
+        "seq": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "[32768, 4, 32, 128] activation swap of sequence and batch"
+    }
+  ]
+}

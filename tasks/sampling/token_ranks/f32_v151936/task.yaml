@@ -1,0 +1,48 @@
+schema_version: 3
+description: >-
+  Rank of the sampled token in its logits row: token_ranks[i] = the number of vocabulary entries of
+  row i whose logit is greater than or equal to the logit of sampled_token_ids[i] (the token itself
+  included, so the best token has rank 1 and ties share the worst rank of the tie group), as int64.
+operator:
+  name: token_ranks
+  category: sampling
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 4096, description: Logits rows of the step (sampled tokens or prompt-logprob chunk rows).}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen2/Qwen3 family).}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_rows, vocab_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Logits of each row.
+    sampled_token_ids:
+      kind: tensor
+      shape: [n_rows]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Sampled token id of each row.
+  outputs:
+    token_ranks: {shape: [n_rows], dtype: int64}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/logprob.py
+    license: Apache-2.0
+    modifications: >-
+      Only _ranks_kernel and its launch from compute_topk_scores were taken from the file, as the
+      function compute_ranks writing into a preallocated output; imports of the vLLM triton shim were
+      replaced by triton directly and a run() entry was added. The kernel is unchanged.
+compare:
+  token_ranks: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

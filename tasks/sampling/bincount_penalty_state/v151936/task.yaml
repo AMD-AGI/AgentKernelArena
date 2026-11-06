@@ -1,0 +1,72 @@
+schema_version: 3
+description: >-
+  Builds the penalty state of a batch of requests whose history sits in the request slots listed by
+  idx_mapping (a permutation of the slots). For every request slot s, row s of prompt_bin_mask is the
+  bitmask of the distinct prompt tokens all_token_ids[s, :prompt_len[s]] (token t sets bit t % 32 of
+  word t // 32, bit 31 being the int32 sign bit) and row s of output_bin_counts is the histogram over
+  the vocabulary of the output tokens all_token_ids[s, prompt_len[s]:prefill_len[s]]. Both outputs
+  are written completely, including the zero entries.
+operator:
+  name: bincount_penalty_state
+  category: sampling
+interface:
+  axes:
+    n_reqs: {kind: var, min: 1, max: 1024, description: Requests of the batch (one state slot each).}
+    max_prefill_len: {kind: var, min: 1, max: 32768, description: Columns of all_token_ids (the longest prefill).}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen).}
+  derived_axes:
+    mask_words: ceil_div(vocab_size, 32)
+  inputs:
+    idx_mapping:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: index
+      distribution: {kind: permutation}
+      description: State slot of each request (every slot appears once).
+    all_token_ids:
+      kind: tensor
+      shape: [n_reqs, max_prefill_len]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Token history of every slot (prompt, then output tokens).
+    prompt_len:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prompt length of every slot.
+    prefill_len:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Tokens to replay of every slot (prompt plus resumed output tokens).
+  outputs:
+    prompt_bin_mask: {shape: [n_reqs, mask_words], dtype: int32}
+    output_bin_counts: {shape: [n_reqs, vocab_size], dtype: int32}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/penalties.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface. vLLM zeroes the mapped rows with two advanced-index
+      assignments before the kernel launch and passes max_prefill_len from the host; here the zeroing
+      is a small Triton kernel, since run() may not use PyTorch compute, and the launch bound is the
+      column count of all_token_ids. The bincount kernel itself is unchanged.
+compare:
+  prompt_bin_mask: {bound: exact}
+  output_bin_counts: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

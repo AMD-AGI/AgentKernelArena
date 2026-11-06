@@ -1,0 +1,92 @@
+schema_version: 3
+description: >-
+  Single-token (decode) grouped-query attention over vLLM's paged KV cache (ROCm layout),
+  out[s, h] = softmax(scale * q[s, h] . K_s^T) . V_s, where K_s and V_s are the first seq_lens[s]
+  tokens of sequence s and token t lives in page block_table[s, t // 16] at slot t % 16. Each KV
+  head serves 4 of the 32 query heads (head size 128). Keys are stored as
+  key_cache[page, kv_head, d // 8, slot, d % 8] and values as value_cache[page, kv_head, d, slot].
+  Slots past a sequence's length, unreferenced pages and the reserved page 0 hold stale values and
+  must not affect the result; block_table entries past a sequence's last page are 0. Queries and
+  the cache are bfloat16 and the result is rounded to bfloat16.
+operator:
+  name: paged_attention_decode
+  category: attention
+interface:
+  axes:
+    num_seqs: {kind: var, min: 1, max: 1024, description: Sequences decoded in the step (one query token each).}
+    max_seq_len: {kind: var, min: 1, max: 131072, description: 'Longest context in the batch; the others are between half of it and all of it.'}
+    num_query_heads: {kind: const, value: 32, description: Query heads per tensor-parallel rank.}
+    num_kv_heads: {kind: const, value: 8, description: KV heads per tensor-parallel rank (group size 4).}
+    head_size: {kind: const, value: 128, description: Head dimension of queries and the KV cache.}
+    block_size: {kind: const, value: 16, description: Tokens per KV-cache page.}
+    x: {kind: const, value: 8, description: Head-dimension elements per 16-byte key vector.}
+  derived_axes:
+    max_blocks_per_seq: ceil_div(max_seq_len, block_size)
+    num_blocks: num_seqs * max_blocks_per_seq + 1
+  inputs:
+    query:
+      kind: tensor
+      shape: [num_seqs, num_query_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    key_cache:
+      kind: tensor
+      shape: [num_blocks, num_kv_heads, head_size // x, block_size, x]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: Paged keys, element d of the token in (page, slot) at [page, kv_head, d // x, slot, d % x].
+    value_cache:
+      kind: tensor
+      shape: [num_blocks, num_kv_heads, head_size, block_size]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: Paged values, element d of the token in (page, slot) at [page, kv_head, d, slot].
+    block_table:
+      kind: tensor
+      shape: [num_seqs, max_blocks_per_seq]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Physical page of each logical 16-token block of a sequence; 0 past its last page.
+    seq_lens:
+      kind: tensor
+      shape: [num_seqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: 'Context length of each sequence, in [ceil(max_seq_len / 2), max_seq_len].'
+    scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: 'Softmax scale, head_size ** -0.5.'}
+  outputs:
+    out: {shape: [num_seqs, num_query_heads, head_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path:
+      - csrc/rocm/attention.cu
+      - csrc/cuda_compat.h
+      - csrc/attention/dtype_fp8.cuh
+      - vllm/v1/attention/ops/chunked_prefill_paged_decode.py
+    license: Apache-2.0
+    modifications: >-
+      The gfx9 kernels paged_attention_ll4mi_QKV_mfma16_kernel, paged_attention_ll4mi_QKV_mfma4_kernel
+      and paged_attention_ll4mi_reduce_kernel, their host-pass stubs, launch macros and
+      paged_attention_custom_launcher are kept with their BF16 code path unchanged; the gfx11/gfx12
+      kernels, the Navi launcher and the FP8 KV-cache, FP8-MFMA and FP8-output branches were removed.
+      WARP_SIZE is fixed at the gfx9 wavefront size of 64 and Fp8KVCacheDataType is copied from
+      dtype_fp8.cuh. The launcher takes ATen tensors, launches on the current HIP stream, passes null
+      query_start_loc, ALiBi and scale pointers (decode-only, BF16 cache) and its GQA switch keeps the
+      scenario's ratio 4 (MFMA4). paged_attention() is replaced by run(), which allocates exp_sums,
+      max_logits and tmp_out as chunked_prefill_paged_decode does and derives max_seq_len from the
+      block-table width, giving the production partition grid.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

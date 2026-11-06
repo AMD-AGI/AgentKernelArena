@@ -1,0 +1,100 @@
+{
+ "description": "Prefill token counts of Qwen3-Next-style Gated DeltaNet layers (32 value heads, chunk 64); small batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single token"
+  },
+  {
+   "id": "t65",
+   "axes": {
+    "n_tokens": 65
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one full chunk plus one token"
+  },
+  {
+   "id": "t100",
+   "axes": {
+    "n_tokens": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short unaligned prefill"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t163840",
+   "axes": {
+    "n_tokens": 163840
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batched prefill"
+  },
+  {
+   "id": "t409600",
+   "axes": {
+    "n_tokens": 409600
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batched prefill"
+  }
+ ]
+}

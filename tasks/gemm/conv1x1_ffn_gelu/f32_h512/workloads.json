@@ -1,0 +1,133 @@
+{
+  "description": "Token counts (T*B) of the gpumode TransformerFFNLayer suite (1024 to 8192 tokens at hidden 512, filter 2048) extended down to 128 and up to 16384 tokens for the 100x span; very small token counts are correctness-only.",
+  "cases": [
+    {
+      "id": "n1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single token (incremental decoding step)"
+    },
+    {
+      "id": "n3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd tiny batch"
+    },
+    {
+      "id": "n48",
+      "axes": {
+        "n_tokens": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "T=12 x B=4, not a power of two"
+    },
+    {
+      "id": "n1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned token count, not a multiple of the 64-row tile"
+    },
+    {
+      "id": "n128",
+      "axes": {
+        "n_tokens": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "short sequence, one sentence"
+    },
+    {
+      "id": "n256",
+      "axes": {
+        "n_tokens": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "T=128 x B=2"
+    },
+    {
+      "id": "n512",
+      "axes": {
+        "n_tokens": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "T=256 x B=2"
+    },
+    {
+      "id": "n1024",
+      "axes": {
+        "n_tokens": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "gpumode case_0: T=128 x B=8"
+    },
+    {
+      "id": "n2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "gpumode case_1: T=256 x B=8"
+    },
+    {
+      "id": "n4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "gpumode case_2: T=512 x B=8"
+    },
+    {
+      "id": "n8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "gpumode case_3: T=512 x B=16"
+    },
+    {
+      "id": "n16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "T=1024 x B=16"
+    }
+  ]
+}

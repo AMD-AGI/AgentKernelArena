@@ -1,0 +1,36 @@
+schema_version: 3
+description: >-
+  Exact GELU of a float32 tensor treated as a flat array:
+  out = 0.5 * x * (1 + erf(x / sqrt(2))), as torch.nn.functional.gelu with approximate='none'.
+operator:
+  name: gelu
+  category: activation
+interface:
+  axes:
+    numel: {kind: var, min: 1, max: 536870912, description: Number of elements.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [numel]
+      dtype: float32
+      distribution: {kind: uniform, low: -6.0, high: 6.0}
+  outputs:
+    out: {shape: [numel], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task GELU (provided HIP baseline)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/GELU/hip/hip_14539_GELU_ref.hip
+    license: Apache-2.0
+    modifications: >-
+      Float32-only; pybind module, double path, environment-variable tuning and the cached CU count
+      removed; the input is no longer cloned (kernels read x and write the preallocated output);
+      registered as the run() torch op.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

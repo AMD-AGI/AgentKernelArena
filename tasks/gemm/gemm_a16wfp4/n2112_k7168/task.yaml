@@ -1,0 +1,43 @@
+schema_version: 3
+description: >-
+  out = mxfp4(x) @ dequant(w)^T with bfloat16 activations x [m, 7168] that the operator quantizes to MXFP4
+  itself (e2m1 values, one e8m0 scale per 32 values of K, round to nearest even) and MXFP4 weights w [2112, 3584]
+  (two e2m1 codes per byte, low nibble first) with e8m0 scales w_scales [2112, 224] (uint8, value 2^(s - 127)),
+  accumulated in float32 and rounded to bfloat16.
+operator: {name: gemm_a16wfp4, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 2112, description: Output channels.}
+    k: {kind: const, value: 7168, description: Contracted dimension (unpacked fp4 values).}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    w: {kind: tensor, shape: [n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a16wfp4.py
+      - aiter/ops/triton/gemm/basic/gemm_a16wfp4.py
+      - aiter/ops/triton/_triton_kernels/quant/quant.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A16WFP4.json
+    license: MIT
+    modifications: >-
+      Kernel and `_mxfp4_quant_op` unchanged; the preshuffle kernel and the split-K reduce kernel (unused: every
+      row of the gfx950 table has NUM_KSPLIT 1) removed; launcher reduced to writing into the preallocated output
+      with the table inlined as a function of M; pid_grid and kernel_repr helpers inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

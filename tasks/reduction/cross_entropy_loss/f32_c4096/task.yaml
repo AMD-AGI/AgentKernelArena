@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Cross-entropy loss of float32 logits [batch, 4096] against int64 class targets: the per-row
+  losses losses[row] = logsumexp(logits[row]) - logits[row, target[row]] (reduction 'none') and
+  their mean out = mean over rows of losses (reduction 'mean'), one float32 scalar.
+operator:
+  name: cross_entropy_loss
+  category: reduction
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 262144, description: Rows (samples or tokens) scored.}
+    num_classes: {kind: const, value: 4096}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [batch, num_classes]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+    targets:
+      kind: tensor
+      shape: [batch]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 4096}
+  outputs:
+    losses: {shape: [batch], dtype: float32}
+    out: {shape: [], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: torch/_inductor/lowering.py (log_softmax, nll_loss_forward lowerings, generated Triton reduction kernels)
+    license: BSD-3-Clause
+    notes: >-
+      Revision of the PyTorch v2.15.0 release. The operator is KernelBench level 1 problem 95
+      (CrossEntropyLoss, torch.nn.functional.cross_entropy with mean reduction) at 4096 classes;
+      the task also checks the per-row losses (reduction 'none') the mean is taken over.
+    modifications: >-
+      Triton rewrite of the Inductor log-softmax, target gather and mean reduction kernels as
+      standalone @triton.jit kernels without torch._inductor imports, wrapped in the arena run()
+      interface: one program per row writes the row loss into the caller's losses output, then a
+      two-stage fixed-order reduction writes the mean into the preallocated scalar output.
+compare:
+  losses: {bound: tolerance, atol: 3.0e-6, rtol: 0.0}
+  out: {bound: tolerance, atol: 1.0e-6, rtol: 1.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,153 @@
+{
+ "description": "DSv4 sliding-window sparse attention rows over a fixed 2019-page pool: decode batches (one row per request, uniform legal slots) up to 4096 and prefill chunks (one row per prompt token, overlapping windows) of 8k-16k tokens. Decode batches of about 100 rows or fewer move under 27 MB and are correctness-only.",
+ "cases": [
+  {
+   "id": "c_b1",
+   "axes": {
+    "batch": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single decode request (axis minimum)"
+  },
+  {
+   "id": "c_b2",
+   "axes": {
+    "batch": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "full window and an empty row with a legal tail"
+  },
+  {
+   "id": "c_b9",
+   "axes": {
+    "batch": 9
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small decode batch: the eight boundary rows and one drawn row"
+  },
+  {
+   "id": "c_b37",
+   "axes": {
+    "batch": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode batch"
+  },
+  {
+   "id": "c_b100",
+   "axes": {
+    "batch": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch 100"
+  },
+  {
+   "id": "c_b1000",
+   "axes": {
+    "batch": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned large decode batch"
+  },
+  {
+   "id": "p_b160",
+   "axes": {
+    "batch": 160
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 160 (a captured CUDA-graph batch size)"
+  },
+  {
+   "id": "p_b256",
+   "axes": {
+    "batch": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 256"
+  },
+  {
+   "id": "p_b512",
+   "axes": {
+    "batch": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 512"
+  },
+  {
+   "id": "p_b1024",
+   "axes": {
+    "batch": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 1024"
+  },
+  {
+   "id": "p_b2048",
+   "axes": {
+    "batch": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 2048"
+  },
+  {
+   "id": "p_b4096",
+   "axes": {
+    "batch": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 4096, the largest batch of the source workload"
+  },
+  {
+   "id": "p_b8192",
+   "axes": {
+    "batch": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8192-token prefill chunk, one sliding-window row per token"
+  },
+  {
+   "id": "p_b16384",
+   "axes": {
+    "batch": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16384-token prefill chunk, one sliding-window row per token"
+  }
+ ]
+}

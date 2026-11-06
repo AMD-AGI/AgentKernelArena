@@ -1,0 +1,12 @@
+{
+  "description": "Batch sizes of a float32 sum over the middle axis of [B, 4096, 4095]; B=1..3 and 37 are correctness-only boundary cases.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness", "performance"], "source": "batch sweep"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "odd small batch"},
+    {"id": "b37", "axes": {"batch": 37}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "b4", "axes": {"batch": 4}, "checks": ["correctness", "performance"], "source": "batch sweep"},
+    {"id": "b16", "axes": {"batch": 16}, "checks": ["correctness", "performance"], "source": "batch sweep"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "batch sweep"},
+    {"id": "b128", "axes": {"batch": 128}, "checks": ["correctness", "performance"], "source": "batch sweep"}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "description": "Token counts of DeepSeek-V4-Pro (hidden 7168, 4 hyper-connection streams) layer boundaries: decode batches, mixed batches and prefill chunks. Batches below about 64 tokens run faster than the timing floor and are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1 (small-batch fused path)"},
+    {"id": "t3", "axes": {"tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t16", "axes": {"tokens": 16}, "checks": ["correctness"], "source": "decode, batch 16 (last small-batch fused case)"},
+    {"id": "t17", "axes": {"tokens": 17}, "checks": ["correctness"], "source": "decode, first unfused batch"},
+    {"id": "t1000", "axes": {"tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill chunk"},
+    {"id": "t64", "axes": {"tokens": 64}, "checks": ["correctness", "performance"], "source": "decode batch 64 (profiled DeepSeek-V4-Pro serving trace)"},
+    {"id": "t256", "axes": {"tokens": 256}, "checks": ["correctness", "performance"], "source": "mixed decode/prefill batch"},
+    {"id": "t1024", "axes": {"tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk (block-M prenorm GEMM path starts here)"},
+    {"id": "t2048", "axes": {"tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t4096", "axes": {"tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t7211", "axes": {"tokens": 7211}, "checks": ["correctness", "performance"], "source": "prefill batch (profiled DeepSeek-V4-Pro serving trace)"},
+    {"id": "t16384", "axes": {"tokens": 16384}, "checks": ["correctness", "performance"], "source": "large prefill chunk"}
+  ]
+}

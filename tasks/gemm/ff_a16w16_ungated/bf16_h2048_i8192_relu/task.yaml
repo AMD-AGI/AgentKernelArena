@@ -1,0 +1,56 @@
+schema_version: 3
+description: >-
+  Ungated transformer feed-forward block in bfloat16: out = relu(x @ w_up^T) @ w_down^T, hidden size 2048 and
+  intermediate size 8192, both GEMMs accumulating in float32 and the intermediate activations and the output
+  rounded to bfloat16.
+operator:
+  name: ff_a16w16_ungated
+  category: gemm
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the call.}
+    hidden_size: {kind: const, value: 2048, description: Model width.}
+    intermediate_size: {kind: const, value: 8192, description: Width of the up projection.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w_up:
+      kind: tensor
+      shape: [intermediate_size, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.011048543}
+    w_down:
+      kind: tensor
+      shape: [hidden_size, intermediate_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.022097087}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/gemm/feed_forward/ff_a16w16.py
+      - aiter/ops/triton/gemm/basic/gemm_a16w16.py
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a16w16.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+    license: MIT
+    modifications: >-
+      Standalone port of ff_a16w16_nogate (two gemm_a16w16 launches): the pid/XCD helpers and activation
+      functions are inlined, only the non-split-K Triton path is kept, and the tuned-config lookup is replaced by a
+      static tile config (128x128x64, 4 warps). The down-projection result is written into the preallocated
+      output through the run() entry.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

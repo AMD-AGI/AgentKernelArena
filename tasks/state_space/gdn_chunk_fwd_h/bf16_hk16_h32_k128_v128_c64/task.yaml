@@ -1,0 +1,92 @@
+schema_version: 3
+description: >-
+  Chunked state recurrence of the gated delta rule (Gated DeltaNet prefill) for one sequence of
+  n_tokens tokens in chunks of 64 (the last may be partial), with 16 key heads, 32 value heads and
+  head dimensions 128. For every value head the [V, K] state S starts from the sequence's slot of the
+  state pool (float32) and, per chunk, is stored to h (rounded to bfloat16), corrected into
+  v_new = u - w S^T, decayed by the scalar log-gate g, and updated with the gated v_new^T k; the final
+  state is written back into the pool slot in place.
+operator:
+  name: gdn_chunk_fwd_h
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 65536, description: Tokens of the sequence.}
+    num_k_heads: {kind: const, value: 16, description: Key heads (grouped-value-attention groups).}
+    num_heads: {kind: const, value: 32, description: Value heads.}
+    head_dim_k: {kind: const, value: 128, description: Key head dimension.}
+    head_dim_v: {kind: const, value: 128, description: Value head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+    pool_slots: {kind: const, value: 8, description: Recurrent-state slots in the pool.}
+  derived_axes:
+    n_chunks: ceil_div(n_tokens, chunk_size)
+  inputs:
+    k:
+      kind: tensor
+      shape: [1, n_tokens, num_k_heads, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, L2-normalized in the model (element standard deviation 128^-1/2).
+    w:
+      kind: tensor
+      shape: [1, n_tokens, num_heads, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Delta-rule projection of the state onto the value space (w).
+    u:
+      kind: tensor
+      shape: [1, n_tokens, num_heads, head_dim_v]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Delta-rule target values (u).
+    g:
+      kind: tensor
+      shape: [1, n_tokens, num_heads]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log-decay (non-positive, restarts every 64 tokens).
+    initial_state:
+      kind: tensor
+      shape: [pool_slots, num_heads, head_dim_v, head_dim_k]
+      dtype: float32
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Recurrent-state pool; the sequence's slot is read and then overwritten.
+    initial_state_indices:
+      kind: tensor
+      shape: [1]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Pool slot of the sequence.
+  outputs:
+    h:
+      shape: [1, n_chunks, num_heads, head_dim_v, head_dim_k]
+      dtype: bfloat16
+    v_new:
+      shape: [1, n_tokens, num_heads, head_dim_v]
+      dtype: bfloat16
+  mutable: [initial_state]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/attention/fla/chunk_delta_h.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      chunk_gated_delta_rule_fwd_kernel_h_blockdim64 reduced to the fixed-length, scalar-gate path
+      (the variable-length, per-channel-gate, exp2 and state-tracking options and the host-side
+      chunk-index preparation are not used) with the single production tile (BV 32, 4 warps,
+      2 stages); the host wrapper became run() writing into the preallocated outputs.
+compare:
+  h: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-3}
+  v_new: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-4}
+  initial_state: {bound: sqnr, min_db: 47}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

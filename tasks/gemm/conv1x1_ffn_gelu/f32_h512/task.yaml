@@ -1,0 +1,64 @@
+schema_version: 3
+description: >-
+  Transformer feed-forward layer of a TransformerFFNLayer with a kernel-size-1 convolution (SAME padding) in float32:
+  out = Linear(gelu(Conv1d_k1(x))), i.e. out = gelu(x @ conv_weight^T + conv_bias) @ linear_weight^T + linear_bias
+  with the exact (erf) GELU, over tokens of width 512 expanded to a filter size of 2048 and back.
+operator:
+  name: conv1x1_ffn_gelu
+  category: gemm
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 32768, description: Tokens (sequence length times batch) in the call.}
+    hidden_size: {kind: const, value: 512, description: Model width.}
+    filter_size: {kind: const, value: 2048, description: Width of the expanded intermediate layer.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    conv_weight:
+      kind: tensor
+      shape: [filter_size, hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.04419417, high: 0.04419417}
+    conv_bias:
+      kind: tensor
+      shape: [filter_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.04419417, high: 0.04419417}
+    linear_weight:
+      kind: tensor
+      shape: [hidden_size, filter_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.02209709, high: 0.02209709}
+    linear_bias:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.02209709, high: 0.02209709}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task TransformerFFNLayer (gpumode 14069)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/TransformerFFNLayer/hip/hip_14069_TransformerFFNLayer_ref.hip
+    license: task-original
+    modifications: >-
+      The provided HIP source computed both GEMMs with ATen conv1d and matmul and only the bias add and GELU in
+      HIP kernels, which the HIP candidate rules forbid. Rewritten as two handwritten tiled float32 GEMM kernels
+      (64x64x16 tiles, bias and exact GELU fused into the first); incremental-state, LEFT padding and dropout paths
+      dropped; registered as the run() torch op.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

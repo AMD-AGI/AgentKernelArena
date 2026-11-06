@@ -1,0 +1,27 @@
+{
+  "description": "Decode steps with 16 query heads sharing one KV head per rank (head size 128, 16-token BF16 pages), the per-rank geometry of Qwen3-235B-A22B at TP=4 and Llama-3.1-405B at TP=8. Context lengths are uniform in [1, max_seq_len] (long generations from short prompts). Timed cases are long-context decode, from one request at 64k tokens to 224 requests at Qwen3's 32k native context (about 3.7M cached tokens, within one MI355X rank's KV capacity); the original task's short-context shapes run below the 10 us floor and are correctness-only.",
+  "cases": [
+    {"id": "s1_l1", "axes": {"num_seqs": 1, "max_seq_len": 1}, "checks": ["correctness"], "source": "first decode token of a one-token prompt"},
+    {"id": "s3_l17", "axes": {"num_seqs": 3, "max_seq_len": 17}, "checks": ["correctness"], "source": "original task ragged_page_tail: contexts crossing a page by one token"},
+    {"id": "s5_l257", "axes": {"num_seqs": 5, "max_seq_len": 257}, "checks": ["correctness"], "source": "original task ragged_partition_tail: one token into a second 256-token partition"},
+    {"id": "s37_l1000", "axes": {"num_seqs": 37, "max_seq_len": 1000}, "checks": ["correctness"], "source": "unaligned batch and context"},
+    {"id": "s1_l1025", "axes": {"num_seqs": 1, "max_seq_len": 1025}, "checks": ["correctness"], "source": "original task: single-request decode at 1025 tokens"},
+    {"id": "s2_l1024", "axes": {"num_seqs": 2, "max_seq_len": 1024}, "checks": ["correctness"], "source": "original task c2"},
+    {"id": "s32_l1025", "axes": {"num_seqs": 32, "max_seq_len": 1025}, "checks": ["correctness"], "source": "original task: concurrency-32 decode at 1025 tokens"},
+    {"id": "s64_l1024", "axes": {"num_seqs": 64, "max_seq_len": 1024}, "checks": ["correctness"], "source": "original task c64"},
+    {"id": "s2_l4096", "axes": {"num_seqs": 2, "max_seq_len": 4096}, "checks": ["correctness"], "source": "original task long_context"},
+    {"id": "s512_l257", "axes": {"num_seqs": 512, "max_seq_len": 257}, "checks": ["correctness"], "source": "large decode batch, short contexts"},
+    {"id": "s1_l16385", "axes": {"num_seqs": 1, "max_seq_len": 16385}, "checks": ["correctness"], "source": "65 partitions: first context needing two cross-partition reduction loops"},
+    {"id": "s3_l40000", "axes": {"num_seqs": 3, "max_seq_len": 40000}, "checks": ["correctness"], "source": "long contexts, three reduction loops"},
+    {"id": "s1_l65536", "axes": {"num_seqs": 1, "max_seq_len": 65536}, "checks": ["correctness", "performance"], "source": "single long-context request, 64k tokens"},
+    {"id": "s1_l131072", "axes": {"num_seqs": 1, "max_seq_len": 131072}, "checks": ["correctness", "performance"], "source": "single request at the 128k context limit of the ROCm kernel"},
+    {"id": "s4_l32768", "axes": {"num_seqs": 4, "max_seq_len": 32768}, "checks": ["correctness", "performance"], "source": "low-concurrency long-context decode"},
+    {"id": "s16_l16384", "axes": {"num_seqs": 16, "max_seq_len": 16384}, "checks": ["correctness", "performance"], "source": "decode, concurrency 16"},
+    {"id": "s64_l8192", "axes": {"num_seqs": 64, "max_seq_len": 8192}, "checks": ["correctness", "performance"], "source": "decode, concurrency 64"},
+    {"id": "s256_l1024", "axes": {"num_seqs": 256, "max_seq_len": 1024}, "checks": ["correctness", "performance"], "source": "high-concurrency decode with short contexts (AITER decode task: 256 sequences, 1024 tokens)"},
+    {"id": "s128_l8192", "axes": {"num_seqs": 128, "max_seq_len": 8192}, "checks": ["correctness", "performance"], "source": "AITER decode task: 128 sequences, 8192 tokens"},
+    {"id": "s32_l32768", "axes": {"num_seqs": 32, "max_seq_len": 32768}, "checks": ["correctness", "performance"], "source": "decode, concurrency 32 at Qwen3's 32k native context"},
+    {"id": "s256_l8192", "axes": {"num_seqs": 256, "max_seq_len": 8192}, "checks": ["correctness", "performance"], "source": "decode, concurrency 256"},
+    {"id": "s224_l32768", "axes": {"num_seqs": 224, "max_seq_len": 32768}, "checks": ["correctness", "performance"], "source": "decode, concurrency 224 at Qwen3's 32k native context (about 3.7M cached tokens)"}
+  ]
+}

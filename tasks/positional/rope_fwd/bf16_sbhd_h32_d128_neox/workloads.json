@@ -1,0 +1,120 @@
+{
+  "description": "Sequence lengths of 4 sequences with 32 heads of size 128; short prompts are correctness-only (under the 10 us timing floor).",
+  "cases": [
+    {
+      "id": "s1",
+      "axes": {
+        "seq_len": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single-token decode (axis minimum)"
+    },
+    {
+      "id": "s3",
+      "axes": {
+        "seq_len": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd short sequence"
+    },
+    {
+      "id": "s33",
+      "axes": {
+        "seq_len": 33
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short unaligned sequence"
+    },
+    {
+      "id": "s100",
+      "axes": {
+        "seq_len": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prompt"
+    },
+    {
+      "id": "s300",
+      "axes": {
+        "seq_len": 300
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short prompt (below the timing floor)"
+    },
+    {
+      "id": "s1000",
+      "axes": {
+        "seq_len": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prompt"
+    },
+    {
+      "id": "s512",
+      "axes": {
+        "seq_len": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "short prompt"
+    },
+    {
+      "id": "s2048",
+      "axes": {
+        "seq_len": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "s8192",
+      "axes": {
+        "seq_len": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long prompt"
+    },
+    {
+      "id": "s32768",
+      "axes": {
+        "seq_len": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long-context prefill"
+    },
+    {
+      "id": "s65536",
+      "axes": {
+        "seq_len": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "64K-token context"
+    }
+  ]
+}

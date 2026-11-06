@@ -1,0 +1,41 @@
+schema_version: 3
+description: >-
+  Clamped SwiGLU ("swiglustep") of a gate/up activation. The input row holds the gate half
+  followed by the up half; out = min(silu(gate), limit) * clamp(up, -limit, limit), computed in
+  float32 and rounded to bfloat16. The upper clamp applies after the SiLU, and the gate has no
+  lower clamp.
+operator:
+  name: swiglustep_and_mul
+  category: activation
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Token rows.}
+    intermediate_size: {kind: const, value: 4096, description: Width d of each half.}
+  derived_axes:
+    two_d: 2 * intermediate_size
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, two_d]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 3.0}
+    limit: {kind: scalar, dtype: float32, default: 7.0}
+  outputs:
+    out: {shape: [n_tokens, intermediate_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/activation.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel vendored unchanged; the swiglustep_and_mul_triton launcher is wrapped in the arena
+      run() interface writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

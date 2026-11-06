@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Float32 matrix multiplication out = a @ b (torch.matmul) with a [m, 4096] and b [4096, 4096], all
+  row-major, products and accumulation in IEEE float32 (no TF32 or reduced-precision inputs), output
+  float32.
+operator: {name: gemm_f32, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 16, max: 16384, description: Rows of a and out.}
+    n: {kind: const, value: 4096, description: Columns of b and out.}
+    k: {kind: const, value: 4096, description: Contracted dimension.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    b:
+      kind: tensor
+      shape: [k, n]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+  outputs:
+    out: {shape: [m, n], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm.py
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/heuristics/template/triton.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the Inductor mm template (the kernel Inductor's max-autotune generates for
+      torch.mm) as a standalone @triton.jit kernel: the template rendered for contiguous float32
+      operands with a runtime M and N, K and strides as constexprs, Inductor's generated load indices and
+      store suffix for a contiguous output, the mm_grid launch grid, one fixed ROCm mm_configs entry per
+      range of M (scaled to the problem size as Inductor scales its configs) instead of autotuning,
+      allow_tf32=False expressed as input_precision="ieee", wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 2.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

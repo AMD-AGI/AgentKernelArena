@@ -1,0 +1,112 @@
+{
+ "description": "Per-rank token counts of the 33-expert MXFP4 MoE shard (top 9, intermediate 2048) from the old task's powers of two (1 to 4096); odd and unaligned batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "num_tokens": 1
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 1, axis minimum (old task case)"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "num_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd decode batch (not a power of two)"
+  },
+  {
+   "id": "t4",
+   "axes": {
+    "num_tokens": 4
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 4 (old task case)"
+  },
+  {
+   "id": "t16",
+   "axes": {
+    "num_tokens": 16
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 16 (old task case)"
+  },
+  {
+   "id": "t64",
+   "axes": {
+    "num_tokens": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch 64 (old task case)"
+  },
+  {
+   "id": "t77",
+   "axes": {
+    "num_tokens": 77
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch (not a multiple of 16)"
+  },
+  {
+   "id": "t256",
+   "axes": {
+    "num_tokens": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch 256 (old task case)"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "num_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk"
+  },
+  {
+   "id": "t1024",
+   "axes": {
+    "num_tokens": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk 1024 (old task case)"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "num_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk 4096 (old task case, its largest)"
+  }
+ ]
+}

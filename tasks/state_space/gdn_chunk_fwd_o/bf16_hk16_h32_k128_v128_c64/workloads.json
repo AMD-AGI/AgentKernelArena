@@ -1,0 +1,17 @@
+{
+  "description": "Prefill token counts of a Qwen3-Next style gated-delta-rule layer (16 query/key heads, 32 value heads, head dimension 128, chunk 64) processed as one sequence; short sequences are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "single-token prefill (axis minimum)"},
+    {"id": "t100", "axes": {"n_tokens": 100}, "checks": ["correctness"], "source": "short prompt with a partial chunk"},
+    {"id": "t200", "axes": {"n_tokens": 200}, "checks": ["correctness"], "source": "short prompt, three full chunks and a remainder"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk (original task shape)"},
+    {"id": "t2048", "axes": {"n_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk (original task shape)"},
+    {"id": "t4096", "axes": {"n_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk (original task shape)"},
+    {"id": "t8192", "axes": {"n_tokens": 8192}, "checks": ["correctness", "performance"], "source": "chunked-prefill budget"},
+    {"id": "t16384", "axes": {"n_tokens": 16384}, "checks": ["correctness", "performance"], "source": "long prefill"},
+    {"id": "t32768", "axes": {"n_tokens": 32768}, "checks": ["correctness", "performance"], "source": "long-context prefill"},
+    {"id": "t65536", "axes": {"n_tokens": 65536}, "checks": ["correctness", "performance"], "source": "long-context prefill"},
+    {"id": "t131072", "axes": {"n_tokens": 131072}, "checks": ["correctness", "performance"], "source": "long-context prefill"}
+  ]
+}

@@ -1,0 +1,45 @@
+schema_version: 3
+description: >-
+  Combination of the routed-expert and shared-expert branches of a MoE layer: out[t] = (sum over the combine_k
+  routed-expert outputs of token t + mlp_hidden_states[t]) / sqrt(2), over the hidden axis, rounded to bfloat16.
+operator:
+  name: experts_combine
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 204800, description: Tokens in the batch.}
+    combine_k: {kind: const, value: 2, description: Routed-expert outputs per token that are summed (top-k).}
+    hidden_size: {kind: const, value: 4096, description: Model hidden size.}
+  inputs:
+    moe_hidden_states:
+      kind: tensor
+      shape: [num_tokens, combine_k, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    mlp_hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: >-
+      AMD-AGI/AgentKernelArena, task triton2flydsl/sglang/experts_combine (extracted from sgl-project/sglang,
+      python/sglang/srt/layers/elementwise.py, experts_combine_kernel)
+    revision: dc921861b1492109f7bbb07cf4a564d07666b174
+    path: tasks/triton2flydsl/sglang/experts_combine/experts_combine.py
+    license: Apache-2.0
+    modifications: >-
+      The experts_combine_triton host wrapper (output_buffer and pre-combined 2-D variants, contiguity asserts) is
+      replaced by run(), which launches the unchanged kernel with the same block and warp configuration on the
+      preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

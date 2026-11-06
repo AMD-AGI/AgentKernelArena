@@ -1,0 +1,18 @@
+{
+  "description": "Token counts of one Mixtral-8x7B MoE layer without tensor parallelism: decode batches from 1 to 256 and chunked-prefill sizes up to 8192 tokens; odd batch sizes are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"num_tokens": 1}, "checks": ["correctness", "performance"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"num_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t4", "axes": {"num_tokens": 4}, "checks": ["correctness", "performance"], "source": "decode, batch 4"},
+    {"id": "t16", "axes": {"num_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode, batch 16"},
+    {"id": "t37", "axes": {"num_tokens": 37}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "t64", "axes": {"num_tokens": 64}, "checks": ["correctness", "performance"], "source": "decode, batch 64"},
+    {"id": "t200", "axes": {"num_tokens": 200}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "t256", "axes": {"num_tokens": 256}, "checks": ["correctness", "performance"], "source": "decode, batch 256"},
+    {"id": "t1000", "axes": {"num_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t1024", "axes": {"num_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t3000", "axes": {"num_tokens": 3000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t4096", "axes": {"num_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t8192", "axes": {"num_tokens": 8192}, "checks": ["correctness", "performance"], "source": "chunked prefill, 8192-token chunk"}
+  ]
+}

@@ -1,0 +1,78 @@
+schema_version: 3
+description: >-
+  Single-token (decode) grouped-query attention over a token-indexed KV cache with page size 1,
+  out[b, h] = softmax(sm_scale * q[b, h] . K[rows(b), h // group]) . V[rows(b), h // group],
+  where rows(b) = kv_indices[kv_indptr[b] : kv_indptr[b + 1]] are the (scattered) cache slots of
+  sequence b. Queries, keys and values are bfloat16 and the result is rounded to bfloat16.
+  num_kv_splits is a scheduler hint (how many KV chunks an implementation may process in
+  parallel before merging them by log-sum-exp); the result does not depend on it.
+operator:
+  name: decode_attention
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 512, description: Sequences decoded in the step.}
+    max_ctx: {kind: var, min: 1, max: 32768, description: Longest KV length; sequence lengths are ragged between max_ctx/2 and max_ctx.}
+    n_heads: {kind: const, value: 32, description: Query heads.}
+    n_kv_heads: {kind: const, value: 8, description: KV heads (group size 4).}
+    head_dim: {kind: const, value: 128, description: Head dimension shared by q and the KV cache.}
+  derived_axes:
+    pool: batch * max_ctx
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k_buffer:
+      kind: tensor
+      shape: [pool, n_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v_buffer:
+      kind: tensor
+      shape: [pool, n_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv_indptr:
+      kind: tensor
+      shape: [batch + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    kv_indices:
+      kind: tensor
+      shape: [pool]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+    num_kv_splits:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    sm_scale: {kind: scalar, dtype: float32, default: 0.08838834764831845}
+  outputs:
+    out: {shape: [batch, n_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/attention/decode_attention.py
+    license: Apache-2.0
+    modifications: >-
+      The grouped stage-1 kernel, the stage-2 merge kernel and their launchers, reduced to the
+      bf16 GQA page-size-1 path (no MLA/RoPE-split, PDL, score_mod, sinks, logit cap, xai temperature,
+      forced split count or gfx1250 branches); the scratch buffers are allocated inside run().
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

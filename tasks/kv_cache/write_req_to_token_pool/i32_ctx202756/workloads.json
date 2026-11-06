@@ -1,0 +1,132 @@
+{
+  "description": "Prefill batches written into a 2048-row request-to-token table of 202756 columns; the baseline's per-request prefix sum makes it latency-bound for large batches. Small batches run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "b1_e1",
+      "axes": {
+        "n_requests": 1,
+        "max_extend_len": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single request, one-token extension"
+    },
+    {
+      "id": "b3_e513",
+      "axes": {
+        "n_requests": 3,
+        "max_extend_len": 513
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "few requests, extension crossing a tile"
+    },
+    {
+      "id": "b8_e511",
+      "axes": {
+        "n_requests": 8,
+        "max_extend_len": 511
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short batch, extension just below a tile"
+    },
+    {
+      "id": "b37_e1000",
+      "axes": {
+        "n_requests": 37,
+        "max_extend_len": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch of 1000-token extensions"
+    },
+    {
+      "id": "b64_e1008",
+      "axes": {
+        "n_requests": 64,
+        "max_extend_len": 1008
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "prefill batch, below the 10 us timing floor"
+    },
+    {
+      "id": "b512_e16",
+      "axes": {
+        "n_requests": 512,
+        "max_extend_len": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "many short extensions"
+    },
+    {
+      "id": "b2048_e16",
+      "axes": {
+        "n_requests": 2048,
+        "max_extend_len": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "full table of short extensions"
+    },
+    {
+      "id": "b256_e1008",
+      "axes": {
+        "n_requests": 256,
+        "max_extend_len": 1008
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill batch of ~1k-token extensions"
+    },
+    {
+      "id": "b1024_e1008",
+      "axes": {
+        "n_requests": 1024,
+        "max_extend_len": 1008
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large prefill batch"
+    },
+    {
+      "id": "b128_e4096",
+      "axes": {
+        "n_requests": 128,
+        "max_extend_len": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long chunked-prefill extensions"
+    },
+    {
+      "id": "b2048_e4096",
+      "axes": {
+        "n_requests": 2048,
+        "max_extend_len": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "full table of long extensions"
+    }
+  ]
+}

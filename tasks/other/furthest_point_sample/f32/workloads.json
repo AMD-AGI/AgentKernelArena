@@ -1,0 +1,15 @@
+{
+  "description": "Point-cloud furthest point sampling (n_samples = n_points // 4). Production-style clouds of 1K-16K points per batch element; tiny clouds are correctness-only.",
+  "cases": [
+    {"id": "b1_n16", "axes": {"batch": 1, "n_points": 16}, "checks": ["correctness"], "source": "axis minimum, tiny cloud"},
+    {"id": "b3_n100", "axes": {"batch": 3, "n_points": 100}, "checks": ["correctness"], "source": "non-power-of-two cloud, odd batch"},
+    {"id": "b2_n1000", "axes": {"batch": 2, "n_points": 1000}, "checks": ["correctness"], "source": "non-power-of-two, not a multiple of 16"},
+    {"id": "b32_n48", "axes": {"batch": 32, "n_points": 48}, "checks": ["correctness"], "source": "small clouds, large batch"},
+    {"id": "b1_n1024", "axes": {"batch": 1, "n_points": 1024}, "checks": ["correctness", "performance"], "source": "PointNet++ style 1024-point cloud"},
+    {"id": "b4_n2048", "axes": {"batch": 4, "n_points": 2048}, "checks": ["correctness", "performance"], "source": "PointNet++ style 2048-point clouds"},
+    {"id": "b8_n4096", "axes": {"batch": 8, "n_points": 4096}, "checks": ["correctness", "performance"], "source": "3-D detection backbones, 4096-point clouds"},
+    {"id": "b2_n8192", "axes": {"batch": 2, "n_points": 8192}, "checks": ["correctness", "performance"], "source": "scene-level clouds, 8192 points"},
+    {"id": "b4_n16384", "axes": {"batch": 4, "n_points": 16384}, "checks": ["correctness", "performance"], "source": "OpenPCDet-style 16384-point input subsampling"},
+    {"id": "b16_n16384", "axes": {"batch": 16, "n_points": 16384}, "checks": ["correctness", "performance"], "source": "OpenPCDet-style 16384-point input subsampling, large batch"}
+  ]
+}

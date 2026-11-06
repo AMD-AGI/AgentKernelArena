@@ -1,0 +1,20 @@
+{
+  "description": "Token counts of DeepSeek-V4-Flash (hidden 4096, 4 hyper-connection streams) layer boundaries in serving: decode batches, mixed batches and prefill chunks, including the 64- and 7211-token batches of a profiled MI355X DeepSeek-V4-Flash serving trace. Batches below about 256 tokens run faster than the timing floor and are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t16", "axes": {"tokens": 16}, "checks": ["correctness"], "source": "decode, batch 16"},
+    {"id": "t64", "axes": {"tokens": 64}, "checks": ["correctness"], "source": "decode batch 64 (profiled DeepSeek-V4-Flash serving trace)"},
+    {"id": "t200", "axes": {"tokens": 200}, "checks": ["correctness"], "source": "decode, unaligned batch"},
+    {"id": "t1000", "axes": {"tokens": 1000}, "checks": ["correctness"], "source": "unaligned mixed decode/prefill batch (last small-M configuration)"},
+    {"id": "t256", "axes": {"tokens": 256}, "checks": ["correctness", "performance"], "source": "decode, batch 256"},
+    {"id": "t512", "axes": {"tokens": 512}, "checks": ["correctness", "performance"], "source": "decode, batch 512"},
+    {"id": "t1024", "axes": {"tokens": 1024}, "checks": ["correctness", "performance"], "source": "mixed decode/prefill batch"},
+    {"id": "t2048", "axes": {"tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t4096", "axes": {"tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t7211", "axes": {"tokens": 7211}, "checks": ["correctness", "performance"], "source": "prefill batch (profiled DeepSeek-V4-Flash serving trace)"},
+    {"id": "t8192", "axes": {"tokens": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t16384", "axes": {"tokens": 16384}, "checks": ["correctness", "performance"], "source": "large prefill chunk"},
+    {"id": "t32768", "axes": {"tokens": 32768}, "checks": ["correctness", "performance"], "source": "large prefill chunk"}
+  ]
+}

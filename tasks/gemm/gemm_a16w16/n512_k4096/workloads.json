@@ -1,0 +1,234 @@
+{
+ "description": "Token counts through a 4096-to-512 bf16 projection: decode and small batches are correctness-only where the baseline needs under about 10 us; prefill chunks and batched prefill are performance cases.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "m": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "m2",
+   "axes": {
+    "m": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode / small batch 2"
+  },
+  {
+   "id": "m4",
+   "axes": {
+    "m": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode / small batch 4"
+  },
+  {
+   "id": "m8",
+   "axes": {
+    "m": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode / small batch 8"
+  },
+  {
+   "id": "m16",
+   "axes": {
+    "m": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode / small batch 16"
+  },
+  {
+   "id": "m32",
+   "axes": {
+    "m": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode / small batch 32"
+  },
+  {
+   "id": "m33",
+   "axes": {
+    "m": 33
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned small batch"
+  },
+  {
+   "id": "m64",
+   "axes": {
+    "m": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode / small batch 64"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "m": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned small batch"
+  },
+  {
+   "id": "m128",
+   "axes": {
+    "m": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode / small batch 128"
+  },
+  {
+   "id": "m200",
+   "axes": {
+    "m": 200
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch / ragged prefill chunk"
+  },
+  {
+   "id": "m256",
+   "axes": {
+    "m": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small prefill chunk"
+  },
+  {
+   "id": "m300",
+   "axes": {
+    "m": 300
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch / ragged prefill chunk"
+  },
+  {
+   "id": "m512",
+   "axes": {
+    "m": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "m": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "m": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "m": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "m": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "m": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "m32768",
+   "axes": {
+    "m": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "m65536",
+   "axes": {
+    "m": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "m131072",
+   "axes": {
+    "m": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  }
+ ]
+}

@@ -1,0 +1,126 @@
+{
+ "description": "Total token counts of a packed batch of 8 sequences with hidden width 4096; tiny batches are correctness-only.",
+ "cases": [
+  {
+   "id": "n1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one token (seven empty sequences)"
+  },
+  {
+   "id": "n3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "fewer tokens than sequences"
+  },
+  {
+   "id": "n37",
+   "axes": {
+    "n_tokens": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small unaligned batch"
+  },
+  {
+   "id": "n1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode batch"
+  },
+  {
+   "id": "n2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode step with speculative tokens"
+  },
+  {
+   "id": "n8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "n32768",
+   "axes": {
+    "n_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "n131072",
+   "axes": {
+    "n_tokens": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large prefill batch"
+  },
+  {
+   "id": "n262144",
+   "axes": {
+    "n_tokens": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large prefill batch"
+  },
+  {
+   "id": "n37_pad0",
+   "axes": {
+    "n_tokens": 37
+   },
+   "scalars": {
+    "pad_value": 0.0
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "zero padding of the original task's tests"
+  },
+  {
+   "id": "n1000_pad0",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "scalars": {
+    "pad_value": 0.0
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "zero padding of the original task's tests"
+  }
+ ]
+}

@@ -1,0 +1,38 @@
+schema_version: 3
+description: >-
+  FP8 GEMM with per-token and per-channel dequantization, out = (x @ w^T) * (x_scale * w_scale) with float8_e4m3fn x [m, 8192] and weight w [1280, 8192], a float32 accumulation, a per-row scale x_scale [m, 1] and per-output-channel scale w_scale [1, 1280], rounded to bfloat16.
+operator: {name: gemm_a8w8, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows of x (tokens in the batch).}
+    n: {kind: const, value: 1280, description: Output features.}
+    k: {kind: const, value: 8192, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    x_scale: {kind: tensor, shape: [m, 1], dtype: float32, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [1, n], dtype: float32, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8w8.py
+      - aiter/ops/triton/gemm/basic/gemm_a8w8.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A8W8-N=1280-K=8192.json
+    license: MIT
+    modifications: >-
+      Kernel unchanged; launcher reduced to the no-bias, non-split-K path writing into the preallocated output (every entry of the tuned table has NUM_KSPLIT 1, so the split-K reduction kernel is dropped); kernel_repr and pid helpers and the gfx950 tuned-config table inlined with the upstream lookup order.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

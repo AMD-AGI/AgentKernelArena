@@ -1,0 +1,178 @@
+{
+ "description": "Decode batches of DeepSeek-V3 (TP8) MLA over a 64-token-paged latent cache. Sequence lengths are ragged between ctx/2 and ctx. Short contexts and small batches stream less than about 27 MB of cache and run below the 10 us timing floor, so they are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_c1",
+   "axes": {
+    "batch": 1,
+    "ctx": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "minimum: single sequence with one cached token"
+  },
+  {
+   "id": "b3_c65",
+   "axes": {
+    "batch": 3,
+    "ctx": 65
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, context one token into the second page"
+  },
+  {
+   "id": "b1_c64",
+   "axes": {
+    "batch": 1,
+    "ctx": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single full page"
+  },
+  {
+   "id": "b2_c1000",
+   "axes": {
+    "batch": 2,
+    "ctx": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned short context"
+  },
+  {
+   "id": "b17_c333",
+   "axes": {
+    "batch": 17,
+    "ctx": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch above 16, ragged partial pages"
+  },
+  {
+   "id": "b45_c777",
+   "axes": {
+    "batch": 45,
+    "ctx": 777
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch not a multiple of 16, unaligned context"
+  },
+  {
+   "id": "b5_c8191",
+   "axes": {
+    "batch": 5,
+    "ctx": 8191
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one token short of a page boundary"
+  },
+  {
+   "id": "b1_c32768",
+   "axes": {
+    "batch": 1,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single long-context decode"
+  },
+  {
+   "id": "b4_c16384",
+   "axes": {
+    "batch": 4,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small long-context batch"
+  },
+  {
+   "id": "b16_c4096",
+   "axes": {
+    "batch": 16,
+    "ctx": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "typical 4k-context serving batch"
+  },
+  {
+   "id": "b8_c8192",
+   "axes": {
+    "batch": 8,
+    "ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8k-context serving batch"
+  },
+  {
+   "id": "b32_c8192",
+   "axes": {
+    "batch": 32,
+    "ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8k-context serving batch"
+  },
+  {
+   "id": "b64_c16384",
+   "axes": {
+    "batch": 64,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large 16k-context batch"
+  },
+  {
+   "id": "b128_c16384",
+   "axes": {
+    "batch": 128,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "max-concurrency 16k-context batch"
+  },
+  {
+   "id": "b128_c32768",
+   "axes": {
+    "batch": 128,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "max-concurrency 32k-context batch"
+  }
+ ]
+}

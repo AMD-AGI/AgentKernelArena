@@ -1,0 +1,15 @@
+{
+  "description": "Row counts of a 100-class label-smoothed cross entropy, from small batches to dense per-pixel or per-token scoring. Rows below 8192 are under the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {"id": "r1", "axes": {"rows": 1}, "checks": ["correctness"], "source": "single position"},
+    {"id": "r3", "axes": {"rows": 3}, "checks": ["correctness"], "source": "odd position count"},
+    {"id": "r100", "axes": {"rows": 100}, "checks": ["correctness"], "source": "unaligned position count"},
+    {"id": "r1000", "axes": {"rows": 1000}, "checks": ["correctness"], "source": "small classification batch"},
+    {"id": "r4097", "axes": {"rows": 4097}, "checks": ["correctness"], "source": "unaligned position count"},
+    {"id": "r8192", "axes": {"rows": 8192}, "checks": ["correctness", "performance"], "source": "8 x 32 x 32 pixels, the original task's largest batch layout"},
+    {"id": "r32768", "axes": {"rows": 32768}, "checks": ["correctness", "performance"], "source": "per-pixel scoring of a 32-image batch at 32x32"},
+    {"id": "r131072", "axes": {"rows": 131072}, "checks": ["correctness", "performance"], "source": "per-pixel scoring at 128x128 resolution"},
+    {"id": "r524288", "axes": {"rows": 524288}, "checks": ["correctness", "performance"], "source": "per-pixel scoring at 256x256 resolution"},
+    {"id": "r819200", "axes": {"rows": 819200}, "checks": ["correctness", "performance"], "source": "per-pixel scoring of a 200-image batch at 64x64"}
+  ]
+}

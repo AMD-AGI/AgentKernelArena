@@ -1,0 +1,17 @@
+{
+  "description": "Image batches of the KernelBench level-1 problem 63 convolution (16 to 128 channels, 3x3): its five test shapes from batch 4 at 128x128 to batch 16 at 512x512, plus batch 2 at 128x128 for the 100x size span. Single images, odd and non-square sizes and a 1-pixel-high output are correctness-only boundary cases.",
+  "cases": [
+    {"id": "b1_h64_w64", "axes": {"batch": 1, "height": 64, "width": 64}, "checks": ["correctness"], "source": "single image (batch minimum)"},
+    {"id": "b2_h3_w5", "axes": {"batch": 2, "height": 3, "width": 5}, "checks": ["correctness"], "source": "smallest valid height (1x3 output)"},
+    {"id": "b3_h40_w40", "axes": {"batch": 3, "height": 40, "width": 40}, "checks": ["correctness"], "source": "odd batch, partial last tile"},
+    {"id": "b2_h100_w75", "axes": {"batch": 2, "height": 100, "width": 75}, "checks": ["correctness"], "source": "non-square, unaligned image"},
+    {"id": "b5_h34_w130", "axes": {"batch": 5, "height": 34, "width": 130}, "checks": ["correctness"], "source": "wide non-square image"},
+    {"id": "b1_h128_w128", "axes": {"batch": 1, "height": 128, "width": 128}, "checks": ["correctness"], "source": "single 128x128 image, below the timing floor"},
+    {"id": "b2_h128_w128", "axes": {"batch": 2, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "batch 2 at the smallest KernelBench test resolution"},
+    {"id": "b4_h128_w128", "axes": {"batch": 4, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench L1-63 test shape (4, 16, 128, 128)"},
+    {"id": "b8_h256_w256", "axes": {"batch": 8, "height": 256, "width": 256}, "checks": ["correctness", "performance"], "source": "KernelBench L1-63 test shape (8, 16, 256, 256)"},
+    {"id": "b16_h256_w256", "axes": {"batch": 16, "height": 256, "width": 256}, "checks": ["correctness", "performance"], "source": "KernelBench L1-63 test shape (16, 16, 256, 256)"},
+    {"id": "b8_h512_w512", "axes": {"batch": 8, "height": 512, "width": 512}, "checks": ["correctness", "performance"], "source": "KernelBench L1-63 test shape (8, 16, 512, 512)"},
+    {"id": "b16_h512_w512", "axes": {"batch": 16, "height": 512, "width": 512}, "checks": ["correctness", "performance"], "source": "KernelBench L1-63 test shape (16, 16, 512, 512)"}
+  ]
+}

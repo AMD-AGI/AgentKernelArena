@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  LayerNorm of each token row: out = (x - mean) * rsqrt(var + 1e-5) * weight + bias with the mean and biased
+  variance taken over the hidden axis in high precision and the result rounded to float16. The epsilon is
+  fixed at 1e-5.
+operator:
+  name: layer_norm
+  category: normalization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: float16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    bias:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: float16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/layernorm_kernel.py (build_layernorm_module) and kernels/kernels_common.py
+    license: Apache-2.0
+    modifications: >-
+      Only the LayerNorm builder is kept (the fused-add and quantizing builders and unused helpers are dropped);
+      the builder is wrapped in run() with a per-shape lru_cache and launched on the current stream; the thread
+      block is 128 instead of 256 threads so that the hidden size 4096 takes the vectorised fast path.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

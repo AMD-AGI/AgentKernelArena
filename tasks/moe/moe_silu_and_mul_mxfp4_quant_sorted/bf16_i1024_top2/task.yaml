@@ -1,0 +1,61 @@
+schema_version: 3
+description: >-
+  Epilogue of the split-K first grouped GEMM of a mixture-of-experts layer, fused with MXFP4 quantization.
+  x [n_tokens * 2, 2048] bfloat16 holds, per (token, slot) row, the gate half [0:1024) and the up half [1024:2048).
+  For every row act = silu(gate) * up (silu(g) = g / (1 + exp(-g))) is quantized in groups of 32 columns to packed FP4
+  (E2M1, low nibble first) with an E8M0 scale per group: scale exponent = exponent of the group maximum rounded to the
+  nearest power of two (mantissa >= 1.5 rounds up), minus 2; codes round to nearest even and saturate at 6.
+  sorted_ids lists the rows in expert-sorted order (entry = (slot << 24) | token, padded per expert to blocks of 32 rows
+  with the sentinel (2 << 24) | n_tokens). The packed codes out [n_tokens * 2, 512] are stored at the row's own position
+  token * 2 + slot, while the scales are stored at the row's position in sorted_ids, in the tiled layout of the grouped
+  GEMM: out_scale_sorted viewed as [sorted_len / 32, 4, 4, 16, 4] bytes holds the scale of sorted row 32 * R + 16 * a + m
+  and group 8 * Cb + 4 * c + n at [R, Cb, n, m, 2 * c + a]. Scales of sentinel rows are zero.
+operator: {name: moe_silu_and_mul_mxfp4_quant_sorted, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 524288, description: Tokens in the batch.}
+    top_k: {kind: const, value: 2, description: Experts chosen per token.}
+    num_experts: {kind: const, value: 64, description: Experts of the layer.}
+    inter_dim: {kind: const, value: 1024, description: Intermediate size of the expert MLP (columns after the activation).}
+  derived_axes:
+    num_rows: n_tokens * top_k
+    scale_bytes: >-
+      (((n_tokens * top_k) % num_experts) * (ceil_div((n_tokens * top_k) // num_experts + 1, 32) * 32) +
+      (num_experts - (n_tokens * top_k) % num_experts) * (ceil_div((n_tokens * top_k) // num_experts, 32) * 32)) *
+      (inter_dim // 32)
+    sorted_len: >-
+      ((n_tokens * top_k) % num_experts) * (ceil_div((n_tokens * top_k) // num_experts + 1, 32) * 32) +
+      (num_experts - (n_tokens * top_k) % num_experts) * (ceil_div((n_tokens * top_k) // num_experts, 32) * 32)
+  inputs:
+    x:
+      {kind: tensor, shape: [num_rows, 2 * inter_dim], dtype: bfloat16, distribution: {kind: generator}}
+    sorted_ids:
+      {kind: tensor, shape: [sorted_len], dtype: int32, role: index, distribution: {kind: generator}}
+    num_valid_ids:
+      {kind: tensor, shape: [1], dtype: int32, role: metadata, distribution: {kind: generator}}
+    token_num: {kind: scalar, dtype: int32, default: 1, description: Number of tokens (rows of x are token_num * top_k).}
+  outputs:
+    out: {shape: [num_rows, inter_dim // 2], dtype: uint8}
+    out_scale_sorted: {shape: [scale_bytes], dtype: uint8}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/silu_and_mul_fq.py (with python/flydsl/expr/buffer_ops.py, vector.py, meta.py)
+    license: MIT (kernel); Apache-2.0 (buffer_ops.py, vector.py, meta.py)
+    modifications: >-
+      Kernel algorithm unchanged; one addressing adaptation: the x buffer descriptor is built per row from the
+      row's 64-bit address (readfirstlane of the block-uniform row index) instead of once at the tensor base, since
+      a 4 GiB x exceeds the descriptor's 32-bit byte range and lost its last dword; added run() (builds the
+      launcher once per shape, FP4 / SiLU / no bias) writing the preallocated outputs; helper imports made relative; the environment-variable architecture lookup removed from
+      buffer_ops.py, and the Python-stack debug locations of meta.py replaced by unknown locations (traceback import) and the star re-export of vector.py removed.
+compare:
+  out: {bound: exact}
+  out_scale_sorted: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,49 @@
+schema_version: 3
+description: >-
+  k-nearest-neighbour search in 3-D: for every query centre, the k = 5 points of its cloud with the
+  smallest squared Euclidean distance, nearest first, as indices and squared distances. Equal
+  distances resolve to the smallest point index.
+operator:
+  name: knn
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 16, description: Point clouds in the batch.}
+    n_points: {kind: var, min: 16, max: 16384, description: Points per cloud.}
+    k: {kind: const, value: 5, description: Neighbours per query.}
+  derived_axes:
+    n_query: max(1, n_points // 4)
+  inputs:
+    xyz:
+      kind: tensor
+      shape: [batch, n_points, 3]
+      dtype: float32
+      distribution: {kind: generator}
+    center_xyz:
+      kind: tensor
+      shape: [batch, n_query, 3]
+      dtype: float32
+      distribution: {kind: generator}
+  outputs:
+    idx: {shape: [batch, n_query, k], dtype: int32}
+    dist2: {shape: [batch, n_query, k], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 1464c935
+    path: tasks/hip2hip/knn/src/knn_cuda.hip
+    license: Apache-2.0
+    modifications: >-
+      Registered as the arena run op writing the preallocated idx and dist2 (TORCH_LIBRARY_EXPAND
+      instead of pybind); the heap and its final sort order equal distances by point index;
+      host-side error printing and exit removed.
+compare:
+  idx: {bound: exact}
+  dist2: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

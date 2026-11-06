@@ -1,0 +1,145 @@
+{
+  "description": "Requests whose penalty state is built at once, with one state slot per request; every row writes a 151936-entry histogram, about 0.6 MB, so cases below 128 rows are correctness-only.",
+  "cases": [
+    {
+      "id": "r1_l1",
+      "axes": {
+        "n_reqs": 1,
+        "max_prefill_len": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single request with a one-token prefill"
+    },
+    {
+      "id": "r3_l1031",
+      "axes": {
+        "n_reqs": 3,
+        "max_prefill_len": 1031
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "few requests, prefill crossing a 1024-token block"
+    },
+    {
+      "id": "r37_l2000",
+      "axes": {
+        "n_reqs": 37,
+        "max_prefill_len": 2000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch of new requests"
+    },
+    {
+      "id": "r8_l48",
+      "axes": {
+        "n_reqs": 8,
+        "max_prefill_len": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short prompts"
+    },
+    {
+      "id": "r128_l512",
+      "axes": {
+        "n_reqs": 128,
+        "max_prefill_len": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "burst of short-prompt requests"
+    },
+    {
+      "id": "r128_l4096",
+      "axes": {
+        "n_reqs": 128,
+        "max_prefill_len": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "burst of 4k-token prompts"
+    },
+    {
+      "id": "r256_l2048",
+      "axes": {
+        "n_reqs": 256,
+        "max_prefill_len": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "new requests of a busy step"
+    },
+    {
+      "id": "r512_l1024",
+      "axes": {
+        "n_reqs": 512,
+        "max_prefill_len": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "half of the slots refilled"
+    },
+    {
+      "id": "r512_l8192",
+      "axes": {
+        "n_reqs": 512,
+        "max_prefill_len": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "half of the slots, 8k prompts"
+    },
+    {
+      "id": "r1024_l4096",
+      "axes": {
+        "n_reqs": 1024,
+        "max_prefill_len": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "all slots refilled"
+    },
+    {
+      "id": "r1024_l16384",
+      "axes": {
+        "n_reqs": 1024,
+        "max_prefill_len": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "all slots, 16k prompts"
+    },
+    {
+      "id": "r1024_l32768",
+      "axes": {
+        "n_reqs": 1024,
+        "max_prefill_len": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "all slots, 32k prompts"
+    }
+  ]
+}

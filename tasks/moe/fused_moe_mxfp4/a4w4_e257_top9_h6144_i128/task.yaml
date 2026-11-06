@@ -1,0 +1,126 @@
+schema_version: 3
+description: >-
+  GLM-5 routed MoE layer with MXFP4 activations and weights (a4w4), one tensor-parallel rank of eight:
+  257 experts (256 routed and one fused shared expert), top-9, hidden 6144, expert intermediate 256, SiLU,
+  bfloat16 in and out. The bfloat16 tokens are quantized to MXFP4 in the operator, then for each token t and
+  slot j (expert e = topk_ids[t, j]): g = mxfp4(x[t]) @ W1[e]^T (512 outputs, gate = g[:256], up = g[256:]);
+  act = bfloat16(silu(gate) * up); y = mxfp4(act) @ W2[e]^T; out[t] = sum_j topk_weights[t, j] * y, rounded to
+  bfloat16. mxfp4(v) is AITER's production MXFP4 quantization (RoundUp scale mode): for each block of 32
+  consecutive values the e8m0 block scale is the smallest power of two 2^s with max(amax, 1e-10) <= 6 * 2^s,
+  and v / 2^s rounds to the nearest e2m1 value, ties to even. W1 [E, 512, 6144] and W2 [E, 6144, 256] are
+  MXFP4: e2m1 codes packed two per byte along the contracted axis (low nibble first) with one e8m0 scale byte
+  (2^(byte - 127)) per 32 contracted elements. Kernel-facing weights interleave the gate/up rows of W1 and
+  store both scale tensors in the gfx950 MX-scale tile order (see inputs.py).
+operator: {name: fused_moe_mxfp4, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    num_experts: {kind: const, value: 257, description: 256 routed experts plus the fused shared expert.}
+    topk: {kind: const, value: 9, description: Experts per token (8 routed plus the shared expert).}
+    hidden_size: {kind: const, value: 6144, description: Model width.}
+    inter_size: {kind: const, value: 256, description: Expert intermediate width per rank (2048 at TP8).}
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1:
+      kind: tensor
+      shape: [num_experts, 2 * inter_size, hidden_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: Packed e2m1 gate/up weights; kernel-facing rows interleave gate and up.
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, 2 * inter_size // 32, hidden_size]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e8m0 scales of w1 in gfx950 MX-scale tile order (logically [E, 512, 6144 / 32]).
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, inter_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: Packed e2m1 down-projection weights.
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size // 32, inter_size]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e8m0 scales of w2 in gfx950 MX-scale tile order (logically [E, 6144, 256 / 32]).
+    topk_weights:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: float32
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/moe/moe_op_gemm_a4w4.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_gemm_a4w4.py
+      - aiter/ops/triton/_triton_kernels/quant/quant.py
+      - aiter/ops/triton/_triton_kernels/moe/quant_moe.py
+      - aiter/ops/triton/_triton_kernels/moe/activations.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/moe/moe_routing/routing.py
+      - aiter/ops/triton/moe/moe_routing/bitmatrix.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/routing.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/bitmatrix.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/expt_data.py
+      - aiter/ops/triton/moe/reduce.py
+      - aiter/ops/triton/_triton_kernels/moe/reduce.py
+    license: MIT
+    notes: >-
+      The production function of the source task is AITER's fused_moe with QuantType.per_1x32 and fp4x2
+      activations and weights, which on gfx950 dispatches, per the tuned GLM-5 FP4 table
+      (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv), to FlyDSL two-stage MoE kernels
+      (flydsl_moe1_afp4_wfp4_bf16_* and flydsl_moe2_afp4_wfp4_bf16_*), plus the FlyDSL MoE sorting kernel:
+      more than 8000 lines of FlyDSL sources (the mxfp4_gemm1/mxfp4_gemm2 kernels, the MoE sorting kernel and
+      their helpers) tied to AITER's kernel-name dispatch and chip queries and pinned to flydsl 0.3.0, which
+      were not vendored. The baseline is AITER's Triton MXFP4 x MXFP4 MoE GEMM (a port of the triton_kernels
+      matmul_ogs path) with AITER's Triton MXFP4 quantizer (scale rounding aligned with production, see
+      modifications) and routing kernels. pack_bitmatrix comes from vllm-project/vllm at commit
+      edbc4969a76b25c531f7b9bb16b79984e65ef023,
+      vllm/model_executor/layers/fused_moe/experts/gpt_oss_triton_kernels_moe.py (Apache-2.0); the AITER kernels
+      are themselves adapted from the triton_kernels package (MIT).
+    modifications: >-
+      Kernels kept as in AITER (imports made local; the profiling-only launch_metadata hook removed) except
+      _mxfp4_quant_op, whose e8m0 scale computation is replaced by AITER's production RoundUp mode
+      (ceil_pow2(max(amax, 1e-10) / 6), kDefaultMxScaleRoundMode of csrc/include/mx_quant_utils.h, used by
+      the HIP and FlyDSL MXFP4 quantizers that fused_moe dispatches to) instead of the upstream Triton op's
+      round-amax-to-a-power-of-two-and-divide-by-4 rule; its e2m1 rounding (nearest, ties to even) is
+      unchanged. The routing host code is AITER's routing() after its top-k step, with the top-k kernel
+      replaced by vLLM's pack_bitmatrix over the given topk_ids and the scratchpads that kernel zeroes
+      allocated with zeros; tensor-descriptor (gfx1250) paths disabled; _swiglu's parameter input is renamed
+      x. mxfp4_quant passes the bfloat16 input to its kernel, which converts each tile to float32, instead of
+      first copying it to float32 on the host; pick_gemm_num_stages uses the gfx950 LDS capacity directly;
+      allocate_output accepts the preallocated final output. run() chains routing, MXFP4 quantization of the
+      tokens, GEMM1 (gather, fused SiLU-and-mul via the SwiGLU epilogue with alpha 1, no limit and no
+      residual), MXFP4 quantization of the bfloat16 intermediate, the gate-weighted GEMM2 and the top-k
+      reduction into the preallocated output; the bias inputs are absent.
+compare:
+  out: {bound: baseline_relative, max_violation_fraction: 0.01}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,143 @@
+{
+ "description": "Token counts of a 256-expert top-8 MoE layer (balanced routing, block size 32, hidden size 7168 for the zeroed output buffer); decode-sized batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1 (single-kernel path)"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "t48",
+   "axes": {
+    "n_tokens": 48
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 48"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "largest two-kernel path"
+  },
+  {
+   "id": "t2560",
+   "axes": {
+    "n_tokens": 2560
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t5120",
+   "axes": {
+    "n_tokens": 5120
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t10240",
+   "axes": {
+    "n_tokens": 10240
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t20480",
+   "axes": {
+    "n_tokens": 20480
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t40960",
+   "axes": {
+    "n_tokens": 40960
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t81920",
+   "axes": {
+    "n_tokens": 81920
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t163840",
+   "axes": {
+    "n_tokens": 163840
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t262144",
+   "axes": {
+    "n_tokens": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  }
+ ]
+}

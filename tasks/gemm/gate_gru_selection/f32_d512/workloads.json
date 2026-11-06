@@ -1,0 +1,100 @@
+{
+  "description": "Row counts (batch x 4 x 4 flattened) at d_model 512; the smallest counts are correctness-only boundary cases.",
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "rows": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single row"
+    },
+    {
+      "id": "r3",
+      "axes": {
+        "rows": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd tiny batch"
+    },
+    {
+      "id": "r100",
+      "axes": {
+        "rows": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned row count"
+    },
+    {
+      "id": "r1000",
+      "axes": {
+        "rows": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned row count"
+    },
+    {
+      "id": "r256",
+      "axes": {
+        "rows": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 16 x 4 x 4"
+    },
+    {
+      "id": "r1024",
+      "axes": {
+        "rows": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 64 x 4 x 4 (old task case)"
+    },
+    {
+      "id": "r4096",
+      "axes": {
+        "rows": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 256 x 4 x 4 (old task case)"
+    },
+    {
+      "id": "r16384",
+      "axes": {
+        "rows": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 1024 x 4 x 4 (old task case)"
+    },
+    {
+      "id": "r65536",
+      "axes": {
+        "rows": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 4096 x 4 x 4"
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "description": "Rows of float32 logits over a 151936-entry vocabulary; small batches are correctness-only.",
+  "cases": [
+    {
+      "id": "n1",
+      "axes": {
+        "n_rows": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "sampler logprobs, batch 1"
+    },
+    {
+      "id": "n3",
+      "axes": {
+        "n_rows": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "sampler logprobs, odd batch"
+    },
+    {
+      "id": "n37",
+      "axes": {
+        "n_rows": 37
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "sampler logprobs, unaligned batch"
+    },
+    {
+      "id": "n17",
+      "axes": {
+        "n_rows": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "sampler logprobs, odd batch"
+    },
+    {
+      "id": "n32",
+      "axes": {
+        "n_rows": 32
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "sampler logprobs, large decode batch"
+    },
+    {
+      "id": "n64",
+      "axes": {
+        "n_rows": 64
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "sampler logprobs, large decode batch"
+    },
+    {
+      "id": "n256",
+      "axes": {
+        "n_rows": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prompt logprobs, short prompt"
+    },
+    {
+      "id": "n1024",
+      "axes": {
+        "n_rows": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prompt logprobs, chunked prefill"
+    },
+    {
+      "id": "n3200",
+      "axes": {
+        "n_rows": 3200
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prompt logprobs, long prompt"
+    }
+  ]
+}

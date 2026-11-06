@@ -1,0 +1,89 @@
+schema_version: 3
+description: >-
+  Writes the token-slot indices of a prefill batch into the request-to-token table: for request i
+  (table row r = req_pool_indices[i]) the first pre_lens[i] entries of row r are set to
+  prefix_indices[i, :pre_lens[i]] and the next seq_lens[i] - pre_lens[i] entries to that request's
+  slice of out_cache_loc (the slices of all requests are consecutive, in request order, with
+  extend_lens[i] = seq_lens[i] - pre_lens[i] entries each). Values are cast from int64 to the int32
+  table; every other table entry is left unchanged.
+operator:
+  name: write_req_to_token_pool
+  category: kv_cache
+interface:
+  axes:
+    n_requests: {kind: var, min: 1, max: 2048, description: Requests of the prefill batch.}
+    max_extend_len: {kind: var, min: 1, max: 4096, description: Newly scheduled tokens of the longest request (each request has 0 to 8 fewer).}
+    max_batch: {kind: const, value: 2048, description: Rows of the request-to-token table.}
+    max_context_len: {kind: const, value: 202756, description: Columns (tokens) per row.}
+    max_prefix_len: {kind: const, value: 16, description: Longest cached prefix per request.}
+  inputs:
+    req_to_token:
+      kind: tensor
+      shape: [max_batch, max_context_len]
+      dtype: int32
+      role: state
+      distribution: {kind: randint, low: 0, high: 202756}
+      description: Request-to-token table with prior contents; unwritten entries must survive.
+    req_pool_indices:
+      kind: tensor
+      shape: [n_requests]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Distinct table row of each request.
+    prefix_indices:
+      kind: tensor
+      shape: [n_requests, max_prefix_len]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Cached prefix slot indices of each request (first pre_lens[i] entries are used).
+    pre_lens:
+      kind: tensor
+      shape: [n_requests]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+      description: Prefix length of each request.
+    seq_lens:
+      kind: tensor
+      shape: [n_requests]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+      description: Total length of each request (prefix plus extension).
+    extend_lens:
+      kind: tensor
+      shape: [n_requests]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+      description: Extension length of each request (seq_lens - pre_lens).
+    out_cache_loc:
+      kind: tensor
+      shape: ["n_requests * max_extend_len"]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Newly allocated token slots of all extensions back to back (only the first sum(extend_lens) are used).
+  outputs: {}
+  mutable: [req_to_token]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/memory/common.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface. SGLang passes one device pointer per request prefix
+      (a uint64 tensor built from the prefix tensors' data pointers); here the prefixes are the rows of
+      one int64 tensor and the kernel offsets by the row stride instead of dereferencing a pointer.
+compare:
+  req_to_token: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

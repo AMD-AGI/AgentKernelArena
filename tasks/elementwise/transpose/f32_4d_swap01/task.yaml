@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  Swap dimensions 0 and 1 of a 4-D float32 tensor and materialize the result contiguously:
+  out[b, s, h, d] = x[s, b, h, d].
+operator:
+  name: transpose
+  category: elementwise
+interface:
+  axes:
+    seq: {kind: var, min: 1, max: 32768, description: Dimension 0 of the input (moves to dimension 1).}
+    batch: {kind: const, value: 4, description: Dimension 1 of the input (moves to dimension 0).}
+    heads: {kind: const, value: 32, description: Number of attention heads.}
+    head_dim: {kind: const, value: 128, description: Contiguous innermost dimension.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [seq, batch, heads, head_dim]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [batch, seq, heads, head_dim], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AgentKernelArena (hip2hip/Transpose task)
+    revision: 5887b5fb6476a1c167649f7d4a0acdcbe065292e
+    path: tasks/hip2hip/Transpose/hip/hip_1067_Transpose.hip
+    license: Apache-2.0
+    modifications: >-
+      Specialized to the fixed 4-D float32 swap of dimensions 0 and 1 (the default dimensions of the old task), wrapped in the run() op
+      writing into the preallocated output; strides are passed to the kernel by value instead of
+      through per-call device tensors so the launch is graph-capturable.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

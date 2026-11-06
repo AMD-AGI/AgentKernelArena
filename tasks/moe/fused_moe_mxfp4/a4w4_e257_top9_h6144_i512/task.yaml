@@ -1,0 +1,121 @@
+schema_version: 3
+description: >-
+  Routed-expert layer with MXFP4 activations and weights (AITER fused_moe, QuantType.per_1x32, a4w4) for 257
+  experts, top 9, hidden 6144, intermediate 512, SiLU, routing weights applied after the down projection,
+  bfloat16 in and out. Weights are e2m1 codes, two per byte with the even index in the low nibble, and one e8m0
+  scale byte (2^(s - 127)) per 32 values of the reduction axis, in plain row-major layout: w1 [257, 1024, 3072]
+  with w1_scale [257, 1024, 192] holds gate (rows 0..511) then up (rows 512..1023); w2 [257, 6144, 256] with
+  w2_scale [257, 6144, 16]. The bfloat16 hidden states are quantized to MXFP4 in 1x32 blocks; for each token t
+  and slot k with e = topk_ids[t, k], gate and up are the dot products of that token with the dequantized w1[e]
+  rows (exact in float32); h = silu(gate) * up computed in float32 and rounded to bfloat16 is quantized to MXFP4
+  in 1x32 blocks of the intermediate axis; y = topk_weights[t, k] * (h_q . dequantized w2[e]); out[t] is the sum
+  over k of y, rounded to bfloat16. MXFP4 quantization (AITER's default RoundUp scale): the block scale is the
+  smallest power of two 2^s with amax <= 6 * 2^s (s = -127 for an all-zero block), and each value divided by
+  the scale rounds to the nearest e2m1 value (0, 0.5, 1, 1.5, 2, 3, 4, 6), ties to the even code. topk_ids rows
+  hold distinct expert ids.
+operator:
+  name: fused_moe_mxfp4
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    top_k: {kind: const, value: 9, description: Experts per token.}
+    num_experts: {kind: const, value: 257, description: Experts of the layer (256 routed plus 1 shared in GLM-5).}
+    hidden_size: {kind: const, value: 6144, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 512, description: Expert intermediate width of this shard (TP4).}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+    hidden_bytes: hidden_size // 2
+    hidden_blocks: hidden_size // 32
+    intermediate_bytes: intermediate_size // 2
+    intermediate_blocks: intermediate_size // 32
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_bytes]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e2m1 codes of the gate (rows 0..I-1) and up (rows I..2I-1) projections, two per byte.
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_blocks]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e8m0 scale per 32 values of the hidden axis.
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_bytes]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e2m1 codes of the down projection, two per byte (even index in the low nibble).
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_blocks]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: e8m0 scale per 32 values of the intermediate axis.
+    topk_weights:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Routing weight of each selected expert, applied to its down-projection output.
+    topk_ids:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct expert ids per token.
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_mxfp4_silu_fused.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_mxfp4.py
+      - aiter/ops/triton/moe/moe_op_mxfp4_silu_fused.py
+      - aiter/ops/triton/moe/moe_op_mxfp4.py
+      - aiter/ops/triton/_triton_kernels/quant/quant.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_gemm_a4w4.py
+      - aiter/ops/triton/moe/moe_op_gemm_a4w4.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/moe_common.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/utils/moe_config_utils.py
+      - aiter/ops/triton/configs/moe/gfx950-MOE-MX_FP4.json
+      - csrc/include/mx_quant_utils.h
+    license: MIT
+    modifications: >-
+      AITER's Triton MXFP4 MoE kernels (_fused_moe_kernel_mxfp4_silu for stage 1, _fused_moe_kernel_mxfp4 for
+      stage 2) and its MXFP4 quantization kernel (_mxfp4_quant_kernel with _mxfp4_quant_op), with their launchers
+      reduced to e2m1 x e2m1, bfloat16 compute and preallocated buffers, and the gfx950 MX_FP4 tile table selected
+      by token count as get_optimal_moe_config does. Numerics are aligned with AITER's production fused_moe a4w4
+      path: _mxfp4_quant_op computes its block scale with AITER's default RoundUp rule (ceil_pow2(amax / 6), from
+      fp_f32_to_e8m0_scale in csrc/include/mx_quant_utils.h, used by its HIP and FlyDSL quantizers) instead of the
+      EVEN rule, and stage 1 computes SiLU(gate) * up from the float32 accumulator (as AITER's FlyDSL stage 1
+      does) instead of from gate and up rounded to bfloat16. In both GEMM kernels the kernel_repr decorator and
+      the per-tensor A/B scales (always 1.0 for MXFP4) are removed. The quantized activation scale buffers get one
+      spare row so that the masked padding rows read in bounds. moe_align_block_size (a CUDA op in vLLM; AITER's
+      Triton version loops sequentially over all tokens per expert) and the top-k sum are Triton kernels written
+      for this task (baseline/routing.py).
+compare:
+  out: {bound: sqnr, min_db: 40}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

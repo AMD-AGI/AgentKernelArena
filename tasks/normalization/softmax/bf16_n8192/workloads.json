@@ -1,0 +1,100 @@
+{
+ "description": "Row counts of a row softmax over 8192 columns; small batches are correctness-only.",
+ "cases": [
+  {
+   "id": "r1",
+   "axes": {
+    "n_rows": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single row"
+  },
+  {
+   "id": "r3",
+   "axes": {
+    "n_rows": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch"
+  },
+  {
+   "id": "r48",
+   "axes": {
+    "n_rows": 48
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch 48"
+  },
+  {
+   "id": "r1000",
+   "axes": {
+    "n_rows": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch, below the 10 us floor"
+  },
+  {
+   "id": "r2048",
+   "axes": {
+    "n_rows": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "2048 rows"
+  },
+  {
+   "id": "r8192",
+   "axes": {
+    "n_rows": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of rows"
+  },
+  {
+   "id": "r32768",
+   "axes": {
+    "n_rows": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of rows"
+  },
+  {
+   "id": "r98304",
+   "axes": {
+    "n_rows": 98304
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of rows"
+  },
+  {
+   "id": "r204800",
+   "axes": {
+    "n_rows": 204800
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "largest batch of rows"
+  }
+ ]
+}

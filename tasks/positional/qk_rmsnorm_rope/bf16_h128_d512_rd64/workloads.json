@@ -1,0 +1,131 @@
+{
+  "description": "Token counts of DeepSeek-V4-style attention with all 128 query heads on one device; decode batches (up to 128 tokens, near the 10 us timing floor) and the unaligned 1000-token chunk are correctness-only. Timed cases run from 160 to 16384 tokens (102x); the largest is bounded by the evaluator's comparison memory on the 288 GiB device (see README).",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1 (axis minimum)"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, odd batch"
+    },
+    {
+      "id": "t48",
+      "axes": {
+        "n_tokens": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 48"
+    },
+    {
+      "id": "t64",
+      "axes": {
+        "n_tokens": 64
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 64"
+    },
+    {
+      "id": "t128",
+      "axes": {
+        "n_tokens": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 128"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk"
+    },
+    {
+      "id": "t160",
+      "axes": {
+        "n_tokens": 160
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "short prefill (smallest timed case, about 17 us)"
+    },
+    {
+      "id": "t256",
+      "axes": {
+        "n_tokens": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "short prefill"
+    },
+    {
+      "id": "t512",
+      "axes": {
+        "n_tokens": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill (16K-token chunked-prefill budget)"
+    }
+  ]
+}

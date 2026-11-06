@@ -1,0 +1,16 @@
+{
+  "description": "Mixtral-8x7B expert GEMM (K=4096, N=14336, 8 experts) over padded per-expert token buffers of varying length; token counts per expert are drawn per case with one full, one empty and one single-token expert.",
+  "cases": [
+    {"id": "m1", "axes": {"max_tokens": 1}, "checks": ["correctness"], "source": "decode, one token"},
+    {"id": "m3", "axes": {"max_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "m17", "axes": {"max_tokens": 17}, "checks": ["correctness"], "source": "ragged tile tail"},
+    {"id": "m100", "axes": {"max_tokens": 100}, "checks": ["correctness"], "source": "unaligned decode batch"},
+    {"id": "m1000", "axes": {"max_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "m33_empty", "axes": {"max_tokens": 33}, "checks": ["correctness"], "source": "all experts empty (no tokens routed)"},
+    {"id": "m16", "axes": {"max_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode batch, weight-bandwidth bound"},
+    {"id": "m64", "axes": {"max_tokens": 64}, "checks": ["correctness", "performance"], "source": "decode batch"},
+    {"id": "m256", "axes": {"max_tokens": 256}, "checks": ["correctness", "performance"], "source": "small prefill"},
+    {"id": "m1024", "axes": {"max_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m4096", "axes": {"max_tokens": 4096}, "checks": ["correctness", "performance"], "source": "large prefill chunk"}
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "description": "Rows per batch element (m) at 16 batch elements, N=1280, K=8192; the tuned config table of the baseline switches tile shape across these sizes.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum"
+    },
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd tiny batch"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "just above one tile row"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "below one 128-row tile"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned"
+    },
+    {
+      "id": "m3000",
+      "axes": {
+        "m": 3000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned, no tuned row of the config table"
+    },
+    {
+      "id": "m64",
+      "axes": {
+        "m": 64
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "m": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    },
+    {
+      "id": "m256",
+      "axes": {
+        "m": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "tokens per head"
+    }
+  ]
+}

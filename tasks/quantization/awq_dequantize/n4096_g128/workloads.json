@@ -1,0 +1,133 @@
+{
+  "description": "AWQ dequantization of N=4096 weights with group size 128. Single projections of common 4096-wide AWQ models are small, so the large performance cases stack several layers' weights along K.",
+  "cases": [
+    {
+      "id": "k128",
+      "axes": {
+        "K": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum, a single group"
+    },
+    {
+      "id": "k384",
+      "axes": {
+        "K": 384
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "three groups, not a power of two"
+    },
+    {
+      "id": "k2176",
+      "axes": {
+        "K": 2176
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "17 groups, not a multiple of 16 groups"
+    },
+    {
+      "id": "k11008",
+      "axes": {
+        "K": 11008
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "Llama-style intermediate size 11008"
+    },
+    {
+      "id": "k3072",
+      "axes": {
+        "K": 3072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "3072-row projection, hidden size 3072 (Phi-3 class)"
+    },
+    {
+      "id": "k4096",
+      "axes": {
+        "K": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "one 4096-row projection, hidden size 4096"
+    },
+    {
+      "id": "k14336",
+      "axes": {
+        "K": 14336
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "Llama-3 8B intermediate size 14336"
+    },
+    {
+      "id": "k28672",
+      "axes": {
+        "K": 28672
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "Llama-3 70B intermediate size 28672"
+    },
+    {
+      "id": "k53248",
+      "axes": {
+        "K": 53248
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "Llama-3 405B intermediate size 53248"
+    },
+    {
+      "id": "k98304",
+      "axes": {
+        "K": 98304
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "several layers' weights stacked and dequantized in one launch"
+    },
+    {
+      "id": "k204800",
+      "axes": {
+        "K": 204800
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "stacked multi-layer dequantization"
+    },
+    {
+      "id": "k307200",
+      "axes": {
+        "K": 307200
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "stacked multi-layer dequantization"
+    }
+  ]
+}

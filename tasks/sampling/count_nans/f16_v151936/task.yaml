@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  Counts the NaN values of every row of a float16 logits matrix over the vocabulary axis and returns
+  one int32 count per row. Positive and negative infinities are not NaN.
+operator:
+  name: count_nans
+  category: sampling
+interface:
+  axes:
+    n_reqs: {kind: var, min: 1, max: 4096, description: Rows (requests or prompt positions) of the logits.}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen).}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_reqs, vocab_size]
+      dtype: float16
+      distribution: {kind: generator}
+      description: Logits, with NaNs of varying density per row.
+  outputs:
+    num_nans: {shape: [n_reqs], dtype: int32}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/metrics/logits.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface writing into the preallocated output; libdevice is imported
+      from triton.language.extra instead of torch._inductor.runtime.triton_helpers.
+compare:
+  num_nans: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

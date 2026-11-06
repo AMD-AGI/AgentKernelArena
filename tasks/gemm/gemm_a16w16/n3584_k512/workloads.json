@@ -1,0 +1,32 @@
+{
+  "description": "A 3584-wide output projection of a 512-deep reduction (a low-rank / small-hidden up-projection): token counts of decode batches, prefill chunks and long batched prefills. Small decode batches and sizes whose estimated time is below 10 us are correctness-only.",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "m2", "axes": {"m": 2}, "checks": ["correctness"], "source": "decode"},
+    {"id": "m4", "axes": {"m": 4}, "checks": ["correctness"], "source": "decode"},
+    {"id": "m8", "axes": {"m": 8}, "checks": ["correctness"], "source": "decode"},
+    {"id": "m16", "axes": {"m": 16}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m32", "axes": {"m": 32}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m48", "axes": {"m": 48}, "checks": ["correctness"], "source": "decode batch"},
+    {"id": "m64", "axes": {"m": 64}, "checks": ["correctness"], "source": "decode / small prefill"},
+    {"id": "m100", "axes": {"m": 100}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness"], "source": "small prefill"},
+    {"id": "m196", "axes": {"m": 196}, "checks": ["correctness"], "source": "unaligned batch, tuned size elsewhere"},
+    {"id": "m256", "axes": {"m": 256}, "checks": ["correctness"], "source": "small prefill"},
+    {"id": "m320", "axes": {"m": 320}, "checks": ["correctness"], "source": "unaligned batch"},
+    {"id": "m512", "axes": {"m": 512}, "checks": ["correctness"], "source": "small prefill"},
+    {"id": "m1000", "axes": {"m": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "m1024", "axes": {"m": 1024}, "checks": ["correctness"], "source": "prefill chunk"},
+    {"id": "m1600", "axes": {"m": 1600}, "checks": ["correctness"], "source": "short prefill, not a power of two"},
+    {"id": "m2048", "axes": {"m": 2048}, "checks": ["correctness"], "source": "prefill chunk"},
+    {"id": "m3584", "axes": {"m": 3584}, "checks": ["correctness", "performance"], "source": "short prefill, not a power of two"},
+    {"id": "m4096", "axes": {"m": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m8192", "axes": {"m": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m16384", "axes": {"m": 16384}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "m32768", "axes": {"m": 32768}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "m65536", "axes": {"m": 65536}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "m131072", "axes": {"m": 131072}, "checks": ["correctness", "performance"], "source": "long batched prefill"},
+    {"id": "m262144", "axes": {"m": 262144}, "checks": ["correctness", "performance"], "source": "long batched prefill"},
+    {"id": "m360448", "axes": {"m": 360448}, "checks": ["correctness", "performance"], "source": "very long batched prefill"}
+  ]
+}

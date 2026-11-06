@@ -1,0 +1,59 @@
+schema_version: 3
+description: >-
+  Punica SGMV LoRA shrink with four active adapters: out[t] = scaling * x[t] @ lora_a[a].T for every token t assigned
+  to adapter slot a, where x [n_tokens, 4096] and lora_a [4, 16, 4096] are bfloat16, the products accumulate in
+  float32 and out [n_tokens, 16] is float32. Tokens are routed by vLLM's LoRA metadata: token indices sorted by
+  adapter, the token count and start offset of each adapter group, and the adapter slot of each group.
+operator: {name: lora_shrink, category: gemm}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 524288, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Model hidden size (contracted dimension).}
+    rank: {kind: const, value: 16, description: LoRA rank.}
+    n_adapters: {kind: const, value: 4, description: Adapter slots active in the batch.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    lora_a:
+      kind: tensor
+      shape: [n_adapters, rank, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.02}
+    token_indices_sorted:
+      {kind: tensor, shape: [n_tokens], dtype: int64, role: index, distribution: {kind: generator}}
+    num_tokens_per_lora:
+      {kind: tensor, shape: [n_adapters], dtype: int32, role: metadata, distribution: {kind: generator}}
+    lora_token_start_loc:
+      {kind: tensor, shape: [n_adapters + 1], dtype: int32, role: metadata, distribution: {kind: generator}}
+    lora_ids:
+      {kind: tensor, shape: [n_adapters], dtype: int32, role: metadata, distribution: {kind: generator}}
+    scaling: {kind: scalar, dtype: float32, default: 1.0}
+  outputs:
+    out: {shape: [n_tokens, rank], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path:
+      - vllm/lora/ops/triton_ops/lora_shrink_op.py
+      - vllm/lora/ops/triton_ops/kernel_utils.py
+      - vllm/lora/ops/triton_ops/utils.py
+    license: Apache-2.0
+    modifications: >-
+      Kernels (mm_k, do_shrink_kernel, _lora_shrink_kernel) as adapted by the previous task package, with comments
+      removed. Host launcher reduced to one slice and the default shrink configuration of get_lora_op_configs; the
+      output zeroing that vLLM performs with output_tensor.zero_() is a small Triton kernel; wrapped in the run()
+      interface.
+compare:
+  out: {bound: sqnr, min_db: 122}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

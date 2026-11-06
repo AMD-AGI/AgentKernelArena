@@ -1,0 +1,119 @@
+schema_version: 3
+description: >-
+  In-place per-request logit shaping of float32 logits, applied to each row in this order. Row i belongs
+  to request slot s = expanded_idx_mapping[i]. (1) Allowed tokens: when num_allowed_token_ids[s] > 0, every
+  logit except those of the first num_allowed_token_ids[s] ids of allowed_token_ids[s] becomes -inf and
+  those kept logits are unchanged. (2) Logit bias: the logit of each of the first num_logit_bias[s] ids of
+  logit_bias_token_ids[s] gets the matching logit_bias[s] value added. (3) Minimum length: when
+  num_stop_token_ids[s] > 0 and pos[i] + 1 < min_lens[s], the logits of the first num_stop_token_ids[s] ids
+  of stop_token_ids[s] become -inf.
+operator:
+  name: apply_logit_bias
+  category: sampling
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 12800, description: Logit rows (requests times 1 + three speculative tokens).}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen family).}
+    allowed_width: {kind: const, value: 1024, description: Allowed-token capacity per request slot.}
+    bias_width: {kind: const, value: 1024, description: Logit-bias capacity per request slot.}
+    stop_width: {kind: const, value: 128, description: Stop-token capacity per request slot.}
+  derived_axes:
+    n_reqs: ceil_div(n_tokens, 4)
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Logits, updated in place.
+    expanded_idx_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Request slot of each logit row.
+    pos:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Sequence position of each logit row.
+    num_allowed_token_ids:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Allowed-token count per slot (0 disables the allowlist).
+    allowed_token_ids:
+      kind: tensor
+      shape: [n_reqs, allowed_width]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Allowed token ids per slot.
+    num_logit_bias:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Logit-bias entries per slot.
+    logit_bias_token_ids:
+      kind: tensor
+      shape: [n_reqs, bias_width]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Biased token ids per slot (distinct within a slot).
+    logit_bias:
+      kind: tensor
+      shape: [n_reqs, bias_width]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Bias values per slot.
+    min_lens:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prompt length plus min_tokens per slot.
+    num_stop_token_ids:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Stop-token count per slot (0 when min_tokens is unused).
+    stop_token_ids:
+      kind: tensor
+      shape: [n_reqs, stop_width]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Stop token ids per slot.
+  outputs: {}
+  mutable: [logits]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/logit_bias.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel and launcher copied; the state class is reduced to run(). Two extra tl.debug_barrier() calls
+      are added (after the allowed-token restore and after the bias store) so that token ids shared by
+      the allowed, bias and stop lists are updated in program order across the workgroup's waves.
+compare:
+  logits: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

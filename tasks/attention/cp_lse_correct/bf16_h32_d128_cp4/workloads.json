@@ -1,0 +1,141 @@
+{
+ "description": "Token counts of one rank's attention output under context parallelism (cp=4, 32 heads, head_dim 128); decode batches are correctness-only. lse_idx cycles through every rank.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1",
+   "scalars": {
+    "lse_idx": 0
+   }
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch",
+   "scalars": {
+    "lse_idx": 3
+   }
+  },
+  {
+   "id": "t48",
+   "axes": {
+    "n_tokens": 48
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 48",
+   "scalars": {
+    "lse_idx": 2
+   }
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode/prefill chunk",
+   "scalars": {
+    "lse_idx": 1
+   }
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small prefill chunk",
+   "scalars": {
+    "lse_idx": 0
+   }
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk (default max_num_batched_tokens)",
+   "scalars": {
+    "lse_idx": 1
+   }
+  },
+  {
+   "id": "t32768",
+   "axes": {
+    "n_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill chunk",
+   "scalars": {
+    "lse_idx": 2
+   }
+  },
+  {
+   "id": "t65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill chunk",
+   "scalars": {
+    "lse_idx": 3
+   }
+  },
+  {
+   "id": "t131072",
+   "axes": {
+    "n_tokens": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batched prefill chunk",
+   "scalars": {
+    "lse_idx": 1
+   }
+  },
+  {
+   "id": "t204800",
+   "axes": {
+    "n_tokens": 204800
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batched prefill chunk",
+   "scalars": {
+    "lse_idx": 2
+   }
+  }
+ ]
+}

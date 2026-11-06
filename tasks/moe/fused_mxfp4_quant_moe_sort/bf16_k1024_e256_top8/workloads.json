@@ -1,0 +1,182 @@
+{
+ "description": "Token counts of a 256-expert top-8 MoE layer (balanced routing, 1024-wide stage-1 output); decode-sized batches are correctness-only.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "scalars": {
+    "token_num": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "scalars": {
+    "token_num": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "t48",
+   "axes": {
+    "n_tokens": 48
+   },
+   "scalars": {
+    "token_num": 48
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 48"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "n_tokens": 1000
+   },
+   "scalars": {
+    "token_num": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "t1536",
+   "axes": {
+    "n_tokens": 1536
+   },
+   "scalars": {
+    "token_num": 1536
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short prefill chunk"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "scalars": {
+    "token_num": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "scalars": {
+    "token_num": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "scalars": {
+    "token_num": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "scalars": {
+    "token_num": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t32768",
+   "axes": {
+    "n_tokens": 32768
+   },
+   "scalars": {
+    "token_num": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "scalars": {
+    "token_num": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t131072",
+   "axes": {
+    "n_tokens": 131072
+   },
+   "scalars": {
+    "token_num": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t262144",
+   "axes": {
+    "n_tokens": 262144
+   },
+   "scalars": {
+    "token_num": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  }
+ ]
+}

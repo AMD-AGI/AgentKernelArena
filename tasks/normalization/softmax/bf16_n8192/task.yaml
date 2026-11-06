@@ -1,0 +1,36 @@
+schema_version: 3
+description: >-
+  Softmax over the last axis of each bfloat16 row: out = exp(x - max(x)) / sum(exp(x - max(x))), the exponentials
+  and the sum in high precision, the result rounded to bfloat16.
+operator:
+  name: softmax
+  category: normalization
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 204800, description: "Rows of the batch."}
+    n_cols: {kind: const, value: 8192, description: "Softmax width."}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, n_cols]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+  outputs:
+    out: {shape: [n_rows, n_cols], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/softmax.py and aiter/ops/triton/softmax.py
+    license: MIT
+    modifications: >-
+      Kernel body unchanged; the kernel-name repr helper and logger are removed, and the launcher softmax is
+      rewritten as run() writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

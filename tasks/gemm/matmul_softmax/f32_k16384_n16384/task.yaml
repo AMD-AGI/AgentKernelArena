@@ -1,0 +1,67 @@
+schema_version: 3
+description: >-
+  Linear layer followed by a softmax over its outputs, in float32 and inference mode (dropout is the
+  identity): out = softmax(x @ weight.T + bias, dim=1) for x [batch, 16384] and weight [16384, 16384]
+  (nn.Linear layout), products and accumulation in IEEE float32 (no TF32 or reduced-precision inputs),
+  output float32.
+operator:
+  name: matmul_softmax
+  category: gemm
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 1024, description: Rows of x and out.}
+    in_features: {kind: const, value: 16384, description: Contracted dimension.}
+    out_features: {kind: const, value: 16384, description: "Rows of weight; columns of out, the softmax axis."}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_features]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_features, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.0078125, high: 0.0078125}
+    bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.0078125, high: 0.0078125}
+  outputs:
+    out: {shape: [batch, out_features], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm.py
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/fx_passes/post_grad.py
+      - torch/_inductor/codegen/triton.py
+      - torch/_inductor/runtime/triton_helpers.py
+      - torch/_inductor/heuristics/template/triton.py
+      - torch/_inductor/heuristics/triton_codegen/reduction.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the two kernels Inductor's max-autotune generates for this module on ROCm, written
+      by hand as standalone @triton.jit kernels (no GPU was available to run Inductor): the mm template
+      rendered for the contiguous activation and the transposed nn.Linear weight with addmm_epilogue (the
+      bias add) as its store suffix into a logits buffer allocated per call, and the looped online-softmax
+      reduction with its online_softmax_combine/reduce helpers copied in. N, K and the strides are
+      constexprs and the batch a runtime size, the template's M >= BLOCK_M contiguity test passed in as a
+      constexpr; the zero-size early exit dropped (batch >= 1); one mm config from the ROCm mm_configs list
+      chosen per batch (the largest tile that launches at least 256 tiles) and scaled by Inductor's
+      config-scaling rule instead of autotuning; allow_tf32=False written as input_precision="ieee";
+      wrapped in the run() interface.
+compare:
+  out: {bound: sqnr, min_db: 120.5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

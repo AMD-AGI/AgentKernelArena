@@ -1,0 +1,73 @@
+schema_version: 3
+description: >-
+  Recompute of the WY representation of Gated DeltaNet chunked prefill. Tokens are split into
+  chunks of 64 (the last may be partial). For value head h (sharing key head h // 2) and every
+  chunk, with A[:, h] the chunk's solved inverse (I + tril(beta * K K^T * decay))^-1, a unit lower
+  triangular 64 x 64 block stored per token row (zeros beyond the chunk's valid rows and columns):
+  w = A @ (beta * exp(g) * k) and u = A @ (beta * v), with g the chunk-local cumulative
+  log-decay. Inputs are bfloat16, the matrix products accumulate in float32 or higher, and w and u
+  are rounded to bfloat16.
+operator:
+  name: recompute_w_u
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 204800, description: Tokens of one packed sequence batch.}
+    num_key_heads: {kind: const, value: 16, description: Key heads.}
+    num_heads: {kind: const, value: 32, description: Value heads (two per key head).}
+    key_dim: {kind: const, value: 128, description: Key head dimension.}
+    value_dim: {kind: const, value: 128, description: Value head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  inputs:
+    k:
+      kind: tensor
+      shape: [n_tokens, num_key_heads, key_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, contiguous; std 1/sqrt(key_dim) like L2-normalized keys.
+    v:
+      kind: tensor
+      shape: [n_tokens, num_heads, value_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Values, contiguous.
+    beta:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: bfloat16
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: Delta-rule write strength sigmoid(b), contiguous.
+    g:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log-decay (non-increasing within every 64-token chunk).
+    A:
+      kind: tensor
+      shape: [n_tokens, num_heads, chunk_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: Solved intra-chunk inverse (I + tril(beta K K^T decay))^-1, one 64-wide row per token and head.
+  outputs:
+    w: {shape: [n_tokens, num_heads, key_dim], dtype: bfloat16}
+    u: {shape: [n_tokens, num_heads, value_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/third_party/flash_linear_attention/ops/wy_fast.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      Removed the variable-length path and the autotune (fixed 4 warps, 3 stages); 3-D single-batch
+      tensors; wrapped in the run() interface writing the preallocated w and u.
+compare:
+  w: {bound: baseline_relative}
+  u: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

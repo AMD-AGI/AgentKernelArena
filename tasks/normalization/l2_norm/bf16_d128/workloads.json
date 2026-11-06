@@ -1,0 +1,110 @@
+{
+ "description": "Rows (tokens times q/k heads) normalized by the GDN prefill pipeline at head size 128. Small row counts take less than 10 us and are correctness-only.",
+ "cases": [
+  {
+   "id": "r1",
+   "axes": {
+    "n_rows": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum"
+  },
+  {
+   "id": "r3",
+   "axes": {
+    "n_rows": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd tiny batch"
+  },
+  {
+   "id": "r48",
+   "axes": {
+    "n_rows": 48
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tail of one 16-row block"
+  },
+  {
+   "id": "r1000",
+   "axes": {
+    "n_rows": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned token count times heads"
+  },
+  {
+   "id": "r4100",
+   "axes": {
+    "n_rows": 4100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one prefill chunk of 4100 tokens, one head"
+  },
+  {
+   "id": "r65536",
+   "axes": {
+    "n_rows": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "4096-token prefill chunk, 16 key heads"
+  },
+  {
+   "id": "r262144",
+   "axes": {
+    "n_rows": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16384-token prefill, 16 heads"
+  },
+  {
+   "id": "r1048576",
+   "axes": {
+    "n_rows": 1048576
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "65536-token prefill, 16 heads"
+  },
+  {
+   "id": "r4194304",
+   "axes": {
+    "n_rows": 4194304
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill, 262144 tokens, 16 heads"
+  },
+  {
+   "id": "r8388608",
+   "axes": {
+    "n_rows": 8388608
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill, 524288 tokens, 16 heads"
+  }
+ ]
+}

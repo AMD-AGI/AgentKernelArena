@@ -1,0 +1,110 @@
+{
+  "description": "Packed tokens of 8 sequences at 32 heads, head size 128: decode batches and short prefills run under the 10 us timing floor and are correctness-only; prefill chunks and long-context prefills up to 256K tokens are timed. Sequence boundaries are random per case.",
+  "cases": [
+    {
+      "id": "t8",
+      "axes": {
+        "n_tokens": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, one token per sequence"
+    },
+    {
+      "id": "t17",
+      "axes": {
+        "n_tokens": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode-sized batch just above 16"
+    },
+    {
+      "id": "t100",
+      "axes": {
+        "n_tokens": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short unaligned batch"
+    },
+    {
+      "id": "t700",
+      "axes": {
+        "n_tokens": 700
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short unaligned prefill (below the timing floor)"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short prefill (below the timing floor)"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long prefill"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "128K-token context prefill"
+    },
+    {
+      "id": "t262144",
+      "axes": {
+        "n_tokens": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "256K-token long-context prefill"
+    }
+  ]
+}

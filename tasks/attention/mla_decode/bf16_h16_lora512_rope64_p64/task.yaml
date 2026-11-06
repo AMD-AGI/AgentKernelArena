@@ -1,0 +1,77 @@
+schema_version: 3
+description: >-
+  Absorbed multi-head latent attention (MLA) decode over a paged latent KV cache, as served for
+  DeepSeek-V3 at tensor parallel 8. Each sequence contributes one query token with 16 heads whose
+  576-wide query is [kv_lora 512 | rope 64]. The single latent KV head has the same 576-wide layout,
+  so logits[h, t] = softmax_scale * dot(q[h, :], kv[t, :]) over the first seq_lens[b] cached tokens of
+  the sequence, probabilities are the softmax of the logits over t, and out[h, :] = sum_t p[h, t] *
+  kv[t, :512] (the value is the 512-wide latent part of the same cache row). The cache is addressed
+  through block_tables in pages of 64 tokens.
+operator:
+  name: mla_decode
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Decoding sequences (one query token each).}
+    ctx: {kind: var, min: 1, max: 65536, description: Longest cached context in the batch (tokens).}
+    num_heads: {kind: const, value: 16, description: Query heads per tensor-parallel rank (128 / 8).}
+    kv_lora_rank: {kind: const, value: 512, description: Latent (value) width.}
+    rope_dim: {kind: const, value: 64, description: Decoupled RoPE key width.}
+    page_size: {kind: const, value: 64, description: Tokens per KV-cache page.}
+  derived_axes:
+    head_size: kv_lora_rank + rope_dim
+    max_blocks: ceil_div(ctx, page_size)
+    num_blocks: batch * max_blocks
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, num_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    kv_cache:
+      kind: tensor
+      shape: [num_blocks, page_size, 1, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    block_tables:
+      kind: tensor
+      shape: [batch, max_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    seq_lens:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    cu_seqlens_q:
+      kind: tensor
+      shape: [batch + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    softmax_scale: {kind: scalar, dtype: float32, default: 0.1352}
+  outputs:
+    out: {shape: [batch, num_heads, kv_lora_rank], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/attention/mla.py, aiter/ops/triton/_triton_kernels/attention/mla.py
+    license: MIT
+    modifications: >-
+      Wrapped in the run() interface writing into the preallocated out; only the decode path is kept
+      (prefill kernel, gfx1250 Gluon dispatch and the 2-D config removed; device, arch and kernel-name
+      helpers inlined); the attention loop is a plain range() with two pipeline stages and four waves
+      on gfx950 (the checkout pins num_stages=1 in the loop and the upstream two-wave schedule
+      misbehaves on the ROCm 10 Triton runtime); max_seqlen_kv is taken from the block-table shape.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

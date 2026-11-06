@@ -1,0 +1,195 @@
+{
+ "description": "LiDAR scenes: 64K to 262K points per cloud (a single scan has about 120K; accumulated multi-sweep clouds reach 300K), up to 8 clouds and 64 to 256 boxes (padded proposal lists); tiny scenes are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_m1_t1",
+   "axes": {
+    "batch": 1,
+    "n_points": 1,
+    "n_boxes": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single point, single box"
+  },
+  {
+   "id": "b2_m37_t5",
+   "axes": {
+    "batch": 2,
+    "n_points": 37,
+    "n_boxes": 5
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small unaligned scene"
+  },
+  {
+   "id": "b3_m1000_t7",
+   "axes": {
+    "batch": 3,
+    "n_points": 1000,
+    "n_boxes": 7
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned scene"
+  },
+  {
+   "id": "b1_m300_t40",
+   "axes": {
+    "batch": 1,
+    "n_points": 300,
+    "n_boxes": 40
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "sparse single scan"
+  },
+  {
+   "id": "b1_m16384_t64",
+   "axes": {
+    "batch": 1,
+    "n_points": 16384,
+    "n_boxes": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "downsampled scan, below the timing floor"
+  },
+  {
+   "id": "b1_m65536_t64",
+   "axes": {
+    "batch": 1,
+    "n_points": 65536,
+    "n_boxes": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "half-resolution scan"
+  },
+  {
+   "id": "b1_m131072_t64",
+   "axes": {
+    "batch": 1,
+    "n_points": 131072,
+    "n_boxes": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "full-resolution scan"
+  },
+  {
+   "id": "b2_m131072_t64",
+   "axes": {
+    "batch": 2,
+    "n_points": 131072,
+    "n_boxes": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of two scans"
+  },
+  {
+   "id": "b1_m262144_t128",
+   "axes": {
+    "batch": 1,
+    "n_points": 262144,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "multi-sweep accumulated scan (about 10 sweeps), padded box list"
+  },
+  {
+   "id": "b4_m131072_t64",
+   "axes": {
+    "batch": 4,
+    "n_points": 131072,
+    "n_boxes": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch"
+  },
+  {
+   "id": "b2_m262144_t128",
+   "axes": {
+    "batch": 2,
+    "n_points": 262144,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "two accumulated multi-sweep scans"
+  },
+  {
+   "id": "b4_m131072_t128",
+   "axes": {
+    "batch": 4,
+    "n_points": 131072,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch, padded boxes"
+  },
+  {
+   "id": "b8_m131072_t128",
+   "axes": {
+    "batch": 8,
+    "n_points": 131072,
+    "n_boxes": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of full scans, padded boxes"
+  },
+  {
+   "id": "b4_m262144_t256",
+   "axes": {
+    "batch": 4,
+    "n_points": 262144,
+    "n_boxes": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "accumulated multi-sweep scans, 256 proposals"
+  },
+  {
+   "id": "b8_m262144_t256",
+   "axes": {
+    "batch": 8,
+    "n_points": 262144,
+    "n_boxes": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "largest batch of accumulated scans with 256 proposals"
+  }
+ ]
+}

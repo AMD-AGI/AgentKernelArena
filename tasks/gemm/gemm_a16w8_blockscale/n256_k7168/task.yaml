@@ -1,0 +1,40 @@
+schema_version: 3
+description: >-
+  out = x @ dequant(w)^T with bfloat16 activations x [m, 7168] and float8_e4m3fn weights w [256, 7168]
+  dequantized by one float32 scale per 128x128 block (w_scale [2, 56]), accumulated in float32 and rounded to
+  bfloat16. The activations are not quantized.
+operator: {name: gemm_a16w8_blockscale, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 262144, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 256, description: Output channels.}
+    k: {kind: const, value: 7168, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [n // 128, k // 128], dtype: float32, role: weight,
+              distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a16w8_blockscale.py
+      - aiter/ops/triton/gemm/basic/gemm_a16w8_blockscale.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A16W8_BLOCKSCALE.json
+    license: MIT
+    modifications: >-
+      Kernel kept for the non-split-K, non-prequant path (preshuffle, split-K reduce and the fused activation
+      quantization branch removed); launcher reduced to writing into the preallocated output with a static
+      dispatch over the NUM_KSPLIT == 1 rows of the gfx950 tuned-config table; pid_grid and kernel_repr helpers inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

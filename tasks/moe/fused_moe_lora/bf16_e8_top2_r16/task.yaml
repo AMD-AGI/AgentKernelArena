@@ -1,0 +1,108 @@
+schema_version: 3
+description: >-
+  LoRA delta of a mixture-of-experts gate/up (w13) projection with per-adapter, per-expert LoRA weights
+  (vLLM fused_moe_lora, block-sorted routing). For every listed LoRA slot l (lora_ids entry with
+  0 <= l < max_loras and adapter_enabled[l] != 0), every block b < ceil(num_tokens_post_padded[l] / 64)
+  with expert e = expert_ids[l, b] >= 0, and every route r = sorted_token_ids[l, 64 b + i] < n_tokens * top_k
+  (token t = r // top_k, slot k = r % top_k): lora_delta[t, k, s*N:(s+1)*N] = (hidden_states[t] @
+  lora_a[s, l, e]^T) @ lora_b[s, l, e]^T for both slices s (gate, up), computed in high precision and
+  rounded to bfloat16. Every other route (base-model tokens, adapters without MoE weights) is zero.
+operator:
+  name: fused_moe_lora
+  category: moe
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Model hidden size (shrink reduction width).}
+    intermediate_size: {kind: const, value: 7168, description: Expert intermediate size per slice (Mixtral-8x7B 14336 at TP2).}
+    num_slices: {kind: const, value: 2, description: "LoRA slices of the fused w13 projection (gate and up)."}
+    num_experts: {kind: const, value: 8, description: Local experts.}
+    top_k: {kind: const, value: 2, description: Experts per token.}
+    max_loras: {kind: const, value: 4, description: Resident LoRA adapter slots.}
+    rank: {kind: const, value: 16, description: Maximum LoRA rank.}
+    block_size: {kind: const, value: 64, description: Routing-table block size (moe_lora_align_block_size).}
+  derived_axes:
+    # Each derived axis reads only declared axes: the evaluator resolves them in name order.
+    max_num_tokens_padded: min(n_tokens * top_k * block_size, n_tokens * top_k + num_experts * (block_size - 1))
+    max_num_m_blocks: ceil_div(min(n_tokens * top_k * block_size, n_tokens * top_k + num_experts * (block_size - 1)), block_size)
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    lora_a:
+      kind: tensor
+      shape: [num_slices, max_loras, num_experts, rank, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.015625}
+      description: LoRA A (shrink) weights, [slice, slot, expert, rank, hidden]; std 1/sqrt(hidden_size).
+    lora_b:
+      kind: tensor
+      shape: [num_slices, max_loras, num_experts, intermediate_size, rank]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.25}
+      description: LoRA B (expand) weights, [slice, slot, expert, out, rank]; std 1/sqrt(rank).
+    sorted_token_ids:
+      kind: tensor
+      shape: [max_loras, max_num_tokens_padded]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Per slot, routes grouped by expert and padded per expert to 64 with n_tokens * top_k.
+    expert_ids:
+      kind: tensor
+      shape: [max_loras, max_num_m_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Expert of each 64-entry block of sorted_token_ids; -1 past num_tokens_post_padded.
+    num_tokens_post_padded:
+      kind: tensor
+      shape: [max_loras]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Padded route count of each slot's row.
+    lora_ids:
+      kind: tensor
+      shape: ["max_loras + 1"]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Sorted distinct adapter slots of the batch (-1 for base-model tokens), padded with -1.
+    adapter_enabled:
+      kind: tensor
+      shape: ["max_loras + 1"]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: 1 when the slot's adapter has MoE weights; rows of other slots are stale.
+  outputs:
+    lora_delta: {shape: [n_tokens, top_k, "num_slices * intermediate_size"], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/lora/ops/triton_ops/fused_moe_lora_op.py
+    license: Apache-2.0
+    modifications: >-
+      Vendored _fused_moe_lora_one_shot_kernel unchanged except that the LoRA slices arrive stacked in one
+      tensor, so the kernel offsets by a slice stride instead of loading data pointers from a device pointer
+      table. _run_fused_moe_lora_one_shot is kept for the block-sorted path: the grid's LoRA dimension is
+      the length of lora_ids (upstream's default num_active_loras, max_loras + 1) instead of a host .item(),
+      the route count comes from the output shape instead of topk_weights, the SM count from
+      torch.cuda.get_device_properties, and the under-68-KiB shared-memory fallback is dropped (gfx950 has
+      160 KiB). run() zeroes the delta buffer and launches with add_inputs=False, as vLLM's dual-stream path
+      does with torch.zeros_like.
+compare:
+  lora_delta: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

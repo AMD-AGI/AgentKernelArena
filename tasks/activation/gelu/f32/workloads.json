@@ -1,0 +1,181 @@
+{
+  "description": "Element counts of GELU activations from the gpumode activation suite and KernelBench level1 26_GELU_; the flat view stands for tensors of any rank. Counts below 4M elements are correctness-only (below the 10 us timing floor).",
+  "cases": [
+    {
+      "id": "n1",
+      "axes": {
+        "numel": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single element"
+    },
+    {
+      "id": "n1000",
+      "axes": {
+        "numel": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned small tensor"
+    },
+    {
+      "id": "n1024",
+      "axes": {
+        "numel": 1024
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [1024]"
+    },
+    {
+      "id": "n4096",
+      "axes": {
+        "numel": 4096
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [4096]"
+    },
+    {
+      "id": "n4099",
+      "axes": {
+        "numel": 4099
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned, above the tiny-kernel path"
+    },
+    {
+      "id": "n8192",
+      "axes": {
+        "numel": 8192
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [64,128]"
+    },
+    {
+      "id": "n32768",
+      "axes": {
+        "numel": 32768
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [128,256]"
+    },
+    {
+      "id": "n65536",
+      "axes": {
+        "numel": 65536
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [128,512]"
+    },
+    {
+      "id": "n262144",
+      "axes": {
+        "numel": 262144
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [256,1024]"
+    },
+    {
+      "id": "n524288",
+      "axes": {
+        "numel": 524288
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [8,64,32,32]"
+    },
+    {
+      "id": "n2097152",
+      "axes": {
+        "numel": 2097152
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpumode GELU [64,128,256]"
+    },
+    {
+      "id": "n4194304",
+      "axes": {
+        "numel": 4194304
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "4096 tokens x 1024 hidden activation"
+    },
+    {
+      "id": "n8388608",
+      "axes": {
+        "numel": 8388608
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "gpumode GELU [16,128,64,64]"
+    },
+    {
+      "id": "n16777216",
+      "axes": {
+        "numel": 16777216
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench level1 26_GELU_ [16777216]"
+    },
+    {
+      "id": "n134217728",
+      "axes": {
+        "numel": 134217728
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench level1 26_GELU_ [8192,16384] / [4096,32768]; gpumode [32,256,128,128]"
+    },
+    {
+      "id": "n268435456",
+      "axes": {
+        "numel": 268435456
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench level1 26_GELU_ [256,1024,1024]"
+    },
+    {
+      "id": "n536870912",
+      "axes": {
+        "numel": 536870912
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "KernelBench level1 26_GELU_ [32,64,512,512]"
+    }
+  ]
+}

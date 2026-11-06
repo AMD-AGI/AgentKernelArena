@@ -1,0 +1,131 @@
+{
+ "description": "Top-8 over a 128256-entry vocabulary for batch sizes from 1 to 4096; batches of 1 to 8 (aiter's top-k test sizes) are below the timing floor and correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "n_rows": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "m2",
+   "axes": {
+    "n_rows": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 2"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "n_rows": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "m7",
+   "axes": {
+    "n_rows": 7
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 7"
+  },
+  {
+   "id": "m8",
+   "axes": {
+    "n_rows": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 8"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "n_rows": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "m16",
+   "axes": {
+    "n_rows": 16
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "top-k sampling batch"
+  },
+  {
+   "id": "m64",
+   "axes": {
+    "n_rows": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "top-k sampling batch"
+  },
+  {
+   "id": "m256",
+   "axes": {
+    "n_rows": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large sampling batch"
+  },
+  {
+   "id": "m1335",
+   "axes": {
+    "n_rows": 1335
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "aiter topk benchmark batch size"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "n_rows": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large sampling batch"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "n_rows": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large sampling batch"
+  }
+ ]
+}

@@ -1,0 +1,19 @@
+{
+  "description": "Packed prefill batches of a hybrid Mamba2 model (128 heads of 64 channels, 8 groups, state 128, chunk 256) whose sequences resume from cached states; tiny batches and ragged shapes are correctness-only.",
+  "cases": [
+    {"id": "t1_s1", "axes": {"n_tokens": 1, "n_seqs": 1}, "checks": ["correctness"], "source": "single token resumed from a cached state"},
+    {"id": "t128_s128", "axes": {"n_tokens": 128, "n_seqs": 128}, "checks": ["correctness"], "source": "128 requests each extending one token past a fully cached prefix"},
+    {"id": "t256_s1", "axes": {"n_tokens": 256, "n_seqs": 1}, "checks": ["correctness"], "source": "one sequence filling exactly one chunk"},
+    {"id": "t300_s5", "axes": {"n_tokens": 300, "n_seqs": 5}, "checks": ["correctness"], "source": "several short sequences ending in one chunk"},
+    {"id": "t1000_s3", "axes": {"n_tokens": 1000, "n_seqs": 3}, "checks": ["correctness"], "source": "unaligned prefill batch spanning several chunks"},
+    {"id": "t2051_s7", "axes": {"n_tokens": 2051, "n_seqs": 7}, "checks": ["correctness"], "source": "unaligned batch crossing many chunk boundaries"},
+    {"id": "t1024_s1", "axes": {"n_tokens": 1024, "n_seqs": 1}, "checks": ["correctness"], "source": "single-sequence prefill chunk"},
+    {"id": "t2048_s2", "axes": {"n_tokens": 2048, "n_seqs": 2}, "checks": ["correctness", "performance"], "source": "small prefill batch"},
+    {"id": "t4096_s4", "axes": {"n_tokens": 4096, "n_seqs": 4}, "checks": ["correctness", "performance"], "source": "prefill batch"},
+    {"id": "t8192_s8", "axes": {"n_tokens": 8192, "n_seqs": 8}, "checks": ["correctness", "performance"], "source": "prefill batch"},
+    {"id": "t16384_s16", "axes": {"n_tokens": 16384, "n_seqs": 16}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t32768_s32", "axes": {"n_tokens": 32768, "n_seqs": 32}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t65536_s64", "axes": {"n_tokens": 65536, "n_seqs": 64}, "checks": ["correctness", "performance"], "source": "large batched prefill"},
+    {"id": "t131072_s128", "axes": {"n_tokens": 131072, "n_seqs": 128}, "checks": ["correctness", "performance"], "source": "large batched prefill"}
+  ]
+}

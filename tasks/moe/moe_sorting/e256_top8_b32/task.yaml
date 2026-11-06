@@ -1,0 +1,67 @@
+schema_version: 3
+description: >-
+  Sort the expert assignments of a mixture-of-experts router by expert, padded per expert to blocks of 32, and zero the
+  output buffer of the layer. topk_ids [n_tokens, 8] int32 and topk_weights [n_tokens, 8] float32 give each token's
+  experts (distinct per token) and routing weights. For every expert with at least one assignment, in increasing expert
+  order, its assignments are listed in increasing (token, slot) order as the packed id (slot << 24) | token in
+  sorted_ids, with the routing weight in sorted_weights, and padded to a multiple of 32 entries with the sentinel id
+  (8 << 24) | n_tokens and weight 0; sorted_expert_ids holds the expert of each 32-entry block; num_valid_ids is
+  [padded length, n_tokens]; moe_buf [n_tokens, 7168] bfloat16 is set to zero. Experts without assignments take no
+  blocks.
+operator: {name: moe_sorting, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    top_k: {kind: const, value: 8, description: Experts chosen per token.}
+    num_experts: {kind: const, value: 256, description: Routed experts of the layer.}
+    block_size: {kind: const, value: 32, description: Rows per block of the grouped GEMM.}
+    model_dim: {kind: const, value: 7168, description: Hidden size of the output buffer that is zeroed.}
+  derived_axes:
+    sorted_blocks: >-
+      (((n_tokens * top_k) % num_experts) * ceil_div((n_tokens * top_k) // num_experts + 1, block_size) +
+      (num_experts - (n_tokens * top_k) % num_experts) * ceil_div((n_tokens * top_k) // num_experts, block_size))
+    sorted_len: >-
+      (((n_tokens * top_k) % num_experts) * ceil_div((n_tokens * top_k) // num_experts + 1, block_size) +
+      (num_experts - (n_tokens * top_k) % num_experts) * ceil_div((n_tokens * top_k) // num_experts, block_size)) *
+      block_size
+  inputs:
+    topk_ids:
+      {kind: tensor, shape: [n_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+    topk_weights:
+      kind: tensor
+      shape: [n_tokens, top_k]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    num_experts: {kind: scalar, dtype: int32, default: 256, description: Number of routed experts.}
+    block_size: {kind: scalar, dtype: int32, default: 32, description: Padding block of each expert.}
+  outputs:
+    sorted_ids: {shape: [sorted_len], dtype: int32}
+    sorted_weights: {shape: [sorted_len], dtype: float32}
+    sorted_expert_ids: {shape: [sorted_blocks], dtype: int32}
+    num_valid_ids: {shape: [2], dtype: int32}
+    moe_buf: {shape: [n_tokens, model_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/moe_sorting_kernel.py (with python/flydsl/expr/buffer_ops.py, meta.py)
+    license: Apache-2.0
+    modifications: >-
+      Kernels unchanged; added run(); the AITER-style host entry point drops the num_local_tokens argument and uses
+      an existing int32 tensor as the unread expert-mask placeholder; get_warp_size inlined from
+      kernels/kernels_common.py; helper imports made relative; the environment-variable architecture lookup removed
+      from buffer_ops.py (os import) and the Python-stack debug locations of meta.py replaced by unknown locations
+      (traceback import).
+compare:
+  sorted_ids: {bound: exact}
+  sorted_weights: {bound: exact}
+  sorted_expert_ids: {bound: exact}
+  num_valid_ids: {bound: exact}
+  moe_buf: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

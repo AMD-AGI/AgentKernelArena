@@ -1,0 +1,65 @@
+schema_version: 3
+description: >-
+  Two independent RMSNorms over bfloat16 rows, the first followed by FP8 group quantization. out2 =
+  x2 * rsqrt(mean(x2^2) + epsilon2) * weight2 rounded to bfloat16. For x1, y = x1 * rsqrt(mean(x1^2) + epsilon1) *
+  weight1 is kept in float32; every group of 128 consecutive columns of a token gets scale = max(absmax(y), 1e-10) /
+  448 and the codes are y / scale clamped to [-448, 448] in float8_e4m3fn. The scales are row-major, one per
+  token and group (out1_scale[t, g]).
+operator: {name: fused_rms_norm_fp8_group_quant, category: normalization}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 1048576, description: Tokens in the batch.}
+    n1: {kind: const, value: 1536, description: Width of the first (quantized) input.}
+    n2: {kind: const, value: 512, description: Width of the second input.}
+  derived_axes:
+    n_groups: n1 // 128
+  inputs:
+    x1:
+      kind: tensor
+      shape: [n_tokens, n1]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight1:
+      kind: tensor
+      shape: [n1]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    x2:
+      kind: tensor
+      shape: [n_tokens, n2]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight2:
+      kind: tensor
+      shape: [n2]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    epsilon1: {kind: scalar, dtype: float32, default: 1.0e-6}
+    epsilon2: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out1_q: {shape: [n_tokens, n1], dtype: float8_e4m3fn}
+    out1_scale: {shape: [n_tokens, n_groups], dtype: float32}
+    out2: {shape: [n_tokens, n2], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/quant/fused_fp8_quant.py and aiter/ops/triton/quant/fused_fp8_quant.py
+    license: MIT
+    modifications: >-
+      The kernel _fused_rms_fp8_group_quant_kernel and its two helpers are unchanged; the other kernels of the module
+      are dropped. The launcher fused_rms_fp8_group_quant is reduced to this scenario (second input present, no
+      residual, no unquantized output, row-major scales, group 128, e4m3fn maximum 448) and rewritten as run()
+      writing into the preallocated outputs.
+compare:
+  out1_q: {bound: baseline_relative}
+  out1_scale: {bound: tolerance, atol: 0.0, rtol: 6.0e-7}
+  out2: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

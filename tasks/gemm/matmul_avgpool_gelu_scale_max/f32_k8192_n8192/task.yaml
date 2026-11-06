@@ -1,0 +1,71 @@
+schema_version: 3
+description: >-
+  out[b] = max_j(gelu(avg_pool1d(x @ weight.T + bias, 16))[b, j] * scale_factor): a float32 linear
+  layer from 8192 to 8192 features (nn.Linear, weight [out_features, in_features] row-major), average
+  pooling of each row over non-overlapping windows of 16 consecutive features (AvgPool1d(16), 512
+  pooled values), the exact erf GELU 0.5 * p * (1 + erf(p / sqrt(2))), multiplication by the scalar
+  scale_factor and the maximum over the 512 pooled values of the row. Products and accumulation in
+  IEEE float32 (no TF32 or reduced-precision inputs), output float32 [batch].
+operator:
+  name: matmul_avgpool_gelu_scale_max
+  category: gemm
+interface:
+  axes:
+    batch: {kind: var, min: 16, max: 16384, description: Rows of x; one output value per row.}
+    in_features: {kind: const, value: 8192, description: Contracted dimension K.}
+    out_features: {kind: const, value: 8192, description: Linear output features N.}
+    pool_size: {kind: const, value: 16, description: AvgPool1d kernel size and stride.}
+  derived_axes:
+    pooled_features: out_features // pool_size
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_features]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_features, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.011048543456039806, high: 0.011048543456039806}
+    bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.011048543456039806, high: 0.011048543456039806}
+    scale_factor: {kind: scalar, dtype: float32, default: 2.0, description: Multiplier applied after the GELU.}
+  outputs:
+    out: {shape: [batch], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm.py
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/heuristics/template/triton.py
+      - torch/_inductor/lowering.py
+      - torch/_inductor/runtime/triton_helpers.py
+      - torch/_refs/nn/functional/__init__.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the two kernels TorchInductor generates for this module under
+      torch.compile(mode="max-autotune"): the addmm mm template rendered as a standalone @triton.jit
+      kernel for contiguous x and weight.T (N, K and strides constexpr, the batch a runtime size) with
+      the bias add fused into its store, the mm_grid launch grid and a fixed per-batch choice among
+      three ROCm mm_configs entries (BLOCK_M clamped to the batch) instead of autotuning,
+      allow_tf32=False expressed as input_precision="ieee"; and the persistent reduction for the
+      unrolled 16-wide average pool, exact erf GELU, scale and NaN-propagating row maximum (inlined
+      triton_helpers.max2/maximum, fixed XBLOCK 8); the linear output is a float32 temporary
+      allocated in run(); wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 2.0e-3}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

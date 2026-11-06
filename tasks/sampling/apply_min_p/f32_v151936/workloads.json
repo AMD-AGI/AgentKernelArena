@@ -1,0 +1,133 @@
+{
+  "description": "Logits rows over the Qwen vocabulary of 151936; batches of fewer than about 40 rows run below the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "n1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum: single sampled row"
+    },
+    {
+      "id": "n3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd small decode batch"
+    },
+    {
+      "id": "n17",
+      "axes": {
+        "n_tokens": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch"
+    },
+    {
+      "id": "n100",
+      "axes": {
+        "n_tokens": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch"
+    },
+    {
+      "id": "n40",
+      "axes": {
+        "n_tokens": 40
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode step, about 40 sampled rows"
+    },
+    {
+      "id": "n80",
+      "axes": {
+        "n_tokens": 80
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode step, 80 sampled rows"
+    },
+    {
+      "id": "n160",
+      "axes": {
+        "n_tokens": 160
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode step, 160 sampled rows"
+    },
+    {
+      "id": "n320",
+      "axes": {
+        "n_tokens": 320
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode step, 320 sampled rows"
+    },
+    {
+      "id": "n640",
+      "axes": {
+        "n_tokens": 640
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large decode batch"
+    },
+    {
+      "id": "n1280",
+      "axes": {
+        "n_tokens": 1280
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large decode batch with extra rows"
+    },
+    {
+      "id": "n2560",
+      "axes": {
+        "n_tokens": 2560
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prompt-logprob chunk of a prefill"
+    },
+    {
+      "id": "n4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prompt-logprob chunk of a prefill, 4096 rows"
+    }
+  ]
+}

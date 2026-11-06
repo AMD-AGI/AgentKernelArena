@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Fused SiLU-and-multiply with per-group FP8 quantization for the masked (DeepGEMM) MoE layout. Each expert owns
+  max_tokens rows of a bfloat16 activation [gate | up] of width 2 * 2048, of which the first tokens_per_expert[e]
+  are valid. For a valid row, v = silu(gate) * up is computed in float32, split into groups of 128, and every group
+  is quantized to float8_e4m3fn with the scale max(max|v|, 1e-10) / 448 (not rounded to a power of two); the
+  scales are stored in the transposed (expert, group, token) layout. Rows at or beyond the expert's count are
+  written as zero codes and zero scales.
+operator:
+  name: silu_and_mul_fp8_quant_masked
+  category: moe
+interface:
+  axes:
+    max_tokens: {kind: var, min: 1, max: 16384, description: Rows allocated per expert (the masked-layout capacity).}
+    num_experts: {kind: const, value: 32, description: Local experts of the rank.}
+    hidden_size: {kind: const, value: 2048, description: Intermediate size of one expert (output width).}
+    group_size: {kind: const, value: 128, description: Quantization group width.}
+  derived_axes:
+    two_hidden: 2 * hidden_size
+    num_groups: hidden_size // group_size
+  inputs:
+    y:
+      kind: tensor
+      shape: [num_experts, max_tokens, two_hidden]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    tokens_per_expert:
+      {kind: tensor, shape: [num_experts], dtype: int32, role: metadata, distribution: {kind: generator}}
+  outputs:
+    y_q: {shape: [num_experts, max_tokens, hidden_size], dtype: float8_e4m3fn}
+    y_s: {shape: [num_experts, num_groups, max_tokens], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/fused_moe/experts/batched_deep_gemm_moe.py
+    license: Apache-2.0
+    modifications: >-
+      The _silu_mul_fp8_quant_deep_gemm kernel and the launch code of silu_mul_fp8_quant, wrapped in the run()
+      interface writing into the preallocated outputs, specialized to float8_e4m3fn and group size 128 with the
+      scale tensor allocated as (expert, group, token); a second loop zero-fills the rows beyond each expert's count.
+compare:
+  y_q: {bound: baseline_relative}
+  y_s: {bound: tolerance, atol: 0.0, rtol: 7.5e-7}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

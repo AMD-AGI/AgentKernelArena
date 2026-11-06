@@ -1,0 +1,163 @@
+{
+ "description": "Row counts of the fp32 matrix-vector product with K = 262144; small matrices run below the 10 us floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "m": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum, single row"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "m": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd tiny matrix"
+  },
+  {
+   "id": "m16",
+   "axes": {
+    "m": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one tile of rows"
+  },
+  {
+   "id": "m17",
+   "axes": {
+    "m": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "just above 16 rows"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "m": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned row count"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "m": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned row count"
+  },
+  {
+   "id": "m8",
+   "axes": {
+    "m": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "8 rows (below the 10 us floor)"
+  },
+  {
+   "id": "m32",
+   "axes": {
+    "m": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "narrower matrix, same K (extends the old 2048..4096 range down)"
+  },
+  {
+   "id": "m64",
+   "axes": {
+    "m": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "narrower matrix, same K (extends the old 2048..4096 range down)"
+  },
+  {
+   "id": "m128",
+   "axes": {
+    "m": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "narrower matrix, same K (extends the old 2048..4096 range down)"
+  },
+  {
+   "id": "m256",
+   "axes": {
+    "m": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "narrower matrix, same K (extends the old 2048..4096 range down)"
+  },
+  {
+   "id": "m512",
+   "axes": {
+    "m": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "narrower matrix, same K (extends the old 2048..4096 range down)"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "m": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "narrower matrix, same K (extends the old 2048..4096 range down)"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "m": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench matrix-vector row count"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "m": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench matrix-vector row count"
+  }
+ ]
+}

@@ -1,0 +1,84 @@
+schema_version: 3
+description: >-
+  Fused per-head RMSNorm and GPT-J rotary embedding of a query tensor q[T, 128, 512] and a single
+  shared key/value row kv[T, 512] (DeepSeek-V4-style attention, head size 512 with a 64-wide rotary
+  tail). Each 512-wide row is normalized as x * rsqrt(mean(x^2) + 1e-6) in high precision; kv is
+  additionally scaled by the per-channel kv_weight (q has no weight). GPT-J (pair-interleaved) RoPE
+  is then applied to the last 64 channels with cos/sin rows gathered by positions[t]: for pair k
+  (channels 2k, 2k+1 of the tail) out_even = e*cos[k] - o*sin[k] and out_odd = e*sin[k] + o*cos[k];
+  the first 448 channels pass through. Results are rounded to bfloat16.
+operator:
+  name: qk_rmsnorm_rope
+  category: positional
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 128}
+    head_dim: {kind: const, value: 512}
+    rope_dim: {kind: const, value: 64, description: Rotary tail width (last channels of each row).}
+    max_position: {kind: const, value: 65536, description: Rows of the cos/sin tables.}
+  derived_axes:
+    half_rope: rope_dim // 2
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, num_q_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    kv:
+      kind: tensor
+      shape: [n_tokens, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    kv_weight:
+      kind: tensor
+      shape: [head_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 2.0}
+    cos_cache:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin_cache:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 65536}
+  outputs:
+    q_out: {shape: [n_tokens, num_q_heads, head_dim], dtype: bfloat16}
+    kv_out: {shape: [n_tokens, head_dim], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/kernels/qk_norm_rope_quant.py
+    license: MIT
+    modifications: >-
+      Restricted to the bfloat16 (quant=False), unweighted-Q path, so the FP8 quantization, q_weight
+      and scale arguments are removed; the kernel is written against the FlyDSL buffer_ops/vector helper API of the vendored files below
+      (not aiter's own buffer_ops, GTensor and Vector helpers, which are inlined or replaced), the builder is wrapped in run() with a per-shape lru_cache;
+      the FlyDSL buffer_ops/vector/meta helpers (ROCm/FlyDSL python/flydsl/expr at commit
+      28a18d328b4882c999864b2df2f8f9fe3fcc8b47, Apache-2.0), which the runtime image's FlyDSL no
+      longer ships, are vendored as sibling files without their os, traceback, numpy and star-import
+      dependencies.
+compare:
+  q_out: {bound: baseline_relative}
+  kv_out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

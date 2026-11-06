@@ -1,0 +1,111 @@
+{
+  "description": "Output widths of decode projections; widths whose weight read is below ~10 us are correctness-only.",
+  "cases": [
+    {
+      "id": "n16",
+      "axes": {
+        "n_out": 16
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "captured projection (K=2048), axis minimum"
+    },
+    {
+      "id": "n128",
+      "axes": {
+        "n_out": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "captured projection (K=2048)"
+    },
+    {
+      "id": "n512",
+      "axes": {
+        "n_out": 512
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "captured projection (K=2048)"
+    },
+    {
+      "id": "n1000",
+      "axes": {
+        "n_out": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "captured projection (K=2048), unaligned output width"
+    },
+    {
+      "id": "n7168",
+      "axes": {
+        "n_out": 7168
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "captured projection (K=2048)"
+    },
+    {
+      "id": "n37984",
+      "axes": {
+        "n_out": 37984
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "captured projection (K=2048)"
+    },
+    {
+      "id": "n65536",
+      "axes": {
+        "n_out": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "captured projection (K=2048)"
+    },
+    {
+      "id": "n151936",
+      "axes": {
+        "n_out": 151936
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "captured projection (K=2048)"
+    },
+    {
+      "id": "n201088",
+      "axes": {
+        "n_out": 201088
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "captured projection (K=2048)"
+    },
+    {
+      "id": "n716800",
+      "axes": {
+        "n_out": 716800
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "captured projection (K=2048)"
+    }
+  ]
+}

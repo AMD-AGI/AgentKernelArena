@@ -1,0 +1,40 @@
+schema_version: 3
+description: >-
+  out = (a * a_scale) @ (w * w_scale)^T with float8_e4m3fn activations a [m, 7168] (one e8m0 scale byte per 1x32
+  group along k, a_scale [m, 224]) and float8_e4m3fn weights w [2048, 7168] (one e8m0 scale byte per 128x128 block,
+  w_scale [16, 56]), where an e8m0 byte b means 2^(b - 127). Accumulated in float32 and rounded to bfloat16.
+operator: {name: gemm_afp8wfp8, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 2048, description: Output channels.}
+    k: {kind: const, value: 7168, description: Contracted dimension.}
+  inputs:
+    a: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    a_scale: {kind: tensor, shape: [m, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [n // 128, k // 128], dtype: uint8, role: weight,
+              distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_afp8wfp8.py
+      - aiter/ops/triton/gemm/basic/gemm_afp8wfp8.py
+    license: MIT
+    modifications: >-
+      Non-split-K Triton kernel _gemm_afp8wfp8_kernel kept as is; launcher reduced to writing into the preallocated
+      output with a static tile config (the on-disk tuned-config lookup, the preshuffle kernel and the split-K reduce
+      kernel are dropped); pid_grid, remap_xcd and kernel_repr helpers inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

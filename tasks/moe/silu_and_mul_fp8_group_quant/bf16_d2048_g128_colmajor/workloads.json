@@ -1,0 +1,133 @@
+{
+ "description": "Rows of the activation between the two MoE GEMMs (d = 2048). Small expert slices and decode batches take less than 10 us and are correctness-only.",
+ "cases": [
+  {
+   "id": "t128",
+   "axes": {
+    "n_tokens": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "smallest slice; axis minimum"
+  },
+  {
+   "id": "t384",
+   "axes": {
+    "n_tokens": 384
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "three groups of 128 rows"
+  },
+  {
+   "id": "t2176",
+   "axes": {
+    "n_tokens": 2176
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned expert slice, 17 x 128"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "expert slice; below the 10 us timing floor"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t32768",
+   "axes": {
+    "n_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "t65536",
+   "axes": {
+    "n_tokens": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large prefill chunk"
+  },
+  {
+   "id": "t131072",
+   "axes": {
+    "n_tokens": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t262144",
+   "axes": {
+    "n_tokens": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  },
+  {
+   "id": "t524288",
+   "axes": {
+    "n_tokens": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill"
+  }
+ ]
+}

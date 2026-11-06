@@ -1,0 +1,57 @@
+schema_version: 3
+description: >-
+  Dual-residual RMS normalization of each token row (SGLang Grok style): inner = rmsnorm(x) * weight1 rounded
+  to bfloat16, mid = residual + inner rounded to bfloat16, out = rmsnorm(mid) * weight2 rounded to bfloat16,
+  with every mean taken over the hidden axis in high precision. Outputs are out and the new residual mid.
+operator:
+  name: fused_dual_residual_rms_norm
+  category: normalization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Normalized width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    residual:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight1:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    weight2:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+    mid: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/elementwise/elementwise.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel copied unchanged (fused_dual_residual_rmsnorm_kernel); the non-autotuned launcher is inlined
+      into run() writing the preallocated outputs, with the HIP warp cap fixed to 16.
+compare:
+  out: {bound: baseline_relative, max_violation_fraction: 5.0e-5}
+  mid: {bound: sqnr, min_db: 75}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

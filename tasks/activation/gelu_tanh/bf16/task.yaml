@@ -1,0 +1,36 @@
+schema_version: 3
+description: >-
+  Elementwise tanh-approximate GELU over a flat bfloat16 tensor:
+  out = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3))), evaluated in high precision
+  and rounded to bfloat16.
+operator:
+  name: gelu_tanh
+  category: activation
+interface:
+  axes:
+    numel: {kind: var, min: 1, max: 838860800, description: Number of elements.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [numel]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+  outputs:
+    out: {shape: [numel], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: v2.9.0
+    path: torch/_inductor (pointwise codegen for aten.gelu approximate="tanh")
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the Inductor pointwise kernel for gelu(approximate="tanh") on bfloat16,
+      as a standalone @triton.jit kernel with the arena run() interface.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

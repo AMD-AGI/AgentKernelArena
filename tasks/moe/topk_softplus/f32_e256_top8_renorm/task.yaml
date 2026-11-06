@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Sqrt-softplus MoE top-k routing (DeepSeek-V4 style) of float32 router logits over 256 experts.
+  Scores are sqrt(softplus(logits)); the selection score is score + correction_bias; the 8 experts with
+  the largest selection score are chosen. The output weights are the unbiased scores of the chosen
+  experts, renormalized to sum to 1 and multiplied by route_scale. Weights are float32 and expert ids
+  int32; the order of the 8 entries within a row is unspecified.
+operator:
+  name: topk_softplus
+  category: moe
+element_order: any_in_full_rows
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens routed in the batch.}
+    n_experts: {kind: const, value: 256, description: Routed experts.}
+    topk: {kind: const, value: 8, description: Experts selected per token.}
+  inputs:
+    gating_output:
+      kind: tensor
+      shape: [n_tokens, n_experts]
+      dtype: float32
+      distribution: {kind: generator}
+    correction_bias:
+      kind: tensor
+      shape: [n_experts]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    route_scale: {kind: scalar, dtype: float32, default: 2.5}
+  outputs:
+    topk_weights: {shape: [n_tokens, topk], dtype: float32}
+    topk_ids: {shape: [n_tokens, topk], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/topk.py (topk_softplus, fused HIP kernel in module_moe_topk)
+    license: MIT
+    modifications: >-
+      Triton rewrite of the aiter topk_softplus routing semantics (one program per token) for the fixed
+      256-expert, top-8, renormalizing configuration; no upstream code is copied.
+compare:
+  topk_weights: {bound: sqnr, min_db: 130}
+  topk_ids: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,64 @@
+schema_version: 3
+description: >-
+  Batched byte copy as used to move per-request Mamba state blocks: for every triple i, the
+  sizes[i] bytes starting at byte src_offsets[i] of src_pool are copied to byte dst_offsets[i] of
+  dst_pool. Copy sizes vary around the 262144-byte slot size (arbitrary byte counts, not block multiples) and sum
+  to the pool size; the copies are packed back to back in two independent random orders in the source
+  and destination pool, so they tile the destination pool exactly.
+operator:
+  name: batch_memcpy
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 4096, description: Copy triples (state blocks moved in one call).}
+    copy_bytes: {kind: const, value: 262144, description: Slot size in bytes (mean copy size).}
+  inputs:
+    src_pool:
+      kind: tensor
+      shape: [batch, copy_bytes]
+      dtype: uint8
+      role: state
+      distribution: {kind: randint, low: 0, high: 256}
+      description: Source pool, copy_bytes per slot.
+    src_offsets:
+      kind: tensor
+      shape: [batch]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Byte offset of every copy's source in src_pool.
+    sizes:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Bytes of every copy.
+    dst_offsets:
+      kind: tensor
+      shape: [batch]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Byte offset of every copy's destination in dst_pool.
+  outputs:
+    dst_pool: {shape: [batch, copy_bytes], dtype: uint8}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/mamba_utils.py
+    license: Apache-2.0
+    modifications: >-
+      The copy loop is unchanged. The kernel takes pool base tensors plus byte offsets instead of
+      absolute device addresses (a task input cannot hold a process address), and the wrapper is
+      replaced by run() writing into the preallocated destination pool.
+compare:
+  dst_pool: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

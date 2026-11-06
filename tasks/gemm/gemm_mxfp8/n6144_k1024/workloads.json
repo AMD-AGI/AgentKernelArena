@@ -1,0 +1,173 @@
+{
+ "description": "Token counts of the MiniMax-M3 TP8 o_proj GEMM (N=6144, K=1024); decode batches are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "m": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "m": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "m17",
+   "axes": {
+    "m": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "just above one tile of 16 rows"
+  },
+  {
+   "id": "m64",
+   "axes": {
+    "m": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 64"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "m": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "below one 128-row tile"
+  },
+  {
+   "id": "m129",
+   "axes": {
+    "m": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row over a 128-row tile"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "m": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "m": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "below the 10 us floor"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "m": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill token count"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "m": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill token count"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "m": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill token count"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "m": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk (MiniMax-M3 TP8 o_proj capture)"
+  },
+  {
+   "id": "m32768",
+   "axes": {
+    "m": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill token count"
+  },
+  {
+   "id": "m65536",
+   "axes": {
+    "m": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill token count"
+  },
+  {
+   "id": "m131072",
+   "axes": {
+    "m": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill token count"
+  },
+  {
+   "id": "m262144",
+   "axes": {
+    "m": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill token count"
+  }
+ ]
+}

@@ -1,0 +1,58 @@
+schema_version: 3
+description: >-
+  Positions and sequence lengths of a scheduled batch (vLLM v1 model runner). Request b owns the tokens
+  query_start_loc[b]:query_start_loc[b+1] of the flat batch and the persistent slot idx_mapping[b]; with
+  c = num_computed_tokens[slot] its tokens get positions c, c+1, ..., and seq_lens[b] = c + query length.
+  The unused entries seq_lens[num_reqs:] are set to zero (padding for full CUDA graphs).
+operator:
+  name: prepare_pos_seq_lens
+  category: other
+interface:
+  axes:
+    num_reqs: {kind: var, min: 1, max: 1024, description: Requests scheduled in the step.}
+    query_len: {kind: var, min: 1, max: 65536, description: Mean number of new tokens per request; individual requests range from 1 to twice this.}
+    max_num_reqs: {kind: const, value: 1024, description: Persistent request slots (maximum concurrent requests).}
+  derived_axes:
+    total_tokens: "num_reqs * query_len"
+  inputs:
+    idx_mapping:
+      kind: tensor
+      shape: [num_reqs]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct persistent request slot of each batch entry.
+    query_start_loc:
+      kind: tensor
+      shape: [num_reqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Exclusive prefix sums of the query lengths; the last entry is total_tokens.
+    num_computed_tokens:
+      kind: tensor
+      shape: [max_num_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: randint, low: 0, high: 100000}
+      description: Computed tokens of every persistent slot.
+  outputs:
+    pos: {shape: [total_tokens], dtype: int64}
+    seq_lens: {shape: [max_num_reqs], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/input_batch.py (_prepare_pos_seq_lens_kernel, prepare_pos_seq_lens)
+    license: Apache-2.0
+    modifications: Wrapped in the run() interface; the kernel and its launch parameters are unchanged.
+compare:
+  pos: {bound: exact}
+  seq_lens: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

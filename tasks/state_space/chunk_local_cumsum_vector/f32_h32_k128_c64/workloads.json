@@ -1,0 +1,13 @@
+{
+  "description": "Packed token counts of a gated-linear-attention prefill step with 32 heads of 128 gate channels (KDA-style vector gates); small batches are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "single decode token"},
+    {"id": "t100", "axes": {"n_tokens": 100}, "checks": ["correctness"], "source": "short prefill with a partial chunk"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t2048", "axes": {"n_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t8192", "axes": {"n_tokens": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t32768", "axes": {"n_tokens": 32768}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t131072", "axes": {"n_tokens": 131072}, "checks": ["correctness", "performance"], "source": "large batched prefill"},
+    {"id": "t262144", "axes": {"n_tokens": 262144}, "checks": ["correctness", "performance"], "source": "large batched prefill"}
+  ]
+}

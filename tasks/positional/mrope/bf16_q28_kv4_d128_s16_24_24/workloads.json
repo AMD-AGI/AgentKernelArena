@@ -1,0 +1,153 @@
+{
+  "description": "Token counts at 28 query heads, 4 KV heads, head size 128 (Qwen2.5-VL-7B); decode batches and short prompts (traffic ~16 KB per token) are under the 10 us timing floor and correctness-only; prefill chunks of 2048 to 262144 tokens are timed.",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, odd batch"
+    },
+    {
+      "id": "t17",
+      "axes": {
+        "n_tokens": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch just above 16"
+    },
+    {
+      "id": "t100",
+      "axes": {
+        "n_tokens": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, unaligned batch"
+    },
+    {
+      "id": "t700",
+      "axes": {
+        "n_tokens": 700
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short unaligned prompt (below the timing floor)"
+    },
+    {
+      "id": "t1024",
+      "axes": {
+        "n_tokens": 1024
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short prompt (below the timing floor)"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "image/video prefill chunk"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long multimodal prefill"
+    },
+    {
+      "id": "t65536",
+      "axes": {
+        "n_tokens": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long multimodal prefill"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "128K-token multimodal prompt"
+    },
+    {
+      "id": "t262144",
+      "axes": {
+        "n_tokens": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "256K-token multimodal prompt"
+    }
+  ]
+}

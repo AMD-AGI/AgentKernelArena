@@ -1,0 +1,121 @@
+{
+  "description": "Token counts at hidden size 4096 for the activation quantization in front of an FP8 GEMM; decode batches and the unaligned batch take less than 10 us and are correctness-only.",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, odd batch"
+    },
+    {
+      "id": "t8",
+      "axes": {
+        "n_tokens": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 8"
+    },
+    {
+      "id": "t48",
+      "axes": {
+        "n_tokens": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 48"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "short prefill chunk"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t65536",
+      "axes": {
+        "n_tokens": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "t262144",
+      "axes": {
+        "n_tokens": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    }
+  ]
+}

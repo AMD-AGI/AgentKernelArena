@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  Dynamic MXFP4 quantization of a bfloat16 matrix. Each contiguous block of 32 elements along the hidden
+  axis shares one E8M0 scale 2^(e - 127), where e = floor(log2(amax rounded to a power of two)) - 2 and amax
+  is rounded up to the next power of two when its mantissa is at least 1.75; the scaled elements are rounded
+  to nearest-even onto the E2M1 grid {0, 0.5, 1, 1.5, 2, 3, 4, 6} with the sign kept (saturating at 6).
+  Two codes pack into one byte, the even element in the low nibble.
+operator:
+  name: dynamic_mxfp4_quant
+  category: quantization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Rows (tokens) to quantize.}
+    hidden_size: {kind: const, value: 7168, description: Quantized width (a multiple of 32).}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    x_fp4: {shape: [n_tokens, hidden_size // 2], dtype: uint8}
+    blockscale_e8m0: {shape: [n_tokens, hidden_size // 32], dtype: uint8}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/quant/quant.py (dynamic_mxfp4_quant) and aiter/ops/triton/_triton_kernels/quant/quant.py (_dynamic_mxfp4_quant_kernel, _mxfp4_quant_op)
+    license: MIT
+    modifications: Kernels unchanged; the launch code of dynamic_mxfp4_quant became run(), writing into the preallocated outputs (the production op returns a transposed scale view; the task's scale output is row-major, which the kernel supports through its strides).
+compare:
+  x_fp4: {bound: exact}
+  blockscale_e8m0: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

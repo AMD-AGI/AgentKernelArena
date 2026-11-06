@@ -1,0 +1,52 @@
+schema_version: 3
+description: >-
+  Fused SwiGLU feed-forward projection in bfloat16 (the HSTU / generative-recommenders SwiGLU):
+  out = silu(x @ w_gate) * (x @ w_up), both products accumulated in float32, the activation computed in
+  float32 and the result rounded to bfloat16.
+operator:
+  name: fused_swiglu_ffn
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows (batch times sequence length).}
+    k: {kind: const, value: 1024, description: Input width.}
+    n: {kind: const, value: 2048, description: Hidden width of each projection.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w_gate:
+      kind: tensor
+      shape: [k, n]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.03125}
+    w_up:
+      kind: tensor
+      shape: [k, n]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.03125}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: meta-recsys/generative-recommenders (generative_recommenders/ops/triton/triton_swiglu.py)
+    revision: 0c6ab6748926aa7efd964813ccf7fe3bfbb8675b
+    path: tasks/triton2flydsl/generative_recommenders/swiglu/swiglu.py
+    license: Apache-2.0
+    modifications: >-
+      Forward kernel and its autotune configs taken from the extraction in the old AgentKernelArena task
+      (the revision above is that task's commit; the extraction does not record an upstream commit).
+      Per-call weight transposition removed (weights are stored as [k, n]); the wrapper became run()
+      writing the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

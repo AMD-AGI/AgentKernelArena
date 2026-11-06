@@ -1,0 +1,54 @@
+schema_version: 3
+description: >-
+  Temperature scaling of each token's logits row, in place: logits[i, :] = logits[i, :] / t with
+  t = temperature[expanded_idx_mapping[i]] in float32. Rows whose temperature is exactly 0 (greedy)
+  or exactly 1 are not modified.
+operator:
+  name: apply_temperature
+  category: sampling
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 4096, description: Logits rows (tokens) of the sampling step.}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen2/Qwen3 family).}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Logits, scaled in place.
+    expanded_idx_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: permutation}
+      description: Request-state index of each row (a permutation, so every request state is used once).
+    temperature:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-request-state temperature; 0 and 1 leave the logits untouched.
+  outputs: {}
+  mutable: [logits]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/gumbel.py
+    license: Apache-2.0
+    modifications: >-
+      Only the temperature kernel and apply_temperature were taken from the file (the Gumbel sampling
+      kernels were left out); imports of the vLLM triton shim replaced by triton directly; a run()
+      entry that calls apply_temperature was added. The kernel is unchanged.
+compare:
+  logits: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

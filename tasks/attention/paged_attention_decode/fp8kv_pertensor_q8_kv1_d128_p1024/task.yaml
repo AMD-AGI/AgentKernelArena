@@ -1,0 +1,146 @@
+schema_version: 3
+description: >-
+  Single-token (decode) grouped-query attention over a paged FP8 KV cache with per-tensor scales,
+  out[s, h] = softmax(softmax_scale * q[s, h] . K_s^T) . V_s, where K_s and V_s are the first
+  context_lengths[s] tokens of sequence s, dequantized as code * scale. Token t of sequence s lives in
+  page kv_page_indices[kv_indptr[s] + t // 1024] at slot t % 1024. All 8 query heads attend to the
+  single KV head (head size 128). Keys are float8_e4m3fn codes at key_cache[page, kv_head, d // 16, slot,
+  d % 16], values at value_cache[page, kv_head, slot // 16, d, slot % 16], with one float32 scale
+  for the whole key cache (key_scale[0]) and one for the value cache (value_scale[0]). Slots past a
+  sequence's length and pages it does not list hold stale codes that must not affect the result. The work_* and reduce_*
+  inputs are the persistent-scheduling worklist for 256 compute units (see README.md); an
+  implementation may use or ignore them. Queries are bfloat16 and the result is rounded to bfloat16.
+operator:
+  name: paged_attention_decode
+  category: attention
+interface:
+  axes:
+    num_seqs: {kind: var, min: 1, max: 512, description: Sequences decoded in the step (one query token each).}
+    max_seq_len: {kind: var, min: 1, max: 131072, description: 'Longest context in the batch; the others are between half of it and all of it.'}
+    num_query_heads: {kind: const, value: 8, description: Query heads per tensor-parallel rank.}
+    num_kv_heads: {kind: const, value: 1, description: KV heads per tensor-parallel rank (group size 8).}
+    head_size: {kind: const, value: 128, description: Head dimension of queries and the KV cache.}
+    block_size: {kind: const, value: 1024, description: Tokens per KV-cache page.}
+    num_cu: {kind: const, value: 256, description: Compute units the worklist is built for (MI355X).}
+  derived_axes:
+    max_pages: ceil_div(max_seq_len, block_size)
+    num_blocks: num_seqs * max_pages
+    max_work: (num_seqs + num_cu - 1) * num_kv_heads
+  inputs:
+    query:
+      kind: tensor
+      shape: [num_seqs, num_query_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    key_cache:
+      kind: tensor
+      shape: [num_blocks, num_kv_heads, head_size // 16, block_size, 16]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: FP8 key codes; element d of the token in (page, slot) at [page, kv_head, d // 16, slot, d % 16].
+    value_cache:
+      kind: tensor
+      shape: [num_blocks, num_kv_heads, block_size // 16, head_size, 16]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: FP8 value codes; element d of the token in (page, slot) at [page, kv_head, slot // 16, d, slot % 16].
+    key_scale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: state
+      distribution: {kind: generator}
+      description: Per-tensor key scale (max |k| over the key cache / 448).
+    value_scale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: state
+      distribution: {kind: generator}
+      description: Per-tensor value scale (max |v| over the value cache / 448).
+    context_lengths:
+      kind: tensor
+      shape: [num_seqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Context length of each sequence, in [1, max_seq_len].
+    kv_indptr:
+      kind: tensor
+      shape: [num_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prefix sum of the pages each sequence uses (ceil(context_lengths / 1024)).
+    kv_page_indices:
+      kind: tensor
+      shape: [num_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Physical pages of all sequences, concatenated in order; entries past kv_indptr[-1] are 0.
+    work_indptr:
+      kind: tensor
+      shape: [num_cu + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Work items of compute unit c are work_info rows work_indptr[c] .. work_indptr[c + 1] - 1.
+    work_info:
+      kind: tensor
+      shape: [max_work, 8]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: 'Work rows [sequence, partial slot, q_start, q_end, kv_start, kv_end, 0, q_head_range]; kv_* index kv_page_indices.'
+    reduce_indptr:
+      kind: tensor
+      shape: [num_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Partials of sequence group g are reduce_partial_map[reduce_indptr[g] .. reduce_indptr[g + 1] - 1].
+    reduce_final_map:
+      kind: tensor
+      shape: [num_seqs, 2]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Output token range [q_start, q_end) of each group.
+    reduce_partial_map:
+      kind: tensor
+      shape: [max_work * (block_size // 256)]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: 'Partial row of each (slot, 256-token sub-tile): slot * 4 + sub-tile; unused entries are 0.'
+    softmax_scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: 'head_size ** -0.5.'}
+  outputs:
+    out: {shape: [num_seqs, num_query_heads, head_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: 28a18d328b4882c999864b2df2f8f9fe3fcc8b47
+    path: kernels/pa_decode_fp8.py, kernels/dpp_utils.py, python/flydsl/expr/{buffer_ops,vector,meta}.py
+    license: Apache-2.0
+    modifications: >-
+      compile_pa_decode_ps and its helpers are unchanged. run() is the persistent-scheduling
+      (sliding_window == 0) branch of pa_decode_ps_launch for bf16 queries and per-tensor KV scales,
+      launched on the current stream with partial buffers sized from the worklist shapes. The worklist
+      that get_pa_metadata built with AITER's get_pa_metadata_v1 plus the file's block-split expansion is
+      a task input (inputs.py ports both). AITER's pa_reduce_v1 is replaced by a task-written FlyDSL
+      reduce kernel (compile_pa_decode_ps_reduce) with the same merge. The sliding-window route,
+      host metadata code and graph-capture checks were removed; buffer_ops, vector and meta are bundled
+      for FlyDSL releases without flydsl.expr.buffer_ops (no environment access, no star import, unknown
+      MLIR locations).
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

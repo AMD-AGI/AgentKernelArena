@@ -1,0 +1,75 @@
+schema_version: 3
+description: >-
+  Causal variable-length prefill attention over a packed batch without a KV cache
+  (context_attention_fwd). Sequence b occupies tokens [b_start_loc[b], b_start_loc[b] + b_seq_len[b])
+  of q, k and v, and each of its queries attends to the keys of the same sequence at or before its own
+  position, with grouped-query attention (32 query heads over 8 KV heads; query head h reads KV head
+  h // 4): out = softmax(sm_scale * q k^T) v, rounded to bfloat16. max_input_len is the longest
+  b_seq_len of the batch, a host integer as in production.
+operator:
+  name: flash_attention_fwd
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Sequences in the packed batch.}
+    n_tokens: {kind: var, min: 1, max: 65536, description: Packed tokens of all sequences.}
+    n_heads: {kind: const, value: 32, description: Query heads.}
+    n_kv_heads: {kind: const, value: 8, description: Key/value heads.}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed queries, sequence after sequence.
+    k:
+      kind: tensor
+      shape: [n_tokens, n_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed keys.
+    v:
+      kind: tensor
+      shape: [n_tokens, n_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed values.
+    b_start_loc:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Offset of every sequence's first token in q/k/v (exclusive cumulative sum of b_seq_len).
+    b_seq_len:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Length of every sequence; the lengths sum to n_tokens and their maximum is max_input_len.
+    max_input_len: {kind: scalar, dtype: int32, default: 1, description: Longest sequence of the batch.}
+    sm_scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: "Softmax scale, 1/sqrt(head_dim)."}
+  outputs:
+    out: {shape: [n_tokens, n_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/attention/prefill_attention.py
+    license: Apache-2.0
+    modifications: >-
+      _fwd_kernel unchanged; the sglang.srt.utils is_cuda/is_hip probes are inlined for ROCm and the
+      import-time torch.cuda.get_device_capability() query became a cached
+      torch.cuda.get_device_properties(...).major lookup in context_attention_fwd's BLOCK choice; run()
+      calls context_attention_fwd with is_causal=True, writing the preallocated output.
+compare:
+  out: {bound: baseline_relative, k: 5, max_violation_fraction: 1.0e-6}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

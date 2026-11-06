@@ -1,0 +1,45 @@
+schema_version: 3
+description: >-
+  Dense float16 GEMM out = a @ b with a row-major a of shape [m, k] and a row-major b of shape [k, n]
+  (the "NN" layout), accumulated in float32 and rounded to float16.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows of a.}
+    n: {kind: const, value: 4096, description: Columns of b and out.}
+    k: {kind: const, value: 4096, description: Reduction width.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [k, n]
+      dtype: float16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/batch_invariant.py
+    license: Apache-2.0
+    modifications: >-
+      matmul_persistent and matmul_kernel_persistent with the optional bias, the launch metadata and the
+      bfloat16/float32 configurations removed; the float16 configuration (128x256x64, 8 warps, 3 stages)
+      and the SM count read through torch.cuda.get_device_properties; wrapped in the arena run()
+      interface writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

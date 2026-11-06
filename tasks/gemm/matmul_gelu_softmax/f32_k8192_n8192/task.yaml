@@ -1,0 +1,63 @@
+schema_version: 3
+description: >-
+  out = softmax(gelu(x @ weight.T + bias), dim=1) for x [batch, 8192] and an nn.Linear(8192, 8192) weight
+  [8192, 8192] and bias [8192], all row-major float32: the product and its accumulation in IEEE float32
+  (no TF32 or reduced-precision inputs), the exact (erf) GELU, a softmax over the 8192 output features,
+  output float32.
+operator: {name: matmul_gelu_softmax, category: gemm}
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 8192, description: Rows of x and out.}
+    in_features: {kind: const, value: 8192, description: Contracted dimension.}
+    out_features: {kind: const, value: 8192, description: "Linear outputs, the softmax axis."}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_features]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_features, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.011048543456039804, high: 0.011048543456039804}
+    bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.011048543456039804, high: 0.011048543456039804}
+  outputs:
+    out: {shape: [batch, out_features], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/fx_passes/post_grad.py
+      - torch/_inductor/codegen/triton.py
+      - torch/_inductor/runtime/triton_helpers.py
+      - torch/_inductor/heuristics/template/triton.py
+      - torch/_inductor/heuristics/triton_codegen/reduction.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the two kernels Inductor's max-autotune generates for this module on ROCm, written
+      by hand as standalone @triton.jit kernels (no GPU was available to run Inductor): the mm template
+      rendered for row-major x and the transposed row-major weight with no epilogue (the post-grad pass
+      unfuse_bias_add_to_pointwise moves the bias into the pointwise consumer), and the looped online-softmax
+      reduction with the bias add and erf GELU inlined, its online_softmax_combine/reduce helpers copied in.
+      One mm config per M bucket, taken from the ROCm mm_configs list, instead of autotuning; the template's
+      M >= BLOCK_M contiguity test passed in as a constexpr because M is a runtime argument; the zero-size
+      early exit dropped (batch >= 1); allow_tf32=False written as input_precision="ieee"; wrapped in the
+      run() interface with the intermediate product in a buffer allocated per call.
+compare:
+  out: {bound: sqnr, min_db: 122}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

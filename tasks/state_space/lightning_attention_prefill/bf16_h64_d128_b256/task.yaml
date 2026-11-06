@@ -1,0 +1,73 @@
+schema_version: 3
+description: >-
+  MiniMax lightning (linear) attention prefill of one sequence with per-head exponential decay,
+  computed in blocks of 256 tokens (the last may be partial) and a running KV state. Inside a
+  block, token t attends to the tokens j <= t of the block with weight exp(-r[h] (t - j)) and
+  score <q_t, k_j>. Each block also adds exp(-r[h] p) q_p applied to the KV state entering the
+  block, p being the token's position in the block; the state starts as kv_history and, after each
+  block of m tokens, becomes exp(-r[h] m) * state + sum_c exp(-r[h] (m - 1 - c)) k_c v_c^T. The
+  final state is written back to kv_history. q, k, v and out are bfloat16, the state is float32.
+operator:
+  name: lightning_attention_prefill
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Prompt tokens of the sequence.}
+    num_heads: {kind: const, value: 64, description: Linear-attention heads.}
+    head_dim: {kind: const, value: 128, description: Key and value head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [num_heads, n_tokens, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [num_heads, n_tokens, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [num_heads, n_tokens, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    slope_rate:
+      kind: tensor
+      shape: [num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Positive per-head decay slopes.
+    kv_history:
+      kind: tensor
+      shape: [num_heads, head_dim, head_dim]
+      dtype: float32
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Per-head KV state of the tokens before this prefill chunk (key dimension first).
+  outputs:
+    out: {shape: [num_heads, n_tokens, head_dim], dtype: bfloat16}
+  mutable: [kv_history]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/lightning_attn.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface (batch of one, head size 128 so a single feature split); the
+      per-head key-decay table that vLLM builds with torch.exp on the host is computed inside
+      _fwd_kv_parallel; _fwd_kv_parallel widens its bfloat16 key and value loads to float32 (as
+      _fwd_diag_kernel does), because vLLM feeds float32 activations and Triton 3.8.0 rejects a
+      tl.dot of float32 decayed keys with bfloat16 values; the output is written into the
+      preallocated buffer and the history updated in place.
+compare:
+  out: {bound: baseline_relative}
+  kv_history: {bound: sqnr, min_db: 127}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

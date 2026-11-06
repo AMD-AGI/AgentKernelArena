@@ -1,0 +1,47 @@
+schema_version: 3
+description: >-
+  Back-to-back GEMM with the intermediate kept on chip: E = (A @ B^T) @ C with A [n_rows, 64],
+  B and C [n_keys, 64], all float16, accumulated in float32 and rounded to float16.
+  The intermediate A @ B^T is rounded to float16 before the second product, as the
+  baseline does, so it is attention without the softmax.
+operator: {name: b2b_gemm, category: gemm}
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 16384, description: Rows of A and of the output.}
+    n_keys: {kind: var, min: 1, max: 16384, description: Rows of B and C (the contracted middle dimension).}
+    head_dim: {kind: const, value: 64, description: Inner and output width.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [n_rows, head_dim]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.1, std: 0.2}
+    b:
+      kind: tensor
+      shape: [n_keys, head_dim]
+      dtype: float16
+      role: weight
+      distribution: {kind: normal, mean: 0.1, std: 0.2}
+    c:
+      kind: tensor
+      shape: [n_keys, head_dim]
+      dtype: float16
+      role: weight
+      distribution: {kind: normal, mean: 0.1, std: 0.2}
+  outputs:
+    e: {shape: [n_rows, head_dim], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD-AGI/AgentKernelArena (the rocmbench test_gemm_fusion kernel, after ROCm/triton and NVIDIA Triton tests)
+    revision: a3b51f2c71d8b305b46521656d3639b9b26ff446
+    path: tasks/triton2triton/rocmbench/hard/test_gemm_fusion/test_gemm_fusion.py::gemm_fusion_kernel
+    license: MIT
+    modifications: Block pointers replaced by masked pointer loads and stores so n_rows and n_keys may be any size; wrapped in the run() interface.
+compare:
+  e: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

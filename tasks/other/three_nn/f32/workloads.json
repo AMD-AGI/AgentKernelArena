@@ -1,0 +1,232 @@
+{
+ "description": "Feature-propagation interpolation of PointNet++-style networks: dense target clouds of 2K to 32K points interpolated from a quarter as many source points, plus source-heavy shapes of the earlier task; tiny clouds are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_n1",
+   "axes": {
+    "batch": 1,
+    "n_target": 1,
+    "n_source": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single target point (3 source points)"
+  },
+  {
+   "id": "b3_n37",
+   "axes": {
+    "batch": 3,
+    "n_target": 37,
+    "n_source": 10
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small unaligned cloud"
+  },
+  {
+   "id": "b2_n1000",
+   "axes": {
+    "batch": 2,
+    "n_target": 1000,
+    "n_source": 250
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned cloud"
+  },
+  {
+   "id": "b4_n513",
+   "axes": {
+    "batch": 4,
+    "n_target": 513,
+    "n_source": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two cloud batch"
+  },
+  {
+   "id": "b1_n2048",
+   "axes": {
+    "batch": 1,
+    "n_target": 2048,
+    "n_source": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single cloud, 512 sources"
+  },
+  {
+   "id": "b1_n8192",
+   "axes": {
+    "batch": 1,
+    "n_target": 8192,
+    "n_source": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "PointNet++ first feature-propagation layer"
+  },
+  {
+   "id": "b2_n4096",
+   "axes": {
+    "batch": 2,
+    "n_target": 4096,
+    "n_source": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small training batch"
+  },
+  {
+   "id": "b4_n8192",
+   "axes": {
+    "batch": 4,
+    "n_target": 8192,
+    "n_source": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch"
+  },
+  {
+   "id": "b2_n16384",
+   "axes": {
+    "batch": 2,
+    "n_target": 16384,
+    "n_source": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KITTI-scale clouds"
+  },
+  {
+   "id": "b8_n8192",
+   "axes": {
+    "batch": 8,
+    "n_target": 8192,
+    "n_source": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large training batch"
+  },
+  {
+   "id": "b4_n32768",
+   "axes": {
+    "batch": 4,
+    "n_target": 32768,
+    "n_source": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "dense clouds"
+  },
+  {
+   "id": "b8_n16384",
+   "axes": {
+    "batch": 8,
+    "n_target": 16384,
+    "n_source": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of dense clouds"
+  },
+  {
+   "id": "b8_n32768",
+   "axes": {
+    "batch": 8,
+    "n_target": 32768,
+    "n_source": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "largest batch (upper bound)"
+  },
+  {
+   "id": "b2_n512_m4096",
+   "axes": {
+    "batch": 2,
+    "n_target": 512,
+    "n_source": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "upsampling-free case: few targets, many sources (earlier task shape)"
+  },
+  {
+   "id": "b8_n1024_m2048",
+   "axes": {
+    "batch": 8,
+    "n_target": 1024,
+    "n_source": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "earlier task shape: 1024 targets, 2048 sources"
+  },
+  {
+   "id": "b4_n2048_m128",
+   "axes": {
+    "batch": 4,
+    "n_target": 2048,
+    "n_source": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "earlier task shape: few sources (below 10 us)"
+  },
+  {
+   "id": "b2_n300_m3",
+   "axes": {
+    "batch": 2,
+    "n_target": 300,
+    "n_source": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "minimum of three sources"
+  },
+  {
+   "id": "b3_n77_m1001",
+   "axes": {
+    "batch": 3,
+    "n_target": 77,
+    "n_source": 1001
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned many sources"
+  }
+ ]
+}

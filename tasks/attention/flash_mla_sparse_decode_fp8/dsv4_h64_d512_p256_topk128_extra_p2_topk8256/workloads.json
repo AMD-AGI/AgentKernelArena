@@ -1,0 +1,221 @@
+{
+ "description": "DeepSeek-V4 C128A-layer decode batches: request contexts between ctx/2 and ctx set a sliding window of min(c, 128) tokens and c // 128 compressed entries per request; rows 1-10 carry the index-contract edge cases. Small batches and short contexts read too little KV for the 10 us timing floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_c1",
+   "axes": {
+    "batch": 1,
+    "ctx": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "minimum: one request with a single token, no compressed entry"
+  },
+  {
+   "id": "b3_c64",
+   "axes": {
+    "batch": 3,
+    "ctx": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, half-full windows of 32..64 tokens"
+  },
+  {
+   "id": "b7_c127",
+   "axes": {
+    "batch": 7,
+    "ctx": 127
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "all edge rows; windows up to 127 tokens, no compressed entry yet"
+  },
+  {
+   "id": "b17_c129",
+   "axes": {
+    "batch": 17,
+    "ctx": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch above 16 and not a multiple of 16; full window, first compressed entry"
+  },
+  {
+   "id": "b5_c256",
+   "axes": {
+    "batch": 5,
+    "ctx": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "two compressed entries, one full extra page"
+  },
+  {
+   "id": "b33_c4224",
+   "axes": {
+    "batch": 33,
+    "ctx": 4224
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "16..33 compressed entries around a 32-entry boundary"
+  },
+  {
+   "id": "b12_c16511",
+   "axes": {
+    "batch": 12,
+    "ctx": 16511
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "64..128 compressed entries"
+  },
+  {
+   "id": "b9_c65663",
+   "axes": {
+    "batch": 9,
+    "ctx": 65663
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "256..512 compressed entries"
+  },
+  {
+   "id": "b200_c2048",
+   "axes": {
+    "batch": 200,
+    "ctx": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "many rows of a 2k-context batch (8..16 compressed entries)"
+  },
+  {
+   "id": "b8_c1048575",
+   "axes": {
+    "batch": 8,
+    "ctx": 1048575
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "1M context: up to 8191 compressed entries"
+  },
+  {
+   "id": "b6_c1056767",
+   "axes": {
+    "batch": 6,
+    "ctx": 1056767
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one entry short of the full C128 index width (8255)"
+  },
+  {
+   "id": "b2_c1056768",
+   "axes": {
+    "batch": 2,
+    "ctx": 1056768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "full C128 index width (8256 entries) next to an empty row"
+  },
+  {
+   "id": "b1024_c256",
+   "axes": {
+    "batch": 1024,
+    "ctx": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "short-context high-concurrency decode"
+  },
+  {
+   "id": "b2048_c1024",
+   "axes": {
+    "batch": 2048,
+    "ctx": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "max-concurrency decode, 1k contexts"
+  },
+  {
+   "id": "b512_c8192",
+   "axes": {
+    "batch": 512,
+    "ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8k-context serving batch"
+  },
+  {
+   "id": "b256_c65536",
+   "axes": {
+    "batch": 256,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "64k-context serving batch"
+  },
+  {
+   "id": "b1024_c32768",
+   "axes": {
+    "batch": 1024,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "32k contexts filling a 33M-token KV pool"
+  },
+  {
+   "id": "b64_c524288",
+   "axes": {
+    "batch": 64,
+    "ctx": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512k long-context batch"
+  },
+  {
+   "id": "b32_c1048576",
+   "axes": {
+    "batch": 32,
+    "ctx": 1048576
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "1M-context batch"
+  }
+ ]
+}

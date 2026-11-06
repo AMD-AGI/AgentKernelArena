@@ -1,0 +1,43 @@
+schema_version: 3
+description: >-
+  Identity (zero) expert combine of a MoE layer: every token's hidden state is multiplied by the sum of
+  its 2 expert scales, out[i] = sum_k hidden_states[i] * expert_scales[i, k], accumulated in float32 and
+  rounded to float16.
+operator:
+  name: zero_expert_identity_combine
+  category: moe
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens in the batch.}
+    hidden_dim: {kind: const, value: 4096, description: Model hidden width.}
+    top_k: {kind: const, value: 2, description: Expert scales per token.}
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [n_tokens, hidden_dim]
+      dtype: float16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    expert_scales:
+      kind: tensor
+      shape: [n_tokens, top_k]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 0.5}
+  outputs:
+    out: {shape: [n_tokens, hidden_dim], dtype: float16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/fused_moe/fused_moe.py
+    license: Apache-2.0
+    modifications: >-
+      compute_identity_kernel with the run() wrapper writing into the preallocated output; the host-side
+      zero_experts_compute_triton scale masking and output allocation are removed.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

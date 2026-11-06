@@ -1,0 +1,60 @@
+schema_version: 3
+description: >-
+  Two-dimensional convolution of a float32 NCHW image batch with a 3x3 filter bank, 16 input to
+  128 output channels, stride 1, no padding, no dilation, one group and no bias:
+  out[n, o, h, w] = sum over c, i, j of x[n, c, h + i, w + j] * weight[o, c, i, j], with float32
+  products and accumulation.
+operator:
+  name: conv2d
+  category: convolution
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 32, description: Images in the batch.}
+    height: {kind: var, min: 3, max: 512, description: Input image height.}
+    width: {kind: var, min: 3, max: 512, description: Input image width.}
+    in_channels: {kind: const, value: 16, description: Input channels.}
+    out_channels: {kind: const, value: 128, description: Output channels (filters).}
+    kernel_size: {kind: const, value: 3, description: Square filter height and width.}
+  derived_axes:
+    out_height: height - kernel_size + 1
+    out_width: width - kernel_size + 1
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_channels, height, width]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: NCHW input images, contiguous.
+    weight:
+      kind: tensor
+      shape: [out_channels, in_channels, kernel_size, kernel_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.08333333333333333, high: 0.08333333333333333}
+      description: OIHW filters, drawn like nn.Conv2d's default init (bound 1/sqrt(16 * 3 * 3)).
+  outputs:
+    out:
+      shape: [batch, out_channels, out_height, out_width]
+      dtype: float32
+      description: NCHW output, contiguous.
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch (Inductor convolution2d Triton template)
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: torch/_inductor/kernel/conv.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the Inductor convolution2d template (non-unrolled path, groups 1) as a
+      standalone @triton.jit kernel: Jinja placeholders replaced by kernel arguments and constexprs,
+      store_output replaced by a strided NCHW store, ALLOW_TF32 replaced by input_precision="ieee",
+      Inductor's INDEX_DTYPE choice kept as an int64 switch for tensors of 2**31 or more elements,
+      and the autotuned tile configuration fixed to one ROCm conv config (128x128x16, 2 stages,
+      4 warps). Wrapped in the run() interface writing into the preallocated output.
+compare:
+  out: {bound: sqnr, min_db: 129.0}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

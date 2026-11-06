@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Dense bfloat16 GEMM without bias or activation, out = x @ w.T, where x is [m, k],
+  w is the row-major [n, k] weight (the nn.Linear layout), accumulated in float32 and rounded to bfloat16.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 16384, description: Rows of x (tokens in the batch).}
+    n: {kind: const, value: 1280, description: Output features.}
+    k: {kind: const, value: 8192, description: Reduction width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w:
+      kind: tensor
+      shape: [n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/gemm/basic/gemm_a16w16.py
+    license: MIT
+    modifications: >-
+      Task-local simplification of AITER's gemm_a16w16 kernel (grouped tile order, one tile per program,
+      fixed tile table); optional bias and activation removed; wrapped in the arena run() interface writing
+      into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

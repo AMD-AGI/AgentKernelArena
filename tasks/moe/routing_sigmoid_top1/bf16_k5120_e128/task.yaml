@@ -1,0 +1,47 @@
+schema_version: 3
+description: >-
+  Llama-4 style fused MoE router. logits = x @ w over 128 experts (bfloat16 inputs, float32 accumulation);
+  scores = sigmoid(logits); each token selects its single best expert (the lowest id on ties). The two output
+  columns are [selected expert, shared expert]: ids are (argmax, 128) in int32 and weights are
+  (sigmoid score of the selected expert, 1.0) in float32.
+operator: {name: routing_sigmoid_top1, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 524288, description: Tokens routed in the batch.}
+    hidden_size: {kind: const, value: 5120, description: Model hidden size.}
+    n_experts: {kind: const, value: 128, description: Routed experts.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+    w:
+      kind: tensor
+      shape: [hidden_size, n_experts]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+  outputs:
+    topk_ids: {shape: [n_tokens, 2], dtype: int32}
+    topk_weights: {shape: [n_tokens, 2], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/moe/moe_routing_sigmoid_top1_fused.py
+    license: MIT
+    modifications: >-
+      Output stores masked to the valid rows; X rebased on each block's first row with a 64-bit offset (the
+      upstream 32-bit offs_m * stride_xm wraps once n_tokens * hidden_size exceeds 2**31 elements, here from
+      419431 tokens); the gfx950 N128 tuning table inlined; the launch wrapper of
+      aiter/ops/triton/moe/moe_routing_sigmoid_top1_fused.py rewritten as run() writing into preallocated outputs.
+compare:
+  topk_ids: {bound: exact}
+  topk_weights: {bound: tolerance, atol: 1.0e-6, rtol: 1.0e-5}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

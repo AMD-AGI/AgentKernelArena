@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Three nearest neighbors (MMCV three_nn, PointNet++ feature propagation): for each of n_target
+  target points, the Euclidean distances to and indices of the 3 nearest points among the n_source
+  source points of its batch element, nearest first. Source points at exactly the same distance are
+  ordered by lowest index. n_source is at least 3. Distances are float32, indices int32.
+operator:
+  name: three_nn
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 8, description: Point clouds in the batch.}
+    n_target: {kind: var, min: 1, max: 32768, description: Target (dense) points per cloud.}
+    n_source: {kind: var, min: 3, max: 8192, description: Source (sparse) points per cloud.}
+  inputs:
+    unknown:
+      kind: tensor
+      shape: [batch, n_target, 3]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Target points (odd multiples of 1/1024 in (1, 2), not exact in bfloat16; squared distances exact in float32).
+    known:
+      kind: tensor
+      shape: [batch, n_source, 3]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Source points (same distribution).
+  outputs:
+    dist: {shape: [batch, n_target, 3], dtype: float32}
+    idx: {shape: [batch, n_target, 3], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/three_nn/src/three_nn_cuda.hip
+    license: Apache-2.0
+    modifications: >-
+      The kernel (MMCV / Pointnet2.PyTorch three_nn, Apache-2.0) is unchanged except that it now writes
+      the square root of the squared distances itself (the original wrapper applied torch.sqrt to the
+      kernel's output). The pybind wrapper became a one-op torch library registration writing into the
+      preallocated outputs; the error-exit after the launch was removed.
+compare:
+  dist: {bound: baseline_relative}
+  idx: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

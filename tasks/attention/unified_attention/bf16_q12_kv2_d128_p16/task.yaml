@@ -1,0 +1,86 @@
+schema_version: 3
+description: >-
+  Causal paged attention over a block-table KV cache, the "unified attention" of AITER and vLLM
+  for mixed decode and chunked-prefill batches. Sequence s owns num_tokens/num_seqs = q_len
+  consecutive query tokens (cu_seqlens_q is arange * q_len) and seqused_k[s] cached-plus-new KV
+  tokens, with seqused_k[s] >= q_len; its KV token j lives in page block_table[s, j // 16], slot
+  j % 16 of k_cache / v_cache. Query token i of the sequence sits at absolute position
+  seqused_k[s] - q_len + i and attends to every KV token at or before that position (a decode
+  token sees the whole sequence). With 12 query heads over 2 KV heads, query head h reads KV
+  head h // 6. out = softmax(scale * q . k) @ v per query head, scale = head_dim ** -0.5, scores
+  and accumulation in float32, result rounded to bfloat16. Block-table entries past a sequence's
+  last page and cache slots past seqused_k are never read.
+operator: {name: unified_attention, category: attention}
+interface:
+  axes:
+    num_seqs: {kind: var, min: 1, max: 1024, description: Sequences in the batch.}
+    q_len: {kind: var, min: 1, max: 8192, description: New query tokens of every sequence (1 is decode).}
+    ctx_len: {kind: var, min: 1, max: 65536, description: "Longest KV length in the batch (cached plus new tokens); at least q_len."}
+    num_q_heads: {kind: const, value: 12, description: Query heads.}
+    num_kv_heads: {kind: const, value: 2, description: KV heads.}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+    block_size: {kind: const, value: 16, description: Tokens per KV-cache page.}
+  derived_axes:
+    num_tokens: num_seqs * q_len
+    pages_per_seq: ceil_div(ctx_len, block_size)
+    num_blocks: num_seqs * ceil_div(ctx_len, block_size)
+  inputs:
+    q:
+      kind: tensor
+      shape: [num_tokens, num_q_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+    k_cache:
+      kind: tensor
+      shape: [num_blocks, block_size, num_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v_cache:
+      kind: tensor
+      shape: [num_blocks, block_size, num_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    cu_seqlens_q:
+      kind: tensor
+      shape: [num_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    seqused_k:
+      kind: tensor
+      shape: [num_seqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    block_table:
+      kind: tensor
+      shape: [num_seqs, pages_per_seq]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [num_tokens, num_q_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/attention/unified_attention.py
+      - aiter/ops/triton/attention/unified_attention.py
+    license: MIT
+    modifications: >-
+      Kernels unchanged (the kernel-naming helper and the gfx950 float8 dtype are inlined). The host
+      dispatch (2D / 3D selection, tuned configurations) is reduced to the gfx950 bfloat16 causal path
+      without sinks, alibi, qq-bias, softcap, fp8 scales or shuffled KV cache, and wrapped in the run()
+      interface; max_seqlen_q and max_seqlen_k are taken from the tensor shapes; the Gluon gfx1250
+      paths are removed.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

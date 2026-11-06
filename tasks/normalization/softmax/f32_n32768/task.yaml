@@ -1,0 +1,36 @@
+schema_version: 3
+description: >-
+  Row-wise softmax of float32 logits over 32768 columns: out = exp(x - max(x)) / sum(exp(x - max(x)))
+  along the last axis, accumulated in high precision and written as float32.
+operator:
+  name: softmax
+  category: normalization
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 16384, description: Rows (independent softmax problems).}
+    n_cols: {kind: const, value: 32768, description: Softmax width.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, n_cols]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+  outputs:
+    out: {shape: [n_rows, n_cols], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/softmax.py, aiter/ops/triton/_triton_kernels/softmax.py
+    license: MIT
+    modifications: >-
+      Merged launcher and kernel into one file wrapped in the run() interface writing into the
+      preallocated output; removed the logger and the kernel-name repr helper.
+compare:
+  out: {bound: sqnr, min_db: 128}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

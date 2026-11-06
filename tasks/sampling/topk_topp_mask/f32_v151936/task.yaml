@@ -1,0 +1,72 @@
+schema_version: 3
+description: >-
+  Per-row top-k then top-p filtering of float32 logits, in place. A row keeps its k largest logits
+  (all of them when k >= vocab_size); of those it keeps the smallest set of largest logits whose
+  softmax mass, renormalised over the k survivors, reaches p (all of them when p >= 1). Every dropped
+  logit is set to -inf and every kept logit is unchanged. k and p are per-row. The two lookup tables
+  are constants of the pivot estimator used by vLLM's kernel; an implementation may ignore them.
+operator:
+  name: topk_topp_mask
+  category: sampling
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 4096, description: Logits rows (sampled tokens) of the step.}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen2/Qwen3 family).}
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Logits, filtered in place.
+    k:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-row top-k; vocab_size disables the top-k filter of that row.
+    p:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-row top-p in (0, 1]; 1.0 disables the top-p filter of that row.
+    percentile_to_std_table:
+      kind: tensor
+      shape: [200]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: vLLM kernel constant, Gaussian sigma by top-k percentile; optional to use.
+    normal_cdf_to_sigma_table:
+      kind: tensor
+      shape: [200]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: vLLM kernel constant, Gaussian sigma by top-p mass; optional to use.
+  outputs: {}
+  mutable: [logits]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/sample/ops/topk_topp_triton.py
+    license: Apache-2.0
+    modifications: >-
+      The host-side apply_top_k_top_p_triton wrapper and its device caches were replaced by run(),
+      which allocates the per-program scratch rows and launches the kernel with both filters
+      enabled. The kernels are unchanged. The kernel's two lookup tables are task inputs (the vLLM
+      wrapper cached them on the device); the vLLM imports and the dtype conversions of k and p
+      were removed.
+compare:
+  logits: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

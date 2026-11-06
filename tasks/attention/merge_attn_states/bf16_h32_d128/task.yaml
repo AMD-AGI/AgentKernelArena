@@ -1,0 +1,57 @@
+schema_version: 3
+description: >-
+  Merge the attention outputs of a prefix and a suffix partition of the keys using their log-sum-exp
+  values: with m = max(lse_p, lse_s), w_p = exp(lse_p - m), w_s = exp(lse_s - m),
+  out = (w_p * o_p + w_s * o_s) / (w_p + w_s) and out_lse = log(w_p + w_s) + m. A +inf log-sum-exp
+  (the FlashAttention-2 encoding of an empty partition) is treated as -inf.
+operator:
+  name: merge_attn_states
+  category: attention
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 196608, description: Tokens whose partial states are merged.}
+    num_heads: {kind: const, value: 32, description: Query heads.}
+    head_size: {kind: const, value: 128, description: Head dimension.}
+  inputs:
+    prefix_output:
+      kind: tensor
+      shape: [num_tokens, num_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    prefix_lse:
+      kind: tensor
+      shape: [num_heads, num_tokens]
+      dtype: float32
+      distribution: {kind: generator}
+    suffix_output:
+      kind: tensor
+      shape: [num_tokens, num_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    suffix_lse:
+      kind: tensor
+      shape: [num_heads, num_tokens]
+      dtype: float32
+      distribution: {kind: generator}
+  outputs:
+    output: {shape: [num_tokens, num_heads, head_size], dtype: bfloat16}
+    output_lse: {shape: [num_heads, num_tokens], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/triton_merge_attn_states.py
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface with the log-sum-exp output always written; the optional FP8
+      output quantization and the mask_empty_context helper were removed.
+compare:
+  output: {bound: baseline_relative}
+  output_lse: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

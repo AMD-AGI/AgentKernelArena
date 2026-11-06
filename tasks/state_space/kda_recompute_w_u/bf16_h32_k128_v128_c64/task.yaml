@@ -1,0 +1,75 @@
+schema_version: 3
+description: >-
+  Recompute of the weighted-WY tensors of Kimi Delta Attention (KDA) chunked prefill. Tokens are split
+  into chunks of 64 (the last may be partial). With A[i, h, j] the lower-triangular inverse of the
+  chunk's (I + L) system (zero above the diagonal), for the tokens i, j of one chunk and head h:
+  u[i] = sum_j A[i, j] * beta[j] * v[j], w[i] = sum_j A[i, j] * beta[j] * k[j] * 2^gk[j], and
+  kg[i] = k[i] * 2^(gk[last] - gk[i]) where last is the chunk's last valid token. gk is the
+  chunk-local cumulative per-channel log2-decay. k, v, beta and A are bfloat16, gk is float32, the
+  outputs are bfloat16, and the sums accumulate in float32 or higher.
+operator:
+  name: kda_recompute_w_u
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens of one packed sequence batch.}
+    num_heads: {kind: const, value: 32, description: Heads.}
+    head_dim_k: {kind: const, value: 128, description: Key head dimension.}
+    head_dim_v: {kind: const, value: 128, description: Value head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  inputs:
+    k:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, contiguous; std 1/sqrt(head_dim) like L2-normalized keys.
+    v:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim_v]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Values, contiguous.
+    beta:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: bfloat16
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: Delta-rule write strength sigmoid(b), contiguous.
+    A:
+      kind: tensor
+      shape: [n_tokens, num_heads, chunk_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: Per-chunk inverse of a unit lower-triangular system (output of the triangular solve), zero above the diagonal.
+    gk:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim_k]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log2-decay per channel (non-increasing within every 64-token chunk).
+  outputs:
+    w: {shape: [n_tokens, num_heads, head_dim_k], dtype: bfloat16}
+    u: {shape: [n_tokens, num_heads, head_dim_v], dtype: bfloat16}
+    kg: {shape: [n_tokens, num_heads, head_dim_k], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/third_party/flash_linear_attention/ops/kda.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      recompute_w_u_fwd_kernel and recompute_w_u_fwd for one sequence (no varlen metadata, no batch
+      axis), always storing the decayed keys kg as the production chunked forward does and never the
+      optional qg; wrapped in the run() interface writing into the preallocated outputs.
+compare:
+  w: {bound: baseline_relative}
+  u: {bound: baseline_relative}
+  kg: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

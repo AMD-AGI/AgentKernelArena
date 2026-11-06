@@ -1,0 +1,133 @@
+schema_version: 3
+description: >-
+  minGPT transformer block forward in float32 (eval mode, no dropout): h = x + Attn(LN1(x)) and
+  out = h + MLP(LN2(h)). Attn is causal multi-head self-attention with 8 heads of 96: q, k, v =
+  split(a c_attn_weight^T + c_attn_bias), per head softmax(q k^T / sqrt(96)) over the keys j <= i,
+  the heads side by side through attn_proj. MLP is c_fc, minGPT's tanh GELU (NewGELU) and
+  mlp_proj. LayerNorm uses the biased variance and ln_eps. Weights use the nn.Linear layout
+  [out_features, in_features].
+operator:
+  name: mingpt_block
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 128, description: Sequences per call.}
+    seq_len: {kind: var, min: 1, max: 1024, description: "Tokens per sequence (the block's max_seqlen is 1024)."}
+    n_embd: {kind: const, value: 768, description: Embedding width.}
+    n_head: {kind: const, value: 8, description: Attention heads (head size n_embd / n_head = 96).}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, seq_len, n_embd]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Residual-stream activations entering the block, zero-mean (KernelBench draws torch.rand; see README.md).
+    ln1_weight:
+      kind: tensor
+      shape: [n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+      description: ln_1.weight.
+    ln1_bias:
+      kind: tensor
+      shape: [n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: ln_1.bias.
+    c_attn_weight:
+      kind: tensor
+      shape: [3 * n_embd, n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.1, high: 0.1}
+      description: "attn.c_attn.weight; rows [0, 768) produce q, [768, 1536) k, [1536, 2304) v."
+    c_attn_bias:
+      kind: tensor
+      shape: [3 * n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: attn.c_attn.bias.
+    attn_proj_weight:
+      kind: tensor
+      shape: [n_embd, n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.004082482904638631}
+      description: "attn.c_proj.weight; minGPT's scaled residual-projection init, std 0.02 / sqrt(2 n_layer) with n_layer = 12."
+    attn_proj_bias:
+      kind: tensor
+      shape: [n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: attn.c_proj.bias.
+    ln2_weight:
+      kind: tensor
+      shape: [n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+      description: ln_2.weight.
+    ln2_bias:
+      kind: tensor
+      shape: [n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: ln_2.bias.
+    c_fc_weight:
+      kind: tensor
+      shape: [4 * n_embd, n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: mlp.c_fc.weight.
+    c_fc_bias:
+      kind: tensor
+      shape: [4 * n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.036084391824351615, high: 0.036084391824351615}
+      description: mlp.c_fc.bias.
+    mlp_proj_weight:
+      kind: tensor
+      shape: [n_embd, 4 * n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.004082482904638631}
+      description: "mlp.c_proj.weight; minGPT's scaled residual-projection init, std 0.02 / sqrt(2 n_layer) with n_layer = 12."
+    mlp_proj_bias:
+      kind: tensor
+      shape: [n_embd]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.018042195912175808, high: 0.018042195912175808}
+      description: mlp.c_proj.bias.
+    ln_eps: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [batch, seq_len, n_embd], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD-AGI/AgentKernelArena (KernelBench level 3, problem 44 MiniGPTBlock, from karpathy/minGPT mingpt/model.py)
+    revision: 561eb644df85cc1c3b4eaee9801e3f6a5dc812f5
+    path: tasks/torch2hip/kernelbench/level3/l3n44_MiniGPTBlock/pytorch_code_module/py_l3n44_MiniGPTBlock.py
+    license: task-original
+    modifications: >-
+      Hand-written Triton implementation of the MiniGPTBlock module (eval mode), which had no kernel
+      baseline; no upstream kernel code. Seven launches: a row LayerNorm kernel; a grouped-tile float32
+      GEMM with a bias epilogue for the qkv projection; a causal flash-attention kernel that reads q, k
+      and v in place from the qkv rows and writes the heads side by side; the same GEMM with a residual
+      epilogue for the attention projection; the LayerNorm again; the GEMM with minGPT's tanh GELU in
+      its epilogue for c_fc; and the GEMM with a residual epilogue for the MLP projection. Every matrix
+      product uses IEEE float32 inputs with float32 accumulation.
+compare:
+  out: {bound: sqnr, min_db: 126}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

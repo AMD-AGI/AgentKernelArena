@@ -1,0 +1,59 @@
+schema_version: 3
+description: >-
+  RoI-aware 3D max pooling of point features (OpenPCDet / MMCV RoIAwarePool3d, mode max): the box of each
+  of n_rois RoIs (cx, cy, cz, dx, dy, dz, heading; cz at the bottom) is divided into a 4 x 4 x 4 grid of
+  voxels in its own frame; a point inside the box (cz <= z <= cz + dz and, rotated by -heading about the
+  box center, |local_x| < dx/2 and |local_y| < dy/2) falls into voxel floor(u / (size / 4)) per axis, with
+  u = local_x + dx/2, local_y + dy/2 and z - cz, clamped to 0..3. pooled_features[r, x, y, z, c] is the maximum
+  of feature c over the points of the voxel. A voxel keeps only its first 127 points in point-index
+  order (the operator's max_pts_per_voxel is 128 including a counter), and an empty voxel is 0.
+operator:
+  name: roiaware_pool3d
+  category: other
+interface:
+  axes:
+    n_rois: {kind: var, min: 1, max: 512, description: RoIs (boxes) of the scene.}
+    n_points: {kind: var, min: 1, max: 65536, description: Points of the scene.}
+    channels: {kind: const, value: 4, description: Features per point.}
+  inputs:
+    rois:
+      kind: tensor
+      shape: [n_rois, 7]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Boxes (cx, cy, cz, dx, dy, dz, heading), cz at the bottom.
+    pts:
+      kind: tensor
+      shape: [n_points, 3]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Point coordinates (x, y, z), none within 1e-3 of a box face or voxel boundary.
+    pts_feature:
+      kind: tensor
+      shape: [n_points, channels]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    pooled_features: {shape: [n_rois, 4, 4, 4, channels], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/roiaware_pool3d/src/roiaware_pool3d_kernel.hip
+    license: Apache-2.0
+    modifications: >-
+      The forward kernels (OpenPCDet roiaware_pool3d as shipped in MMCV, Apache-2.0) are unchanged except
+      that an empty voxel's zero is written by the max-pool kernel and the voxel counters are zeroed by a
+      new small kernel (the original wrapper zero-initialised the buffers). The pybind wrapper became a
+      one-op torch library registration that allocates the original scratch buffers and launches the
+      kernels on the current stream. The average-pool and backward kernels, debug prints and the
+      launcher's pool-method switch were dropped.
+compare:
+  pooled_features: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

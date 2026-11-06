@@ -1,0 +1,120 @@
+{
+ "description": "Rows (tokens times 32 value heads) of the Qwen3-Next gated delta net output norm, head size 128; decode-sized batches are correctness-only.",
+ "cases": [
+  {
+   "id": "r1",
+   "axes": {
+    "n_rows": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, one token and head"
+  },
+  {
+   "id": "r3",
+   "axes": {
+    "n_rows": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd row count"
+  },
+  {
+   "id": "r32",
+   "axes": {
+    "n_rows": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, one token, 32 value heads"
+  },
+  {
+   "id": "r33",
+   "axes": {
+    "n_rows": 33
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-multiple of 16"
+  },
+  {
+   "id": "r1536",
+   "axes": {
+    "n_rows": 1536
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch of 48 tokens, 32 heads"
+  },
+  {
+   "id": "r32000",
+   "axes": {
+    "n_rows": 32000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill, below the 10 us floor"
+  },
+  {
+   "id": "r65536",
+   "axes": {
+    "n_rows": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 2048 tokens, 32 value heads"
+  },
+  {
+   "id": "r262144",
+   "axes": {
+    "n_rows": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 8192 tokens, 32 value heads"
+  },
+  {
+   "id": "r1048576",
+   "axes": {
+    "n_rows": 1048576
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill of 32768 tokens, 32 value heads"
+  },
+  {
+   "id": "r3145728",
+   "axes": {
+    "n_rows": 3145728
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill of 98304 tokens, 32 value heads"
+  },
+  {
+   "id": "r6553600",
+   "axes": {
+    "n_rows": 6553600
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill of 204800 tokens, 32 value heads"
+  }
+ ]
+}

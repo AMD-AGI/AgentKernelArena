@@ -1,0 +1,117 @@
+schema_version: 3
+description: >-
+  DeepSeek-V4 sparse decode attention of a C4A layer (flash_mla_with_kvcache with an FP8 KV
+  cache, sinks and an extra pool). Each request b has one query token with 64 heads of width 512.
+  Its KV entries are the nonnegative slots among the first sparse_lens[b] entries of its row of
+  sparse_indices (sliding-window pool kv_cache) plus those among the first extra_sparse_lens[b]
+  entries of extra_sparse_indices (C4 compressed pool extra_kv_cache, the indexer's top-512 selection); a slot is
+  page * page_size + position, entries past a prefix are ignored. Both pools are packed byte
+  pages (float8_e4m3fn storage): page_size records of 576 bytes (448 OCP E4M3 codes, then 64 bfloat16 values), then
+  page_size scale records of 8 bytes (7 UE8M0 exponents, one per 64 codes, and a pad byte). A
+  slot decodes to kv[s] = [e4m3(code[d]) * 2^(scale[d // 64] - 127) for d < 448, bf16 tail], which
+  is both key and value. With logit[h, s] = sm_scale * q[b, 0, h, :] . kv[s]:
+  output[b, 0, h] = sum_s exp(logit[h, s]) * kv[s] / (sum_s exp(logit[h, s]) + exp(sinks[h])),
+  rounded to bfloat16, and lse[b, 0, h] = log(sum_s exp(logit[h, s])) in float32 (the sink
+  excluded). A request without KV entries has a zero output and lse = +inf.
+operator: {name: flash_mla_sparse_decode_fp8, category: attention}
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 2048, description: Decoding requests (one query token each).}
+    ctx:
+      kind: var
+      min: 1
+      max: 1048576
+      description: >-
+        Longest request context in tokens; request contexts lie between ctx/2 and ctx and set the
+        index tables (window of min(c, 128) tokens, top min(512, c // 4) compressed entries).
+    query_length: {kind: const, value: 1, description: Query tokens per request (decode).}
+    heads: {kind: const, value: 64, description: Query heads sharing the single latent KV head.}
+    head_dim: {kind: const, value: 512, description: Latent width (448 NoPE + 64 RoPE).}
+    page_size: {kind: const, value: 256, description: Slots per page of the sliding-window pool.}
+    packed_width: {kind: const, value: 584, description: Bytes per slot (576 payload + 8 scale).}
+    topk: {kind: const, value: 128, description: Width of the sliding-window index table.}
+    extra_page_size: {kind: const, value: 64, description: Slots per page of the C4 pool (256 tokens).}
+    extra_topk: {kind: const, value: 512, description: Width of the C4 index table (indexer top-k).}
+  derived_axes:
+    pages: batch
+    extra_pages: batch * ceil_div(ctx, 256)
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, query_length, heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv_cache:
+      kind: tensor
+      shape: [pages, page_size, 1, packed_width]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: Sliding-window pool, one 256-slot ring page per request.
+    sparse_indices:
+      kind: tensor
+      shape: [batch, query_length, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    sparse_lens:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    extra_kv_cache:
+      kind: tensor
+      shape: [extra_pages, extra_page_size, 1, packed_width]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: Compressed (C4) pool, ceil(ctx / 256) pages per request.
+    extra_sparse_indices:
+      kind: tensor
+      shape: [batch, query_length, extra_topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    extra_sparse_lens:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    sm_scale: {kind: scalar, dtype: float32, default: 0.04419417382415922}
+    sinks:
+      kind: tensor
+      shape: [heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -2.0, high: 12.0}
+  outputs:
+    output: {shape: [batch, query_length, heads, head_dim], dtype: bfloat16}
+    lse: {shape: [batch, query_length, heads], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
+    license: Apache-2.0
+    modifications: >-
+      The gfx942/gfx950 split-K path of _rocm_sparse_attn_decode_ragged_triton
+      (_sparse_attn_decode_partial_kernel, _sparse_attn_decode_reduce_kernel and the split
+      heuristic), wrapped in run() writing into the preallocated outputs. The partial kernel reads
+      the dense index tables and their lengths directly instead of the ragged form that
+      build_ragged_indices_from_dense packs with torch.clamp/torch.cumsum (same entries, same
+      order; the split heuristic sees the table widths, as upstream's dense path does); the reduce
+      kernel also writes the log-sum-exp of the logits (sink excluded, +inf for an empty row); both
+      pools are OCP E4M3 (float8_e4m3fn storage, read as bytes); the fallback kernel for un-tuned architectures and the vLLM platform
+      plumbing are removed.
+compare:
+  output: {bound: baseline_relative, k: 3, max_violation_fraction: 0.001}
+  lse: {bound: tolerance, atol: 1.0e-4, rtol: 1.0e-5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

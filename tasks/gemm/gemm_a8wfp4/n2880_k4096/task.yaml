@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  out = (a * a_scales) @ dequant(w)^T with float8_e4m3fn activations a [m, 4096] carrying one float32 scale per row
+  (a_scales [m, 1]) and MXFP4 weights w [2880, 2048] (two e2m1 codes per byte, even K index in the low nibble) with
+  e8m0 scales w_scales [2880, 128] (uint8, value 2^(s - 127), one per 32 values of K), accumulated in float32 and
+  rounded to bfloat16.
+operator: {name: gemm_a8wfp4, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 2880, description: Output channels.}
+    k: {kind: const, value: 4096, description: Contracted dimension (unpacked fp4 values).}
+  inputs:
+    a: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    a_scales: {kind: tensor, shape: [m, 1], dtype: float32, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8wfp4.py
+      - aiter/ops/triton/gemm/basic/gemm_a8wfp4.py
+      - aiter/ops/triton/_triton_kernels/common/splitk_reduce.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A8WFP4.json
+    license: MIT
+    modifications: >-
+      Kernel, `_get_splitk` and split-K reduce kernel unchanged; launcher reduced to writing into the preallocated
+      output (float32 split-K partials are allocated per call, as upstream), with the generic gfx950 table inlined
+      as a function of M in the get_gemm_config lookup order; pid_grid, remap_xcd and kernel_repr helpers inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

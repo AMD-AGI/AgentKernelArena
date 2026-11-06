@@ -1,0 +1,86 @@
+schema_version: 3
+description: >-
+  out = group_norm(swish(x @ weight^T + bias) + extra_bias) in float32: a linear layer from 1024 to 4096
+  features (nn.Linear with float32 accuracy: an IEEE float32 GEMM, not TF32, bfloat16 or bf16x3 inputs),
+  the swish z * sigmoid(z), a per-feature extra bias, then GroupNorm with 64 groups of 64 contiguous
+  features per row (the group's mean and biased variance, (h - mean) * rsqrt(var + epsilon)) and the
+  per-feature affine gn_weight, gn_bias.
+operator:
+  name: matmul_swish_bias_groupnorm
+  category: gemm
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 65536, description: Rows of x and out.}
+    in_features: {kind: const, value: 1024, description: Linear input features (the contracted dimension).}
+    out_features: {kind: const, value: 4096, description: Linear output features (the normalized width).}
+    num_groups: {kind: const, value: 64, description: GroupNorm groups of 64 contiguous features each.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_features]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_features, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+    bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.03125, high: 0.03125}
+    extra_bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    gn_weight:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    gn_bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [batch, out_features], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm.py
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/heuristics/template/triton.py
+      - torch/_refs/__init__.py
+      - torch/_inductor/codegen/triton.py
+      - torch/_inductor/heuristics/triton_codegen/reduction.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the two kernels Inductor's max-autotune generates for this module, as standalone
+      @triton.jit kernels without torch._inductor imports: the mm template rendered for addmm(bias, x,
+      weight.t()) with N, K and the strides as constexprs and a runtime M, its addmm epilogue plus the fused
+      sigmoid(t) * t + extra_bias store suffix, the mm_grid launch grid, one fixed ROCm config per batch
+      bucket from ROCmConfigHeuristic.mm_configs (2 stages, matrix_instr_nonkdim 16) instead of
+      autotuning, allow_tf32=False expressed as input_precision="ieee"; and the persistent-reduction
+      group-norm kernel (two-pass mean and biased variance over each group's 64 features, rsqrt, affine)
+      normalizing the first kernel's output in place in `out`, with one fixed ROCm persistent-reduction
+      config (XBLOCK 32, 4 warps) instead of autotuning; wrapped in the run() interface.
+compare:
+  out: {bound: sqnr, min_db: 130.0}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

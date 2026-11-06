@@ -1,0 +1,36 @@
+schema_version: 3
+description: >-
+  Row-wise maximum of a bfloat16 matrix: out[m] = max over n of x[m, n] for x of shape (M, 128). The maximum
+  of bfloat16 values is a bfloat16 value, so the result is exact.
+operator:
+  name: row_max
+  category: reduction
+interface:
+  axes:
+    M: {kind: var, min: 1, max: 13107200, description: Rows.}
+    N: {kind: const, value: 128, description: Row length.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [M, N]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [M], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD AgentKernelArena triton2triton task rocmbench/easy/test_load_reduce
+    revision: c1dc5e0904714703c10d0bdcf9a3bf132c77c073
+    path: tasks/triton2triton/rocmbench/easy/test_load_reduce/test_load_reduce.py (load_reduce_kernel)
+    license: task-original
+    modifications: >-
+      The single-block kernel (block pointer load, tl.max over axis 1, store) generalized to a grid of
+      row blocks with a boundary check and a masked store, wrapped in the arena run() interface.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

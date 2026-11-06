@@ -1,0 +1,53 @@
+schema_version: 3
+description: >-
+  Rotary position embedding of a sequence-first activation x[seq_len, batch, heads, head_dim], GPT-J
+  style (pair-interleaved) over the full head dimension. freqs[s, 0, 0, k] holds the rotation angle of
+  position s for the channel pair (2k, 2k+1), k < head_dim // 2: with cos = cos(freqs) and
+  sin = sin(freqs) computed in high precision, out[2k] = x[2k] * cos[k] - x[2k+1] * sin[k] and
+  out[2k+1] = x[2k+1] * cos[k] + x[2k] * sin[k]. The result is rounded to bfloat16.
+operator:
+  name: rope_fwd
+  category: positional
+interface:
+  axes:
+    seq_len: {kind: var, min: 1, max: 65536, description: Sequence positions.}
+    batch: {kind: const, value: 4}
+    num_heads: {kind: const, value: 32}
+    head_dim: {kind: const, value: 128}
+  derived_axes:
+    half_dim: head_dim // 2
+  inputs:
+    x:
+      kind: tensor
+      shape: [seq_len, batch, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    freqs:
+      kind: tensor
+      shape: [seq_len, 1, 1, half_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [seq_len, batch, num_heads, head_dim], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/rope/rope.py
+    license: MIT
+    modifications: >-
+      _rope_kernel_sbhd_fwd and the rotate helpers it uses (aiter/ops/triton/_triton_kernels/rope/rope.py)
+      and the launch logic of _rope_fwd (aiter/ops/triton/rope/rope.py) are inlined into one file
+      unchanged; the public wrapper is replaced by run(), which writes into the preallocated output
+      and fixes GPT-J rotation, front-part frequency reuse and no NoPE part.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

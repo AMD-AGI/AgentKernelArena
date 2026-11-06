@@ -1,0 +1,87 @@
+schema_version: 3
+description: >-
+  Non-local attention block (dot-product variant) on a float32 feature map with 64 channels, with the H*W positions flattened into one axis hw. q = Wq x + bq and k = Wk x + bk (16 channels each) and v = Wv x + bv (64 channels) are 1x1 convolutions; energy[i, j] = elu(sum_d q[d, i] k[d, j]) / hw; y[c, j] = sum_i v[c, i] energy[i, j]; out = Wg y + bg (1x1 convolution).
+operator:
+  name: nonlocal_attention_dot
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Feature maps per call.}
+    hw: {kind: var, min: 1, max: 16384, description: Flattened spatial positions H*W.}
+    channels: {kind: const, value: 64, description: Input and output channels.}
+    qk_channels: {kind: const, value: 16, description: Query and key channels (channels / 4).}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, channels, hw]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    query_weight:
+      kind: tensor
+      shape: [qk_channels, channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0625}
+    query_bias:
+      kind: tensor
+      shape: [qk_channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    key_weight:
+      kind: tensor
+      shape: [qk_channels, channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0625}
+    key_bias:
+      kind: tensor
+      shape: [qk_channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    value_weight:
+      kind: tensor
+      shape: [channels, channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.0625}
+    value_bias:
+      kind: tensor
+      shape: [channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    gamma_weight:
+      kind: tensor
+      shape: [channels, channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.125}
+    gamma_bias:
+      kind: tensor
+      shape: [channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+  outputs:
+    out: {shape: [batch, channels, hw], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task NormalAttention_dot (provided HIP baseline)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/NormalAttention_dot/hip/hip_1001_NormalAttention_dot_ref.hip
+    license: Apache-2.0
+    modifications: >-
+      Rewritten without hipBLAS, ATen convolution or bmm: the provided baseline composed library calls
+      and materialized the hw x hw energy matrix; this baseline fuses the three 1x1 projections into one
+      kernel and computes the attention tile by tile with the output 1x1 convolution in the epilogue.
+      Channels fixed at 64 (16 for q and k); flattened [batch, channels, hw] layout; registered as the run() torch op.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 0.002}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

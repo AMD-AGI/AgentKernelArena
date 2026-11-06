@@ -1,0 +1,143 @@
+{
+ "description": "DeepSeek-V3.2 sparse MLA (kv_lora 512 + rope 64, top-k 2048, 16 heads = TP8) over one causal prefill sequence of n_tokens; the first 2048 tokens have fewer than top-k candidates and carry -1 padding.",
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "n_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum, single-token step"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "n_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tiny odd chunk"
+  },
+  {
+   "id": "t17",
+   "axes": {
+    "n_tokens": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd chunk, not a multiple of 16"
+  },
+  {
+   "id": "t100",
+   "axes": {
+    "n_tokens": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two chunk"
+  },
+  {
+   "id": "t2500",
+   "axes": {
+    "n_tokens": 2500
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk just past top-k (partial then full rows)"
+  },
+  {
+   "id": "t128",
+   "axes": {
+    "n_tokens": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  },
+  {
+   "id": "t256",
+   "axes": {
+    "n_tokens": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  },
+  {
+   "id": "t512",
+   "axes": {
+    "n_tokens": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  },
+  {
+   "id": "t1024",
+   "axes": {
+    "n_tokens": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  },
+  {
+   "id": "t2048",
+   "axes": {
+    "n_tokens": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "n_tokens": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  },
+  {
+   "id": "t8192",
+   "axes": {
+    "n_tokens": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  },
+  {
+   "id": "t16384",
+   "axes": {
+    "n_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk token count"
+  }
+ ]
+}

@@ -1,0 +1,20 @@
+{
+  "description": "Gemma-4-26B-A4B sliding-window attention layer on one TP=2 rank (8 query heads over 4 KV heads, head size 256, window 1024, block size 16): decode batches of 16-256 sequences at 1K-16K context and prefill chunks of 2K-8K tokens. Small shapes are correctness-only.",
+  "cases": [
+    {"id": "s1_q1_c1", "axes": {"num_seqs": 1, "q_len": 1, "ctx_len": 1}, "checks": ["correctness"], "source": "single token, first decode step"},
+    {"id": "s5_q1_c1000", "axes": {"num_seqs": 5, "q_len": 1, "ctx_len": 1000}, "checks": ["correctness"], "source": "decode, odd batch, context shorter than the window"},
+    {"id": "s3_q1_c1025", "axes": {"num_seqs": 3, "q_len": 1, "ctx_len": 1025}, "checks": ["correctness"], "source": "decode one token past the window (3D kernel)"},
+    {"id": "s40_q1_c2100", "axes": {"num_seqs": 40, "q_len": 1, "ctx_len": 2100}, "checks": ["correctness"], "source": "decode above the 3D threshold (32 sequences), window clipping (2D kernel)"},
+    {"id": "s3_q7_c130", "axes": {"num_seqs": 3, "q_len": 7, "ctx_len": 130}, "checks": ["correctness"], "source": "short chunked prefill, unaligned lengths"},
+    {"id": "s2_q300_c1700", "axes": {"num_seqs": 2, "q_len": 300, "ctx_len": 1700}, "checks": ["correctness"], "source": "chunked prefill with 300 new tokens over a 1700-token context, window clipping"},
+    {"id": "s1_q33_c33", "axes": {"num_seqs": 1, "q_len": 33, "ctx_len": 33}, "checks": ["correctness"], "source": "fresh prompt of 33 tokens, no cached context"},
+    {"id": "s16_q1_c2048", "axes": {"num_seqs": 16, "q_len": 1, "ctx_len": 2048}, "checks": ["correctness", "performance"], "source": "decode, 16 sequences, window clipping (3D kernel)"},
+    {"id": "s64_q1_c1024", "axes": {"num_seqs": 64, "q_len": 1, "ctx_len": 1024}, "checks": ["correctness", "performance"], "source": "gemma-4-26B production decode trace: 64 sequences, context 1024 (the window just covers it)"},
+    {"id": "s32_q1_c4096", "axes": {"num_seqs": 32, "q_len": 1, "ctx_len": 4096}, "checks": ["correctness", "performance"], "source": "decode at the 3D threshold (32 sequences), 4K context"},
+    {"id": "s256_q1_c4096", "axes": {"num_seqs": 256, "q_len": 1, "ctx_len": 4096}, "checks": ["correctness", "performance"], "source": "decode, large batch, 4K context (2D kernel)"},
+    {"id": "s128_q1_c16384", "axes": {"num_seqs": 128, "q_len": 1, "ctx_len": 16384}, "checks": ["correctness", "performance"], "source": "decode, long contexts: only the last 1024 tokens of each are read"},
+    {"id": "s1_q2048_c2048", "axes": {"num_seqs": 1, "q_len": 2048, "ctx_len": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk of 2048 tokens"},
+    {"id": "s2_q4096_c4096", "axes": {"num_seqs": 2, "q_len": 4096, "ctx_len": 4096}, "checks": ["correctness", "performance"], "source": "batched prefill of two 4096-token prompts"},
+    {"id": "s1_q8192_c8192", "axes": {"num_seqs": 1, "q_len": 8192, "ctx_len": 8192}, "checks": ["correctness", "performance"], "source": "long prompt prefill, 8192 tokens"}
+  ]
+}

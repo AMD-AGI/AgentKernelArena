@@ -1,0 +1,194 @@
+{
+ "description": "Batch and image sizes of the KernelBench Conv2d_BatchNorm_Scaling inputs (batch 32-128 at 64x64 and 128x128), extended to 224x224 and 512x512 images for a 128x span; single images and small odd or non-square shapes are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_h64",
+   "axes": {
+    "batch": 1,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single 64x64 image (batch minimum)"
+  },
+  {
+   "id": "b1_h224",
+   "axes": {
+    "batch": 1,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single-image inference at 224x224, below the timing floor"
+  },
+  {
+   "id": "b3_h37_w53",
+   "axes": {
+    "batch": 3,
+    "height": 37,
+    "width": 53
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, unaligned non-square image"
+  },
+  {
+   "id": "b2_h3_w70",
+   "axes": {
+    "batch": 2,
+    "height": 3,
+    "width": 70
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "height minimum: one output row"
+  },
+  {
+   "id": "b2_h70_w3",
+   "axes": {
+    "batch": 2,
+    "height": 70,
+    "width": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "width minimum: one output column"
+  },
+  {
+   "id": "b5_h130_w66",
+   "axes": {
+    "batch": 5,
+    "height": 130,
+    "width": 66
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, non-square image"
+  },
+  {
+   "id": "b32_h64",
+   "axes": {
+    "batch": 32,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench get_inputs: batch 32 at 64x64"
+  },
+  {
+   "id": "b64_h64",
+   "axes": {
+    "batch": 64,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench get_inputs: batch 64 at 64x64"
+  },
+  {
+   "id": "b128_h64",
+   "axes": {
+    "batch": 128,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench get_inputs: batch 128 at 64x64"
+  },
+  {
+   "id": "b64_h128",
+   "axes": {
+    "batch": 64,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench get_inputs: batch 64 at 128x128"
+  },
+  {
+   "id": "b128_h128",
+   "axes": {
+    "batch": 128,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench get_inputs: batch 128 at 128x128"
+  },
+  {
+   "id": "b32_h224",
+   "axes": {
+    "batch": 32,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch 32 at ImageNet resolution 224x224"
+  },
+  {
+   "id": "b64_h224",
+   "axes": {
+    "batch": 64,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch 64 at ImageNet resolution 224x224"
+  },
+  {
+   "id": "b16_h512",
+   "axes": {
+    "batch": 16,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch 16 at detection resolution 512x512"
+  },
+  {
+   "id": "b64_h512",
+   "axes": {
+    "batch": 64,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch 64 at detection resolution 512x512"
+  }
+ ]
+}

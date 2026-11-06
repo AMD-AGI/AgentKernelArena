@@ -1,0 +1,65 @@
+schema_version: 3
+description: >-
+  out = instance_norm(conv2d(x, conv_weight, conv_bias), epsilon) / divide_by on float32 NCHW
+  images: a valid stride-1 3x3 convolution from 64 to 128 channels, then InstanceNorm2d without
+  affine parameters or running statistics (every sample-channel plane normalized by its own mean
+  and biased variance), then division by a constant.
+operator:
+  name: conv2d_instancenorm_div
+  category: convolution
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 128, description: Images in the batch.}
+    height: {kind: var, min: 3, max: 128, description: Input image height.}
+    width: {kind: var, min: 3, max: 128, description: Input image width.}
+    in_channels: {kind: const, value: 64, description: Input channels.}
+    out_channels: {kind: const, value: 128, description: Convolution output channels.}
+    kernel_size: {kind: const, value: 3, description: Square convolution kernel size.}
+  derived_axes:
+    out_height: height - kernel_size + 1
+    out_width: width - kernel_size + 1
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_channels, height, width]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    conv_weight:
+      kind: tensor
+      shape: [out_channels, in_channels, kernel_size, kernel_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.041667, high: 0.041667}
+    conv_bias:
+      kind: tensor
+      shape: [out_channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.041667, high: 0.041667}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5}
+    divide_by: {kind: scalar, dtype: float32, default: 2.0}
+  outputs:
+    out: {shape: [batch, out_channels, out_height, out_width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: >-
+      torch/_inductor/kernel/conv.py (conv2d_template);
+      torch/_inductor/runtime/triton_helpers.py (welford_reduce, welford_combine)
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the TorchInductor lowering of this module (torch.compile with the Triton
+      convolution template): the conv2d implicit-GEMM template specialized to contiguous NCHW,
+      stride 1, no padding, one group and a fixed block configuration, with the bias fused into
+      its store and fp32 (ieee) dot products, staging the result in the output; and one
+      Welford-statistics plus normalize-and-divide kernel per sample-channel plane, in place;
+      wrapped in the arena run() interface.
+compare:
+  out: {bound: sqnr, min_db: 124}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

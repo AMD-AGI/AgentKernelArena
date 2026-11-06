@@ -1,0 +1,46 @@
+schema_version: 3
+description: >-
+  Dense bfloat16 GEMM in the NT layout, out = a @ b.T with a[m, 6144] and b[256, 6144] row-major,
+  accumulated in high precision and rounded to bfloat16.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows of the activation (tokens in the batch).}
+    n: {kind: const, value: 256, description: Output features (rows of b).}
+    k: {kind: const, value: 6144, description: Reduction length.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/kernels/splitk_hgemm.py
+    license: MIT
+    modifications: >-
+      Wrapped the FlyDSL split-K HGEMM kernel (with its tensor_shim, buffer_ops and vector helpers,
+      the latter two derived from ROCm/FlyDSL under Apache-2.0) in the run() interface with a per-m
+      launch table; absolute aiter imports made relative, environment-variable switches, numpy and
+      star imports removed, launcher and split-K counters cached per configuration and device.
+      FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the cache-policy operand is passed as the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp / RawPtrBufferStoreOp (the runtime's op constructors take no positional aux value); no change to the kernel algorithm.
+compare:
+  out: {bound: baseline_relative, k: 8}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

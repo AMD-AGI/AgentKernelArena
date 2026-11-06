@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  out = (a * a_scale) @ (b * b_scale)^T with float8_e4m3fn activations a [m, 4096] carrying one float32 scale per
+  1x128 token group and float8_e4m3fn weights of 1536 output channels carrying one float32 scale per 128x128
+  block (b_scale [12, 32]). Each 128-wide K block of the product is scaled by its activation and weight
+  scales and the blocks are summed in float32; the result is rounded to bfloat16. Kernel-facing storage follows
+  the AITER preshuffle GEMM: the weight is the (16, 16) preshuffled payload [n // 16, k * 16] (logical weight
+  W[16 * i + r, 32 * j + 16 * h + c] = b[i, 512 * j + 256 * h + 16 * r + c]) and the activation scales are stored
+  transposed, a_scale [k // 128, m], so the logical scale of token r and group g is a_scale[g, r].
+operator: {name: gemm_a8w8_blockscale, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 262144, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 1536, description: Output channels.}
+    k: {kind: const, value: 4096, description: Contracted dimension.}
+  inputs:
+    a: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    a_scale: {kind: tensor, shape: [k // 128, m], dtype: float32, distribution: {kind: generator}}
+    b: {kind: tensor, shape: [n // 16, k * 16], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    b_scale: {kind: tensor, shape: [n // 128, k // 128], dtype: float32, role: weight,
+              distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/gemm/basic/gemm_a8w8_blockscale.py
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8w8_blockscale.py
+      - aiter/ops/triton/_triton_kernels/common/splitk_reduce.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A8W8_BLOCKSCALE_PRESHUFFLED-N=1536-K=4096.json
+    license: MIT
+    modifications: >-
+      Preshuffle kernel, split-K reduce kernel and helpers copied; launcher reduced to writing into the
+      preallocated output with the gfx950 tuned-config table inlined as a Python list and the Triton 3.6
+      three-stage clamp applied unconditionally; the on-disk config lookup, the gluon backend and the
+      bandwidth/latency kernel selection are removed. Replaces the CK/assembly function
+      gemm_a8w8_blockscale_bpreshuffle that production selects on this shape.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

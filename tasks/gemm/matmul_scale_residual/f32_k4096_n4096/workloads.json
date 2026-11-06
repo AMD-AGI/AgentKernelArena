@@ -1,0 +1,146 @@
+{
+ "description": "Batch sizes of the KernelBench level 2 problem 40 linear layer (4096 x 4096 weight); the original five cases (2048 to 32768 rows) are extended down to 256 rows for a 128x performance span. Batches 1, 3, 100 and 1000 are correctness-only boundary shapes; batch 100 is also checked with a non-default scaling_factor of 2.0.",
+ "cases": [
+  {
+   "id": "b1",
+   "axes": {
+    "batch": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, a single row"
+  },
+  {
+   "id": "b3",
+   "axes": {
+    "batch": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, odd batch"
+  },
+  {
+   "id": "b100",
+   "axes": {
+    "batch": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch not a multiple of 16"
+  },
+  {
+   "id": "b1000",
+   "axes": {
+    "batch": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch not a multiple of the 128-row tile"
+  },
+  {
+   "id": "b100_s2",
+   "axes": {
+    "batch": 100
+   },
+   "scalars": {
+    "scaling_factor": 2.0
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 100 with a non-default scaling_factor of 2.0, so the scalar input is exercised"
+  },
+  {
+   "id": "b256",
+   "axes": {
+    "batch": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 256"
+  },
+  {
+   "id": "b512",
+   "axes": {
+    "batch": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 512"
+  },
+  {
+   "id": "b1024",
+   "axes": {
+    "batch": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 1024"
+  },
+  {
+   "id": "b2048",
+   "axes": {
+    "batch": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 2048 as in the original case_0"
+  },
+  {
+   "id": "b4096",
+   "axes": {
+    "batch": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 4096 as in the original case_1"
+  },
+  {
+   "id": "b8192",
+   "axes": {
+    "batch": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 8192 as in the original case_2"
+  },
+  {
+   "id": "b16384",
+   "axes": {
+    "batch": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 16384 as in the original case_3"
+  },
+  {
+   "id": "b32768",
+   "axes": {
+    "batch": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "KernelBench level 2 problem 40 (Matmul_Scaling_ResidualAdd), in_features = out_features = 4096, batch 32768 as in the original case_4"
+  }
+ ]
+}

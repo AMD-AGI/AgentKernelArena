@@ -1,0 +1,102 @@
+schema_version: 3
+description: >-
+  Mamba2 (SSD) chunk scan, the output stage of chunked selective-state-space prefill. Tokens are split
+  into chunks of 256 (the last may be partial) and chunks into sequences of 8 chunks (2048 tokens).
+  For token m of chunk c, head h and group g = h // 16 (16 heads share one group), with dA = dA_cumsum[h, c]
+  and the chunk's carried state S = states[c-1, h] (zero for the first chunk of a sequence):
+  out[m, h, :] = exp(dA[m]) * (S @ C[m, g]) + sum_{k <= m} cb[c, g, m, k] * exp(dA[m] - dA[k]) * dt[h, c, k]
+  * x[k, h, :] + D[h] * x[m, h, :]. cb is the chunk's C B^T Gram matrix; the cumulative decay dA and the
+  states are inputs. x, C and cb are bfloat16 and the dots accumulate in float32 or higher; the output is
+  bfloat16. Padding rows of a partial chunk are not written.
+operator:
+  name: ssd_chunk_scan
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens of one packed sequence batch.}
+    num_heads: {kind: const, value: 128, description: SSM heads.}
+    head_dim: {kind: const, value: 64, description: Channels per head.}
+    num_groups: {kind: const, value: 8, description: B/C groups (16 heads per group).}
+    state_dim: {kind: const, value: 128, description: SSM state size.}
+    chunk_size: {kind: const, value: 256, description: Tokens per chunk.}
+  derived_axes:
+    n_chunks: ceil_div(n_tokens, chunk_size)
+  inputs:
+    cb:
+      kind: tensor
+      shape: [n_chunks, num_groups, chunk_size, chunk_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.32}
+      description: Per-chunk C B^T Gram matrix of each group (only the causal part is used).
+    x:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    dt:
+      kind: tensor
+      shape: [num_heads, n_chunks, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: >-
+        Discretization step of every token, U(0, 0.1). The padding slots of a partial chunk never contribute to a
+        written row; they keep their draw (the chunk cumsum pass writes zeros there).
+    dA_cumsum:
+      kind: tensor
+      shape: [num_heads, n_chunks, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative sum of dt * A with a negative per-head A (constant in padding).
+    C:
+      kind: tensor
+      shape: [n_tokens, num_groups, state_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    states:
+      kind: tensor
+      shape: [n_chunks, num_heads, head_dim, state_dim]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 0.03}
+      description: Carried state at the end of each chunk (output of the chunk state pass).
+    D:
+      kind: tensor
+      shape: [num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.05, high: 0.25}
+      description: Per-head skip coefficient.
+    cu_chunk_seqlens:
+      kind: tensor
+      shape: [n_chunks + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Token offset of every chunk boundary (consecutive chunks of 256, the last clipped to n_tokens).
+    seq_idx:
+      kind: tensor
+      shape: [n_chunks]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Sequence of every chunk; a new sequence starts every 8 chunks and resets the state.
+  outputs:
+    out: {shape: [n_tokens, num_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/mamba/ops/ssd_chunk_scan.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel copied unchanged except that fast_exp is inlined; the autotune is replaced by a fixed tile
+      configuration (64 x 64 x 32, 4 warps, 2 stages) and the launch wrapper is specialised to the scenario
+      and wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

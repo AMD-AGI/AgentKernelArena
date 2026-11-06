@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Float32 tall-skinny matrix multiplication out = a @ b (torch.matmul) with a [m, 16] and b [16, 16384],
+  all row-major, a 16-deep contraction whose cost is writing the [m, 16384] output; products and
+  accumulation in IEEE float32 (no TF32 or reduced-precision inputs), output float32.
+operator: {name: gemm_f32, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows of the tall matrix a and of out.}
+    n: {kind: const, value: 16384, description: Columns of b and out.}
+    k: {kind: const, value: 16, description: Contracted dimension (the skinny side).}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    b:
+      kind: tensor
+      shape: [k, n]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm.py
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/heuristics/template/triton.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the Inductor mm template (the kernel Inductor's max-autotune generates for
+      torch.mm) as a standalone @triton.jit kernel: the template rendered for contiguous float32
+      operands with a runtime M and N, K and strides as constexprs, Inductor's generated load indices and
+      store suffix for a contiguous output, the mm_grid launch grid, one fixed ROCm mm_configs entry
+      (128x128x32, 8 warps, 2 stages, GROUP_M 16, matrix_instr_nonkdim 16, BLOCK_K scaled to K = 16 as
+      Inductor scales its configs) instead of autotuning, allow_tf32=False expressed as
+      input_precision="ieee", wrapped in the run() interface.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 1.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Assignment of LiDAR points to oriented 3D boxes (MMCV points_in_boxes_part): box_idx_of_points[b, m]
+  is the index, along the box axis, of the first box of batch element b that contains point m, or -1 if
+  none does. A box (cx, cy, cz, dx, dy, dz, heading) has cz at its bottom; a point is inside when
+  cz <= z <= cz + dz and, rotated by -heading about the box center, |local_x| < dx/2 and
+  |local_y| < dy/2. Outputs are int32 indices.
+operator:
+  name: points_in_boxes
+  category: other
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 8, description: Point clouds in the batch.}
+    n_points: {kind: var, min: 1, max: 262144, description: Points per cloud.}
+    n_boxes: {kind: var, min: 1, max: 256, description: Boxes per cloud.}
+  inputs:
+    points:
+      kind: tensor
+      shape: [batch, n_points, 3]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Point coordinates (x, y, z), none within 1e-3 of a box face.
+    boxes:
+      kind: tensor
+      shape: [batch, n_boxes, 7]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Boxes (cx, cy, cz, dx, dy, dz, heading), cz at the bottom.
+  outputs:
+    box_idx_of_points: {shape: [batch, n_points], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 9c0e67a064b169933080aef84a913e66bfd6296a
+    path: tasks/hip2hip/points_in_boxes/src/points_in_boxes_cuda.hip
+    license: Apache-2.0
+    modifications: >-
+      The part kernel (OpenPCDet roiaware_pool3d / MMCV points_in_boxes, Apache-2.0) is unchanged except
+      that it now writes -1 itself for a point in no box (the original wrapper pre-filled the output).
+      The pybind wrapper and the all-mode kernel were dropped; the part launcher became a one-op torch
+      library registration writing into the preallocated output.
+compare:
+  box_idx_of_points: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

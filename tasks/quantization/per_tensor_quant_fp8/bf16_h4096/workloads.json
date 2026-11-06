@@ -1,0 +1,17 @@
+{
+  "description": "Token counts of FP8 activation quantization at hidden size 4096; batches below about 2048 tokens run under the 10 us timing floor (three launches, about 12 MB moved at 1024) and are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
+    {"id": "t48", "axes": {"n_tokens": 48}, "checks": ["correctness"], "source": "decode, batch 48"},
+    {"id": "t64", "axes": {"n_tokens": 64}, "checks": ["correctness"], "source": "decode, batch 64"},
+    {"id": "t256", "axes": {"n_tokens": 256}, "checks": ["correctness"], "source": "small prefill chunk"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness"], "source": "prefill chunk (original task shape m=1024)"},
+    {"id": "t2048", "axes": {"n_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t4096", "axes": {"n_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk (original task shape m=4096)"},
+    {"id": "t16384", "axes": {"n_tokens": 16384}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
+    {"id": "t65536", "axes": {"n_tokens": 65536}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t262144", "axes": {"n_tokens": 262144}, "checks": ["correctness", "performance"], "source": "large batched prefill"}
+  ]
+}

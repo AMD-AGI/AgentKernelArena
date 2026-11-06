@@ -1,0 +1,241 @@
+{
+ "description": "Batches of 512-channel sound feature maps (up to 256 rows x 64 columns) as in the gpumode InnerProd suite scaled up; the performance cases use 32 columns, the source cases (batch 4 to 64, 4x4 to 64x64 maps) run below the 10 us timing floor or are non-32 widths and are correctness-only. Every correctness case has at least 64 output elements so that its whole-output SQNR is a stable statistic.",
+ "cases": [
+  {
+   "id": "b2_h64_w64",
+   "axes": {
+    "batch": 2,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "old suite 64x64 maps, maximum width"
+  },
+  {
+   "id": "b3_h5_w37",
+   "axes": {
+    "batch": 3,
+    "height": 5,
+    "width": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd width not a multiple of 16"
+  },
+  {
+   "id": "b64_h7_w1",
+   "axes": {
+    "batch": 64,
+    "height": 7,
+    "width": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum width, odd height, at the old suite's largest batch"
+  },
+  {
+   "id": "b8_h16_w16",
+   "axes": {
+    "batch": 8,
+    "height": 16,
+    "width": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "old suite 16x16 maps, power-of-two width"
+  },
+  {
+   "id": "b4_h4_w4",
+   "axes": {
+    "batch": 4,
+    "height": 4,
+    "width": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "old suite 4x4 maps"
+  },
+  {
+   "id": "b1_h1_w64",
+   "axes": {
+    "batch": 1,
+    "height": 1,
+    "width": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum batch and height, single pixel row at maximum width"
+  },
+  {
+   "id": "b3_h5",
+   "axes": {
+    "batch": 3,
+    "height": 5,
+    "width": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, odd height"
+  },
+  {
+   "id": "b48_h2",
+   "axes": {
+    "batch": 48,
+    "height": 2,
+    "width": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch of 48, two rows"
+  },
+  {
+   "id": "b17_h19",
+   "axes": {
+    "batch": 17,
+    "height": 19,
+    "width": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch and height"
+  },
+  {
+   "id": "b5_h100",
+   "axes": {
+    "batch": 5,
+    "height": 100,
+    "width": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned height"
+  },
+  {
+   "id": "b2_h256",
+   "axes": {
+    "batch": 2,
+    "height": 256,
+    "width": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "maximum height, small batch"
+  },
+  {
+   "id": "b16_h32",
+   "axes": {
+    "batch": 16,
+    "height": 32,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 16 samples, 32x32 pixels"
+  },
+  {
+   "id": "b32_h32",
+   "axes": {
+    "batch": 32,
+    "height": 32,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 32 samples, 32x32 pixels"
+  },
+  {
+   "id": "b64_h32",
+   "axes": {
+    "batch": 64,
+    "height": 32,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 64 samples, 32x32 pixels"
+  },
+  {
+   "id": "b128_h32",
+   "axes": {
+    "batch": 128,
+    "height": 32,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 128 samples, 32x32 pixels"
+  },
+  {
+   "id": "b128_h64",
+   "axes": {
+    "batch": 128,
+    "height": 64,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 128 samples, 64x32 pixels"
+  },
+  {
+   "id": "b256_h64",
+   "axes": {
+    "batch": 256,
+    "height": 64,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 256 samples, 64x32 pixels"
+  },
+  {
+   "id": "b256_h128",
+   "axes": {
+    "batch": 256,
+    "height": 128,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 256 samples, 128x32 pixels"
+  },
+  {
+   "id": "b256_h256",
+   "axes": {
+    "batch": 256,
+    "height": 256,
+    "width": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "feature maps of 256 samples, 256x32 pixels"
+  }
+ ]
+}

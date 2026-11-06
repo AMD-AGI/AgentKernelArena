@@ -1,0 +1,133 @@
+{
+ "description": "Batch sizes M of an (M, 1024, 32) float16 mean over axis 1 (the original task's (8, 1024, 32) case scaled in M); batches below 512 take under 10 us and are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "M": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single slice"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "M": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch"
+  },
+  {
+   "id": "m50",
+   "axes": {
+    "M": 50
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch"
+  },
+  {
+   "id": "m500",
+   "axes": {
+    "M": 500
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two batch"
+  },
+  {
+   "id": "m512",
+   "axes": {
+    "M": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "M": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "M": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "M": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "M": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "M": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  },
+  {
+   "id": "m32768",
+   "axes": {
+    "M": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  },
+  {
+   "id": "m51200",
+   "axes": {
+    "M": 51200
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "(M, 1024, 32) mean over axis 1, the (8, 1024, 32) case of the original task scaled in M"
+  }
+ ]
+}

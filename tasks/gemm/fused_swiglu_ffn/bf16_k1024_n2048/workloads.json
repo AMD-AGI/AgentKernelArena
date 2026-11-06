@@ -1,0 +1,110 @@
+{
+  "description": "Row counts (batch times sequence) through a 1024 -> 2048 SwiGLU projection; small row counts are correctness-only boundary cases.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single-row decode"
+    },
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd tiny batch"
+    },
+    {
+      "id": "m48",
+      "axes": {
+        "m": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch 48"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned row count"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small batch, below the 10 us floor"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 4 x sequence 256"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 16 x sequence 256"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batch 64 x sequence 256"
+    },
+    {
+      "id": "m65536",
+      "axes": {
+        "m": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large training batch"
+    },
+    {
+      "id": "m131072",
+      "axes": {
+        "m": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "maximum rows"
+    }
+  ]
+}

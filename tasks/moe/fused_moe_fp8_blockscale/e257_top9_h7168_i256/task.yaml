@@ -1,0 +1,120 @@
+schema_version: 3
+description: >-
+  Routed-expert layer of a mixture-of-experts model with fp8 (e4m3fn) block-scaled weights and activations.
+  The hidden states are quantized per token and 128-wide group (scale = max|x| / 448, code = fp8(x / scale)).
+  For each token t and selected expert e = topk_ids[t, k]: h = dequant(x_q[t]) @ dequant(w1[e]).T with w1
+  dequantized per 128 x 128 block (gate = first 256, up = last 256 of the 512 outputs), a = silu(gate) * up,
+  requantized per 128-wide group to fp8 the same way, y = (dequant(a_q) @ dequant(w2[e]).T) * topk_weights[t, k];
+  out[t] = sum over k of y, rounded to bfloat16. The router decisions (topk_ids, topk_weights) are given.
+operator:
+  name: fused_moe_fp8_blockscale
+  category: moe
+interface:
+  axes:
+    num_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    top_k: {kind: const, value: 9, description: Experts per token (8 routed plus the fused shared expert).}
+    num_experts: {kind: const, value: 257, description: 256 routed experts plus the shared expert.}
+    hidden_size: {kind: const, value: 7168, description: Model hidden size.}
+    intermediate_size: {kind: const, value: 256, description: Expert intermediate width per rank (tensor parallelism 8).}
+  derived_axes:
+    gate_up_size: 2 * intermediate_size
+    hidden_blocks: hidden_size // 128
+    gate_up_blocks: 2 * intermediate_size // 128
+    intermediate_blocks: intermediate_size // 128
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [num_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1:
+      kind: tensor
+      shape: [num_experts, gate_up_size, hidden_size]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: Gate (rows 0-255) and up (rows 256-511) projections of every expert, fp8 codes.
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, gate_up_blocks, hidden_blocks]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: One scale per 128 x 128 block of w1.
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, intermediate_size]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: Down projection of every expert, fp8 codes.
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_blocks, intermediate_blocks]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: One scale per 128 x 128 block of w2.
+    topk_weights:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: float32
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [num_tokens, top_k]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [num_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/quant/fused_fp8_quant.py
+      - aiter/ops/triton/quant/fused_fp8_quant.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_align_block_size.py
+      - aiter/ops/triton/moe/moe_align_block_size.py
+      - op_tests/triton_tests/moe/test_moe_align_block_size.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op.py
+      - aiter/ops/triton/moe/moe_op.py
+      - aiter/ops/triton/_triton_kernels/moe/reduce.py
+      - aiter/ops/triton/moe/reduce.py
+      - aiter/ops/triton/_triton_kernels/moe/activations.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/utils/moe_config_utils.py
+      - aiter/ops/triton/configs/moe/gfx950-MOE-FP8_W8A8.json
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/moe_common.py
+      - aiter/ops/triton/utils/device_info.py
+    license: MIT
+    notes: >-
+      The production DeepSeek-V3 FP8 MoE on MI355X is AITER's assembly fmoe_fp8_blockscale_g1u1 or its
+      Composable Kernel two-stage MoE; neither can be vendored as source, so the baseline is AITER's Triton
+      fp8 block-scale MoE path, which computes the same quantized operator.
+    modifications: >-
+      The Triton kernels _fused_flatten_fp8_group_quant_kernel, _fused_reduce_act_mul_fp8_group_quant (with
+      _fp8_quant_op and the SiLU activation), _moe_align_block_size_stage{1..4}_kernel, _fused_moe_kernel and
+      _reduce_grouped with their helpers, copied verbatim except that _reduce_grouped loses its gfx1250-only
+      tensor-descriptor loads and _swiglu's parameter input is renamed. The launchers keep only the branches
+      this operator takes: fused_flatten_fp8_group_quant without the transposed-scale option,
+      fused_reduce_act_mul_fp8_group_quant for a two-dimensional input with SiLU (no split-K; the unused split-K
+      strides are passed as 1 instead of 0 so that the kernel's tl.assume(stride > 0) hints hold), fused_moe for
+      use_fp8_w8a8 with block_shape [128, 128] on the non-persistent kernel, and reduce_grouped without the
+      gfx1250 Gluon path; logging is removed. The align buffers are allocated as in triton_moe_align_block_size
+      of the AITER align test. get_optimal_moe_config uses the gfx950 FP8_W8A8 table embedded as a dict. run()
+      chains activation quantization, align, the gate/up GEMM, the fused SiLU-and-requantization, the
+      routing-weighted down GEMM and the top-k reduction (its split axis is the top-k slot), writing the
+      preallocated output.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.005}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

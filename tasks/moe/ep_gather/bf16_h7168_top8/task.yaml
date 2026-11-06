@@ -1,0 +1,47 @@
+schema_version: 3
+description: >-
+  Expert-parallel gather: out[t] = sum over the valid assignments k of token t of recv_topk_weight[t, k] *
+  input_tensor[input_index[t, k]], accumulated in float32 over the 7168-wide bfloat16 expert outputs and rounded to
+  bfloat16. Assignments whose expert id is negative are skipped (their index is not read); a token without valid
+  assignment produces zeros.
+operator: {name: ep_gather, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 32768, description: Tokens received by the rank.}
+    top_k: {kind: const, value: 8, description: Experts chosen per token.}
+    num_experts: {kind: const, value: 256, description: Experts of the layer.}
+    hidden_size: {kind: const, value: 7168, description: Model hidden size.}
+  derived_axes:
+    total_slots: n_tokens * top_k
+  inputs:
+    input_tensor:
+      kind: tensor
+      shape: [total_slots, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    recv_topk_ids:
+      {kind: tensor, shape: [n_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+    recv_topk_weight:
+      {kind: tensor, shape: [n_tokens, top_k], dtype: float32, role: weight, distribution: {kind: generator}}
+    input_index:
+      {kind: tensor, shape: [n_tokens, top_k], dtype: int32, role: index, distribution: {kind: generator}}
+  outputs:
+    output_tensor: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/fused_moe/deep_gemm_utils.py
+    license: Apache-2.0
+    modifications: >-
+      The _fwd_kernel_ep_gather kernel and the launch code of ep_gather without the optional expert_map remapping,
+      wrapped in the run() interface.
+compare:
+  output_tensor: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

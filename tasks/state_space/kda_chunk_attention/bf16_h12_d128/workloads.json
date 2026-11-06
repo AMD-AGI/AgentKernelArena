@@ -1,0 +1,19 @@
+{
+  "description": "Kimi-K3 KDA prefill batches per tensor-parallel-8 rank (12 heads, head dimension 128): the two packed prefill token counts seen in a Kimi-K3 serving trace on MI355X (1080 and 7211, as one sequence each), batches of 1024-token requests, a batch of short requests and long-context prefills. Tiny batches, single tokens and odd lengths are correctness-only.",
+  "cases": [
+    {"id": "s1_t1", "axes": {"n_seqs": 1, "seq_len": 1}, "checks": ["correctness"], "source": "single-token prefill (axis minimum)"},
+    {"id": "s5_t1", "axes": {"n_seqs": 5, "seq_len": 1}, "checks": ["correctness"], "source": "five one-token sequences"},
+    {"id": "s1_t64", "axes": {"n_seqs": 1, "seq_len": 64}, "checks": ["correctness"], "source": "exactly one chunk"},
+    {"id": "s1_t100", "axes": {"n_seqs": 1, "seq_len": 100}, "checks": ["correctness"], "source": "short prompt with a partial second chunk"},
+    {"id": "s3_t77", "axes": {"n_seqs": 3, "seq_len": 77}, "checks": ["correctness"], "source": "three short prompts with partial chunks (unaligned)"},
+    {"id": "s2_t1000", "axes": {"n_seqs": 2, "seq_len": 1000}, "checks": ["correctness"], "source": "two unaligned prompts"},
+    {"id": "s1_t320", "axes": {"n_seqs": 1, "seq_len": 320}, "checks": ["correctness", "performance"], "source": "short prompt"},
+    {"id": "s1_t1080", "axes": {"n_seqs": 1, "seq_len": 1080}, "checks": ["correctness", "performance"], "source": "Kimi-K3 serving trace, packed prefill of 1080 tokens"},
+    {"id": "s2_t1024", "axes": {"n_seqs": 2, "seq_len": 1024}, "checks": ["correctness", "performance"], "source": "two 1024-token requests (benchmark input length 1024)"},
+    {"id": "s1_t7211", "axes": {"n_seqs": 1, "seq_len": 7211}, "checks": ["correctness", "performance"], "source": "Kimi-K3 serving trace, packed prefill of 7211 tokens"},
+    {"id": "s8_t1024", "axes": {"n_seqs": 8, "seq_len": 1024}, "checks": ["correctness", "performance"], "source": "eight 1024-token requests (8192-token prefill budget)"},
+    {"id": "s32_t512", "axes": {"n_seqs": 32, "seq_len": 512}, "checks": ["correctness", "performance"], "source": "batch of 32 short requests"},
+    {"id": "s1_t16384", "axes": {"n_seqs": 1, "seq_len": 16384}, "checks": ["correctness", "performance"], "source": "long-context prefill"},
+    {"id": "s1_t32768", "axes": {"n_seqs": 1, "seq_len": 32768}, "checks": ["correctness", "performance"], "source": "long-context prefill"}
+  ]
+}

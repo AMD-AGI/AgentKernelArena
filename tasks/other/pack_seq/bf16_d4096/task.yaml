@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Packs variable-length sequences into a padded batch (vLLM pack_seq): the rows of x [n_tokens, hidden]
+  hold batch sequences back to back, sequence b having lengths[b] rows; out[b, t] is the t-th row of
+  sequence b for t < lengths[b] and pad_value otherwise, for t up to max_len, the longest length.
+  Values are copied bit for bit.
+operator:
+  name: pack_seq
+  category: other
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Total tokens of all sequences.}
+    batch: {kind: const, value: 8, description: Sequences in the batch.}
+    hidden: {kind: const, value: 4096, description: Feature width.}
+  derived_axes:
+    max_len: "min(n_tokens, ceil_div(3 * n_tokens, 2 * batch))"
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    lengths:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Length of each sequence; sums to n_tokens, the longest equals max_len.
+    pad_value: {kind: scalar, dtype: float32, default: -1.0}
+  outputs:
+    out: {shape: [batch, max_len, hidden], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/common.py (_pack_seq_kernel, pack_seq_triton)
+    license: Apache-2.0
+    modifications: >-
+      Wrapped in the run() interface writing into the preallocated output; the launch parameters
+      (block sizes, warps) of the pack_seq_triton wrapper are kept, but Lmax and the output allocation
+      come from the output's shape instead of lengths.max().item().
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

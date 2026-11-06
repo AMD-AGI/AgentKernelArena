@@ -1,0 +1,56 @@
+schema_version: 3
+description: >-
+  LayerNorm of each sample over its whole (channels, height, width) volume with an elementwise affine
+  transform: out = (x - mean) * rsqrt(var + epsilon) * weight + bias, the mean and biased variance taken over
+  the 4194304 elements of the sample in high precision, float32 throughout.
+operator:
+  name: layer_norm_wide
+  category: normalization
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 128, description: Samples in the batch.}
+    channels: {kind: const, value: 64}
+    height: {kind: const, value: 256}
+    width: {kind: const, value: 256}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, channels, height, width]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [channels, height, width]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    bias:
+      kind: tensor
+      shape: [channels, height, width]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-5}
+  outputs:
+    out: {shape: [batch, channels, height, width], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path: >-
+      torch/_inductor/lowering.py (native_layer_norm split reduction);
+      torch/_inductor/runtime/triton_helpers.py (welford_combine)
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the TorchInductor lowering of F.layer_norm over (64, 256, 256): a split reduction
+      with a per-chunk mean and squared-deviation kernel, a per-sample combine kernel and a fused
+      normalize/affine pointwise kernel, with a fixed block configuration, wrapped in the arena run()
+      interface.
+compare:
+  out: {bound: sqnr, min_db: 128}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

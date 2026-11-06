@@ -1,0 +1,155 @@
+{
+ "description": "Staged writes into a 1024 x 131072 int32 buffer: block-table appends and token-id writes of new requests. Short segments are launch-bound (below the 10 us timing floor) and correctness-only; long-prompt writes are timed.",
+ "cases": [
+  {
+   "id": "w1_l1",
+   "axes": {
+    "n_writes": 1,
+    "seg_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single one-token write"
+  },
+  {
+   "id": "w3_l1025",
+   "axes": {
+    "n_writes": 3,
+    "seg_len": 1025
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "few writes with segments crossing a 1024 tile"
+  },
+  {
+   "id": "w37_l1000",
+   "axes": {
+    "n_writes": 37,
+    "seg_len": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch of ~1000-token prompts"
+  },
+  {
+   "id": "w8_l16",
+   "axes": {
+    "n_writes": 8,
+    "seg_len": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short block-table appends"
+  },
+  {
+   "id": "w512_l4",
+   "axes": {
+    "n_writes": 512,
+    "seg_len": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode-time block-table appends of a full batch"
+  },
+  {
+   "id": "w64_l2049",
+   "axes": {
+    "n_writes": 64,
+    "seg_len": 2049
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "segments with a tile tail"
+  },
+  {
+   "id": "w8_l16384",
+   "axes": {
+    "n_writes": 8,
+    "seg_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "few long prompts"
+  },
+  {
+   "id": "w64_l16384",
+   "axes": {
+    "n_writes": 64,
+    "seg_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prompt batch"
+  },
+  {
+   "id": "w256_l16384",
+   "axes": {
+    "n_writes": 256,
+    "seg_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prompt batch"
+  },
+  {
+   "id": "w1024_l16384",
+   "axes": {
+    "n_writes": 1024,
+    "seg_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "full batch of prompts"
+  },
+  {
+   "id": "w64_l65536",
+   "axes": {
+    "n_writes": 64,
+    "seg_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "long-context prompts"
+  },
+  {
+   "id": "w256_l65536",
+   "axes": {
+    "n_writes": 256,
+    "seg_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "long-context prompts"
+  },
+  {
+   "id": "w1024_l65536",
+   "axes": {
+    "n_writes": 1024,
+    "seg_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "full batch of long-context prompts (upper bound)"
+  }
+ ]
+}

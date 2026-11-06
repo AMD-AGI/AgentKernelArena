@@ -1,0 +1,106 @@
+schema_version: 3
+description: >-
+  Batch prefill (extend) attention over a paged KV cache with logits soft-capping, as in AITER's CK
+  mha_batch_prefill (causal, logits_soft_cap 30). Every sequence's new query tokens are packed in q at
+  cu_seqlens_q, and all its keys/values (a cached prefix, possibly empty, followed by the new tokens)
+  live in the pages kv_page_indices[kv_indptr[b]:kv_indptr[b+1]] of the paged caches ([pages,
+  page_size, kv_heads, head_size]), all full except the last, which holds kv_last_page_lens[b]
+  tokens. Grouped-query attention (8 query heads share 1 KV head); for query row r of a sequence with
+  qo_len queries and kv_len >= qo_len keys, key c is visible iff c <= kv_len - qo_len + r
+  (bottom-right causal). Scores are s = logits_soft_cap * tanh(softmax_scale * q.k /
+  logits_soft_cap), out = softmax(s) v, rounded to bfloat16. Pages are mapped in any physical order
+  and the unused slots of a last page hold arbitrary finite data.
+operator:
+  name: batch_prefill_paged
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Sequences in the prefill batch.}
+    qo_len: {kind: var, min: 1, max: 131072, description: Mean new (query) tokens per sequence.}
+    kv_len: {kind: var, min: 1, max: 131072, description: "Mean keys per sequence: cached prefix plus new tokens (kv_len >= qo_len; equal for a fresh prompt)."}
+    num_q_heads: {kind: const, value: 8, description: Query heads (Grok-2 64 heads at TP8).}
+    num_kv_heads: {kind: const, value: 1, description: KV heads (Grok-2 8 heads at TP8).}
+    head_size: {kind: const, value: 128, description: Head dimension.}
+    page_size: {kind: const, value: 16, description: Tokens per KV-cache page.}
+  derived_axes:
+    num_tokens: batch * qo_len
+    num_pages: batch * (ceil_div(kv_len, page_size) + 1)
+    num_offsets: batch + 1
+  inputs:
+    q:
+      kind: tensor
+      shape: [num_tokens, num_q_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Packed queries, sequence after sequence.
+    k_cache:
+      kind: tensor
+      shape: [num_pages, page_size, num_kv_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Paged K cache (SGLang 4D linear layout).
+    v_cache:
+      kind: tensor
+      shape: [num_pages, page_size, num_kv_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Paged V cache (SGLang 4D linear layout).
+    cu_seqlens_q:
+      kind: tensor
+      shape: [num_offsets]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Offset of every sequence's first query token in q (batch + 1 entries).
+    kv_indptr:
+      kind: tensor
+      shape: [num_offsets]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Offset of every sequence's first page in kv_page_indices (batch + 1 entries).
+    kv_page_indices:
+      kind: tensor
+      shape: [num_pages]
+      dtype: int32
+      role: index
+      distribution: {kind: permutation}
+      description: Physical page of every logical page; entries from kv_indptr[batch] on are unused.
+    kv_last_page_lens:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Tokens in every sequence's last page (1..page_size).
+    softmax_scale: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: "1/sqrt(head_size)."}
+    logits_soft_cap: {kind: scalar, dtype: float32, default: 30.0, description: Logits soft cap.}
+  outputs:
+    out: {shape: [num_tokens, num_q_heads, head_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - csrc/py_itfs_ck/mha_batch_prefill_kernels.cu
+      - aiter/ops/triton/_triton_kernels/attention/unified_attention.py
+      - aiter/ops/triton/attention/unified_attention.py
+    license: MIT
+    modifications: >-
+      Triton rewrite of the Composable Kernel mha_batch_prefill (mha_batch_prefill_func, causal,
+      logits_soft_cap), which cannot be vendored as source. Built from AITER's Triton
+      kernel_unified_attention_2d and its select_2d_config: the 2D block table is replaced by the
+      kv_indptr / kv_page_indices / kv_last_page_lens page list (with a masked page-list load), the
+      key length comes from the page count and last-page length, and the ALiBi, QQ-bias, sink, FP8,
+      shuffled-cache, sliding-window and all-decode paths are removed. The config uses the CDNA
+      values, the 3D split-KV path is not included, and the mean query length stands in for
+      max_seqlen_q.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

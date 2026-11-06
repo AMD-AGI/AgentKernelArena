@@ -1,0 +1,111 @@
+{
+  "description": "Prefill token counts at hidden size 7168; small decode batches are correctness-only.",
+  "cases": [
+    {
+      "id": "n1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "n3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, odd batch"
+    },
+    {
+      "id": "n48",
+      "axes": {
+        "n_tokens": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 48"
+    },
+    {
+      "id": "n1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill"
+    },
+    {
+      "id": "n2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "n4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "n8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "n32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "n131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "n204800",
+      "axes": {
+        "n_tokens": 204800
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    }
+  ]
+}

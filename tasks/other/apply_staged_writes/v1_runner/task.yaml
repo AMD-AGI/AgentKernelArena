@@ -1,0 +1,74 @@
+schema_version: 3
+description: >-
+  Applies staged variable-length writes to a 2D int32 buffer, as vLLM's v1 model runner does for its
+  persistent GPU state: write i copies write_contents[cu_lens[i-1]:cu_lens[i]] (cu_lens[-1] = 0) into row
+  write_indices[i] of the buffer starting at column write_starts[i]. Rows of different writes are
+  distinct; every other element of the buffer is left unchanged.
+operator:
+  name: apply_staged_writes
+  category: other
+interface:
+  axes:
+    n_writes: {kind: var, min: 1, max: 1024, description: Staged writes (one per updated request row).}
+    seg_len: {kind: var, min: 1, max: 65536, description: Mean segment length of a write; individual segments range from 0 to twice this.}
+    num_rows: {kind: const, value: 1024, description: Rows of the persistent buffer (maximum concurrent requests).}
+    row_size: {kind: const, value: 131072, description: Columns of the buffer (maximum model length in tokens).}
+  derived_axes:
+    total_len: "n_writes * seg_len"
+  inputs:
+    output:
+      kind: tensor
+      shape: [num_rows, row_size]
+      dtype: int32
+      role: state
+      distribution: {kind: randint, low: 0, high: 151936}
+      description: Persistent buffer with prior contents; unwritten elements must survive.
+    write_indices:
+      kind: tensor
+      shape: [n_writes]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct destination row of each write.
+    write_starts:
+      kind: tensor
+      shape: [n_writes]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: First destination column of each write.
+    write_contents:
+      kind: tensor
+      shape: [total_len]
+      dtype: int32
+      role: activation
+      distribution: {kind: randint, low: 0, high: 151936}
+      description: Flat concatenation of all segments (token ids).
+    write_cu_lens:
+      kind: tensor
+      shape: [n_writes]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Inclusive cumulative segment lengths into write_contents.
+  outputs: {}
+  mutable: [output]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/buffer_utils.py
+    license: Apache-2.0
+    modifications: >-
+      Single-buffer form of the kernel (the checkout's MULTI_GROUP pointer-table path and group-id
+      input removed; the copy loop is unchanged). Wrapped in the run() interface; the host-side
+      empty-batch early return and the staging/UVA machinery are dropped.
+compare:
+  output: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

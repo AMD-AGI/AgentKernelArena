@@ -1,0 +1,14 @@
+{
+  "description": "Number of 256 KiB state-block copies in one call; copy sizes vary around the slot size and tile the pool. Single copies are bounded by the sequential 1 KiB-per-iteration loop of one program, large batches by memory bandwidth.",
+  "cases": [
+    {"id": "b1", "axes": {"batch": 1}, "checks": ["correctness", "performance"], "source": "one request, one state tensor"},
+    {"id": "b3", "axes": {"batch": 3}, "checks": ["correctness"], "source": "odd small batch"},
+    {"id": "b4", "axes": {"batch": 4}, "checks": ["correctness", "performance"], "source": "few requests, one layer"},
+    {"id": "b16", "axes": {"batch": 16}, "checks": ["correctness", "performance"], "source": "requests x state tensors of a layer group"},
+    {"id": "b37", "axes": {"batch": 37}, "checks": ["correctness"], "source": "unaligned copy count"},
+    {"id": "b64", "axes": {"batch": 64}, "checks": ["correctness", "performance"], "source": "requests x layers"},
+    {"id": "b256", "axes": {"batch": 256}, "checks": ["correctness", "performance"], "source": "requests x layers"},
+    {"id": "b1024", "axes": {"batch": 1024}, "checks": ["correctness", "performance"], "source": "many requests x layers x state tensors"},
+    {"id": "b4096", "axes": {"batch": 4096}, "checks": ["correctness", "performance"], "source": "large hybrid-model batch"}
+  ]
+}

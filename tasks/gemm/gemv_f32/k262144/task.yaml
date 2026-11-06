@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  y = a @ x with a [m, 262144] float32 (row-major) and x [262144] float32, accumulated in float32 and returned as
+  a float32 vector y [m].
+operator: {name: gemv_f32, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 4096, description: Rows of the matrix.}
+    k: {kind: const, value: 262144, description: Length of the vector and columns of the matrix.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    x:
+      kind: tensor
+      shape: [k]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    y: {shape: [m], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: AMD-AGI/AgentKernelArena (KernelBench level 1, problem 4 Matrix_vector_multiplication_, torch.matmul of A [M, K] and B [K, 1])
+    revision: a3b51f2c71d8b305b46521656d3639b9b26ff446
+    path: tasks/torch2hip/kernelbench/level1/l1n4_Matrix_vector_multiplication_/pytorch_code_module/py_l1n4_Matrix_vector_multiplication_.py
+    license: task-original
+    modifications: >-
+      Hand-written Triton split-K matrix-vector kernel replacing the PyTorch reference module (ATen gemv); no upstream
+      kernel code. Entry point takes the declared output name `y` (audit: it previously took `out`).
+compare:
+  y: {bound: tolerance, atol: 1.587e-3, rtol: 0.0}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

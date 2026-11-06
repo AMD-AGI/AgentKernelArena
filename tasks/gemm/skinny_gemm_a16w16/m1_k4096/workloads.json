@@ -1,0 +1,133 @@
+{
+  "description": "Output widths of decode (one token, hidden 4096) projections; widths whose weight read is below ~10 us are correctness-only.",
+  "cases": [
+    {
+      "id": "n16",
+      "axes": {
+        "n_out": 16
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tiny head, axis minimum"
+    },
+    {
+      "id": "n128",
+      "axes": {
+        "n_out": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "captured projection, hidden 4096"
+    },
+    {
+      "id": "n1000",
+      "axes": {
+        "n_out": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned output width"
+    },
+    {
+      "id": "n2880",
+      "axes": {
+        "n_out": 2880
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "gpt-oss hidden-size output"
+    },
+    {
+      "id": "n5120",
+      "axes": {
+        "n_out": 5120
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "QKV-sized projection"
+    },
+    {
+      "id": "n16384",
+      "axes": {
+        "n_out": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "MLP-sized projection"
+    },
+    {
+      "id": "n37984",
+      "axes": {
+        "n_out": 37984
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "captured projection, hidden 4096"
+    },
+    {
+      "id": "n65536",
+      "axes": {
+        "n_out": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large projection"
+    },
+    {
+      "id": "n151936",
+      "axes": {
+        "n_out": 151936
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "lm_head, 151936-token vocabulary"
+    },
+    {
+      "id": "n201088",
+      "axes": {
+        "n_out": 201088
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "lm_head, 201088-token vocabulary"
+    },
+    {
+      "id": "n320000",
+      "axes": {
+        "n_out": 320000
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "lm_head, large multilingual vocabulary"
+    },
+    {
+      "id": "n512000",
+      "axes": {
+        "n_out": 512000
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "lm_head upper bound, vocabulary-parallel gathered"
+    }
+  ]
+}

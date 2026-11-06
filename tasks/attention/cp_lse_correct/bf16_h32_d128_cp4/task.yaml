@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Context-parallel attention output correction (vLLM correct_attn_out). Each of cp ranks computed
+  a partial attention output over its slice of the KV cache together with its log-sum-exp (LSE) per
+  token and head. Given the all-gathered LSEs of every rank, compute the global LSE
+  (a numerically stable log-sum-exp over ranks, natural base; non-finite entries count as -inf)
+  and rescale this rank's partial output by exp(lse[rank] - global_lse), rounded to bfloat16.
+operator:
+  name: cp_lse_correct
+  category: attention
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Tokens (rows of the attention output) in the batch.}
+    n_heads: {kind: const, value: 32, description: Query heads on this rank.}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+    cp_size: {kind: const, value: 4, description: Context-parallel ranks whose LSEs are merged.}
+  inputs:
+    attn_out:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    lses:
+      kind: tensor
+      shape: [cp_size, n_tokens, n_heads]
+      dtype: float32
+      distribution: {kind: generator}
+    lse_idx: {kind: scalar, dtype: int32, default: 1, description: Index of this rank in the LSE stack.}
+  outputs:
+    out_corrected: {shape: [n_tokens, n_heads, head_dim], dtype: bfloat16}
+    lse_final: {shape: [n_tokens, n_heads], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/common.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel copied unchanged (including the zero-factor guard); the allocating wrapper correct_attn_cp_out (all-gather removed) became run()
+      writing into the preallocated outputs, specialized to the natural-base 3-D layout.
+compare:
+  out_corrected: {bound: baseline_relative}
+  lse_final: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

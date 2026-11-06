@@ -1,0 +1,35 @@
+schema_version: 3
+description: >-
+  SiLU (swish) of a float32 tensor, out = x * sigmoid(x), evaluated elementwise over the flattened
+  tensor and written as float32.
+operator:
+  name: silu
+  category: activation
+interface:
+  axes:
+    numel: {kind: var, min: 1, max: 536870912, description: Number of elements of the flattened tensor.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [numel]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 3.0}
+  outputs:
+    out: {shape: [numel], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD-AGI/AgentKernelArena
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/SiLU/hip/hip_16636_SiLU.hip
+    license: Apache-2.0
+    modifications: >-
+      Reduced to the float32 path; the extension entry point became a one-op torch library
+      registration writing into the preallocated output.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

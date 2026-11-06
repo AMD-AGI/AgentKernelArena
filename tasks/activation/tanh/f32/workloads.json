@@ -1,0 +1,148 @@
+{
+  "description": "Element counts of elementwise activation tensors (the old hip2hip TanH cases span 1K to 134M elements). Sizes under about 3.4M elements run faster than the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "n1",
+      "axes": {
+        "numel": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single element"
+    },
+    {
+      "id": "n7",
+      "axes": {
+        "numel": 7
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd short vector, scalar tail only"
+    },
+    {
+      "id": "n33",
+      "axes": {
+        "numel": 33
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16"
+    },
+    {
+      "id": "n1024",
+      "axes": {
+        "numel": 1024
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "original 1-D case"
+    },
+    {
+      "id": "n4096",
+      "axes": {
+        "numel": 4096
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "original 1-D case"
+    },
+    {
+      "id": "n1000003",
+      "axes": {
+        "numel": 1000003
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned large vector, head/tail path"
+    },
+    {
+      "id": "n12345679_scaled",
+      "axes": {
+        "numel": 12345679
+      },
+      "scalars": {
+        "a": 0.5,
+        "scale": 2.5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "non-default scalars; odd length"
+    },
+    {
+      "id": "n4096_neg",
+      "axes": {
+        "numel": 4096
+      },
+      "scalars": {
+        "a": -2.0,
+        "scale": 0.25
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "negative scaling"
+    },
+    {
+      "id": "n4194304",
+      "axes": {
+        "numel": 4194304
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "4M-element activation, e.g. 1024 tokens x 4096 hidden"
+    },
+    {
+      "id": "n16777216",
+      "axes": {
+        "numel": 16777216
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16M-element activation, e.g. 4096 tokens x 4096 hidden"
+    },
+    {
+      "id": "n67108864",
+      "axes": {
+        "numel": 67108864
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "64M-element activation, e.g. 8192 tokens x 8192 hidden"
+    },
+    {
+      "id": "n134217728",
+      "axes": {
+        "numel": 134217728
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "128M-element feature map, e.g. 32x256x128x128 scaled to batch 32"
+    },
+    {
+      "id": "n536870912",
+      "axes": {
+        "numel": 536870912
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "512M-element feature map, e.g. 16x128x64x64 at large batch"
+    }
+  ]
+}

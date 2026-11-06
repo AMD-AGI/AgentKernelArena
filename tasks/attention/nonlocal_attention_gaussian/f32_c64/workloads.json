@@ -1,0 +1,189 @@
+{
+ "description": "Feature-map sizes of non-local (embedded Gaussian) blocks: hw = H*W of 32x32 to 128x128 maps (video and image restoration networks) and training batches up to 16. Cost grows with hw^2, so every performance case is far above the 10 us floor; small and odd shapes are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_n1",
+   "axes": {
+    "batch": 1,
+    "hw": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "minimum"
+  },
+  {
+   "id": "b1_n16",
+   "axes": {
+    "batch": 1,
+    "hw": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one full tile row"
+  },
+  {
+   "id": "b3_n100",
+   "axes": {
+    "batch": 3,
+    "hw": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, hw not a multiple of 16"
+  },
+  {
+   "id": "b17_n50",
+   "axes": {
+    "batch": 17,
+    "hw": 50
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch above 16, partial tiles"
+  },
+  {
+   "id": "b2_n1000",
+   "axes": {
+    "batch": 2,
+    "hw": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned hw"
+  },
+  {
+   "id": "b5_n333",
+   "axes": {
+    "batch": 5,
+    "hw": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, odd hw"
+  },
+  {
+   "id": "b1_n1025",
+   "axes": {
+    "batch": 1,
+    "hw": 1025
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one position past a power of two"
+  },
+  {
+   "id": "b3_n2049",
+   "axes": {
+    "batch": 3,
+    "hw": 2049
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, two tiles plus one"
+  },
+  {
+   "id": "b1_n1024",
+   "axes": {
+    "batch": 1,
+    "hw": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small feature map, 32x32"
+  },
+  {
+   "id": "b1_n4096",
+   "axes": {
+    "batch": 1,
+    "hw": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "64x64 feature map"
+  },
+  {
+   "id": "b4_n2048",
+   "axes": {
+    "batch": 4,
+    "hw": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 2048-position maps (about 45x45)"
+  },
+  {
+   "id": "b8_n1024",
+   "axes": {
+    "batch": 8,
+    "hw": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 32x32 maps"
+  },
+  {
+   "id": "b8_n4096",
+   "axes": {
+    "batch": 8,
+    "hw": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 64x64 maps"
+  },
+  {
+   "id": "b2_n16384",
+   "axes": {
+    "batch": 2,
+    "hw": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "128x128 feature map"
+  },
+  {
+   "id": "b16_n4096",
+   "axes": {
+    "batch": 16,
+    "hw": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "training batch of 64x64 maps"
+  },
+  {
+   "id": "b16_n8192",
+   "axes": {
+    "batch": 16,
+    "hw": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large batch of about 90x90 maps"
+  }
+ ]
+}

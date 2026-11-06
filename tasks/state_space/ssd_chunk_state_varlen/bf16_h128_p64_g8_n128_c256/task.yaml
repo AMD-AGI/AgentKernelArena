@@ -1,0 +1,95 @@
+schema_version: 3
+description: >-
+  Mamba2 (SSD) final state of every sequence of a packed prefill batch with initial states. The tokens of
+  n_seqs sequences are packed back to back (cu_seqlens) and also cut into consecutive chunks of 256 tokens
+  that ignore sequence boundaries; dt, dA_cumsum and chunk_states are laid out per chunk. For sequence b
+  covering tokens [s, e), let c = (e - 1) // 256 be its last chunk, c0 = 256 * c, L = e - c0, k0 = max(s - c0, 0),
+  and dA = dA_cumsum[h, c]. The state of head h after the sequence is
+  states[b, h] = sum_{k0 <= k < L} exp(dA[L-1] - dA[k]) * dt[h, c, k] * x[c0 + k, h, :] (outer) B[c0 + k, g, :]
+  (g = h // 16, 16 heads share one group) plus a carried term exp(dA[L-1] - dA_b) * S. When the sequence
+  started before chunk c, S = chunk_states[c, h] (the state entering the chunk) and dA_b = 0; when it starts
+  inside or at the start of chunk c, S = initial_states[b, h] and dA_b = dA[s - c0 - 1] (0 when s = c0).
+  x and B are bfloat16, the dots accumulate in float32 or higher, and the states are float32.
+operator:
+  name: ssd_chunk_state_varlen
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens of all packed sequences.}
+    n_seqs: {kind: var, min: 1, max: 128, description: Sequences of the batch (at most n_tokens).}
+    num_heads: {kind: const, value: 128, description: SSM heads.}
+    head_dim: {kind: const, value: 64, description: Channels per head.}
+    num_groups: {kind: const, value: 8, description: B groups (16 heads per group).}
+    state_dim: {kind: const, value: 128, description: SSM state size.}
+    chunk_size: {kind: const, value: 256, description: Tokens per chunk.}
+  derived_axes:
+    n_chunks: ceil_div(n_tokens, chunk_size)
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    B:
+      kind: tensor
+      shape: [n_tokens, num_groups, state_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    dt:
+      kind: tensor
+      shape: [num_heads, n_chunks, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: >-
+        Discretization step of every token, U(0, 0.1). The padding slots of a partial last chunk (token >= n_tokens)
+        are never read; they keep their draw (the chunk cumsum pass writes zeros there).
+    dA_cumsum:
+      kind: tensor
+      shape: [num_heads, n_chunks, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative sum of dt * A with a negative per-head A (constant in padding).
+    cu_seqlens:
+      kind: tensor
+      shape: [n_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Token offset of every sequence boundary; sequence b is [cu_seqlens[b], cu_seqlens[b+1]).
+    chunk_states:
+      kind: tensor
+      shape: [n_chunks, num_heads, head_dim, state_dim]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: State entering each chunk (output of the state passing stage); only the last chunk of a sequence is read.
+    initial_states:
+      kind: tensor
+      shape: [n_seqs, num_heads, head_dim, state_dim]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: Cached state each sequence starts from (prefix caching / continuing sequence).
+  outputs:
+    states: {shape: [n_seqs, num_heads, head_dim, state_dim], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/mamba/triton_ops/ssd_chunk_state.py
+    license: Apache-2.0
+    modifications: >-
+      _chunk_state_varlen_kernel copied with one runtime adaptation for Triton 3.8.0 on gfx950: the masked load
+      of the carried state (chunk_states or initstates) moves into each branch of the start-position test
+      instead of following it, so the branches yield loaded values rather than a pointer tensor (Triton's
+      AMD pointer canonicalization fails when chunk_states exceeds 2 GiB and initstates does not); the
+      arithmetic and memory accesses are unchanged. The chunk_state_varlen launch wrapper is specialised to
+      the scenario (initial states always present, default 16 x 16 x 16 tiles passed explicitly through the
+      grid) and wrapped in the run() interface with a preallocated output.
+compare:
+  states: {bound: baseline_relative, max_violation_fraction: 0.001}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

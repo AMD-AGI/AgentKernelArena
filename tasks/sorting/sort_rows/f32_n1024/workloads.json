@@ -1,0 +1,121 @@
+{
+ "description": "Batched sort of 1024-element float32 rows; the row counts extend the original suite's 1024-element row shapes to batched sizes. Rows below 256 run under the timing floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "r1",
+   "axes": {
+    "n_rows": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single row of 1024-element rows"
+  },
+  {
+   "id": "r3",
+   "axes": {
+    "n_rows": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd small batch of 1024-element rows"
+  },
+  {
+   "id": "r8",
+   "axes": {
+    "n_rows": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small batch of 1024-element rows"
+  },
+  {
+   "id": "r100",
+   "axes": {
+    "n_rows": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch of 1024-element rows"
+  },
+  {
+   "id": "r1000",
+   "axes": {
+    "n_rows": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch of 1024-element rows"
+  },
+  {
+   "id": "r256",
+   "axes": {
+    "n_rows": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched row sort, 1024-element rows"
+  },
+  {
+   "id": "r1024",
+   "axes": {
+    "n_rows": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched row sort, 1024-element rows"
+  },
+  {
+   "id": "r4096",
+   "axes": {
+    "n_rows": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched row sort, 1024-element rows"
+  },
+  {
+   "id": "r16384",
+   "axes": {
+    "n_rows": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched row sort, 1024-element rows"
+  },
+  {
+   "id": "r65536",
+   "axes": {
+    "n_rows": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched row sort, 1024-element rows"
+  },
+  {
+   "id": "r262144",
+   "axes": {
+    "n_rows": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched row sort, 1024-element rows"
+  }
+ ]
+}

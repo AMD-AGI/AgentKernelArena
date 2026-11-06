@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Dense bfloat16 GEMM in the NT layout, out = a @ b.T with a[m, 4096] and b[4096, 4096] row-major, accumulated in high precision and rounded to bfloat16.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows of the activation (tokens in the batch).}
+    n: {kind: const, value: 4096, description: Output features (rows of b).}
+    k: {kind: const, value: 4096, description: Reduction length.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a16w16.py (_gemm_a16_w16_kernel), aiter/ops/triton/gemm/basic/gemm_a16w16.py (launch), aiter/ops/triton/utils/_triton/pid_preprocessing.py (remap_xcd, pid_grid), aiter/ops/triton/configs/gemm/gfx950-GEMM-A16W16.json
+    license: MIT
+    modifications: >-
+      Kernel copied unchanged apart from the removed kernel-repr helper. The tuned configuration JSON became
+      a Python table with AITER's M_LEQ_x selection; the launcher keeps only the single-K-split, no-bias,
+      no-activation path (every configuration has NUM_KSPLIT=1), writes into the preallocated output,
+      and the PID helpers it imports are inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,46 @@
+schema_version: 3
+description: >-
+  out = (a * a_scale) @ (b * b_scale)^T with float8_e4m3fn activations a [m, 2048] (one float32 scale per 1x128 group
+  along k) and weights b [4096, 2048] (one float32 scale per 128x128 block, b_scale [32, 16]), accumulated in float32
+  and rounded to bfloat16. Kernel-facing layouts: b is AITER's shuffle_weight(layout=(16, 16)) tiling and a_scale is
+  the column-major payload of the logical [m, 16] scale, stored contiguously as [m, 16] (element (row, group) at
+  offset group * m + row).
+operator: {name: gemm_a8w8_blockscale, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 4096, description: Output channels.}
+    k: {kind: const, value: 2048, description: Contracted dimension.}
+  inputs:
+    a: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    a_scale: {kind: tensor, shape: [m, k // 128], dtype: float32, distribution: {kind: generator}}
+    b: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    b_scale: {kind: tensor, shape: [n // 128, k // 128], dtype: float32, role: weight,
+              distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a8w8_blockscale.py
+      - aiter/ops/triton/gemm/basic/gemm_a8w8_blockscale.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A8W8_BLOCKSCALE_PRESHUFFLED.json
+    license: MIT
+    modifications: >-
+      Triton preshuffle kernel (_gemm_a8w8_blockscale_preshuffle_kernel) kept as is; launcher reduced to
+      writing into the preallocated output with a static dispatch over the tuned gfx950 config table
+      (all NUM_KSPLIT == 1, so split-K reduce, the gluon backend and the non-preshuffled kernel are removed);
+      pid_grid, remap_xcd and kernel_repr helpers inlined. Replaces the AITER CK/assembly
+      gemm_a8w8_blockscale_bpreshuffle, which cannot be vendored as source.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

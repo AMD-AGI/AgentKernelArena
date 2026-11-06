@@ -1,0 +1,37 @@
+schema_version: 3
+description: >-
+  out = (x * x_scale) @ (w * w_scale)^T with float8_e4m3fn activations x [m, 1024] and weights w [6144, 1024], each
+  with one e8m0 scale byte per 1x32 group along k (x_scale [m, 32], w_scale [6144, 32]; byte b means 2^(b - 127)).
+  Accumulated in float32 and rounded to bfloat16.
+operator: {name: gemm_mxfp8, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 262144, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 6144, description: Output channels.}
+    k: {kind: const, value: 1024, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    x_scale: {kind: tensor, shape: [m, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/quantization/mxfp8_amd_gfx95.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel _mxfp8_linear_kernel kept as is; the launcher _run_mxfp8_linear_kernel reduced to run() writing into
+      the preallocated output (tile selection kept); the activation quantizer, dequantize fallback and the
+      dispatching wrapper are dropped.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

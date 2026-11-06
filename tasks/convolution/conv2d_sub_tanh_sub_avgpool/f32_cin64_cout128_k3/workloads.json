@@ -1,0 +1,19 @@
+{
+  "description": "KernelBench level-2 problem 46 test shapes (batch 32-128 at 64x64 and 128x128), extended down to batch 4 at 64x64 and batch 2 at 128x128 so batch * height * width spans 128x; small, odd, rectangular and scalar-override shapes are correctness-only.",
+  "cases": [
+    {"id": "b1_h4_w4", "axes": {"batch": 1, "height": 4, "width": 4}, "checks": ["correctness"], "source": "axis minimum: one 2x2 convolution output pooled to 1x1"},
+    {"id": "b1_h4_w66", "axes": {"batch": 1, "height": 4, "width": 66}, "checks": ["correctness"], "source": "minimum height, one pooled row of 32 columns"},
+    {"id": "b3_h7_w9", "axes": {"batch": 3, "height": 7, "width": 9}, "checks": ["correctness"], "source": "odd sizes: floor-mode pooling drops the last convolution row and column"},
+    {"id": "b2_h67_w133", "axes": {"batch": 2, "height": 67, "width": 133}, "checks": ["correctness"], "source": "unaligned image, 65 pooled columns cross two column tiles"},
+    {"id": "b5_h100_w37", "axes": {"batch": 5, "height": 100, "width": 37}, "checks": ["correctness"], "source": "non-square image, odd batch"},
+    {"id": "b1_h256_w256", "axes": {"batch": 1, "height": 256, "width": 256}, "checks": ["correctness"], "source": "largest declared image"},
+    {"id": "b2_h64_w64_alt_scalars", "axes": {"batch": 2, "height": 64, "width": 64}, "scalars": {"subtract1_value": -0.3, "subtract2_value": 0.7}, "checks": ["correctness"], "source": "other subtraction constants (the two scalars are runtime inputs)"},
+    {"id": "b4_h64_w64", "axes": {"batch": 4, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench 64x64 images, small batch (extension)"},
+    {"id": "b2_h128_w128", "axes": {"batch": 2, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench 128x128 images, small batch (extension)"},
+    {"id": "b32_h64_w64", "axes": {"batch": 32, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench l2n46 get_inputs case 0"},
+    {"id": "b64_h64_w64", "axes": {"batch": 64, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench l2n46 get_inputs case 1"},
+    {"id": "b128_h64_w64", "axes": {"batch": 128, "height": 64, "width": 64}, "checks": ["correctness", "performance"], "source": "KernelBench l2n46 get_inputs case 2"},
+    {"id": "b64_h128_w128", "axes": {"batch": 64, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench l2n46 get_inputs case 3"},
+    {"id": "b128_h128_w128", "axes": {"batch": 128, "height": 128, "width": 128}, "checks": ["correctness", "performance"], "source": "KernelBench l2n46 get_inputs case 4 (the module's canonical batch_size x height x width)"}
+  ]
+}

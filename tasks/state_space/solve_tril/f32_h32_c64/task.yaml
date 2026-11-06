@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Block inverse of Gated DeltaNet chunked prefill. Tokens are split into chunks of 64 (the last may
+  be partial). For every chunk and value head, the chunk's 64x64 block of A (row r of the chunk is
+  token r, columns are chunk-local tokens) defines the matrix L = strictly lower triangle of that
+  block; the diagonal and everything above it are not part of the matrix and must be ignored (the
+  inputs carry noise there). out is the inverse (I + L)^-1, itself lower triangular with a unit
+  diagonal, in the same [token, head, column] layout; its entries above the diagonal and outside a
+  partial chunk are zero. Input and output are float32.
+operator:
+  name: solve_tril
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 409600, description: Tokens of one packed sequence batch.}
+    num_heads: {kind: const, value: 32, description: Value heads.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  inputs:
+    A:
+      kind: tensor
+      shape: [n_tokens, num_heads, chunk_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 0.05}
+      description: >-
+        Chunk blocks; only the strictly lower triangle of each chunk's 64x64 block is read, the
+        diagonal and the entries above it are ignored.
+  outputs:
+    out: {shape: [n_tokens, num_heads, chunk_size], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/third_party/flash_linear_attention/ops/solve_tril.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      merge_16x16_to_64x64_inverse_kernel with the variable-length path, the TMA path and the
+      autotune removed (single sequence, fixed 4 warps and 2 stages, ieee dot precision); the
+      forward-substitution row loads are masked to the strictly lower triangle
+      (tl.where(o_i < i, b_a, 0.), as in FLA's newer fused chunk solve), so entries on and above
+      the diagonal are ignored rather than assumed zero; the kernel additionally stores zeros into
+      the six strictly-upper 16x16 blocks, which the production wrapper obtains from
+      torch.zeros_like; wrapped in the run() interface.
+compare:
+  out: {bound: sqnr, min_db: 135}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

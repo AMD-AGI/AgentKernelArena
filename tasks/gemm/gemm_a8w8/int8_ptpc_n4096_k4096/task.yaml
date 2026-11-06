@@ -1,0 +1,40 @@
+schema_version: 3
+description: >-
+  W8A8 int8 GEMM with per-token and per-channel dequantization and a bias:
+  out = (a @ w^T) * (scale_a * scale_b^T) + bias with int8 a [m, 4096] and int8 weight w [4096, 4096] (the
+  nn.Linear layout), an exact int32 accumulation, a float32 per-row scale scale_a [m, 1] and per-output-channel
+  scale scale_b [4096, 1], rounded to float16 before the float16 bias [4096] is added.
+operator: {name: gemm_a8w8, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows of a (tokens in the batch).}
+    n: {kind: const, value: 4096, description: Output features.}
+    k: {kind: const, value: 4096, description: Contracted dimension.}
+  inputs:
+    a: {kind: tensor, shape: [m, k], dtype: int8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: int8, role: weight, distribution: {kind: generator}}
+    scale_a: {kind: tensor, shape: [m, 1], dtype: float32, distribution: {kind: generator}}
+    scale_b: {kind: tensor, shape: [n, 1], dtype: float32, role: weight, distribution: {kind: generator}}
+    bias: {kind: tensor, shape: [n], dtype: float16, role: weight, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+  outputs:
+    out: {shape: [m, n], dtype: float16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/quantization/compressed_tensors/triton_scaled_mm.py
+    license: Apache-2.0
+    modifications: >-
+      The scaled_mm_kernel is unchanged. The triton_scaled_mm wrapper is reduced to run(): the vector-scale
+      and heuristic-tile path (use_heuristic=True) writing into the preallocated output, with the argument
+      asserts, the scalar-scale branch and the output-dtype conversion removed; the weight is passed as the
+      transposed view of the [n, k] tensor, and the vllm.triton_utils import is replaced by triton.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

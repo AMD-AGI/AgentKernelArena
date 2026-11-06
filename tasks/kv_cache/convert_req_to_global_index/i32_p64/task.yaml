@@ -1,0 +1,61 @@
+schema_version: 3
+description: >-
+  Translation of request-local token indices to global KV-cache slot indices through per-request
+  block tables, as sparse-attention (DSA) metadata is built: out[t, j] = block_table[req_id[t], i // 64]
+  * 64 + i % 64 with i = token_indices[t, j]. Entries with i < 0, or a block index i // 64 beyond the
+  block table, produce -1. All tensors are int32; the block size is 64 and each token carries 2048
+  indices.
+operator:
+  name: convert_req_to_global_index
+  category: kv_cache
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 262144, description: Query tokens in the batch (one index row each).}
+    n_requests: {kind: const, value: 64, description: Requests whose block tables are addressed.}
+    max_blocks_per_req: {kind: const, value: 2048, description: Block-table width (131072 tokens of context at block size 64).}
+    topk: {kind: const, value: 2048, description: Selected indices per token.}
+    block_size: {kind: const, value: 64, description: Tokens per KV-cache block.}
+  inputs:
+    req_id:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: randint, low: 0, high: 64}
+      description: Request of each token.
+    block_table:
+      kind: tensor
+      shape: [n_requests, max_blocks_per_req]
+      dtype: int32
+      role: metadata
+      distribution: {kind: randint, low: 0, high: 1048576}
+      description: Physical block of each logical block of each request.
+    token_indices:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Request-local token positions; -1 marks an unused entry.
+  outputs:
+    out: {shape: [n_tokens, topk], dtype: int32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/backends/mla/sparse_utils.py
+    license: Apache-2.0
+    modifications: >-
+      Simplified copy of the kernel before its prefill-workspace, compaction and decode-context-parallel
+      options: those paths are removed (the plain translation and its -1 guards are unchanged).
+      Wrapped in the run() interface writing into the preallocated output; block size and tile
+      width fixed as module constants; the optional valid-count output is not used.
+compare:
+  out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

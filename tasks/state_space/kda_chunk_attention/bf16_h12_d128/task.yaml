@@ -1,0 +1,99 @@
+schema_version: 3
+description: >-
+  Kimi Delta Attention (KDA) chunked prefill of Kimi-K3 (chunk_kda_with_fused_gate with the safe
+  gate, query/key L2 normalization in the kernel and the final state returned) for a batch of
+  n_seqs sequences of seq_len tokens, 12 heads of dimension 128 (q, k and v share the head count).
+  Per sequence and head, starting from the state S[v, k] = initial_state: q and k are divided by
+  sqrt(|x|^2 + 1e-6) and q is scaled by 128^-1/2; per token t and key channel the log-decay is
+  g = lower_bound * sigmoid(exp(A_log[h]) * (raw_g + dt_bias[h, channel])); then
+  S = S * exp(g) over the key axis, S = S + sigmoid(raw_beta) * (v - S k) k^T, and o = S q.
+  final_state is S after the last token. q, k, v, raw_g, raw_beta and o are bfloat16; A_log,
+  dt_bias and both states are float32; lower_bound is -5.0.
+operator:
+  name: kda_chunk_attention
+  category: state_space
+interface:
+  axes:
+    n_seqs: {kind: var, min: 1, max: 64, description: Prefill sequences in the batch (equal lengths).}
+    seq_len: {kind: var, min: 1, max: 32768, description: Tokens per sequence.}
+    num_heads: {kind: const, value: 12, description: KDA heads per rank (96 heads at tensor parallel 8).}
+    head_dim: {kind: const, value: 128, description: Head dimension of q k and v (equal).}
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_seqs, seq_len, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.2069, std: 0.5599}
+      description: Queries after the short convolution and SiLU (moments of SiLU(N(0, 1))), not yet normalized.
+    k:
+      kind: tensor
+      shape: [n_seqs, seq_len, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.2069, std: 0.5599}
+      description: Keys after the short convolution and SiLU, not yet normalized.
+    v:
+      kind: tensor
+      shape: [n_seqs, seq_len, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.2069, std: 0.5599}
+      description: Values after the short convolution and SiLU.
+    raw_g:
+      kind: tensor
+      shape: [n_seqs, seq_len, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Gate projection before the bias and the safe-gate activation.
+    raw_beta:
+      kind: tensor
+      shape: [n_seqs, seq_len, num_heads]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Delta-rule write strength before the sigmoid.
+    A_log:
+      kind: tensor
+      shape: [num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.0, high: 1.5}
+      description: Per-head log decay scale.
+    dt_bias:
+      kind: tensor
+      shape: [num_heads * head_dim]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -8.0, high: 0.0}
+      description: Per-channel gate bias, laid out head-major as in the model; spreads the per-channel decay from none to fast.
+    initial_state:
+      kind: tensor
+      shape: [n_seqs, num_heads, head_dim, head_dim]
+      dtype: float32
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Recurrent state of every sequence before this prefill, [sequence, head, value, key]; read only.
+    lower_bound: {kind: scalar, dtype: float32, default: -5.0, description: Kimi-K3 gate_lower_bound (selects the safe gate).}
+  outputs:
+    o: {shape: [n_seqs, seq_len, num_heads, head_dim], dtype: bfloat16}
+    final_state: {shape: [n_seqs, num_heads, head_dim, head_dim], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: >-
+      vllm/models/kimi_k3/amd/ops/third_party/kda/chunk.py, vllm/models/kimi_k3/amd/ops/third_party/kda/chunk_intra.py,
+      vllm/third_party/flash_linear_attention/ops/chunk_delta_h.py, vllm/third_party/flash_linear_attention/ops/l2norm.py
+    license: Apache-2.0 (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      chunk_kda_with_fused_gate for the fixed-length batch layout (no cu_seqlens; one batch row per
+      sequence) and the safe-gate path only. The kernels are copied unchanged except that each
+      autotune decorator is replaced by one fixed entry of its configuration space. The output is
+      written into the preallocated o instead of overwriting v, and the final state into the
+      preallocated final_state; only the default fused L2-norm kernel is kept. Wrapped in run().
+compare:
+  o: {bound: baseline_relative, k: 6}
+  final_state: {bound: baseline_relative, k: 6}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

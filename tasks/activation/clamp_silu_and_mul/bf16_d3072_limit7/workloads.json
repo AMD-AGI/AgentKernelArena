@@ -1,0 +1,126 @@
+{
+  "description": "Token counts through a clamped-SwiGLU FFN activation with 1536-wide gate/up halves; decode batches and small prefill are correctness-only (below the 10 us timing floor).",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, odd batch"
+    },
+    {
+      "id": "t48",
+      "axes": {
+        "n_tokens": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 48"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill"
+    },
+    {
+      "id": "t5120",
+      "axes": {
+        "n_tokens": 5120
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "short prefill chunk"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t65536",
+      "axes": {
+        "n_tokens": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "t196608",
+      "axes": {
+        "n_tokens": 196608
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large batched prefill"
+    },
+    {
+      "id": "t524288",
+      "axes": {
+        "n_tokens": 524288
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "maximum batched prefill"
+    },
+    {
+      "id": "t1_nolimit",
+      "axes": {
+        "n_tokens": 1
+      },
+      "scalars": {
+        "swiglu_limit": 0.0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "swiglu_limit <= 0 disables clamping (AITER test config)"
+    },
+    {
+      "id": "t1000_nolimit",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "scalars": {
+        "swiglu_limit": 0.0
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "swiglu_limit <= 0 disables clamping (AITER test config)"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "description": "Feature-map sizes of KernelBench level 3 problem 31 (embed_dim 128, 4 heads; batch 2 at 128x128) and the old task's escalation (batch 2-8 at 32x32, 64x64 and 128x128 images), extended to batch 1 at 32x32, batch 4 at 64x64 and batch 8 at 128x128 to span the attention cost. Small feature maps (7x7 to 16x16) run near or below the 10 us timing floor and are correctness-only; the 33x33 maps are a correctness-only boundary case (unaligned positions across many key blocks).",
+  "cases": [
+    {"id": "b1_hw49", "axes": {"batch": 1, "hw": 49}, "checks": ["correctness"], "source": "7x7 feature map (smallest), batch 1"},
+    {"id": "b3_hw81", "axes": {"batch": 3, "hw": 81}, "checks": ["correctness"], "source": "9x9 feature map, odd batch (unaligned positions)"},
+    {"id": "b2_hw196", "axes": {"batch": 2, "hw": 196}, "checks": ["correctness"], "source": "14x14 feature map (224-pixel image in 16-pixel patches)"},
+    {"id": "b16_hw256", "axes": {"batch": 16, "hw": 256}, "checks": ["correctness"], "source": "16x16 feature map, batch 16"},
+    {"id": "b5_hw1089", "axes": {"batch": 5, "hw": 1089}, "checks": ["correctness"], "source": "33x33 feature map (unaligned positions across many key blocks)"},
+    {"id": "b1_hw1024", "axes": {"batch": 1, "hw": 1024}, "checks": ["correctness", "performance"], "source": "32x32 image, batch 1"},
+    {"id": "b2_hw1024", "axes": {"batch": 2, "hw": 1024}, "checks": ["correctness", "performance"], "source": "old task case 0: batch 2, 32x32"},
+    {"id": "b4_hw1024", "axes": {"batch": 4, "hw": 1024}, "checks": ["correctness", "performance"], "source": "old task case 1: batch 4, 32x32"},
+    {"id": "b8_hw1024", "axes": {"batch": 8, "hw": 1024}, "checks": ["correctness", "performance"], "source": "old task case 3: batch 8, 32x32"},
+    {"id": "b2_hw4096", "axes": {"batch": 2, "hw": 4096}, "checks": ["correctness", "performance"], "source": "old task case 2: batch 2, 64x64"},
+    {"id": "b4_hw4096", "axes": {"batch": 4, "hw": 4096}, "checks": ["correctness", "performance"], "source": "batch 4, 64x64"},
+    {"id": "b2_hw16384", "axes": {"batch": 2, "hw": 16384}, "checks": ["correctness", "performance"], "source": "KernelBench default and old task case 4: batch 2, 128x128"},
+    {"id": "b8_hw16384", "axes": {"batch": 8, "hw": 16384}, "checks": ["correctness", "performance"], "source": "batch 8, 128x128"}
+  ]
+}

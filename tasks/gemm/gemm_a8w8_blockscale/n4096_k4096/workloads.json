@@ -1,0 +1,223 @@
+{
+  "description": "Token counts through an N=4096, K=4096 block-scaled FP8 projection; chunks below 512 tokens run under the 10 us floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum, single-token decode"
+    },
+    {
+      "id": "m2",
+      "axes": {
+        "m": 2
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tile-configuration bin of the tuned table (every power-of-two token count of the old task)"
+    },
+    {
+      "id": "m4",
+      "axes": {
+        "m": 4
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tile-configuration bin of the tuned table (every power-of-two token count of the old task)"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small decode batch"
+    },
+    {
+      "id": "m16",
+      "axes": {
+        "m": 16
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tile-configuration bin of the tuned table (every power-of-two token count of the old task)"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, unaligned batch"
+    },
+    {
+      "id": "m32",
+      "axes": {
+        "m": 32
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tile-configuration bin of the tuned table (every power-of-two token count of the old task)"
+    },
+    {
+      "id": "m64",
+      "axes": {
+        "m": 64
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tile-configuration bin of the tuned table (every power-of-two token count of the old task)"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "below one 128-row tile, non-power-of-two"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "m": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tile-configuration bin of the tuned table (every power-of-two token count of the old task)"
+    },
+    {
+      "id": "m129",
+      "axes": {
+        "m": 129
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "just above one 128-row tile"
+    },
+    {
+      "id": "m256",
+      "axes": {
+        "m": 256
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small prefill chunk, below the 10 us floor"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    },
+    {
+      "id": "m32768",
+      "axes": {
+        "m": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    },
+    {
+      "id": "m65536",
+      "axes": {
+        "m": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of a 4096-wide block-scaled projection"
+    }
+  ]
+}

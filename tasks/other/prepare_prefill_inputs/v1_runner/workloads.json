@@ -1,0 +1,167 @@
+{
+ "description": "Per-step batches of the vLLM v1 model runner with up to 1024 requests. Decode-sized batches are launch-bound (a few microseconds) and correctness-only; batches of long prefill chunks are timed.",
+ "cases": [
+  {
+   "id": "r1_q1",
+   "axes": {
+    "num_reqs": 1,
+    "query_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single decode request"
+  },
+  {
+   "id": "r3_q1025",
+   "axes": {
+    "num_reqs": 3,
+    "query_len": 1025
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "few requests with a tile tail"
+  },
+  {
+   "id": "r37_q1000",
+   "axes": {
+    "num_reqs": 37,
+    "query_len": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch of ~1000-token chunks"
+  },
+  {
+   "id": "r8_q4",
+   "axes": {
+    "num_reqs": 8,
+    "query_len": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "speculative decode batch"
+  },
+  {
+   "id": "r512_q5",
+   "axes": {
+    "num_reqs": 512,
+    "query_len": 5
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "full decode batch with draft tokens"
+  },
+  {
+   "id": "r64_q513",
+   "axes": {
+    "num_reqs": 64,
+    "query_len": 513
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "chunks with a tile tail"
+  },
+  {
+   "id": "r1_q16384",
+   "axes": {
+    "num_reqs": 1,
+    "query_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "1 request(s) with ~16384-token chunks"
+  },
+  {
+   "id": "r1_q65536",
+   "axes": {
+    "num_reqs": 1,
+    "query_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "1 request(s) with ~65536-token chunks"
+  },
+  {
+   "id": "r8_q16384",
+   "axes": {
+    "num_reqs": 8,
+    "query_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8 request(s) with ~16384-token chunks"
+  },
+  {
+   "id": "r64_q16384",
+   "axes": {
+    "num_reqs": 64,
+    "query_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "64 request(s) with ~16384-token chunks (beyond a typical step budget, upper bound)"
+  },
+  {
+   "id": "r256_q16384",
+   "axes": {
+    "num_reqs": 256,
+    "query_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "256 request(s) with ~16384-token chunks (beyond a typical step budget, upper bound)"
+  },
+  {
+   "id": "r64_q65536",
+   "axes": {
+    "num_reqs": 64,
+    "query_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "64 request(s) with ~65536-token chunks (beyond a typical step budget, upper bound)"
+  },
+  {
+   "id": "r256_q65536",
+   "axes": {
+    "num_reqs": 256,
+    "query_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "256 request(s) with ~65536-token chunks (beyond a typical step budget, upper bound)"
+  },
+  {
+   "id": "r1024_q16384",
+   "axes": {
+    "num_reqs": 1024,
+    "query_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "1024 request(s) with ~16384-token chunks (beyond a typical step budget, upper bound)"
+  }
+ ]
+}

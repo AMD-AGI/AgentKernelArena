@@ -1,0 +1,50 @@
+schema_version: 3
+description: >-
+  Gated RMSNorm of each row (one row is one token and head): out = x * rsqrt(mean(x^2) + epsilon) * weight *
+  silu(z), the normalization applied before the gate, silu(z) = z * sigmoid(z), the mean taken over the head
+  dimension in high precision and the result rounded to bfloat16.
+operator:
+  name: rms_norm_gated
+  category: normalization
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 6553600, description: "Rows of the batch (tokens times heads)."}
+    head_dim: {kind: const, value: 128, description: "Normalized width of one head."}
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    z:
+      kind: tensor
+      shape: [n_rows, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [head_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [n_rows, head_dim], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/mamba/ops/layernorm_gated.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel body unchanged; the launcher _layer_norm_fwd is reduced to this scenario (RMS norm, no bias, SiLU gate
+      applied after the norm, group size equal to the row width) and rewritten as run() writing into the
+      preallocated output; the unused mean output is dropped.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,66 @@
+schema_version: 3
+description: >-
+  out = scale_factor * sum(max_pool1d(x @ weight.T + bias, kernel_size=2), dim=1) for x [batch, 32768] and an
+  nn.Linear(32768, 32768) weight [32768, 32768] and bias [32768], all row-major float32: the product and its
+  accumulation in IEEE float32 (no TF32 or reduced-precision inputs), the maximum of each non-overlapping pair
+  of output features (2j, 2j + 1), the sum of the 16384 pair maxima of each row, times scale_factor
+  (0.5), output float32 [batch].
+operator: {name: matmul_maxpool_sum_scale, category: gemm}
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 1024, description: Rows of x and elements of out.}
+    in_features: {kind: const, value: 32768, description: Contracted dimension.}
+    out_features: {kind: const, value: 32768, description: "Linear outputs, max-pooled in pairs and summed."}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, in_features]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    weight:
+      kind: tensor
+      shape: [out_features, in_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.005524271728019902, high: 0.005524271728019902}
+    bias:
+      kind: tensor
+      shape: [out_features]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.005524271728019902, high: 0.005524271728019902}
+    scale_factor: {kind: scalar, dtype: float32, default: 0.5}
+  outputs:
+    out: {shape: [batch], dtype: float32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: pytorch/pytorch
+    revision: d0f2af8b66b20da4baa50644c0cd3f887a2eae2e
+    path:
+      - torch/_inductor/kernel/templates/triton_mm.py.jinja
+      - torch/_inductor/kernel/mm_common.py
+      - torch/_inductor/heuristics/template/triton_addmm.py
+      - torch/_inductor/lowering.py
+      - torch/_inductor/codegen/triton.py
+      - torch/_inductor/heuristics/template/triton.py
+      - torch/_inductor/heuristics/triton_codegen/reduction.py
+    license: BSD-3-Clause
+    modifications: >-
+      Triton rewrite of the two kernels Inductor's max-autotune generates for this module on ROCm, written
+      by hand as standalone @triton.jit kernels (no GPU was available to run Inductor): the mm template
+      rendered for row-major x and the transposed row-major weight with the addmm bias epilogue, and the
+      looped sum reduction with the unrolled two-element max pool fused in and the scale applied before the
+      store. One mm config per M bucket, taken from the ROCm mm_configs list, instead of autotuning; the
+      template's M >= BLOCK_M contiguity test passed in as a constexpr because M is a runtime argument; the
+      zero-size early exit dropped (batch >= 1); a single, unsplit reduction kernel for every batch;
+      scale_factor passed as a scalar argument instead of a baked-in constant; allow_tf32=False written as
+      input_precision="ieee"; wrapped in the run() interface with the intermediate product in a buffer
+      allocated per call.
+compare:
+  out: {bound: sqnr, min_db: 122}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

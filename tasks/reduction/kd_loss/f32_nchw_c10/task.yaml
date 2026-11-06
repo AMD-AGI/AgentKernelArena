@@ -1,0 +1,57 @@
+schema_version: 3
+description: >-
+  Knowledge-distillation loss of float32 NCHW logits against a soft target distribution: the
+  per-pixel KL divergence pixel_kl = sum over classes of target * (log(target) - log_softmax(input /
+  temp_factor, dim=1)), and the scalar out = sum(pixel_kl) * temp_factor^2 / n, summed over every
+  pixel and image and normalized by the batch size n.
+operator:
+  name: kd_loss
+  category: reduction
+interface:
+  axes:
+    n: {kind: var, min: 1, max: 2048, description: Images in the batch.}
+    channels: {kind: const, value: 10, description: "Classes (the softmax axis, dim 1)."}
+    height: {kind: const, value: 64}
+    width: {kind: const, value: 64}
+  inputs:
+    input:
+      kind: tensor
+      shape: [n, channels, height, width]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 8.0}
+      description: Student logits.
+    target:
+      kind: tensor
+      shape: [n, channels, height, width]
+      dtype: float32
+      distribution: {kind: generator}
+      description: >-
+        Per-pixel probability distribution over the channel axis, softmax(teacher logits /
+        temp_factor) for teacher logits of the student's spread.
+    temp_factor: {kind: scalar, dtype: float32, default: 4.0}
+  outputs:
+    pixel_kl: {shape: [n, height, width], dtype: float32}
+    out: {shape: [], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: hip
+  entry: baseline/kernel.hip
+  provenance:
+    source: AMD AgentKernelArena hip2hip task KDLoss (provided HIP baseline)
+    revision: 1605c320347fc917e143a0dbfa71603d7d57c9cb
+    path: tasks/hip2hip/KDLoss/hip/hip_14007_KDLoss_ref.hip
+    license: Apache-2.0
+    modifications: >-
+      Float32 NCHW only; pybind module and host-side allocation removed; each slice's block
+      reduction result (its KL divergence) is also stored into the caller's pixel_kl output; the
+      scalar output is written by the finalize kernel; the running sum is a device float64
+      accumulator (float64 atomicAdd on a zeroed at::zeros scratch scalar) instead of float32
+      atomics on the output, because float32 accumulation of 8.4 million terms was off by 1.2e-3
+      at n=2048; registered as the run() torch op.
+compare:
+  pixel_kl: {bound: sqnr, min_db: 128.0}
+  out: {bound: tolerance, atol: 1.0e-6, rtol: 1.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

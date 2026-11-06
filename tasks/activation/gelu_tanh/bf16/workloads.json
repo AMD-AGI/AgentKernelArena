@@ -1,0 +1,14 @@
+{
+  "description": "Flat activation sizes: token count times intermediate width of gated and ungated MLPs; tiny sizes are correctness-only.",
+  "cases": [
+    {"id": "n1", "axes": {"numel": 1}, "checks": ["correctness"], "source": "axis minimum"},
+    {"id": "n3", "axes": {"numel": 3}, "checks": ["correctness"], "source": "odd tiny size"},
+    {"id": "n1000", "axes": {"numel": 1000}, "checks": ["correctness"], "source": "unaligned size"},
+    {"id": "n1048583", "axes": {"numel": 1048583}, "checks": ["correctness"], "source": "unaligned, not a multiple of the block"},
+    {"id": "n8388608", "axes": {"numel": 8388608}, "checks": ["correctness", "performance"], "source": "2048 tokens x 4096"},
+    {"id": "n33554432", "axes": {"numel": 33554432}, "checks": ["correctness", "performance"], "source": "2048 tokens x 16384"},
+    {"id": "n134217728", "axes": {"numel": 134217728}, "checks": ["correctness", "performance"], "source": "8192 tokens x 16384"},
+    {"id": "n536870912", "axes": {"numel": 536870912}, "checks": ["correctness", "performance"], "source": "32768 tokens x 16384"},
+    {"id": "n838860800", "axes": {"numel": 838860800}, "checks": ["correctness", "performance"], "source": "65536 tokens x 12800"}
+  ]
+}
