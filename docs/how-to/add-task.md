@@ -162,7 +162,7 @@ value before every call.
 
 | Bound | Parameters | Meaning |
 | --- | --- | --- |
-| `baseline_relative` (default) | `k` (2), `max_violation_fraction` (0), `baseline_min_sqnr_db` (25) | Each element within `k ×` the baseline's own error (or its per-row RMS) plus one output rounding; the mean error must be unbiased relative to the baseline's. |
+| `baseline_relative` (default) | `k` (2), `max_violation_fraction` (0), `baseline_min_sqnr_db` (25) | Each element within `k ×` the baseline's own error (or its per-row RMS; rows of fewer than 8 elements use the whole output's RMS) plus one output rounding; the mean error must be unbiased relative to the baseline's. |
 | `exact` | | Bitwise equality. Required for integer, boolean and packed outputs. |
 | `tolerance` | `atol`, `rtol`, `max_violation_fraction` | Fixed tolerances. |
 | `sqnr` | `min_db` | Signal-to-noise ratio of the whole output. |

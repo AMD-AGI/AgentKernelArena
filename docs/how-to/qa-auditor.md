@@ -23,8 +23,10 @@ contract; this page owns the audit rubric.
    in a target language. The captured evidence is trusted framework state.
 2. The auditor runs its **deterministic checks** over the task package, that
    evidence and a GPU **control suite** (known-wrong implementations the
-   correctness check must reject). No model is involved, and the checks run
-   before any model sees the workspace.
+   correctness check must reject). A perturbing control that never changes a
+   checked tensor (for example fp8 rounding of integer outputs, or zeroing half
+   of a single-element output) is reported as not applicable instead. No model
+   is involved, and the checks run before any model sees the workspace.
 3. A **model review** reads the task for problems the deterministic checks
    cannot see (semantic mismatches, unexercised input domains,
    unrepresentative workloads, false README or provenance claims). Its

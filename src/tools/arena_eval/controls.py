@@ -39,7 +39,10 @@ def _mutants(contract, baseline: Callable) -> dict[str, Callable]:
         return None
 
     def zeros(**call):
+        baseline(**call)
         for name in contract.checked_tensors:
+            if bool(call[name].ne(0).any()):
+                effective.add("zeros")
             call[name].zero_()
 
     def half(**call):
@@ -47,7 +50,10 @@ def _mutants(contract, baseline: Callable) -> dict[str, Callable]:
         for name in contract.checked_tensors:
             flat = call[name].view(-1)
             if flat.numel() >= 2:
-                flat[flat.numel() // 2:].zero_()
+                tail = flat[flat.numel() // 2:]
+                if bool(tail.ne(0).any()):
+                    effective.add("half_written")
+                tail.zero_()
 
     def stale(**call):
         if not cache:
@@ -72,8 +78,12 @@ def _mutants(contract, baseline: Callable) -> dict[str, Callable]:
             dtype = str(tensor.dtype).removeprefix("torch.")
             if dtype in values.UNIT_ROUNDOFF:
                 factor = 1.0 + RELATIVE_SHIFT_ULPS * values.UNIT_ROUNDOFF[dtype]
-                tensor.copy_((tensor.double() * factor).to(tensor.dtype))
+                shifted_value = (tensor.double() * factor).to(tensor.dtype)
+                if not torch.equal(values.tensor_bytes(shifted_value), values.tensor_bytes(tensor)):
+                    effective.add("shifted_16_ulp")
+                tensor.copy_(shifted_value)
             elif tensor.numel():
+                effective.add("shifted_16_ulp")
                 raw = tensor.view(-1).view(torch.uint8)
                 raw[0] ^= 1
 
@@ -215,9 +225,10 @@ def run_controls() -> dict:
                     rejected[name].append(case.case_id)
             except Exception as exc:  # A crash also rejects the control.
                 rejected[name].append(f"{case.case_id}:{type(exc).__name__}")
-    # fp8 rounding is a no-op on integer outputs and on values fp8 represents exactly (masks, small
-    # counts): a control that never changed a checked tensor proves nothing and is not applicable.
-    not_applicable = sorted(name for name in ("fp8_rounded",)
+    # A perturbing control that never changed a checked tensor returned the baseline's own outputs, so it
+    # proves nothing about the task and is not applicable: fp8 rounding of integer outputs or of values fp8
+    # represents exactly, zeroing a half that is already zero, a single-element output, an all-zero output.
+    not_applicable = sorted(name for name in ("zeros", "half_written", "shifted_16_ulp", "fp8_rounded")
                             if name in rejected and not rejected[name] and name not in effective)
     for name in not_applicable:
         del rejected[name]

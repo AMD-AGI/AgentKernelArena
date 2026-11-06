@@ -170,3 +170,39 @@ def test_float32_probe_serves_float64_requests_in_float32_and_restores_torch():
         assert x.double().dtype == torch.float32 and x.to(torch.double).dtype == torch.float32
     assert torch.float64 is not torch.float32 and x.double().dtype == torch.float64
     assert torch.zeros(1, dtype=torch.float64).dtype == torch.float64
+
+
+def test_perturbing_controls_that_change_nothing_are_not_counted_as_applied():
+    from types import SimpleNamespace
+
+    from src.tools.arena_eval.controls import _mutants
+
+    contract = SimpleNamespace(inputs={"x": {"kind": "tensor"}}, mutable=(), checked_tensors=("out",))
+
+    def baseline(*, x, out):
+        out.copy_(x)
+
+    scalar = _mutants(contract, baseline)
+    scalar["half_written"](x=torch.tensor(3.0), out=torch.empty(()))
+    scalar["zeros"](x=torch.zeros(4), out=torch.empty(4))
+    scalar["shifted_16_ulp"](x=torch.zeros(4), out=torch.empty(4))
+    assert not scalar["_effective"] & {"half_written", "zeros", "shifted_16_ulp"}
+    vector = _mutants(contract, baseline)
+    vector["half_written"](x=torch.arange(1.0, 5.0), out=torch.empty(4))
+    vector["zeros"](x=torch.arange(1.0, 5.0), out=torch.empty(4))
+    vector["shifted_16_ulp"](x=torch.arange(1.0, 5.0), out=torch.empty(4))
+    assert {"half_written", "zeros", "shifted_16_ulp"} <= vector["_effective"]
+
+
+def test_short_rows_use_the_whole_outputs_baseline_rms():
+    torch.manual_seed(0)
+    reference = torch.randn(4096, 1, dtype=torch.float64)
+    baseline = (reference + 1e-6 * torch.randn_like(reference)).float()
+    baseline[0, 0] = reference[0, 0].float()  # the baseline happens to be exact on one row
+    candidate = (reference + 1e-6 * torch.randn_like(reference)).float()
+    result = compare_tensor({"bound": "baseline_relative", "k": 8}, candidate, reference, dtype_name="float32",
+                            baseline=baseline)
+    assert result.passed
+    shifted = (reference * (1 + 64 * 2.0 ** -24) + 1e-4).float()
+    assert not compare_tensor({"bound": "baseline_relative", "k": 8}, shifted, reference, dtype_name="float32",
+                              baseline=baseline).passed

@@ -20,6 +20,7 @@ import torch
 from .values import UNIT_ROUNDOFF, tensor_bytes, is_exact_dtype
 
 OUTPUT_ROUNDING_MULTIPLE = 2.0
+MIN_ROW_ELEMENTS = 8
 DEFAULT_MAX_ERROR_MULTIPLE = 2.0
 
 
@@ -158,6 +159,14 @@ def compare_tensor(declaration: dict, actual: torch.Tensor, reference: torch.Ten
         squares = torch.where(compared, baseline_error.square(), torch.zeros_like(baseline_error))
         count = compared.sum(-1) if y.dim() else compared.reshape(1).sum(-1)
         rms = (squares.sum(-1) / count).sqrt() if y.dim() else (squares / count).sqrt()
+        if y.dim():
+            # A row of a few elements gives a one- or few-sample error estimate, so a correct candidate
+            # fails wherever the baseline happened to be exact. Such rows use the whole output's RMS.
+            short = count < MIN_ROW_ELEMENTS
+            if bool(short.any()):
+                total = compared.sum()
+                pooled = (squares.sum() / total).sqrt() if bool(total) else torch.full_like(rms, math.nan)
+                rms = torch.where(short, pooled, rms)
         rms_b = rms[..., None] if y.dim() else rms
         relative = k * torch.maximum(baseline_error.abs(), rms_b)
         rounding = u * y.abs()
