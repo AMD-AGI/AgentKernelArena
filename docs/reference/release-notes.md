@@ -20,19 +20,30 @@ This topic summarizes the features available in each AgentKernelArena release. F
   run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
   `{path, target_language}` overrides) selects it. See
   [Task definition, schema, and authoring](../how-to/add-task.md).
+- The suite has 326 kernel tasks covering 209 operators in 16 categories, with
+  production baselines vendored from vLLM, SGLang and AITER (245 Triton, 42
+  FlyDSL, 38 HIP and one TileLang). Every task has a framework-finalized QA
+  `PASS` on MI355X for its exact package.
 - All four languages are verified on MI355X (`gfx950`); other architectures are
   implemented but unverified.
+- Correctness compares every output with the float64 reference. The default
+  `baseline_relative` bound allows twice the baseline's own error (or its
+  per-row RMS over the row's nonzero elements) plus one output rounding.
+  `max_violation_fraction` never admits an element more than 16× over the
+  bound. Integer and packed outputs compare exactly.
 - Timing is a cold-cache CUDA graph per call. The final evaluation remeasures
   the baseline interleaved with the candidate, and a task's speedup is the
   geometric mean over its performance cases.
 - The `qa_auditor` agent replaces `task_validator`. It reports itemized
   blocking and warning findings, makes a model-review finding blocking only
   through a counterexample the framework reproduces twice, and writes
-  `qa_report.yaml` and a `qa_summary.json`. See
+  `qa_report.yaml` and a `qa_summary.json`. Seven known-wrong control
+  implementations must fail correctness, and a float32 evaluation of the
+  reference is checked against each task's bound (`QA-BOUND-CALIBRATION`). See
   [Audit tasks with the QA auditor](../how-to/qa-auditor.md).
 - The earlier task families (`triton2triton`, `hip2hip`, `torch2hip`,
   `triton2flydsl`, `torch2flydsl`, `flydsl2flydsl`, `Aiter-task`,
-  `image_kernel`) are replaced by the new tasks; no compatibility layer is
+  `Aiter-task-mi300`, `image_kernel`) are replaced by the new tasks; no compatibility layer is
   provided. The end-to-end serving tasks keep schema v2.
 
 ## AgentKernelArena 0.4.0
