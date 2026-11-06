@@ -145,7 +145,7 @@ agent:
   backend: claude_code      # claude_code | codex | none
 
 tasks:
-  - normalization
+  - "*/normalization"   # every baseline language
 
 target_gpu_model: MI355X
 log_directory: logs

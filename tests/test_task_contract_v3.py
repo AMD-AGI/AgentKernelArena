@@ -15,8 +15,8 @@ from src.task_contract import (
 from src.task_spec import TaskConfigError, TaskSpec, load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-PILOT = ROOT / "tasks/normalization/rms_norm/bf16_h8192"
-PILOT_ID = "normalization/rms_norm/bf16_h8192"
+PILOT = ROOT / "tasks/triton/normalization/rms_norm/bf16_h8192"
+PILOT_ID = "triton/normalization/rms_norm/bf16_h8192"
 
 
 def _raw():

@@ -2,7 +2,7 @@
 # See docs/how-to/qa-auditor.md. Kernel tasks need no target_language: the audit
 # qualifies the task itself. `all` also selects the schema-v2 serving tasks under
 # tasks/e2e/, which need a budget and a prepared runtime binding (see
-# e2e_qwen3_qa_mi355x.yaml); select category prefixes such as `normalization`
+# e2e_qwen3_qa_mi355x.yaml); select path prefixes such as `triton` or `"*/normalization"`
 # instead to audit kernel tasks only.
 #
 # Run with:

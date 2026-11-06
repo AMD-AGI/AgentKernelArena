@@ -261,8 +261,8 @@ def test_v3_prompt_is_built_from_the_workspace_execution_record(runtime, tmp_pat
     from src.task_contract import render_workspace
 
     _, _, workspace = runtime
-    task_root = Path(__file__).resolve().parents[1] / "tasks/normalization/rms_norm/bf16_h8192"
-    task_id = "normalization/rms_norm/bf16_h8192"
+    task_root = Path(__file__).resolve().parents[1] / "tasks/triton/normalization/rms_norm/bf16_h8192"
+    task_id = "triton/normalization/rms_norm/bf16_h8192"
     shutil.rmtree(workspace)
     shutil.copytree(task_root, workspace, ignore=shutil.ignore_patterns("__pycache__"))
     render_workspace(task_root, workspace, task_id=task_id, target_language=language)

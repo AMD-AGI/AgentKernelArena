@@ -31,10 +31,10 @@ same workloads, so their speedups are comparable.
 
 A *scenario* fixes everything except the varying axes: dtypes, constant
 dimensions, layouts and attributes. Two scenarios of one operator are two tasks,
-for example `tasks/gemm/gemm_a8w8/n4096_k4096/` and `.../n8192_k1024/`.
+for example `tasks/triton/gemm/gemm_a8w8/n4096_k4096/` and `.../n1280_k8192/`.
 
 ```text
-tasks/<category>/<operator>/<scenario>/
+tasks/<baseline_language>/<category>/<operator>/<scenario>/
   task.yaml
   workloads.json
   reference.py
@@ -46,9 +46,20 @@ tasks/<category>/<operator>/<scenario>/
   README.md
 ```
 
-`<category>` is one of: activation, attention, convolution, elementwise,
-embedding, gemm, kv_cache, moe, normalization, positional, quantization,
-reduction, sampling, sorting, state_space, other.
+`<baseline_language>` is the task's `baseline.language` (`triton`, `gluon`,
+`hip`, `flydsl` or `tilelang`). It records what the vendored baseline is written
+in, not what a candidate must use: every target language can optimize every
+task. `<category>` is the task's `operator.category`, one of: activation,
+attention, convolution, elementwise, embedding, gemm, kv_cache, moe,
+normalization, positional, quantization, reduction, sampling, sorting,
+state_space, other. `<operator>` is its `operator.name`. The CPU pre-check
+`python3 -m src.tools.check_task tasks/<...>/<scenario>` rejects a
+package filed anywhere else, so scenarios of one operator with baselines in
+different languages sit under different language directories.
+
+The path below `tasks/` is the task ID. Correctness inputs are drawn from seeds
+derived from it, so moving a task, including to follow a baseline replaced by
+one in another language, changes its inputs and needs a fresh QA audit.
 
 The names `config.yaml`, `solution/` and `_aka_eval/` are reserved: the
 framework generates them in each run workspace.
@@ -331,8 +342,9 @@ agent: {template: claude_code}
 target_gpu_model: MI355X
 target_language: triton            # triton | gluon | hip | flydsl
 tasks:
-  - normalization
-  - {path: gemm/gemm_a8w8, target_language: hip}   # per-task override
+  - triton/normalization                          # Triton-baseline normalization tasks
+  - "*/attention"                                 # attention tasks of every baseline language
+  - {path: triton/gemm/gemm_a8w8, target_language: hip}   # per-task override
 ```
 
 A schema-v3 task cannot run without a target language. A task selected twice

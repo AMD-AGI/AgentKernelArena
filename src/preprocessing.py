@@ -123,7 +123,7 @@ def is_task_complete(
 
     Args:
         run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
-        task_name: Stable task name (e.g., "normalization/rms_norm/bf16_h8192")
+        task_name: Stable task name (e.g., "triton/normalization/rms_norm/bf16_h8192")
         timestamp: Timestamp string used in task directory name
         agent_name: qa_auditor uses the framework-finalized QA report.
             Optimization requires the framework completion record.
@@ -157,7 +157,7 @@ def setup_workspace(task_config_dir: str, run_directory: Path, timestamp: str, l
         run_directory: Run-level directory (e.g., workspace_MI300_cursor/run_20250115_143022/)
         timestamp: Timestamp string for unique workspace naming
         logger: Logger instance
-        task_name: Stable discovered task name (e.g., "normalization/rms_norm/bf16_h8192")
+        task_name: Stable discovered task name (e.g., "triton/normalization/rms_norm/bf16_h8192")
         target_language: The run's target language for a schema-v3 task
 
     Returns:

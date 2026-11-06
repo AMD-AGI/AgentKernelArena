@@ -38,7 +38,7 @@ whose `platform_support` includes your architecture.
     ```text
     workspace_MI355X_claude_code/
     └── run_<timestamp>/
-        └── normalization_rms_norm_bf16_h8192_<timestamp>/
+        └── triton_normalization_rms_norm_bf16_h8192_<timestamp>/
             └── task_result.yaml
     ```
 
@@ -46,7 +46,7 @@ An illustrative excerpt from an accepted `task_result.yaml` looks like this.
 The numbers show the default scoring calculation, not a measured result:
 
 ```yaml
-task_name: normalization/rms_norm/bf16_h8192
+task_name: triton/normalization/rms_norm/bf16_h8192
 pass_compilation: true
 pass_correctness: true
 pass_tool_gate: true
@@ -75,8 +75,8 @@ agent:
 target_language: triton   # triton | gluon | hip | flydsl
 
 tasks:
-  - normalization
-  # - {path: gemm/gemm_a8w8, target_language: hip}   # per-task override
+  - triton/normalization
+  # - {path: triton/gemm/gemm_a8w8, target_language: hip}   # per-task override
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -132,7 +132,7 @@ agent:
   backend: claude_code      # claude_code | codex | none (deterministic checks only)
 
 tasks:
-  - normalization/rms_norm/my_new_scenario
+  - triton/normalization/rms_norm/my_new_scenario
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -161,7 +161,7 @@ agent:
 target_language: triton
 
 tasks:
-  - normalization
+  - "*/normalization"   # every baseline language
 
 target_gpu_model: MI355X
 log_directory: logs
@@ -185,7 +185,7 @@ workspace_MI355X_claude_code/
     │   ├── running/
     │   ├── done/
     │   └── failed/
-    ├── normalization_rms_norm_bf16_h8192_<timestamp>/
+    ├── triton_normalization_rms_norm_bf16_h8192_<timestamp>/
     │   └── task_result.yaml
     └── reports/
         └── overall_report.txt
@@ -207,7 +207,7 @@ agent:
   backend: claude_code
 
 tasks:
-  - normalization
+  - "*/normalization"   # every baseline language
 
 target_gpu_model: MI355X
 log_directory: logs

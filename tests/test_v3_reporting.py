@@ -11,7 +11,7 @@ from src.postprocessing import general_post_processing
 from src.tools.compare_runs import generate_comparison_report
 from src.visualization import build_data
 
-TASK = "normalization/rms_norm/bf16_h8192"
+TASK = "triton/normalization/rms_norm/bf16_h8192"
 
 
 def _run(root: Path, languages=("triton", "gluon"), speedup=1.25) -> Path:

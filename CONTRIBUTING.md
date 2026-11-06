@@ -131,7 +131,7 @@ This project depends on GPU hardware/drivers and orchestrates external LLM agent
 
 - Test environment (GPU model, ROCm version, Docker image, OS)
 - Agent(s) used and their versions
-- Task selector and `target_language` exercised (for example `normalization` with `triton`, or a `qa_auditor` run), and the `qa_report.yaml` status for new or changed tasks
+- Task selector and `target_language` exercised (for example `triton/normalization` with `triton`, or a `qa_auditor` run), and the `qa_report.yaml` status for new or changed tasks
 - Key commands and output summary, e.g.:
 
 ```bash

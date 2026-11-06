@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from src.tasks import task_category
 from src.visualization.paths import DATA_ROOT, PROJECT_ROOT, REPORTS_ROOT
 
 
@@ -266,7 +267,7 @@ def build_dataset(include_workspace_runs: bool = False) -> dict[str, Any]:
             status_info = status_map[key]
             task_name = status_info["taskName"]
             language = status_info["targetLanguage"]
-            inferred_task_type = task_name.split("/", 1)[0] if "/" in task_name else "unknown"
+            inferred_task_type = task_category(task_name) or "unknown"
             task = {
                 "taskName": task_name,
                 "targetLanguage": language,

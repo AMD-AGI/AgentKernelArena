@@ -9,7 +9,7 @@ agent:
 target_language: triton   # triton | gluon | hip | flydsl
 
 tasks:
-  - normalization/rms_norm/bf16_h8192
+  - triton/normalization/rms_norm/bf16_h8192
 
 target_gpu_model: RDNA4
 log_directory: logs

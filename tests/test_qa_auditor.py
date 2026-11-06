@@ -25,8 +25,8 @@ from src.task_contract import case_seeds, load_task_contract, render_workspace
 from src.task_spec import TaskConfigError
 
 ROOT = Path(__file__).resolve().parents[1]
-PILOT = ROOT / "tasks/normalization/rms_norm/bf16_h8192"
-PILOT_ID = "normalization/rms_norm/bf16_h8192"
+PILOT = ROOT / "tasks/triton/normalization/rms_norm/bf16_h8192"
+PILOT_ID = "triton/normalization/rms_norm/bf16_h8192"
 SHA = "a" * 64
 BLOCKING_IDS = sorted(i for i, c in CHECKS.items() if c.severity == BLOCKING)
 WARNING_IDS = sorted(i for i, c in CHECKS.items() if c.severity == WARNING)

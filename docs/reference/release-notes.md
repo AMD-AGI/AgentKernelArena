@@ -14,10 +14,11 @@ This topic summarizes the features available in each AgentKernelArena release. F
 ### Schema-v3 kernel tasks, run-selected language and the QA auditor
 
 - Kernel tasks are schema v3: one operator in one scenario at
-  `tasks/<category>/<operator>/<scenario>/`, with an interface (`task.yaml`), a
-  float64 PyTorch reference, a vendored baseline with provenance, and workloads
-  taken from production use. A task names no implementation language. The
-  run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
+  `tasks/<baseline_language>/<category>/<operator>/<scenario>/`, with an
+  interface (`task.yaml`), a float64 PyTorch reference, a vendored baseline with
+  provenance, and workloads taken from production use. The first directory is
+  the baseline's language; `"*/<category>"` selects a category across them. A
+  task names no implementation language. The run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
   `{path, target_language}` overrides) selects it. See
   [Task definition, schema, and authoring](../how-to/add-task.md).
 - The suite has 326 kernel tasks covering 209 operators in 16 categories, with

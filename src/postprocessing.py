@@ -336,16 +336,9 @@ def _compute_speedup_stats(speedup_values: List[float]) -> Dict[str, float]:
 
 
 def _extract_task_type(task_name: str) -> str:
-    """
-    Extract task type from task name.
-    
-    Task names are <category>/<operator>/<scenario> (for example
-    normalization/rms_norm/bf16_h8192) or e2e/<name>. The first path segment is
-    the operator category (or "e2e"); empty string if there is no slash.
-    """
-    if isinstance(task_name, str) and "/" in task_name:
-        return task_name.split("/", 1)[0]
-    return ""
+    """The operator category (or "e2e") of a task name; see src.tasks.task_category."""
+    from src.tasks import task_category
+    return task_category(task_name)
 
 
 def _task_group_key(task: Dict[str, Any], by: str) -> str:

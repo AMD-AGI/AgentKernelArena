@@ -112,8 +112,8 @@ Before adding or modifying any task, you MUST read
 [Task definition, schema, and authoring](docs/how-to/add-task.md). This applies
 to `task.yaml`, references, baselines, workloads, input generators, and
 READMEs. It is the canonical task guide; inspect nearby tasks as well. Kernel
-tasks use schema v3: `tasks/<category>/<operator>/<scenario>/` holds the
-interface, a PyTorch reference, a vendored baseline and production workloads,
+tasks use schema v3: `tasks/<baseline_language>/<category>/<operator>/<scenario>/`
+holds the interface, a PyTorch reference, a vendored baseline and production workloads,
 and names no implementation language; the run configuration's `target_language`
 (`triton`, `gluon`, `hip` or `flydsl`) selects it. The serving tasks under
 `tasks/e2e/` keep their schema-v2 contract

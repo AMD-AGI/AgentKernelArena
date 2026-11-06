@@ -52,8 +52,9 @@ AgentKernelArena includes the following key features.
 * **Docker-first runtime**: Experiments execute inside pinned ROCm/SGLang
   Docker images selected from the target GPU architecture.
 * **Kernel tasks**: Each task is one operator in one scenario, organized as
-  ``tasks/<category>/<operator>/<scenario>/`` with an interface, a PyTorch
-  reference, a vendored baseline and production workloads. Tasks name no
+  ``tasks/<baseline_language>/<category>/<operator>/<scenario>/`` with an
+  interface, a PyTorch reference, a vendored baseline and production
+  workloads. The first directory is the baseline's language. Tasks name no
   implementation language: the run's ``target_language`` (Triton, Gluon, HIP
   or FlyDSL; per-task overrides allowed) selects it, and every language is
   scored against the same baseline. The four languages are verified on MI355X;

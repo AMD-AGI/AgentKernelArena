@@ -15,7 +15,7 @@ AgentKernelArena (AKA) provides GPU optimization tasks, controlled execution and
 
 For end-to-end tasks, model weights, precision, TP/EP/PP, serving flags and workload settings stay fixed. Gains must come from valid compute implementation changes. The supplied example kernels are starting points; they do not limit optimization to those operators. Implementations must satisfy the task's input contract; hard-coded answers and evaluator changes are outside the allowed scope. Profiling the actual workload is encouraged, and agents choose their own tools.
 
-A kernel task is a schema-v3 package, `tasks/<category>/<operator>/<scenario>/`: `task.yaml` (interface), `reference.py`, a vendored `baseline/`, `workloads.json` taken from production use, and a README. It names no implementation language, so the same task can be run in any supported language and scored against the same baseline. Categories include activation, attention, convolution, elementwise, embedding, gemm, kv_cache, moe, normalization, other, positional, quantization, reduction, sampling, sorting and state_space. See the [task contract](docs/how-to/add-task.md).
+A kernel task is a schema-v3 package, `tasks/<baseline_language>/<category>/<operator>/<scenario>/`: `task.yaml` (interface), `reference.py`, a vendored `baseline/`, `workloads.json` taken from production use, and a README. The first directory is the language of the vendored baseline (`triton`, `flydsl`, `hip` or `tilelang`). The task itself names no implementation language, so the same task can be run in any supported language and scored against the same baseline. Categories include activation, attention, convolution, elementwise, embedding, gemm, kv_cache, moe, normalization, other, positional, quantization, reduction, sampling, sorting and state_space. See the [task contract](docs/how-to/add-task.md).
 
 Browse [kernel tasks](tasks/) or the [Magpie workload catalog](tasks/e2e/magpie/README.md). The catalog includes text, multimodal and AgentX workloads, with one selectable task directory per recipe. End-to-end runs require a prepared runtime binding; use the [e2e guide](docs/how-to/e2e-kernel-tasks.md) before launching them. A catalog entry alone does not establish GPU qualification.
 
@@ -67,8 +67,8 @@ agent:
 target_language: triton   # triton | gluon | hip | flydsl
 
 tasks:
-  - normalization/rms_norm/bf16_h8192
-  - {path: gemm/gemm_a8w8, target_language: hip}   # per-task override
+  - triton/normalization/rms_norm/bf16_h8192
+  - {path: triton/gemm/gemm_a8w8, target_language: hip}   # per-task override
 
 target_gpu_model: MI355X
 log_directory: logs

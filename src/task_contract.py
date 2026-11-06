@@ -191,6 +191,20 @@ class TaskContract:
     def baseline_entry(self) -> str:
         return self.raw["baseline"]["entry"]
 
+    @property
+    def task_directory(self) -> str:
+        """Where a curated task lives under tasks/, without its scenario directory."""
+        operator = self.raw["operator"]
+        return f"{self.baseline_language}/{operator['category']}/{operator['name']}"
+
+    def layout_problem(self) -> str | None:
+        """Why this task's ID does not follow tasks/<baseline>/<category>/<operator>/<scenario>, if it does not."""
+        parent, _, scenario = self.task_id.rpartition("/")
+        if parent == self.task_directory and scenario:
+            return None
+        return (f"task {self.task_id} must be {self.task_directory}/<scenario>: "
+                "baseline.language, operator.category and operator.name name its directories")
+
     def candidate_entry(self, language: str) -> str:
         return f"{SOLUTION_DIR}/kernel.hip" if language == "hip" else f"{SOLUTION_DIR}/kernel.py"
 

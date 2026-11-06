@@ -115,7 +115,7 @@ def test_review_of_a_v3_workspace_binds_the_solution_and_the_frozen_task(tmp_pat
     from src.task_spec import load_task_spec
 
     root = Path(__file__).resolve().parents[1]
-    pilot, task_id = root/'tasks/normalization/rms_norm/bf16_h8192', 'normalization/rms_norm/bf16_h8192'
+    pilot, task_id = root/'tasks/triton/normalization/rms_norm/bf16_h8192', 'triton/normalization/rms_norm/bf16_h8192'
     workspace = tmp_path/'workspace'
     shutil.copytree(pilot, workspace, ignore=shutil.ignore_patterns('__pycache__'))
     render_workspace(pilot, workspace, task_id=task_id, target_language='triton')

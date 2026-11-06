@@ -62,7 +62,7 @@ agent:
 target_language: triton     # triton | gluon | hip | flydsl
 
 tasks:
-  - normalization/rms_norm/bf16_h8192
+  - triton/normalization/rms_norm/bf16_h8192
   - {path: gemm/gemm_a8w8, target_language: hip}   # per-task override
   # - normalization           # all tasks under a category
   # - all                     # every available task
@@ -74,16 +74,23 @@ workspace_directory_prefix: workspace
 
 ### Select tasks
 
-Each entry in `tasks` is a path relative to the `tasks/` directory. You can
-select tasks at any level of granularity.
+Each entry in `tasks` is a path relative to the `tasks/` directory. Kernel
+tasks are filed as `<baseline_language>/<category>/<operator>/<scenario>`, where
+the first directory is the language of the vendored baseline, not the language
+the agent writes. A path prefix matches whole directories, and `*` matches any one
+directory, so you can select tasks at any level of granularity.
 
 | Entry | Selects |
 | --- | --- |
 | `all` | Every task in `tasks/` |
-| `normalization` | All tasks under `tasks/normalization/` |
-| `normalization/rms_norm` | All scenarios of one operator |
-| `normalization/rms_norm/bf16_h8192` | A single task |
-| `{path: gemm/gemm_a8w8, target_language: hip}` | The selected tasks, in a per-task language |
+| `flydsl` | All tasks whose baseline is FlyDSL |
+| `triton/normalization` | One category, Triton baselines only |
+| `"*/normalization"` | One category, every baseline language |
+| `"*/normalization/rms_norm"` | All scenarios of one operator |
+| `triton/normalization/rms_norm/bf16_h8192` | A single task |
+| `{path: triton/gemm/gemm_a8w8, target_language: hip}` | The selected tasks, in a per-task language |
+
+Quote an entry that starts with `*`: unquoted, YAML reads it as an alias.
 
 ### Select the target language
 
@@ -268,7 +275,7 @@ workspace_<gpu>_<agent>/
 Each `task_result.yaml` contains the scored outcome:
 
 ```yaml
-task_name: normalization/rms_norm/bf16_h8192
+task_name: triton/normalization/rms_norm/bf16_h8192
 pass_compilation: true
 pass_correctness: true
 base_execution_time: 1.82        # ms

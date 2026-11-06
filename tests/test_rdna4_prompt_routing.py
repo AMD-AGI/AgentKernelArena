@@ -13,8 +13,8 @@ from src.task_contract import render_workspace
 ROOT = Path(__file__).resolve().parents[1]
 GUIDES = ROOT / "src/prompts/cheatsheet"
 LOGGER = logging.getLogger(__name__)
-PILOT = ROOT / "tasks/normalization/rms_norm/bf16_h8192"
-PILOT_ID = "normalization/rms_norm/bf16_h8192"
+PILOT = ROOT / "tasks/triton/normalization/rms_norm/bf16_h8192"
+PILOT_ID = "triton/normalization/rms_norm/bf16_h8192"
 
 
 def expected_guides(*names):

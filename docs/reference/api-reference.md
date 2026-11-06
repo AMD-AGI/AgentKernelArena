@@ -53,8 +53,8 @@ agent:
 target_language: triton
 
 tasks:
-  - normalization/rms_norm/bf16_h8192
-  - {path: gemm/gemm_a8w8, target_language: hip}
+  - triton/normalization/rms_norm/bf16_h8192
+  - {path: triton/gemm/gemm_a8w8, target_language: hip}
 
 target_gpu_model: MI355X
 log_directory: logs

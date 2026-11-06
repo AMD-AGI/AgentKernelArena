@@ -9,7 +9,7 @@ from agents.geak.compatibility import author_mode, task_layout
 from src.task_spec import TaskSpec, load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-RMS_NORM = ROOT / "tasks/normalization/rms_norm/bf16_h8192/task.yaml"
+RMS_NORM = ROOT / "tasks/triton/normalization/rms_norm/bf16_h8192/task.yaml"
 
 
 def v3_spec(language: str, baseline: str = "triton") -> TaskSpec:
@@ -26,7 +26,7 @@ def v3_spec(language: str, baseline: str = "triton") -> TaskSpec:
         "evaluation": {"runner": ["python3", "-m", "_aka_eval.evaluate"]},
         "contract": {"schema_version": 3, "task_file": "task.yaml", "target_language": language,
                      "baseline_language": baseline, "operator": {"name": "rms_norm", "category": "normalization"}},
-    }, task_id="normalization/rms_norm/bf16_h8192")
+    }, task_id="triton/normalization/rms_norm/bf16_h8192")
 
 
 def write_context(tmp_path: Path, spec: TaskSpec) -> Path:
@@ -74,6 +74,6 @@ def test_mode_follows_the_starting_state_from_the_baseline_language(language, au
 def test_a_real_v3_task_resolves_for_the_runs_target_language(language):
     # The launcher compares the declared task.yaml, resolved for the context's
     # target language, with the framework's execution record.
-    spec = load_task_spec(RMS_NORM, task_id="normalization/rms_norm/bf16_h8192", target_language=language)
+    spec = load_task_spec(RMS_NORM, task_id="triton/normalization/rms_norm/bf16_h8192", target_language=language)
     assert spec.target_language == language
     assert author_mode(spec) is (language != spec.contract["baseline_language"])

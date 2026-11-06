@@ -8,15 +8,17 @@ agent:
 # The run selects the implementation language; tasks name none.
 target_language: triton   # triton | gluon | hip | flydsl
 
-# Task selectors are path prefixes under tasks/ (docs/how-to/run-evaluation.md):
-#   - normalization                                # every task in a category
-#   - normalization/rms_norm                       # one operator, all scenarios
-#   - normalization/rms_norm/bf16_h8192            # one task
-#   - {path: gemm/gemm_a8w8, target_language: hip} # per-task language override
+# Task selectors are path prefixes under tasks/, filed as
+# <baseline_language>/<category>/<operator>/<scenario> (docs/how-to/run-evaluation.md):
+#   - flydsl                                       # every task with a FlyDSL baseline
+#   - "*/normalization"                            # one category, every baseline language
+#   - "*/normalization/rms_norm"                   # one operator, all scenarios
+#   - triton/normalization/rms_norm/bf16_h8192     # one task
+#   - {path: triton/gemm/gemm_a8w8, target_language: hip}  # per-task language override
 #   - all                                          # everything (includes e2e serving tasks,
 #                                                  # which need a budget and runtime binding)
 tasks:
-  - normalization
+  - "*/normalization"
 
 target_gpu_model: MI355X
 log_directory: logs

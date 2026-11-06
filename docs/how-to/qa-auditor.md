@@ -51,7 +51,7 @@ agent:
   template: qa_auditor
   backend: claude_code        # claude_code | codex | none
 tasks:
-  - normalization/rms_norm
+  - "*/normalization/rms_norm"   # every baseline language
   # - all                     # audit every task
 target_gpu_model: MI355X
 log_directory: logs
@@ -157,7 +157,7 @@ as absent. Key fields:
 ```yaml
 qa_report_version: 1
 rubric_version: "2026-11-05.3"
-task_id: normalization/rms_norm/bf16_h8192
+task_id: triton/normalization/rms_norm/bf16_h8192
 task_package_sha256: ...        # the exact task package audited
 target_language: triton         # the candidate language used for the positive control
 audit_request_id: ...

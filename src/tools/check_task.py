@@ -1,9 +1,10 @@
 # Copyright(C) [2026] Advanced Micro Devices, Inc. All rights reserved.
 """CPU pre-checks for a schema-v3 task package, before the GPU QA audit.
 
-    python3 -m src.tools.check_task tasks/<category>/<operator>/<scenario> [--json PATH]
+    python3 -m src.tools.check_task tasks/<baseline_language>/<category>/<operator>/<scenario> [--json PATH]
 
-Checks that the contract loads, that a workspace renders for every target
+Checks that the contract loads and its path matches its baseline language,
+category and operator, that a workspace renders for every target
 language, that the baseline meets the candidate rules of its own language, the
 QA auditor's static package/reference/provenance rules, and that inputs and the
 reference run on the CPU for the smallest and largest correctness cases. It
@@ -66,6 +67,8 @@ def check(task_dir: Path, *, smoke_limit: int) -> dict:
     except (TaskConfigError, OSError, ValueError) as exc:
         result["errors"].append(f"contract: {exc}")
         return result
+    if problem := contract.layout_problem():
+        result["errors"].append(f"layout: {problem}")
     baseline_language = contract.baseline_language
     with tempfile.TemporaryDirectory(prefix="aka-check-") as scratch:
         for language in TARGET_LANGUAGES:

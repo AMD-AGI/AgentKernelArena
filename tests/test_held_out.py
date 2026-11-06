@@ -26,8 +26,8 @@ from src.task_session import TaskSession
 from src.task_spec import load_task_spec
 
 ROOT = Path(__file__).resolve().parents[1]
-PILOT = ROOT / "tasks/normalization/rms_norm/bf16_h8192"
-PILOT_ID = "normalization/rms_norm/bf16_h8192"
+PILOT = ROOT / "tasks/triton/normalization/rms_norm/bf16_h8192"
+PILOT_ID = "triton/normalization/rms_norm/bf16_h8192"
 RUNTIME = {"gpu_arch": "gfx950", "gpu_name": "CPU protocol fixture, no GPU", "torch": "fixture"}
 SALT = "0123456789abcdef"
 LOGGER = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ def _contract():
 def completed_run(root: Path, *, accepted: bool = True) -> tuple[Path, Path]:
     """A framework-complete run of the pilot task whose candidate was edited."""
     run = root / "run_20261105_000000"
-    workspace = run / "normalization_rms_norm_bf16_h8192_20261105_000000"
+    workspace = run / "triton_normalization_rms_norm_bf16_h8192_20261105_000000"
     shutil.copytree(PILOT, workspace, ignore=shutil.ignore_patterns("__pycache__"))
     render_workspace(PILOT, workspace, task_id=PILOT_ID, target_language="triton")
     spec = load_task_spec(PILOT / "task.yaml", task_id=PILOT_ID, target_language="triton")
