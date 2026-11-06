@@ -129,7 +129,7 @@ def _float32_torch():
 
 
 def _calibration_probe(contract, case, data: _CaseData) -> list[dict]:
-    """Whether a float32 evaluation of the reference passes each baseline-relative bound.
+    """Whether a float32 evaluation of the reference passes each non-exact error bound.
 
     It runs only when the evaluation actually differs from the float64 reference.
     A failure is a calibration warning, not proof of a wrong bound: a float32
@@ -138,8 +138,8 @@ def _calibration_probe(contract, case, data: _CaseData) -> list[dict]:
     from .compare import compare_tensor
     from .evaluate import _bound, _dtype_name
 
-    names = [n for n in contract.checked_tensors if _bound(contract, n).get("bound", "baseline_relative") ==
-             "baseline_relative" and data.baselines[0][n].dtype.is_floating_point]
+    names = [n for n in contract.checked_tensors if _bound(contract, n).get("bound", "baseline_relative") !=
+             "exact" and data.baselines[0][n].dtype.is_floating_point]
     if not names:
         return []
     values.reference_function(contract)  # import the reference (and its constants) outside the patch

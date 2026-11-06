@@ -241,3 +241,48 @@ def test_violation_fraction_admits_outliers_but_not_arbitrary_errors():
     skipped[:, -8:] = 0  # an unwritten tail of under 1% of the elements
     result = compare_tensor(declaration, skipped, reference, dtype_name="bfloat16", baseline=baseline)
     assert result.violation_fraction < 0.01 and not result.passed
+
+
+def test_structural_zeros_do_not_count_toward_a_rows_error_sample():
+    torch.manual_seed(2)
+    reference = torch.randn(256, 64, 64, dtype=torch.float64).tril().reshape(-1, 64)  # triangular chunks
+    nonzero = reference != 0
+
+    def draw(scale):
+        return (reference + scale * torch.randn_like(reference) * nonzero).float()
+
+    baseline, candidate = draw(1e-6), draw(1e-6)
+    baseline[:7] = reference[:7].float()  # rows of 1-7 nonzero elements where the baseline happened to be exact
+    declaration = {"bound": "baseline_relative", "k": 8}
+    assert compare_tensor(declaration, candidate, reference, dtype_name="float32", baseline=baseline).passed
+    shifted = (reference * (1 + 64 * 2.0 ** -24) + 1e-4 * nonzero).float()
+    assert not compare_tensor(declaration, shifted, reference, dtype_name="float32", baseline=baseline).passed
+
+
+def test_calibration_probe_covers_every_non_exact_bound(monkeypatch):
+    from types import SimpleNamespace
+
+    from src.tools.arena_eval import controls
+
+    def reference(x):
+        y = x.to(torch.float64)
+        return {"out": (y.exp() * 1.1).cumsum(-1), "idx": x.argmax(-1)}
+
+    monkeypatch.setattr(controls.values, "reference_function", lambda contract: reference)
+    torch.manual_seed(3)
+    x = torch.randn(64, 512)
+    expected = reference(x)
+    data = SimpleNamespace(inputs=[SimpleNamespace(logical={"x": x})], references=[expected],
+                           baselines=[{"out": expected["out"].float(), "idx": expected["idx"]}])
+    case = SimpleNamespace(case_id="c0")
+
+    def probe(out_bound):
+        contract = SimpleNamespace(checked_tensors=("out", "idx"), element_order="fixed",
+                                   compare={"out": out_bound, "idx": {"bound": "exact"}})
+        return controls._calibration_probe(contract, case, data)
+
+    strict = probe({"bound": "sqnr", "min_db": 200})
+    assert [(item["output"], item["bound"], item["passed"]) for item in strict] == [("out", "sqnr", False)]
+    assert strict[0]["sqnr_db"] < 200
+    assert probe({"bound": "sqnr", "min_db": 100})[0]["passed"]
+    assert probe({"bound": "tolerance", "rtol": 1e-3, "atol": 0})[0]["passed"]

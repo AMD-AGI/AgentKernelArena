@@ -125,7 +125,7 @@ not prove.
 | `QA-COUNTEREXAMPLE` | blocking | A wrong implementation that the task accepts fails an in-domain case, reproduced by the framework. | Add the counterexample's input domain to the workloads or tighten the bound. |
 | `QA-POSITIVE-UNAVAILABLE` | warning | The baseline language (TileLang) cannot be copied as a candidate, so no positive control ran. | Consider a Triton baseline. |
 | `QA-BOUND-OVERRIDE` | warning | `compare` departs from `baseline_relative` with `k: 2`, or sets `baseline_min_sqnr_db` or a violation fraction. | Justify the override in README.md or return to the default. |
-| `QA-BOUND-CALIBRATION` | warning | The reference evaluated with float32 instead of float64 (a correct implementation with float32 accumulation and library reduction orders) fails a `baseline_relative` bound. | Unless the baseline is known to be more accurate than float32 accumulation, loosen the bound (`sqnr`, or `k` and `max_violation_fraction`) and justify it in README.md. |
+| `QA-BOUND-CALIBRATION` | warning | The reference evaluated with float32 instead of float64 (a correct implementation with float32 accumulation and library reduction orders) fails a non-exact bound (`baseline_relative`, `sqnr`, `tolerance` or `output_rounding`). | Unless the baseline is known to be more accurate than float32 accumulation, loosen the bound (`sqnr` `min_db`, `tolerance`, or `k` and `max_violation_fraction`) and justify it in README.md. |
 | `QA-NONDETERMINISTIC` | warning | The baseline is not bitwise deterministic across repeated runs. | Informational: `baseline_relative` compares against one baseline run per draw. |
 | `QA-README` | warning | The task has no README.md. | Describe the operator, production source and workload origin. |
 | `QA-UNVERIFIED-ARCH` | warning | `platform_support.required_arch` names an architecture the audit did not run on. | Audit on each claimed architecture or document it as unverified. |
@@ -156,7 +156,7 @@ as absent. Key fields:
 
 ```yaml
 qa_report_version: 1
-rubric_version: "2026-11-05.2"
+rubric_version: "2026-11-05.3"
 task_id: normalization/rms_norm/bf16_h8192
 task_package_sha256: ...        # the exact task package audited
 target_language: triton         # the candidate language used for the positive control

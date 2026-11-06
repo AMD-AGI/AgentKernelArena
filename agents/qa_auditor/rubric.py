@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-RUBRIC_VERSION = "2026-11-05.2"
+RUBRIC_VERSION = "2026-11-05.3"
 BLOCKING = "blocking"
 WARNING = "warning"
 MIN_BASELINE_CASE_MS = 0.010
@@ -63,8 +63,8 @@ CHECKS = {check.check_id: check for check in (
           "Justify the override in README.md or return to baseline_relative with k=2."),
     Check("QA-BOUND-CALIBRATION", WARNING, "A float32 evaluation of the reference fails the error bound",
           "A correct implementation with float32 accumulation may be rejected. Unless the baseline is "
-          "known to be more accurate than float32 accumulation, loosen the bound (sqnr, or k and "
-          "max_violation_fraction) and justify it in README.md."),
+          "known to be more accurate than float32 accumulation, loosen the bound (sqnr min_db, "
+          "tolerance, or k and max_violation_fraction) and justify it in README.md."),
     Check("QA-NONDETERMINISTIC", WARNING, "The baseline is not bitwise deterministic",
           "Informational: baseline_relative compares against one baseline run per draw."),
     Check("QA-README", WARNING, "The task has no README.md",

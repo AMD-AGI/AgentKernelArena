@@ -229,12 +229,16 @@ def run_controls(workspace: Path, output: Path, timeout_s: int, findings: list[F
     failed = [item for item in report.get("calibration_probe", []) if item.get("passed") is False]
     for name in sorted({item["output"] for item in failed}):
         cases = [item for item in failed if item["output"] == name]
-        worst = max(cases, key=lambda item: item.get("violation_fraction", 0))
+        worst = max(cases, key=lambda item: (item.get("violation_fraction", 0), item.get("peak_bound_multiple", 0)))
+        if worst.get("sqnr_db") is not None:
+            measure = f"sqnr {worst['sqnr_db']:.4g} dB ({worst['peak_bound_multiple']:.3g}x the allowed noise)"
+        else:
+            measure = (f"violation fraction {worst['violation_fraction']:.3g}, "
+                       f"peak {worst['peak_bound_multiple']:.3g}x, bias z {worst['bias_z_score']:.3g}")
         findings.append(Finding(
             "QA-BOUND-CALIBRATION",
-            f"{name}: a float32 PyTorch evaluation of the reference fails the bound in "
-            f"{len(cases)} case(s), e.g. {worst['case']}: violation fraction {worst['violation_fraction']:.3g}, "
-            f"peak {worst['peak_bound_multiple']:.3g}x, bias z {worst['bias_z_score']:.3g}",
+            f"{name}: a float32 PyTorch evaluation of the reference fails the {worst.get('bound', '')} bound in "
+            f"{len(cases)} case(s), e.g. {worst['case']}: {measure}",
             {"output": name, "cases": [item["case"] for item in cases]}))
     if report.get("baseline_nondeterministic_cases"):
         findings.append(Finding("QA-NONDETERMINISTIC",

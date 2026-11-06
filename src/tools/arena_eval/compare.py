@@ -161,14 +161,17 @@ def compare_tensor(declaration: dict, actual: torch.Tensor, reference: torch.Ten
         baseline_error = b - y
         compared = y.isfinite() & b.isfinite()
         squares = torch.where(compared, baseline_error.square(), torch.zeros_like(baseline_error))
-        count = compared.sum(-1) if y.dim() else compared.reshape(1).sum(-1)
+        # Elements where the reference and the baseline are both exactly zero (the structural zeros of a
+        # triangular or sparse output) carry no error sample, so they do not dilute the RMS.
+        sampled = compared & ((y != 0) | (b != 0))
+        count = sampled.sum(-1) if y.dim() else sampled.reshape(1).sum(-1)
         rms = (squares.sum(-1) / count).sqrt() if y.dim() else (squares / count).sqrt()
         if y.dim():
             # A row of a few elements gives a one- or few-sample error estimate, so a correct candidate
             # fails wherever the baseline happened to be exact. Such rows use the whole output's RMS.
             short = count < MIN_ROW_ELEMENTS
             if bool(short.any()):
-                total = compared.sum()
+                total = sampled.sum()
                 pooled = (squares.sum() / total).sqrt() if bool(total) else torch.full_like(rms, math.nan)
                 rms = torch.where(short, pooled, rms)
         rms_b = rms[..., None] if y.dim() else rms
