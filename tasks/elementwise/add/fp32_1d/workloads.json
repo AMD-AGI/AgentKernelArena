@@ -1,0 +1,16 @@
+{
+  "description": "Element counts of 1D float32 additions; the old task used 98432 and 1048576 elements, which run below the 10 us timing floor and are correctness-only, larger sizes are scaled bandwidth cases.",
+  "cases": [
+    {"id": "n1", "axes": {"numel": 1}, "checks": ["correctness"], "source": "axis minimum"},
+    {"id": "n98432", "axes": {"numel": 98432}, "checks": ["correctness"], "source": "original task size"},
+    {"id": "n129", "axes": {"numel": 129}, "checks": ["correctness"], "source": "non-aligned small size"},
+    {"id": "n127", "axes": {"numel": 127}, "checks": ["correctness"], "source": "non-aligned small size"},
+    {"id": "n1048576", "axes": {"numel": 1048576}, "checks": ["correctness"], "source": "original task size"},
+    {"id": "n1000003", "axes": {"numel": 1000003}, "checks": ["correctness"], "source": "non-power-of-two, odd size"},
+    {"id": "n4194304", "axes": {"numel": 4194304}, "checks": ["correctness", "performance"], "source": "scaled original size (2^22)"},
+    {"id": "n16777216", "axes": {"numel": 16777216}, "checks": ["correctness", "performance"], "source": "scaled original size (2^24)"},
+    {"id": "n67108864", "axes": {"numel": 67108864}, "checks": ["correctness", "performance"], "source": "scaled original size (2^26)"},
+    {"id": "n268435456", "axes": {"numel": 268435456}, "checks": ["correctness", "performance"], "source": "scaled original size (2^28)"},
+    {"id": "n536870912", "axes": {"numel": 536870912}, "checks": ["correctness", "performance"], "source": "scaled original size (2^29)"}
+  ]
+}
