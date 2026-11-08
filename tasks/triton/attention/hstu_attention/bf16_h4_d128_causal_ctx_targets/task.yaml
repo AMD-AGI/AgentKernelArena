@@ -1,0 +1,93 @@
+schema_version: 3
+description: >-
+  HSTU attention forward over a jagged batch (triton_hstu_attention_fwd): out = silu(alpha * q k^T) v / max_seq_len,
+  with a pointwise SiLU instead of a softmax, per sequence and head. Sequence b occupies tokens
+  [seq_offsets[b], seq_offsets[b + 1]) of q, k and v. Each sequence is contextual_seq_len context
+  tokens, then the user's interaction history, then its last num_targets[b] candidate (target) tokens.
+  Causal masking acts on positions in which all context tokens share position 0, offset so that the first
+  history token is also position 0 when contextual_seq_len > 0, and all target tokens share the position
+  one past the last history token. A query attends to every key at an earlier position and to itself; a
+  context token (position 0) additionally attends to every non-target token of its sequence, and
+  targets do not attend to each other. There is no attention-span limit. max_seq_len is the longest
+  sequence of the batch, a host integer that also scales the SiLU (1 / max_seq_len); the output is rounded
+  to bfloat16. sort_by_length_indices lists the sequences by decreasing length and only orders the
+  work of the kernel.
+operator:
+  name: hstu_attention
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 512, description: Sequences in the jagged batch.}
+    n_tokens: {kind: var, min: 1, max: 262144, description: Total tokens of all sequences.}
+    n_heads: {kind: const, value: 4, description: Attention heads.}
+    head_dim: {kind: const, value: 128, description: Query/key and value width per head.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [n_tokens, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    seq_offsets:
+      kind: tensor
+      shape: [batch + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Exclusive cumulative sum of the sequence lengths.
+    num_targets:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Candidate (target) tokens at the end of every sequence.
+    sort_by_length_indices:
+      kind: tensor
+      shape: [batch]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Sequence ids by decreasing length (torch.sort(descending=True) of the lengths).
+    max_seq_len: {kind: scalar, dtype: int32, default: 1, description: Longest sequence of the batch.}
+    contextual_seq_len: {kind: scalar, dtype: int32, default: 0, description: Context tokens at the start of every sequence.}
+    alpha: {kind: scalar, dtype: float32, default: 0.08838834764831845, description: "Scale of q k^T, 1/sqrt(head_dim)."}
+  outputs:
+    out: {shape: [n_tokens, n_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: >-
+      aiter/ops/triton/_triton_kernels/attention/hstu_attention.py,
+      aiter/ops/triton/attention/hstu_attention.py,
+      aiter/ops/triton/utils/_triton/kernel_repr.py,
+      aiter/ops/triton/utils/common_utils.py,
+      aiter/ops/triton/configs/hstu_attn/gfx950-HSTU_ATTN_FWD.json
+    license: Apache-2.0 AND MIT (the HSTU kernels derive from meta-recsys/generative-recommenders at acc36be02236750cd98d99246f7d7ef1412edd0e, Apache-2.0, Copyright (c) Meta Platforms, Inc. and affiliates, notice in baseline/LICENSE-generative-recommenders; kernel_repr.py is ROCm/aiter MIT, baseline/LICENSE)
+    modifications: >-
+      Forward path only: _hstu_attn_fwd_one_block, _hstu_attn_fwd_compute and _hstu_attn_fwd unchanged;
+      the backward kernels, their config and the autograd function were not vendored. aiter imports replaced
+      by the flat-package helper kernel_repr.py (verbatim copy) and an inlined prev_power_of_2;
+      _get_fwd_config returns the gfx950 entries of HSTU_ATTN_FWD.json as literals instead of reading the
+      file; the logger call was removed; ALLOW_TF32 is the constant False in place of the torch.backends
+      query (the task is bfloat16); triton_hstu_attention_fwd takes the preallocated out tensor instead of
+      allocating one; run() fixes causal=True, max_attn_len=0 and passes the scalars and metadata through.
+      The upstream copyright header names The vLLM team although the kernel is Meta's HSTU kernel (see README).
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

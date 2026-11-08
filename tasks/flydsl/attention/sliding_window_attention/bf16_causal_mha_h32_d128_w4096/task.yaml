@@ -1,0 +1,56 @@
+schema_version: 3
+description: >-
+  Causal sliding-window multi-head attention forward over a batch of equal-length sequences. Query
+  position i of a sequence attends to the keys at positions i - window_left .. i of the same sequence
+  (window_left + 1 = 4096 keys, fewer near the start), out[b, i, h] = softmax_j(q[b, i, h] . k[b, j, h]
+  / sqrt(head_dim)) . v[b, j, h] over that band, with q, k, v and out in the flash_attn_func layout
+  [batch, seq_len, heads, head_dim], bfloat16, 32 heads and no grouped-query sharing (32 KV heads).
+operator:
+  name: sliding_window_attention
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Sequences in the batch.}
+    seq_len: {kind: var, min: 256, max: 32768, multiple_of: 256, description: Tokens per sequence.}
+    n_heads: {kind: const, value: 32, description: Query heads.}
+    n_kv_heads: {kind: const, value: 32, description: KV heads (group size 1).}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, seq_len, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [batch, seq_len, n_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [batch, seq_len, n_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    window_left: {kind: scalar, dtype: int32, default: 4095, description: 'Keys attended before the query position (sliding_window - 1 for a 4096-token window); 4095 in every case.'}
+  outputs:
+    out: {shape: [batch, seq_len, n_heads, head_dim], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: dd8373349e33638c8d158a9ea009b7b28598984a
+    path: kernels/attention/swa_gfx950.py, kernels/attention/flash_attn_utils.py
+    license: MIT AND Apache-2.0 (kernel.py is tagged MIT in its SPDX header, which names no copyright holder; reduction_helpers.py is Apache-2.0 FlyDSL code)
+    modifications: >-
+      kernel.py is swa_gfx950.py with its single import from flash_attn_utils replaced by the sibling
+      reduction_helpers.py (the three helpers it uses, copied unchanged from flash_attn_utils.py), and a
+      run() entry point added that caches the built launcher per (batch, heads, KV heads, head_dim,
+      window) with functools.lru_cache and launches it on the current stream with flat views of the
+      tensors. The kernel itself is unchanged.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

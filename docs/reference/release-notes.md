@@ -21,10 +21,16 @@ This topic summarizes the features available in each AgentKernelArena release. F
   task names no implementation language. The run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
   `{path, target_language}` overrides) selects it. See
   [Task definition, schema, and authoring](../how-to/add-task.md).
-- The suite has 326 kernel tasks covering 209 operators in 16 categories, with
-  production baselines vendored from vLLM, SGLang and AITER (245 Triton, 42
-  FlyDSL, 38 HIP and one TileLang). Every task has a framework-finalized QA
-  `PASS` on MI355X for its exact package.
+- The suite has 379 kernel tasks covering 237 operators in 16 categories, with
+  production baselines vendored from vLLM, SGLang, AITER and FlyDSL (278
+  Triton, 55 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
+  framework-finalized QA `PASS` on MI355X for its exact package.
+- 53 tasks from production kernels add 28 operators and the first Gluon
+  baselines. They cover convolution (conv2d, conv3d), attention backward,
+  HSTU, sliding-window and sparse MLA attention, fused GEMM epilogues
+  (gated, split-and-concatenate, multiply-add, quantize), batched and grouped
+  GEMM, MLA and paged-attention decode, KV-cache fusions, and gated-delta-net
+  state-space kernels.
 - All four languages are verified on MI355X (`gfx950`); other architectures are
   implemented but unverified.
 - Correctness compares every output with the float64 reference. The default

@@ -1,0 +1,46 @@
+schema_version: 3
+description: >-
+  Gated bfloat16 GEMM with a SiLU gate, out = silu(x @ w_gate^T) * (x @ w_up^T) where x is [m, 4096] and the weight
+  w [28672, 4096] stacks the gate rows w[:14336] over the up rows w[14336:], so out is [m, 14336]. Both products
+  accumulate in float32 and only the gated result is rounded to bfloat16.
+operator: {name: gemm_a16w16_gated, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 8192, description: Rows of x (tokens in the batch).}
+    n: {kind: const, value: 28672, description: Rows of the stacked gate and up weight (2 x intermediate size).}
+    k: {kind: const, value: 4096, description: Hidden size (reduction length).}
+  derived_axes:
+    n_out: n // 2
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    w: {kind: tensor, shape: [n, k], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.015625}}
+  outputs:
+    out: {shape: [m, n_out], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/basic/gemm_a16w16_gated.py
+      - aiter/ops/triton/gemm/basic/gemm_a16w16_gated.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A16W16-gated.json
+    license: MIT
+    modifications: >-
+      Kernel unchanged; its three aiter imports now point at the sibling files of the package. pid_preprocessing.py and
+      kernel_repr.py are verbatim copies. activation.py keeps only _silu_exp2 and _silu of the upstream activation.py
+      (the other kernels and the quantization imports are dropped). The launcher is reduced to run(): SiLU gate, the
+      stacked weight passed as the transposed view, output written into the preallocated tensor. The tuned gfx950
+      JSON became a Python table, selected with the M_LEQ_x / M_GEQ_x / any order and the bounds of the upstream
+      _get_config (utils/gemm_config_utils.py lookup for a config without N/K specialization).
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,76 @@
+schema_version: 3
+description: >-
+  Two-dimensional 7x7 convolution of a bfloat16 channels-last (NHWC) image batch, 3 input to 64 output channels,
+  stride 2, padding 3, dilation 1, one group, no bias:
+  out[n, p, q, o] = sum over r, s, c of x[n, 2 p + r - 3, 2 q + s - 3, c] * g[o, c, r, s], with zero padding, float32
+  accumulation, rounded to bfloat16, where the output is ((height - 1) // 2 + 1) x ((width - 1) // 2 + 1). The filters
+  are passed as the [out_channels, 192] matrix of the flattened (c, r, s) filter taps, zero-padded from 147 to 192
+  columns.
+operator:
+  name: conv2d
+  category: convolution
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 256, description: Images in the batch.}
+    height: {kind: var, min: 16, max: 1344, description: Image height.}
+    width: {kind: var, min: 16, max: 1344, description: Image width.}
+    in_channels: {kind: const, value: 3, description: Input channels (RGB).}
+    out_channels: {kind: const, value: 64, description: Output channels.}
+    kernel_taps_padded: {kind: const, value: 192, description: "Filter taps per output channel, 3 * 7 * 7 = 147 padded to a multiple of 64."}
+  derived_axes:
+    out_height: (height - 1) // 2 + 1
+    out_width: (width - 1) // 2 + 1
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, height, width, in_channels]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: NHWC image batch, contiguous (channels-last), standardized pixel values.
+    weight:
+      kind: tensor
+      shape: [out_channels, kernel_taps_padded]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: Filters; the logical OIHW tensor [out_channels, in_channels, 7, 7] flattened by the layout transform to (c, r, s) order and zero-padded.
+  outputs:
+    out:
+      shape: [batch, out_height, out_width, out_channels]
+      dtype: bfloat16
+      description: NHWC output, contiguous.
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/conv/conv2d.py
+      - aiter/ops/triton/conv/_launch.py
+      - aiter/ops/triton/conv/_prepack.py
+      - aiter/ops/triton/conv/_utils.py
+      - aiter/ops/triton/utils/conv_config_utils.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/_triton_kernels/conv/conv_general.py
+      - aiter/ops/triton/_triton_kernels/conv/helpers.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/configs/conv/gfx950-CONV-GENERAL.json
+    license: MIT
+    modifications: >-
+      Kernel (_conv2d_general_kernel), launcher (_launch_general, _make_mn_grid) and kernel_repr.py are unchanged; the
+      three import lines of conv_general.py are made package-relative. The dispatcher of conv2d.py is collapsed to its
+      general route and the call wrapped in run() (7x7, stride 2, padding 3, NHWC layout, no bias, no activation).
+      The weight prepack prepack_oihw_to_kmajor (done once per weight and cached by aiter: flatten to
+      [out_channels, in_channels * 7 * 7] and zero-pad the reduction axis to a multiple of 64) is the layout
+      transform of this task. The gfx950 tuned-config table (a single "any" entry) is inlined in
+      conv_config_utils.py and the lookup reduced to gfx950. helpers.py keeps the autotune switch off and drops its
+      environment-variable read. activation.py is an excerpt of four unchanged activation helpers.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

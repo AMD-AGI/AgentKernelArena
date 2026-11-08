@@ -1,0 +1,156 @@
+{
+  "description": "Input extents of the 384 -> 384 channel 3x3x3 causal convolutions of the Wan2.1 VAE decoder: one new latent frame (depth 3) or a whole 21-latent clip (depth 23), at the latent resolution and at twice the latent resolution.",
+  "cases": [
+    {
+      "id": "d3_h8_w8",
+      "axes": {
+        "d": 3,
+        "h": 8,
+        "w": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum"
+    },
+    {
+      "id": "d4_h17_w19",
+      "axes": {
+        "d": 4,
+        "h": 17,
+        "w": 19
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd extents above 16"
+    },
+    {
+      "id": "d5_h30_w53",
+      "axes": {
+        "d": 5,
+        "h": 30,
+        "w": 53
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned extents"
+    },
+    {
+      "id": "d3_h45_w80",
+      "axes": {
+        "d": 3,
+        "h": 45,
+        "w": 80
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "360p latent map, one new frame"
+    },
+    {
+      "id": "d7_h33_w40",
+      "axes": {
+        "d": 7,
+        "h": 33,
+        "w": 40
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd extents, several frames"
+    },
+    {
+      "id": "d3_h32_w32",
+      "axes": {
+        "d": 3,
+        "h": 32,
+        "w": 32
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "256 x 256 spatial tile (32 x 32 latents), one new frame"
+    },
+    {
+      "id": "d3_h60_w104",
+      "axes": {
+        "d": 3,
+        "h": 60,
+        "w": 104
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "832 x 480 latent map, one new frame"
+    },
+    {
+      "id": "d3_h90_w160",
+      "axes": {
+        "d": 3,
+        "h": 90,
+        "w": 160
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "1280 x 720 latent map, one new frame"
+    },
+    {
+      "id": "d3_h120_w208",
+      "axes": {
+        "d": 3,
+        "h": 120,
+        "w": 208
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "832 x 480 at twice the latent resolution, one new frame"
+    },
+    {
+      "id": "d3_h180_w320",
+      "axes": {
+        "d": 3,
+        "h": 180,
+        "w": 320
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "1280 x 720 at twice the latent resolution, one new frame"
+    },
+    {
+      "id": "d23_h60_w104",
+      "axes": {
+        "d": 23,
+        "h": 60,
+        "w": 104
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "832 x 480 latent map, 21-latent clip decoded at once"
+    },
+    {
+      "id": "d23_h90_w160",
+      "axes": {
+        "d": 23,
+        "h": 90,
+        "w": 160
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "1280 x 720 latent map, 21-latent clip decoded at once"
+    }
+  ]
+}

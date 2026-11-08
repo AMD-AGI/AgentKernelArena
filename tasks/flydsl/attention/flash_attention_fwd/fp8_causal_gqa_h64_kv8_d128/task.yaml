@@ -1,0 +1,86 @@
+schema_version: 3
+description: >-
+  Causal grouped-query attention forward over a batch of equal-length sequences with FP8 inputs,
+  out[b, i, h] = softmax_j<=i(qd[b, i, h] . kd[b, j, h // 8] / sqrt(head_dim)) . vd[b, j, h // 8], where
+  qd, kd and vd are the dequantized inputs: float8_e4m3fn codes times one per-tensor float32 descale each
+  (q_descale[0], k_descale[0], v_descale[0]). Q has 64 heads and K and V have 8 KV heads of 128 elements
+  (group size 8), all in the flash_attn_func layout [batch, seq_len, heads, head_dim]. The output is
+  bfloat16.
+operator:
+  name: flash_attention_fwd
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Sequences in the batch.}
+    seq_len: {kind: var, min: 1, max: 32768, description: Tokens per sequence.}
+    n_heads: {kind: const, value: 64, description: Query heads.}
+    n_kv_heads: {kind: const, value: 8, description: KV heads (group size 8).}
+    head_dim: {kind: const, value: 128, description: Head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, seq_len, n_heads, head_dim]
+      dtype: float8_e4m3fn
+      distribution: {kind: generator}
+      description: FP8 query codes; dequantized value is q * q_descale[0].
+    k:
+      kind: tensor
+      shape: [batch, seq_len, n_kv_heads, head_dim]
+      dtype: float8_e4m3fn
+      distribution: {kind: generator}
+      description: FP8 key codes; dequantized value is k * k_descale[0].
+    v:
+      kind: tensor
+      shape: [batch, seq_len, n_kv_heads, head_dim]
+      dtype: float8_e4m3fn
+      distribution: {kind: generator}
+      description: FP8 value codes; dequantized value is v * v_descale[0].
+    q_descale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-tensor query descale, max |q| / 448.
+    k_descale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-tensor key descale, max |k| / 448.
+    v_descale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Per-tensor value descale, max |v| / 448.
+  outputs:
+    out: {shape: [batch, seq_len, n_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: dd8373349e33638c8d158a9ea009b7b28598984a
+    path: kernels/attention/flash_attn_fp8_gfx950.py, kernels/attention/flash_attn_utils.py, kernels/common/buffer_ops.py, kernels/common/kernels_common.py
+    license: Apache-2.0
+    modifications: >-
+      flash_attn_fp8_gfx950.py became kernel.py with its imports pointed at the sibling files, the FA_PP,
+      FA_PP_PRIO and FA_TPV environment switches fixed to their defaults, the call of kernels.common.tensor_shim._run_compiled
+      replaced by a direct call of the jitted launcher, and a run() entry point added (launcher cached per
+      heads, KV heads and mask with functools.lru_cache, launched on the current stream with flat views of the
+      tensors and the three descales). flash_attn_utils.py is the whole upstream file with os.getenv
+      replaced by a helper that returns each switch's default, its kernels.common imports pointed at the
+      sibling files, and the three upstream lines self.__dict__.update(parent.__dict__) (helper classes copying
+      their parent context) replaced by a __getattr__ delegation to the parent context. buffer_ops.py is the
+      upstream module without its environment lookup of FLYDSL_GPU_ARCH (the architecture is auto-detected,
+      as upstream does when the variable is unset). kernels_common.py keeps only dtype_to_elem_type.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

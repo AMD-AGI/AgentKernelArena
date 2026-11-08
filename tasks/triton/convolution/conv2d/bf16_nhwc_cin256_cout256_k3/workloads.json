@@ -1,0 +1,207 @@
+{
+ "description": "Feature maps at the 256-to-256-channel 3x3 convolutions of the Stable Diffusion 3.5 / Flux-family VAE decoder: the feature map is half the decoded image's side (256x256 for a 512x512 image). Batch, height and width vary with the generated image size and batch; the 64x64 map runs under the 10 us floor and is correctness-only.",
+ "cases": [
+  {
+   "id": "b1_h8_w8",
+   "axes": {
+    "batch": 1,
+    "height": 8,
+    "width": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum, smallest feature map"
+  },
+  {
+   "id": "b3_h40_w40",
+   "axes": {
+    "batch": 3,
+    "height": 40,
+    "width": 40
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch (non-power-of-two), 1600 pixels per image"
+  },
+  {
+   "id": "b2_h100_w75",
+   "axes": {
+    "batch": 2,
+    "height": 100,
+    "width": 75
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-square, unaligned feature map (15000 pixels, ragged tiles)"
+  },
+  {
+   "id": "b1_h13_w29",
+   "axes": {
+    "batch": 1,
+    "height": 13,
+    "width": 29
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prime-sized feature map, every border and tile ragged"
+  },
+  {
+   "id": "b5_h17_w31",
+   "axes": {
+    "batch": 5,
+    "height": 17,
+    "width": 31
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch 5 of a 17x31 feature map"
+  },
+  {
+   "id": "b1_h64_w64",
+   "axes": {
+    "batch": 1,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "128x128 pixel image, below the timing floor"
+  },
+  {
+   "id": "b1_h128_w128",
+   "axes": {
+    "batch": 1,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "256x256 pixel image, also one decoding tile of a 512x512 tiled decode"
+  },
+  {
+   "id": "b2_h128_w128",
+   "axes": {
+    "batch": 2,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of two 256x256 images (classifier-free guidance pair)"
+  },
+  {
+   "id": "b1_h256_w256",
+   "axes": {
+    "batch": 1,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 512x512 image, the upstream conv_shapes.json entry"
+  },
+  {
+   "id": "b4_h128_w128",
+   "axes": {
+    "batch": 4,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of four 256x256 images"
+  },
+  {
+   "id": "b2_h256_w256",
+   "axes": {
+    "batch": 2,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512x512 image with classifier-free guidance"
+  },
+  {
+   "id": "b1_h512_w512",
+   "axes": {
+    "batch": 1,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 1024x1024 image"
+  },
+  {
+   "id": "b4_h256_w256",
+   "axes": {
+    "batch": 4,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of four 512x512 images"
+  },
+  {
+   "id": "b2_h512_w512",
+   "axes": {
+    "batch": 2,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of two 1024x1024 images"
+  },
+  {
+   "id": "b8_h256_w256",
+   "axes": {
+    "batch": 8,
+    "height": 256,
+    "width": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of eight 512x512 images (VAE training or video-frame decoding)"
+  },
+  {
+   "id": "b8_h512_w512",
+   "axes": {
+    "batch": 8,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of eight 1024x1024 images, the largest case"
+  }
+ ]
+}

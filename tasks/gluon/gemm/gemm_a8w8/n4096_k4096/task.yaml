@@ -1,0 +1,36 @@
+schema_version: 3
+description: >-
+  FP8 GEMM with per-token and per-channel dequantization, out = (x @ w^T) * (x_scale * w_scale) with float8_e4m3fn x [m, 4096] and weight w [4096, 4096], a float32 accumulation, a per-row scale x_scale [m, 1] and per-output-channel scale w_scale [1, 4096], rounded to bfloat16.
+operator: {name: gemm_a8w8, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows of x (tokens in the batch).}
+    n: {kind: const, value: 4096, description: Output features.}
+    k: {kind: const, value: 4096, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    x_scale: {kind: tensor, shape: [m, 1], dtype: float32, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [1, n], dtype: float32, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: gluon
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/gluon/gemm_a8w8.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/configs/gemm/gluon/gfx950-GEMM-A8W8.json
+    license: MIT
+    modifications: >-
+      Kernel `_gemm_a8w8_kernel` unchanged; the preshuffled kernel and wrapper, the bias and int8 launcher branches, the config-file lookup and architecture check, the logger and the aiter device_info helper (NUM_XCDS = 8 inlined) removed; launcher reduced to the no-bias float8_e4m3fn path writing into the preallocated output; the single-entry gfx950 Gluon config table inlined; remap_xcd and pid_grid copied unchanged into pid_preprocessing.py. The upstream gemm_a8w8.py has no license header; the repository MIT LICENSE applies.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

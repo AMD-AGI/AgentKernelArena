@@ -1,0 +1,81 @@
+schema_version: 3
+description: >-
+  FP8 paged multi-query attention logits of the DeepSeek-V3.2 lightning indexer for one decode step. Sequence
+  b has context_lens[b] cached tokens, token t of it living in cache block block_tables[b, t] (one token per
+  block). Query token n (of next_n per sequence) scores the keys 0 .. context_lens[b] - next_n + n: logits[b *
+  next_n + n, t] = sum_h weights[b * next_n + n, h] * relu(dot(q[b, n, h, :], key[b, t, :]) * key_scale[b,
+  t]), where key and key_scale are the fp8 codes and the float32 dequantization scale stored in the cache
+  block. Every other column of the row, up to max_model_len, is -inf. q and the key codes are float8_e4m3fn;
+  accumulation and output are float32.
+operator:
+  name: paged_mqa_logits
+  category: attention
+interface:
+  axes:
+    batch_size: {kind: var, min: 1, max: 128, description: Decoding sequences.}
+    next_n: {kind: var, min: 1, max: 2, description: Query tokens per sequence (2 with one speculative draft token).}
+    ctx: {kind: var, min: 128, max: 114688, description: Longest cached context in the batch (tokens).}
+    num_heads: {kind: const, value: 64, description: Indexer query heads.}
+    head_size: {kind: const, value: 128, description: Indexer head dimension.}
+    block_size: {kind: const, value: 1, description: Tokens per cache block.}
+    max_model_len: {kind: const, value: 163840, description: Width of the logits rows (the model's maximum context).}
+  derived_axes:
+    num_blocks: batch_size * ctx
+    row_bytes: head_size + 4
+    num_rows: batch_size * next_n
+    max_blocks: max_model_len // block_size
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch_size, next_n, num_heads, head_size]
+      dtype: float8_e4m3fn
+      distribution: {kind: generator}
+    kv_cache:
+      kind: tensor
+      shape: [num_blocks, block_size, 1, row_bytes]
+      dtype: uint8
+      distribution: {kind: generator}
+    weights:
+      kind: tensor
+      shape: [num_rows, num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+    context_lens:
+      kind: tensor
+      shape: [batch_size]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    block_tables:
+      kind: tensor
+      shape: [batch_size, max_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    logits: {shape: [num_rows, max_model_len], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/attention/pa_mqa_logits.py, aiter/ops/triton/attention/pa_mqa_logits.py
+    license: MIT
+    modifications: >-
+      Only the pure-Triton block-table kernel _deepgemm_fp8_paged_mqa_logits (KVBlockSize == 1) and its
+      _sum_combine helper are vendored, unchanged; the other kernels of the file are dropped. run() is the
+      launch code of the Triton branch of deepgemm_fp8_paged_mqa_logits with the aiter and arch imports
+      removed (ChunkK 256, WavePerEU 2 and the SplitKV rule are those vLLM's ROCm indexer passes; the CU count is
+      read from the device properties). Production gives the kernel a logits buffer pre-filled with -inf (the
+      evaluator hands over a NaN-poisoned one), so run() starts with logits.fill_(-inf), the same prefill AITER's
+      own paged FP4 wrapper performs. The gluon-compiled path that aiter selects on Triton 3.5 and newer, AOT
+      loading and the unused stage-1 and ragged kernels are not part of this baseline.
+compare:
+  logits: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

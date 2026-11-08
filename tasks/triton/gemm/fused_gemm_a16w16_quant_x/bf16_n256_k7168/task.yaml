@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  y = x @ w^T with bfloat16 activations x [m, 7168] and weights w [256, 7168] (the MoE router gate), accumulated in float32
+  and rounded to bfloat16, together with the dynamic MXFP8 quantization of x: each contiguous block of 32 elements along
+  the hidden axis shares one E8M0 scale 2^(e - 127), where e = floor(log2(amax rounded to a power of two)) - 8 and amax is
+  rounded up to the next power of two when its mantissa is at least 1.75; the elements divided by the scale are rounded
+  to nearest-even to float8_e4m3fn (x_quant [m, 7168], x_scale [m, 224] uint8).
+operator: {name: fused_gemm_a16w16_quant_x, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 256, description: Output channels (routed experts).}
+    k: {kind: const, value: 7168, description: Contracted dimension (hidden size and a multiple of 32).}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    w: {kind: tensor, shape: [n, k], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02}}
+  outputs:
+    y: {shape: [m, n], dtype: bfloat16}
+    x_quant: {shape: [m, k], dtype: float8_e4m3fn}
+    x_scale: {shape: [m, k // 32], dtype: uint8}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/fused/fused_gemm_a16w16_quant_x.py
+      - aiter/ops/triton/gemm/fused/fused_gemm_a16w16_quant_x.py
+      - aiter/ops/triton/_triton_kernels/quant/quant.py
+      - aiter/ops/triton/_triton_kernels/common/splitk_reduce.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A16W16-N=256-K=7168.json
+    license: MIT
+    modifications: >-
+      Kernels unchanged (_fused_gemm_a16w16_quant_x_kernel, _mxfp8_quant_op, _gemm_splitk_reduce_kernel). The launcher
+      fused_gemm_a16w16_quant_x is reduced to the no-bias, no-activation, reduce-enabled path writing into the preallocated
+      outputs (float32 split-K partials are allocated per call, as upstream); the N=256, K=7168 gfx950 table of the
+      GEMM-A16W16 family is inlined as a function of M in the get_gemm_config lookup order, followed by the upstream
+      compute_splitk_params; the remap_xcd, pid_grid and make_kernel_repr helpers are inlined; imports, the logger and
+      the shape asserts are removed.
+compare:
+  y: {bound: baseline_relative}
+  x_quant: {bound: exact}
+  x_scale: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

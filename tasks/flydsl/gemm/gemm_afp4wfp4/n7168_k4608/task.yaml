@@ -1,0 +1,45 @@
+schema_version: 3
+description: >-
+  out = dequant(a) @ dequant(w)^T with MXFP4 activations a [m, 4608] and weights w [7168, 4608], both stored as two
+  e2m1 codes per byte (a: [m, 2304], w: [7168, 2304]; the even K index is the low nibble) with e8m0 scales per 32
+  values of K (a_scales [m, 144], w_scales [7168, 144], uint8, value 2^(s - 127)), accumulated in float32 and rounded
+  to bfloat16. Kernel-facing layout of the FlyDSL preshuffle GEMM: w and w_scales preshuffled, a_scales padded to a multiple of 32
+  rows and shuffled (see README.md).
+operator: {name: gemm_afp4wfp4, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 7168, description: Output channels.}
+    k: {kind: const, value: 4608, description: Contracted dimension (unpacked fp4 values).}
+  inputs:
+    a: {kind: tensor, shape: [m, k // 2], dtype: uint8, distribution: {kind: generator}}
+    a_scales: {kind: tensor, shape: [(m + 31) // 32 * 32, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: dd8373349e33638c8d158a9ea009b7b28598984a
+    path: >-
+      kernels/gemm/mxfp4_preshuffle.py, tests/kernels/test_preshuffle_gemm.py
+    license: Apache-2.0
+    modifications: >-
+      launch_gemm comes from kernels/gemm/mxfp4_preshuffle.py; the call shape (_mxfp4_launcher) and the 64x256x256 tile of
+      the large-M cases come from tests/kernels/test_preshuffle_gemm.py.
+      mxfp4_preshuffle.py is unchanged except that the import of xcd_remap_bx_by from the repository-level kernels
+      package (not part of the installed FlyDSL release) is removed together with the xcd_swizzle parameter and its
+      branch, which the launch never enables (xcd_swizzle 0). kernel.py is new: run() launches launch_gemm with one batch
+      element, tile 64x256x256, fp4 activations and weights and bfloat16 output on the current stream, passing raw
+      device pointers; the argument checks are cached per shape with functools.lru_cache.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,103 @@
+schema_version: 3
+description: >-
+  Single-token decode step of the gated delta rule (Gated DeltaNet) for a batch of sequences, with 16
+  query/key heads, 32 value heads and head dimensions 128. Per sequence and value head the float32 [V, K]
+  state of the sequence's pool slot is decayed by exp(g), corrected with the L2-normalized key, updated
+  with the gated delta, read out with the L2-normalized, scaled query into the bfloat16 output, and
+  written back to its slot in place; g = -exp(A_log) * softplus(a + dt_bias) and beta = sigmoid(b).
+operator:
+  name: gdn_fused_recurrent_decode
+  category: state_space
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 800, description: Sequences decoded in one step.}
+    num_k_heads: {kind: const, value: 16, description: Query/key heads (grouped-value-attention groups).}
+    num_heads: {kind: const, value: 32, description: Value heads.}
+    head_dim_k: {kind: const, value: 128, description: Query/key head dimension.}
+    head_dim_v: {kind: const, value: 128, description: Value head dimension.}
+  derived_axes:
+    pool_slots: batch + 2
+  inputs:
+    query:
+      kind: tensor
+      shape: [batch, 1, num_k_heads, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    key:
+      kind: tensor
+      shape: [batch, 1, num_k_heads, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    value:
+      kind: tensor
+      shape: [batch, 1, num_heads, head_dim_v]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    a:
+      kind: tensor
+      shape: [batch, 1, num_heads]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Decay-gate projection; g = -exp(A_log) * softplus(a + dt_bias).
+    b:
+      kind: tensor
+      shape: [batch, 1, num_heads]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Update-rate projection; beta = sigmoid(b).
+    dt_bias:
+      kind: tensor
+      shape: [num_heads]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    A_log:
+      kind: tensor
+      shape: [num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.0, high: 2.7}
+    state_indices:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Distinct pool slot of each sequence.
+    state:
+      kind: tensor
+      shape: [pool_slots, num_heads, head_dim_v, head_dim_k]
+      dtype: float32
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Recurrent-state pool; the slot of every sequence is read and overwritten.
+  outputs:
+    out: {shape: [batch, 1, num_heads, head_dim_v], dtype: bfloat16}
+  mutable: [state]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/kernels/gdr_decode.py, aiter/ops/flydsl/linear_attention_kernels.py, aiter/ops/flydsl/gdr_decode_tuned.csv, aiter/ops/flydsl/kernels/tensor_shim.py, aiter/ops/flydsl/kernels/buffer_ops.py, aiter/ops/flydsl/kernels/vector.py
+    license: MIT AND Apache-2.0 (buffer_ops.py and vector.py, from ROCm/FlyDSL)
+    modifications: >-
+      The launch and tuned-configuration lookup come from linear_attention_kernels.py. gdr_decode.py is vendored with its aiter imports made relative. tensor_shim.py has its os/numpy imports,
+      the environment toggles and the numpy stride computation replaced by a Python one; buffer_ops.py has its
+      environment lookup of the GPU architecture removed; vector.py has its star import of the raw vector
+      dialect replaced by the two ops gdr_decode.py uses (BroadcastOp, FMAOp). tuned_configs.py is the
+      gfx950, bfloat16/float32, one-token, 16/32-head, 128/128 rows of gdr_decode_tuned.csv (the CSV is not
+      Python or JSON) with AITER's default configuration for the batch sizes above 256 that the table does
+      not list. kernel.py is the launch of flydsl_gdr_decode for this scenario (the wrapper's CSV reader,
+      state-layout shuffle and device context are not needed or not allowed).
+      FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the cache-policy operand is passed as the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp / RawPtrBufferStoreOp (the runtime's op constructors take no positional aux value); no change to the kernel algorithm.
+compare:
+  # Calibrated overrides, justified with measurements in README.md ("Comparison").
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 1.0e-4}
+  state: {bound: baseline_relative, k: 8, max_violation_fraction: 1.0e-3}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

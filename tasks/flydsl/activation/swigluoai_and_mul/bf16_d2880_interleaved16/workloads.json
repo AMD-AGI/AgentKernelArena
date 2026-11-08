@@ -1,0 +1,143 @@
+{
+  "description": "Activation rows (tokens times top-4 experts) through the GPT-OSS MoE activation (gate_up width 2*2880, interleaved by 16). Fewer than about 1600 rows run faster than the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "n_rows": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, one token row"
+    },
+    {
+      "id": "r3",
+      "axes": {
+        "n_rows": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, odd row count"
+    },
+    {
+      "id": "r17",
+      "axes": {
+        "n_rows": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "row count not a multiple of 16"
+    },
+    {
+      "id": "r48",
+      "axes": {
+        "n_rows": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small batch, 12 tokens x top-4"
+    },
+    {
+      "id": "r1000",
+      "axes": {
+        "n_rows": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk"
+    },
+    {
+      "id": "r2048",
+      "axes": {
+        "n_rows": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 512 tokens x top-4"
+    },
+    {
+      "id": "r4096",
+      "axes": {
+        "n_rows": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 1024 tokens x top-4"
+    },
+    {
+      "id": "r8192",
+      "axes": {
+        "n_rows": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 2048 tokens x top-4"
+    },
+    {
+      "id": "r16384",
+      "axes": {
+        "n_rows": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 4096 tokens x top-4"
+    },
+    {
+      "id": "r32768",
+      "axes": {
+        "n_rows": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill of 8192 tokens x top-4"
+    },
+    {
+      "id": "r65536",
+      "axes": {
+        "n_rows": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill of 16384 tokens x top-4"
+    },
+    {
+      "id": "r131072",
+      "axes": {
+        "n_rows": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill of 32768 tokens x top-4"
+    },
+    {
+      "id": "r262144",
+      "axes": {
+        "n_rows": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large batched prefill of 65536 tokens x top-4"
+    }
+  ]
+}

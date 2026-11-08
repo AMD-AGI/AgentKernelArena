@@ -1,0 +1,64 @@
+schema_version: 3
+description: >-
+  Backward pass of bfloat16 RMSNorm y = x * rsigma * gamma, rsigma = rsqrt(mean(x^2) + epsilon) per token, given the
+  forward's per-token rsigma and the output gradient dy. dx = dy * rsigma * gamma - rsigma^3 * x * mean(dy * x * gamma)
+  over the hidden axis, rounded to bfloat16; dgamma = sum over tokens of dy * x * rsigma, accumulated in float32 and rounded to bfloat16, the gamma dtype.
+operator:
+  name: rms_norm_backward
+  category: normalization
+interface:
+  axes:
+    n_tokens: {kind: var, min: 512, max: 262144, description: Tokens in the batch.}
+    hidden_size: {kind: const, value: 4096, description: Normalized width.}
+  inputs:
+    dy:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    x:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    gamma:
+      kind: tensor
+      shape: [hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    rsigma:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: float32
+      distribution: {kind: generator}
+  outputs:
+    dx: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+    dgamma: {shape: [hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: dd8373349e33638c8d158a9ea009b7b28598984a
+    path: >-
+      kernels/norm/rmsnorm_bwd_kernel.py, kernels/norm/rmsnorm_common.py, kernels/common/kernels_common.py,
+      kernels/norm/rmsnorm_kernel.py
+    license: Apache-2.0
+    modifications: >-
+      dtype_to_elem_type comes from kernels/common/kernels_common.py; the program-count selection of rmsnorm_bwd from
+      kernels/norm/rmsnorm_kernel.py.
+      rmsnorm_bwd_kernel.py drops the two atomic one-row-per-block builders (build_rmsnorm_bwd_module and
+      build_fused_add_rmsnorm_bwd_module, used upstream only below 512 tokens) and the atomic_add import they need;
+      the staged builder and its dweight finalizer are unchanged. Absolute kernels.* imports became relative imports
+      and kernels_common.py keeps only dtype_to_elem_type and get_warp_size. kernel.py is new: run() reproduces the
+      staged-path program-count selection of rmsnorm_bwd, caches the built launcher per (hidden size, programs),
+      allocates the partial-dweight scratch and launches on the current stream.
+compare:
+  dx: {bound: baseline_relative}
+  dgamma: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

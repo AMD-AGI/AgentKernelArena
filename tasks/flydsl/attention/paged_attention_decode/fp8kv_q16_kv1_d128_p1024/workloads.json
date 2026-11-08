@@ -1,0 +1,224 @@
+{
+ "description": "Decode steps of a Llama-3.1-405B-class layer at tensor-parallel 8 (16 query heads per KV head, head size 128) on MI355X with an FP8 per-token KV cache in 1024-token pages, as FlyDSL's persistent paged-attention path serves them. Batch sizes and context lengths extend the ranges of the upstream test and AITER's op_tests/test_pa_ps.py (batch 64-158, contexts to 10240) to long-context decode; the largest case (about 12.6M cached tokens, 3.3 GB of FP8 KV per layer) fits the KV capacity of one MI355X for this GQA layout. Short-context and small batches are correctness-only; s3_l1027 is the upstream metadata test's batch (context 1027, batch 3, 16 query heads).",
+ "cases": [
+  {
+   "id": "s1_l1",
+   "axes": {
+    "num_seqs": 1,
+    "max_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "first decode token of a one-token prompt"
+  },
+  {
+   "id": "s3_l1027",
+   "axes": {
+    "num_seqs": 3,
+    "max_seq_len": 1027
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "upstream FlyDSL test_metadata_accuracy batch (3 sequences, context 1027, 16 query heads)"
+  },
+  {
+   "id": "s81_l1027",
+   "axes": {
+    "num_seqs": 81,
+    "max_seq_len": 1027
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "81-sequence batch crossing a page by three tokens"
+  },
+  {
+   "id": "s2_l1024",
+   "axes": {
+    "num_seqs": 2,
+    "max_seq_len": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one full page per sequence"
+  },
+  {
+   "id": "s7_l300",
+   "axes": {
+    "num_seqs": 7,
+    "max_seq_len": 300
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "low-concurrency decode, short prompts"
+  },
+  {
+   "id": "s33_l4097",
+   "axes": {
+    "num_seqs": 33,
+    "max_seq_len": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "contexts crossing a page boundary by one token"
+  },
+  {
+   "id": "s300_l1024",
+   "axes": {
+    "num_seqs": 300,
+    "max_seq_len": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "more sequences than compute units, one page each"
+  },
+  {
+   "id": "s512_l2000",
+   "axes": {
+    "num_seqs": 512,
+    "max_seq_len": 2000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "largest decode batch, short contexts"
+  },
+  {
+   "id": "s5_l100000",
+   "axes": {
+    "num_seqs": 5,
+    "max_seq_len": 100000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "few long-context requests split across many compute units"
+  },
+  {
+   "id": "s1_l131072",
+   "axes": {
+    "num_seqs": 1,
+    "max_seq_len": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 128k-context request"
+  },
+  {
+   "id": "s4_l131072",
+   "axes": {
+    "num_seqs": 4,
+    "max_seq_len": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "low-concurrency 128k-context decode"
+  },
+  {
+   "id": "s16_l32768",
+   "axes": {
+    "num_seqs": 16,
+    "max_seq_len": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 16, 32k contexts"
+  },
+  {
+   "id": "s64_l8192",
+   "axes": {
+    "num_seqs": 64,
+    "max_seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 64 (AITER PA PS test batch, context 8192)"
+  },
+  {
+   "id": "s128_l8192",
+   "axes": {
+    "num_seqs": 128,
+    "max_seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 128 (AITER PA PS test batch cu_num / 2)"
+  },
+  {
+   "id": "s64_l32768",
+   "axes": {
+    "num_seqs": 64,
+    "max_seq_len": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 64, 32k contexts"
+  },
+  {
+   "id": "s256_l8192",
+   "axes": {
+    "num_seqs": 256,
+    "max_seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 256"
+  },
+  {
+   "id": "s128_l32768",
+   "axes": {
+    "num_seqs": 128,
+    "max_seq_len": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 128, 32k contexts"
+  },
+  {
+   "id": "s64_l131072",
+   "axes": {
+    "num_seqs": 64,
+    "max_seq_len": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 64, 128k contexts"
+  },
+  {
+   "id": "s256_l65536",
+   "axes": {
+    "num_seqs": 256,
+    "max_seq_len": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, concurrency 256, 64k contexts (near the KV capacity)"
+  }
+ ]
+}

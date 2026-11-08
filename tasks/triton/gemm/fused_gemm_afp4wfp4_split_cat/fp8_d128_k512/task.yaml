@@ -1,0 +1,56 @@
+schema_version: 3
+description: >-
+  The MLA key/value up-projection of a 128-head model with the key/value split and the rope-key concatenation fused, from
+  MXFP4 operands: c = dequant(x) @ dequant(w)^T with MXFP4 activations x [m, 256] bytes (512 e2m1 values, two per byte,
+  the even K index in the low nibble) and MXFP4 weights w [32768, 256], both with e8m0 scales per 32 values of K (x_scale
+  [m, 16], w_scale [32768, 16], uint8, value 2^(s - 127)), is accumulated in float32 and viewed as [m, 128, 256]; k =
+  cat(c[..., :128], k_pe broadcast over the 128 heads) with shape [m, 128, 192] and v = c[..., 128:] with shape
+  [m, 128, 128], both rounded to float8_e4m3fn.
+operator: {name: fused_gemm_afp4wfp4_split_cat, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 32768, description: Rows (tokens whose key/value are up-projected).}
+    n_heads: {kind: const, value: 128, description: Attention heads D.}
+    k_nope: {kind: const, value: 128, description: Per-head no-position key width S1.}
+    v_dim: {kind: const, value: 128, description: Per-head value width S2.}
+    k_rope: {kind: const, value: 64, description: Shared rope key width S3.}
+    k: {kind: const, value: 512, description: Contracted dimension (the compressed KV width in unpacked fp4 values).}
+  derived_axes: {n: n_heads * (k_nope + v_dim), k_full: k_nope + k_rope}
+  inputs:
+    x: {kind: tensor, shape: [m, k // 2], dtype: uint8, distribution: {kind: generator}}
+    x_scale: {kind: tensor, shape: [m, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+    k_pe: {kind: tensor, shape: [m, k_rope], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+  outputs:
+    k: {shape: [m, n_heads, k_full], dtype: float8_e4m3fn}
+    v: {shape: [m, n_heads, v_dim], dtype: float8_e4m3fn}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/fused/fused_gemm_afp4wfp4_split_cat.py
+      - aiter/ops/triton/gemm/fused/fused_gemm_afp4wfp4_split_cat.py
+      - aiter/ops/triton/gemm/basic/gemm_afp4wfp4.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gfx950/triton/gemm/GEMM-AFP4WFP4-N=32768-K=512.json
+    license: MIT
+    modifications: >-
+      Kernel and split-K reduce kernel unchanged; the preshuffle kernel is removed. The launcher
+      fused_gemm_afp4wfp4_split_cat is reduced to writing into the preallocated k and v (the wrapper's c1 and c2), with the
+      shared rope key broadcast over the heads by a view (y = k_pe[:, None, :].expand(m, 128, 64), as the upstream test does);
+      get_splitk is taken from the basic afp4wfp4 launcher, whose _get_config the wrapper imports; the N=32768, K=512 gfx950
+      table of GEMM-AFP4WFP4 is inlined as a function of M in the get_gemm_config lookup order; the remap_xcd, pid_grid and
+      make_kernel_repr helpers are inlined; imports, the logger and the shape asserts are removed.
+compare:
+  k: {bound: baseline_relative}
+  v: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

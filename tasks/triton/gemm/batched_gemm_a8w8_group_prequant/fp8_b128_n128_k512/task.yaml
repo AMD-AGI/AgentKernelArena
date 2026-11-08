@@ -1,0 +1,44 @@
+schema_version: 3
+description: >-
+  Batched fp8 GEMM with in-operator per-token group quantization of the activations, out[m, b] =
+  (fp8(x[m, b]) @ wq[b]^T) * w_scale for 128 batch elements, with token-major bfloat16 activations x [m, batch, 512]
+  that the operator quantizes to fp8 e4m3fn itself (one float32 scale per token and group of 128 values of K, scale =
+  group max / 448), fp8 e4m3fn weights wq [batch, 128, 512] with one float32 per-tensor scale w_scale [1], float32
+  accumulation per group scaled by the group scale, written token-major as bfloat16 out [m, batch, 128].
+operator: {name: batched_gemm_a8w8_group_prequant, category: gemm}
+interface:
+  axes:
+    batch: {kind: const, value: 128, description: Independent GEMMs in the batch (attention heads).}
+    m: {kind: var, min: 1, max: 25600, description: Rows (tokens) of each activation matrix.}
+    n: {kind: const, value: 128, description: Output width per batch element.}
+    k: {kind: const, value: 512, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [m, batch, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    wq: {kind: tensor, shape: [batch, n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [1], dtype: float32, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, batch, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/batched/batched_gemm_a8w8_a_per_token_group_prequant_w_per_batched_tensor_quant.py
+      - aiter/ops/triton/gemm/batched/batched_gemm_a8w8_a_per_token_group_prequant_w_per_batched_tensor_quant.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/configs/gemm/gfx950-BATCHED_GEMM-A8W8-A_PER_TOKEN_GROUP_PREQUANT_W_PER_BATCHED_TENSOR_QUANT-N=128-K=512.json
+    license: MIT
+    modifications: >-
+      Kernel unchanged; launcher reduced to the no-bias, transpose_bm_in and transpose_bm path with group_size 128,
+      writing into the preallocated output (DTYPE_MAX is the constant 448 of e4m3fn instead of a torch.finfo call),
+      with the table inlined as a function of M in the get_gemm_config lookup order; kernel_repr helper inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

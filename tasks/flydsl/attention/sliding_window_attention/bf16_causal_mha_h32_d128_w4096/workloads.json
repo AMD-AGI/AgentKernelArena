@@ -1,0 +1,180 @@
+{
+ "description": "Prefill of an OLMo-3 sliding-attention layer (32 MHA heads, head_dim 128, 4096-token window): prompt length (multiples of 256, as the kernel's 256-row CTA tile requires) and batch vary. Sequences below 2k tokens and the odd batch/length shapes are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_s256",
+   "axes": {
+    "batch": 1,
+    "seq_len": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "shortest sequence, one query tile, window longer than the sequence"
+  },
+  {
+   "id": "b3_s768",
+   "axes": {
+    "batch": 3,
+    "seq_len": 768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, non-power-of-two short sequences"
+  },
+  {
+   "id": "b17_s256",
+   "axes": {
+    "batch": 17,
+    "seq_len": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch of 17 short prompts"
+  },
+  {
+   "id": "b1_s4352",
+   "axes": {
+    "batch": 1,
+    "seq_len": 4352
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "17 x 256 tokens: the first keys leave the 4096-token window by 256 positions"
+  },
+  {
+   "id": "b2_s5120",
+   "axes": {
+    "batch": 2,
+    "seq_len": 5120
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "two 5k prompts, window edge inside the second 4096-token block"
+  },
+  {
+   "id": "b1_s1024",
+   "axes": {
+    "batch": 1,
+    "seq_len": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 1k prompt, window longer than the sequence"
+  },
+  {
+   "id": "b1_s2048",
+   "axes": {
+    "batch": 1,
+    "seq_len": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 2k prompt"
+  },
+  {
+   "id": "b1_s4096",
+   "axes": {
+    "batch": 1,
+    "seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 4k prompt, window equal to the sequence"
+  },
+  {
+   "id": "b4_s2048",
+   "axes": {
+    "batch": 4,
+    "seq_len": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "four 2k prompts"
+  },
+  {
+   "id": "b1_s8192",
+   "axes": {
+    "batch": 1,
+    "seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 8k prompt, window active"
+  },
+  {
+   "id": "b2_s8192",
+   "axes": {
+    "batch": 2,
+    "seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "two 8k prompts"
+  },
+  {
+   "id": "b8_s4096",
+   "axes": {
+    "batch": 8,
+    "seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of eight 4k prompts"
+  },
+  {
+   "id": "b1_s16384",
+   "axes": {
+    "batch": 1,
+    "seq_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 16k prompt prefill"
+  },
+  {
+   "id": "b1_s32768",
+   "axes": {
+    "batch": 1,
+    "seq_len": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 32k long-context prefill"
+  },
+  {
+   "id": "b8_s16384",
+   "axes": {
+    "batch": 8,
+    "seq_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of eight 16k prompts"
+  }
+ ]
+}

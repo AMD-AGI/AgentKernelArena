@@ -1,0 +1,78 @@
+schema_version: 3
+description: >-
+  Two-dimensional 3x3 convolution of a bfloat16 channels-last (NHWC) feature map, 256 input to 256 output channels,
+  stride 1, padding 1, dilation 1, one group, with a float32 bias:
+  out[n, p, q, o] = bias[o] + sum over r, s, c of x[n, p + r - 1, q + s - 1, c] * weight[o, r * 3 + s, c], with zero
+  padding, float32 accumulation, rounded to bfloat16. The weight is passed with its 3x3 taps moved in front of the
+  channels, [out_channels, 9, in_channels].
+operator:
+  name: conv2d
+  category: convolution
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 16, description: Images in the batch.}
+    height: {kind: var, min: 8, max: 512, description: Feature-map height (the output has the same height).}
+    width: {kind: var, min: 8, max: 512, description: Feature-map width (the output has the same width).}
+    in_channels: {kind: const, value: 256, description: Input channels.}
+    out_channels: {kind: const, value: 256, description: Output channels.}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, height, width, in_channels]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: NHWC feature map, contiguous (channels-last); SiLU of a standard normal, as after GroupNorm + SiLU.
+    weight:
+      kind: tensor
+      shape: [out_channels, 9, in_channels]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: Filters; the logical OIHW tensor [out_channels, in_channels, 3, 3] repacked by the layout transform.
+    bias:
+      kind: tensor
+      shape: [out_channels]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: -0.020833333333333332, high: 0.020833333333333332}
+      description: Per-output-channel bias, drawn like nn.Conv2d's default init (bound 1/sqrt(256 * 9)).
+  outputs:
+    out:
+      shape: [batch, height, width, out_channels]
+      dtype: bfloat16
+      description: NHWC output, contiguous.
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/conv/conv2d.py
+      - aiter/ops/triton/conv/_launch.py
+      - aiter/ops/triton/conv/_prepack.py
+      - aiter/ops/triton/conv/_utils.py
+      - aiter/ops/triton/utils/conv_config_utils.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/_triton_kernels/conv/conv_3x3.py
+      - aiter/ops/triton/_triton_kernels/conv/helpers.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/configs/conv/gfx950-CONV-3X3-NHWC.json
+    license: MIT
+    modifications: >-
+      Kernel (_conv2d_3x3_nhwc_kernel), launcher (_launch_3x3_nhwc, _make_mn_grid) and kernel_repr.py are unchanged;
+      the three import lines of conv_3x3.py are made package-relative. The dispatcher of conv2d.py is collapsed to
+      its NHWC 3x3 route and the call wrapped in run() (stride 1, padding 1, no activation, bias given in float32).
+      The weight prepack prepack_oihw_to_3x3 (done once per weight and cached by aiter) is the layout transform of
+      this task; with 256 channels (a multiple of the 64-channel pack block) it adds no padding. The gfx950
+      tuned-config table (a single "any" entry) is inlined in conv_config_utils.py and the lookup reduced to gfx950.
+      helpers.py keeps the autotune switch off and drops its environment-variable read. activation.py is an excerpt
+      of four unchanged activation helpers.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

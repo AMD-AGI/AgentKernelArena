@@ -1,0 +1,67 @@
+schema_version: 3
+description: >-
+  Fused chunk-local gate cumsum and scaled key Gram matrix of Gated DeltaNet chunked prefill. Tokens
+  are split into chunks of 64 (the last may be partial). For value head h (sharing key head h // 2),
+  g is the raw per-token log-decay and gc[t, h] its cumulative sum inside the token's chunk. The
+  operator outputs g_cumsum[h, t] = gc[t, h] * log2(e) (head-major, log2 space) and, for the tokens
+  i, j of one chunk, A[i, h, j] = beta[i, h] * dot(k[i, h // 2], k[j, h // 2]) * exp(gc[i, h] - gc[j, h])
+  for i > j and 0 otherwise (strictly lower triangle, zeros in padding and above the diagonal).
+  Keys are bfloat16, beta and g float32, the products accumulate in float32 or higher, and both
+  outputs are float32.
+operator:
+  name: chunk_cumsum_kkt
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 409600, description: Tokens of one packed sequence batch.}
+    num_key_heads: {kind: const, value: 16, description: Key heads.}
+    num_heads: {kind: const, value: 32, description: Value heads (two per key head).}
+    head_dim: {kind: const, value: 128, description: Key head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  inputs:
+    k:
+      kind: tensor
+      shape: [n_tokens, num_key_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, contiguous; std 1/sqrt(head_dim) like L2-normalized keys.
+    beta:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: Delta-rule write strength sigmoid(b), float32 as the gating kernel produces it.
+    g:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Raw per-token log-decay -exp(A_log) * softplus(a + dt_bias) (non-positive), before the chunk cumsum.
+  outputs:
+    g_cumsum: {shape: [num_heads, n_tokens], dtype: float32}
+    A: {shape: [n_tokens, num_heads, chunk_size], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/gated_delta_rule/prefill/fused_cumsum_kkt.py
+    license: MIT (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      Only fused_chunk_local_cumsum_scaled_dot_kkt_fwd_kernel is kept (the older unfused
+      _fused_cumsum_kkt_kernel and its wrapper are removed); its body is unchanged. The @triton.autotune
+      decorator, which is a single entry (BK 32, 4 warps, 2 stages) unless the
+      GATED_DELTA_RULE_TRITON_AUTOTUNE environment variable is set, is replaced by that entry passed at
+      launch, and tl.exp (utils/op.py's exp) and log2(e) (gated_delta_rule_utils.RCP_LN2) are defined in
+      the file. fused_chunk_local_cumsum_scaled_dot_kkt_fwd is replaced by run() for one sequence
+      (cu_seqlens None, use_exp2 True, float32 outputs, as chunk_gated_delta_rule_fwd_opt_vk calls it),
+      writing the preallocated g_cumsum and A.
+compare:
+  g_cumsum: {bound: baseline_relative, k: 8}
+  A: {bound: baseline_relative, max_violation_fraction: 1.0e-6}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

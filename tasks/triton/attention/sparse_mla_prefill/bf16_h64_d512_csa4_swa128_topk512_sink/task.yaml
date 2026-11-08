@@ -1,0 +1,77 @@
+schema_version: 3
+description: >-
+  DeepSeek-V4 sparse-attention (CSA layer) prefill with a per-head attention sink. Each query token attends
+  to the latent KV rows named by its row of a ragged CSR index list (indices[indptr[i]:indptr[i+1]]), entries
+  below zero or at or above num_kv being skipped: out[i, h] = sum_j exp(s_j - m) kv[idx_j] /
+  (sum_j exp(s_j - m) + exp(attn_sink[h] - m)) with s_j = scale * q[i, h] . kv[idx_j] and m the maximum of the
+  scores and the sink logit; the sink adds to the softmax denominator only. The 512-wide latent row (448 NoPE + 64
+  RoPE) is both key and value and all 64 query heads share it. A row without indices produces zeros. The pool
+  holds the n_queries // 4 compressed entries of the prompt first, then one row per prompt token; token i
+  (position i) lists up to 512 compressed entries chosen from the (i + 1) // 4 available ones, then its
+  sliding window of the last min(i + 1, 128) token rows. indices holds the rows back to back from offset 0; its tail
+  beyond indptr[n_queries] is unused capacity.
+operator: {name: sparse_mla_prefill, category: attention}
+interface:
+  axes:
+    n_queries: {kind: var, min: 1, max: 16384, description: Prompt tokens of one prefill chunk.}
+    num_heads: {kind: const, value: 64, description: Query heads.}
+    head_dim: {kind: const, value: 512, description: MLA latent width (448 NoPE + 64 RoPE).}
+    topk: {kind: const, value: 512, description: Maximum compressed entries selected per query (index_topk).}
+    window: {kind: const, value: 128, description: Sliding-window tokens per query (sliding_window).}
+  derived_axes:
+    num_kv: n_queries + n_queries // 4
+    index_capacity: n_queries * (topk + window)
+  inputs:
+    q:
+      kind: tensor
+      shape: [n_queries, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv:
+      kind: tensor
+      shape: [num_kv, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Compressed entries (first n_queries // 4 rows), then the prompt tokens' rows.
+    indices:
+      kind: tensor
+      shape: [index_capacity]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    indptr:
+      kind: tensor
+      shape: [n_queries + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    attn_sink:
+      kind: tensor
+      shape: [num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Per-head sink logits.
+    scale: {kind: scalar, dtype: float32, default: 0.04419417382415922, description: "Softmax scale, 1/sqrt(512)."}
+  outputs:
+    out: {shape: [n_queries, num_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
+    license: Apache-2.0
+    modifications: >-
+      Only _sparse_attn_prefill_ragged_kernel (unchanged) and the launch code of
+      _rocm_sparse_attn_prefill_ragged_triton (BLOCK_H=16, BLOCK_K=16, 4 warps, as upstream), wrapped in run()
+      with HAS_ATTN_SINK=True and writing the preallocated bfloat16 out directly (upstream allocates
+      a bfloat16 tensor and copies it into the caller's output). The dense-index entry point and its
+      build_ragged_indices_from_dense preprocessing are not used: the task supplies the ragged CSR lists.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

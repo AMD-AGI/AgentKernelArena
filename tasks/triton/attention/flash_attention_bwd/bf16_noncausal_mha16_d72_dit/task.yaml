@@ -1,0 +1,91 @@
+schema_version: 3
+description: >-
+  Backward pass of non-causal multi-head attention in the BSHD layout (flash_attn_onekernel_backward).
+  With the forward out = softmax(sm_scale * q k^T) v over all keys of the sequence, rounded to bfloat16 as
+  o, and its natural-log row log-sum-exp lse (16 heads, head_dim 72), the operator returns the gradients
+  dq, dk and dv of a loss whose upstream gradient is do. o and lse are inputs of the backward, saved by
+  the forward; the backward recomputes the probabilities as exp(sm_scale * q k^T - lse) and uses
+  delta = rowsum(do * o). All three gradients are bfloat16.
+operator:
+  name: flash_attention_bwd
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 128, description: Images in the batch.}
+    seqlen: {kind: var, min: 2, max: 1024, description: Patch tokens per image (queries and keys).}
+    n_heads: {kind: const, value: 16, description: Query heads.}
+    n_kv_heads: {kind: const, value: 16, description: Key/value heads (multi-head attention).}
+    head_dim: {kind: const, value: 72, description: Head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, seqlen, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k:
+      kind: tensor
+      shape: [batch, seqlen, n_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    v:
+      kind: tensor
+      shape: [batch, seqlen, n_kv_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    o:
+      kind: tensor
+      shape: [batch, seqlen, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: Forward output for q, k, v, derived by the generator.
+    do:
+      kind: tensor
+      shape: [batch, seqlen, n_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Upstream gradient of o.
+    lse:
+      kind: tensor
+      shape: [batch, n_heads, seqlen]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Natural-log log-sum-exp of the scaled scores of every query row.
+    sm_scale: {kind: scalar, dtype: float32, default: 0.11785113019775792, description: "Softmax scale, 1/sqrt(head_dim)."}
+  outputs:
+    dq: {shape: [batch, seqlen, n_heads, head_dim], dtype: bfloat16}
+    dk: {shape: [batch, seqlen, n_kv_heads, head_dim], dtype: bfloat16}
+    dv: {shape: [batch, seqlen, n_kv_heads, head_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: >-
+      aiter/ops/triton/_triton_kernels/attention/mha_onekernel_bwd.py,
+      aiter/ops/triton/attention/mha_onekernel_bwd.py,
+      aiter/ops/triton/utils/_triton/kernel_repr.py,
+      aiter/ops/triton/utils/_triton/mha_kernel_utils.py,
+      aiter/ops/triton/utils/types.py,
+      aiter/ops/triton/configs/gfx950-MHA-DEFAULT.json
+    license: MIT
+    modifications: >-
+      Kernels (_bwd_preprocess, bwd_kernel_causal, bwd_kernel_noncausal and their inner loops) unchanged.
+      aiter imports replaced by the flat-package helpers kernel_repr.py and mha_kernel_utils.py (verbatim
+      copies) and fp8_types.py (_is_fp8 without its architecture probe); _get_config returns the
+      bkwd_onekernel entry of gfx950-MHA-DEFAULT.json as a literal instead of reading the file; the
+      logger and its info call were removed from the wrapper; the debug print blocks guarded by the
+      constexpr flags DEBUG_TRITON and DEBUG_TRITON_DETAIL (always false here) were deleted from the
+      kernels, since printing is not allowed in a candidate; run() calls
+      flash_attn_onekernel_backward with causal=False, no dropout, bias, ALiBi, sink or
+      sliding window. Some of this code shares its structure and comments with the flash_attn_triton_amd
+      backward of the same AITER commit (see README).
+compare:
+  dq: {bound: baseline_relative, k: 3}
+  dk: {bound: baseline_relative, k: 3}
+  dv: {bound: baseline_relative, k: 3}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

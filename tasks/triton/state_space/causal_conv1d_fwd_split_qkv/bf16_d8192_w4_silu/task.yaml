@@ -1,0 +1,96 @@
+schema_version: 3
+description: >-
+  Varlen causal depthwise convolution of width 4 over packed sequences, with bias and SiLU, whose
+  output channels are split into q | k | v: acc[t, c] = bias[c] + sum_{j<4} w[c, j] * z[t + j, c],
+  with z the sequence's initial conv state (zeros when has_initial_state is 0) followed by its tokens
+  and silu(acc) = acc * sigmoid(acc); channels [0, key_dim) go to q, [key_dim, 2 * key_dim) to k and
+  [2 * key_dim, 2 * key_dim + value_dim) to v, each row-major per token. Each sequence's conv-state
+  cache slot is then overwritten, in place, with the last 3 elements of z.
+operator:
+  name: causal_conv1d_fwd_split_qkv
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Total tokens of all packed sequences.}
+    dim: {kind: const, value: 8192, description: Convolution channels (2 * key_dim + value_dim).}
+    key_dim: {kind: const, value: 2048, description: Query and key channels each (16 heads of 128).}
+    value_dim: {kind: const, value: 4096, description: Value channels (32 heads of 128).}
+    width: {kind: const, value: 4, description: Kernel width.}
+  derived_axes:
+    state_len: width - 1
+    n_seqs: ceil_div(n_tokens, 256)
+    cache_lines: 2 * ceil_div(n_tokens, 256)
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed projection output, channels laid out [Q | K | V].
+    weight:
+      kind: tensor
+      shape: [dim, width]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    bias:
+      kind: tensor
+      shape: [dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    conv_states:
+      kind: tensor
+      shape: [cache_lines, state_len, dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    query_start_loc:
+      kind: tensor
+      shape: [n_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    cache_indices:
+      kind: tensor
+      shape: [n_seqs]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    has_initial_state:
+      kind: tensor
+      shape: [n_seqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+  outputs:
+    q: {shape: [n_tokens, key_dim], dtype: bfloat16}
+    k: {shape: [n_tokens, key_dim], dtype: bfloat16}
+    v: {shape: [n_tokens, value_dim], dtype: bfloat16}
+  mutable: [conv_states]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/gated_delta_rule/prefill/causal_conv1d_fwd_split_qkv.py, aiter/ops/triton/gated_delta_net/causal_conv1d_prefill.py
+    license: MIT AND Apache-2.0 (ROCm/aiter MIT, baseline/LICENSE; the tile kernel derives from vLLM's _causal_conv1d_fwd_kernel at edbc4969a76b25c531f7b9bb16b79984e65ef023, Apache-2.0, whose notices are in baseline/LICENSE-vllm)
+    modifications: >-
+      _causal_conv1d_fwd_split_qkv_tile_kernel is vendored unchanged; the 1D per-token kernel is
+      removed. The host-side wrapper causal_conv1d_split_qkv_triton_tile_fn (default block_m 64,
+      block_n 32, 4 warps, 1 stage; its CPU round trip builds the sequence/chunk launch map) is
+      replaced by a small Triton kernel that builds the map on the device and a run() entry point
+      that launches both kernels on channel-last views of the packed (n_tokens, dim) tensors and
+      writes the preallocated q, k and v. The launch-map kernel is adapted from the one of the
+      causal_conv1d_fwd task of this repository. The upstream files carry no SPDX header.
+compare:
+  q: {bound: baseline_relative}
+  k: {bound: baseline_relative}
+  v: {bound: baseline_relative}
+  conv_states: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

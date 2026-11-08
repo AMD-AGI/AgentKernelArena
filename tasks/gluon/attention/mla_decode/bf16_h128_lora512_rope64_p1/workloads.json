@@ -1,0 +1,179 @@
+{
+ "description": "DeepSeek-V3 (128 heads, TP1) MLA decode batches over a token-granular latent cache. The stage-1-only Gluon path needs batch 128 or 256 (batch divisible by 64 and enough work to fill 256 workgroups with one split). Sequence lengths are ragged between ctx/2 and ctx, never below 193. Smaller contexts are correctness-only.",
+ "cases": [
+  {
+   "id": "b128_c256",
+   "axes": {
+    "batch": 128,
+    "ctx": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "minimum: shortest sequences are 193..256 tokens, the smallest the kernel accepts"
+  },
+  {
+   "id": "b128_c333",
+   "axes": {
+    "batch": 128,
+    "ctx": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd context, ragged partial tiles"
+  },
+  {
+   "id": "b256_c777",
+   "axes": {
+    "batch": 256,
+    "ctx": 777
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch 256, context not a multiple of 16"
+  },
+  {
+   "id": "b128_c1000",
+   "axes": {
+    "batch": 128,
+    "ctx": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned short context"
+  },
+  {
+   "id": "b256_c257",
+   "axes": {
+    "batch": 256,
+    "ctx": 257
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "context one past the minimum power of two"
+  },
+  {
+   "id": "b128_c4097",
+   "axes": {
+    "batch": 128,
+    "ctx": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "context one token past a power of two"
+  },
+  {
+   "id": "b128_c512",
+   "axes": {
+    "batch": 128,
+    "ctx": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "short-context decode at batch 128"
+  },
+  {
+   "id": "b128_c1024",
+   "axes": {
+    "batch": 128,
+    "ctx": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "1k-context decode at batch 128"
+  },
+  {
+   "id": "b256_c2048",
+   "axes": {
+    "batch": 256,
+    "ctx": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "2k-context decode at batch 256"
+  },
+  {
+   "id": "b128_c4096",
+   "axes": {
+    "batch": 128,
+    "ctx": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "4k-context decode at batch 128"
+  },
+  {
+   "id": "b256_c4096",
+   "axes": {
+    "batch": 256,
+    "ctx": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "4k-context decode at batch 256"
+  },
+  {
+   "id": "b128_c8192",
+   "axes": {
+    "batch": 128,
+    "ctx": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8k-context decode at batch 128"
+  },
+  {
+   "id": "b128_c16384",
+   "axes": {
+    "batch": 128,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16k-context decode at batch 128 (the upstream op test uses ctx 16384 with batch 64/128)"
+  },
+  {
+   "id": "b256_c16384",
+   "axes": {
+    "batch": 256,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16k-context decode at batch 256"
+  },
+  {
+   "id": "b256_c32768",
+   "axes": {
+    "batch": 256,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "max-concurrency 32k-context decode at batch 256"
+  }
+ ]
+}

@@ -1,0 +1,303 @@
+{
+ "description": "Jagged HSTU attention batches of a 4-head, head_dim 128 ranking model (DLRM-v3 configuration): 1 to 256 sequences, 4k to 262k packed tokens, histories up to 16k tokens and up to ten candidates per sequence; timed cases have no context tokens, correctness cases also use one and five; tiny batches are correctness-only.",
+ "cases": [
+  {
+   "id": "c_b1_t1_ctx1",
+   "axes": {
+    "batch": 1,
+    "n_tokens": 1
+   },
+   "scalars": {
+    "max_seq_len": 1,
+    "contextual_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: a single context token"
+  },
+  {
+   "id": "c_b2_t23_ctx1",
+   "axes": {
+    "batch": 2,
+    "n_tokens": 23
+   },
+   "scalars": {
+    "max_seq_len": 13,
+    "contextual_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "two short sequences, one context token each"
+  },
+  {
+   "id": "c_b3_t200_ctx5",
+   "axes": {
+    "batch": 3,
+    "n_tokens": 200
+   },
+   "scalars": {
+    "max_seq_len": 100,
+    "contextual_seq_len": 5
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "MovieLens-1M-like five contextual features, ragged sequences"
+  },
+  {
+   "id": "c_b2_t333_ctx1",
+   "axes": {
+    "batch": 2,
+    "n_tokens": 333
+   },
+   "scalars": {
+    "max_seq_len": 200,
+    "contextual_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "sequence lengths that are not tile multiples"
+  },
+  {
+   "id": "c_b5_t1000_ctx1",
+   "axes": {
+    "batch": 5,
+    "n_tokens": 1000
+   },
+   "scalars": {
+    "max_seq_len": 300,
+    "contextual_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small ragged batch, unaligned total"
+  },
+  {
+   "id": "c_b8_t129_ctx0",
+   "axes": {
+    "batch": 8,
+    "n_tokens": 129
+   },
+   "scalars": {
+    "max_seq_len": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "no contextual prefix, one 100-token sequence with seven short ones"
+  },
+  {
+   "id": "c_b4_t2000_ctx0",
+   "axes": {
+    "batch": 4,
+    "n_tokens": 2000
+   },
+   "scalars": {
+    "max_seq_len": 700
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "no contextual prefix, 700-token longest sequence"
+  },
+  {
+   "id": "c_b17_t1537_ctx1",
+   "axes": {
+    "batch": 17,
+    "n_tokens": 1537
+   },
+   "scalars": {
+    "max_seq_len": 200,
+    "contextual_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "many short sequences, odd total"
+  },
+  {
+   "id": "c_b1_t513_ctx1",
+   "axes": {
+    "batch": 1,
+    "n_tokens": 513
+   },
+   "scalars": {
+    "max_seq_len": 513,
+    "contextual_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one sequence one token past four 128-row tiles"
+  },
+  {
+   "id": "c_b1_t40_ctx5",
+   "axes": {
+    "batch": 1,
+    "n_tokens": 40
+   },
+   "scalars": {
+    "max_seq_len": 40,
+    "contextual_seq_len": 5
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one sequence with five context tokens and at most ten candidates"
+  },
+  {
+   "id": "p_b1_t4096",
+   "axes": {
+    "batch": 1,
+    "n_tokens": 4096
+   },
+   "scalars": {
+    "max_seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "one 4k-token user history"
+  },
+  {
+   "id": "p_b8_t8192",
+   "axes": {
+    "batch": 8,
+    "n_tokens": 8192
+   },
+   "scalars": {
+    "max_seq_len": 1536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "8 users, longest sequence 1536"
+  },
+  {
+   "id": "p_b16_t16384",
+   "axes": {
+    "batch": 16,
+    "n_tokens": 16384
+   },
+   "scalars": {
+    "max_seq_len": 1536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16 users, longest sequence 1536"
+  },
+  {
+   "id": "p_b4_t12288",
+   "axes": {
+    "batch": 4,
+    "n_tokens": 12288
+   },
+   "scalars": {
+    "max_seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "4 users, longest sequence 4096"
+  },
+  {
+   "id": "p_b1_t16384",
+   "axes": {
+    "batch": 1,
+    "n_tokens": 16384
+   },
+   "scalars": {
+    "max_seq_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "one 16k-token sequence (DlrmHSTUConfig.max_seq_len)"
+  },
+  {
+   "id": "p_b32_t32768",
+   "axes": {
+    "batch": 32,
+    "n_tokens": 32768
+   },
+   "scalars": {
+    "max_seq_len": 1536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "32 users, longest sequence 1536"
+  },
+  {
+   "id": "p_b16_t49152",
+   "axes": {
+    "batch": 16,
+    "n_tokens": 49152
+   },
+   "scalars": {
+    "max_seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16 users, longest sequence 4096"
+  },
+  {
+   "id": "p_b64_t65536",
+   "axes": {
+    "batch": 64,
+    "n_tokens": 65536
+   },
+   "scalars": {
+    "max_seq_len": 1536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "64 users, longest sequence 1536"
+  },
+  {
+   "id": "p_b128_t131072",
+   "axes": {
+    "batch": 128,
+    "n_tokens": 131072
+   },
+   "scalars": {
+    "max_seq_len": 1536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "128 users, longest sequence 1536"
+  },
+  {
+   "id": "p_b256_t262144",
+   "axes": {
+    "batch": 256,
+    "n_tokens": 262144
+   },
+   "scalars": {
+    "max_seq_len": 1536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "256 users, longest sequence 1536"
+  }
+ ]
+}

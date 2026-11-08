@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Ragged grouped GEMM (the forward group matrix multiplication of an MoE layer) in bfloat16: the m rows of lhs
+  [m, 1408] are split into 64 consecutive groups of group_sizes[g] rows (the rows routed to expert g, sorted by
+  expert) and each group is multiplied by its own matrix, out[rows of g] = lhs[rows of g] @ rhs[g] with
+  rhs [64, 1408, 2048]. Accumulation is in float32 and the result is rounded to bfloat16. group_sizes sums to m and
+  may contain empty groups.
+operator: {name: grouped_gemm, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Routed rows (tokens x experts per token).}
+    num_groups: {kind: const, value: 64, description: Routed experts.}
+    k: {kind: const, value: 1408, description: Expert intermediate size (reduction length).}
+    n: {kind: const, value: 2048, description: Hidden size (output features).}
+  inputs:
+    lhs: {kind: tensor, shape: [m, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    rhs:
+      kind: tensor
+      shape: [num_groups, k, n]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.026650}
+    group_sizes: {kind: tensor, shape: [num_groups], dtype: int32, role: metadata, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gmm.py
+      - aiter/ops/triton/gmm.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/configs/gfx950-GMM.json
+    license: MIT
+    modifications: >-
+      The gmm_kernel of _triton_kernels/gmm.py with its helpers is copied unchanged; the persistent tgmm kernels, the
+      file-based get_config and the arch/config-path imports are dropped. pid_preprocessing.py is a verbatim copy. The
+      launcher gmm of gmm.py is reduced to run() for a non-transposed (G, K, N) rhs without bias or work stealing,
+      writing into the preallocated output with the grid of the upstream _gmm_grid (GRID_DIM programs, without its
+      optional host assertions). The gmm/default entry of gfx950-GMM.json (the entry upstream's get_config returns for
+      every shape) became a Python constant.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,235 @@
+{
+ "description": "Prefill of a Llama-3.1-70B-class attention layer (64 query heads, 8 KV heads, head_dim 128) with per-tensor FP8 Q/K/V: prompt length (ragged lengths included) and batch vary; short and odd shapes are correctness-only. (16, 8192) is the GQA shape of the upstream FlyDSL flash-attention benchmark.",
+ "cases": [
+  {
+   "id": "b1_s1",
+   "axes": {
+    "batch": 1,
+    "seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single-token sequence (upstream set5 length)"
+  },
+  {
+   "id": "b2_s100",
+   "axes": {
+    "batch": 2,
+    "seq_len": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short ragged prompts under one tile"
+  },
+  {
+   "id": "b2_s1000",
+   "axes": {
+    "batch": 2,
+    "seq_len": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "ragged prompt, tail inside a 64-key tile"
+  },
+  {
+   "id": "b1_s3001",
+   "axes": {
+    "batch": 1,
+    "seq_len": 3001
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "ragged long prompt, odd length"
+  },
+  {
+   "id": "b1_s128",
+   "axes": {
+    "batch": 1,
+    "seq_len": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "shortest sequence, a single partially filled query tile"
+  },
+  {
+   "id": "b3_s384",
+   "axes": {
+    "batch": 3,
+    "seq_len": 384
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, short non-power-of-two sequences"
+  },
+  {
+   "id": "b17_s256",
+   "axes": {
+    "batch": 17,
+    "seq_len": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch of 17 short prompts"
+  },
+  {
+   "id": "b11_s384",
+   "axes": {
+    "batch": 11,
+    "seq_len": 384
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batched short prompts, partial query tile"
+  },
+  {
+   "id": "b2_s640",
+   "axes": {
+    "batch": 2,
+    "seq_len": 640
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "two 640-token prompts, query tile boundary inside the sequence"
+  },
+  {
+   "id": "b1_s2176",
+   "axes": {
+    "batch": 1,
+    "seq_len": 2176
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prompt (17 x 128)"
+  },
+  {
+   "id": "b1_s1024",
+   "axes": {
+    "batch": 1,
+    "seq_len": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 1k prompt prefill"
+  },
+  {
+   "id": "b1_s2048",
+   "axes": {
+    "batch": 1,
+    "seq_len": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 2k prompt prefill"
+  },
+  {
+   "id": "b1_s4096",
+   "axes": {
+    "batch": 1,
+    "seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 4k prompt prefill"
+  },
+  {
+   "id": "b4_s2048",
+   "axes": {
+    "batch": 4,
+    "seq_len": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "four 2k prompts"
+  },
+  {
+   "id": "b1_s8192",
+   "axes": {
+    "batch": 1,
+    "seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 8k prompt prefill"
+  },
+  {
+   "id": "b4_s4096",
+   "axes": {
+    "batch": 4,
+    "seq_len": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "four 4k prompts"
+  },
+  {
+   "id": "b1_s16384",
+   "axes": {
+    "batch": 1,
+    "seq_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 16k long-context prefill"
+  },
+  {
+   "id": "b16_s2048",
+   "axes": {
+    "batch": 16,
+    "seq_len": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "sixteen 2k prompts"
+  },
+  {
+   "id": "b4_s16384",
+   "axes": {
+    "batch": 4,
+    "seq_len": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "four 16k prompts"
+  },
+  {
+   "id": "b16_s8192",
+   "axes": {
+    "batch": 16,
+    "seq_len": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "upstream FlyDSL benchmark shape (16, 8192, 64 heads, 8 KV heads)"
+  }
+ ]
+}

@@ -1,0 +1,122 @@
+schema_version: 3
+description: >-
+  Fused FP8 batched GEMM, RoPE and KV-cache write of a multi-head latent attention (MLA) decode step. For every
+  query head h the bfloat16 q_nope[h] [tokens, 128] is quantized in the operator to fp8 e4m3fn (one float32 scale per
+  token and head, scale = max|x| / 448), multiplied with the fp8 e4m3fn weight w_k[h] [512, 128] (one per-tensor scale
+  w_k_scale) with float32 accumulation and rounded to bfloat16 into q_out[:, h, :512]. The interleaved (GPT-J style)
+  rotary embedding of q_pe (cos/sin rows gathered by position) fills q_out[:, h, 512:]; k_pe is rotated the same way
+  into k_pe_out, and [k_nope | rotated k_pe] of the single latent KV head is written to the cache slot given by
+  slot_mapping (unique, non-negative slots). Other cache slots keep their value.
+operator:
+  name: fused_bmm_rope_kv_cache
+  category: kv_cache
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 6400, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 128}
+    num_kv_heads: {kind: const, value: 1}
+    qk_nope_head_dim: {kind: const, value: 128, description: Contracted width of the q_nope projection.}
+    kv_lora_dim: {kind: const, value: 512, description: Latent width of the projection output and of k_nope.}
+    rope_dim: {kind: const, value: 64}
+    max_position: {kind: const, value: 32768, description: Rows of the cos/sin tables.}
+  derived_axes:
+    cache_dim: kv_lora_dim + rope_dim
+    num_slots: n_tokens + n_tokens // 4 + 16
+    half_rope: rope_dim // 2
+  inputs:
+    q_nope:
+      kind: tensor
+      shape: [num_q_heads, n_tokens, qk_nope_head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w_k:
+      kind: tensor
+      shape: [num_q_heads, kv_lora_dim, qk_nope_head_dim]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+    w_k_scale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+    q_pe:
+      kind: tensor
+      shape: [n_tokens, num_q_heads, rope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k_nope:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, kv_lora_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k_pe:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, rope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 32768}
+    slot_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+    cos:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    kv_cache:
+      kind: tensor
+      shape: [num_slots, num_kv_heads, cache_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+  outputs:
+    q_out: {shape: [n_tokens, num_q_heads, cache_dim], dtype: bfloat16}
+    k_pe_out: {shape: [n_tokens, num_kv_heads, rope_dim], dtype: bfloat16}
+  mutable: [kv_cache]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/fusions/fused_bmm_rope_kv_cache.py
+      - aiter/ops/triton/fusions/fused_bmm_rope_kv_cache.py
+      - aiter/ops/triton/_triton_kernels/rope/rope.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/configs/gemm/gfx950-BATCHED_GEMM-A8W8-A_PER_TOKEN_GROUP_PREQUANT_W_PER_BATCHED_TENSOR_QUANT-N=512-K=128.json
+    license: MIT
+    modifications: >-
+      _fused_fp8_bmm_rope_cat_and_cache_mla_kernel and _unit_rope copied unchanged; the two 1D rotation helpers
+      of rope.py and make_kernel_repr are inlined (kernel_repr.py has no header upstream, so the repository MIT
+      license applies to it). The FP4 kernels and split-K reduce are not vendored. The launch code of
+      fused_fp8_bmm_rope_cat_and_cache_mla became run() for this configuration (interleaved RoPE, bfloat16
+      cache, no k_scale, no decode-copy or zeros outputs, group size 128), writing into the preallocated outputs;
+      the N=512, K=128 tuned table is inlined as a function of M in get_gemm_config's lookup order.
+compare:
+  q_out: {bound: baseline_relative}
+  k_pe_out: {bound: baseline_relative}
+  kv_cache: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

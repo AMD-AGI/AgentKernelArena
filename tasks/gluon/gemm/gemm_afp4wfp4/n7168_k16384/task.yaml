@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  out = dequant(a) @ dequant(w)^T with MXFP4 activations a [m, 16384] and weights w [7168, 16384], both stored as two
+  e2m1 codes per byte (a: [m, 8192], w: [7168, 8192]; the even K index is the low nibble) with e8m0 scales per 32
+  values of K (a_scales [m, 512], w_scales [7168, 512], uint8, value 2^(s - 127)), accumulated in float32 and rounded
+  to bfloat16.
+operator: {name: gemm_afp4wfp4, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 65536, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 7168, description: Output channels.}
+    k: {kind: const, value: 16384, description: Contracted dimension (unpacked fp4 values).}
+  inputs:
+    a: {kind: tensor, shape: [m, k // 2], dtype: uint8, distribution: {kind: generator}}
+    a_scales: {kind: tensor, shape: [m, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: gluon
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/gluon/gemm_afp4wfp4.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/configs/gfx950/gluon/gemm/GEMM-AFP4WFP4.json
+    license: MIT
+    modifications: >-
+      Gluon kernels `_gemm_afp4wfp4_kernel` and `_gemm_afp4wfp4_reduce_kernel` unchanged; the wrapper is renamed `run` and writes into the preallocated output (the skip_reduce option, the fp4-availability assertion, the logger and the config-file lookup removed; the single-entry gfx950 Gluon table is inlined); remap_xcd and pid_grid copied unchanged into pid_preprocessing.py. The upstream gemm_afp4wfp4.py has no license header; the repository MIT LICENSE applies.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

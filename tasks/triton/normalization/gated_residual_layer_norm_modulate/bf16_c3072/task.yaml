@@ -1,0 +1,103 @@
+schema_version: 3
+description: >-
+  Gated residual add, non-affine LayerNorm and adaLN modulation with a per-token choice between two
+  modulation sets (the zero-conditioned timestep of an image-edit DiT block). residual_out = residual +
+  residual_gate * x (computed in float32, stored as bfloat16); with mean and biased variance of the fp32 sum over
+  the hidden axis, out = (sum - mean) * rsqrt(var + epsilon) * (1 + scale) + shift, and gate_out = gate, where
+  (scale, shift, gate) is (scale0, shift0, gate0) of the sample for tokens with index 0 and (scale1, shift1,
+  gate1) for tokens with index 1. out and gate_out are bfloat16.
+operator:
+  name: gated_residual_layer_norm_modulate
+  category: normalization
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 2, description: Samples batched in the step.}
+    seq_len: {kind: var, min: 1, max: 65536, description: Image tokens of each sample (edited image plus reference images).}
+    hidden_size: {kind: const, value: 3072, description: Model width (24 heads x 128).}
+  inputs:
+    x:
+      kind: tensor
+      shape: [batch, seq_len, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Output of the attention or MLP sub-block.
+    residual:
+      kind: tensor
+      shape: [batch, seq_len, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Residual stream before the sub-block.
+    residual_gate:
+      kind: tensor
+      shape: [batch, seq_len, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: Per-token gate of the previous norm (the gate_out of the previous block step), applied to x.
+    scale0:
+      kind: tensor
+      shape: [batch, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    shift0:
+      kind: tensor
+      shape: [batch, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    gate0:
+      kind: tensor
+      shape: [batch, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    scale1:
+      kind: tensor
+      shape: [batch, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    shift1:
+      kind: tensor
+      shape: [batch, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    gate1:
+      kind: tensor
+      shape: [batch, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    index:
+      kind: tensor
+      shape: [batch, seq_len]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: 0 for the tokens of the edited image, 1 for the tokens of the reference images.
+    epsilon: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    out: {shape: [batch, seq_len, hidden_size], dtype: bfloat16}
+    residual_out: {shape: [batch, seq_len, hidden_size], dtype: bfloat16}
+    gate_out: {shape: [batch, seq_len, hidden_size], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sglang
+    revision: 887c401e151e2d1b082d74ef8769a23eef5c465c
+    path: python/sglang/kernels/ops/diffusion/modulate/scale_shift_triton.py
+    license: Apache-2.0
+    modifications: >-
+      Only _fused_residual_layernorm_scale_shift_gate_select01_kernel is vendored, copied unchanged. The launcher
+      fuse_residual_layernorm_scale_shift_gate_select01_kernel is specialized to the served non-affine LayerNorm
+      (weight=None, bias=None, so HAS_WEIGHT and HAS_BIAS are False and x stands in for the unused pointers, as
+      upstream does) and inlined into run(), which writes the preallocated outputs instead of allocating them;
+      the .contiguous() calls (no-ops on the contiguous inputs), the CUDA-only assertions and the shape checks are
+      dropped. The other kernels of the file (PTX inline-asm and 4-D modulation variants) and the imports of
+      sglang.kernels.ops.diffusion.common are not vendored.
+compare:
+  out: {bound: baseline_relative}
+  residual_out: {bound: baseline_relative}
+  gate_out: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

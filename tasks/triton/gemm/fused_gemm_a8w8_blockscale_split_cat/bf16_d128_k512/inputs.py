@@ -1,0 +1,45 @@
+"""Block-scaled fp8 operands as the quantizing producers emit them: the compressed KV activation with one scale per 1x128
+block, the kv_b_proj weight with one scale per 128x128 block (scale = block amax / 448).
+
+The activation is a standard normal [m, 512] tensor (a layer-normalized compressed KV) and the weight is normal with std
+0.05, so that the up-projected keys and values have std about 1.1.
+"""
+import torch
+
+_FP8_MAX = float(torch.finfo(torch.float8_e4m3fn).max)
+_BLOCK = 128
+_ROW_CHUNK = 16384
+
+
+def _quantize_rows(values):
+    """values [rows, k] -> float8_e4m3fn codes [rows, k] and float32 scales [rows, k // 128] (block amax / 448)."""
+    rows, k = values.shape
+    codes = torch.empty(rows, k, dtype=torch.float8_e4m3fn, device=values.device)
+    scales = torch.empty(rows, k // _BLOCK, dtype=torch.float32, device=values.device)
+    for start in range(0, rows, _ROW_CHUNK):
+        stop = min(start + _ROW_CHUNK, rows)
+        blocks = values[start:stop].float().view(stop - start, k // _BLOCK, _BLOCK)
+        scale = (blocks.abs().amax(dim=-1) / _FP8_MAX).clamp_min(1e-12)
+        codes[start:stop] = (blocks / scale.unsqueeze(-1)).clamp_(-_FP8_MAX, _FP8_MAX).to(torch.float8_e4m3fn).view(stop - start, k)
+        scales[start:stop] = scale
+    return codes, scales
+
+
+def _quantize_blocks(values):
+    """values [n, k] -> float8_e4m3fn codes [n, k] and float32 scales [n // 128, k // 128], one per 128x128 block."""
+    n, k = values.shape
+    blocks = values.view(n // _BLOCK, _BLOCK, k // _BLOCK, _BLOCK)
+    scale = (blocks.abs().amax(dim=(1, 3)) / _FP8_MAX).clamp_min(1e-12)
+    full = scale.repeat_interleave(_BLOCK, dim=0).repeat_interleave(_BLOCK, dim=1)
+    codes = (values / full).clamp_(-_FP8_MAX, _FP8_MAX).to(torch.float8_e4m3fn)
+    return codes, scale
+
+
+def make_inputs(case, inputs, generator, device):
+    axes = case["axes"]
+    m, n, k = axes["m"], axes["n"], axes["k"]
+    activations = torch.randn(m, k, generator=generator, device=device, dtype=torch.float32)
+    x, x_scale = _quantize_rows(activations)
+    weights = 0.05 * torch.randn(n, k, generator=generator, device=device, dtype=torch.float32)
+    w, w_scale = _quantize_blocks(weights)
+    return {"x": x, "x_scale": x_scale, "w": w, "w_scale": w_scale}

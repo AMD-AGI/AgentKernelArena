@@ -1,0 +1,139 @@
+schema_version: 3
+description: >-
+  GPT-OSS mixture-of-experts block with static-FP8 activations and MXFP4 expert weights (W4A8), on one
+  tensor-parallel rank. The bfloat16 tokens are quantized with a static per-tensor scale, x_q = float8_e4m3fn(x /
+  w1_input_scale). For each token t and each of its 4 routed experts e = topk_ids[t, j]: g = (x_q[t] @ W1[e]^T) *
+  w1_input_scale + w1_bias[e] (2 * 1536 outputs, gate = g[:1536], up = g[1536:]); act = min(gate, 7) * sigmoid(1.702 *
+  min(gate, 7)) * (clamp(up, -7, 7) + 1), quantized to FP8 with the static scale w2_input_scale; y = (act_q @ W2[e]^T)
+  * w2_input_scale + w2_bias[e]; out[t] = sum_j topk_weights[t, j] * y, rounded to bfloat16. W1 [E, 3072, 3072] and W2
+  [E, 3072, 1536] are MXFP4: e2m1 codes packed two per byte along the contracted axis (low nibble first) with one e8m0
+  scale byte (2^(byte - 127)) per 32 contracted elements. Kernel-facing weights interleave the gate/up rows of W1
+  (and its bias) and store both scale tensors in the gfx950 MX-scale tile order (see inputs.py).
+operator: {name: fused_moe_a8w4, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    num_experts: {kind: const, value: 128, description: Routed experts of the layer.}
+    topk: {kind: const, value: 4, description: Experts per token.}
+    hidden_size: {kind: const, value: 3072, description: Model width (GPT-OSS 2880 rounded up to a multiple of 256 for ROCm MXFP4 kernels).}
+    inter_size: {kind: const, value: 1536, description: Expert intermediate width per tensor-parallel-2 rank (2880 / 2 = 1440 rounded up to a multiple of 256).}
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1:
+      kind: tensor
+      shape: [num_experts, 2 * inter_size, hidden_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, 2 * inter_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w1_bias:
+      kind: tensor
+      shape: [num_experts, 2 * inter_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+    w1_input_scale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, inter_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, inter_size, hidden_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w2_bias:
+      kind: tensor
+      shape: [num_experts, hidden_size]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+    w2_input_scale:
+      kind: tensor
+      shape: [1]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+    topk_weights:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: float32
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/moe/moe_op_gemm_a8w4.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_op_gemm_a8w4.py
+      - aiter/ops/triton/configs/moe/gfx950-A8W4.json
+      - aiter/ops/triton/moe/quant_moe.py
+      - aiter/ops/triton/_triton_kernels/moe/quant_moe.py
+      - aiter/ops/triton/_triton_kernels/moe/activations.py
+      - aiter/ops/triton/moe/moe_routing/routing.py
+      - aiter/ops/triton/moe/moe_routing/bitmatrix.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/routing.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/bitmatrix.py
+      - aiter/ops/triton/_triton_kernels/moe/moe_routing/expt_data.py
+      - aiter/ops/triton/moe/reduce.py
+      - aiter/ops/triton/_triton_kernels/moe/reduce.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+    license: MIT AND Apache-2.0 (pack_bitmatrix.py from vllm-project/vllm)
+    notes: >-
+      AITER's Triton MXFP4-weight, FP8-activation MoE GEMM (moe_gemm_a8w4, adapted by AITER from the triton_kernels
+      package of triton-lang/triton, whose matmul_ogs kernels it names as the original code; MIT) with AITER's routing
+      kernels. vLLM's AITER_MXFP4_FP8 MoE backend for ROCm (triton_kernel_fused_mxfp4_w4a8_experts in
+      vllm/model_executor/layers/fused_moe/experts/aiter_mxfp4_w4a8_moe.py, vllm-project/vllm at commit
+      edbc4969a76b25c531f7b9bb16b79984e65ef023, Apache-2.0) runs GPT-OSS with exactly this call sequence: static FP8
+      quantization of the hidden states, moe_gemm_a8w4 with gather and fused SwiGLU emitting FP8, then moe_gemm_a8w4
+      with scatter and router-weight gammas. pack_bitmatrix comes from the same vLLM commit,
+      vllm/model_executor/layers/fused_moe/experts/gpt_oss_triton_kernels_moe.py (its docstring cites a
+      triton-lang/triton file as the code reference).
+    modifications: >-
+      pack_bitmatrix.py is vendored unchanged except for local imports from vllm-project/vllm at commit
+      edbc4969a76b25c531f7b9bb16b79984e65ef023, file vllm/model_executor/layers/fused_moe/experts/gpt_oss_triton_kernels_moe.py
+      (Apache-2.0, header kept). Kernels kept as in AITER (imports made local; the profiling-only launch_metadata hook removed; the _swiglu
+      parameter named after the builtin input renamed; the unused MXFP8 write-back path of _moe_gemm_a8w4 removed).
+      The gfx1250 Gluon and tensor-descriptor paths and the per-arch dispatch of moe_gemm_a8w4 are dropped: the host
+      launcher keeps the Triton path with the gfx950-A8W4.json tile table embedded as a dict and without the
+      last-resort heuristic for untuned shapes (the table, or its same-N,K proxy entry, covers both GEMMs at every
+      block_m of this task). The routing host code is AITER's routing() after its top-k step, with the top-k kernel
+      replaced by vLLM's pack_bitmatrix over the given topk_ids and the scratchpads that kernel zeroes allocated with
+      zeros. The final top-k reduction writes into the preallocated output. The two GEMMs and the static FP8
+      quantization run as in vLLM's triton_kernel_fused_mxfp4_w4a8_experts, without the unpadded-N/K arguments (the
+      padded sizes are the problem sizes).
+compare:
+  out: {bound: baseline_relative, max_violation_fraction: 0.0005}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

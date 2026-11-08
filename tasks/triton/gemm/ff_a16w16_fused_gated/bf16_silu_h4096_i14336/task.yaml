@@ -1,0 +1,59 @@
+schema_version: 3
+description: >-
+  Fused gated feed-forward block in bfloat16 (a SwiGLU MLP), out = (silu(x @ w_gate^T) * (x @ w_up^T)) @ w_down with
+  x [n_tokens, 4096], the stacked up-projection w_up [28672, 4096] (gate rows w_up[:14336] over up rows w_up[14336:])
+  and the down-projection w_down [14336, 4096]. Every matrix product accumulates in float32, the gated intermediate is
+  rounded to bfloat16 before the down-projection and the output is bfloat16.
+operator: {name: ff_a16w16_fused_gated, category: gemm}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 256, description: Tokens in the call (decode batch).}
+    hidden_size: {kind: const, value: 4096, description: Model width.}
+    up_size: {kind: const, value: 28672, description: Rows of the stacked gate and up weight (2 x intermediate size).}
+  derived_axes:
+    intermediate_size: up_size // 2
+  inputs:
+    x: {kind: tensor, shape: [n_tokens, hidden_size], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    w_up:
+      kind: tensor
+      shape: [up_size, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.015625}
+    w_down:
+      kind: tensor
+      shape: [intermediate_size, hidden_size]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.008352}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/feed_forward/ff_a16w16_fused_gated.py
+      - aiter/ops/triton/gemm/feed_forward/ff_a16w16_fused_gated.py
+      - aiter/ops/triton/_triton_kernels/activation.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/configs/gemm/gfx950-FF-A16W16-fused.json
+    license: MIT
+    modifications: >-
+      Kernel unchanged; its two aiter imports now point at the sibling files of the package. pid_preprocessing.py is a
+      verbatim copy. activation.py keeps only _silu_exp2 and _silu of the upstream activation.py. The launcher is reduced
+      to run(): SiLU gate, the stacked up weight passed as the transposed view, the output zero-filled in place (the
+      upstream wrapper allocates it with torch.zeros because the kernel accumulates into it with atomic adds) instead of
+      allocated. The tuned gfx950 JSON became a Python table, selected with the M_LEQ_x / M_GEQ_x / any order and the
+      bounds of the upstream _get_config. Upstream defect worked around: the M_LEQ_8 row of that table (BLOCK 8x256x256,
+      num_stages 2) needs about 270 KB of shared memory by estimate (278464 bytes reported by the compiler) against the
+      163840-byte limit of gfx950, so batches of 5 to 8 rows use the M_LEQ_4 row of the same table.
+compare:
+  out: {bound: baseline_relative, k: 8, max_violation_fraction: 0.0001}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

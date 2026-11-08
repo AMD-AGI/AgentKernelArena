@@ -1,0 +1,191 @@
+{
+ "description": "Decode steps of DeepSeek-V3 / R1 attention on one MI355X with 128 heads (tensor parallel 1 or DP attention), FP8 queries and an FP8 latent KV cache of one-token pages, as SGLang's aiter backend serves them with the persistent MLA kernel. Concurrency 1-64 and decode-scale contexts to 96k tokens (AITER's op_tests/test_mla.py sweeps ctx 49152 and 98304 and batch 1-256); the batch is capped at 64 because the baseline kernel needs every sequence split across compute units (README.md). Short contexts and odd shapes are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_c512",
+   "axes": {
+    "batch": 1,
+    "ctx": 512
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "shortest context and single sequence, split into 64-token work items"
+  },
+  {
+   "id": "b3_c1000",
+   "axes": {
+    "batch": 3,
+    "ctx": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, context not a multiple of 16"
+  },
+  {
+   "id": "b17_c777",
+   "axes": {
+    "batch": 17,
+    "ctx": 777
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch of 17, contexts not multiples of 16"
+  },
+  {
+   "id": "b5_c1500",
+   "axes": {
+    "batch": 5,
+    "ctx": 1500
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "five 1.5k requests"
+  },
+  {
+   "id": "b33_c2000",
+   "axes": {
+    "batch": 33,
+    "ctx": 2000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch of 33 with short contexts"
+  },
+  {
+   "id": "b2_c513",
+   "axes": {
+    "batch": 2,
+    "ctx": 513
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "context one token past a 512-token boundary"
+  },
+  {
+   "id": "b1_c49152",
+   "axes": {
+    "batch": 1,
+    "ctx": 49152
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 48k-context decode (ctx 49152 of AITER's decode-scale MLA sweeps)"
+  },
+  {
+   "id": "b1_c98304",
+   "axes": {
+    "batch": 1,
+    "ctx": 98304
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 96k-context decode (ctx 98304 of AITER's decode-scale MLA sweeps)"
+  },
+  {
+   "id": "b4_c32768",
+   "axes": {
+    "batch": 4,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "four 32k-context requests"
+  },
+  {
+   "id": "b8_c32768",
+   "axes": {
+    "batch": 8,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "eight 32k-context requests"
+  },
+  {
+   "id": "b16_c16384",
+   "axes": {
+    "batch": 16,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "concurrency 16, 16k contexts"
+  },
+  {
+   "id": "b16_c65536",
+   "axes": {
+    "batch": 16,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "concurrency 16, 64k contexts"
+  },
+  {
+   "id": "b32_c32768",
+   "axes": {
+    "batch": 32,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "concurrency 32, 32k contexts"
+  },
+  {
+   "id": "b64_c16384",
+   "axes": {
+    "batch": 64,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "concurrency 64, 16k contexts"
+  },
+  {
+   "id": "b64_c65536",
+   "axes": {
+    "batch": 64,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "concurrency 64, 64k contexts"
+  },
+  {
+   "id": "b64_c98304",
+   "axes": {
+    "batch": 64,
+    "ctx": 98304
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "concurrency 64, 96k contexts"
+  }
+ ]
+}

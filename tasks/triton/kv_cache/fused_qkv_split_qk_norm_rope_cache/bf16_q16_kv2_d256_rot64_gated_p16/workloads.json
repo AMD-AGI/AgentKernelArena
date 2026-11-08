@@ -1,0 +1,143 @@
+{
+  "description": "Token counts of decode batches and prefill chunks of a gated full-attention layer (16 query heads, 2 KV heads, head size 256). Batches below about 700 tokens move under 27 MB and fall under the 10 us timing floor, so they are correctness-only.",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, odd batch"
+    },
+    {
+      "id": "t17",
+      "axes": {
+        "n_tokens": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch just above 16"
+    },
+    {
+      "id": "t100",
+      "axes": {
+        "n_tokens": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, unaligned batch"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk"
+    },
+    {
+      "id": "t1024",
+      "axes": {
+        "n_tokens": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch limit / short prefill chunk"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long prefill chunk"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long prefill chunk"
+    },
+    {
+      "id": "t65536",
+      "axes": {
+        "n_tokens": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "batched prefill"
+    }
+  ]
+}
