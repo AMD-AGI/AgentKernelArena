@@ -377,8 +377,12 @@ class LaunchObserver:
             raise RuntimeError(f"No {self.language} kernel launch was observed in the {role} call")
 
 
-def audited_call(call, *, language: str, package: str, role: str, enforce: bool):
-    """Wrap ``call`` so each eager invocation is policy-checked."""
+def audited_call(call, *, language: str, package: str, role: str, enforce: bool, integrity=None):
+    """Wrap ``call`` so each eager invocation is policy-checked.
+
+    ``integrity``, when given, runs after each call, once the launch observer
+    has restored what it temporarily replaced.
+    """
     def run(**arguments: Any) -> None:
         if not enforce:
             result = call(**arguments)
@@ -387,6 +391,8 @@ def audited_call(call, *, language: str, package: str, role: str, enforce: bool)
             with observer.observe(), preparation_only(role):
                 result = call(**arguments)
             observer.require(role)
+        if integrity is not None:
+            integrity(f"a {role} call")
         if result is not None:
             raise RuntimeError(f"{role} run must write its outputs and return None")
     return run

@@ -736,7 +736,9 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         "views or same-dtype copies and launch. PyTorch arithmetic, reductions, dtype conversions, library "
         "operators and other kernel languages are rejected at run time.",
         "- No synchronization, host round trips, I/O, randomness, reflection, dynamic imports or changes "
-        "to imported modules. Do not import task, reference, baseline or evaluator modules.",
+        "to imported modules. Do not import task, reference, baseline or evaluator modules. The evaluator "
+        "checks its own, PyTorch's and the interpreter's bindings after every call and timing sample; a "
+        "changed binding fails the action as harness tampering.",
         "- Every call is timed by one CUDA-graph replay after a cache flush; launches must be capturable on "
         "the current stream.",
         "- Correctness: each output must stay within the declared error bound of the high-precision "

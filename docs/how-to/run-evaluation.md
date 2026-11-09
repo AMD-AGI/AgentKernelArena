@@ -221,6 +221,16 @@ For kernel tasks the final evaluation remeasures the baseline interleaved with
 the candidate under cold-cache CUDA-graph timing, and the task's speedup is the
 geometric mean of its performance cases' speedups.
 
+Candidate code runs in the evaluator's process, so the static audit cannot rule
+out every reflective change to the code that times and judges it. The evaluator
+therefore snapshots the bindings of its own modules (including the timing
+helper), of `torch`, `torch.cuda` and their tensor, event, stream and graph
+classes, of `builtins` and the standard-library modules it uses, and the
+interpreter's trace, profile and garbage-collection hooks before candidate code
+imports. It verifies them after the import, after every candidate call and after
+every timing sample. Any change fails the action with `failure_kind:
+harness_tampering`. This detects rebinding; it is not a sandbox.
+
 Run the same configuration again with one agent capability changed and a new
 `--run-suffix` to form a controlled A/B pair. See
 [Configure agents and models](agents.md#ab-testing-and-ablation-studies).
