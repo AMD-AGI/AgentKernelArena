@@ -1,0 +1,75 @@
+schema_version: 3
+description: >-
+  FP8 multi-query attention logits of the DeepSeek-V3.2 lightning indexer. For query row i and key
+  column j inside its window [cu_seqlen_ks[i], cu_seqlen_ke[i]):
+  logits[i, j] = sum_h weights[i, h] * relu(dot(q[i, h, :], kv[j, :]) * kv_scales[j]); every column
+  outside the window is -inf. Q and KV are float8_e4m3fn, accumulation and output are float32.
+operator:
+  name: fp8_mqa_logits
+  category: attention
+interface:
+  axes:
+    seq_len: {kind: var, min: 1, max: 16384, description: Query tokens.}
+    seq_len_kv: {kind: var, min: 64, max: 131072, description: Key/value tokens.}
+    num_heads: {kind: const, value: 64, description: Indexer query heads.}
+    head_size: {kind: const, value: 128, description: Indexer head dimension.}
+  inputs:
+    q:
+      kind: tensor
+      shape: [seq_len, num_heads, head_size]
+      dtype: float8_e4m3fn
+      distribution: {kind: normal, mean: 0.0, std: 0.3}
+    kv:
+      kind: tensor
+      shape: [seq_len_kv, head_size]
+      dtype: float8_e4m3fn
+      distribution: {kind: normal, mean: 0.0, std: 0.3}
+    kv_scales:
+      kind: tensor
+      shape: [seq_len_kv]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    weights:
+      kind: tensor
+      shape: [seq_len, num_heads]
+      dtype: float32
+      role: weight
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+    cu_seqlen_ks:
+      kind: tensor
+      shape: [seq_len]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    cu_seqlen_ke:
+      kind: tensor
+      shape: [seq_len]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+  outputs:
+    logits: {shape: [seq_len, seq_len_kv], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: gluon
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_gluon_kernels/gfx950/attention/fp8_mqa_logits.py, aiter/ops/triton/attention/fp8_mqa_logits.py, aiter/ops/triton/utils/common_utils.py
+    license: MIT
+    modifications: >-
+      The gfx950 Gluon kernel file is vendored as baseline/gluon_kernel.py unchanged except that
+      strip_annotate is inlined from aiter/ops/triton/utils/common_utils.py. run() is the gfx950 branch
+      of the fp8_mqa_logits wrapper (block 32, one wave, folded head reduction when the Triton build
+      supports it) writing into the preallocated logits, which it first fills with -inf (production
+      pre-fills with torch.full). The upstream inspect-based probe for the padded async-copy layout is
+      replaced by a constant (True, from the Triton 3.8 source); the arch dispatch, the Triton and
+      gfx1250 paths and the 2 GB-aligned logits allocation are dropped.
+compare:
+  logits: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

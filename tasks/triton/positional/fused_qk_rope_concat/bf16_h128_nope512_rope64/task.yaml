@@ -1,0 +1,86 @@
+schema_version: 3
+description: >-
+  Fused interleaved (GPT-J style) rotary embedding and concatenation of the query and key of multi-head latent
+  attention. The rotary embedding is applied to q_pe (every query head) and k_pe with cos/sin rows gathered by
+  position; q_out is [q_nope | rotated q_pe] and k_out is [k_nope | rotated k_pe] along the last axis.
+operator:
+  name: fused_qk_rope_concat
+  category: positional
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 128}
+    num_kv_heads: {kind: const, value: 1}
+    nope_dim: {kind: const, value: 512, description: Latent width of q_nope and k_nope.}
+    rope_dim: {kind: const, value: 64}
+    max_position: {kind: const, value: 32768, description: Rows of the cos/sin tables.}
+  derived_axes:
+    out_dim: nope_dim + rope_dim
+    half_rope: rope_dim // 2
+  inputs:
+    q_nope:
+      kind: tensor
+      shape: [n_tokens, num_q_heads, nope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    q_pe:
+      kind: tensor
+      shape: [n_tokens, num_q_heads, rope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k_nope:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, nope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    k_pe:
+      kind: tensor
+      shape: [n_tokens, num_kv_heads, rope_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 32768}
+    cos:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+  outputs:
+    q_out: {shape: [n_tokens, num_q_heads, out_dim], dtype: bfloat16}
+    k_out: {shape: [n_tokens, num_kv_heads, out_dim], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/fusions/fused_qk_concat.py
+      - aiter/ops/triton/fusions/fused_qk_concat.py
+      - aiter/ops/triton/_triton_kernels/rope/rope.py
+    license: MIT
+    modifications: >-
+      _qk_rope_cat_kernel and _unit_rope_cat copied unchanged (the file has no header upstream, so the repository
+      MIT license applies); the two 1D rotation helpers of rope.py are inlined; the plain-concat kernel
+      (_qk_cat_kernel, _unit_cat) is not vendored. The launch code of fused_qk_rope_cat became run() for the
+      interleaved (is_neox=False), half-width cos/sin configuration, writing into the preallocated outputs.
+compare:
+  q_out: {bound: baseline_relative}
+  k_out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

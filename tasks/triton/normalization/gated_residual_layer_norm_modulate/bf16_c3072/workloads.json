@@ -1,0 +1,18 @@
+{"description": "Image-token counts of image-edit DiT steps: the edited image plus one to three reference images, each (height/16) x (width/16) tokens. Small shapes run under the 10 us floor and are correctness-only.",
+ "cases": [
+  {"id": "b1_l1", "axes": {"batch": 1, "seq_len": 1}, "checks": ["correctness"], "source": "axis minimum"},
+  {"id": "b1_l3", "axes": {"batch": 1, "seq_len": 3}, "checks": ["correctness"], "source": "odd tiny sequence"},
+  {"id": "b2_l33", "axes": {"batch": 2, "seq_len": 33}, "checks": ["correctness"], "source": "unaligned sequence, two samples"},
+  {"id": "b1_l257", "axes": {"batch": 1, "seq_len": 257}, "checks": ["correctness"], "source": "unaligned sequence"},
+  {"id": "b1_l1000", "axes": {"batch": 1, "seq_len": 1000}, "checks": ["correctness"], "source": "unaligned sequence"},
+  {"id": "b1_l1152", "axes": {"batch": 1, "seq_len": 1152}, "checks": ["correctness", "performance"], "source": "two 384x384 images (576 tokens each)"},
+  {"id": "b1_l2048", "axes": {"batch": 1, "seq_len": 2048}, "checks": ["correctness", "performance"], "source": "two 512x512 images (1024 tokens each)"},
+  {"id": "b1_l4096", "axes": {"batch": 1, "seq_len": 4096}, "checks": ["correctness", "performance"], "source": "two 1024x512 images (2048 tokens each)"},
+  {"id": "b1_l8192", "axes": {"batch": 1, "seq_len": 8192}, "checks": ["correctness", "performance"], "source": "two 1024x1024 images (4096 tokens each)"},
+  {"id": "b2_l8192", "axes": {"batch": 2, "seq_len": 8192}, "checks": ["correctness", "performance"], "source": "two 1024x1024 images, two samples batched"},
+  {"id": "b1_l16384", "axes": {"batch": 1, "seq_len": 16384}, "checks": ["correctness", "performance"], "source": "four 1024x1024 images"},
+  {"id": "b2_l16384", "axes": {"batch": 2, "seq_len": 16384}, "checks": ["correctness", "performance"], "source": "four 1024x1024 images, two samples batched"},
+  {"id": "b2_l32768", "axes": {"batch": 2, "seq_len": 32768}, "checks": ["correctness", "performance"], "source": "two 2048x2048 images, two samples batched"},
+  {"id": "b2_l65536", "axes": {"batch": 2, "seq_len": 65536}, "checks": ["correctness", "performance"], "source": "four 2048x2048 images, two samples batched"}
+ ]
+}

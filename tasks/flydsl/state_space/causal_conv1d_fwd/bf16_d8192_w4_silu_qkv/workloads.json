@@ -1,0 +1,153 @@
+{
+  "description": "Total tokens of packed prefill batches (about 256 tokens per sequence, mixed lengths) at 8192 conv channels (q 2048 | k 2048 | v 4096), width 4; small batches are correctness-only.",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single decode token (axis minimum)"
+    },
+    {
+      "id": "t2",
+      "axes": {
+        "n_tokens": 2
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "sequence shorter than the conv state"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "sequence equal to the conv state"
+    },
+    {
+      "id": "t48",
+      "axes": {
+        "n_tokens": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short chunked-prefill batch"
+    },
+    {
+      "id": "t300",
+      "axes": {
+        "n_tokens": 300
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "two short sequences"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill batch"
+    },
+    {
+      "id": "t1280",
+      "axes": {
+        "n_tokens": 1280
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    },
+    {
+      "id": "t65536",
+      "axes": {
+        "n_tokens": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "packed chunked-prefill batch, ~256 tokens per sequence"
+    }
+  ]
+}

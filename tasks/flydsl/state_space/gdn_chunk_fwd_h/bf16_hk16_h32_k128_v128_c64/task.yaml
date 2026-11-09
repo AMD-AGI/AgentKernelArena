@@ -1,0 +1,92 @@
+schema_version: 3
+description: >-
+  Chunked state recurrence of the gated delta rule (Gated DeltaNet prefill) for one sequence of
+  n_tokens tokens in chunks of 64 (the last may be partial), with 16 key heads, 32 value heads and
+  head dimensions 128, in the layout of AITER's FlyDSL kernel (w, u, g and v_new are head-major). For
+  every value head the [V, K] state S starts from initial_state (float32) and, per chunk, is stored to h
+  (rounded to bfloat16), corrected into v_new = u - w S^T, decayed by the scalar log2-gate g, and updated
+  with the gated v_new^T k; the final state is written to final_state.
+operator:
+  name: gdn_chunk_fwd_h
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 65536, description: Tokens of the sequence.}
+    num_k_heads: {kind: const, value: 16, description: Key heads (grouped-value-attention groups).}
+    num_heads: {kind: const, value: 32, description: Value heads.}
+    head_dim_k: {kind: const, value: 128, description: Key head dimension.}
+    head_dim_v: {kind: const, value: 128, description: Value head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  derived_axes:
+    n_chunks: ceil_div(n_tokens, chunk_size)
+  inputs:
+    k:
+      kind: tensor
+      shape: [1, n_tokens, num_k_heads, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, L2-normalized in the model (element standard deviation 128^-1/2).
+    w:
+      kind: tensor
+      shape: [1, num_heads, n_tokens, head_dim_k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Delta-rule projection of the state onto the value space (w), head-major.
+    u:
+      kind: tensor
+      shape: [1, num_heads, n_tokens, head_dim_v]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Delta-rule target values (u), head-major.
+    g:
+      kind: tensor
+      shape: [1, num_heads, n_tokens]
+      dtype: float32
+      role: metadata
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log-decay in base 2 (non-positive, restarts every 64 tokens); the decay is 2^g.
+    initial_state:
+      kind: tensor
+      shape: [1, num_heads, head_dim_v, head_dim_k]
+      dtype: float32
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: State of the sequence before its first token.
+  outputs:
+    h:
+      shape: [1, n_chunks, num_heads, head_dim_v, head_dim_k]
+      dtype: bfloat16
+    v_new:
+      shape: [1, num_heads, n_tokens, head_dim_v]
+      dtype: bfloat16
+    final_state:
+      shape: [1, num_heads, head_dim_v, head_dim_k]
+      dtype: float32
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/kernels/chunk_gated_delta_h.py, aiter/ops/flydsl/linear_attention_prefill_kernels.py, aiter/ops/flydsl/kernels/tensor_shim.py, aiter/ops/flydsl/kernels/buffer_ops.py, aiter/ops/flydsl/kernels/vector.py
+    license: MIT AND Apache-2.0 (buffer_ops.py and vector.py, from ROCm/FlyDSL)
+    modifications: >-
+      The BV heuristic comes from linear_attention_prefill_kernels.py. chunk_gated_delta_h.py is vendored unchanged. tensor_shim.py has its os/numpy imports, the environment
+      toggles and the numpy stride computation replaced by a Python one; buffer_ops.py has its environment
+      lookup of the GPU architecture removed; vector.py has its star import of the raw vector dialect dropped
+      (no code here uses it); the aiter package imports became relative. kernel.py replaces the host wrapper
+      chunk_gated_delta_rule_fwd_h_flydsl of linear_attention_prefill_kernels.py: it keeps the BV heuristic
+      verbatim, fixes the options of this scenario (one sequence, scalar log2-gate, float32 state, final state
+      stored) and launches into preallocated outputs. The wrapper's Triton helpers (chunk metadata) are not
+      used by a single sequence and are not vendored.
+      FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the cache-policy operand is passed as the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp / RawPtrBufferStoreOp (the runtime's op constructors take no positional aux value); no change to the kernel algorithm.
+compare:
+  h: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-3}
+  v_new: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-4}
+  final_state: {bound: sqnr, min_db: 47}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

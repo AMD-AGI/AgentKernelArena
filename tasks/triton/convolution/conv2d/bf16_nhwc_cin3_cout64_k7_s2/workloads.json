@@ -1,0 +1,219 @@
+{
+ "description": "Image batches through the 7x7 stride-2 stem convolution of ResNet-50: 224x224 ImageNet crops at inference and training batch sizes, plus 512x512 and detection-sized (832x1024, padded to a multiple of 32) batches. The stem is memory-bound (about 38 bytes moved per input pixel), so the 100x span in batch x height x width needs a batch of 24 detection-sized images; a single 224x224 image runs under the 10 us floor and is correctness-only.",
+ "cases": [
+  {
+   "id": "b1_h16_w16",
+   "axes": {
+    "batch": 1,
+    "height": 16,
+    "width": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum, smallest image"
+  },
+  {
+   "id": "b3_h50_w50",
+   "axes": {
+    "batch": 3,
+    "height": 50,
+    "width": 50
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch (non-power-of-two), even-sized image"
+  },
+  {
+   "id": "b2_h100_w75",
+   "axes": {
+    "batch": 2,
+    "height": 100,
+    "width": 75
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-square image with an odd width (unaligned, ragged output tiles)"
+  },
+  {
+   "id": "b1_h17_w33",
+   "axes": {
+    "batch": 1,
+    "height": 17,
+    "width": 33
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd height and width: the stride-2 output rounds up"
+  },
+  {
+   "id": "b5_h223_w225",
+   "axes": {
+    "batch": 5,
+    "height": 223,
+    "width": 225
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch 5 of odd-sized images one pixel off the 224 crop"
+  },
+  {
+   "id": "b7_h31_w47",
+   "axes": {
+    "batch": 7,
+    "height": 31,
+    "width": 47
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch 7, odd small image"
+  },
+  {
+   "id": "b1_h224_w224",
+   "axes": {
+    "batch": 1,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single ImageNet 224x224 image, the upstream conv_shapes.json entry; below the timing floor"
+  },
+  {
+   "id": "b4_h224_w224",
+   "axes": {
+    "batch": 4,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "four ImageNet 224x224 images (about 0.20M pixels, the smallest timed case)"
+  },
+  {
+   "id": "b8_h224_w224",
+   "axes": {
+    "batch": 8,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small inference batch of ImageNet 224x224 images"
+  },
+  {
+   "id": "b16_h224_w224",
+   "axes": {
+    "batch": 16,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "inference batch of ImageNet 224x224 images"
+  },
+  {
+   "id": "b32_h224_w224",
+   "axes": {
+    "batch": 32,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "inference batch of ImageNet 224x224 images"
+  },
+  {
+   "id": "b64_h224_w224",
+   "axes": {
+    "batch": 64,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "inference batch of ImageNet 224x224 images"
+  },
+  {
+   "id": "b256_h224_w224",
+   "axes": {
+    "batch": 256,
+    "height": 224,
+    "width": 224
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large training batch of ImageNet 224x224 images (per-GPU batch of the reference ResNet-50 recipe)"
+  },
+  {
+   "id": "b32_h512_w512",
+   "axes": {
+    "batch": 32,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of 512x512 images (high-resolution classification or segmentation backbones)"
+  },
+  {
+   "id": "b64_h512_w512",
+   "axes": {
+    "batch": 64,
+    "height": 512,
+    "width": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "larger batch of 512x512 images"
+  },
+  {
+   "id": "b16_h832_w1024",
+   "axes": {
+    "batch": 16,
+    "height": 832,
+    "width": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of detection-sized images (an 800x1333 resize padded to a multiple of 32, cropped to 832x1024)"
+  },
+  {
+   "id": "b24_h832_w1024",
+   "axes": {
+    "batch": 24,
+    "height": 832,
+    "width": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "largest case: batch of 24 detection-sized images (output of 3.3e8 elements)"
+  }
+ ]
+}

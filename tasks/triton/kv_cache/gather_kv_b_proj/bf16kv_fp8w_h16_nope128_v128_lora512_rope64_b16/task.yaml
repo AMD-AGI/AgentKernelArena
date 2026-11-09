@@ -1,0 +1,97 @@
+schema_version: 3
+description: >-
+  Expansion of the cached MLA latent prefix of a batch of requests into full per-head keys and values. Request b owns
+  the cache rows kv_indices[kv_indptr[b]:kv_indptr[b + 1]] (block size 1) of k_buffer, each holding a 512-wide latent
+  vector kv_c followed by a 64-wide rotated rope key k_pe, all bfloat16. For every token of every request
+  kv_c is multiplied with the fp8 e4m3fn projection kv_proj_weight [16 * (128 + 128), 512], dequantized with one
+  float32 scale per 128 x 128 block (kv_proj_scale [32, 4]), and the 256 outputs of each head are split into a
+  128-wide key part and a 128-wide value part, rounded to bfloat16. k_prefix[token, head] is [key part | k_pe] (k_pe
+  is shared by all heads) and v_prefix[token, head] is the value part. Tokens are packed request after request
+  (kv_prefix_sum_context_lens gives each request's first output row). The weight arrives preshuffled for the
+  (16, 16) MFMA layout; the logical weight is the plain [n, k] matrix.
+operator:
+  name: gather_kv_b_proj
+  category: kv_cache
+interface:
+  axes:
+    total_kv: {kind: var, min: 16, max: 204800, description: Cached prefix tokens of the whole batch.}
+    batch: {kind: const, value: 16, description: Requests in the batch.}
+    num_heads: {kind: const, value: 16, description: Attention heads of one tensor-parallel rank.}
+    qk_nope_head_dim: {kind: const, value: 128}
+    v_head_dim: {kind: const, value: 128}
+    kv_lora_dim: {kind: const, value: 512}
+    rope_dim: {kind: const, value: 64}
+    block_size: {kind: const, value: 1, description: Tokens per cache block.}
+    num_blocks: {kind: const, value: 262144, description: Blocks of the paged latent cache.}
+  derived_axes:
+    proj_rows: num_heads * (qk_nope_head_dim + v_head_dim)
+    scale_rows: proj_rows // 128
+    scale_cols: kv_lora_dim // 128
+    latent_dim: kv_lora_dim + rope_dim
+    k_head_dim: qk_nope_head_dim + rope_dim
+    batch_plus_one: batch + 1
+  inputs:
+    k_buffer:
+      kind: tensor
+      shape: [num_blocks, block_size, latent_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv_indptr:
+      kind: tensor
+      shape: [batch_plus_one]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    kv_indices:
+      kind: tensor
+      shape: [total_kv]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    kv_prefix_sum_context_lens:
+      kind: tensor
+      shape: [batch_plus_one]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    kv_proj_weight:
+      kind: tensor
+      shape: [proj_rows, kv_lora_dim]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+    kv_proj_scale:
+      kind: tensor
+      shape: [scale_rows, scale_cols]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+  outputs:
+    k_prefix: {shape: [total_kv, num_heads, k_head_dim], dtype: bfloat16}
+    v_prefix: {shape: [total_kv, num_heads, v_head_dim], dtype: bfloat16}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gather_kv_b_proj.py
+      - aiter/ops/triton/gather_kv_b_proj.py
+    license: MIT
+    modifications: >-
+      The kernel file is copied unchanged (including its FP4 and shuffled-cache code paths, which this scenario
+      does not take). The launch code of gather_kv_b_proj became run() for this configuration (bfloat16 latent
+      cache of block size 1, block-scaled fp8 weight, weight_preshuffle=True), writing into the preallocated
+      k_prefix and v_prefix; the gfx942 shared-memory workaround and the shape asserts are dropped, and the weight
+      scale tensor is passed as the placeholder for the k_scale argument, which is read only for a quantized cache.
+compare:
+  k_prefix: {bound: baseline_relative}
+  v_prefix: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

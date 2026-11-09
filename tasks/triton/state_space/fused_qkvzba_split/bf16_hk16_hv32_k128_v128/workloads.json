@@ -1,0 +1,133 @@
+{
+  "description": "Token counts of Qwen3-Next Gated DeltaNet prefill batches (16 key heads, 32 value heads, head size 128); small batches are correctness-only.",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single decode-sized batch (axis minimum)"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tiny batch, not a power of two"
+    },
+    {
+      "id": "t100",
+      "axes": {
+        "n_tokens": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short unaligned prefill (not a multiple of 16)"
+    },
+    {
+      "id": "t513",
+      "axes": {
+        "n_tokens": 513
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill batch"
+    },
+    {
+      "id": "t1024",
+      "axes": {
+        "n_tokens": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 1024 tokens"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 2048 tokens"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 4096 tokens"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 8192 tokens"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk of 16384 tokens"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long-context prefill batch of 32768 tokens"
+    },
+    {
+      "id": "t65536",
+      "axes": {
+        "n_tokens": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long-context prefill batch of 65536 tokens"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "long-context prefill batch of 131072 tokens"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+schema_version: 3
+description: >-
+  Two GEMMs over the same tokens in one operator. y_a4w4 = dequant(x_fp4) @ dequant(w_fp4)^T with MXFP4 activations
+  x_fp4 [m, 3584] bytes (7168 e2m1 values, two per byte, the even K index in the low nibble) and MXFP4 weights w_fp4
+  [512, 3584], both with e8m0 scales per 32 values of K (x_fp4_scale [m, 224], w_fp4_scale [512, 224], uint8, value
+  2^(s - 127)); y_a16w16 = x_bf16 @ w_bf16^T with bfloat16 activations [m, 7168] and weights [256, 7168]. Both accumulate in
+  float32 and round to bfloat16, no bias.
+operator: {name: fused_gemm_afp4wfp4_a16w16, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows (tokens) shared by both GEMMs.}
+    n_fp4: {kind: const, value: 512, description: Output channels of the MXFP4 GEMM.}
+    n_bf16: {kind: const, value: 256, description: Output channels of the bf16 GEMM.}
+    k: {kind: const, value: 7168, description: Contracted dimension of both GEMMs (unpacked fp4 values).}
+  inputs:
+    x_fp4: {kind: tensor, shape: [m, k // 2], dtype: uint8, distribution: {kind: generator}}
+    x_fp4_scale: {kind: tensor, shape: [m, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w_fp4: {kind: tensor, shape: [n_fp4, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_fp4_scale: {kind: tensor, shape: [n_fp4, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+    x_bf16: {kind: tensor, shape: [m, k], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+    w_bf16: {kind: tensor, shape: [n_bf16, k], dtype: bfloat16, role: weight,
+             distribution: {kind: normal, mean: 0.0, std: 0.02}}
+  outputs:
+    y_a4w4: {shape: [m, n_fp4], dtype: bfloat16}
+    y_a16w16: {shape: [m, n_bf16], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/fused/fused_gemm_afp4wfp4_a16w16.py
+      - aiter/ops/triton/gemm/fused/fused_gemm_afp4wfp4_a16w16.py
+      - aiter/ops/triton/gemm/basic/gemm_afp4wfp4.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-FUSED-GEMM-AFP4WFP4-A16W16-N4=512-N16=256-K=7168.json
+    license: MIT
+    modifications: >-
+      Kernel and split-K reduce kernel unchanged; the preshuffle kernel is removed. The launcher
+      fused_gemm_afp4wfp4_a16w16 is reduced to its non-preshuffled, no-bias, reduce-enabled path writing into the
+      preallocated outputs (float32 split-K partials are allocated per call, as upstream) and its ahead-of-time
+      metadata lookup (os.path, AOTMetadataContext) is dropped; get_splitk is taken from the basic afp4wfp4 launcher; the
+      shape-specialized gfx950 table is inlined as a function of M in the get_gemm_config lookup order; the remap_xcd,
+      pid_grid and make_kernel_repr helpers are inlined; imports, the logger and the shape asserts are removed.
+compare:
+  y_a4w4: {bound: baseline_relative}
+  y_a16w16: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

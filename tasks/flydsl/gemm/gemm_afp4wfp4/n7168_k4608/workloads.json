@@ -1,0 +1,173 @@
+{
+  "description": "Token counts of the N=7168, K=4608 MXFP4 x MXFP4 down projection (DeepSeek-V3 dense MLP at tensor parallelism 4); batches below 512 tokens are correctness-only.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum, single-token decode"
+    },
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd decode batch"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "above 16, not a multiple of 16"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16"
+    },
+    {
+      "id": "m192",
+      "axes": {
+        "m": 192
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode/small prefill batch"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk"
+    },
+    {
+      "id": "m5133",
+      "axes": {
+        "m": 5133
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "ragged M of the FlyDSL preshuffle test"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    },
+    {
+      "id": "m32768",
+      "axes": {
+        "m": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    },
+    {
+      "id": "m65536",
+      "axes": {
+        "m": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill token count of the DeepSeek-V3 dense MLP down projection at TP4"
+    }
+  ]
+}

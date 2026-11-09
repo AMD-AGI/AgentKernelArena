@@ -1,0 +1,110 @@
+schema_version: 3
+description: >-
+  Paged MXFP4 multi-query attention logits of the DeepSeek-V4 FP4 lightning indexer for one decode step. Sequence
+  b has context_lens[b] indexed keys, key t of it living in slot t % 64 of cache block block_tables[b, t // 64].
+  Queries and keys are packed e2m1 (fp4) vectors with one E8M0 (power-of-two) scale per 32 elements, so
+  dequant(x)[i] = e2m1(x[i]) * 2 ** (scale[i // 32] - 127). Query token n (of next_n per sequence) scores the keys
+  0 .. context_lens[b] - next_n + n: logits[b * next_n + n, t] = weight_scale * sum_h weights[b * next_n + n, h] *
+  relu(dot(dequant(q[b, n, h, :]), dequant(key[b, t, :]))). Every other column of the row, up to max_seq_len, is
+  -inf. The cache, the query scales and the persistent-grid schedule cta_info are supplied in the AITER kernel
+  layout (see README.md); the accumulation and the output are float32.
+operator:
+  name: paged_mqa_logits
+  category: attention
+interface:
+  axes:
+    batch_size: {kind: var, min: 1, max: 256, description: Decoding sequences.}
+    next_n: {kind: var, min: 1, max: 2, description: Query tokens per sequence (2 with one speculative draft token).}
+    ctx: {kind: var, min: 128, max: 131072, description: Longest context in the batch (indexed keys).}
+    num_heads: {kind: const, value: 64, description: Indexer query heads.}
+    head_size: {kind: const, value: 128, description: Indexer head dimension.}
+    block_size: {kind: const, value: 64, description: Keys per cache block.}
+    max_seq_len: {kind: const, value: 131072, description: Width of the logits rows.}
+  derived_axes:
+    head_packed: head_size // 2
+    head_groups: head_size // 32
+    head_tiles: num_heads // 16
+    scale_pad: (head_tiles + 3) // 4 * 4
+    blocks_per_seq: ceil_div(ctx, block_size)
+    num_blocks: batch_size * blocks_per_seq
+    num_rows: batch_size * next_n
+    max_blocks: max_seq_len // block_size + 4
+    total_ctas: next_n * min(batch_size * ceil_div(max_seq_len, 256), max(1024, 4 * batch_size))
+  inputs:
+    q_fp4:
+      kind: tensor
+      shape: [batch_size, next_n, num_heads, head_packed]
+      dtype: uint8
+      distribution: {kind: generator}
+    q_scale:
+      kind: tensor
+      shape: [batch_size, next_n, 1, head_groups, 16, scale_pad]
+      dtype: uint8
+      distribution: {kind: generator}
+    kv_cache:
+      kind: tensor
+      shape: [num_blocks, 1, 4, block_size, 16]
+      dtype: uint8
+      distribution: {kind: generator}
+    kv_scale:
+      kind: tensor
+      shape: [num_blocks, 1, 4, block_size]
+      dtype: uint8
+      distribution: {kind: generator}
+    weights:
+      kind: tensor
+      shape: [num_rows, num_heads]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.5, std: 0.5}
+    context_lens:
+      kind: tensor
+      shape: [batch_size]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    block_tables:
+      kind: tensor
+      shape: [batch_size, max_blocks]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    cta_info:
+      kind: tensor
+      shape: [total_ctas, 4]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    weight_scale: {kind: scalar, dtype: float32, default: 0.011048543456039804}
+  outputs:
+    logits: {shape: [num_rows, max_seq_len], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/kernels/pa_mqa_logits_fp4.py, aiter/ops/flydsl/kernels/buffer_ops.py
+    license: MIT AND Apache-2.0 (buffer_ops.py, from ROCm/FlyDSL kernels/common/buffer_ops.py)
+    modifications: >-
+      The kernel builder build_pa_mqa_logits_fp4_module and the cached launcher compile_pa_mqa_logits_fp4 are
+      vendored unchanged apart from the imports (buffer_ops is the bundled copy; the torch and triton imports
+      went with the removed code). The file's Triton schedule kernel (_varctx_cta_info_kernel,
+      compute_varctx_schedule) and host wrapper flydsl_pa_mqa_logits_fp4 are not vendored: a FlyDSL baseline may
+      not import Triton, and the schedule is built once per decode step and shared by all layers in production,
+      so it is a task input (cta_info) that inputs.py builds with a torch port of the Triton kernel. run() is the
+      wrapper's launch with that cta_info and a caller-supplied output, preceded by the -inf prefill the wrapper
+      performs when it builds the schedule itself (logits.fill_), and with the launcher cached per shape by
+      compile_pa_mqa_logits_fp4. buffer_ops.py is AITER's copy of FlyDSL's buffer_ops with the environment-variable
+      architecture lookup removed. FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the
+      cache-policy operand is passed as the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp /
+      RawPtrBufferStoreOp (the runtime's op constructors take no positional aux value); no change to the kernel
+      algorithm. buffer_ops.py originates from ROCm/FlyDSL (Apache-2.0, LICENSE-FlyDSL).
+compare:
+  logits: {bound: baseline_relative, max_violation_fraction: 1.0e-3}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

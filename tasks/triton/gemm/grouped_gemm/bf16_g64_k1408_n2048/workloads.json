@@ -1,0 +1,121 @@
+{
+  "description": "Routed rows (tokens x 6 experts) of the expert down-projection of one DeepSeek-V2-Lite MoE layer, 64 routed experts. Even the 64-token case reads the weights of nearly every expert (369 MB, about 82 us), so every performance case exceeds the 10 us floor.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "a single routed row: 63 of 64 experts receive no rows"
+    },
+    {
+      "id": "m6",
+      "axes": {
+        "m": 6
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "one token routed to 6 experts"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tiny batch, not a multiple of 16"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch, several empty experts"
+    },
+    {
+      "id": "m384",
+      "axes": {
+        "m": 384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode / small batch of 64 tokens x 6 experts"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch, not a multiple of the 256-row tile"
+    },
+    {
+      "id": "m1536",
+      "axes": {
+        "m": 1536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "256 tokens x 6 experts"
+    },
+    {
+      "id": "m6144",
+      "axes": {
+        "m": 6144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "1024 tokens x 6 experts"
+    },
+    {
+      "id": "m24576",
+      "axes": {
+        "m": 24576
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "4096 tokens x 6 experts"
+    },
+    {
+      "id": "m49152",
+      "axes": {
+        "m": 49152
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "8192 tokens x 6 experts (the upstream test shape)"
+    },
+    {
+      "id": "m98304",
+      "axes": {
+        "m": 98304
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16384 tokens x 6 experts"
+    }
+  ]
+}

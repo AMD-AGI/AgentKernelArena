@@ -1,0 +1,193 @@
+{
+ "description": "Prefill chunks of 1 to 16384 tokens of one prompt through a DeepSeek-V4 compression-ratio-4 attention layer; chunks of at most 100 tokens and odd lengths are correctness-only.",
+ "cases": [
+  {
+   "id": "q1",
+   "axes": {
+    "n_queries": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: a single token (no compressed entry, one window row)"
+  },
+  {
+   "id": "q3",
+   "axes": {
+    "n_queries": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "fewer than 4 tokens: no compressed entry"
+  },
+  {
+   "id": "q5",
+   "axes": {
+    "n_queries": 5
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "first compressed entry appears"
+  },
+  {
+   "id": "q64",
+   "axes": {
+    "n_queries": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short prompt"
+  },
+  {
+   "id": "q100",
+   "axes": {
+    "n_queries": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prompt that is not a multiple of 16"
+  },
+  {
+   "id": "q129",
+   "axes": {
+    "n_queries": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one past the 128-token window"
+  },
+  {
+   "id": "q333",
+   "axes": {
+    "n_queries": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd prompt length, all compressed entries fit in topk"
+  },
+  {
+   "id": "q1073",
+   "axes": {
+    "n_queries": 1073
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd prompt length"
+  },
+  {
+   "id": "q2049",
+   "axes": {
+    "n_queries": 2049
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "the last rows have more than 512 compressed candidates (from position 2051), so the indexer sampling path starts"
+  },
+  {
+   "id": "q7211",
+   "axes": {
+    "n_queries": 7211
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd long prompt"
+  },
+  {
+   "id": "q128",
+   "axes": {
+    "n_queries": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 128 tokens of one prompt"
+  },
+  {
+   "id": "q256",
+   "axes": {
+    "n_queries": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 256 tokens of one prompt"
+  },
+  {
+   "id": "q512",
+   "axes": {
+    "n_queries": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 512 tokens of one prompt"
+  },
+  {
+   "id": "q1024",
+   "axes": {
+    "n_queries": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 1024 tokens of one prompt"
+  },
+  {
+   "id": "q2048",
+   "axes": {
+    "n_queries": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 2048 tokens of one prompt"
+  },
+  {
+   "id": "q4096",
+   "axes": {
+    "n_queries": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 4096 tokens of one prompt"
+  },
+  {
+   "id": "q8192",
+   "axes": {
+    "n_queries": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 8192 tokens of one prompt"
+  },
+  {
+   "id": "q16384",
+   "axes": {
+    "n_queries": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk of 16384 tokens of one prompt"
+  }
+ ]
+}

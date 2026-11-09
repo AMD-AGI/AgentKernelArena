@@ -1,0 +1,39 @@
+schema_version: 3
+description: >-
+  out = dequant(a) @ dequant(b)^T with float8_e4m3fn activations a [m, 2048] carrying one float32 scale per 1x128
+  group (a_scale [m, 16], row-major) and float8_e4m3fn weights b [7168, 2048] in the natural [n, k] order carrying one
+  float32 scale per 128x128 block (b_scale [56, 16]), accumulated in float32 and rounded to bfloat16.
+operator: {name: gemm_a8w8_blockscale, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows of the activation matrix (tokens in the batch).}
+    n: {kind: const, value: 7168, description: Output channels.}
+    k: {kind: const, value: 2048, description: Contracted dimension.}
+  inputs:
+    a: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    a_scale: {kind: tensor, shape: [m, k // 128], dtype: float32, distribution: {kind: generator}}
+    b: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    b_scale: {kind: tensor, shape: [n // 128, k // 128], dtype: float32, role: weight,
+              distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: gluon
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/gluon/gemm_a8w8_blockscale.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/configs/gemm/gluon/gfx950-GEMM-A8W8_BLOCKSCALE-N=7168-K=2048.json
+    license: MIT
+    modifications: >-
+      Gluon kernels (`_gemm_a8w8_blockscale_kernel`, `_compute_MN_tile` and its helpers, the split-K reduce kernel `_gemm_a8w8_blockscale_reduce_kernel`) and the wrapper logic unchanged except one added bound in `_compute_MN_tile`: when the M tile is ragged (NEED_M_MASK) the activation-scale row offsets are wrapped with `% M`, because the scale async copies are unmasked and read up to 127 rows past the end of `a_scale` (a GPU memory fault at small M); `_get_config` reads the inlined N=7168, K=2048 gfx950 table instead of the JSON files and keeps the M_LEQ / supported-tile lookup, the architecture check, logger and os imports removed; the wrapper is renamed `run` and writes into the preallocated output; remap_xcd and pid_grid copied unchanged into pid_preprocessing.py.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

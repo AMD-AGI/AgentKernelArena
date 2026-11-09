@@ -1,0 +1,121 @@
+schema_version: 3
+description: >-
+  Absorbed multi-head latent attention (MLA) decode over a paged FP8 latent KV cache with one-token pages, as
+  served for DeepSeek-V3 on one GPU (128 heads). Each sequence contributes one query token with 128 heads whose
+  576-wide float8_e4m3fn query is [kv_lora 512 | rope 64]. The single latent KV head has the same 576-wide layout,
+  so logits[h, t] = softmax_scale * dot(q[h, :], kv[t, :]) over the seq_len = kv_indptr[b + 1] - kv_indptr[b]
+  cached tokens of the sequence, probabilities are the softmax over t, and out[h, :] = sum_t p[h, t] * kv[t, :512]
+  (the value is the 512-wide latent part of the same row). Token t of sequence b is row kv_page_indices[kv_indptr[b] +
+  t] of kv_cache. Queries and cache are used as stored (no scales); the output is bfloat16. The work_* and reduce_*
+  inputs are the persistent-scheduling worklist for 256 compute units (see README.md); an implementation may use or
+  ignore them.
+operator:
+  name: mla_decode
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 1, max: 64, description: Decoding sequences (one query token each).}
+    ctx: {kind: var, min: 512, max: 131072, description: 'Longest cached context in the batch (tokens); the others are between half of it and all of it.'}
+    num_heads: {kind: const, value: 128, description: Query heads (DeepSeek-V3 at tensor parallel 1).}
+    kv_lora_rank: {kind: const, value: 512, description: Latent (value) width.}
+    rope_dim: {kind: const, value: 64, description: Decoupled RoPE key width.}
+    num_cu: {kind: const, value: 256, description: Compute units the worklist is built for (MI355X).}
+  derived_axes:
+    head_size: kv_lora_rank + rope_dim
+    num_pages: batch * ctx
+    max_work: batch + num_cu - 1
+    max_split_tiles: min(batch + num_cu - 1, (num_cu - 1) * 2)
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, num_heads, head_size]
+      dtype: float8_e4m3fn
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: FP8 query codes ([latent 512 | rope 64] per head), used without a scale.
+    kv_cache:
+      kind: tensor
+      shape: [num_pages, 1, 1, head_size]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: Pool of one-token pages of the latent KV cache (FP8 codes, no scale).
+    kv_indptr:
+      kind: tensor
+      shape: [batch + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prefix sum of the sequence lengths.
+    kv_page_indices:
+      kind: tensor
+      shape: [num_pages]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Cache rows of all sequences, concatenated in order; entries past kv_indptr[-1] are 0.
+    work_indptr:
+      kind: tensor
+      shape: [num_cu + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Work items of compute unit c are work_info rows work_indptr[c] .. work_indptr[c + 1] - 1.
+    work_info:
+      kind: tensor
+      shape: [max_work, 8]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: 'Work rows [batch, partial slot, q_start, q_end, kv_start, kv_end, kv_offset, 0]; kv_* index kv_page_indices; every work item of this task has a partial slot.'
+    reduce_indptr:
+      kind: tensor
+      shape: [batch + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Partials of sequence b are reduce_partial_map[reduce_indptr[b] .. reduce_indptr[b + 1] - 1].
+    reduce_final_map:
+      kind: tensor
+      shape: [batch, 2]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Output token range [q_start, q_end) of each sequence.
+    reduce_partial_map:
+      kind: tensor
+      shape: [max_split_tiles]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Partial slots (rows of the partial-output buffers) of every sequence, grouped by reduce_indptr; unused entries are 0.
+    softmax_scale: {kind: scalar, dtype: float32, default: 0.1352, description: 'DeepSeek-V3 YaRN-scaled 192^-0.5 * mscale^2.'}
+  outputs:
+    out: {shape: [batch, num_heads, kv_lora_rank], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: dd8373349e33638c8d158a9ea009b7b28598984a
+    path: kernels/attention/mla_fwd_decode_m16x8_fp8_fp8.py, kernels/attention/mla_fwd_decode.py, kernels/attention/pa_metadata.py, kernels/common/buffer_ops.py, kernels/common/utils.py, kernels/common/kernels_common.py
+    license: MIT AND Apache-2.0 (kernel.py is MIT, Copyright (C) 2025-2026, Advanced Micro Devices, Inc.; the other baseline files are Apache-2.0 FlyDSL code)
+    modifications: >-
+      kernel.py is mla_fwd_decode_m16x8_fp8_fp8.py with the buffer_ops import pointed at the sibling file and
+      the module-level LDS pointer type cache (a global statement) dropped; run() is added at its end and follows
+      the persistent-kernel branch of flydsl_mla_fwd_decode (mla_fwd_decode.py) plus the reduce launch of the
+      upstream test: partial buffers sized from reduce_partial_map, LDS budget fixed to the 160 KB per CU of
+      CDNA4 instead of a rocminfo query (upstream, via subprocess, only asserts the kernel fits), and the
+      split-KV merge by reduce.py, which is compile_pa_metadata_reduce of pa_metadata.py renamed
+      compile_mla_reduce with its query_length fixed to 1 (upstream's replacement for aiter's mla_reduce_v1; the
+      aiter get_cu_num device query is replaced by the worklist's compute-unit count). buffer_ops.py drops its
+      FLYDSL_GPU_ARCH environment lookup (architecture auto-detected as upstream does when it is unset), utils.py
+      drops its five re-exports of mem_ops names, and kernels_common.py keeps dtype_to_elem_type. The worklist
+      that aiter's get_mla_metadata_v1 builds is a task input (inputs.py ports its parallel planner, scheduling in blocks of 64 tokens with the fixed cost kept at 256 tokens and the partial tail block joined to the last work item, because the kernel mishandles work items shorter than its 64-token tile; see README.md). In kernel.py,
+      two comments reworded to drop a reference to an upstream repository-internal document; no code change.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

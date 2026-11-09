@@ -1,0 +1,237 @@
+{
+ "description": "Backward passes of Llama-3-8B attention layers (32 query heads over 8 KV heads, head_dim 128) for causal training micro-batches of 1k to 8k-token sequences, 1k to 131k tokens per micro-batch; shorter sequences are correctness-only.",
+ "cases": [
+  {
+   "id": "c_b1_s2",
+   "axes": {
+    "batch": 1,
+    "seqlen": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: two tokens, the shortest sequence with a nonzero dq and dk"
+  },
+  {
+   "id": "c_b2_s17",
+   "axes": {
+    "batch": 2,
+    "seqlen": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "just above one 16-row tile, tiny batch"
+  },
+  {
+   "id": "c_b3_s200",
+   "axes": {
+    "batch": 3,
+    "seqlen": 200
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two batch and a sequence that is not a tile multiple"
+  },
+  {
+   "id": "c_b1_s127",
+   "axes": {
+    "batch": 1,
+    "seqlen": 127
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row short of a 128-row key tile"
+  },
+  {
+   "id": "c_b1_s128",
+   "axes": {
+    "batch": 1,
+    "seqlen": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "exactly one 128-row key tile"
+  },
+  {
+   "id": "c_b2_s333",
+   "axes": {
+    "batch": 2,
+    "seqlen": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd sequence length spanning three key tiles"
+  },
+  {
+   "id": "c_b4_s1000",
+   "axes": {
+    "batch": 4,
+    "seqlen": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short unaligned fine-tuning sequences"
+  },
+  {
+   "id": "c_b1_s513",
+   "axes": {
+    "batch": 1,
+    "seqlen": 513
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row past four 128-row tiles"
+  },
+  {
+   "id": "c_b2_s129",
+   "axes": {
+    "batch": 2,
+    "seqlen": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row past a key tile"
+  },
+  {
+   "id": "c_b3_s640",
+   "axes": {
+    "batch": 3,
+    "seqlen": 640
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two batch, 5 key tiles"
+  },
+  {
+   "id": "c_b2_s300_scale0125",
+   "axes": {
+    "batch": 2,
+    "seqlen": 300
+   },
+   "scalars": {
+    "sm_scale": 0.125
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-default softmax scale"
+  },
+  {
+   "id": "p_b1_s1024",
+   "axes": {
+    "batch": 1,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 1k-token sequence (short-context fine-tuning sample)"
+  },
+  {
+   "id": "p_b1_s2048",
+   "axes": {
+    "batch": 1,
+    "seqlen": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 2k-token sequence"
+  },
+  {
+   "id": "p_b2_s2048",
+   "axes": {
+    "batch": 2,
+    "seqlen": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "micro-batch of two 2k-token sequences"
+  },
+  {
+   "id": "p_b1_s4096",
+   "axes": {
+    "batch": 1,
+    "seqlen": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 4k-token sequence"
+  },
+  {
+   "id": "p_b4_s2048",
+   "axes": {
+    "batch": 4,
+    "seqlen": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "micro-batch of four 2k-token sequences"
+  },
+  {
+   "id": "p_b1_s8192",
+   "axes": {
+    "batch": 1,
+    "seqlen": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 8k-token sequence (Llama-3 pre-training context)"
+  },
+  {
+   "id": "p_b16_s2048",
+   "axes": {
+    "batch": 16,
+    "seqlen": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "micro-batch of sixteen 2k-token sequences"
+  },
+  {
+   "id": "p_b16_s4096",
+   "axes": {
+    "batch": 16,
+    "seqlen": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "micro-batch of sixteen 4k-token sequences"
+  },
+  {
+   "id": "p_b64_s2048",
+   "axes": {
+    "batch": 64,
+    "seqlen": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "micro-batch of sixty-four 2k-token sequences"
+  }
+ ]
+}

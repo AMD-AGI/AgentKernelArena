@@ -1,0 +1,133 @@
+{
+  "description": "Decode batch sizes of a Qwen3-Next style gated-delta-rule layer (16 query/key heads, 32 value heads, head dimension 128, float32 state of 2 MB per sequence); batches below 8 sequences take less than 10 us and are correctness-only.",
+  "cases": [
+    {
+      "id": "b1",
+      "axes": {
+        "batch": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "single-sequence decode (axis minimum)"
+    },
+    {
+      "id": "b3",
+      "axes": {
+        "batch": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small odd decode batch"
+    },
+    {
+      "id": "b37",
+      "axes": {
+        "batch": 37
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch"
+    },
+    {
+      "id": "b100",
+      "axes": {
+        "batch": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch"
+    },
+    {
+      "id": "b8",
+      "axes": {
+        "batch": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "small decode batch"
+    },
+    {
+      "id": "b16",
+      "axes": {
+        "batch": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "b32",
+      "axes": {
+        "batch": 32
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "b64",
+      "axes": {
+        "batch": 64
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "b128",
+      "axes": {
+        "batch": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "b256",
+      "axes": {
+        "batch": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large decode batch"
+    },
+    {
+      "id": "b512",
+      "axes": {
+        "batch": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "large decode batch"
+    },
+    {
+      "id": "b800",
+      "axes": {
+        "batch": 800
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "high-concurrency decode batch"
+    }
+  ]
+}

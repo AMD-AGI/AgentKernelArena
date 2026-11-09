@@ -1,0 +1,212 @@
+{
+ "description": "DeepSeek-V3.2 indexer logits for prefill chunks (queries x packed KV, two ragged requests, chunked-prefill causal windows with KV at least twice the queries); decode and tiny shapes are correctness-only.",
+ "cases": [
+  {
+   "id": "s1_kv64",
+   "axes": {
+    "seq_len": 1,
+    "seq_len_kv": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: one query token against the smallest key buffer"
+  },
+  {
+   "id": "s1_kv4096",
+   "axes": {
+    "seq_len": 1,
+    "seq_len_kv": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single-token decode against 4096 cached keys"
+  },
+  {
+   "id": "s16_kv64",
+   "axes": {
+    "seq_len": 16,
+    "seq_len_kv": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "windows shorter than one 32-column tile"
+  },
+  {
+   "id": "s2_kv66",
+   "axes": {
+    "seq_len": 2,
+    "seq_len_kv": 66
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "windows of 33 columns: one full tile plus a one-column tail"
+  },
+  {
+   "id": "s7_kv2000",
+   "axes": {
+    "seq_len": 7,
+    "seq_len_kv": 2000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short chunk, odd sizes"
+  },
+  {
+   "id": "s100_kv777",
+   "axes": {
+    "seq_len": 100,
+    "seq_len_kv": 777
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two, not a multiple of 16"
+  },
+  {
+   "id": "s300_kv2000",
+   "axes": {
+    "seq_len": 300,
+    "seq_len_kv": 2000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "chunk with odd request split"
+  },
+  {
+   "id": "s2048_kv4096",
+   "axes": {
+    "seq_len": 2048,
+    "seq_len_kv": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk, KV twice the queries"
+  },
+  {
+   "id": "s1_kv65537",
+   "axes": {
+    "seq_len": 1,
+    "seq_len_kv": 65537
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "long cache, key count one past a power of two"
+  },
+  {
+   "id": "s512_kv4096",
+   "axes": {
+    "seq_len": 512,
+    "seq_len_kv": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "short prefill chunk"
+  },
+  {
+   "id": "s512_kv16384",
+   "axes": {
+    "seq_len": 512,
+    "seq_len_kv": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk against a long prefix"
+  },
+  {
+   "id": "s1024_kv4096",
+   "axes": {
+    "seq_len": 1024,
+    "seq_len_kv": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "s1024_kv8192",
+   "axes": {
+    "seq_len": 1024,
+    "seq_len_kv": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "s1024_kv32768",
+   "axes": {
+    "seq_len": 1024,
+    "seq_len_kv": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk against a long prefix"
+  },
+  {
+   "id": "s2048_kv16384",
+   "axes": {
+    "seq_len": 2048,
+    "seq_len_kv": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "s4096_kv16384",
+   "axes": {
+    "seq_len": 4096,
+    "seq_len_kv": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "long-context prefill chunk"
+  },
+  {
+   "id": "s4096_kv32768",
+   "axes": {
+    "seq_len": 4096,
+    "seq_len_kv": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "long-context prefill chunk"
+  },
+  {
+   "id": "s8192_kv32768",
+   "axes": {
+    "seq_len": 8192,
+    "seq_len_kv": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "large long-context prefill chunk"
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+schema_version: 3
+description: >-
+  Batched MXFP4 GEMM, out[b] = dequant(x[b]) @ dequant(w[b])^T for 128 batch elements, with MXFP4 activations x
+  [batch, m, 512] and weights w [batch, 128, 512], both stored as two e2m1 codes per byte (x: [batch, m, 256],
+  w: [batch, 128, 256]; the even K index is the low nibble) with e8m0 scales per 32 values of K (x_scales
+  [batch, m, 16], w_scales [batch, 128, 16], uint8, value 2^(s - 127)), accumulated in float32 and rounded to
+  bfloat16.
+operator: {name: batched_gemm_afp4wfp4, category: gemm}
+interface:
+  axes:
+    batch: {kind: const, value: 128, description: Independent GEMMs in the batch (attention heads).}
+    m: {kind: var, min: 1, max: 38400, description: Rows (tokens) of each activation matrix.}
+    n: {kind: const, value: 128, description: Output width per batch element.}
+    k: {kind: const, value: 512, description: Contracted dimension (unpacked fp4 values).}
+  inputs:
+    x: {kind: tensor, shape: [batch, m, k // 2], dtype: uint8, distribution: {kind: generator}}
+    x_scales: {kind: tensor, shape: [batch, m, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [batch, n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [batch, n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [batch, m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/batched/batched_gemm_afp4wfp4.py
+      - aiter/ops/triton/gemm/batched/batched_gemm_afp4wfp4.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/configs/gemm/gfx950-BATCHED_GEMM-AFP4WFP4-N=128-K=512.json
+    license: MIT
+    modifications: >-
+      Kernel unchanged; the split-K reduce kernel, get_splitk and the float32 partial-sum buffer removed (every row
+      of the gfx950 N=128, K=512 table has NUM_KSPLIT 1); launcher reduced to writing into the preallocated output
+      with the table inlined as a function of M in the get_gemm_config lookup order; remap_xcd, pid_grid and
+      kernel_repr helpers inlined.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

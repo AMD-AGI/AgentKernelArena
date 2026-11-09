@@ -1,0 +1,42 @@
+schema_version: 3
+description: >-
+  GPT-OSS clamped SwiGLU of a gate/up activation in the block-interleaved layout of AITER's CK-Tile split-K
+  MoE stage 1: each row of 2 * d columns holds, for every block of 16 output columns, 16 gate values
+  followed by the 16 up values. With g = min(gate, 7) and u = clamp(up, -7, 7),
+  out = g * sigmoid(1.702 * g) * (u + 1), computed in float32 and rounded to bfloat16.
+operator: {name: swigluoai_and_mul, category: activation}
+interface:
+  axes:
+    n_rows: {kind: var, min: 1, max: 262144, description: Activation rows (tokens times the top-4 experts per token).}
+    intermediate_size: {kind: const, value: 2880, description: Width d of each half (GPT-OSS expert intermediate size).}
+  derived_axes:
+    two_d: 2 * intermediate_size
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_rows, two_d]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 3.0}
+      description: Gate/up activations, interleaved as (d / 16, 2, 16) within each row.
+  outputs:
+    out: {shape: [n_rows, intermediate_size], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/kernels/swiglu_and_mul.py, aiter/ops/flydsl/moe_kernels.py, aiter/ops/flydsl/kernels/buffer_ops.py
+    license: MIT AND Apache-2.0 (buffer_ops.py, from ROCm/FlyDSL)
+    modifications: >-
+      _get_compiled_swiglu, _run_compiled and flydsl_swiglu_and_mul_interleaved come from moe_kernels.py. swiglu_and_mul.py is vendored unchanged except that its aiter import became relative. kernel.py takes the
+      cached builder, the compile-once launch helper and the launch of flydsl_swiglu_and_mul_interleaved from
+      moe_kernels.py, writing into the caller-provided output. buffer_ops.py has its environment lookup of the
+      GPU architecture removed.
+      FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the cache-policy operand is passed as the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp / RawPtrBufferStoreOp (the runtime's op constructors take no positional aux value); no change to the kernel algorithm.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

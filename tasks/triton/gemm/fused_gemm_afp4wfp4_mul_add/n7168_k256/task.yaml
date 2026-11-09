@@ -1,0 +1,49 @@
+schema_version: 3
+description: >-
+  out = a * b + dequant(x) @ dequant(w)^T with MXFP4 activations x [m, 128] bytes (256 e2m1 values, two per byte, the even
+  K index in the low nibble) and MXFP4 weights w [7168, 128], both with e8m0 scales per 32 values of K (x_scales [m, 8],
+  w_scales [7168, 8], uint8, value 2^(s - 127)), accumulated in float32; a is a float scalar, b is a bfloat16 [m, 7168]
+  tensor, and the sum is rounded once to bfloat16.
+operator: {name: fused_gemm_afp4wfp4_mul_add, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 131072, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 7168, description: Output channels.}
+    k: {kind: const, value: 256, description: Contracted dimension (unpacked fp4 values).}
+  inputs:
+    x: {kind: tensor, shape: [m, k // 2], dtype: uint8, distribution: {kind: generator}}
+    x_scales: {kind: tensor, shape: [m, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+    a: {kind: scalar, dtype: float32, default: 2.5}
+    b: {kind: tensor, shape: [m, n], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 0.4}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/fused/fused_gemm_afp4wfp4_mul_add.py
+      - aiter/ops/triton/gemm/fused/fused_gemm_afp4wfp4_mul_add.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-FUSED-GEMM-AFP4WFP4-MUL_ADD-N=7168-K=256.json
+    license: MIT
+    modifications: >-
+      Kernel and split-K reduce kernel unchanged; the preshuffle kernel is removed. The launcher
+      fused_gemm_afp4wfp4_mul_add is reduced to its non-preshuffled path with fuse_type 1 (out = a * b + x @ w^T), writing
+      into the preallocated output, with the scalar/tensor operand flags kept; the split-K-in-bf16 switch (a global setter)
+      and the architecture assert are dropped, and its ahead-of-time metadata lookup belongs to the preshuffled path only.
+      get_splitk of the same file is inlined; the gfx950 table of the FUSED-GEMM-AFP4WFP4-MUL_ADD family for N=7168, K=256
+      is inlined as a function of M in the get_gemm_config lookup order; the remap_xcd, pid_grid and make_kernel_repr
+      helpers are inlined; imports, the logger and the shape asserts are removed.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

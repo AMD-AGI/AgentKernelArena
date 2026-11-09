@@ -1,0 +1,83 @@
+schema_version: 3
+description: >-
+  Fused block inverse and recompute of the WY representation of Gated DeltaNet chunked prefill. Tokens
+  are split into chunks of 64 (the last may be partial). For value head h (sharing key head h // 2) and
+  every chunk, A_raw[:, h] is the chunk's 64 x 64 block (row r is token r, columns are chunk-local
+  tokens) of the strictly lower triangular matrix L = tril(beta * K K^T * decay) that the cumsum / K K^T
+  kernel writes (zeros on and above the diagonal and in padding). With Ai = (I + L)^-1 (unit lower
+  triangular): w = Ai @ (beta * 2^g_cumsum * k) and u = Ai @ (beta * v), where g_cumsum is the
+  chunk-local cumulative log-decay in log2 space. w and u are stored head-major. Inputs are bfloat16 and
+  float32, the inverse and the matrix products accumulate in float32 or higher, and w and u are rounded
+  to bfloat16.
+operator:
+  name: solve_tril_recompute_w_u
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 204800, description: Tokens of one packed sequence batch.}
+    num_key_heads: {kind: const, value: 16, description: Key heads.}
+    num_heads: {kind: const, value: 32, description: Value heads (two per key head).}
+    key_dim: {kind: const, value: 128, description: Key head dimension.}
+    value_dim: {kind: const, value: 128, description: Value head dimension.}
+    chunk_size: {kind: const, value: 64, description: Tokens per chunk.}
+  inputs:
+    k:
+      kind: tensor
+      shape: [n_tokens, num_key_heads, key_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.08838834764831845}
+      description: Keys, contiguous; std 1/sqrt(key_dim) like L2-normalized keys.
+    v:
+      kind: tensor
+      shape: [n_tokens, num_heads, value_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Values, contiguous.
+    beta:
+      kind: tensor
+      shape: [n_tokens, num_heads]
+      dtype: float32
+      distribution: {kind: uniform, low: 0.0, high: 1.0}
+      description: Delta-rule write strength sigmoid(b), float32 as the gating kernel produces it.
+    A_raw:
+      kind: tensor
+      shape: [n_tokens, num_heads, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Strictly lower triangular chunk blocks beta * K K^T * decay, one 64-wide row per token and head; zeros on and above the diagonal.
+    g_cumsum:
+      kind: tensor
+      shape: [num_heads, n_tokens]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative log-decay in log2 space, head-major (non-increasing within every 64-token chunk).
+  outputs:
+    w: {shape: [num_heads, n_tokens, key_dim], dtype: bfloat16}
+    u: {shape: [num_heads, n_tokens, value_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/gated_delta_rule/prefill/fused_solve_tril_recompute.py, aiter/ops/triton/_triton_kernels/gated_delta_rule/utils/solve_tril.py
+    license: MIT (contains MIT-licensed flash-linear-attention code, see baseline/LICENSE)
+    modifications: >-
+      fused_solve_tril_recompute_w_u_kernel, recompute_w_u_head_major_kernel and
+      merge_16x16_to_64x64_inverse_kernel are unchanged; the unused 16 x 16 and 32 x 32 solve kernels are
+      removed. Each @triton.autotune decorator, a single entry unless the
+      GATED_DELTA_RULE_TRITON_AUTOTUNE environment variable is set, is replaced by that entry passed at
+      launch; tl.exp (utils/op.py's exp), the dispatch threshold (32 chunks) and the dot precision
+      ("ieee") are defined in the files instead of being read from environment variables; the
+      non-TMA stub of make_tensor_descriptor is copied from utils/op.py (TMA is off on AMD). The
+      fused-or-split dispatch of fused_solve_tril_recompute_w_u and _run_split_path, and the
+      solve_tril wrapper, are reduced to run() and solve_tril() for one sequence (no cu_seqlens, use_exp2
+      on), writing the preallocated head-major w and u.
+compare:
+  w: {bound: baseline_relative, k: 4, max_violation_fraction: 5.0e-4}
+  u: {bound: baseline_relative, k: 4, max_violation_fraction: 5.0e-4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

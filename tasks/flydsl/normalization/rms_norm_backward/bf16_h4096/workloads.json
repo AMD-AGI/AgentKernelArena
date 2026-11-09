@@ -1,0 +1,132 @@
+{
+  "description": "Token counts of RMSNorm backward at hidden size 4096 in training micro-batches; batches below about 2k tokens take less than 10 us and are correctness-only.",
+  "cases": [
+    {
+      "id": "t512",
+      "axes": {
+        "n_tokens": 512
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "smallest staged-path batch (the minimum)"
+    },
+    {
+      "id": "t513",
+      "axes": {
+        "n_tokens": 513
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd batch above the minimum"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch"
+    },
+    {
+      "id": "t1024",
+      "axes": {
+        "n_tokens": 1024
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "micro-batch of 1k tokens"
+    },
+    {
+      "id": "t1537",
+      "axes": {
+        "n_tokens": 1537
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "batch with a row/program tail"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "2k-token micro-batch"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "4k-token micro-batch"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "8k-token micro-batch"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16k-token micro-batch"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "32k-token micro-batch"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "n_tokens": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "128k-token batch"
+    },
+    {
+      "id": "t262144",
+      "axes": {
+        "n_tokens": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "256k-token batch"
+    }
+  ]
+}

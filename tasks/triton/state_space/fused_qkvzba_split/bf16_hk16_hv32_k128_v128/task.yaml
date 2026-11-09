@@ -1,0 +1,64 @@
+schema_version: 3
+description: >-
+  Split, reshape and concatenation of the fused in_proj_qkvz and in_proj_ba projection outputs of a
+  Gated DeltaNet layer (prefill), a pure data movement. Per token, mixed_qkvz is 16 consecutive key-head
+  groups of [q (128) | k (128) | v (2 x 128) | z (2 x 128)] and mixed_ba 16 groups of [b (2) | a (2)].
+  mixed_qkv is the token's q of all 16 groups, then k of all 16, then v of all 16 (8192 values); z is
+  the 16 z blocks as [32, 128]; b and a are the 16 b and a pairs as 32 values each. Every output
+  element equals one input element exactly.
+operator:
+  name: fused_qkvzba_split
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens of the prefill batch.}
+    num_key_heads: {kind: const, value: 16, description: Key heads.}
+    num_value_heads: {kind: const, value: 32, description: Value heads (two per key head).}
+    head_k_dim: {kind: const, value: 128, description: Key head dimension.}
+    head_v_dim: {kind: const, value: 128, description: Value head dimension.}
+  derived_axes:
+    qkvz_dim: num_key_heads * (2 * head_k_dim + 2 * (num_value_heads // num_key_heads) * head_v_dim)
+    ba_dim: 2 * num_value_heads
+    qkv_dim: 2 * num_key_heads * head_k_dim + num_value_heads * head_v_dim
+  inputs:
+    mixed_qkvz:
+      kind: tensor
+      shape: [n_tokens, qkvz_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Output of the fused in_proj_qkvz linear layer, per-key-head-group interleaved.
+    mixed_ba:
+      kind: tensor
+      shape: [n_tokens, ba_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Output of the fused in_proj_ba linear layer, per-key-head-group interleaved.
+  outputs:
+    mixed_qkv: {shape: [n_tokens, qkv_dim], dtype: bfloat16}
+    z: {shape: [n_tokens, num_value_heads, head_v_dim], dtype: bfloat16}
+    b: {shape: [n_tokens, num_value_heads], dtype: bfloat16}
+    a: {shape: [n_tokens, num_value_heads], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/_triton_kernels/gated_delta_rule/fused_qkvzba_split.py
+    license: MIT AND Apache-2.0 (ROCm/aiter MIT, baseline/LICENSE; the prefill kernels are variants of SGLang's fused_qkvzba_split_reshape_cat_kernel at 887c401e151e2d1b082d74ef8769a23eef5c465c, Apache-2.0, baseline/LICENSE-sglang)
+    modifications: >-
+      The five prefill kernels (_fused_qkvzba_prefill_kernel_nqk1/2/4/8 and the generic
+      _fused_qkvzba_split_reshape_cat_prefill_kernel) are vendored unchanged; the decode kernel and
+      its wrapper are removed. fused_qkvzba_split_reshape_cat_prefill (which allocates and returns its
+      outputs) is replaced by run(), which keeps its dispatch on the number of key heads and writes the
+      preallocated outputs; the key-head count and size (16, 128) are module constants because the
+      wrapper's arguments are not part of the run() call.
+compare:
+  mixed_qkv: {bound: exact}
+  z: {bound: exact}
+  b: {bound: exact}
+  a: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

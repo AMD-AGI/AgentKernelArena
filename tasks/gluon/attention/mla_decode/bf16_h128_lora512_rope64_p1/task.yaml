@@ -1,0 +1,71 @@
+schema_version: 3
+description: >-
+  Absorbed multi-head latent attention (MLA) decode for DeepSeek-V3 on one GPU (128 heads, tensor
+  parallel 1) over a token-granular latent KV cache (page size 1). Each sequence contributes one
+  query token with 128 heads whose 576-wide query is [kv_lora 512 | rope 64]. The single latent KV
+  head has the same 576-wide layout, so logits[h, t] = softmax_scale * dot(q[h, :], kv[row(b, t), :])
+  over the first seq_lens[b] cached tokens of the sequence, probabilities are the softmax of the
+  logits over t, and out[h, :] = sum_t p[h, t] * kv[row(b, t), :512] (the value is the 512-wide
+  latent part of the same cache row). row(b, t) = block_tables[b, t] is the cache row holding token
+  t of sequence b.
+operator:
+  name: mla_decode
+  category: attention
+interface:
+  axes:
+    batch: {kind: var, min: 128, max: 256, multiple_of: 128, description: Decoding sequences (one query token each).}
+    ctx: {kind: var, min: 256, max: 32768, description: Longest cached context in the batch (tokens).}
+    num_heads: {kind: const, value: 128, description: "Query heads (DeepSeek-V3 num_attention_heads at tensor parallel 1)."}
+    kv_lora_rank: {kind: const, value: 512, description: Latent (value) width.}
+    rope_dim: {kind: const, value: 64, description: Decoupled RoPE key width.}
+  derived_axes:
+    head_size: kv_lora_rank + rope_dim
+    num_tokens: batch * ctx
+  inputs:
+    q:
+      kind: tensor
+      shape: [batch, num_heads, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    kv_cache:
+      kind: tensor
+      shape: [num_tokens, head_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    block_tables:
+      kind: tensor
+      shape: [batch, ctx]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    seq_lens:
+      kind: tensor
+      shape: [batch]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    softmax_scale: {kind: scalar, dtype: float32, default: 0.1352}
+  outputs:
+    out: {shape: [batch, num_heads, kv_lora_rank], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: gluon
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/triton/gluon/mla_gluon.py
+    license: MIT AND MIT (deepseek-ai/FlashMLA, the kernel's stated origin)
+    modifications: >-
+      The _mla_gluon kernel is vendored unchanged. The Triton stage-2 reducer and the other
+      regimes' dispatch are dropped (the batch/head combination used here takes the stage-1-only
+      NUM_KV_SPLITS == 1 path, which writes the final output directly); the aiter arch and XCD-count
+      helpers are inlined; the mla_gluon wrapper is replaced by run() performing the bh64,
+      use_2d_view dispatch with the same arguments. The kernel header states it originated from the
+      FlashMLA Triton kernel (deepseek-ai/FlashMLA, MIT); its notice is in baseline/LICENSE-FlashMLA.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

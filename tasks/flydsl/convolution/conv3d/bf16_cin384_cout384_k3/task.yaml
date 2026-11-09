@@ -1,0 +1,63 @@
+schema_version: 3
+description: >-
+  Causal-padded 3D convolution of a bfloat16 video feature map x [1, 384, d, h, w] (NCDHW) with a 3x3x3 filter of 384
+  output channels and a bias, stride 1, zero padding of one along height and width and none along depth: out[1, 384,
+  d - 2, h, w] = conv3d(x, weight, bias), accumulated in float32 and rounded to bfloat16. The input already carries the
+  two causal frames in front of the new frames. The weight is packed as [384, 27 * 384] with the 384 input channels
+  fastest (tap order T, R, S) and the bias is float32 (see README.md).
+operator: {name: conv3d, category: convolution}
+interface:
+  axes:
+    n: {kind: const, value: 1, description: Clips decoded together (one).}
+    c: {kind: const, value: 384, description: Input channels.}
+    k: {kind: const, value: 384, description: Output channels.}
+    d: {kind: var, min: 3, max: 23, description: Input frames (two causal frames plus the new latent frames).}
+    h: {kind: var, min: 8, max: 180, description: Feature-map height.}
+    w: {kind: var, min: 8, max: 320, description: Feature-map width.}
+  derived_axes:
+    d_out: d - 2
+  inputs:
+    x:
+      kind: tensor
+      shape: [n, c, d, h, w]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    weight:
+      kind: tensor
+      shape: [k, 27 * c]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    bias:
+      kind: tensor
+      shape: [k]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n, k, d_out, h, w], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/FlyDSL
+    revision: dd8373349e33638c8d158a9ea009b7b28598984a
+    path: kernels/conv/conv3d_implicit.py, kernels/common/mem_ops.py
+    license: Apache-2.0
+    modifications: >-
+      buffer_atomic_add comes from kernels/common/mem_ops.py; everything else from kernels/conv/conv3d_implicit.py.
+      conv3d_implicit.py keeps the constants, compile_transpose_ncdhw_ndhwc and compile_conv3d_implicit unchanged and drops
+      the host-side API: the autotune switch (os), the weight cache and packing (_prep_weight, weakref), the torch
+      fallback transpose, the split-K heuristic, the 1x1x1 torch.matmul path and the 1D/2D wrappers. buffer_atomic_add,
+      which the split-K store of the kernel calls, is inlined from kernels/common/mem_ops.py instead of imported. kernel.py
+      is new: run() allocates the NDHWC scratch, runs the transpose kernel and the conv kernel (default 128x128 tile,
+      workgroup swizzle 1, split-K 1, bias on) on the current stream, caching both launchers per shape. The weight packing
+      moved into the task's layout transform, because production does it once at load time.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

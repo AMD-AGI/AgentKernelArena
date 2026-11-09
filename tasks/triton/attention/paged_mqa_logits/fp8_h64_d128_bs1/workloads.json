@@ -1,0 +1,218 @@
+{
+ "description": "DeepSeek-V3.2 indexer decode steps over a token-granular (block size 1) paged fp8 cache: batch of sequences with ragged contexts (the longest is ctx tokens, the others between ctx/2 and ctx), one query token or two with an MTP draft token. Tiny and single-sequence shapes finish below the 10 us timing floor and are correctness-only.",
+ "cases": [
+  {
+   "id": "b1_n1_c128",
+   "axes": {
+    "batch_size": 1,
+    "next_n": 1,
+    "ctx": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: one sequence, one query token, shortest context"
+  },
+  {
+   "id": "b2_n2_c333",
+   "axes": {
+    "batch_size": 2,
+    "next_n": 2,
+    "ctx": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short odd contexts with a draft token"
+  },
+  {
+   "id": "b5_n1_c777",
+   "axes": {
+    "batch_size": 5,
+    "next_n": 1,
+    "ctx": 777
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch, context not a multiple of any tile"
+  },
+  {
+   "id": "b3_n2_c1000",
+   "axes": {
+    "batch_size": 3,
+    "next_n": 2,
+    "ctx": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two batch, context not a multiple of 16, MTP step"
+  },
+  {
+   "id": "b128_n2_c256",
+   "axes": {
+    "batch_size": 128,
+    "next_n": 2,
+    "ctx": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch axis maximum with 256-token contexts and a draft token"
+  },
+  {
+   "id": "b1_n1_c114688",
+   "axes": {
+    "batch_size": 1,
+    "next_n": 1,
+    "ctx": 114688
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single long sequence (about 8 us, below the timing floor)"
+  },
+  {
+   "id": "b17_n2_c4097",
+   "axes": {
+    "batch_size": 17,
+    "next_n": 2,
+    "ctx": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch above 16 that is not a multiple of 16, context one past a power of two"
+  },
+  {
+   "id": "b64_n1_c4096",
+   "axes": {
+    "batch_size": 64,
+    "next_n": 1,
+    "ctx": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch of 64 sequences at a 4k context"
+  },
+  {
+   "id": "b2_n1_c114688",
+   "axes": {
+    "batch_size": 2,
+    "next_n": 1,
+    "ctx": 114688
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "two long-context sequences"
+  },
+  {
+   "id": "b4_n2_c65536",
+   "axes": {
+    "batch_size": 4,
+    "next_n": 2,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small decode batch at 64k with a draft token"
+  },
+  {
+   "id": "b8_n1_c32768",
+   "axes": {
+    "batch_size": 8,
+    "next_n": 1,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch of 8 at 32k"
+  },
+  {
+   "id": "b16_n1_c49152",
+   "axes": {
+    "batch_size": 16,
+    "next_n": 1,
+    "ctx": 49152
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch of 16 at 48k"
+  },
+  {
+   "id": "b32_n2_c65536",
+   "axes": {
+    "batch_size": 32,
+    "next_n": 2,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch of 32 at 64k with a draft token"
+  },
+  {
+   "id": "b64_n1_c32768",
+   "axes": {
+    "batch_size": 64,
+    "next_n": 1,
+    "ctx": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch of 64 at 32k"
+  },
+  {
+   "id": "b64_n1_c114688",
+   "axes": {
+    "batch_size": 64,
+    "next_n": 1,
+    "ctx": 114688
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch of 64 at 112k"
+  },
+  {
+   "id": "b128_n2_c65536",
+   "axes": {
+    "batch_size": 128,
+    "next_n": 2,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch of 128 at 64k with a draft token"
+  },
+  {
+   "id": "b128_n2_c114688",
+   "axes": {
+    "batch_size": 128,
+    "next_n": 2,
+    "ctx": 114688
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "largest case: batch 128 at 112k with a draft token"
+  }
+ ]
+}

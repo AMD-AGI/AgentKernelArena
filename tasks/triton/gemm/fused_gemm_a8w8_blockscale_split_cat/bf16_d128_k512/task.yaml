@@ -1,0 +1,54 @@
+schema_version: 3
+description: >-
+  The MLA key/value up-projection of a 128-head model with the key/value split and the rope-key concatenation fused: c =
+  dequant(x) @ dequant(w)^T with float8_e4m3fn activations x [m, 512] (one float32 scale per 1x128 block, x_scale [m, 4])
+  and float8_e4m3fn weights w [32768, 512] (one float32 scale per 128x128 block, w_scale [256, 4]) is accumulated in float32
+  and viewed as [m, 128, 256]; k = cat(c[..., :128], k_pe broadcast over the 128 heads) with shape [m, 128, 192] and
+  v = c[..., 128:] with shape [m, 128, 128], both rounded to bfloat16.
+operator: {name: fused_gemm_a8w8_blockscale_split_cat, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 32768, description: Rows (tokens whose key/value are up-projected).}
+    n_heads: {kind: const, value: 128, description: Attention heads D.}
+    k_nope: {kind: const, value: 128, description: Per-head no-position key width S1.}
+    v_dim: {kind: const, value: 128, description: Per-head value width S2.}
+    k_rope: {kind: const, value: 64, description: Shared rope key width S3.}
+    k: {kind: const, value: 512, description: Contracted dimension (the compressed KV width).}
+  derived_axes: {n: n_heads * (k_nope + v_dim), k_full: k_nope + k_rope}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    x_scale: {kind: tensor, shape: [m, k // 128], dtype: float32, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    w_scale: {kind: tensor, shape: [n // 128, k // 128], dtype: float32, role: weight, distribution: {kind: generator}}
+    k_pe: {kind: tensor, shape: [m, k_rope], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0}}
+  outputs:
+    k: {shape: [m, n_heads, k_full], dtype: bfloat16}
+    v: {shape: [m, n_heads, v_dim], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/fused/fused_gemm_a8w8_blockscale_split_cat.py
+      - aiter/ops/triton/gemm/fused/fused_gemm_a8w8_blockscale_split_cat.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A8W8_BLOCKSCALE-N=32768-K=512.json
+    license: MIT
+    modifications: >-
+      Kernel and split-K reduce kernel unchanged; the preshuffle kernel is removed. The launcher
+      fused_gemm_a8w8_blockscale_split_cat is reduced to writing into the preallocated k and v (the wrapper's c1 and c2),
+      with the shared rope key broadcast over the heads by a view (y = k_pe[:, None, :].expand(m, 128, 64), as the upstream
+      test does); the N=32768, K=512 gfx950 table is inlined as a function of M in the get_gemm_config lookup order; the
+      remap_xcd and pid_grid helpers are inlined; imports, the logger and the shape asserts are removed. The upstream M_LEQ_8
+      row of the table (BLOCK_SIZE_M 8, BLOCK_SIZE_N 16, one warp) is removed so that M <= 8 selects the M_LEQ_16 row (16-row
+      tiles); with the upstream row the GPU audit saw a seed-dependent wrong result at M = 1 (see README.md).
+compare:
+  k: {bound: baseline_relative}
+  v: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,117 @@
+schema_version: 3
+description: >-
+  Post-GEMM attention preparation of a sliding-window MLA layer. The query q [2, tokens, heads * 512] holds two
+  split-K partial sums of the query projection; they are added, every 512-wide head is RMS-normalized without
+  weight (epsilon q_eps), and the interleaved (GPT-J style) rotary embedding is applied to its last 64 values
+  with the cos/sin rows of the token's position, giving q_out [tokens, heads, 512]. The key/value row kv
+  [tokens, 512] is RMS-normalized with kv_norm_weight (epsilon kv_eps) and rotated in the same way, in place, for
+  every row named by write_indices (a permutation; a negative entry would skip its row). Each processed row
+  is also written to swa_kv[state_slot_mapping[batch_id_per_token[row]], positions[row] % 128], the ring
+  buffer of the sliding window. Other swa_kv cells keep their value.
+operator:
+  name: fused_reduce_qk_norm_rope_swa_write
+  category: kv_cache
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 32768, description: Tokens in the batch.}
+    num_splitk: {kind: const, value: 2, description: Split-K partial sums of the query projection.}
+    num_local_heads: {kind: const, value: 64}
+    head_dim: {kind: const, value: 512}
+    rope_dim: {kind: const, value: 64}
+    window: {kind: const, value: 128, description: Sliding-window length (ring-buffer positions per slot).}
+    max_position: {kind: const, value: 131072, description: Rows of the cos/sin tables.}
+    num_slots: {kind: const, value: 8192, description: Sequence slots of the sliding-window state pool.}
+  derived_axes:
+    q_width: num_local_heads * head_dim
+    half_rope: rope_dim // 2
+  inputs:
+    q:
+      kind: tensor
+      shape: [num_splitk, n_tokens, q_width]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv:
+      kind: tensor
+      shape: [n_tokens, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    kv_norm_weight:
+      kind: tensor
+      shape: [head_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: uniform, low: 0.5, high: 1.5}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+    cos:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin:
+      kind: tensor
+      shape: [max_position, half_rope]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    write_indices:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    batch_id_per_token:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    state_slot_mapping:
+      kind: tensor
+      shape: [num_slots]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    swa_kv:
+      kind: tensor
+      shape: [num_slots, window, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+    q_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+    kv_eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    q_out: {shape: [n_tokens, num_local_heads, head_dim], dtype: bfloat16}
+  mutable: [kv, swa_kv]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/fusions/fused_reduce_qk_norm_rope_swa_write.py
+      - aiter/ops/triton/fusions/fused_reduce_qk_norm_rope_swa_write.py
+      - aiter/ops/triton/_triton_kernels/rope/rope.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+    license: MIT
+    modifications: >-
+      _fused_reduce_qk_norm_rope_swa_write_kernel, _batched_rmsnorm_op and _batched_unit_rope copied unchanged;
+      the two rotation helpers of rope.py (_get_neox_rotated_x, _get_gptj_rotated_x) and make_kernel_repr are
+      inlined (kernel_repr.py has no header upstream, so the repository MIT license applies to it). The launch
+      code (_pick_block_size_m and the grid) became run() for this configuration (3D split-K query, weight-free
+      query norm, interleaved RoPE, half-width cos/sin, SWA write on), writing into the preallocated outputs.
+compare:
+  q_out: {bound: baseline_relative}
+  kv: {bound: baseline_relative}
+  swa_kv: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,120 @@
+schema_version: 3
+description: >-
+  Fused attention input preparation of a gated full-attention layer with partial rotary embedding. The packed
+  projection qkv [tokens, (2 * 16 + 2 * 2) * 256] holds, per query head, the query and its output gate
+  (interleaved: q_h0, gate_h0, q_h1, gate_h1, ...), then the key heads and the value heads. Every query and key
+  head is RMS-normalized over its 256 values with Gemma-style weights, x * rsqrt(mean(x^2) + eps) * (1 + w), and
+  the first 64 values are rotated with the NeoX (rotate-half) embedding using the cos/sin rows of the token's
+  position (the tables hold the 32 first-half angles); the other 192 values stay as normalized. q, the gate, k and
+  v are written as [tokens, heads, 256]; k and v are also written, un-scaled, to the paged caches
+  [blocks, 16, 2, 256] at slot_mapping (unique, non-negative slots). Other cache slots keep their value.
+operator:
+  name: fused_qkv_split_qk_norm_rope_cache
+  category: kv_cache
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens in the batch.}
+    num_q_heads: {kind: const, value: 16}
+    num_kv_heads: {kind: const, value: 2}
+    head_dim: {kind: const, value: 256}
+    rotary_dim: {kind: const, value: 64, description: Rotated leading values of every head.}
+    max_position: {kind: const, value: 262144, description: Rows of the cos/sin tables.}
+    block_size: {kind: const, value: 16, description: Tokens per paged-cache block.}
+    num_slots: {kind: const, value: 131072, description: Token slots of the paged KV cache.}
+  derived_axes:
+    qkv_width: (2 * num_q_heads + 2 * num_kv_heads) * head_dim
+    half_rotary: rotary_dim // 2
+    num_blocks: num_slots // block_size
+  inputs:
+    qkv:
+      kind: tensor
+      shape: [n_tokens, qkv_width]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    q_weight:
+      kind: tensor
+      shape: [head_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.3}
+    k_weight:
+      kind: tensor
+      shape: [head_dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.3}
+    cos:
+      kind: tensor
+      shape: [max_position, half_rotary]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    sin:
+      kind: tensor
+      shape: [max_position, half_rotary]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+    positions:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: randint, low: 0, high: 262144}
+    slot_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+    key_cache:
+      kind: tensor
+      shape: [num_blocks, block_size, num_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+    value_cache:
+      kind: tensor
+      shape: [num_blocks, block_size, num_kv_heads, head_dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+    eps: {kind: scalar, dtype: float32, default: 1.0e-6}
+  outputs:
+    q: {shape: [n_tokens, num_q_heads, head_dim], dtype: bfloat16}
+    gate: {shape: [n_tokens, num_q_heads, head_dim], dtype: bfloat16}
+    k: {shape: [n_tokens, num_kv_heads, head_dim], dtype: bfloat16}
+    v: {shape: [n_tokens, num_kv_heads, head_dim], dtype: bfloat16}
+  mutable: [key_cache, value_cache]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/rope/fused_qkv_split_qk_norm_rope_cache.py
+      - aiter/ops/triton/rope/fused_qkv_split_qk_norm_rope_cache.py
+      - aiter/ops/triton/_triton_kernels/rope/rope.py
+    license: MIT
+    modifications: >-
+      The whole kernel file (_fused_qkv_split_qk_norm_rope_cache_kernel and its RMSNorm and partial-rotation
+      helpers) is copied unchanged; it and the wrapper have no header upstream, so the repository MIT license
+      applies. The two rotation helpers of rope.py are inlined. The wrapper became run() for this configuration
+      (gated interleaved layout, NeoX partial rotation with half-width tables, NHD cache, no cache scales or
+      position offsets), writing into the preallocated outputs; its Python-side input validation is dropped, and
+      the compute-unit count read by the BLOCK_T heuristic is memoized with functools.lru_cache. The wrapper's
+      docstring says the BLOCK_T heuristic follows vLLM's calc_rows_per_block (a one-line formula, not copied
+      code).
+compare:
+  q: {bound: baseline_relative}
+  gate: {bound: exact}
+  k: {bound: baseline_relative}
+  v: {bound: exact}
+  key_cache: {bound: baseline_relative}
+  value_cache: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

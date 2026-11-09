@@ -1,0 +1,49 @@
+schema_version: 3
+description: >-
+  out = a * b + dequant(x) @ dequant(w)^T with float8_e4m3fn activations x [m, 256] (one float32 scale per 1x128 block,
+  x_scales [m, 2]) and float8_e4m3fn weights w [7168, 256] (one float32 scale per 128x128 block, w_scales [56, 2]),
+  accumulated in float32; a is a float scalar, b is a bfloat16 [m, 7168] tensor, and the sum is rounded once to bfloat16.
+operator: {name: fused_gemm_a8w8_blockscale_mul_add, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 2, max: 131072, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 7168, description: Output channels.}
+    k: {kind: const, value: 256, description: Contracted dimension.}
+  inputs:
+    x: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    x_scales: {kind: tensor, shape: [m, k // 128], dtype: float32, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [n // 128, k // 128], dtype: float32, role: weight, distribution: {kind: generator}}
+    a: {kind: scalar, dtype: float32, default: 2.5}
+    b: {kind: tensor, shape: [m, n], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 0.4}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/triton/_triton_kernels/gemm/fused/fused_gemm_a8w8_blockscale_mul_add.py
+      - aiter/ops/triton/gemm/fused/fused_gemm_a8w8_blockscale_mul_add.py
+      - aiter/ops/triton/utils/gemm_config_utils.py
+      - aiter/ops/triton/utils/_triton/pid_preprocessing.py
+      - aiter/ops/triton/utils/_triton/kernel_repr.py
+      - aiter/ops/triton/configs/gemm/gfx950-GEMM-A8W8_BLOCKSCALE-N=7168-K=256.json
+    license: MIT
+    modifications: >-
+      Kernel and split-K reduce kernel unchanged. The launcher fused_gemm_a8w8_blockscale_mul_add is reduced to
+      fuse_type 1 (out = a * b + x @ w^T), writing into the preallocated output, with the scalar/tensor operand flags kept;
+      the split-K-in-bf16 switch (a global setter) is dropped. For fuse_type 1 on gfx950 upstream routes to the base
+      GEMM-A8W8_BLOCKSCALE configuration family, so the N=7168, K=256 file of that family is inlined as a function of M in
+      the get_gemm_config lookup order (the architecture check and the fuse_type 0 table are not included);
+      add_default_gemm_config_params, compute_splitk_params, pid_grid and make_kernel_repr are inlined;
+      imports, the logger and the shape asserts are removed.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

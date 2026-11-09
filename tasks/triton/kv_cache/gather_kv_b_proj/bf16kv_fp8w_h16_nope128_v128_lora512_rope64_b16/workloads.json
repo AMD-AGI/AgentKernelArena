@@ -1,0 +1,143 @@
+{
+  "description": "Total cached prefix tokens of 16 requests expanded by the MLA kv_b projection (DeepSeek-V3, tensor-parallel rank of 16 heads). Batches below about 1500 tokens fall under the 10 us timing floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "t16",
+      "axes": {
+        "total_kv": 16
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "one cached token per request"
+    },
+    {
+      "id": "t17",
+      "axes": {
+        "total_kv": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "one request with two cached tokens"
+    },
+    {
+      "id": "t100",
+      "axes": {
+        "total_kv": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short prefixes"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "total_kv": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefix batch"
+    },
+    {
+      "id": "t3001",
+      "axes": {
+        "total_kv": 3001
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefix batch"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "total_kv": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 128 cached tokens"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "total_kv": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 256 cached tokens"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "total_kv": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 512 cached tokens"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "total_kv": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 1K cached tokens"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "total_kv": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 2K cached tokens"
+    },
+    {
+      "id": "t65536",
+      "axes": {
+        "total_kv": 65536
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 4K cached tokens"
+    },
+    {
+      "id": "t131072",
+      "axes": {
+        "total_kv": 131072
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 8K cached tokens"
+    },
+    {
+      "id": "t204800",
+      "axes": {
+        "total_kv": 204800
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "16 requests with about 12.8K cached tokens"
+    }
+  ]
+}

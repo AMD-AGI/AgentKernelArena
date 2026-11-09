@@ -1,0 +1,183 @@
+{
+  "description": "Token counts whose compressed KV is up-projected by kv_b_proj of a 128-head DeepSeek-R1 MXFP4 model; counts below about 256 tokens run under the 10 us floor and are correctness-only.",
+  "cases": [
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis minimum, single token"
+    },
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd small batch"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small batch"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "just above one 16-row tile"
+    },
+    {
+      "id": "m32",
+      "axes": {
+        "m": 32
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "upstream test case"
+    },
+    {
+      "id": "m64",
+      "axes": {
+        "m": 64
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "small batch"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned batch"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "m": 128
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "upstream test case"
+    },
+    {
+      "id": "m1000",
+      "axes": {
+        "m": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefix chunk"
+    },
+    {
+      "id": "m256",
+      "axes": {
+        "m": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    },
+    {
+      "id": "m32768",
+      "axes": {
+        "m": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefix / chunk tokens through kv_b_proj"
+    }
+  ]
+}

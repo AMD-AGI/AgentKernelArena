@@ -1,0 +1,143 @@
+{
+  "description": "Token counts of decode batches of a sliding-window MLA layer (64 local heads, head size 512, window 128); each request contributes up to four consecutive tokens (one decode step with three speculative tokens). Batches below about 200 tokens move under 40 MB and fall under the 10 us timing floor, so they are correctness-only.",
+  "cases": [
+    {
+      "id": "t1",
+      "axes": {
+        "n_tokens": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch 1"
+    },
+    {
+      "id": "t3",
+      "axes": {
+        "n_tokens": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, partial sequence of speculative tokens"
+    },
+    {
+      "id": "t17",
+      "axes": {
+        "n_tokens": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, batch just above 16"
+    },
+    {
+      "id": "t100",
+      "axes": {
+        "n_tokens": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode, unaligned batch"
+    },
+    {
+      "id": "t1000",
+      "axes": {
+        "n_tokens": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned token batch"
+    },
+    {
+      "id": "t256",
+      "axes": {
+        "n_tokens": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 64 requests with three speculative tokens"
+    },
+    {
+      "id": "t512",
+      "axes": {
+        "n_tokens": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 128 requests with speculative tokens"
+    },
+    {
+      "id": "t1024",
+      "axes": {
+        "n_tokens": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 256 requests with speculative tokens"
+    },
+    {
+      "id": "t2048",
+      "axes": {
+        "n_tokens": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 512 requests with speculative tokens"
+    },
+    {
+      "id": "t4096",
+      "axes": {
+        "n_tokens": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 1024 requests with speculative tokens"
+    },
+    {
+      "id": "t8192",
+      "axes": {
+        "n_tokens": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 2048 requests with speculative tokens"
+    },
+    {
+      "id": "t16384",
+      "axes": {
+        "n_tokens": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 4096 requests with speculative tokens"
+    },
+    {
+      "id": "t32768",
+      "axes": {
+        "n_tokens": 32768
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode, 8192 requests with speculative tokens"
+    }
+  ]
+}

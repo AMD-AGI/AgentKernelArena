@@ -1,0 +1,227 @@
+{
+ "description": "Attention backward passes of DiT-XL/2 transformer blocks (16 heads, head_dim 72) at 256 px and 512 px (256 and 1024 patch tokens), with 1 to 128 images per micro-batch; 16 images of 256 px is the smallest timed case.",
+ "cases": [
+  {
+   "id": "c_b1_s2",
+   "axes": {
+    "batch": 1,
+    "seqlen": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: two tokens, the shortest sequence with a nonzero dq and dk"
+  },
+  {
+   "id": "c_b2_s17",
+   "axes": {
+    "batch": 2,
+    "seqlen": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "just above one 16-row tile"
+  },
+  {
+   "id": "c_b3_s200",
+   "axes": {
+    "batch": 3,
+    "seqlen": 200
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two batch and a sequence that is not a tile multiple"
+  },
+  {
+   "id": "c_b1_s127",
+   "axes": {
+    "batch": 1,
+    "seqlen": 127
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row short of a 128-row key tile"
+  },
+  {
+   "id": "c_b2_s333",
+   "axes": {
+    "batch": 2,
+    "seqlen": 333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd sequence length spanning three key tiles"
+  },
+  {
+   "id": "c_b5_s577",
+   "axes": {
+    "batch": 5,
+    "seqlen": 577
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two batch and a token count one past the 384 px DiT grid"
+  },
+  {
+   "id": "c_b3_s576",
+   "axes": {
+    "batch": 3,
+    "seqlen": 576
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "DiT-XL/2 at 384 px: 24 x 24 patch tokens"
+  },
+  {
+   "id": "c_b2_s129",
+   "axes": {
+    "batch": 2,
+    "seqlen": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row past a key tile"
+  },
+  {
+   "id": "c_b2_s300_scale0125",
+   "axes": {
+    "batch": 2,
+    "seqlen": 300
+   },
+   "scalars": {
+    "sm_scale": 0.125
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-default softmax scale"
+  },
+  {
+   "id": "p_b1_s1024",
+   "axes": {
+    "batch": 1,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "one 512 px image (DiT-XL/2-512: 32 x 32 patch tokens)"
+  },
+  {
+   "id": "p_b2_s1024",
+   "axes": {
+    "batch": 2,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "two 512 px images"
+  },
+  {
+   "id": "p_b16_s256",
+   "axes": {
+    "batch": 16,
+    "seqlen": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16 images of 256 px (DiT-XL/2-256: 16 x 16 patch tokens)"
+  },
+  {
+   "id": "p_b4_s1024",
+   "axes": {
+    "batch": 4,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "four 512 px images"
+  },
+  {
+   "id": "p_b8_s1024",
+   "axes": {
+    "batch": 8,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "eight 512 px images"
+  },
+  {
+   "id": "p_b64_s256",
+   "axes": {
+    "batch": 64,
+    "seqlen": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "64 images of 256 px"
+  },
+  {
+   "id": "p_b16_s1024",
+   "axes": {
+    "batch": 16,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "sixteen 512 px images"
+  },
+  {
+   "id": "p_b32_s1024",
+   "axes": {
+    "batch": 32,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "32 images of 512 px (per-GPU batch of the 256-image global batch)"
+  },
+  {
+   "id": "p_b64_s1024",
+   "axes": {
+    "batch": 64,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "sixty-four 512 px images"
+  },
+  {
+   "id": "p_b128_s1024",
+   "axes": {
+    "batch": 128,
+    "seqlen": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "128 512 px images"
+  }
+ ]
+}

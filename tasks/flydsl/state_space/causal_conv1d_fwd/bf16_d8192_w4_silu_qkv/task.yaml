@@ -1,0 +1,112 @@
+schema_version: 3
+description: >-
+  Varlen causal depthwise convolution of width 4 over packed sequences, with bias and SiLU,
+  out[c, t] = silu(bias[c] + sum_{j<4} w[c, j] * z[c, t + j]), where z is the sequence's initial conv state
+  (zeros when has_initial_state is 0) followed by its tokens. The 8192 channels are the concatenation
+  q (2048) | k (2048) | v (4096) and the result is written split into query, key and value of shape
+  [n_tokens, channels]. Each sequence's conv-state cache slot is then overwritten, in place, with the
+  last 3 elements of z. The kernel's launch schedule (the (sequence, 64-token chunk) pair of every
+  program) is an input, as in a serving step where the host builds it with the batch metadata.
+operator:
+  name: causal_conv1d_fwd
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Total tokens of all packed sequences.}
+    dim: {kind: const, value: 8192, description: Convolution channels (q | k | v).}
+    key_dim: {kind: const, value: 2048, description: Channels of q and of k each.}
+    value_dim: {kind: const, value: 4096, description: Channels of v.}
+    width: {kind: const, value: 4, description: Kernel width.}
+  derived_axes:
+    state_len: width - 1
+    n_seqs: ceil_div(n_tokens, 256)
+    cache_lines: 2 * n_seqs
+    n_chunks: ceil_div(n_tokens, 64) + (n_seqs - 1) // 2
+  inputs:
+    x:
+      kind: tensor
+      shape: [dim, n_tokens]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Packed tokens, channel-major (the layout of the AITER kernel).
+    weight:
+      kind: tensor
+      shape: [dim, width]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+    bias:
+      kind: tensor
+      shape: [dim]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+    conv_states:
+      kind: tensor
+      shape: [cache_lines, state_len, dim]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+      description: Conv-state cache, [cache line, state position, channel] (the kernel sees it as [line, channel, position]).
+    query_start_loc:
+      kind: tensor
+      shape: [n_seqs + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+    cache_indices:
+      kind: tensor
+      shape: [n_seqs]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+    has_initial_state:
+      kind: tensor
+      shape: [n_seqs]
+      dtype: bool
+      role: metadata
+      distribution: {kind: generator}
+    chunk_sequence_ids:
+      kind: tensor
+      shape: [n_chunks]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Sequence of every kernel program (one program per 64-token chunk of a sequence).
+    chunk_ids:
+      kind: tensor
+      shape: [n_chunks]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Index of the program's chunk within its sequence.
+  outputs:
+    query: {shape: [n_tokens, key_dim], dtype: bfloat16}
+    key: {shape: [n_tokens, key_dim], dtype: bfloat16}
+    value: {shape: [n_tokens, value_dim], dtype: bfloat16}
+  mutable: [conv_states]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path: aiter/ops/flydsl/causal_conv1d_flydsl.py, aiter/ops/flydsl/kernels/buffer_ops.py
+    license: MIT AND Apache-2.0 (buffer_ops.py, from ROCm/FlyDSL)
+    modifications: >-
+      build_causal_conv1d_flydsl_module and its cache are vendored unchanged; the optional-import guard became
+      plain imports, the aiter imports became relative, and the host wrappers (the CPU round trip that builds the
+      chunk schedule, the metadata classes) are not vendored. kernel.py is the launch of
+      causal_conv1d_split_qkv_flydsl_fn on its precomputed-schedule path, writing into caller-provided outputs.
+      buffer_ops.py has its environment lookup of the GPU architecture removed.
+      FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the cache-policy operand is passed as the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp / RawPtrBufferStoreOp (the runtime's op constructors take no positional aux value); no change to the kernel algorithm.
+compare:
+  query: {bound: baseline_relative}
+  key: {bound: baseline_relative}
+  value: {bound: baseline_relative}
+  conv_states: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

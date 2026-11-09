@@ -1,0 +1,207 @@
+{
+ "description": "Latent-resolution feature maps of the 512-channel 3x3 convolutions in the Stable Diffusion 3.5 / Flux-family VAE decoder (mid block and first up block run at the latent size, 1/8 of the image side). Batch, height and width vary with the generated image size and batch; axes start at 40 so aiter's dispatcher always picks the Winograd route (100 or more output tiles).",
+ "cases": [
+  {
+   "id": "b1_h40_w40",
+   "axes": {
+    "batch": 1,
+    "height": 40,
+    "width": 40
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum: smallest map that still gives the 100 output tiles aiter's dispatcher needs for Winograd"
+  },
+  {
+   "id": "b3_h45_w53",
+   "axes": {
+    "batch": 3,
+    "height": 45,
+    "width": 53
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd batch (non-power-of-two); heights and widths that leave a ragged last tile row and column"
+  },
+  {
+   "id": "b2_h100_w75",
+   "axes": {
+    "batch": 2,
+    "height": 100,
+    "width": 75
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-square, unaligned feature map"
+  },
+  {
+   "id": "b1_h41_w43",
+   "axes": {
+    "batch": 1,
+    "height": 41,
+    "width": 43
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one pixel past a multiple of four in both axes"
+  },
+  {
+   "id": "b5_h50_w62",
+   "axes": {
+    "batch": 5,
+    "height": 50,
+    "width": 62
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch 5, ragged tiles"
+  },
+  {
+   "id": "b7_h47_w47",
+   "axes": {
+    "batch": 7,
+    "height": 47,
+    "width": 47
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "batch 7, square map one pixel short of a multiple of four"
+  },
+  {
+   "id": "b1_h64_w64",
+   "axes": {
+    "batch": 1,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 512x512 image: latent size, mid block and first up block of the VAE decoder (the upstream conv_shapes.json entry)"
+  },
+  {
+   "id": "b2_h64_w64",
+   "axes": {
+    "batch": 2,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512x512 image with classifier-free guidance"
+  },
+  {
+   "id": "b4_h64_w64",
+   "axes": {
+    "batch": 4,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of four 512x512 images"
+  },
+  {
+   "id": "b8_h64_w64",
+   "axes": {
+    "batch": 8,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of eight 512x512 images"
+  },
+  {
+   "id": "b16_h64_w64",
+   "axes": {
+    "batch": 16,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of sixteen 512x512 images"
+  },
+  {
+   "id": "b32_h64_w64",
+   "axes": {
+    "batch": 32,
+    "height": 64,
+    "width": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of thirty-two 512x512 images (VAE training or video-frame decoding)"
+  },
+  {
+   "id": "b1_h128_w128",
+   "axes": {
+    "batch": 1,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "single 1024x1024 image: latent size of the mid block and first up block (or the second up block of a 512x512 decode)"
+  },
+  {
+   "id": "b4_h128_w128",
+   "axes": {
+    "batch": 4,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of four 1024x1024 images"
+  },
+  {
+   "id": "b8_h128_w128",
+   "axes": {
+    "batch": 8,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of eight 1024x1024 images"
+  },
+  {
+   "id": "b32_h128_w128",
+   "axes": {
+    "batch": 32,
+    "height": 128,
+    "width": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batch of thirty-two 1024x1024 images, the largest case"
+  }
+ ]
+}
