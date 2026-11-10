@@ -71,6 +71,11 @@ generator raises if they are missing:
   of twice the baseline's own per-token error, so such a code passes, while an unwritten, zeroed or wrong key,
   a wrong scale or a cached key changed by more than one code step fails. `max_violation_fraction` stays 0: almost all of the cache is
   unchanged state, so any fraction of it would exceed every newly written key.
+  This **loosens** the byte-exact compare the task started with (one E4M3 code step plus twice the baseline's
+  own error on decoded values, instead of equal bytes). Measured on MI355X: the baseline is bitwise
+  deterministic (6 eager re-runs and 16 cold-cache graph replays per case, both seeds, all 14 cases on all 8
+  ranks: 2464 comparisons, every one identical to the stored baseline output), and a mutant that zeroes the
+  first eighth of the cache bytes was rejected in every case on every rank (112/112).
 
 ## Workloads
 
@@ -102,5 +107,6 @@ SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older).
   `reload_args` rewrite are untested.
 * Numerics against the reference, the planted margins as the kernel computes them, timing, and the 10-minute
   budget (three FlyDSL compiles of a 7000-line kernel plus 9.7 GB of logical expert weights a draw).
-* The decoded `index_cache` bound on the GPU: only the byte-exact compare ran on MI355X (and failed); the
-  decoded bound was checked on the CPU against simulated E4M3 key rounding differences.
+* Since this list was written, the task passed the QA auditor on MI355X with the decoded `index_cache`
+  bound (about 9 minutes for the whole audit, close to the 10-minute budget); see "Compare bounds" for the
+  measured run-to-run evidence.
