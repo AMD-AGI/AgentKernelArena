@@ -1,0 +1,103 @@
+schema_version: 3
+description: >-
+  Speculative-verify (DFlash2, 8 rows a request) grouped-query attention over a paged FP8 KV cache, one
+  full-attention layer of Muse Spark on one TP8 rank: 16 query heads over 2 KV heads, head size 64. Row t
+  is draft position j = t % 8 of request r = t // 8, whose committed context is seq_lens[r] keys; the
+  step's 8 keys are already in the cache, so the request has seq_lens[r] + 8 keys, key i at slot
+  page_table[r, i // 16] * 16 + i % 16 of k_cache / v_cache ([slot, kv_head, 64] float8_e4m3fn codes, used
+  as exact values, no scale). out[t, h] = softmax_i(q[t, h] . K[i, h // 8] / 8) @ V[:, h // 8] over the
+  keys i <= seq_lens[r] + j (causal within the step's rows; no window). Slots past a request's keys and
+  pages it does not list hold stale codes that must not affect the result. Queries are bfloat16 (already
+  normed and scaled by the layer) and the result is rounded to bfloat16.
+operator: {name: paged_attention_verify, category: attention}
+interface:
+  axes:
+    requests: {kind: var, min: 1, max: 8, description: "Requests verified in the step (8 rows each)."}
+    ctx: {kind: var, min: 8, max: 1048576,
+          description: "Keys of the longest request including the step's 8 rows; the others hold between ceil(ctx / 2) and ctx."}
+    q_len: {kind: const, value: 8, description: "Rows a request (DFlash2's 8 draft tokens)."}
+    page: {kind: const, value: 16, description: Keys a cache page.}
+    head_dim: {kind: const, value: 64, description: Head size of queries and the KV cache.}
+    local_kv_heads: {kind: const, value: 2, description: "KV heads a rank (16 / TP8)."}
+    local_q: {kind: const, value: 1024, description: "Query heads a rank (128 / TP8 = 16) x 64."}
+  derived_axes:
+    rows: requests * q_len
+    max_blocks: ceil_div(ctx, page) + page
+    kv_pages: requests * ceil_div(ctx, page) + 1
+    kv_slots: kv_pages * page
+  inputs:
+    q: {kind: tensor, shape: [rows, local_q], dtype: bfloat16, distribution: {kind: generator},
+        description: "Query rows, head h at columns 64 h .. 64 h + 63 (per-head RMS-normed, times the checkpoint's 5.473 query scale)."}
+    k_cache: {kind: tensor, shape: [kv_slots, local_kv_heads, head_dim], dtype: float8_e4m3fn, role: state,
+              distribution: {kind: generator}, description: "Key codes, page-16 NHD (slot = page * 16 + key % 16)."}
+    v_cache: {kind: tensor, shape: [kv_slots, local_kv_heads, head_dim], dtype: float8_e4m3fn, role: state,
+              distribution: {kind: generator}, description: "Value codes, laid out as k_cache."}
+    page_table: {kind: tensor, shape: [requests, max_blocks], dtype: int32, role: index, distribution: {kind: generator},
+                 description: "Page of each 16 keys of a request; entries past its pages are stale page ids."}
+    seq_lens: {kind: tensor, shape: [requests], dtype: int32, role: metadata, distribution: {kind: generator},
+               description: "Committed context of each request: its keys before the step's 8 rows."}
+  outputs:
+    out: {shape: [rows, local_q], dtype: bfloat16, description: Attention output of the rank's 16 heads.}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (SGLang AMD monokernel plugin), with ROCm/aiter FlyDSL helpers
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/muse_spark/gfx950/layer.py (build_kattn)
+      - sgl_amd_mono/muse_spark/gfx950/stages/attention.py
+      - sgl_amd_mono/muse_spark/gfx950/config.py
+      - sgl_amd_mono/muse_spark/gfx950/layout.py
+      - sgl_amd_mono/muse_spark/gfx950/device.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py
+      - sgl_amd_mono/muse_spark/gfx950/runner.py (MuseMonoRunner.kattn_kernel, _attn_args)
+      - sgl_amd_mono/common/guard.py
+      - sgl_amd_mono/common/epoch.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/common/sync.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd)
+      - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter dbd8bf5bd)
+    license: >-
+      Apache-2.0 (sgl-amd-mono, SGLang contributors; aiter buffer_ops / dpp_utils, FlyDSL Project
+      Contributors); MIT (ROCm/ATOM, Copyright (C) 2026 Advanced Micro Devices, Inc.) for the portions of
+      common/ops.py, plan.py and sync.py adapted from ATOM. See baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the baseline is vendored from
+      52486703. The kernel is the attention launch MuseMonoRunner runs for every MXFP4 layer of a DFlash2
+      verify step when the layer is not merged into the whole-layer launch, and the attention stage of that
+      merged launch; its semantics follow the ROCm model's swa_verify_splitkv / gqa_verify_splitkv_2kv
+      kernels. The vendored helper files are those of tasks/flydsl/other/muse_spark_layer/tp8 (same
+      revision, same modifications) and buffer_ops.py / dpp_utils.py those of
+      tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1.
+    modifications: >-
+      One flat package with package-relative imports. layer.py keeps only the K-attn build (KAttnBuild,
+      kattn_context, build_kattn), its build key a frozen dataclass instead of a msgspec.Struct, the
+      transitive source digest plan.kernel_sources replaced by a constant tag (FlyDSL hashes the helpers
+      of a kernel's own directory). FlyDSL 0.3.2: compat.py keeps the upstream bridge's llvm-dialect
+      global pointer, load, store and launch stop as plain functions, which ops.global_ptr / global_load,
+      epoch.gstore and guard.stop_launch call directly, instead of compat.install() patching flydsl.expr
+      and the common modules at import. Environment reads (SGLANG_AMD_MONO_ATTN_RING_WAIT0,
+      SGLANG_AMD_MONO_MUSE_WIDTHS, SGLANG_AMD_MONO_FAULT_INJECT) are replaced by their defaults; msgspec
+      is replaced by a slotted class for sync.Addr; epoch.kernel_symbol uses a local stand-in for aiter's
+      kernels_common.kernel_signature; ops.KernArgs and plan's shard / source-digest helpers (unused) are
+      removed; buffer_ops.py takes the CDNA descriptor flags without reading the environment. One
+      stage-code change, a correctness fix: run_kattn's chunk loop skipped the causal mask on every chunk of
+      a task but its last (and the request's first), but when a request's keys % 256 is 1 to 6 the step's later
+      rows' keys reach into the chunk before the last, and when both chunks fall in one partition (any
+      multi-chunk partition, i.e. contexts above ~16K) the step's earlier rows attended up to 6 future
+      draft keys; a chunk now skips the mask only if it also ends at or before the step's first row's last
+      key ((cc + 1) * 256 <= ctx + 1, one scalar compare a chunk). kernel.py is new: run() builds KAttnBuild(rows, 8) and passes
+      MuseMonoRunner._attn_args' arguments for a target verify of a full-attention layer (extra 8, window
+      0, partition sized by the kernel, scale 64 ** -0.5); the scratch and the epoch / guard words share
+      one device buffer per row count, created zeroed at the first call, with the scratch's flag span
+      zeroed before every launch and the epoch kept at 0, in place of the runner's per-step epoch advance.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
