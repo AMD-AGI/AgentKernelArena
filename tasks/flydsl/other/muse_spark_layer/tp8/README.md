@@ -136,6 +136,13 @@ floor. The repository's own measurement (16 rows, ~95K context: 11.88 ms for a 6
   medians 30.3-30.5 dB), so a 30 dB bound rejected it. 27 dB keeps a 2.5 dB margin below the baseline's
   lowest sample and still rejects a wrong branch (a zeroed FFN branch is ~14 dB on `res`). It cannot see a
   single dropped pick in one token (~2.5% of one row).
+  This **loosens** the 30 dB the task was written with (there is no framework default for these outputs:
+  `baseline_relative` cannot follow the flips). Further MI355X evidence: the baseline is bitwise deterministic
+  (6 eager re-runs and 16 cold-cache graph replays per case, both seeds, all 12 cases on all 8 ranks: 2112
+  comparisons, all identical), with the lowest SQNR 29.5 dB again. A single-output mutant that zeroes the first
+  eighth of the last dimension is rejected on every one of these six outputs in every case on every rank
+  (96/96); a 1% relative shift or Gaussian noise of 1% of the RMS (about 40 dB) is not, being smaller than the
+  baseline's own ~30 dB error against the float64 reference.
 
 ## Unverified
 
