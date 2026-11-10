@@ -276,9 +276,7 @@ def correctness_action(contract: Contract, role: str) -> dict:
                 row["status"] = "FAIL"
                 modified = any(c.get("modified_inputs") for c in result["calls"])
                 row["failure_kind"] = "input_mutation" if modified else "numerical_mismatch"
-        except TamperError:
-            raise
-        except Exception as exc:  # A crash in one case is that case's failure.
+        except Exception as exc:  # A crash in one case is that case's failure; a TamperError is not an Exception.
             row.update(status="FAIL", failure_kind="policy_violation" if "PyTorch operation" in str(exc)
                        or "kernel launch" in str(exc) or "launched kernels" in str(exc) else "execution_error",
                        metadata={"error": f"{type(exc).__name__}: {exc}"[:2000]})
@@ -363,8 +361,6 @@ def performance_action(contract: Contract, role: str) -> dict:
                                 samples_max_ms=max(samples), samples_count=len(samples))
                 row.update(status="PASS", execution_time_ms=statistics.median(samples),
                            benchmark_method=metadata["benchmark_method"], metadata=metadata)
-        except TamperError:
-            raise
         except Exception as exc:
             row.update(status="FAIL", failure_kind="execution_error",
                        metadata={"error": f"{type(exc).__name__}: {exc}"[:2000]})

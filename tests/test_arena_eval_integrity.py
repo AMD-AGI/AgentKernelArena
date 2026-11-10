@@ -105,3 +105,54 @@ def test_a_tamper_error_fails_the_whole_action_as_harness_tampering(monkeypatch)
     assert code == 1
     assert report["status"] == "FAIL"
     assert report["failure_kind"] == "harness_tampering"
+
+
+def test_a_tamper_error_is_not_an_ordinary_exception():
+    assert issubclass(integrity.TamperError, BaseException)
+    assert not issubclass(integrity.TamperError, Exception)
+
+
+def test_tampering_found_during_a_timing_sample_survives_the_timing_helper(monkeypatch):
+    """The real timing helper wraps any Exception from its sample loop as a capture failure."""
+    import types
+
+    class TimedRun:
+        after_sample = None
+
+    def benchmark(fn, *, cache_flush, warmup, repetition, prepare_fn, timed_run):
+        try:
+            prepare_fn()
+            fn()
+            timed_run.after_sample(None)
+            return [0.1], {"benchmark_method": "cuda_graph_cold_cache"}
+        except Exception as exc:
+            raise RuntimeError("CUDA-graph capture failed; timed_run cannot validate the fallback") from exc
+
+    helper = types.ModuleType(f"{PACKAGE}._aka_benchmark")
+    helper.TimedRun, helper.benchmark_cuda_graph_cold_cache_samples = TimedRun, benchmark
+    monkeypatch.setitem(sys.modules, helper.__name__, helper)
+
+    def check(stage):
+        if stage == "a timing sample":
+            raise integrity.TamperError(f"Harness tampering detected after {stage}: [...]")
+
+    case = types.SimpleNamespace(checks=("correctness", "performance"), identity=lambda: {"test_case_id": "c0"})
+    contract = types.SimpleNamespace(cases=[case], timing={})
+    data = types.SimpleNamespace(inputs=[types.SimpleNamespace(kernel={})] * 2, references=[{}] * 2,
+                                 baselines=None)
+    monkeypatch.setattr(evaluate, "load_contract", lambda: contract)
+    monkeypatch.setattr(evaluate, "_device", lambda: "cpu")
+    monkeypatch.setattr(evaluate, "_role_calls", lambda contract, role: (lambda **kw: None, None, False, check))
+    monkeypatch.setattr(evaluate, "_cache_flush", lambda nbytes: None)
+    monkeypatch.setattr(evaluate, "_CaseData", lambda *args: data)
+    monkeypatch.setattr(evaluate, "_check", lambda *args: (True, {}))
+    from src.tools.arena_eval import values
+    for name in ("clone_inputs", "allocate_outputs", "checked_values"):
+        monkeypatch.setattr(values, name, lambda *args, **kwargs: {})
+    for name in ("copy_into", "poison"):
+        monkeypatch.setattr(values, name, lambda *args, **kwargs: None)
+
+    report, code = evaluate.run(["candidate", "performance"])
+    assert code == 1
+    assert report["failure_kind"] == "harness_tampering"
+    assert "a timing sample" in report["reason"]

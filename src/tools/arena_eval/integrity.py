@@ -54,8 +54,13 @@ _TRACKED_KINDS = (types.FunctionType, types.BuiltinFunctionType, types.MethodTyp
                   type, staticmethod, classmethod, property)
 
 
-class TamperError(RuntimeError):
-    """A protected evaluator or runtime binding changed while candidate code could run."""
+class TamperError(BaseException):
+    """A protected evaluator or runtime binding changed while candidate code could run.
+
+    It derives from ``BaseException`` so that generic ``except Exception``
+    handlers (for example the timing helper's capture fallback, which wraps any
+    error in a ``RuntimeError``) cannot turn it into an ordinary per-case error.
+    """
 
 
 def _is_tracked(value: Any) -> bool:
