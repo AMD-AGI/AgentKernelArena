@@ -1,0 +1,406 @@
+schema_version: 3
+description: >-
+  Four Qwen3.8-Flash-Next decoder layers (Gated DeltaNet, Gated DeltaNet, Gated DeltaNet, QSA sparse
+  attention) of one NEXTN speculative-verify step: `requests` requests of 4 tokens each, on one GPU. Every
+  layer reads the 4 hyper-connection residual streams through a gated mixer, runs its attention block and
+  injects the result into the streams with learned gates, then does the same for a 512-expert MXFP4 MoE
+  (top 10 routed experts, renormalized, plus a sigmoid-gated shared expert). The Gated DeltaNet layers run
+  the causal conv1d and the gated delta rule per request on its committed state and write the state and the
+  conv window after every token; the QSA layer writes its tokens' K / V rows, index keys and newly completed
+  compressed index keys, selects each row's top 512 blocks of 4 context tokens by index score and attends to
+  them and to its own request's uncompressed tail. Outputs are the residual streams after the 4 layers and
+  their 16-element sums of squares. Projections are W8A8 FP8 with per-channel scales; see README.md for the
+  exact math and layouts.
+operator:
+  name: qwen38_flash_next_layers
+  category: other
+interface:
+  axes:
+    requests: {kind: var, min: 1, max: 8, description: Requests in the verify step (4 verify tokens each).}
+    ctx: {kind: var, min: 16, max: 131072, description: "Context tokens of the longest request before its verify tokens; the others hold between half of it and all of it."}
+    rtt_stride: {kind: const, value: 131136, description: Row stride of the request-to-token map (tokens a request slot can hold).}
+    rope_rows: {kind: const, value: 262144, description: "Rows of the bf16 RoPE table (SGLang's cache: theta 1e7, 64 rotary dims)."}
+  derived_axes:
+    rows: requests * 4
+    kv_slots: 64 * (requests * (ceil_div(ctx + 4, 64) + 1) + 1)
+    comp_slots: kv_slots // 4
+    req_slots: requests + 4
+    ring_slots: (requests + 4) * 8
+    mamba_slots: requests + 2
+  inputs:
+    h_in:
+      kind: tensor
+      shape: [rows, 10240]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: "Residual streams entering layer 0: 4 streams of 2560 per row (row t: request t // 4, verify token t % 4)."
+    h_in_ssq:
+      kind: tensor
+      shape: [rows, 4, 160]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Sum of squares of every 16 consecutive elements of each stream of h_in (the previous launch writes them).
+    positions:
+      kind: tensor
+      shape: [3, rows]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+      description: MRoPE positions of the rows (text requests, so the 3 axes agree); request r's tokens are at seq_lens[r] + 0..3.
+    out_cache_loc:
+      kind: tensor
+      shape: [rows]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: KV slot of every row's token.
+    req_pool_indices:
+      kind: tensor
+      shape: [requests]
+      dtype: int64
+      role: index
+      distribution: {kind: generator}
+      description: Request slot of every request (its row of req_to_token and mamba_map).
+    seq_lens:
+      kind: tensor
+      shape: [requests]
+      dtype: int64
+      role: metadata
+      distribution: {kind: generator}
+      description: Context tokens of every request before its verify tokens.
+    req_to_token:
+      kind: tensor
+      shape: [req_slots, rtt_stride]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: KV slot of every position of every request slot (pages of 64 slots scattered over the pool).
+    mamba_map:
+      kind: tensor
+      shape: [req_slots]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Gated DeltaNet state slot of every request slot.
+    cos_sin:
+      kind: tensor
+      shape: [rope_rows, 64]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: "RoPE table: cos of the 32 rotary frequencies, then their sin, per position."
+    gdn_conv_state:
+      kind: tensor
+      shape: [3, mamba_slots, 10240, 3]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: Committed causal-conv window (last 3 inputs of the q | k | v channels) of every state slot, per GDN layer.
+    gdn_ssm_state:
+      kind: tensor
+      shape: [3, mamba_slots, 48, 128, 128]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: normal, mean: 0.0, std: 0.02}
+      description: "Committed recurrent state [value head, V, K] of every state slot, per GDN layer."
+    gdn_issm:
+      kind: tensor
+      shape: [3, requests, 4, 48, 128, 128]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+      description: "Recurrent state after every verify token, per GDN layer and request (the verify scratch SGLang's accept step commits from)."
+    gdn_iconv:
+      kind: tensor
+      shape: [3, requests, 10240, 6]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: zeros}
+      description: "Conv windows after every verify token: row [c, j : j + 3] is channel c's window after token j."
+    k_cache:
+      kind: tensor
+      shape: [kv_slots, 2, 256]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: QSA key cache (normalized, rotated keys) of the 2 KV heads per slot.
+    v_cache:
+      kind: tensor
+      shape: [kv_slots, 2, 256]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: QSA value cache per slot.
+    index_ring:
+      kind: tensor
+      shape: [ring_slots, 1, 128]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: "Raw index keys of the last 8 positions of every request slot (slot req * 8 + position % 8)."
+    index_ring_pos:
+      kind: tensor
+      shape: [ring_slots, 3]
+      dtype: int64
+      role: state
+      distribution: {kind: generator}
+      description: MRoPE positions of the index keys in index_ring.
+    index_comp:
+      kind: tensor
+      shape: [comp_slots, 1, 128]
+      dtype: bfloat16
+      role: state
+      distribution: {kind: generator}
+      description: "Compressed index key of every complete 4-token block, at slot (KV slot of the block's first token) // 4."
+    hc_norm:
+      kind: tensor
+      shape: [4, 2, 10240]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: "Gemma RMSNorm offsets of the 4 streams of the attention (0) and MoE (1) mixer of every layer."
+    hc_down:
+      kind: tensor
+      shape: [4, 2, 336, 10240]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: "Mixer down projections [320, 10240] plus a 16-row tile of the 4 combine-gate rows, in 16 x 64 MFMA tiles."
+    hc_up:
+      kind: tensor
+      shape: [4, 2, 10240, 320]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: Mixer up projections [10240, 320], in 16 x 64 MFMA tiles.
+    hc_inj:
+      kind: tensor
+      shape: [4, 2, 4, 10240]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: Combine-gate (block inject) rows of every mixer, row-major.
+    router:
+      kind: tensor
+      shape: [4, 528, 2560]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: generator}
+      description: "Router rows of the 512 experts, the shared-expert gate and 15 zero rows, in 16 x 64 MFMA tiles."
+    moe_w13:
+      kind: tensor
+      shape: [4, 513, 1536, 1280]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: "MXFP4 gate (rows 0..639) and up (rows 768..1407) projections of the 512 experts and the shared expert (index 512), AITER (16, 16)-shuffled."
+    moe_w13_scale:
+      kind: tensor
+      shape: [4, 513, 1536, 80]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: E8M0 scales of moe_w13 (groups of 32 along K), AITER e8m0-shuffled.
+    moe_w2:
+      kind: tensor
+      shape: [4, 513, 2560, 384]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: "MXFP4 down projections (K 640, padded to 768), AITER (16, 16)-shuffled."
+    moe_w2_scale:
+      kind: tensor
+      shape: [4, 513, 2560, 24]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: E8M0 scales of moe_w2, AITER e8m0-shuffled.
+    gdn_in_proj:
+      kind: tensor
+      shape: [3, 16384, 2560]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: "in_proj_qkvz rows [q 2048 | k 2048 | v 6144 | z 6144] (head-major), AITER (16, 16)-shuffled FP8."
+    gdn_in_proj_scale:
+      kind: tensor
+      shape: [3, 16384]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Per-output-channel scales of gdn_in_proj.
+    gdn_ba_proj:
+      kind: tensor
+      shape: [3, 128, 2560]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: "in_proj_ba rows [b 48 | a 48 | 32 zero rows], AITER (16, 16)-shuffled FP8."
+    gdn_ba_scale:
+      kind: tensor
+      shape: [3, 128]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Per-output-channel scales of gdn_ba_proj (1 on the pad rows).
+    gdn_out_proj:
+      kind: tensor
+      shape: [3, 2560, 6144]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: GDN out_proj, AITER (16, 16)-shuffled FP8.
+    gdn_out_scale:
+      kind: tensor
+      shape: [3, 2560]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Per-output-channel scales of gdn_out_proj.
+    gdn_conv_w:
+      kind: tensor
+      shape: [3, 10240, 4]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.5}
+      description: Depthwise causal conv1d weights of the q | k | v channels (tap 3 multiplies the current token).
+    gdn_neg_a:
+      kind: tensor
+      shape: [3, 48]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: -exp(A_log) of every value head.
+    gdn_dt_bias:
+      kind: tensor
+      shape: [3, 48]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: -3.0, std: 0.5}
+      description: dt_bias of every value head.
+    gdn_norm_w:
+      kind: tensor
+      shape: [3, 128]
+      dtype: float32
+      role: weight
+      distribution: {kind: normal, mean: 1.0, std: 0.1}
+      description: Weight of the gated RMSNorm of the GDN output (per value-head dimension).
+    qsa_qkv_proj:
+      kind: tensor
+      shape: [13312, 2560]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: "qkv_proj rows [24 heads x (q 256 | output gate 256) | k 2 x 256 | v 2 x 256], AITER (16, 16)-shuffled FP8."
+    qsa_qkv_scale:
+      kind: tensor
+      shape: [13312]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Per-output-channel scales of qsa_qkv_proj.
+    qsa_index_proj:
+      kind: tensor
+      shape: [640, 2560]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: "indexer.index_qk_proj rows [index q 4 x 128 | index k 128], AITER (16, 16)-shuffled FP8."
+    qsa_index_scale:
+      kind: tensor
+      shape: [640]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Per-output-channel scales of qsa_index_proj.
+    qsa_o_proj:
+      kind: tensor
+      shape: [2560, 6144]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: o_proj, AITER (16, 16)-shuffled FP8.
+    qsa_o_scale:
+      kind: tensor
+      shape: [2560]
+      dtype: float32
+      role: weight
+      distribution: {kind: generator}
+      description: Per-output-channel scales of qsa_o_proj.
+    qsa_q_norm:
+      kind: tensor
+      shape: [256]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Gemma RMSNorm offset of the attention queries.
+    qsa_k_norm:
+      kind: tensor
+      shape: [256]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Gemma RMSNorm offset of the attention keys.
+    qsa_iq_norm:
+      kind: tensor
+      shape: [128]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Gemma RMSNorm offset of the index queries.
+    qsa_ik_norm:
+      kind: tensor
+      shape: [128]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 0.1}
+      description: Gemma RMSNorm offset of the compressed index keys.
+  outputs:
+    h_out: {shape: [rows, 10240], dtype: bfloat16}
+    h_out_ssq: {shape: [rows, 4, 160], dtype: float32}
+  mutable: [gdn_issm, gdn_iconv, k_cache, v_cache, index_ring, index_ring_pos, index_comp]
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path: sgl_amd_mono/qwen38_flash_next/gfx950/kernel.py, sgl_amd_mono/qwen38_flash_next/gfx950/layout.py, sgl_amd_mono/qwen38_flash_next/gfx950/config.py, sgl_amd_mono/qwen38_flash_next/gfx950/device.py, sgl_amd_mono/common/guard.py, sgl_amd_mono/common/ops.py, sgl_amd_mono/common/plan.py, sgl_amd_mono/common/epoch.py, sgl_amd_mono/muse_spark/gfx950/compat.py; buffer_ops.py and dpp_utils.py from ROCm/aiter 285579b6211b0da30f35b91a890c29c823597cd1 (aiter/ops/flydsl/kernels/)
+    license: Apache-2.0 AND MIT (ops.py and plan.py adapt ROCm/ATOM, MIT; see baseline/LICENSE and baseline/LICENSE-NOTICE)
+    modifications: >-
+      kernel.py is gfx950/kernel.py with its imports pointed at the sibling files. The kernel takes every
+      tensor's base address as an argument, read where a stage needs it through ops.KernArgs (a stacked
+      tensor's layer slice at a compile-time offset), instead of SGLang's per-step int64 pointer table; the
+      guard block and the mailboxes share one scratch that run() zero-fills every call, with the step epoch
+      left at 0 (upstream keeps one scratch and advances the epoch on the host after each step); every wait's
+      deadline is the compile-time 20 s of guard.DEADLINE_TICKS (upstream: half of the server's watchdog,
+      written by the host); the build key carries the build parameters only (upstream adds a digest of the
+      sources, which FlyDSL's own key already covers for sibling files); fx.atomic_add is
+      compat.lds_atomic_add; run() is added at its end. layout.scratch_layout lays out only the mailboxes a
+      GDN or QSA layer of a middle launch uses (no PLE, MTP or final-mixer regions) after a 256-byte guard
+      block. config.py's msgspec Structs are frozen dataclasses and key_tuple flattens them; the
+      fault-injection fields, guard.py's fault injection (and its os import) and device.py's fault-injection
+      branch are dropped. ops.py takes buffer_ops, dpp_utils, plan and compat from the sibling files, builds
+      global pointers and loads through compat (FlyDSL 0.3.2 has no fx.Pointer ir_type or fx.generic_load),
+      and KernArgs returns a dict instead of a types.SimpleNamespace. plan.py keeps the execution model and
+      layout arithmetic; epoch.py keeps kernel_symbol with aiter's kernel_signature inlined. compat.py is the
+      muse_spark FlyDSL 0.3.2 bridge as plain functions (no patching of flydsl.expr) plus an LDS atomic add.
+      buffer_ops.py takes FlyDSL 0.3.2's attribute form of the raw-buffer cache policy instead of an inspect
+      probe and drops its FLYDSL_GPU_ARCH lookup (the architecture is auto-detected, as upstream does when the
+      variable is unset); dpp_utils.py is unchanged. On identical inputs the vendored launch matches the
+      upstream launch bit for bit (README.md).
+compare:
+  h_out: {bound: baseline_relative}
+  h_out_ssq: {bound: baseline_relative}
+  gdn_issm: {bound: baseline_relative}
+  gdn_iconv: {bound: baseline_relative}
+  k_cache: {bound: baseline_relative}
+  v_cache: {bound: baseline_relative}
+  index_ring: {bound: baseline_relative}
+  index_ring_pos: {bound: exact}
+  index_comp: {bound: baseline_relative}
+workloads: workloads.json
+platform_support: {required_arch: [gfx950]}

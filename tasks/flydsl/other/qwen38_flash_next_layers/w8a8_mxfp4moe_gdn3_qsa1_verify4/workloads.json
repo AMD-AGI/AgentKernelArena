@@ -1,0 +1,17 @@
+{
+  "description": "NEXTN verify steps of Qwen3.8-Flash-Next on one MI355X: 1 to 8 requests of 4 verify tokens (the CUDA-graph batch sizes the monokernel serves) over contexts of 2k to 128k tokens. Short contexts (up to 2048 tokens) attend to every block; longer ones select 512 of up to 32768 blocks, in up to 4 index segments of 8192. Correctness-only cases cover the minimum context, odd request counts and contexts that are not a multiple of 4, 16 or 64.",
+  "cases": [
+    {"id": "r1_c16", "axes": {"requests": 1, "ctx": 16}, "checks": ["correctness"], "source": "minimum: one request just past its prompt"},
+    {"id": "r3_c1000", "axes": {"requests": 3, "ctx": 1000}, "checks": ["correctness"], "source": "three requests, every block selected"},
+    {"id": "r5_c1001", "axes": {"requests": 5, "ctx": 1001}, "checks": ["correctness"], "source": "five requests, contexts not a multiple of 4"},
+    {"id": "r3_c40001", "axes": {"requests": 3, "ctx": 40001}, "checks": ["correctness"], "source": "three requests, top-512 over two index segments"},
+    {"id": "r1_c2048", "axes": {"requests": 1, "ctx": 2048}, "checks": ["correctness", "performance"], "source": "single-request decode-verify, 2k context"},
+    {"id": "r1_c32768", "axes": {"requests": 1, "ctx": 32768}, "checks": ["correctness", "performance"], "source": "single request, 32k context (one full index segment)"},
+    {"id": "r2_c8192", "axes": {"requests": 2, "ctx": 8192}, "checks": ["correctness", "performance"], "source": "two requests, 8k context"},
+    {"id": "r2_c131072", "axes": {"requests": 2, "ctx": 131072}, "checks": ["correctness", "performance"], "source": "two requests, 128k context (four index segments)"},
+    {"id": "r4_c4096", "axes": {"requests": 4, "ctx": 4096}, "checks": ["correctness", "performance"], "source": "four requests, 4k context"},
+    {"id": "r4_c65536", "axes": {"requests": 4, "ctx": 65536}, "checks": ["correctness", "performance"], "source": "four requests, 64k context (two index segments)"},
+    {"id": "r8_c2048", "axes": {"requests": 8, "ctx": 2048}, "checks": ["correctness", "performance"], "source": "eight requests (32 rows, the largest graph batch), 2k context"},
+    {"id": "r8_c16384", "axes": {"requests": 8, "ctx": 16384}, "checks": ["correctness", "performance"], "source": "eight requests, 16k context"}
+  ]
+}

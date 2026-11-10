@@ -21,10 +21,15 @@ This topic summarizes the features available in each AgentKernelArena release. F
   task names no implementation language. The run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
   `{path, target_language}` overrides) selects it. See
   [Task definition, schema, and authoring](../how-to/add-task.md).
-- The suite has 379 kernel tasks covering 237 operators in 16 categories, with
-  production baselines vendored from vLLM, SGLang, AITER and FlyDSL (278
-  Triton, 55 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
+- The suite has 380 kernel tasks covering 238 operators in 16 categories, with
+  production baselines vendored from vLLM, SGLang, sgl-amd-mono, AITER and FlyDSL
+  (278 Triton, 56 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
   framework-finalized QA `PASS` on MI355X for its exact package.
+- The first monokernel task, `flydsl/other/qwen38_flash_next_layers`, is one
+  launch of sgl-amd-mono's Qwen3.8-Flash-Next kernel: four whole decoder layers
+  (three Gated DeltaNet, one QSA sparse attention, each with a 512-expert MXFP4
+  MoE) of a speculative-verify step in one persistent kernel, with the pools it
+  writes compared as outputs.
 - 53 tasks from production kernels add 28 operators and the first Gluon
   baselines. They cover convolution (conv2d, conv3d), attention backward,
   HSTU, sliding-window and sparse MLA attention, fused GEMM epilogues
