@@ -84,7 +84,8 @@ def check(task_dir: Path, *, smoke_limit: int) -> dict:
 
             try:
                 sources = {p.relative_to(workspace / "solution").as_posix(): p.read_text(encoding="utf-8")
-                           for p in (workspace / "solution").rglob("*") if p.is_file()}
+                           for p in (workspace / "solution").rglob("*")
+                           if p.is_file() and not (baseline_language == "asm" and p.suffix == ".co")}
                 if baseline_language == "hip":
                     audit_hip_sources(sources, "kernel.hip")
                 else:

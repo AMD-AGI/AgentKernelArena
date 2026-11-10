@@ -108,7 +108,6 @@ def test_an_asm_candidate_passes_the_audit():
 
 
 @pytest.mark.parametrize("sources, message", [
-    ({"kernel.py": KERNEL_PY}, "no .s kernel source"),
     ({"kernel.py": KERNEL_PY, "fill.s": FILL_S, "fill.co": "x"}, "only .py and .s sources"),
     ({"kernel.py": KERNEL_PY, "fill.s": '.incbin "x"\n' + FILL_S}, ".incbin and .include"),
     ({"kernel.py": KERNEL_PY.replace("import aka_asm", "import aka_asm\nimport triton"), "fill.s": FILL_S},
@@ -192,3 +191,117 @@ def test_a_broken_source_reports_the_assembler_error(tmp_path, monkeypatch):
     source.write_text(FILL_S.replace("s_endpgm", "s_not_an_instruction"))
     with pytest.raises(asm.AsmError, match="clang failed"):
         asm.assemble(source, "bad.s", "gfx950")
+
+
+# --- vendored code objects of asm baselines (baseline.provenance.code_objects) ---------------------
+
+def _asm_task(tmp_path, code_objects=None, files=None):
+    """A copy of the fp32 add task turned into an asm-baseline package."""
+    import hashlib
+    import shutil
+
+    import yaml
+
+    task = tmp_path / "task"
+    shutil.copytree(ROOT / "tasks/triton/elementwise/add/fp32_1d", task)
+    shutil.rmtree(task / "baseline")
+    (task / "baseline").mkdir()
+    (task / "baseline/kernel.py").write_text(KERNEL_PY.replace("fill.s", "fill.co").replace("x.numel()", "1"))
+    for name, data in (files if files is not None else {"baseline/fill.co": b"\x7fELF-fake"}).items():
+        (task / name).write_bytes(data)
+    raw = yaml.safe_load((task / "task.yaml").read_text())
+    raw["baseline"]["language"] = "asm"
+    if code_objects is None:
+        code_objects = {n: hashlib.sha256((task / n).read_bytes()).hexdigest()
+                        for n in (files if files is not None else {"baseline/fill.co": 0})}
+    if code_objects:
+        raw["baseline"]["provenance"]["code_objects"] = code_objects
+    (task / "task.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
+    return task
+
+
+def test_an_asm_baseline_declares_its_code_objects_by_hash(tmp_path):
+    from src.task_contract import load_task_contract
+
+    task = _asm_task(tmp_path)
+    contract = load_task_contract(task / "task.yaml", task_id="asm/elementwise/add/fp32_1d")
+    digest = contract.code_objects["baseline/fill.co"]
+    resolved = contract.resolved_contract("asm")
+    assert resolved["code_objects"] == {digest: "baseline/fill.co"}
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda t, d: d.update({"baseline/fill.co": "0" * 64}), "does not match its declared SHA256"),
+    (lambda t, d: d.update({"baseline/other.co": "0" * 64}), "missing"),
+    (lambda t, d: (t / "baseline/extra.co").write_bytes(b"x"), "undeclared code objects"),
+    (lambda t, d: d.update({"baseline/fill.co": "ABC"}), "lowercase hex SHA256"),
+    (lambda t, d: d.update({"reference.co": "0" * 64}), "under baseline/"),
+])
+def test_code_object_declarations_are_enforced(tmp_path, mutate, message):
+    import hashlib
+
+    import yaml
+
+    from src.task_contract import TaskConfigError, load_task_contract
+
+    task = _asm_task(tmp_path)
+    raw = yaml.safe_load((task / "task.yaml").read_text())
+    declared = raw["baseline"]["provenance"]["code_objects"]
+    mutate(task, declared)
+    (task / "task.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
+    with pytest.raises(TaskConfigError, match=message):
+        load_task_contract(task / "task.yaml", task_id="asm/elementwise/add/fp32_1d")
+    assert hashlib  # imported for parity with _asm_task
+
+
+def test_only_asm_baselines_may_declare_code_objects(tmp_path):
+    import yaml
+
+    from src.task_contract import TaskConfigError, load_task_contract
+
+    task = _asm_task(tmp_path)
+    raw = yaml.safe_load((task / "task.yaml").read_text())
+    raw["baseline"]["language"] = "triton"
+    (task / "task.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
+    with pytest.raises(TaskConfigError, match="only for asm baselines"):
+        load_task_contract(task / "task.yaml", task_id="asm/elementwise/add/fp32_1d")
+
+
+def test_aka_asm_loads_only_allowed_code_objects(tmp_path, monkeypatch):
+    import hashlib
+    import sys
+    import types
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "k.co").write_bytes(b"\x7fELF-not-allowed")
+    module = types.ModuleType("_aka_impl_test_pkg")
+    module.__path__ = [str(package)]
+    monkeypatch.setitem(sys.modules, "_aka_impl_test_pkg", module)
+    caller = {"__package__": "_aka_impl_test_pkg", "aka_asm": asm}
+    monkeypatch.setattr(asm, "ALLOWED_CODE_OBJECTS", frozenset())
+    with pytest.raises(asm.AsmError, match="not one of the baseline's vendored code objects"):
+        exec("aka_asm.load('k.co', 'kernel')", caller)
+    with pytest.raises(asm.AsmError, match="not a file in the implementation directory"):
+        exec("aka_asm.load('../outside.co', 'kernel')", caller)
+    digest = hashlib.sha256((package / "k.co").read_bytes()).hexdigest()
+    monkeypatch.setattr(asm, "ALLOWED_CODE_OBJECTS", frozenset({digest}))
+    # An allowed hash passes the policy; loading the fake bytes then fails in HIP or for lack of a GPU.
+    with pytest.raises(Exception) as raised:
+        exec("aka_asm.load('k.co', 'kernel')", caller)
+    assert "vendored code objects" not in str(raised.value)
+
+
+def test_qa_accepts_declared_code_objects_and_flags_others(tmp_path):
+    import shutil
+
+    from agents.qa_auditor.deterministic import check_package
+
+    workspace = tmp_path / "ws"
+    shutil.copytree(_asm_task(tmp_path), workspace)
+    findings: list = []
+    check_package(workspace, findings)
+    assert not [f for f in findings if "binary" in str(f)]
+    (workspace / "baseline/fill.co").write_bytes(b"changed")
+    check_package(workspace, findings)
+    assert [f for f in findings if "is a binary" in str(f)]

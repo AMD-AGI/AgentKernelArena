@@ -8,6 +8,7 @@ model. Their findings are the auditor's blocking evidence.
 from __future__ import annotations
 
 import ast
+import hashlib
 from dataclasses import dataclass, field
 import json
 import os
@@ -16,6 +17,8 @@ import re
 import subprocess
 import sys
 from typing import Any
+
+import yaml
 
 from .rubric import BLOCKING, MIN_BASELINE_CASE_MS, WARNING, check
 
@@ -84,6 +87,15 @@ def _is_os_junk(path: Path) -> bool:
     return path.name.startswith("._") or path.name == ".DS_Store"
 
 
+def _declared_code_objects(workspace: Path) -> dict:
+    try:
+        raw = yaml.safe_load((workspace / "task.yaml").read_text(encoding="utf-8")) or {}
+        declared = raw["baseline"]["provenance"].get("code_objects") or {}
+    except (OSError, KeyError, TypeError, AttributeError, yaml.YAMLError):
+        return {}
+    return declared if isinstance(declared, dict) else {}
+
+
 def check_package(workspace: Path, findings: list[Finding]) -> None:
     for path in sorted(workspace.rglob("*")):
         relative = path.relative_to(workspace)
@@ -120,6 +132,7 @@ def check_package(workspace: Path, findings: list[Finding]) -> None:
                                     f"{match.group(0)!r}; describe sources by their public project and path",
                                     {"path": relative.as_posix()}))
             break
+    declared = _declared_code_objects(workspace)
     for path in sorted((workspace / "baseline").rglob("*")):
         if path.suffix in (".hip", ".h", ".hpp", ".cuh", ".cpp", ".cu", ".inc"):
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -127,7 +140,11 @@ def check_package(workspace: Path, findings: list[Finding]) -> None:
                 findings.append(Finding("QA-PACKAGE", f"{path.relative_to(workspace)} includes {match.group(1)}; "
                                         "library kernels must be rewritten as task code"))
         elif path.is_file() and path.suffix in (".so", ".co", ".hsaco", ".o", ".a", ".bin"):
-            findings.append(Finding("QA-PACKAGE", f"{path.relative_to(workspace)} is a binary; baselines are source"))
+            relative = path.relative_to(workspace).as_posix()
+            if path.suffix == ".co" and declared.get(relative) == hashlib.sha256(path.read_bytes()).hexdigest():
+                continue    # a vendored code object of an asm baseline, pinned by SHA256
+            findings.append(Finding("QA-PACKAGE", f"{relative} is a binary; baselines are source, except "
+                                    "code objects an asm baseline declares in baseline.provenance.code_objects"))
 
 
 def check_reference(workspace: Path, contract_raw: dict, findings: list[Finding]) -> None:

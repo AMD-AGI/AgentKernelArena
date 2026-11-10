@@ -56,6 +56,10 @@ HIP_LAUNCH_PARAM_END = 3
 BUILD_EVIDENCE: dict[str, Any] = {"files": []}
 # Every launch since import, by kernel symbol; the launch observer reads its length.
 LAUNCHES: list[str] = []
+# SHA256 of the code objects an asm baseline vendors; the loader sets it from
+# the contract. A prebuilt code object loads only if its hash is listed.
+ALLOWED_CODE_OBJECTS: frozenset = frozenset()
+CODE_OBJECT_SUFFIX = ".co"
 
 
 class AsmError(RuntimeError):
@@ -279,12 +283,22 @@ def _package_root(depth: int) -> Path:
 
 
 def load(source: str, symbol: str) -> Kernel:
-    """Assemble ``source`` (a ``.s`` file in the implementation directory) and return ``symbol``."""
+    """Return ``symbol`` from ``source``, a file in the implementation directory.
+
+    A ``.s`` file is assembled for the current GPU. A ``.co`` file loads only if
+    it is one of the code objects the task's asm baseline vendors, by SHA256.
+    """
     if not isinstance(source, str) or not isinstance(symbol, str) or not SYMBOL.match(symbol):
-        raise AsmError("aka_asm.load(source, symbol) takes a relative .s path and a kernel symbol")
+        raise AsmError("aka_asm.load(source, symbol) takes a relative .s or .co path and a kernel symbol")
     root = _package_root(2)
     path = (root / source).resolve()
     if not path.is_relative_to(root) or not path.is_file() or path.is_symlink():
         raise AsmError(f"{source} is not a file in the implementation directory")
     label = path.relative_to(root).as_posix()
+    if path.suffix == CODE_OBJECT_SUFFIX:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if digest not in ALLOWED_CODE_OBJECTS:
+            raise AsmError(f"{label} is not one of the baseline's vendored code objects; write kernels as .s source")
+        BUILD_EVIDENCE["files"].append({"source": label, "code_object_sha256": digest, "prebuilt": True})
+        return Kernel(path, symbol, label)
     return Kernel(assemble(path, label, current_arch()), symbol, label)

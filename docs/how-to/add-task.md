@@ -40,14 +40,15 @@ tasks/<baseline_language>/<category>/<operator>/<scenario>/
   reference.py
   inputs.py            # optional
   baseline/
-    kernel.py          # Triton, Gluon, FlyDSL or TileLang baseline
+    kernel.py          # Triton, Gluon, FlyDSL, TileLang or asm baseline
     kernel.hip         # or a HIP baseline (plus headers)
+    *.s, *.co          # asm only: assembly sources and hash-pinned vendored code objects
     LICENSE            # when the upstream license is not Apache-2.0
   README.md
 ```
 
 `<baseline_language>` is the task's `baseline.language` (`triton`, `gluon`,
-`hip`, `flydsl` or `tilelang`). It records what the vendored baseline is written
+`hip`, `flydsl`, `asm` or `tilelang`). It records what the vendored baseline is written
 in, not what a candidate must use: every target language can optimize every
 task. `<category>` is the task's `operator.category`, one of: activation,
 attention, convolution, elementwise, embedding, gemm, kv_cache, moe,
@@ -89,7 +90,7 @@ interface:
   layout: {file: inputs.py, symbol: to_kernel_layout}    # optional
 reference: {file: reference.py, symbol: reference}
 baseline:
-  language: triton                       # triton | gluon | hip | flydsl | tilelang
+  language: triton                       # triton | gluon | hip | flydsl | asm | tilelang
   entry: baseline/kernel.py              # baseline/kernel.hip for HIP
   provenance:
     source: vllm-project/vllm
@@ -218,11 +219,25 @@ The baseline is the code a candidate must beat. **All of it lives in the task.**
   the license is not Apache-2.0.
 - It may not import a production package (`aiter`, `vllm`, `sglang`,
   `sgl_kernel`, ...), call `torch.ops`, load a binary, read absolute paths or
-  spawn processes.
-- Assembly (`.co`) and Composable Kernel baselines cannot be vendored as source.
-  Write a functionally equivalent Triton baseline instead and say so in README.md.
-  A vendored or rewritten baseline may be slower than the production function;
-  it is still the task's baseline.
+  spawn processes. The one binary exception is an asm baseline's vendored code
+  objects, below.
+- **Assembly baselines** (`baseline.language: asm`). Production assembly kernels
+  (for example AITER's `hsa/gfx950/**/*.co`) ship only as code objects. Vendor
+  the code objects the scenario dispatches to under `baseline/`, and declare
+  each with its SHA256 in `baseline.provenance.code_objects`
+  (`baseline/<file>.co: <sha256>`); a task with an undeclared, missing or
+  mismatching code object does not load. `baseline/kernel.py` is an asm
+  implementation like a candidate's: it reproduces the production host-side
+  dispatch (kernel choice per shape, grid, kernel-argument layout, workspace
+  buffers) in Python and launches through `aka_asm.load("<file>.co", "<symbol>")`.
+  Record the upstream launcher it reproduces in `provenance.path` and the
+  translation in `provenance.modifications`. A candidate may keep loading a
+  vendored code object byte for byte (so a copy of the baseline is a valid
+  starting candidate); any other kernel must be `.s` source.
+- Composable Kernel baselines cannot be vendored as source. Write a functionally
+  equivalent Triton baseline instead and say so in README.md. A vendored or
+  rewritten baseline may be slower than the production function; it is still
+  the task's baseline.
 - Production dispatch logic and tuned configuration tables are part of the
   baseline when they are Python; copy them as is.
 - It implements the same entry point as a candidate (below), in its language.
@@ -375,8 +390,8 @@ and a fix.
 
 1. Choose the operator and one scenario; collect its production shapes.
 2. Write `reference.py` in float64 PyTorch.
-3. Vendor the baseline into `baseline/` with provenance, or write a Triton
-   equivalent of an assembly/CK kernel. Wrap it in `run()`.
+3. Vendor the baseline into `baseline/` with provenance (an assembly baseline
+   with its hash-pinned code objects), or write a Triton equivalent of a CK kernel. Wrap it in `run()`.
 4. Write `task.yaml` and `workloads.json`; add `inputs.py` if needed.
 5. Check it loads: `python3 -c "from src.task_contract import load_task_contract;
    load_task_contract(Path('tasks/.../task.yaml'), task_id='...')"`.

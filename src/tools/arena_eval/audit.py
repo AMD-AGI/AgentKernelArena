@@ -132,8 +132,6 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                 check_source(path, sources[path])
             except AsmError as exc:
                 raise PolicyError(str(exc)) from exc
-        if not others:
-            raise PolicyError("An asm candidate has no .s kernel source")
     elif others:
         raise PolicyError(f"A {language} candidate contains only .py sources; found {others[:4]}")
     local = {path.removesuffix(".py") for path in python}

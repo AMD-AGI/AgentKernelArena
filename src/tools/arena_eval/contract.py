@@ -107,6 +107,8 @@ class Contract:
         self.generator = raw.get("generator")
         self.layout = raw.get("layout")
         self.baseline = Implementation("baseline", **raw["baseline"])
+        # SHA256 -> baseline path of the asm baseline's vendored code objects.
+        self.code_objects = dict(raw.get("code_objects", {}))
         self.candidate = Implementation("candidate", **raw["candidate"])
         self.cases = tuple(Case(c["id"], dict(c["axes"]), dict(c.get("scalars", {})),
                                 tuple(c["checks"]), tuple(c["seeds"])) for c in raw["cases"])

@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 from typing import Any, Mapping
 
@@ -216,6 +217,11 @@ class TaskContract:
     def checked_tensors(self) -> list[str]:
         return list(self.interface["outputs"]) + list(self.interface.get("mutable", []))
 
+    @property
+    def code_objects(self) -> dict[str, str]:
+        """Vendored code objects of an asm baseline: baseline path -> SHA256."""
+        return dict(self.raw["baseline"]["provenance"].get("code_objects", {}))
+
     def resolved_contract(self, target_language: str) -> dict:
         interface = self.interface
         cases = []
@@ -245,6 +251,8 @@ class TaskContract:
             "layout": deepcopy(interface.get("layout")),
             "baseline": {"language": self.baseline_language, "root": BASELINE_DIR,
                          "entry_file": baseline_entry, "symbol": "run"},
+            # SHA256 -> baseline path of every vendored code object; only these load.
+            "code_objects": {digest: path for path, digest in self.code_objects.items()},
             "candidate": {"language": target_language, "root": SOLUTION_DIR,
                           "entry_file": self.candidate_entry(target_language), "symbol": "run"},
             "cases": cases,
@@ -532,8 +540,10 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
     if baseline["entry"] != expected:
         raise TaskConfigError(f"baseline.entry must be {expected}")
     provenance = _mapping(baseline["provenance"], "baseline.provenance",
-                          {"source", "revision", "path", "license", "notes", "modifications"},
+                          {"source", "revision", "path", "license", "notes", "modifications", "code_objects"},
                           {"source", "revision", "path", "license"})
+    if "code_objects" in provenance:
+        _validate_code_objects(provenance["code_objects"], baseline["language"])
     for key in ("source", "revision", "license"):
         _text(provenance[key], f"baseline.provenance.{key}")
     paths = provenance["path"] if isinstance(provenance["path"], list) else [provenance["path"]]
@@ -598,6 +608,39 @@ def _unique_json(pairs):
     return result
 
 
+CODE_OBJECT_SUFFIX = ".co"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _validate_code_objects(declared, language: str) -> None:
+    """``baseline.provenance.code_objects``: vendored AMDGPU code objects, by path and SHA256."""
+    if language != "asm":
+        raise TaskConfigError("baseline.provenance.code_objects is only for asm baselines")
+    if not isinstance(declared, dict) or not declared:
+        raise TaskConfigError("baseline.provenance.code_objects maps baseline/<file>.co paths to SHA256 hashes")
+    for path, digest in declared.items():
+        if (not isinstance(path, str) or not path.startswith(BASELINE_DIR + "/") or not path.endswith(CODE_OBJECT_SUFFIX)
+                or ".." in Path(path).parts):
+            raise TaskConfigError(f"code object {path!r} must be a {CODE_OBJECT_SUFFIX} file under {BASELINE_DIR}/")
+        if not isinstance(digest, str) or not _SHA256.match(digest):
+            raise TaskConfigError(f"code object {path} needs a lowercase hex SHA256")
+
+
+def verify_code_objects(contract: "TaskContract", root: Path) -> None:
+    """Every vendored code object is declared, present and matches its SHA256."""
+    declared = contract.code_objects
+    present = {p.relative_to(root).as_posix() for p in (Path(root) / BASELINE_DIR).rglob(f"*{CODE_OBJECT_SUFFIX}")}
+    if present - set(declared):
+        raise TaskConfigError(f"undeclared code objects in {BASELINE_DIR}/: {sorted(present - set(declared))[:4]}; "
+                              "declare each in baseline.provenance.code_objects")
+    for path, digest in declared.items():
+        file = Path(root) / path
+        if not file.is_file() or file.is_symlink():
+            raise TaskConfigError(f"declared code object {path} is missing")
+        if hashlib.sha256(file.read_bytes()).hexdigest() != digest:
+            raise TaskConfigError(f"code object {path} does not match its declared SHA256")
+
+
 def load_task_contract(task_file: Path, *, task_id: str) -> TaskContract:
     task_file = Path(task_file)
     root = task_file.parent
@@ -613,7 +656,9 @@ def load_task_contract(task_file: Path, *, task_id: str) -> TaskContract:
                                    TaskConfigError(f"Invalid JSON constant {value}")))
     except (OSError, ValueError) as exc:
         raise TaskConfigError(f"Cannot read workloads: {exc}") from exc
-    return validate_task_contract(raw, workloads, task_id=task_id)
+    contract = validate_task_contract(raw, workloads, task_id=task_id)
+    verify_code_objects(contract, root)
+    return contract
 
 
 def package_files(root: Path) -> list[str]:
