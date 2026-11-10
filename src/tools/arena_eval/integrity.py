@@ -118,6 +118,14 @@ class HarnessIntegrity:
     def _track_runtime(self) -> None:
         import torch
 
+        # Importing torch._dynamo rebinds torch.manual_seed to a dynamo-disabled
+        # wrapper. Gluon, FlyDSL and HIP extension calls import it lazily on their
+        # first launch, so import it before the snapshot instead of reporting
+        # PyTorch's own patch as tampering.
+        try:
+            importlib.import_module("torch._dynamo")
+        except ImportError:
+            pass
         for label, module in (("torch", torch), ("torch.cuda", torch.cuda)):
             self._track(label, vars(module), _bindings(vars(module), everything=False))
         for cls in (torch.Tensor, torch.cuda.Event, torch.cuda.Stream, torch.cuda.CUDAGraph):

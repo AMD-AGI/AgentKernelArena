@@ -107,6 +107,24 @@ def test_a_tamper_error_fails_the_whole_action_as_harness_tampering(monkeypatch)
     assert report["failure_kind"] == "harness_tampering"
 
 
+def test_pytorchs_own_lazy_dynamo_import_is_not_tampering():
+    """torch._dynamo rebinds torch.manual_seed when first imported, e.g. by a kernel language's first launch."""
+    import subprocess
+    from pathlib import Path
+
+    code = (
+        "import sys, torch\n"
+        "assert 'torch._dynamo' not in sys.modules\n"
+        f"from {PACKAGE} import integrity\n"
+        f"check = integrity.snapshot({PACKAGE!r})\n"
+        "import torch._dynamo, torch._inductor\n"
+        "check('a candidate call')\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[1],
+                            capture_output=True, text=True, timeout=600)
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
 def test_a_tamper_error_is_not_an_ordinary_exception():
     assert issubclass(integrity.TamperError, BaseException)
     assert not issubclass(integrity.TamperError, Exception)
