@@ -1,0 +1,41 @@
+The baseline in this directory is vendored from sgl-amd-mono (https://github.com/sgl-project/sgl-amd-mono)
+at commit 52486703, licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0): glm5_mono.py, config.py, layout.py and tiles.py from
+sgl_amd_mono/glm53/gfx950/ (Copyright (c) 2025 FlyDSL Project Contributors, adapted from ROCm/aiter#6173 at
+56d6390def), guard.py and parts of compat.py from sgl_amd_mono/common/ and sgl_amd_mono/muse_spark/gfx950/
+(Copyright 2026 SGLang contributors). buffer_ops.py and dpp_utils.py are FlyDSL helpers as vendored by ROCm/aiter
+(Apache-2.0, Copyright (c) 2025 FlyDSL Project Contributors). kernel.py is Copyright (C) 2026 Advanced Micro
+Devices, Inc., Apache-2.0. Every file names its origin and its modifications in its header.
+
+sgl-amd-mono's NOTICE:
+
+  sgl-amd-mono
+  Copyright 2026 SGLang contributors. Licensed under the Apache License 2.0.
+
+  Portions are adapted from ROCm/ATOM (https://github.com/ROCm/ATOM): the shared device primitives (ops.py,
+  sync.py and plan.py here) among others. Each adapted file names its origin in its header.
+
+ROCm/ATOM, and sgl-amd-mono's sgl_amd_mono/muse_spark/gfx950/device.py (the source of compat.py's
+lds_atomic_add), are distributed under this license:
+
+  MIT License
+
+  Copyright (C) 2026, Advanced Micro Devices, Inc.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
