@@ -291,7 +291,8 @@ def check_warnings(workspace: Path, contract_raw: dict | None, findings: list[Fi
     for name, declaration in contract_raw["compare"].items():
         overrides = {k: v for k, v in declaration.items() if k != "bound"}
         if declaration["bound"] != "baseline_relative" or overrides.get("k", 2) != 2 or \
-                "baseline_min_sqnr_db" in overrides or overrides.get("max_violation_fraction", 0) > 0:
+                "baseline_min_sqnr_db" in overrides or overrides.get("max_violation_fraction", 0) > 0 or \
+                "decode" in overrides:
             findings.append(Finding("QA-BOUND-OVERRIDE", f"{name}: {declaration}"))
     arch = (os.environ.get("PYTORCH_ROCM_ARCH") or "").split(";")[0]
     claimed = (contract_raw.get("platform_support") or {}).get("required_arch") or []

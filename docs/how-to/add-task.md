@@ -175,7 +175,7 @@ value before every call.
 | Bound | Parameters | Meaning |
 | --- | --- | --- |
 | `baseline_relative` (default) | `k` (2), `max_violation_fraction` (0), `baseline_min_sqnr_db` (25) | Each element within `k ×` the baseline's own error (or its per-row RMS over the elements that are nonzero in the reference or the baseline; rows with fewer than 8 such elements use the whole output's RMS) plus one output rounding; the mean error must be unbiased relative to the baseline's. |
-| `exact` | | Bitwise equality. Required for integer, boolean and packed outputs. |
+| `exact` | | Bitwise equality. Required for integer, boolean and packed outputs without `decode`. |
 | `tolerance` | `atol`, `rtol`, `max_violation_fraction` | Fixed tolerances. |
 | `sqnr` | `min_db` | Signal-to-noise ratio of the whole output. |
 | `output_rounding` | `max_violation_fraction` | Within twice the output dtype's rounding of the reference. |
@@ -185,6 +185,44 @@ every departure as a warning that README.md must justify. `k` stays within
 `[1, 8]`; `max_violation_fraction` within `[0, 0.01]`. Tune them per task, never
 globally. Elements admitted by `max_violation_fraction` must still lie within 16 times the bound, so it absorbs accumulation-order outliers, not skipped or zeroed elements. `element_order: any_in_full_rows` compares sorted rows (top-k ids with
 ties).
+
+#### Decoded packed outputs
+
+An integral or packed output (quantized codes and their scales packed into one
+`uint8` tensor, for example) whose bytes legitimately differ between correct
+implementations may declare a `decode` hook with a numeric bound
+(`baseline_relative`, `tolerance`, `sqnr` or `output_rounding`):
+
+```yaml
+compare:
+  index_cache:
+    bound: baseline_relative
+    decode: {file: inputs.py, symbol: index_cache_values, precision: float8_e4m3fn}
+```
+
+- `file` and `symbol` name a top-level function in a `.py` file at the task
+  root, like `interface.generator`. It takes the packed tensor and returns its
+  values as a float32 or float64 tensor. Write it in PyTorch only, deterministic
+  and without modifying its argument; it runs on the device the tensor is on.
+- The evaluator decodes the candidate's written tensor, the reference's and,
+  for `baseline_relative`, the baseline's with the same function and compares the
+  decoded tensors under the bound, with `element_order` applied to the decoded
+  rows. The reference returns the packed tensor, with the operator's exact
+  quantization and packing.
+- `precision` (optional) is the floating dtype the decoded values carry, such as
+  `float8_e4m3fn` for E4M3 codes times a scale. Because the decoded reference is
+  quantized to it as well, a correct candidate's code may sit one code step from
+  the reference's, so the bound's rounding unit is one code step of `precision`:
+  twice its unit roundoff. Without `precision` the decoded dtype takes its
+  place, which makes the rounding term negligible (use this for integer codes,
+  whose step is not relative to the value).
+- `decode` is not allowed with `exact` or on a floating output, and the QA
+  auditor reports it as a bound override. Elementwise bounds hold every decoded
+  element, including state a mutable input keeps unchanged. Keep
+  `max_violation_fraction` at 0: with a coarse precision such as E4M3 the
+  rounding term alone keeps a zeroed element within 16 times the bound, and when
+  most of the tensor is unchanged state a fraction of the whole tensor can
+  exceed every newly written element.
 
 Under `baseline_relative`, the baseline itself must pass a sanity check: no
 non-finite or unwritten element, and SQNR against the reference of at least

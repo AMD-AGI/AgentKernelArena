@@ -119,6 +119,11 @@ class Contract:
         for name in self.mutable:
             if name not in self.inputs or self.inputs[name]["kind"] != "tensor":
                 raise ContractError(f"Mutable entry {name!r} is not a tensor input")
+        for name, declaration in self.compare.items():
+            decode = declaration.get("decode")
+            if decode is not None and (not isinstance(decode, dict) or not {"file", "symbol"} <= set(decode)
+                                       or declaration.get("bound", "baseline_relative") == "exact"):
+                raise ContractError(f"compare.{name}.decode needs a file, a symbol and a numeric bound")
         if self.distributed is not None:
             world = self.distributed.get("world_size")
             if type(world) is not int or not 2 <= world <= 8:

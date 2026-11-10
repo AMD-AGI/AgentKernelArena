@@ -76,6 +76,8 @@ def validate_task(contract: Contract) -> dict:
         if entry is not None:
             values.workspace_path(entry["file"])
     values.workspace_path(contract.baseline.entry_file)
+    for name in contract.checked_tensors:
+        values.decode_function(contract, name)  # a declared decode hook resolves in the task and is callable
     rows = []
     for case in contract.cases:
         row = case.identity()
@@ -165,6 +167,27 @@ def _dtype_name(tensor) -> str:
     return str(tensor.dtype).removeprefix("torch.")
 
 
+def _compared(contract: Contract, name: str, actual, reference, baseline=None):
+    """(actual, reference, baseline, rounding): the tensors the bound of ``name`` compares.
+
+    A ``decode`` hook maps the written, reference and baseline tensors of a packed output to their values
+    with the same task function; ``rounding`` then names the declared ``precision`` (default: the decoded
+    dtype) for ``compare_tensor``.
+    """
+    from . import values
+
+    hook = _bound(contract, name).get("decode")
+    if hook is None:
+        return actual, reference, baseline, {"dtype_name": _dtype_name(actual)}
+    if reference.dtype != actual.dtype:
+        raise ContractError(f"The reference must return {name} packed as {_dtype_name(actual)} "
+                            "for its decode hook")
+    actual, reference, baseline = (None if tensor is None else values.decode_values(contract, name, tensor)
+                                   for tensor in (actual, reference, baseline))
+    return actual, reference, baseline, {"dtype_name": hook.get("precision") or _dtype_name(actual),
+                                         "decoded": True}
+
+
 def _check(contract: Contract, role: str, written: dict, expected: dict, baseline: dict | None) -> tuple[bool, dict]:
     """Compare every written tensor; the baseline role applies its sanity rule."""
     from .compare import compare_tensor, sqnr_db
@@ -172,20 +195,19 @@ def _check(contract: Contract, role: str, written: dict, expected: dict, baselin
     metrics, passed = {}, True
     for name in contract.checked_tensors:
         declaration = _bound(contract, name)
-        actual = written[name]
-        reference = expected[name]
+        actual, reference, base, rounding = _compared(contract, name, written[name], expected[name],
+                                                      None if baseline is None else baseline.get(name))
         if role == "baseline" and declaration.get("bound", "baseline_relative") == "baseline_relative":
             result = compare_tensor({"bound": "output_rounding", "max_violation_fraction": 1.0},
-                                    actual, reference, dtype_name=_dtype_name(actual))
+                                    actual, reference, **rounding)
             sqnr = sqnr_db(actual, reference.to(actual.dtype)) if actual.dtype.is_floating_point else math.inf
             minimum = float(declaration.get("baseline_min_sqnr_db", 25.0))
             ok = result.nonfinite_mismatches == 0 and sqnr >= minimum
             metrics[name] = {"bound": "baseline_sanity", "passed": ok, "sqnr_db": sqnr if math.isfinite(sqnr) else 1e300,
                              "minimum_sqnr_db": minimum, "nonfinite_mismatches": result.nonfinite_mismatches}
         else:
-            result = compare_tensor(declaration, actual, reference, dtype_name=_dtype_name(actual),
-                                    baseline=None if baseline is None else baseline.get(name),
-                                    element_order=contract.element_order)
+            result = compare_tensor(declaration, actual, reference, baseline=base,
+                                    element_order=contract.element_order, **rounding)
             ok = result.passed
             metrics[name] = result.to_mapping()
         passed &= ok
@@ -274,6 +296,7 @@ def _invoke_and_check(contract: Contract, role: str, call, case: Case, data: _Ca
 
 def role_calls(contract: Contract, role: str):
     """The role's audited call and, when its bound needs it, the baseline's."""
+    from . import values
     from .audit import PolicyError
     from .loader import BuildError
 
@@ -282,8 +305,10 @@ def role_calls(contract: Contract, role: str):
     need_baseline = role == "candidate" and any(
         _bound(contract, n).get("bound", "baseline_relative") == "baseline_relative" for n in contract.checked_tensors)
     try:
-        # Reference and baseline modules load before candidate code imports.
+        # Reference and baseline modules load before candidate code imports, and so do decode hooks.
         baseline_call = _load(contract, "baseline", audit=False)[0] if (role == "baseline" or need_baseline) else None
+        for name in contract.checked_tensors:
+            values.decode_function(contract, name)
         call = baseline_call if role == "baseline" else _load(contract, "candidate", audit=True)[0]
     except PolicyError as exc:
         raise ActionFailure(str(exc), "policy_violation")

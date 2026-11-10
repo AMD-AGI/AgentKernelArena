@@ -37,7 +37,8 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `baseline_relative` bound allows twice the baseline's own error (or its
   per-row RMS over the row's nonzero elements) plus one output rounding.
   `max_violation_fraction` never admits an element more than 16× over the
-  bound. Integer and packed outputs compare exactly.
+  bound. Integer and packed outputs compare exactly, unless the task declares a
+  `decode` hook that maps them to values for a numeric bound.
 - Timing is a cold-cache CUDA graph per call. The final evaluation remeasures
   the baseline interleaved with the candidate, and a task's speedup is the
   geometric mean over its performance cases.

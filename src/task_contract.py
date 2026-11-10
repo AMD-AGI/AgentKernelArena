@@ -480,15 +480,33 @@ def _scalar_value(dtype: str, value: Any, where: str) -> None:
         _number(value, where)
 
 
+def _decode(value: Any, where: str) -> dict:
+    """A packed output's decode hook: a task-root function and the precision its decoded values carry."""
+    entry = _mapping(value, where, {"file", "symbol", "precision"}, {"file", "symbol"})
+    decode = _entry({key: entry[key] for key in ("file", "symbol")}, where)
+    if "precision" in entry:
+        if entry["precision"] not in FLOAT_DTYPES:
+            raise TaskConfigError(f"{where}.precision must be one of {FLOAT_DTYPES}")
+        decode["precision"] = entry["precision"]
+    return decode
+
+
 def _validate_compare(raw: dict, checked: list[str], outputs: dict, inputs: dict) -> None:
     compare = _mapping(raw, "compare", set(checked), set(checked))
     for name, declaration in compare.items():
         if not isinstance(declaration, dict) or declaration.get("bound") not in BOUNDS:
             raise TaskConfigError(f"compare.{name}.bound must be one of {sorted(BOUNDS)}")
-        _mapping(declaration, f"compare.{name}", {"bound"} | BOUNDS[declaration["bound"]])
+        _mapping(declaration, f"compare.{name}", {"bound", "decode"} | BOUNDS[declaration["bound"]])
         dtype = (outputs.get(name) or inputs[name])["dtype"]
-        if dtype not in FLOAT_DTYPES and declaration["bound"] != "exact":
-            raise TaskConfigError(f"compare.{name}: {dtype} outputs compare exactly")
+        if "decode" in declaration:
+            if declaration["bound"] == "exact":
+                raise TaskConfigError(f"compare.{name}.decode needs a numeric bound; exact compares the bytes")
+            if dtype in FLOAT_DTYPES:
+                raise TaskConfigError(f"compare.{name}.decode is for integral or packed outputs; {dtype} "
+                                      "values compare directly")
+            declaration["decode"] = _decode(declaration["decode"], f"compare.{name}.decode")
+        elif dtype not in FLOAT_DTYPES and declaration["bound"] != "exact":
+            raise TaskConfigError(f"compare.{name}: {dtype} outputs compare exactly unless they declare decode")
         if "k" in declaration and not 1.0 <= _number(declaration["k"], f"compare.{name}.k") <= 8.0:
             raise TaskConfigError(f"compare.{name}.k must be between 1 and 8")
         if "max_violation_fraction" in declaration and not 0.0 <= _number(
@@ -823,7 +841,24 @@ def load_task_contract(task_file: Path, *, task_id: str) -> TaskContract:
             evidence = _read_json(path)
         except (OSError, ValueError) as exc:
             raise TaskConfigError(f"Cannot read {declaration['evidence']}: {exc}") from exc
-    return validate_task_contract(raw, workloads, task_id=task_id, span_evidence=evidence)
+    contract = validate_task_contract(raw, workloads, task_id=task_id, span_evidence=evidence)
+    for name, declaration in contract.raw["compare"].items():
+        if "decode" in declaration:
+            _check_task_function(root, declaration["decode"], f"compare.{name}.decode")
+    return contract
+
+
+def _check_task_function(root: Path, entry: dict, where: str) -> None:
+    """A task-root function the evaluator imports: a file of the package that defines it at top level."""
+    path = root / entry["file"]
+    if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root.resolve()):
+        raise TaskConfigError(f"{where}.file {entry['file']} is not a file in the task package")
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=entry["file"])
+    except (OSError, SyntaxError, UnicodeDecodeError) as exc:
+        raise TaskConfigError(f"Cannot parse {entry['file']}: {exc}") from exc
+    if not any(isinstance(node, ast.FunctionDef) and node.name == entry["symbol"] for node in tree.body):
+        raise TaskConfigError(f"{where}: {entry['file']} does not define function {entry['symbol']}")
 
 
 def _read_json(path: Path) -> Any:

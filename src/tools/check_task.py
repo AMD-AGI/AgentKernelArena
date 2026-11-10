@@ -53,6 +53,13 @@ for case in (cases[0], cases[-1]) if len(cases) > 1 else cases:
             raise SystemExit(f"reference output {name} has shape {actual}, declared {expected}")
         if outputs[name].dtype.is_floating_point and outputs[name].dtype not in (torch.float32, torch.float64):
             raise SystemExit(f"reference output {name} is {outputs[name].dtype}; use float32/float64")
+        if contract.compare[name].get("decode"):
+            packed = outputs[name] if contract.distributed is None else \
+                values.expected_outputs(contract, case, outputs, 0)[name]
+            if packed.dtype != values.torch_dtype(declaration["dtype"]):
+                raise SystemExit(f"reference output {name} is {packed.dtype}; its decode hook reads the packed "
+                                 f"{declaration['dtype']}")
+            values.decode_values(contract, name, packed)
         shapes[name] = list(actual)
     entry = {"case": case.case_id, "outputs": shapes}
     if contract.distributed is not None:

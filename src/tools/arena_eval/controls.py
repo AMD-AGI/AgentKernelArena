@@ -136,10 +136,10 @@ def _calibration_probe(contract, case, data: _CaseData, rank=None) -> list[dict]
     evaluation can be less accurate than a baseline that accumulates more carefully.
     """
     from .compare import compare_tensor
-    from .evaluate import _bound, _dtype_name
+    from .evaluate import _bound, _compared
 
     names = [n for n in contract.checked_tensors if _bound(contract, n).get("bound", "baseline_relative") !=
-             "exact" and data.baselines[0][n].dtype.is_floating_point]
+             "exact" and (data.baselines[0][n].dtype.is_floating_point or "decode" in _bound(contract, n))]
     if not names:
         return []
     values.reference_function(contract)  # import the reference (and its constants) outside the patch
@@ -157,9 +157,10 @@ def _calibration_probe(contract, case, data: _CaseData, rank=None) -> list[dict]
         candidate = probe[name]
         if candidate.dtype == reference.dtype and torch.equal(candidate, reference):
             continue  # the reference never ran in reduced precision
-        candidate = candidate.to(baseline.dtype)
-        result = compare_tensor(_bound(contract, name), candidate, reference, dtype_name=_dtype_name(baseline),
-                                baseline=baseline, element_order=contract.element_order)
+        candidate, reference, baseline, rounding = _compared(contract, name, candidate.to(baseline.dtype),
+                                                             reference, baseline)
+        result = compare_tensor(_bound(contract, name), candidate, reference, baseline=baseline,
+                                element_order=contract.element_order, **rounding)
         results.append({"case": case.case_id, "output": name, **result.to_mapping()})
         if rank is not None:
             results[-1]["rank"] = rank.rank

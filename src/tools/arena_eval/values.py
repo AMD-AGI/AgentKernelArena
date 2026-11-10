@@ -75,6 +75,19 @@ def reference_function(contract: Contract) -> Callable:
     return _load_task_function(contract.reference, "reference")
 
 
+def decode_function(contract: Contract, name: str) -> Callable | None:
+    """The decode hook ``compare.<name>.decode`` of a checked tensor, if the task declares one."""
+    return _load_task_function(contract.compare[name].get("decode"), f"decode_{name}")
+
+
+def decode_values(contract: Contract, name: str, packed: torch.Tensor) -> torch.Tensor:
+    """The floating values the task's decode hook reads from one packed tensor of ``name``."""
+    value = decode_function(contract, name)(packed)
+    if not isinstance(value, torch.Tensor) or value.dtype not in (torch.float32, torch.float64):
+        raise ContractError(f"The decode hook of {name} must return a float32 or float64 tensor")
+    return value
+
+
 def _builtin(declaration: dict, shape: tuple[int, ...], generator: torch.Generator,
              device: torch.device) -> torch.Tensor:
     dist = declaration["distribution"]
