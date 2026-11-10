@@ -1,0 +1,53 @@
+{
+  "description": "MiniMax-M3.1-Flash FFN monokernel steps on a TP4 group: rows = decode requests, or DSpark verify requests x 8 (8 rows a request), at the compiled widths 1-16. The kernel reads no KV cache, so its work does not depend on the context. Row weights from the AgentX corpus (semianalysisai/cc-traces-weka-062126) in-flight request distribution at concurrency 1, 2, 4 and 8, decode and DSpark serving weighted equally; derived from corpus statistics, not yet confirmed by a live capture (the checkpoint is not on the cluster). Production-range span exemption: the model fixes every other dimension and the served rows span 16x (workload_evidence.json). rows = 1 is the minimum and rows = 5 the non-power-of-two boundary case; both are also timed. Four row counts (four FlyDSL builds) keep the evaluation inside its budget.",
+  "performance_span": {
+    "policy": "production_range",
+    "evidence": "workload_evidence.json"
+  },
+  "cases": [
+    {
+      "id": "r1",
+      "axes": {
+        "rows": 1
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode of 1 request (AgentX C1: R = 1 in 90.0% of steps); row weight 15.7%; the minimum width"
+    },
+    {
+      "id": "r5",
+      "axes": {
+        "rows": 5
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode of 5 requests (C4: R = 5 in 15.8% of steps; C2: 1.8%); row weight 3.2%; the non-power-of-two boundary"
+    },
+    {
+      "id": "r8",
+      "axes": {
+        "rows": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "DSpark verify of 1 request x 8 rows (C1: R = 1 in 90.0% of steps) and decode of 8 requests (C8: R = 8 in 43.1%); row weight 23.8%"
+    },
+    {
+      "id": "r16",
+      "axes": {
+        "rows": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "DSpark verify of 2 requests x 8 rows (C2: R = 2 in 81.0% of steps; C1: 5.4%) and decode of 16 requests; row weight 15.3%; the largest width"
+    }
+  ]
+}
