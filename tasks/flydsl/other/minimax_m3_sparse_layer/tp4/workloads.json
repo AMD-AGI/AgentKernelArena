@@ -1,0 +1,20 @@
+{
+  "description": "MiniMax-M3 sparse-layer monokernel steps on a TP4 group: decode R=1, EAGLE3 verify of one request (R=1 x 4 rows) and of four requests (R=4 x 4 rows), the 1, 4 and 16-row builds. Contexts are the AgentX corpus (semianalysisai/cc-traces-weka-062126, all 98,827 requests) decode-step-weighted context quantiles clipped at MiniMax-M3's served context 131,072: p10 52K, p25 108K; 53 % of AgentX requests (about 70 % of decode steps) are past 131,072 and cannot be served by this model, so the cap is the dominant perf context. Derived from corpus statistics; not yet confirmed by a live capture. Boundary contexts (one key, inside the first block, exactly 16 blocks, the first scored context, a block-boundary verify, the first long context) are correctness-only.",
+  "cases": [
+    {"id": "r1_ctx1", "axes": {"rows": 1, "requests": 1, "ctx": 1}, "checks": ["correctness"], "source": "boundary: decode with a one-key context (minimum of every axis)"},
+    {"id": "r4_ctx37", "axes": {"rows": 4, "requests": 1, "ctx": 37}, "checks": ["correctness"], "source": "boundary: verify of a 34-37-key context, inside the first block"},
+    {"id": "r1_ctx3000", "axes": {"rows": 1, "requests": 1, "ctx": 3000}, "checks": ["correctness"], "source": "short context: AgentX request-weighted p5 (3.0K), decode R=1; 24 blocks, scored"},
+    {"id": "r4_ctx2048", "axes": {"rows": 4, "requests": 1, "ctx": 2048}, "checks": ["correctness"], "source": "boundary: verify at exactly 16 blocks, every block kept without indexer scores"},
+    {"id": "r16_ctx2049", "axes": {"rows": 16, "requests": 4, "ctx": 2049}, "checks": ["correctness"], "source": "boundary: 4 x 4 verify at the first scored context (17 blocks), the other requests ragged in [1024, 2049]"},
+    {"id": "r4_ctx4098", "axes": {"rows": 4, "requests": 1, "ctx": 4098}, "checks": ["correctness"], "source": "boundary: verify rows straddling a block boundary (32 and 33 blocks)"},
+    {"id": "r1_ctx65537", "axes": {"rows": 1, "requests": 1, "ctx": 65537}, "checks": ["correctness"], "source": "boundary: the first context past 512 blocks (the split-stage long selection)"},
+    {"id": "r1_ctx16384", "axes": {"rows": 1, "requests": 1, "ctx": 16384}, "checks": ["correctness", "performance"], "source": "AgentX low end (16K; 9.2 % of decode steps are at 4-64K), decode R=1"},
+    {"id": "r1_ctx65536", "axes": {"rows": 1, "requests": 1, "ctx": 65536}, "checks": ["correctness", "performance"], "source": "AgentX 64K (decode-step p10 52K .. p25 108K bucket, 17 % at 64-128K), decode R=1"},
+    {"id": "r1_ctx131072", "axes": {"rows": 1, "requests": 1, "ctx": 131072}, "checks": ["correctness", "performance"], "source": "AgentX at or past the served context 131,072 (~70 % of decode steps), clipped, decode R=1"},
+    {"id": "r4_ctx53248", "axes": {"rows": 4, "requests": 1, "ctx": 53248}, "checks": ["correctness", "performance"], "source": "AgentX decode-step p10 (52K), EAGLE3 verify R=1 x L=4"},
+    {"id": "r4_ctx110592", "axes": {"rows": 4, "requests": 1, "ctx": 110592}, "checks": ["correctness", "performance"], "source": "AgentX decode-step p25 (108K), EAGLE3 verify R=1 x L=4"},
+    {"id": "r4_ctx131072", "axes": {"rows": 4, "requests": 1, "ctx": 131072}, "checks": ["correctness", "performance"], "source": "AgentX at or past the cap (~70 % of decode steps), clipped, EAGLE3 verify R=1 x L=4"},
+    {"id": "r16_ctx65536", "axes": {"rows": 16, "requests": 4, "ctx": 65536}, "checks": ["correctness", "performance"], "source": "AgentX 64K, EAGLE3 verify R=4 x L=4, the other requests ragged in [ctx/2, ctx]"},
+    {"id": "r16_ctx131072", "axes": {"rows": 16, "requests": 4, "ctx": 131072}, "checks": ["correctness", "performance"], "source": "AgentX at or past the cap (~70 % of decode steps), clipped, EAGLE3 verify R=4 x L=4, the others ragged in [ctx/2, ctx]"}
+  ]
+}

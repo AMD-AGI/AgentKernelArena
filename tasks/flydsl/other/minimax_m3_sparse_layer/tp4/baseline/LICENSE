@@ -1,0 +1,54 @@
+This baseline combines code under two licenses.
+
+1. MIT: config.py, layout.py, device.py, reduction.py, select.py, index_score.py, pre_attn.py and post_attn.py
+   (sgl-project/sgl-amd-mono sgl_amd_mono/minimax_m3/gfx950 at 52486703; the kernels come from ROCm/aiter PR
+   6047, the top-k block selection select.py is vendored from ROCm/ATOM at 454d0e3023 atom/mono/device/select.py,
+   and device.py's wave reductions, readlane and unlikely are adapted from ROCm/ATOM at 454d0e3023), and the
+   ROCm/ATOM (97359d6) code that ops.py, sync.py, guard.py, plan.py and mx.py adapt.
+
+   Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
+
+   MIT License
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+2. Apache-2.0: ops.py, sync.py, guard.py, plan.py, mx.py (sgl-project/sgl-amd-mono sgl_amd_mono/common at
+   52486703, contributors to the vLLM project, adapting the ROCm/ATOM MIT code above), compat.py
+   (sgl_amd_mono/muse_spark/gfx950 compat.py and device.py), act.py (ROCm/aiter
+   aiter/ops/flydsl/kernels/act.py, FlyDSL Project Contributors), buffer_ops.py and dpp_utils.py (ROCm/FlyDSL
+   v0.3.2 kernels/common, FlyDSL Project Contributors), and kernel.py.
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   Copyright 2025-2026 FlyDSL Project Contributors
+   Copyright contributors to the vLLM project and the sgl-amd-mono authors
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
