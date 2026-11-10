@@ -1,0 +1,161 @@
+schema_version: 3
+description: >-
+  One Muse Spark MXFP4 decoder layer for a DFlash2 verify step of `requests` x 8 rows, on one rank of a TP8 /
+  EP8 group (8 GPUs; the tensor-parallel collectives run inside the kernel over peer memory). Per rank: the
+  verify attention of its 16 query heads (2 KV heads) over an fp8 page-16 cache (full attention, causal over the
+  step's 8 rows); o-norm-gate and its o_proj columns, all-reduced over the ranks; the attention boundary
+  (weightless post norm, gated residual, pre-FFN norm); the sigmoid router's top-8 of 256 experts; the pooler
+  (8192 -> 4096) and pre-expert norm; the experts on MXFP4 (E2M1 x E8M0) weights with MXFP4-quantized
+  activations, held as this rank's TP slices of every expert; the finalize (per-expert post norm, score-weighted
+  sum); the unpooler (4096 -> 8192); the FFN boundary and the next layer's pre-attention norm; and the next
+  (sliding, RoPE) layer's fused q | k | v | gate projection with its q / k norms, query scale, RoPE and fp8
+  cache write. See README.md for the exact semantics, layouts and shards.
+operator: {name: muse_spark_layer, category: other}
+interface:
+  axes:
+    requests: {kind: var, min: 1, max: 8, description: "Requests verified in the step (8 rows each)."}
+    ctx: {kind: var, min: 8, max: 1048576, description: "Keys of the longest request including the step's 8 rows."}
+    q_len: {kind: const, value: 8, description: "Rows a request (DFlash2's 8 draft tokens)."}
+    page: {kind: const, value: 16, description: "Keys a cache page."}
+    hidden: {kind: const, value: 8192, description: "Model width."}
+    head_dim: {kind: const, value: 64, description: "Head dimension."}
+    local_q: {kind: const, value: 1024, description: "The rank's 16 query heads x 64."}
+    local_kv_heads: {kind: const, value: 2, description: "The rank's KV heads (16 / TP8)."}
+    local_kv: {kind: const, value: 128, description: "The rank's 2 KV heads x 64."}
+    experts: {kind: const, value: 256, description: "Routed experts."}
+    top_k: {kind: const, value: 8, description: "Experts a token."}
+    moe_hidden: {kind: const, value: 4096, description: "Pooled width (expert input / output)."}
+    tp_gate_up_rows: {kind: const, value: 1024, description: "The rank's gate | up rows of an expert (2 x 4096 / 8)."}
+    tp_down_rows: {kind: const, value: 512, description: "The rank's down rows of an expert (4096 / 8)."}
+    packed_k: {kind: const, value: 2048, description: "E2M1 bytes of a 4096-wide expert row."}
+    scale_k: {kind: const, value: 128, description: "E8M0 scales of a 4096-wide expert row."}
+    qkvg_rows: {kind: const, value: 2304, description: "The rank's rows of the next layer's q | k | v | gate projection."}
+    swa_slots: {kind: const, value: 32768, description: "Slots of the next (sliding) layer's cache pool."}
+    guard_words: {kind: const, value: 8, description: "The launch's epoch / guard-word buffer (int32)."}
+  derived_axes:
+    rows: requests * q_len
+    max_blocks: ceil_div(ctx, page) + page
+    kv_pages: requests * ceil_div(ctx, page) + 1
+    kv_slots: kv_pages * page
+  inputs:
+    q: {kind: tensor, shape: [rows, local_q], dtype: bfloat16, distribution: {kind: generator},
+        description: "This layer's normed, scaled query rows of the rank's heads; overwritten with the next layer's."}
+    g: {kind: tensor, shape: [rows, local_q], dtype: bfloat16, distribution: {kind: generator},
+        description: "This layer's o_gate rows of the rank's heads; overwritten with the next layer's."}
+    k_cache: {kind: tensor, shape: [kv_slots, local_kv_heads, head_dim], dtype: float8_e4m3fn, role: state,
+              distribution: {kind: generator}}
+    v_cache: {kind: tensor, shape: [kv_slots, local_kv_heads, head_dim], dtype: float8_e4m3fn, role: state,
+              distribution: {kind: generator}}
+    page_table: {kind: tensor, shape: [requests, max_blocks], dtype: int32, role: index, distribution: {kind: generator}}
+    seq_lens: {kind: tensor, shape: [requests], dtype: int32, role: metadata, distribution: {kind: generator},
+               description: "Keys before the step's 8 rows."}
+    res: {kind: tensor, shape: [rows, hidden], dtype: float32, distribution: {kind: generator},
+          description: "The residual stream, updated in place (attention boundary, then FFN boundary)."}
+    w_o: {kind: tensor, shape: [hidden, local_q], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    alpha: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    beta: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    pre_w: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    router_hi: {kind: tensor, shape: [experts, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    router_lo: {kind: tensor, shape: [experts, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    expert_bias: {kind: tensor, shape: [experts], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_pool: {kind: tensor, shape: [moe_hidden, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    xn_w: {kind: tensor, shape: [moe_hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    w13: {kind: tensor, shape: [experts, tp_gate_up_rows, packed_k], dtype: uint8, role: weight,
+          distribution: {kind: generator}}
+    s13: {kind: tensor, shape: [experts, tp_gate_up_rows, scale_k], dtype: uint8, role: weight,
+          distribution: {kind: generator}}
+    w2: {kind: tensor, shape: [experts, tp_down_rows, packed_k], dtype: uint8, role: weight,
+         distribution: {kind: generator}}
+    s2: {kind: tensor, shape: [experts, tp_down_rows, scale_k], dtype: uint8, role: weight,
+         distribution: {kind: generator}}
+    pen_w: {kind: tensor, shape: [moe_hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    pfw: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    alpha2: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    beta2: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    npw: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    w_unpool: {kind: tensor, shape: [hidden, moe_hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    w_qkvg1: {kind: tensor, shape: [qkvg_rows, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    cos_sin: {kind: tensor, shape: [ctx, head_dim], dtype: float32, role: weight, distribution: {kind: generator}}
+    positions: {kind: tensor, shape: [rows], dtype: int64, role: index, distribution: {kind: generator}}
+    slots: {kind: tensor, shape: [rows], dtype: int64, role: index, distribution: {kind: generator}}
+    swa_map: {kind: tensor, shape: [kv_slots], dtype: int64, role: index, distribution: {kind: generator}}
+    k_cache1: {kind: tensor, shape: [swa_slots, local_kv_heads, head_dim], dtype: float8_e4m3fn, role: state,
+               distribution: {kind: generator}, description: "The next layer's sliding-pool K cache."}
+    v_cache1: {kind: tensor, shape: [swa_slots, local_kv_heads, head_dim], dtype: float8_e4m3fn, role: state,
+               distribution: {kind: generator}, description: "The next layer's sliding-pool V cache."}
+    guard: {kind: tensor, shape: [guard_words], dtype: int32, role: state, distribution: {kind: generator},
+            description: "The baseline's epoch / wait-deadline / error words (read-only unless a wait fails)."}
+  outputs:
+    o: {shape: [rows, local_q], dtype: bfloat16, description: "Attention output of the rank's heads."}
+    ids: {shape: [rows, top_k], dtype: int32, description: "Routed experts, best first."}
+    scores: {shape: [rows, top_k], dtype: float32, description: "Routing weights of ids."}
+    xin: {shape: [rows, moe_hidden], dtype: bfloat16, description: "Expert input (pooled, pre-expert normed)."}
+    attn_out: {shape: [rows, hidden], dtype: bfloat16, description: "The next layer's attention input."}
+    k_out: {shape: [rows, local_kv], dtype: bfloat16, description: "The next layer's k rows of the rank's KV heads."}
+    v_out: {shape: [rows, local_kv], dtype: bfloat16, description: "The next layer's v rows of the rank's KV heads."}
+  mutable: [q, g, res, k_cache1, v_cache1]
+  generator: {file: inputs.py, symbol: make_inputs}
+distributed:
+  world_size: 8
+  # the baseline's peer regions and guard flags (post_attn.sym_bytes(8) + guard.FLAG_BYTES = 47,186,176 bytes,
+  # rounded up to 47,190,016) followed by its four local mailbox scratch regions (90,320,896 bytes): all of
+  # it is zeroed before every call (baseline/kernel.py)
+  symmetric_bytes: 137510912
+  shard: {file: inputs.py, symbol: shard_inputs}
+  expected: {file: inputs.py, symbol: rank_expected}
+  ranks_agree: [ids, scores, xin, attn_out, res]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path: >-
+      sgl_amd_mono/muse_spark/gfx950/{layer,build_k2,build_k3,compat,config,layout,device}.py,
+      sgl_amd_mono/muse_spark/gfx950/stages/{attention,post_attn,ffn,pre_attn,mxfp4}.py,
+      sgl_amd_mono/common/{guard,epoch,ops,plan,sync,mx}.py; buffer_ops.py from ROCm/aiter
+      652f2d4b768239aefd515c929e84817681ff598d aiter/ops/flydsl/kernels/buffer_ops.py (the copy of
+      tasks/flydsl/attention/paged_mqa_logits); dpp_utils.py from ROCm/FlyDSL
+      dd8373349e33638c8d158a9ea009b7b28598984a kernels/common/dpp_utils.py (the copy of
+      tasks/flydsl/attention/paged_attention_decode)
+    license: Apache-2.0 AND MIT (common/ files adapted from ROCm/ATOM, see baseline/LICENSE)
+    modifications: >-
+      Flattened into one package (imports made relative; the stages/ and common/ modules sit beside
+      layer.py). FlyDSL 0.3.2: compat.py keeps the upstream bridge's llvm-dialect global pointer, load, store
+      and launch stop as plain functions, which ops.global_ptr / ops.global_load, epoch.gstore and
+      guard.stop_launch call directly instead of compat.install() patching flydsl.expr and the common modules
+      at import. msgspec (not a candidate dependency) is replaced by frozen dataclasses for the build keys and
+      a slotted class for sync.Addr; plan.kernel_sources (which reads module files to digest the transitive
+      sources) is dropped, as FlyDSL hashes the helpers of a kernel's own directory and this package is
+      flat; epoch.kernel_symbol uses a local stand-in for aiter's kernels_common.kernel_signature; the
+      environment reads (SGLANG_AMD_MONO_MUSE_WIDTHS, SGLANG_AMD_MONO_ATTN_RING_WAIT0,
+      SGLANG_AMD_MONO_FAULT_INJECT) are replaced by their defaults; the unused ops.KernArgs is removed. One
+      stage-code change, a correctness fix: run_kattn's chunk loop skipped the causal mask on every chunk of
+      a task but its last (and the request's first), but when a request's keys % 256 is 1 to 6 the step's later
+      rows' keys reach into the chunk before the last, and when both chunks fall in one partition (any
+      multi-chunk partition, i.e. contexts above ~16K) the step's earlier rows attended up to 6 future
+      draft keys; a chunk now skips the mask only if it also ends at or before the step's first row's last
+      key ((cc + 1) * 256 <= ctx + 1, one scalar compare a chunk). kernel.py is new: run() makes MuseMonoRunner.layer_kernel's build with the
+      runner's default flags (TP experts, xq_pre, ug_dyn, the row-sharded pooler at S <= 16, no deferred K1,
+      bf16 pooler / unpooler) and passes MuseMonoRunner.launch's merged-path arguments, with the framework's
+      symmetric buffer as the peer buffer and, past the peer regions, as the four local scratch regions (the
+      runner's ordinary device buffers; here uncached memory that the framework zeroes before every call, in
+      place of the runner's per-step epoch advance).
+compare:
+  o: {bound: baseline_relative}
+  ids: {bound: exact}
+  scores: {bound: tolerance, rtol: 1.0e-2, atol: 1.0e-4}
+  xin: {bound: baseline_relative, max_violation_fraction: 1.0e-3}
+  # downstream of the experts' MXFP4 activation quantization: see README.md (Comparison)
+  attn_out: {bound: sqnr, min_db: 27}
+  k_out: {bound: sqnr, min_db: 27}
+  v_out: {bound: sqnr, min_db: 27}
+  q: {bound: sqnr, min_db: 27}
+  g: {bound: sqnr, min_db: 27}
+  res: {bound: sqnr, min_db: 27}
+  k_cache1: {bound: baseline_relative}
+  v_cache1: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
