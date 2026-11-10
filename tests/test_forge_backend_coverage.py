@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from agents.forge.adapter import (INITIALIZATION_LANGUAGES, TARGET_LANGUAGES, ForgeRunError,
-                                  choose_workflow, require_supported_backend)
+                                  choose_workflow, engine_backend, require_editable_assembly,
+                                  require_supported_backend)
 from agents.forge.task_context import require_kernel_task
 from src.task_contract import TARGET_LANGUAGES as RUN_TARGET_LANGUAGES
 from src.task_spec import TaskSpec, load_task_spec
@@ -23,23 +24,35 @@ def _context(spec):
                            baseline_language=contract["baseline_language"])
 
 
-# KernelForge has no assembly backend; an asm run fails closed (below).
-FORGE_UNSUPPORTED = {"asm"}
-
-
 def test_forge_targets_are_the_run_target_languages():
-    assert set(TARGET_LANGUAGES) == set(RUN_TARGET_LANGUAGES) - FORGE_UNSUPPORTED
-    assert set(INITIALIZATION_LANGUAGES) == set(TARGET_LANGUAGES) - {"flydsl"}
+    assert set(TARGET_LANGUAGES) == set(RUN_TARGET_LANGUAGES)
+    # FlyDSL is initialized by the rewrite PORT; KernelForge has no assembly initializer.
+    assert set(INITIALIZATION_LANGUAGES) == set(TARGET_LANGUAGES) - {"flydsl", "asm"}
 
 
-def test_an_asm_run_fails_closed_in_forge():
+def test_asm_runs_on_kernelforges_assembly_backend():
+    assert engine_backend("asm") == "assembly"
+    assert engine_backend("triton") == "triton"
     path = ROOT / "tasks/triton/elementwise/add/fp32_1d/task.yaml"
     spec = load_task_spec(path, task_id="triton/elementwise/add/fp32_1d", target_language="asm")
-    with pytest.raises(ForgeRunError, match="has no asm backend"):
-        require_supported_backend(spec, CAPABILITIES)
+    assert require_supported_backend(spec, CAPABILITIES) == "asm"
+    with pytest.raises(ForgeRunError, match="has no assembly backend for asm"):
+        require_supported_backend(spec, {"backends": ["triton"]})
 
 
-@pytest.mark.parametrize("language", sorted(set(RUN_TARGET_LANGUAGES) - FORGE_UNSUPPORTED))
+def test_forge_optimizes_only_asm_candidates_with_assembly_sources(tmp_path):
+    solution = tmp_path / "solution"
+    solution.mkdir()
+    (solution / "kernel.py").write_text("import aka_asm\n")
+    (solution / "vendored.co").write_bytes(b"\x7fELF")
+    context = SimpleNamespace(workspace=tmp_path)
+    with pytest.raises(ForgeRunError, match="optimizes existing .s sources"):
+        require_editable_assembly(context)
+    (solution / "kernel.s").write_text("s_endpgm\n")
+    require_editable_assembly(context)
+
+
+@pytest.mark.parametrize("language", RUN_TARGET_LANGUAGES)
 def test_every_v3_task_has_an_explicit_forge_route(language):
     paths = sorted((ROOT / "tasks").rglob("task.yaml"))
     assert paths, "No schema-v3 tasks found"
@@ -52,7 +65,10 @@ def test_every_v3_task_has_an_explicit_forge_route(language):
         assert choose_workflow(context, target_verified=True) == "optimize"
         if spec.candidate.initial_state == "implemented":
             continue
-        if language != "flydsl":
+        if language == "asm":
+            with pytest.raises(ForgeRunError, match="cannot initialize an asm candidate"):
+                choose_workflow(context, target_verified=False, capabilities=CAPABILITIES)
+        elif language != "flydsl":
             assert choose_workflow(context, target_verified=False, capabilities=CAPABILITIES) == "initialize"
         elif context.baseline_language in CAPABILITIES["rewrite_source_languages"]:
             assert choose_workflow(context, target_verified=False, capabilities=CAPABILITIES) == "rewrite"
