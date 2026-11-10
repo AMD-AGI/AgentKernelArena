@@ -104,6 +104,10 @@ def _load(contract: Contract, role: str, *, audit: bool):
     implementation = contract.implementation(role)
     sources = implementation_sources(implementation)
     evidence = {"language": implementation.language, "files": sorted(sources)}
+    if implementation.language == "asm":
+        from . import asm
+
+        built = len(asm.BUILD_EVIDENCE["files"])
     if audit:
         entry = Path(implementation.entry_file).relative_to(implementation.root).as_posix()
         if implementation.language == "hip":
@@ -117,6 +121,9 @@ def _load(contract: Contract, role: str, *, audit: bool):
     call = policy.audited_call(loaded.call, language=implementation.language, package=loaded.package,
                                role=role, enforce=audit)
     evidence["package"] = loaded.package
+    if implementation.language == "asm":
+        evidence["asm_build"] = {**{k: v for k, v in asm.BUILD_EVIDENCE.items() if k != "files"},
+                                 "files": asm.BUILD_EVIDENCE["files"][built:]}
     if loaded.hip_op:
         evidence["hip_op"] = loaded.hip_op
     return call, evidence

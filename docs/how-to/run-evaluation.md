@@ -59,7 +59,7 @@ use Cursor Agent. Install and authenticate Cursor before selecting it:
 agent:
   template: cursor          # one agent template per run
 
-target_language: triton     # triton | gluon | hip | flydsl
+target_language: triton     # triton | gluon | hip | flydsl | asm
 
 tasks:
   - triton/normalization/rms_norm/bf16_h8192
@@ -95,7 +95,7 @@ Quote an entry that starts with `*`: unquoted, YAML reads it as an alias.
 ### Select the target language
 
 Kernel tasks name no implementation language. Set `target_language` to
-`triton`, `gluon`, `hip` or `flydsl` for the run, or per task with a
+`triton`, `gluon`, `hip`, `flydsl` or `asm` for the run, or per task with a
 `{path, target_language}` entry, which overrides the run value. A kernel task
 with no language fails task discovery, and a task selected twice with different
 languages is rejected. The `qa_auditor` agent and the `tasks/e2e/` serving tasks
@@ -103,8 +103,18 @@ need no `target_language`.
 
 When the language equals the baseline's, the candidate starts as a copy of the
 baseline; otherwise it starts as an unimplemented template with the baseline as
-a read-only reference. All four languages are verified on MI355X (`gfx950`);
-other architectures are implemented but unverified. A language whose toolchain
+a read-only reference. All five languages are verified on MI355X (`gfx950`);
+other architectures are implemented but unverified.
+
+`asm` candidates write AMDGPU assembly. `solution/kernel.py` defines `run` and
+launches kernels from `.s` files beside it through the evaluator's `aka_asm`
+helper: `aka_asm.load("kernel.s", "symbol")` assembles a file with the image's
+ROCm `clang` and `ld.lld` for the current GPU and loads it, and
+`kernel.launch(grid=, block=, args=)` launches it on the current stream, where
+CUDA-graph timing captures it. The audit allows only `.py` and `.s` files and
+rejects `.incbin`/`.include`; the runtime rules are those of the other Python
+languages, and every call must launch an assembly kernel. The agent-facing guide
+is `src/prompts/cheatsheet/asm_cheatsheet.md`. A language whose toolchain
 is missing fails the run before it starts. See the
 [task contract](add-task.md#run-configuration).
 

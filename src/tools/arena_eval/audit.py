@@ -24,6 +24,7 @@ LANGUAGE_IMPORTS = {
     "triton": ("triton", "triton.language"),
     "gluon": ("triton", "triton.language", "triton.experimental", "triton.experimental.gluon"),
     "flydsl": ("flydsl",),
+    "asm": ("aka_asm",),
 }
 # Triton subpackages that are other kernel languages or library kernels.
 TRITON_EXCLUDED = ("triton.experimental", "triton.tools", "triton.ops", "triton.testing",
@@ -110,6 +111,8 @@ def _allowed_import(module: str, language: str) -> bool:
         return True
     if language == "flydsl" and top == "flydsl":
         return True
+    if language == "asm" and module == "aka_asm":
+        return True
     return False
 
 
@@ -118,8 +121,20 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
     if language not in LANGUAGE_IMPORTS:
         raise PolicyError(f"{language} is not a Python target language")
     python = {path: text for path, text in sources.items() if path.endswith(".py")}
-    if set(sources) - set(python):
-        others = sorted(set(sources) - set(python))
+    others = sorted(set(sources) - set(python))
+    if language == "asm":
+        from .asm import SOURCE_SUFFIX, AsmError, check_source
+
+        for path in others:
+            if not path.endswith(SOURCE_SUFFIX):
+                raise PolicyError(f"An asm candidate contains only .py and {SOURCE_SUFFIX} sources; found {path}")
+            try:
+                check_source(path, sources[path])
+            except AsmError as exc:
+                raise PolicyError(str(exc)) from exc
+        if not others:
+            raise PolicyError("An asm candidate has no .s kernel source")
+    elif others:
         raise PolicyError(f"A {language} candidate contains only .py sources; found {others[:4]}")
     local = {path.removesuffix(".py") for path in python}
     backend_seen = False
@@ -137,7 +152,7 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                 for alias in node.names:
                     if not _allowed_import(alias.name, language):
                         raise PolicyError(f"{where}: import {alias.name} is not allowed for {language}")
-                    backend_seen |= alias.name.split(".")[0] in ("triton", "flydsl")
+                    backend_seen |= alias.name.split(".")[0] in ("triton", "flydsl", "aka_asm")
             elif isinstance(node, ast.ImportFrom):
                 if node.level:
                     if node.level != 1:
@@ -156,7 +171,7 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                     full = f"{module}.{alias.name}"
                     if module == "torch" and any(full.startswith(p) for p in TORCH_FORBIDDEN_PREFIXES):
                         raise PolicyError(f"{where}: {full} is not a candidate implementation dependency")
-                backend_seen |= module.split(".")[0] in ("triton", "flydsl")
+                backend_seen |= module.split(".")[0] in ("triton", "flydsl", "aka_asm")
             elif isinstance(node, ast.Attribute):
                 if node.attr in FORBIDDEN_ATTRIBUTES:
                     raise PolicyError(f"{where}: attribute {node.attr} is not allowed in candidate code")
@@ -366,6 +381,14 @@ class LaunchObserver:
                 yield self
             finally:
                 sys.setprofile(previous)
+        elif self.language == "asm":
+            from . import asm
+
+            start = len(asm.LAUNCHES)
+            try:
+                yield self
+            finally:
+                self.launches.extend(asm.LAUNCHES[start:])
         else:
             yield self
 
@@ -373,7 +396,7 @@ class LaunchObserver:
         if self.foreign:
             raise RuntimeError(f"{role} launched kernels that are not its own {self.language} kernels: "
                                f"{sorted(set(self.foreign))[:4]}")
-        if self.language in ("triton", "gluon", "flydsl") and not self.launches:
+        if self.language in ("triton", "gluon", "flydsl", "asm") and not self.launches:
             raise RuntimeError(f"No {self.language} kernel launch was observed in the {role} call")
 
 

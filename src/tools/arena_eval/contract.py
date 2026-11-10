@@ -20,8 +20,8 @@ WORKSPACE = EVAL_ROOT.parent
 CONTRACT_PATH = EVAL_ROOT / "contract.json"
 CONTRACT_VERSION = 1
 
-PYTHON_LANGUAGES = frozenset({"triton", "gluon", "flydsl", "tilelang", "python"})
-TARGET_LANGUAGES = frozenset({"triton", "gluon", "hip", "flydsl"})
+PYTHON_LANGUAGES = frozenset({"triton", "gluon", "flydsl", "tilelang", "python", "asm"})
+TARGET_LANGUAGES = frozenset({"triton", "gluon", "hip", "flydsl", "asm"})
 
 
 class ContractError(ValueError):

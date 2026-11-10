@@ -25,9 +25,9 @@ from .task_spec import TaskConfigError, relative_path, required_gpu_arches
 
 TASK_FILE = "task.yaml"
 SCHEMA_VERSION = 3
-TARGET_LANGUAGES = ("triton", "gluon", "hip", "flydsl")
+TARGET_LANGUAGES = ("triton", "gluon", "hip", "flydsl", "asm")
 BASELINE_LANGUAGES = TARGET_LANGUAGES + ("tilelang",)
-PYTHON_LANGUAGES = ("triton", "gluon", "flydsl", "tilelang")
+PYTHON_LANGUAGES = ("triton", "gluon", "flydsl", "tilelang", "asm")
 CATEGORIES = (
     "activation", "attention", "convolution", "elementwise", "embedding", "gemm", "kv_cache",
     "moe", "normalization", "positional", "quantization", "reduction", "sampling", "sorting",
@@ -687,7 +687,10 @@ def _template(contract: TaskContract, language: str) -> str:
     imports = {"triton": "import torch\nimport triton\nimport triton.language as tl\n",
                "gluon": "import torch\nimport triton\nfrom triton.experimental import gluon\n"
                         "from triton.experimental.gluon import language as gl\n",
-               "flydsl": "import torch\nimport flydsl\n"}[language]
+               "flydsl": "import torch\nimport flydsl\n",
+               "asm": "import torch\nimport aka_asm\n\n"
+                      "# Load kernels from .s files in this directory at import time, for example\n"
+                      "# KERNEL = aka_asm.load(\"kernel.s\", \"my_kernel\"), and launch them from run().\n"}[language]
     return (f'"""{language} implementation of {operator}. {TEMPLATE_MARKER}\n\n'
             "Replace this template with kernels written in the target language and launch them\n"
             "from run(). See _aka_eval/CANDIDATE.md for the interface and rules.\n"
@@ -717,6 +720,18 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         lines += [f"`{SOLUTION_DIR}/kernel.py` defines:", "", "```python", _signature(contract), "```", "",
                   "Other `.py` files in the directory form one flat package; import them relatively "
                   "(`from .helpers import ...`)."]
+        if language == "asm":
+            lines += ["", "Kernels are AMDGPU assembly in `.s` files in the same directory, assembled for "
+                      "the current GPU with ROCm `clang` and `ld.lld`. `run` may only allocate, take views "
+                      "and launch them through `aka_asm`:", "", "```python", "import aka_asm",
+                      'KERNEL = aka_asm.load("kernel.s", "my_kernel")          # at import time',
+                      "KERNEL.launch(grid=(gx, gy, gz), block=(256, 1, 1),     # in run()",
+                      "              args=[a, out, aka_asm.u32(n)], shared_bytes=0)", "```", "",
+                      "`grid` counts workgroups. Arguments are packed in order at their natural alignment: "
+                      "tensors as 64-bit device pointers, scalars only through `aka_asm.u32`, `i32`, `u64`, "
+                      "`i64` and `f32`. Each kernel's `.amdgpu_metadata` must declare the same arguments. "
+                      "`.incbin` and `.include` are not allowed; each kernel's whole source is in its `.s` "
+                      "file."]
     lines += ["", "## Interface", "", "| Name | Kind | Shape | Dtype |", "|---|---|---|---|"]
     for name, declaration in interface["inputs"].items():
         kind = "mutable input" if name in interface.get("mutable", []) else declaration["kind"] + " input"

@@ -340,7 +340,7 @@ python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
 ```yaml
 agent: {template: claude_code}
 target_gpu_model: MI355X
-target_language: triton            # triton | gluon | hip | flydsl
+target_language: triton            # triton | gluon | hip | flydsl | asm
 tasks:
   - triton/normalization                          # Triton-baseline normalization tasks
   - "*/attention"                                 # attention tasks of every baseline language

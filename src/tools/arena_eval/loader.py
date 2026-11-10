@@ -115,6 +115,11 @@ def _load_python(contract: Contract, implementation: Implementation) -> Loaded:
         if path.endswith(".py") and ("/" in path or path == "__init__.py"):
             raise BuildError(f"{implementation.role} Python sources are one flat package; "
                              f"{path} is not allowed")
+    if implementation.language == "asm":
+        # Assembly packages launch their .s kernels through the evaluator's helper.
+        from . import asm
+
+        sys.modules[asm.ALIAS] = asm
     package = f"{PACKAGE_PREFIX}{implementation.role}_{_content_hash(sources)}"
     root = (WORKSPACE / implementation.root).resolve(strict=True)
     if package not in sys.modules:
@@ -245,6 +250,10 @@ def language_available(language: str) -> tuple[bool, str]:
                "tilelang": "tilelang"}
     if language == "hip":
         return (True, "") if hip_available() else (False, "hipcc/ninja/ROCm PyTorch not found")
+    if language == "asm":
+        from .asm import available
+
+        return available()
     if language not in modules:
         return False, f"unknown language {language!r}"
     try:

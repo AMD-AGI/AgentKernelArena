@@ -6,7 +6,7 @@ agent:
   template: cursor
 
 # The run selects the implementation language; tasks name none.
-target_language: triton   # triton | gluon | hip | flydsl
+target_language: triton   # triton | gluon | hip | flydsl | asm
 
 # Task selectors are path prefixes under tasks/, filed as
 # <baseline_language>/<category>/<operator>/<scenario> (docs/how-to/run-evaluation.md):

@@ -23,12 +23,23 @@ def _context(spec):
                            baseline_language=contract["baseline_language"])
 
 
+# KernelForge has no assembly backend; an asm run fails closed (below).
+FORGE_UNSUPPORTED = {"asm"}
+
+
 def test_forge_targets_are_the_run_target_languages():
-    assert set(TARGET_LANGUAGES) == set(RUN_TARGET_LANGUAGES)
+    assert set(TARGET_LANGUAGES) == set(RUN_TARGET_LANGUAGES) - FORGE_UNSUPPORTED
     assert set(INITIALIZATION_LANGUAGES) == set(TARGET_LANGUAGES) - {"flydsl"}
 
 
-@pytest.mark.parametrize("language", RUN_TARGET_LANGUAGES)
+def test_an_asm_run_fails_closed_in_forge():
+    path = ROOT / "tasks/triton/elementwise/add/fp32_1d/task.yaml"
+    spec = load_task_spec(path, task_id="triton/elementwise/add/fp32_1d", target_language="asm")
+    with pytest.raises(ForgeRunError, match="has no asm backend"):
+        require_supported_backend(spec, CAPABILITIES)
+
+
+@pytest.mark.parametrize("language", sorted(set(RUN_TARGET_LANGUAGES) - FORGE_UNSUPPORTED))
 def test_every_v3_task_has_an_explicit_forge_route(language):
     paths = sorted((ROOT / "tasks").rglob("task.yaml"))
     assert paths, "No schema-v3 tasks found"
