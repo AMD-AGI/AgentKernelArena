@@ -1,0 +1,136 @@
+schema_version: 3
+description: >-
+  MXFP4 lightning-indexer logits of the DeepSeek-V4.1-Flash index sources for one DSpark verify step: R
+  requests x 6 rows (row t is draft position t % 6 of request t // 6), 32 indexer heads of 128 dims. Queries
+  and keys are packed e2m1 (fp4) vectors with one E8M0 (power-of-two) scale per 32 elements, so dequant(x)[i] =
+  e2m1(x[i]) * 2 ** (scale[i // 32] - 127). Row t sees bounds[t] key columns of its request, column c being row
+  c % 64 of page page_table[t, c // 64] of SGLang's FP4 index plane: logits[t, c] = sum_h weights[t, h] *
+  relu(dot(dequant(q[t, h, :]), dequant(key(c)))) for c < bounds[t], and -inf for every column c >= bounds[t].
+  Every row sees more than 512 columns (a row that sees at most 512 is not scored in production: SGLang's
+  top-512 takes all its columns). The six rows of a request share its page table, so one key load serves them
+  all; owners[t] (the first row of t's request) groups them. The accumulation and the output are float32.
+operator:
+  name: paged_mqa_logits
+  category: attention
+interface:
+  axes:
+    num_requests: {kind: var, min: 1, max: 8, description: "DSpark requests of the verify step (8 x 6 rows: the kernel's 48)."}
+    ctx: {kind: var, min: 518, max: 524288, description: "Key columns the longest request's last row sees (its index source's compressed rows); the step's other requests see between max(518, ctx / 2) and ctx, so every row sees more than 512."}
+    rows_per_request: {kind: const, value: 6, description: "DSpark verify rows a request (the scorer's WALK_ROWS: one key load scores all six)."}
+    num_heads: {kind: const, value: 32, description: Indexer query heads (index_n_heads).}
+    head_size: {kind: const, value: 128, description: Indexer head dimension (index_head_dim).}
+    page_size: {kind: const, value: 64, description: Rows of an index-plane page.}
+  derived_axes:
+    rows: num_requests * rows_per_request
+    head_packed: head_size // 2
+    head_groups: head_size // 32
+    pages_per_request: ceil_div(ctx, page_size)
+    num_pages: num_requests * pages_per_request
+  inputs:
+    q_fp4:
+      kind: tensor
+      shape: [rows, num_heads, head_packed]
+      dtype: uint8
+      distribution: {kind: generator}
+      description: "Packed e2m1 queries: head h, byte i holds elements 2 i (low nibble) and 2 i + 1."
+    q_scale:
+      kind: tensor
+      shape: [rows, 1, head_groups, 16, 4]
+      dtype: uint8
+      distribution: {kind: generator}
+      description: "E8M0 query scales: head h, group c at [t, 0, c, h % 16, h // 16] (the last axis padded to 4 with 127)."
+    weights:
+      kind: tensor
+      shape: [rows, num_heads]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.5, std: 0.5}
+      description: The rows' head weights (SGLang's weights_proj output with the head weight scale folded in).
+    kv_cache:
+      kind: tensor
+      shape: [num_pages, 1, head_groups, page_size, 16]
+      dtype: uint8
+      distribution: {kind: generator}
+      description: "SGLang's FP4 index-plane payload: group c (16 bytes) of row r of a page at [page, 0, c, r, :]."
+    kv_scale:
+      kind: tensor
+      shape: [num_pages, 1, head_groups, page_size]
+      dtype: uint8
+      distribution: {kind: generator}
+      description: "E8M0 key scales: group c of row r = 16 j + l of a page at [page, 0, c, 4 l + j]."
+    page_table:
+      kind: tensor
+      shape: [rows, pages_per_request]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: "Index-plane page of each 64 columns of row t (equal for a request's rows; 0 past its pages)."
+    bounds:
+      kind: tensor
+      shape: [rows]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: "Key columns row t sees (its request's compressed length; one fewer for each earlier draft row)."
+    owners:
+      kind: tensor
+      shape: [rows]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: "The first row of row t's request (t // 6 * 6)."
+  outputs:
+    logits: {shape: [rows, ctx], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (SGLang AMD monokernel plugin), with the ROCm/aiter FlyDSL buffer_ops helper
+    revision: "52486703"
+    path:
+      - sgl_amd_mono/deepseek_v41/gfx950/indexer/k2i.py
+      - sgl_amd_mono/deepseek_v41/gfx950/indexer/score_fp4.py
+      - sgl_amd_mono/deepseek_v41/gfx950/indexer/index_plan.py
+      - sgl_amd_mono/deepseek_v41/gfx950/indexer/walk_plan.py (ported to FlyDSL)
+      - sgl_amd_mono/deepseek_v41/gfx950/indexer/runner.py (K2iRunner.walk_plan / score, as run())
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/mx.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py (the FlyDSL 0.3.2 bridge, as llvm-dialect helpers in ops.py)
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd)
+    license: >-
+      Apache-2.0 (sgl-amd-mono, SGLang contributors, with the K2i scorer and walk planner by way of
+      sgl-project/sglang#43984; aiter buffer_ops, FlyDSL Project Contributors); MIT (ROCm/ATOM, Copyright (C) 2026
+      Advanced Micro Devices, Inc.) for the scorer, index plan and device helpers adapted from ATOM. See
+      baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the baseline is vendored from 52486703.
+      K2i is the launch the plugin runs between K1 and K2 of each FULL index-source layer of DeepSeek-V4.1-Flash
+      (layers 2, 8, 14, 20, 24, 28, 32, 36) on every TP rank, followed by SGLang's top-512 kernel; this task is
+      one such launch with the step's walk plan, on synthetic data.
+    modifications: >-
+      score_fp4.py and k2i.py are vendored with package-relative imports, a constant build-key source tag
+      instead of plan.kernel_sources (which reads source files) and the kernel symbol formatted locally. FlyDSL
+      0.3.2 adaptation (the runtime lacks fx.memory_fence, fx.AtomicOrdering, fx.generic_load and
+      fx.Pointer.ir_type): ops.global_load / global_ptr and ops.memory_fence are written on llvm-dialect ops, as
+      muse_spark/gfx950/compat.py bridges them on 0.3.2, without patching flydsl; _lds_barrier fences through
+      ops.memory_fence (same workgroup release / acquire), and _stage_rows loads a row's 16-byte units with
+      ops.global_load instead of fx.ptr_load on an fx.inttoptr global pointer. The task scores FULL layers, so
+      run_scores4 keeps the walk-plan branch only (the REINDEX branch, its reindex argument and the row count it
+      alone used are removed), one build serves every row count, and the one-member LDS union is allocated as
+      its struct. index_plan.py keeps the constants and score_chunks (not the numpy host plan or the REINDEX
+      split); ops.py, mx.py and plan.py keep only what the scorer uses. walk_plan.py is new: a FlyDSL port of
+      the plugin's one-CTA Triton _walk_plan_kernel (a FlyDSL baseline may not launch Triton), one wave with a
+      row a lane, the width search as a bisection over the Triton kernel's range (same result: feasibility is
+      monotone); a CPU emulation of it equals the host fill_walk_plan on 2900 random steps. kernel.py is new:
+      K2iRunner.walk_plan then K2iRunner.score for one FULL layer (ishift 3: a page-table entry is 8 virtual
+      8-row pages), with a fresh plan buffer per call and the caller's [rows, ctx] logits. tail_fill.py is new:
+      a FlyDSL kernel writing -inf into each row's columns at or past its bound, the elements the task defines
+      and K2i leaves unwritten (SGLang's top-k never reads them), so every element is written once.
+      buffer_ops.py takes the CDNA descriptor flags without reading the environment.
+compare:
+  logits: {bound: baseline_relative, max_violation_fraction: 1.0e-3}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

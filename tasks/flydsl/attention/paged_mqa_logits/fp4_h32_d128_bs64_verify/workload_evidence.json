@@ -1,0 +1,42 @@
+{
+ "source": "AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 (traces.jsonl sha256 29b6a19e..., 98,827 requests incl. subagents) + DeepSeek-V4.1-Flash serving on sgl-amd-mono 52486703 (DSpark verify: 6 rows a request, at most 8 requests = the monokernel's 48 rows; index plane of 64-row FP4 pages; context columns clipped at 524288 = 2^19, the kernel's tested bound)",
+ "method": "corpus_statistics",
+ "axes": {
+  "num_requests": {
+   "observed_min": 1,
+   "observed_max": 8,
+   "perf_min": 1,
+   "perf_max": 8,
+   "frequency": {
+    "1": 0.2255,
+    "2": 0.2175,
+    "3": 0.0298,
+    "4": 0.1846,
+    "5": 0.0475,
+    "6": 0.0243,
+    "7": 0.0124,
+    "8": 0.2584
+   }
+  },
+  "ctx": {
+   "observed_min": 1024,
+   "observed_max": 524288,
+   "perf_min": 65536,
+   "perf_max": 524288,
+   "frequency": {
+    "1024": 0.0003,
+    "2048": 0.0003,
+    "4096": 0.0433,
+    "8192": 0.0041,
+    "16384": 0.0037,
+    "32768": 0.0096,
+    "65536": 0.0741,
+    "131072": 0.1697,
+    "262144": 0.2587,
+    "524288": 0.4361
+   }
+  }
+ },
+ "fixed_dimensions": "every non-var axis is fixed by DeepSeek-V4.1-Flash and its sgl-amd-mono K2i launch: index_n_heads 32, index_head_dim 128, MXFP4 queries and keys with E8M0 per 32, SGLang's index plane of 64-row pages, 6 DSpark verify rows a request; the indexer is replicated on every TP rank (TP2 / TP4), so no axis depends on TP",
+ "notes": "num_requests: the AgentX per-session in-flight distribution (k=1 90.0%, 2 5.4%, 3 2.1%, 4 0.85%, ...) convolved over C = 1, 2, 4, 8 concurrent sessions, each concurrency point weighted equally, keeping the steps that fit the kernel's 8 requests (R = sum of the sessions' in-flight requests). ctx: the decode-step-weighted context share by power-of-two bucket (weight = tokens decoded, context = in + out/2), keyed by the bucket's upper edge; the share above 512K (16.7%) is clipped onto 524288. ctx counts the indexed columns of the ratio-1 index sources (layers 20-36; the ratio-2 sources 2, 8, 14 see half). The perf range is the part where the estimated baseline (bytes moved at 4.5 TB/s plus 5 us for its three launches: 68 bytes a key per request, 4 bytes a row per column for the logits and the -inf tail) is >= 10 us with margin: ctx >= 64K at 8 requests and ctx >= 448K at one request; the >= 10 us shapes span about 17x in requests x ctx (one request needs ~245K columns, 8 requests ~40K), so the 100x rule is not reachable. Estimates only: no timing measurement and no live capture yet."
+}
