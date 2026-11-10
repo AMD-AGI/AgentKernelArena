@@ -1,0 +1,99 @@
+schema_version: 3
+description: >-
+  The Muse Spark K2 launch for a DFlash2 verify step of `rows` rows (rows / 8 requests of 8 draft tokens),
+  on one rank of a TP8 / EP8 group (8 GPUs; the tensor-parallel all-reduce runs inside the kernel over peer
+  memory). Per rank: the per-head output norm-gate of its 16 query heads, their o_proj K shard, all-reduced
+  over the ranks; the attention boundary (weightless post norm, the gated fp32 residual stream updated in
+  place, the pre-FFN norm); the sigmoid router's top-8 of 256 experts with normalized scores; the pooler
+  (8192 -> 4096) and the pre-expert norm. Every rank writes the whole routing, expert input and stream. See
+  README.md for the exact semantics, layouts and shards.
+operator: {name: muse_spark_attention_post, category: other}
+interface:
+  axes:
+    rows: {kind: var, min: 8, max: 64, multiple_of: 8,
+           description: "Verify rows of the step: requests x 8 draft tokens (the compiled widths 8, 16, 32, 64)."}
+    hidden: {kind: const, value: 8192, description: "Model width."}
+    local_q: {kind: const, value: 1024, description: "The rank's 16 query heads x 64."}
+    experts: {kind: const, value: 256, description: "Routed experts."}
+    top_k: {kind: const, value: 8, description: "Experts a token."}
+    moe_hidden: {kind: const, value: 4096, description: "Pooled width (the experts' input)."}
+    guard_words: {kind: const, value: 8, description: "The launch's epoch / guard-word buffer (int32)."}
+  inputs:
+    o: {kind: tensor, shape: [rows, local_q], dtype: bfloat16, distribution: {kind: generator},
+        description: "The attention output of the rank's 16 query heads."}
+    g: {kind: tensor, shape: [rows, local_q], dtype: bfloat16, distribution: {kind: generator},
+        description: "K1's o_gate pre-activation of the rank's heads."}
+    res: {kind: tensor, shape: [rows, hidden], dtype: float32, distribution: {kind: generator},
+          description: "The residual stream, updated in place by the attention boundary."}
+    w_o: {kind: tensor, shape: [hidden, local_q], dtype: bfloat16, role: weight, distribution: {kind: generator},
+          description: "o_proj, the rank's input columns (out x in)."}
+    alpha: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    beta: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    pre_w: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    router_hi: {kind: tensor, shape: [experts, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    router_lo: {kind: tensor, shape: [experts, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    expert_bias: {kind: tensor, shape: [experts], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_pool: {kind: tensor, shape: [moe_hidden, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator},
+             description: "The pooler (pre_expert_proj), whole on every rank."}
+    xn_w: {kind: tensor, shape: [moe_hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    guard: {kind: tensor, shape: [guard_words], dtype: int32, role: state, distribution: {kind: generator},
+            description: "The baseline's epoch / wait-deadline / error words (read-only unless a wait fails)."}
+  outputs:
+    ids: {shape: [rows, top_k], dtype: int32, description: "Routed experts, best first."}
+    scores: {shape: [rows, top_k], dtype: float32, description: "Routing weights of ids."}
+    xin: {shape: [rows, moe_hidden], dtype: bfloat16, description: "The experts' input (pooled, pre-expert normed)."}
+  mutable: [res]
+  generator: {file: inputs.py, symbol: make_inputs}
+distributed:
+  world_size: 8
+  # the baseline's peer regions and guard flags (post_attn.sym_bytes(8) + guard.FLAG_BYTES = 47,186,176 bytes,
+  # rounded up to 47,190,016) followed by its local K2 mailbox scratch (15,134,720 bytes): all of it is
+  # zeroed before every call (baseline/kernel.py)
+  symmetric_bytes: 62324736
+  shard: {file: inputs.py, symbol: shard_inputs}
+  expected: {file: inputs.py, symbol: rank_expected}
+  ranks_agree: [ids, scores, xin, res]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path: >-
+      sgl_amd_mono/muse_spark/gfx950/{build_k2,compat,config,layout,device}.py,
+      sgl_amd_mono/muse_spark/gfx950/stages/{post_attn,ffn,mxfp4}.py,
+      sgl_amd_mono/common/{guard,epoch,ops,plan,sync,mx}.py; buffer_ops.py from ROCm/aiter
+      652f2d4b768239aefd515c929e84817681ff598d aiter/ops/flydsl/kernels/buffer_ops.py (the copy of
+      tasks/flydsl/attention/paged_mqa_logits); dpp_utils.py from ROCm/FlyDSL
+      dd8373349e33638c8d158a9ea009b7b28598984a kernels/common/dpp_utils.py (the copy of
+      tasks/flydsl/attention/paged_attention_decode)
+    license: Apache-2.0 AND MIT (common/ files adapted from ROCm/ATOM, see baseline/LICENSE)
+    modifications: >-
+      Flattened into one package (imports made relative; the stages/ and common/ modules sit beside
+      build_k2.py; post_attn.py imports ffn.py and mxfp4.py as upstream). FlyDSL 0.3.2: compat.py keeps the
+      upstream bridge's llvm-dialect global pointer, load, store and launch stop as plain functions, which
+      ops.global_ptr / ops.global_load, epoch.gstore and guard.stop_launch call directly instead of
+      compat.install() patching flydsl.expr and the common modules at import. msgspec (not a candidate
+      dependency) is replaced by frozen dataclasses for the build keys and a slotted class for sync.Addr;
+      plan.kernel_sources (which reads module files to digest the transitive sources) is dropped, as FlyDSL
+      hashes the helpers of a kernel's own directory and this package is flat; epoch.kernel_symbol uses a
+      local stand-in for aiter's kernels_common.kernel_signature; the environment reads
+      (SGLANG_AMD_MONO_MUSE_WIDTHS, SGLANG_AMD_MONO_FAULT_INJECT) are replaced by their defaults; the
+      unused ops.KernArgs is removed. No kernel or stage code changes. These vendored modules are the
+      ones of tasks/flydsl/other/muse_spark_layer/tp8. kernel.py is new: run() makes
+      MuseMonoRunner.k2_kernel's build with the runner's default flags (bf16 pooler, row-sharded at
+      S <= 16 only, no deferred K1, no pre-quantized expert input) and passes MuseMonoRunner.launch's
+      non-merged K2 arguments, with the framework's symmetric buffer as the peer buffer and, past the
+      peer regions, as the local scratch (the runner's ordinary device buffer; here uncached memory that
+      the framework zeroes before every call, in place of the runner's per-step epoch advance).
+compare:
+  ids: {bound: exact}
+  # 8 elements a row: see README.md (Comparison)
+  scores: {bound: tolerance, rtol: 1.0e-3, atol: 1.0e-5}
+  xin: {bound: baseline_relative, max_violation_fraction: 1.0e-3}
+  # fp32 stream holding a bf16-rounded branch: see README.md (Comparison)
+  res: {bound: sqnr, min_db: 55}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
