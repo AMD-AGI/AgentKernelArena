@@ -1,0 +1,109 @@
+schema_version: 3
+description: >-
+  The front of one Kimi-K3 Kimi Delta Attention (KDA) layer for a speculative verify step of one
+  request (rows tokens) on one tensor-parallel rank of 8 (12 of the 96 heads, head dim 128): the
+  attention-side AttnRes seam (a softmax over the nblocks bank rows and the prefix of
+  q . RMSNorm(source), eps 1e-5, then input_layernorm), the fused bf16 in_proj (6288 rows: q, k, v,
+  output gate g 1536 each, forget-gate input f_a 128, beta 12, 4 pad), the 4-tap causal short conv +
+  SiLU over the committed window, the q / k l2 norms (q scaled by 128^-1/2), the lower-bound forget
+  gate decay = exp(-5 sigmoid(exp(A_log) (f_b f_a + dt_bias))), beta = sigmoid(b), the gated delta
+  rule S = S diag(decay); S += ((v - S k) beta) k^T; o = S q on the request's fp32 [12, 128, 128]
+  state (the state after every token written out), and the gated RMSNorm
+  o rmsnorm(o) o_norm sigmoid(g). reference.py states the exact semantics.
+operator: {name: kimi_k3_kda_layer_front, category: state_space}
+interface:
+  axes:
+    rows: {kind: var, min: 1, max: 8, description: "Verify tokens of the request (one request a launch; compiled widths 1..8; 8 with DSpark block 7)."}
+    nblocks: {kind: var, min: 1, max: 8, description: "AttnRes bank rows the layer reads (layer // 12 + 1 on Kimi-K3's KDA layers)."}
+    hidden: {kind: const, value: 7168}
+    heads: {kind: const, value: 12, description: KDA heads a rank (96 at TP8).}
+    head_dim: {kind: const, value: 128}
+    proj_rows: {kind: const, value: 6288, description: "in_proj rows a rank: q | k | v | g (1536 each) | f_a 128 | beta 12 | 4 pad."}
+    conv_dim: {kind: const, value: 4608, description: Short-conv channels (q | k | v).}
+    gate_dim: {kind: const, value: 1536, description: "heads x head_dim: the core output and the f_b rows."}
+  derived_axes:
+    state_len: rows + 3
+  inputs:
+    prefix: {kind: tensor, shape: [rows, hidden], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0},
+             description: The AttnRes prefix (the current block's partial sum) of each token; read only.}
+    blocks: {kind: tensor, shape: [rows, nblocks, hidden], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0},
+             description: "The AttnRes bank: the completed blocks' representations of each token."}
+    attn_res_norm: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+                    description: self_attention_res_norm weight.}
+    attn_res_query: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+                     description: self_attention_res_proj weight (the seam's pseudo-query).}
+    input_norm: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+                 description: input_layernorm weight.}
+    w_in: {kind: tensor, shape: [proj_rows, hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+           description: "The merged in_proj (SGLang's _qkvgbfa_layer), row-major."}
+    w_fb: {kind: tensor, shape: [gate_dim, head_dim], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+           description: "f_b_proj weight: 128 gate rows a head from the 128-wide f_a."}
+    conv_weight: {kind: tensor, shape: [conv_dim, 4], dtype: float32, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.3},
+                  description: qkv_conv1d weight (the 4 taps of each channel; tap 3 multiplies the current token).}
+    a_log: {kind: tensor, shape: [heads], dtype: float32, role: weight, distribution: {kind: uniform, low: 0.0, high: 2.0}}
+    dt_bias: {kind: tensor, shape: [gate_dim], dtype: float32, role: weight, distribution: {kind: normal, mean: -2.0, std: 0.5}}
+    o_norm: {kind: tensor, shape: [head_dim], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+             description: The output RMSNorm weight (shared by the heads).}
+    ssm_state: {kind: tensor, shape: [heads, head_dim, head_dim], dtype: float32, role: state, distribution: {kind: normal, mean: 0.0, std: 0.1},
+                description: "The request's committed recurrent state S[head, v, k]; read only."}
+    state_rows: {kind: tensor, shape: [rows], dtype: int32, role: index, distribution: {kind: permutation},
+                 description: "Row of ssm_states that receives the state after each token (SGLang's verify-scratch rows; ascending in production, any permutation here)."}
+    conv_state: {kind: tensor, shape: [state_len, conv_dim], dtype: bfloat16, role: state, distribution: {kind: normal, mean: 0.0, std: 1.5},
+                 description: "K1's conv buffer of the request, token-major: rows 0..2 the committed window (the last three conv inputs), rows 3.. the previous step's inputs. Mutable: the launch shifts it by one token and writes the step's conv inputs (the q | k | v projections) to rows 3.."}
+  outputs:
+    core_out: {shape: [rows, gate_dim], dtype: bfloat16, description: "The gated core output (o_proj's input), [t, head * 128 + v]."}
+    ssm_states: {shape: [rows, heads, head_dim, head_dim], dtype: float32,
+                 description: "The recurrent state after each token, at row state_rows[t] (SGLang's intermediate_ssm rows)."}
+  mutable: [conv_state]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (SGLang AMD monokernel plugin), with ROCm/aiter FlyDSL helpers
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/kimi_k3/gfx950/attention/kda.py
+      - sgl_amd_mono/kimi_k3/gfx950/k1.py
+      - sgl_amd_mono/kimi_k3/gfx950/stages/seam.py
+      - sgl_amd_mono/kimi_k3/gfx950/stages/dims.py
+      - sgl_amd_mono/kimi_k3/gfx950/tag.py
+      - sgl_amd_mono/kimi_k3/gfx950/stamps.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/common/sync.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd)
+      - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter dbd8bf5bd)
+    license: >-
+      Apache-2.0 (sgl-amd-mono, SGLang contributors; aiter buffer_ops / dpp_utils, FlyDSL Project
+      Contributors); MIT (ROCm/ATOM, Copyright (C) 2026 Advanced Micro Devices, Inc.) for the
+      portions of common/ops.py, common/plan.py, common/sync.py and stamps.py adapted from ATOM. See
+      baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the baseline is vendored from
+      52486703. The kernel is the K1 launch SGLang runs once per KDA layer (69 of Kimi-K3's 93 layers)
+      in every narrow verify step, built as k1.build builds it for the snapshot spec state; this task
+      is one such launch on synthetic weights. ops.py, buffer_ops.py and dpp_utils.py are the files
+      the QA-passed tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1 baseline bundles
+      (ops.py there carries the FlyDSL 0.3.2 bridge of muse_spark/gfx950/compat.py on llvm-dialect
+      ops).
+    modifications: >-
+      kda.py, seam.py, tag.py: imports are package-relative, otherwise unchanged. stamps.py: clock
+      from ops (the timeline build, whose stamp_flush needs FlyDSL >= 0.3.4, is never built). plan.py
+      keeps the execution constants, first_task, pair_layout and key_tuple (dataclasses only), with a
+      constant source tag for kernel_sources (all helpers sit in the kernel's directory). sync.py
+      keeps the scratch-space tagged Mailbox and publish, Addr as a dataclass, and _spin's unguarded
+      loop only (these launches open no guard scope, so upstream's guarded branches are never
+      traced). ops.py: global_ptr / global_load on llvm-dialect ops for FlyDSL 0.3.2, KernArgs
+      dropped. kernel.py is new: k1.launch's host side for one layer (the build key k1.build makes,
+      the conv buffer as a zero-slot-stride view, num_acc 1, the committed state as a one-slot pool),
+      with a zeroed scratch and epoch per call instead of the runner's persistent scratch and
+      host-bumped epoch; the conv buffer is token-major (the kernel reads its strides).
+compare:
+  core_out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.001}
+  ssm_states: {bound: baseline_relative, k: 4, max_violation_fraction: 0.001}
+  conv_state: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
