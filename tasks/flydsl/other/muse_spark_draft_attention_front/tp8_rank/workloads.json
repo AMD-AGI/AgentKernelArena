@@ -1,0 +1,20 @@
+{
+  "description": "DFlash2 draft steps of Muse Spark at TP8: rows = requests x 8 draft-block rows, launched at the compiled widths 8, 16, 32 and 64 (a step pads to the next width; 8 and 16 are the default served widths, 32 and 64 are served with SGLANG_AMD_MONO_MUSE_WIDTHS=8,16,32,64). first = true is the draft's first layer (one of its five D-pre launches a step). The weight stream (W_kp 33.6 MB + W_qkv 21.0 MB a rank) does not depend on the rows, so the >= 10 us production range spans 8x: the task uses the production-range span exemption (workload_evidence.json). Row frequencies from the AgentX per-session in-flight distribution (semianalysisai/cc-traces-weka-062126 rev 23f152f6); derived from corpus statistics, not yet confirmed by a live capture. Monokernels serve decode / verify only; prefill shapes do not apply.",
+  "performance_span": {"policy": "production_range", "evidence": "workload_evidence.json"},
+  "cases": [
+    {"id": "s24", "axes": {"rows": 24}, "checks": ["correctness"],
+     "source": "boundary: non-power-of-two rows (three requests; production pads them to the 32-row width)"},
+    {"id": "s16_first", "axes": {"rows": 16}, "scalars": {"first": true}, "checks": ["correctness"],
+     "source": "the draft's first layer (residual = x) at the 16-row width"},
+    {"id": "s64_first", "axes": {"rows": 64}, "scalars": {"first": true}, "checks": ["correctness"],
+     "source": "the draft's first layer at the 64-row width"},
+    {"id": "s8", "axes": {"rows": 8}, "checks": ["correctness", "performance"],
+     "source": "minimum: one request's 8-row draft block (C1; 26.7% of served draft steps), layers 1-4 (residual added)"},
+    {"id": "s8_first", "axes": {"rows": 8}, "scalars": {"first": true}, "checks": ["correctness", "performance"],
+     "source": "one request's 8-row draft block, the draft's first layer (one of five D-pre launches a step)"},
+    {"id": "s16", "axes": {"rows": 16}, "checks": ["correctness", "performance"],
+     "source": "two requests (C2, the second default served width; 25.6% of served draft steps)"},
+    {"id": "s64", "axes": {"rows": 64}, "checks": ["correctness", "performance"],
+     "source": "the largest compiled width: five to eight requests (23.3% of served draft steps)"}
+  ]
+}

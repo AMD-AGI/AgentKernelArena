@@ -1,0 +1,118 @@
+schema_version: 3
+description: >-
+  The attention front of one Muse Spark DFlash2 draft layer on one rank of its TP8 group, for `rows` rows in
+  blocks of 8 (one request's draft block each): the input norm's fused add r = x (first layer) or res + x,
+  rounded to bfloat16 (res_out); h = RMSNorm(r) w_in (eps 1e-5); the attention conv's kernel projection
+  coef = h W_kp^T (2048 coefficients a row: side x tap x 512 groups of 16 channels, float32); conv0 within each
+  8-row block, hc[t] = (base[0, 0] + coef[t, 0, 0, g]) h[t] + [t % 8 >= 1] (base[0, 1] + coef[t, 0, 1, g])
+  h[t - 1]; the rank's q | k | v projection qkv = hc W_qkv^T (8 query heads, 1 KV head, head size 128);
+  per-head RMSNorm of q and k with their weights and neox RoPE from the float32 cos | sin table at the
+  rows' positions; q out in bfloat16, k and v written as float8_e4m3fn into the layer's KV cache at the
+  rows' slots (the other slots unchanged).
+operator: {name: muse_spark_draft_attention_front, category: other}
+interface:
+  axes:
+    rows: {kind: var, min: 8, max: 64, multiple_of: 8,
+           description: "Rows of the draft step: requests x 8 (the compiled widths are 8, 16, 32 and 64)."}
+    hidden: {kind: const, value: 8192, description: Draft model width.}
+    coef_rows: {kind: const, value: 2048, description: "Conv coefficients a row: 2 sides x 2 taps x 512 groups."}
+    qkv_rows: {kind: const, value: 1280, description: "The rank's q (8 heads x 128) | k (128) | v (128) rows."}
+    q_width: {kind: const, value: 1024, description: The rank's 8 query heads x 128.}
+    head_dim: {kind: const, value: 128, description: Head size.}
+    rope_positions: {kind: const, value: 65536, description: Rows of the RoPE table.}
+    cache_slots: {kind: const, value: 4096, description: Slots of the layer's KV cache.}
+  inputs:
+    x: {kind: tensor, shape: [rows, hidden], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 0.5},
+        description: "The layer's input hidden states."}
+    res: {kind: tensor, shape: [rows, hidden], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0},
+          description: "The residual stream (not read when first)."}
+    first: {kind: scalar, dtype: bool, default: false,
+            description: "The draft's first layer: the residual is x itself."}
+    w_in: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+           description: input_layernorm.weight}
+    w_kp: {kind: tensor, shape: [coef_rows, hidden], dtype: bfloat16, role: weight,
+           distribution: {kind: normal, mean: 0.0, std: 0.01}, description: "attention_conv.kernel_projection.weight, rows (side, tap, group)."}
+    base: {kind: tensor, shape: [2, 2, hidden], dtype: bfloat16, role: weight,
+           distribution: {kind: normal, mean: 1.0, std: 0.05}, description: "attention_conv.base_kernel [side, tap, channel]."}
+    w_qkv: {kind: tensor, shape: [qkv_rows, hidden], dtype: bfloat16, role: weight,
+            distribution: {kind: normal, mean: 0.0, std: 0.02}, description: "self_attn.qkv_proj.weight, the rank's rows."}
+    q_norm: {kind: tensor, shape: [head_dim], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1}}
+    k_norm: {kind: tensor, shape: [head_dim], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1}}
+    cos_sin: {kind: tensor, shape: [rope_positions, head_dim], dtype: float32, role: weight, distribution: {kind: generator},
+              description: "neox rotary cache: cos (columns 0..63) | sin (64..127) of each position."}
+    positions: {kind: tensor, shape: [rows], dtype: int64, role: index, distribution: {kind: generator},
+                description: "Position of each row (consecutive within a draft block)."}
+    slots: {kind: tensor, shape: [rows], dtype: int64, role: index, distribution: {kind: generator},
+            description: "KV cache slot of each row (SGLang's out_cache_loc), distinct."}
+    k_cache: {kind: tensor, shape: [cache_slots, 1, head_dim], dtype: float8_e4m3fn, role: state,
+              distribution: {kind: generator}, description: "The layer's K cache (this rank's KV head)."}
+    v_cache: {kind: tensor, shape: [cache_slots, 1, head_dim], dtype: float8_e4m3fn, role: state,
+              distribution: {kind: generator}, description: "The layer's V cache."}
+  outputs:
+    res_out: {shape: [rows, hidden], dtype: bfloat16, description: "The residual after the fused add (x when first)."}
+    q: {shape: [rows, q_width], dtype: bfloat16, description: "Normed, rotated query heads."}
+    coef: {shape: [rows, coef_rows], dtype: float32, description: "Both sides' conv coefficients (D-post reads side 1)."}
+  mutable: [k_cache, v_cache]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (SGLang AMD monokernel plugin), with ROCm/aiter FlyDSL helpers
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/muse_spark/gfx950/draft_attn_half.py (D-pre)
+      - sgl_amd_mono/muse_spark/gfx950/draft_mlp.py (shared shapes, GEMV and coefficient / conv0 stages)
+      - sgl_amd_mono/muse_spark/gfx950/config.py
+      - sgl_amd_mono/muse_spark/gfx950/layout.py
+      - sgl_amd_mono/muse_spark/gfx950/device.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py
+      - sgl_amd_mono/muse_spark/draft.py (attn_kernels, launch_attn)
+      - sgl_amd_mono/common/guard.py
+      - sgl_amd_mono/common/epoch.py
+      - sgl_amd_mono/common/mx.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/common/sync.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd)
+      - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter dbd8bf5bd)
+    license: >-
+      Apache-2.0 (sgl-amd-mono, SGLang contributors; aiter buffer_ops / dpp_utils, FlyDSL Project
+      Contributors); MIT (ROCm/ATOM, Copyright (C) 2026 Advanced Micro Devices, Inc.) for the portions of
+      common/ops.py, plan.py, sync.py and mx.py adapted from ATOM. See baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the baseline is vendored from
+      52486703. D-pre is the first of the four launches of each DFlash2 draft layer's attention half
+      (D-pre, D-attn, D-post, then D-MLP) that muse_spark/draft.py runs for the draft model
+      (RadixArk/Muse-Spark-Open-DFlash2: 5 layers, hidden 8192) at TP8; it exchanges nothing with the
+      other ranks. The common helper files are those of tasks/flydsl/other/muse_spark_layer/tp8 (same
+      revision, same modifications) and buffer_ops.py / dpp_utils.py those of
+      tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1.
+    modifications: >-
+      One flat package with package-relative imports. draft_attn_half.py keeps only D-pre (dp_scratch_layout,
+      dp_lds, its stages, DPreBuild, _common, build_dpre) and draft_mlp.py only the shapes, GEMV helpers and
+      the coefficient / conv0 stages D-pre imports, unchanged; DPreBuild is a frozen dataclass instead of a
+      msgspec.Struct and the transitive source digest plan.kernel_sources is replaced by a constant tag
+      (FlyDSL hashes the helpers of a kernel's own directory). FlyDSL 0.3.2: compat.py keeps the upstream
+      bridge's llvm-dialect global pointer, load, store and launch stop as plain functions, which
+      ops.global_ptr / global_load, epoch.gstore and guard.stop_launch call directly, instead of
+      compat.install() patching flydsl.expr and the common modules at import. Environment reads are
+      replaced by their defaults; msgspec is replaced by a slotted class for sync.Addr; epoch.kernel_symbol
+      uses a local stand-in for aiter's kernels_common.kernel_signature; unused helpers (ops.KernArgs,
+      plan's shard and source-digest helpers) are removed; buffer_ops.py takes the CDNA descriptor flags
+      without reading the environment. No kernel or stage code changes. kernel.py is new: run() builds
+      DPreBuild(rows) and passes draft.py launch_attn's D-pre arguments (int64 positions and slots); the
+      scratch and the epoch / guard words share one device buffer, created zeroed at the first call, and a
+      new one-thread FlyDSL kernel moves the epoch on after every launch, in place of the runner's per-step
+      epoch advance (epoch[0] += 1, a PyTorch op the candidate rules do not allow).
+compare:
+  res_out: {bound: baseline_relative}
+  # the bf16 chain's rounding points differ between correct implementations: see README.md (Comparison)
+  q: {bound: baseline_relative, k: 4, max_violation_fraction: 1.0e-3}
+  coef: {bound: baseline_relative}
+  k_cache: {bound: baseline_relative}
+  v_cache: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
