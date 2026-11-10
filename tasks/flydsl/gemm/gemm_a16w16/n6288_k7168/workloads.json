@@ -1,0 +1,15 @@
+{
+  "description": "Token rows m of the Kimi-K3.1 in_proj GEMM (N=6288, K=7168 a rank at TP8) in decode and DSpark verify steps: narrow steps of 1 to 8 rows and wide verify steps of R requests x 8 tokens, within the 16-, 128- and 384-row buckets of the layer launch. Every case reads the 90 MB weight. Derived from the serving configuration and the AgentX corpus workload guide; not yet confirmed by a live capture.",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness", "performance"], "source": "decode of one request (narrow step, served by Kimi-K3's narrow launch in production); 16-row bucket, padded"},
+    {"id": "m3", "axes": {"m": 3}, "checks": ["correctness"], "source": "narrow step with an odd row count; 16-row bucket, padded"},
+    {"id": "m8", "axes": {"m": 8}, "checks": ["correctness", "performance"], "source": "DSpark verify of one request, R=1 x L=8 (narrow step, the interactive single-request width); 16-row bucket, padded"},
+    {"id": "m16", "axes": {"m": 16}, "checks": ["correctness", "performance"], "source": "wide verify R=2 x L=8, the smallest wide bucket"},
+    {"id": "m96", "axes": {"m": 96}, "checks": ["correctness", "performance"], "source": "wide verify R=12 x L=8, padded into the 128-row bucket"},
+    {"id": "m100", "axes": {"m": 100}, "checks": ["correctness"], "source": "unaligned row count (not a multiple of 16) in the 128-row bucket"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness", "performance"], "source": "wide verify R=16 x L=8, the mid width"},
+    {"id": "m288", "axes": {"m": 288}, "checks": ["correctness", "performance"], "source": "wide verify R=36 x L=8, padded into the 384-row bucket"},
+    {"id": "m333", "axes": {"m": 333}, "checks": ["correctness"], "source": "unaligned row count ending inside the second 192-row tile of the 384-row bucket"},
+    {"id": "m384", "axes": {"m": 384}, "checks": ["correctness", "performance"], "source": "wide verify R=48 x L=8, the largest compiled width"}
+  ]
+}
