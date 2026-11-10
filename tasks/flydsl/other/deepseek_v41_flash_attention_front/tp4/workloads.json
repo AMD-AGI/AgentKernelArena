@@ -1,0 +1,112 @@
+{
+  "description": "DeepSeek-V4.1-Flash K1 decode steps on a TP4 group (DSV41MonoRunner widths 1, 2, 4 and 8: the AgentX concurrency points 1, 2, 4 and 8 sessions, one decode row per request in flight). K1's work is its weights (the replicated wqkv_a, the rank's wq_b and the mHC projections, about 21.7 MB a rank) plus a few rows: it does not depend on the context, so the performance cases vary rows over the production range 1..8 at 262,144, the upper bound of the AgentX decode-step bucket that holds the weighted median context (219,840), and use the production-range span exemption (workload_evidence.json). Derived from corpus statistics (semianalysisai/cc-traces-weka-062126, all 98,827 requests) and the TP4 serving configuration; not yet confirmed by a live capture. Short-context and boundary cases (partial windows and top-k lists in the key table) are correctness-only and reuse the four compiled widths.",
+  "performance_span": {
+    "policy": "production_range",
+    "evidence": "workload_evidence.json"
+  },
+  "cases": [
+    {
+      "id": "r1_ctx1",
+      "axes": {
+        "rows": 1,
+        "ctx": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "boundary: a first decode step with a one-token context: a one-slot window, no compressed row"
+    },
+    {
+      "id": "r2_ctx100",
+      "axes": {
+        "rows": 2,
+        "ctx": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "boundary: a partial window (50..100 slots) and 25..50 compressed rows, non-power-of-two context"
+    },
+    {
+      "id": "r4_ctx1000",
+      "axes": {
+        "rows": 4,
+        "ctx": 1000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "boundary: a full window and 250..500 compressed rows (kv_len < 640), context not a multiple of 16"
+    },
+    {
+      "id": "r8_ctx4096",
+      "axes": {
+        "rows": 8,
+        "ctx": 4096
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short context: AgentX decode-step bucket <= 4K (4.4 % of decode steps), 8 rows, every row's 640 keys"
+    },
+    {
+      "id": "r2_ctx1048576",
+      "axes": {
+        "rows": 2,
+        "ctx": 1048576
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "the served context cap (1M; AgentX max 989,824 + decoded tokens), positions at the RoPE table's end"
+    },
+    {
+      "id": "r1_ctx262144",
+      "axes": {
+        "rows": 1,
+        "ctx": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step bucket (131072, 262144] (25.9 % of decode steps; it holds the weighted median 219,840), concurrency 1 (26.7 % of the rows-axis weight)"
+    },
+    {
+      "id": "r2_ctx262144",
+      "axes": {
+        "rows": 2,
+        "ctx": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step bucket (131072, 262144] (25.9 % of decode steps; it holds the weighted median 219,840), concurrency 2 (25.6 %)"
+    },
+    {
+      "id": "r4_ctx262144",
+      "axes": {
+        "rows": 4,
+        "ctx": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step bucket (131072, 262144] (25.9 % of decode steps; it holds the weighted median 219,840), concurrency 4 (20.9 %)"
+    },
+    {
+      "id": "r8_ctx262144",
+      "axes": {
+        "rows": 8,
+        "ctx": 262144
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step bucket (131072, 262144] (25.9 % of decode steps; it holds the weighted median 219,840), concurrency 8 (13.7 %), the largest interactive width"
+    }
+  ]
+}
