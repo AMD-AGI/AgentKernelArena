@@ -1,0 +1,125 @@
+schema_version: 3
+description: >-
+  The projection front of one Kimi-K3.1 MLA (DSA) layer for a speculative verify step of rows
+  tokens on one tensor-parallel rank of 8 (12 of the 96 query heads): the attention-side AttnRes
+  seam (a softmax over the nblocks bank rows and the prefix of q . RMSNorm(source), eps 1e-5, then
+  input_layernorm, eps 1e-5) -> x; from x the bf16 projections fused_qkv_a (q latent 1536 | kv
+  latent 512 | rope key 64), the output gate g_proj (1536) and the DSA indexer's wk (128) and
+  weights_proj (32); the q / kv latent RMSNorms (eps 1e-6); from the normed q latent q_b (12 heads x
+  (128 nope | 64 rope)) and the indexer's wq_b (32 heads x 128); and the MLA absorb q_nope W_UK into
+  the 512-wide kv_lora space per head. Every output is bfloat16; reference.py states the exact
+  semantics.
+operator: {name: kimi_k31_mla_projection_front, category: other}
+interface:
+  axes:
+    rows: {kind: var, min: 1, max: 8, description: "Verify tokens of the step (compiled widths 1..8; 6 with DFLASH, 8 with DSpark block 7)."}
+    nblocks: {kind: var, min: 1, max: 8, description: "AttnRes bank rows the layer reads (layer // 12 + 1 on Kimi-K3.1's MLA layers)."}
+    hidden: {kind: const, value: 7168}
+    q_lora: {kind: const, value: 1536}
+    kv_lora: {kind: const, value: 512}
+    qkv_a_rows: {kind: const, value: 2112, description: "q latent 1536 | kv latent 512 | rope key 64."}
+    latent_dim: {kind: const, value: 576, description: kv latent 512 | rope key 64.}
+    gate_rows: {kind: const, value: 1536, description: "g_proj rows a rank (96 heads x 128 / 8)."}
+    index_k_rows: {kind: const, value: 128}
+    index_heads: {kind: const, value: 32}
+    index_q_rows: {kind: const, value: 4096, description: The indexer's wq_b rows (32 heads x 128).}
+    q_heads: {kind: const, value: 12, description: MLA query heads a rank (96 at TP8).}
+    q_b_rows: {kind: const, value: 2304, description: "12 heads x (128 nope | 64 rope)."}
+    nope_dim: {kind: const, value: 128}
+  inputs:
+    prefix: {kind: tensor, shape: [rows, hidden], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0},
+             description: The AttnRes prefix (the current block's partial sum) of each token; read only.}
+    blocks: {kind: tensor, shape: [rows, nblocks, hidden], dtype: bfloat16, distribution: {kind: normal, mean: 0.0, std: 1.0},
+             description: "The AttnRes bank: the completed blocks' representations of each token."}
+    attn_res_norm: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+                    description: self_attention_res_norm weight.}
+    attn_res_query: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+                     description: self_attention_res_proj weight (the seam's pseudo-query).}
+    input_norm: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+                 description: input_layernorm weight.}
+    w_qkv_a: {kind: tensor, shape: [qkv_a_rows, hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+              description: fused_qkv_a_proj_with_mqa weight.}
+    w_gate: {kind: tensor, shape: [gate_rows, hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+             description: g_proj weight (the attention output gate).}
+    w_index_k: {kind: tensor, shape: [index_k_rows, hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+                description: The DSA indexer's wk weight.}
+    w_index_weights: {kind: tensor, shape: [index_heads, hidden], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02},
+                      description: The DSA indexer's weights_proj weight.}
+    w_q_b: {kind: tensor, shape: [q_b_rows, q_lora], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.03},
+            description: q_b_proj weight (a rank's 12 heads).}
+    w_index_q: {kind: tensor, shape: [index_q_rows, q_lora], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.03},
+                description: The DSA indexer's wq_b weight.}
+    q_a_norm: {kind: tensor, shape: [q_lora], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+               description: q_a_layernorm weight.}
+    kv_a_norm: {kind: tensor, shape: [kv_lora], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 1.0, std: 0.1},
+                description: kv_a_layernorm weight.}
+    w_kc: {kind: tensor, shape: [q_heads, kv_lora, nope_dim], dtype: bfloat16, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.05},
+           description: "W_UK per head as the launch reads it: SGLang's w_kc [12, 128, 512] transposed once at load to [head, kv_lora column, nope]."}
+  outputs:
+    q: {shape: [rows, q_b_rows], dtype: bfloat16, description: "q_b of the normed q latent, [t, head * 192 + (nope 0..127 | rope 128..191)]."}
+    latent: {shape: [rows, latent_dim], dtype: bfloat16, description: The raw kv latent and rope key (fused_qkv_a rows 1536..2111).}
+    k_nope: {shape: [rows, kv_lora], dtype: bfloat16, description: The normed kv latent.}
+    gate: {shape: [rows, gate_rows], dtype: bfloat16, description: g_proj of x.}
+    index_q: {shape: [rows, index_q_rows], dtype: bfloat16, description: The indexer's wq_b of the normed q latent.}
+    index_k: {shape: [rows, index_k_rows], dtype: bfloat16, description: The indexer's wk of x.}
+    index_weights: {shape: [rows, index_heads], dtype: bfloat16, description: The indexer's weights_proj of x.}
+    q_nope_absorbed: {shape: [rows, q_heads, kv_lora], dtype: bfloat16, description: "q_nope W_UK per head (SGLang's q_nope_out)."}
+  mutable: []
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (SGLang AMD monokernel plugin), with ROCm/aiter FlyDSL helpers
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/kimi_k3/gfx950/attention/mla_pre.py
+      - sgl_amd_mono/kimi_k3/spec.py
+      - sgl_amd_mono/kimi_k3/gfx950/stages/gemv.py
+      - sgl_amd_mono/kimi_k3/gfx950/stages/seam.py
+      - sgl_amd_mono/kimi_k3/gfx950/stages/dims.py
+      - sgl_amd_mono/kimi_k3/gfx950/tag.py
+      - sgl_amd_mono/kimi_k3/gfx950/stamps.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/common/sync.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd)
+      - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter dbd8bf5bd)
+    license: >-
+      Apache-2.0 (sgl-amd-mono, SGLang contributors; aiter buffer_ops / dpp_utils, FlyDSL Project
+      Contributors); MIT (ROCm/ATOM, Copyright (C) 2026 Advanced Micro Devices, Inc.) for the
+      portions of common/ops.py, common/plan.py, common/sync.py and stamps.py adapted from ATOM. See
+      baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the baseline is vendored from
+      52486703. The kernel is the MLA projection front SGLang runs once per DSA layer of Kimi-K3.1
+      (23 of 93 layers) in every narrow verify step (kimi_k31/spec.py: one request, L = 6 or 8), built
+      as spec._mla_build builds it for a non-block-write layer with the absorb on; this task is one
+      such launch on synthetic weights. ops.py, buffer_ops.py and dpp_utils.py are the files the
+      QA-passed tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1 baseline bundles
+      (ops.py there carries the FlyDSL 0.3.2 bridge of muse_spark/gfx950/compat.py on llvm-dialect
+      ops).
+    modifications: >-
+      mla_pre.py, gemv.py, seam.py, tag.py: imports are package-relative, otherwise unchanged.
+      stamps.py: clock from ops (the timeline build, whose stamp_flush needs FlyDSL >= 0.3.4, is
+      never built). plan.py keeps the execution constants, first_task, pair_layout and key_tuple
+      (dataclasses only), with a constant source tag for kernel_sources (all helpers sit in the
+      kernel's directory). sync.py keeps the scratch-space tagged Mailbox and publish, Addr as a
+      dataclass, and _spin's unguarded loop only (these launches open no guard scope, so upstream's
+      guarded branches are never traced). ops.py: global_ptr / global_load on llvm-dialect ops for
+      FlyDSL 0.3.2, KernArgs dropped. kernel.py is new: spec._mla_core's host side for one layer (the
+      build key _mla_build makes, w_kc in its [heads x kv_lora, nope] view), with a zeroed scratch
+      and epoch per call instead of the runner's persistent scratch and host-bumped epoch.
+compare:
+  q: {bound: baseline_relative, max_violation_fraction: 0.001}
+  latent: {bound: baseline_relative}
+  k_nope: {bound: baseline_relative}
+  gate: {bound: baseline_relative}
+  index_q: {bound: baseline_relative, max_violation_fraction: 0.001}
+  index_k: {bound: baseline_relative}
+  index_weights: {bound: baseline_relative}
+  q_nope_absorbed: {bound: baseline_relative, max_violation_fraction: 0.001}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
