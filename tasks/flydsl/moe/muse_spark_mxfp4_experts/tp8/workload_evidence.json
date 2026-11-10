@@ -1,0 +1,20 @@
+{
+  "source": "AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 (traces.jsonl sha256 29b6a19e...; 393 traces, 98,827 requests): the per-session in-flight request distribution (main agent + subagents, wall-time weighted: k = 1 90.0%, 2 5.4%, 3 2.1%, 4 0.85%, 5 0.67%, 6 0.45%, 7 0.20%, 8 0.11%, >= 9 0.2%) + the Muse Spark TP8 / EP8 serving configuration of sgl-amd-mono 52486703 (speculative_algorithm DFLASH with 8 draft tokens a request; the 8-, 16-, 32- and 64-row widths of SGLANG_AMD_MONO_MUSE_WIDTHS=8,16,32,64 (the default serves 8 and 16; 32 and 64 are under test upstream))",
+  "method": "corpus_statistics",
+  "axes": {
+    "rows": {
+      "observed_min": 8,
+      "observed_max": 64,
+      "perf_min": 8,
+      "perf_max": 64,
+      "frequency": {
+        "8": 0.2255,
+        "16": 0.2175,
+        "32": 0.2144,
+        "64": 0.3426
+      }
+    }
+  },
+  "fixed_dimensions": "every non-var axis is fixed by Muse Spark at TP8 / EP8: hidden 8192, pooled width 4096, 256 experts (TP-expert slices of 512 intermediate and 512 output columns a rank), top-8, MXFP4 group 32",
+  "notes": "rows is the step's verify width: requests x 8 (DFlash2's 8 draft tokens). The monokernel spec routes a verify step to the kernels only at a compiled width; a smaller batch is assumed to run padded to the next width (spec.py checks only the live rows, out_cache_loc > 0, of a width: R = 3-4 -> 32 rows, 5-8 -> 64 rows) and a step of more than 8 requests to run SGLang's own path. Frequency: for each AgentX concurrency point C in {1, 2, 4, 8} (equal weight), R = the sum of C independent per-session in-flight counts, mapped to its padded width, renormalized over the steps the kernels serve. The kernel's work is independent of the context length (no context axis exists), so the 100x rule is unreachable: the production widths span 8x and every width is estimated >= 10 us (README.md). Not yet confirmed by a live capture."
+}
