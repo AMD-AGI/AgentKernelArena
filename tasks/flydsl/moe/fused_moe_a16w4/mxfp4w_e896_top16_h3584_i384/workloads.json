@@ -1,0 +1,24 @@
+{
+  "description": "Kimi-K3 routed MoE layer per rank (896 experts, top-16, hidden 3584, intermediate 384, TP8) at the decode and prefill token counts of the source session (the traced 7211-token prefill and the 62-token decode batch) and the other token buckets of AITER's Kimi-K3 tuned table. 1 and 8 to 16384 tokens are timed; batches of 2-3 tokens and unaligned batches are correctness-only.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness", "performance"], "source": "decode, batch 1 (tuned bucket 1, reduce epilogue; 28 us in AITER's Kimi-K3 tuning table)"},
+    {"id": "t2", "axes": {"n_tokens": 2}, "checks": ["correctness"], "source": "decode, tuned bucket 2"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch (bucket 4)"},
+    {"id": "t8", "axes": {"n_tokens": 8}, "checks": ["correctness", "performance"], "source": "decode, tuned bucket 8"},
+    {"id": "t16", "axes": {"n_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode, tuned bucket 16 (one-shot sorting bound)"},
+    {"id": "t17", "axes": {"n_tokens": 17}, "checks": ["correctness"], "source": "decode, first batch on the two-kernel sorting path"},
+    {"id": "t32", "axes": {"n_tokens": 32}, "checks": ["correctness"], "source": "decode, tuned bucket 32"},
+    {"id": "t62", "axes": {"n_tokens": 62}, "checks": ["correctness", "performance"], "source": "decode CUDA graph, steady-state concurrency 62 of the source session (bucket 64)"},
+    {"id": "t100", "axes": {"n_tokens": 100}, "checks": ["correctness"], "source": "decode, unaligned batch (bucket 128)"},
+    {"id": "t128", "axes": {"n_tokens": 128}, "checks": ["correctness", "performance"], "source": "decode, tuned bucket 128"},
+    {"id": "t256", "axes": {"n_tokens": 256}, "checks": ["correctness", "performance"], "source": "tuned bucket 256"},
+    {"id": "t512", "axes": {"n_tokens": 512}, "checks": ["correctness"], "source": "tuned bucket 512"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill chunk (bucket 1024)"},
+    {"id": "t1024", "axes": {"n_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk, tuned bucket 1024"},
+    {"id": "t2048", "axes": {"n_tokens": 2048}, "checks": ["correctness", "performance"], "source": "prefill chunk, tuned bucket 2048"},
+    {"id": "t3000", "axes": {"n_tokens": 3000}, "checks": ["correctness"], "source": "unaligned prefill chunk on the four-kernel sorting path (bucket 4096)"},
+    {"id": "t4096", "axes": {"n_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk, tuned bucket 4096"},
+    {"id": "t7211", "axes": {"n_tokens": 7211}, "checks": ["correctness", "performance"], "source": "prefill, traced shape of the source session (bucket 8192)"},
+    {"id": "t16384", "axes": {"n_tokens": 16384}, "checks": ["correctness", "performance"], "source": "prefill chunk, tuned bucket 16384"}
+  ]
+}

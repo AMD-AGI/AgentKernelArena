@@ -1,0 +1,116 @@
+schema_version: 3
+description: >-
+  Kimi-K3 routed mixture-of-experts block with bfloat16 tokens and MXFP4 expert weights. For each token t and each
+  of its 16 routed experts e = topk_ids[t, j]: g = x[t] @ W1[e]^T (2 * 384 outputs, gate = g[:384],
+  up = g[384:]); act = 4 * tanh(gate / 4) * sigmoid(gate) * 25 * tanh(up / 25) (SiTUv2); y = act @ W2[e]^T;
+  out[t] = sum_j topk_weights[t, j] * y, rounded to bfloat16. W1 [896, 768, 3584] and W2 [896, 3584, 384] are
+  MXFP4: e2m1 codes packed two per byte along the contracted axis (low nibble first) with one e8m0 scale byte
+  (2^(byte - 127)) per 32 contracted elements. Kernel-facing weights and scales are in AITER's a16w4 preshuffled
+  layout, gate rows before up rows (see inputs.py). The workloads keep |gate| and |up| below 7.
+operator: {name: fused_moe_a16w4, category: moe}
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 16384, description: Tokens in the batch.}
+    num_experts: {kind: const, value: 896, description: Routed experts on this rank.}
+    topk: {kind: const, value: 16, description: Experts per token.}
+    hidden_size: {kind: const, value: 3584, description: Routed-expert model width.}
+    inter_size: {kind: const, value: 384, description: Expert intermediate width per rank (3072 / TP8).}
+  derived_axes:
+    w2_scale_groups: (inter_size // 32 + 7) // 8 * 8
+  inputs:
+    hidden_states:
+      kind: tensor
+      shape: [n_tokens, hidden_size]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    w1:
+      kind: tensor
+      shape: [num_experts, 2 * inter_size, hidden_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w1_scale:
+      kind: tensor
+      shape: [num_experts, 2 * inter_size, hidden_size // 32]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w2:
+      kind: tensor
+      shape: [num_experts, hidden_size, inter_size // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    w2_scale:
+      kind: tensor
+      shape: [num_experts, hidden_size, w2_scale_groups]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+    topk_weights:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: float32
+      distribution: {kind: generator}
+    topk_ids:
+      kind: tensor
+      shape: [n_tokens, topk]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+  outputs:
+    out: {shape: [n_tokens, hidden_size], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 652f2d4b768239aefd515c929e84817681ff598d
+    path:
+      - aiter/ops/flydsl/kernels/mixed_moe_gemm_2stage_common.py
+      - aiter/ops/flydsl/kernels/moe_sorting_kernel.py
+      - aiter/ops/flydsl/kernels/moe_gemm_2stage.py
+      - aiter/ops/flydsl/kernels/mfma_preshuffle_pipeline.py
+      - aiter/ops/flydsl/kernels/mfma_epilogues.py
+      - aiter/ops/flydsl/kernels/layout_utils.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py
+      - aiter/ops/flydsl/kernels/vector.py
+      - aiter/ops/flydsl/kernels/kernels_common.py
+      - aiter/ops/flydsl/kernels/tensor_shim.py
+      - aiter/ops/flydsl/moe_kernels.py
+      - aiter/ops/flydsl/moe_sorting.py
+      - aiter/ops/flydsl/moe_common.py
+      - aiter/fused_moe.py
+      - aiter/configs/model_configs/kimik3_fp4_tuned_fmoe.csv
+    license: MIT (AITER dispatch and tuned table); Apache-2.0 (FlyDSL kernel builders)
+    notes: >-
+      The source task ran aiter.fused_moe with ActivationType.Situv2, QuantType.per_1x32, bf16 activations and
+      fp4x2 weights in GateMode.SEPARATED, which dispatches to these FlyDSL a16w4 kernels through the Kimi-K3 tuned
+      table. AITER sorts tokens with its HIP (Opus) kernel by default; the baseline uses AITER's FlyDSL sorting
+      kernel (the AITER_USE_FLYDSL_MOE_SORTING=1 backend), so that every launch is FlyDSL. The a16w4 stage-1
+      epilogue clamps gate <= 7 and up to [-7, 7] before SiTUv2, which the model's SiTUv2 does not; the input
+      distributions stay inside that range (README.md).
+    modifications: >-
+      Kernel builders kept as in AITER, restricted to the a16w4 stage-1/stage-2 builders, the sorting kernel and
+      the bf16 top-k reduction; imports made local; FLIR_* environment switches fixed at their defaults and the
+      FLYDSL_GPU_ARCH lookup of buffer_ops removed (environment reads); the vendored vector wrappers import the
+      two raw dialect ops they use instead of a star import; layout_utils parses layout strings without the re
+      module; dead branches that called into AITER (the non-a16w4 persistent stage 2, the fp8 reduction) or read a
+      host-side token count with .item() (the sorting kernel's CPU num_local_tokens, never passed) removed.
+      Host code is AITER's dispatch for this configuration: get_padded_M bucketing, the inter_dim 384 rows of
+      kimik3_fp4_tuned_fmoe.csv inlined as a table, the FlyDSL kernel-name registry, the a16w4 stage wrappers,
+      atomic or reduce stage 2 as the tuned name says, SiTUv2 beta 4 / linear beta 25 from the Kimi-K3 config.
+      JIT launchers are called directly instead of through tensor_shim._run_compiled, the sorting workspace is
+      allocated per call instead of cached per device, and stage 2 writes into the preallocated output.
+      FlyDSL 0.3.2 adaptation: in buffer_ops.buffer_load and buffer_store the cache-policy operand is passed as
+      the keyword-only aux integer attribute of rocdl.RawPtrBufferLoadOp / RawPtrBufferStoreOp (the runtime's op
+      constructors take no positional aux value); the cache-policy value is unchanged, no change to the kernel
+      algorithm.
+compare:
+  out: {bound: sqnr, min_db: 33}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
