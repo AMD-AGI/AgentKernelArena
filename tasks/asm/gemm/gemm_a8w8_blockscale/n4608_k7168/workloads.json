@@ -1,0 +1,336 @@
+{
+  "description": "Token counts through the DeepSeek-R1 dense-MLP gate_up projection at TP8 (N=4608, K=7168) over M<=864, the range where AITER's tuned gfx950 table selects these asm kernels. Every case reads the 33 MB weight, so even single-token decode is above the 10 us floor; performance cases are the power-of-two decode batches 1..512 and the axis maximum 864. Correctness cases add odd and padded-M batches, every tuned (kernel, splitK) class and the three CK-tuned buckets served by the asm heuristic.",
+  "cases": [
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd decode batch; padded to the M=16 row"
+    },
+    {
+      "id": "m5",
+      "axes": {
+        "m": 5
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd decode batch"
+    },
+    {
+      "id": "m15",
+      "axes": {
+        "m": 15
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch below 16"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16; padded to the M=32 row"
+    },
+    {
+      "id": "m24",
+      "axes": {
+        "m": 24
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch"
+    },
+    {
+      "id": "m48",
+      "axes": {
+        "m": 48
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch (48x128, splitK 6)"
+    },
+    {
+      "id": "m80",
+      "axes": {
+        "m": 80
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch (96x128, splitK 6)"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch; padded to the M=112 row (64x128, splitK 3)"
+    },
+    {
+      "id": "m129",
+      "axes": {
+        "m": 129
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "one row past a 128-row tile; padded to the M=144 row (80x128, splitK 3)"
+    },
+    {
+      "id": "m176",
+      "axes": {
+        "m": 176
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch (96x128, splitK 3)"
+    },
+    {
+      "id": "m180",
+      "axes": {
+        "m": 180
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned row is CK (padded M=192); asm heuristic 128x128, splitK 1"
+    },
+    {
+      "id": "m208",
+      "axes": {
+        "m": 208
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch (128x128, splitK 3)"
+    },
+    {
+      "id": "m220",
+      "axes": {
+        "m": 220
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned row is CK (padded M=224); asm heuristic 128x128, splitK 1"
+    },
+    {
+      "id": "m240",
+      "axes": {
+        "m": 240
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch (80x128, splitK 2)"
+    },
+    {
+      "id": "m300",
+      "axes": {
+        "m": 300
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned chunk; padded to the M=320 row (48x128, splitK 1)"
+    },
+    {
+      "id": "m352",
+      "axes": {
+        "m": 352
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "chunk (128x128, splitK 2)"
+    },
+    {
+      "id": "m400",
+      "axes": {
+        "m": 400
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "chunk; padded to the M=416 row"
+    },
+    {
+      "id": "m600",
+      "axes": {
+        "m": 600
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "chunk (96x128, splitK 1)"
+    },
+    {
+      "id": "m700",
+      "axes": {
+        "m": 700
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "chunk; padded to the M=704 row (128x128)"
+    },
+    {
+      "id": "m813",
+      "axes": {
+        "m": 813
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "tuned row is CK (padded M=832); asm heuristic 128x128, splitK 1"
+    },
+    {
+      "id": "m863",
+      "axes": {
+        "m": 863
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "axis maximum minus one"
+    },
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "axis minimum; single-token decode (tuned M=1: 32x128, splitK 7)"
+    },
+    {
+      "id": "m2",
+      "axes": {
+        "m": 2
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 2 (64x128, splitK 6)"
+    },
+    {
+      "id": "m4",
+      "axes": {
+        "m": 4
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 4 (48x128, splitK 7)"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 8 (64x128, splitK 6)"
+    },
+    {
+      "id": "m16",
+      "axes": {
+        "m": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 16 (64x128, splitK 7)"
+    },
+    {
+      "id": "m32",
+      "axes": {
+        "m": 32
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 32 (80x128, splitK 6)"
+    },
+    {
+      "id": "m64",
+      "axes": {
+        "m": 64
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 64 (80x128, splitK 6)"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "m": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 128 (64x128, splitK 3)"
+    },
+    {
+      "id": "m256",
+      "axes": {
+        "m": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 256 (96x128, splitK 2)"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk 512 (80x128, splitK 1)"
+    },
+    {
+      "id": "m864",
+      "axes": {
+        "m": 864
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "axis maximum; largest M whose tuned row is asm (128x128, splitK 1)"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "description": "Token counts of top-k softmax routing for Qwen3-235B-A22B (128 experts, top-8, renormalized, bfloat16 router logits). Decode batches, odd batches and the 4-token / 12-token kernel switch at 10000 tokens are correctness-only; the timed cases are the profiled 8k and 16k prefill chunks and larger batched-prefill token counts, all above the 10 us floor.",
+  "cases": [
+    {"id": "t1", "axes": {"n_tokens": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "t3", "axes": {"n_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch (partial 4-token workgroup)"},
+    {"id": "t4", "axes": {"n_tokens": 4}, "checks": ["correctness"], "source": "decode, batch 4 (profiled)"},
+    {"id": "t32", "axes": {"n_tokens": 32}, "checks": ["correctness"], "source": "decode, batch 32 (profiled)"},
+    {"id": "t1000", "axes": {"n_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
+    {"id": "t8046", "axes": {"n_tokens": 8046}, "checks": ["correctness"], "source": "prefill chunk (profiled)"},
+    {"id": "t9999", "axes": {"n_tokens": 9999}, "checks": ["correctness"], "source": "largest batch on the 4-token kernel"},
+    {"id": "t10000", "axes": {"n_tokens": 10000}, "checks": ["correctness"], "source": "smallest batch on the 12-token kernel"},
+    {"id": "t15331", "axes": {"n_tokens": 15331}, "checks": ["correctness"], "source": "prefill chunk (profiled, partial 12-token workgroup)"},
+    {"id": "t8192", "axes": {"n_tokens": 8192}, "checks": ["correctness", "performance"], "source": "prefill chunk (profiled)"},
+    {"id": "t16384", "axes": {"n_tokens": 16384}, "checks": ["correctness", "performance"], "source": "prefill chunk, chunked_prefill_size 16384 (profiled)"},
+    {"id": "t65536", "axes": {"n_tokens": 65536}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t262144", "axes": {"n_tokens": 262144}, "checks": ["correctness", "performance"], "source": "batched prefill"},
+    {"id": "t1048576", "axes": {"n_tokens": 1048576}, "checks": ["correctness", "performance"], "source": "batched prefill (upper end, keeps the 100x span)"}
+  ]
+}

@@ -1,0 +1,60 @@
+schema_version: 3
+description: >-
+  out = dequant(a) @ dequant(b)^T with float8_e4m3fn activations a [m, 7168] carrying one float32 scale per 1x128
+  group (a_scale [56, m], k-group-major as the per-token-group quantizer writes it) and float8_e4m3fn weights b
+  [4608, 7168] (AITER 16x16-preshuffled) carrying one float32 scale per 128x128 block (b_scale [36, 56]), accumulated
+  in float32 and rounded to bfloat16.
+operator: {name: gemm_a8w8_blockscale, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 864, description: Rows of the activation matrix (tokens in the batch).}
+    n: {kind: const, value: 4608, description: Output channels (DeepSeek-R1 dense MLP gate_up at TP8).}
+    k: {kind: const, value: 7168, description: Contracted dimension (hidden size).}
+  inputs:
+    a: {kind: tensor, shape: [m, k], dtype: float8_e4m3fn, distribution: {kind: generator}}
+    a_scale: {kind: tensor, shape: [k // 128, m], dtype: float32, distribution: {kind: generator}}
+    b: {kind: tensor, shape: [n, k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    b_scale: {kind: tensor, shape: [n // 128, k // 128], dtype: float32, role: weight,
+              distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: asm
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 4ad99832823dde2315b361cbd3b54b1c5c12acd5
+    path:
+      - csrc/py_itfs_cu/asm_a8w8_blockscale_bpreshuffle.cu
+      - csrc/py_itfs_cu/gemm_common.cu
+      - aiter/ops/gemm_op_a8w8.py
+      - aiter/ops/shuffle.py
+      - aiter/configs/model_configs/a8w8_blockscale_bpreshuffle_tuned_gemm_dsv3.csv
+      - hsa/gfx950/fp8gemm_blockscale/fp8gemm_bf16_blockscale.csv
+      - hsa/gfx950/fp8gemm_blockscale/fp8gemm_bf16_blockscale_BpreShuffle_{32,48,64,80,96,128}x128.co
+    license: MIT
+    modifications: >-
+      Code objects vendored byte for byte. The host side is translated to Python in baseline/kernel.py: the tuned
+      lookup of gemm_a8w8_blockscale_bpreshuffle (get_CKGEMM_config with exact M, then getPaddedM granularity 0 and 1)
+      over the gfx950 / 256-CU rows of the DeepSeek-V3 tuned table for N=4608, K=7168, M<=864, inlined as a dict of
+      (tile_m, splitK); for the three padded-M rows whose tuned libtype is ck (192, 224, 832) the asm launcher's own
+      get_heuristic_fp8_kernel (256 CUs, splitK 1) instead of the Composable Kernel instance; the split-K alignment
+      check and the output zeroing before split-K atomic accumulation (hipMemsetAsync -> out.zero_()); the cached
+      float32 zero bias of get_zero_bias_buf; the packed KernelArgs (16-byte fields) and grid
+      ((N/128)*splitK, ceil(M/tile_m), 1) x 256 threads. AITER's shuffle_weight(layout=(16, 16)) is the task's
+      layout function (inputs.py).
+    code_objects:
+      baseline/fp8gemm_bf16_blockscale_BpreShuffle_128x128.co: 725a2208b89fe3b75c7dcc7568655b342554bc2e93079713e2a400bdd035f65f
+      baseline/fp8gemm_bf16_blockscale_BpreShuffle_32x128.co: 95cbcfb63f64532d3e26283bc1de015d757e71554e303fae058792d8c968fdeb
+      baseline/fp8gemm_bf16_blockscale_BpreShuffle_48x128.co: 7a1aeb9e835f2c3064d86acc91ee5c852f3c1ad61327cdbedb1d5c8e8ecaf560
+      baseline/fp8gemm_bf16_blockscale_BpreShuffle_64x128.co: 43949041097a123183420fff376eef4d31886ba2d0a01731e040b673f7b0b53e
+      baseline/fp8gemm_bf16_blockscale_BpreShuffle_80x128.co: c01416b46a2b355a6cf34de22a2c9dd27674b40102b80c08b07e59af80d7c408
+      baseline/fp8gemm_bf16_blockscale_BpreShuffle_96x128.co: d6457e3bce94cda1b654a4255c994d393fd0bd4bd8186d3b011461f03c5dd5f7
+compare:
+  out: {bound: baseline_relative, max_violation_fraction: 0.01}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
