@@ -229,7 +229,11 @@ classes, of `builtins` and the standard-library modules it uses, and the
 interpreter's trace, profile and garbage-collection hooks before candidate code
 imports. It verifies them after the import, after every candidate call and after
 every timing sample. Any change fails the action with `failure_kind:
-harness_tampering`. This detects rebinding; it is not a sandbox.
+harness_tampering`, including a change found inside the timing helper. The
+static audit separately rejects the direct routes to these objects: process,
+FFI and interpreter modules reached as attributes of an allowed package
+(`torch.sys`, `torch.builtins`, `torch.ctypes`) and `getattr` with a computed
+name on anything but `self`. This detects rebinding; it is not a sandbox.
 
 Run the same configuration again with one agent capability changed and a new
 `--run-suffix` to form a controlled A/B pair. See

@@ -25,7 +25,8 @@ Candidate rules (enforced by the evaluator, not a sandbox):
   operators raise at run time; so do other kernel languages and production packages.
 - No `eval`/`exec`, reflection, module mutation, I/O, printing, synchronization, host round trips
   (`.item()`, `.cpu()`), randomness, global PyTorch state, or imports of task, reference, baseline or
-  evaluator modules. Keep no state derived from inputs across calls.
+  evaluator modules. Keep no state derived from inputs across calls. Modules reached as attributes
+  (`torch.ctypes`, `torch.os`, `torch.sys`) are rejected; `getattr` takes a literal attribute name.
 - Attribute names `synchronize`, `item`, `cpu`, `tolist`, `numpy`, `Stream`, `Event`, `graph` and
   `CUDAGraph` are rejected anywhere in candidate code (`torch.cuda.current_stream()` is allowed), as
   are the `@` operator, `torch.matmul`/`mm`/`bmm`/`einsum`, `torch.rand*`, `torch.tensor`, `torch.nn`

@@ -28,8 +28,10 @@ Other `.hip` files and headers in `solution/` are compiled with it (`torch.utils
 the GPU's architecture). Launch on `at::hip::getCurrentHIPStream()`; include only HIP, ATen/c10,
 `torch/library.h`, standard headers and your own headers; call no BLAS/MIOpen/ATen compute and keep no
 mutable static state. ATen operator and backend headers (`ATen/ops/`, `ATen/native/`, `ATen/*Functions.h`)
-and backend operator calls such as `at::cuda::mm_out` are rejected; `at::hip::getCurrentHIPStream()` and
-`at::cuda::getCurrentDeviceProperties()` are allowed.
+and backend operator calls such as `at::cuda::mm_out` are rejected. `at::hip::getCurrentHIPStream()`,
+`at::cuda::getCurrentDeviceProperties()`, the device guards, their `MasqueradingAsCUDA` spellings and the
+`ATen/{cuda,hip}/` `Exceptions.h`, `Atomic.cuh` and `DeviceUtils.cuh` headers are allowed. Stream guards and
+pool streams are rejected: every launch stays on the current stream.
 
 Candidate rules (enforced by the evaluator, not a sandbox):
 
@@ -40,7 +42,8 @@ Candidate rules (enforced by the evaluator, not a sandbox):
   operators raise at run time; so do other kernel languages and production packages.
 - No `eval`/`exec`, reflection, module mutation, I/O, printing, synchronization, host round trips
   (`.item()`, `.cpu()`), randomness, global PyTorch state, or imports of task, reference, baseline or
-  evaluator modules. Keep no state derived from inputs across calls.
+  evaluator modules. Keep no state derived from inputs across calls. Modules reached as attributes
+  (`torch.ctypes`, `torch.os`, `torch.sys`) are rejected; `getattr` takes a literal attribute name.
 - HIP sources include only HIP, ATen/c10, `torch/library.h`, standard headers and your own headers;
   `hipMalloc`/`hipFree`, synchronization, streams/events/graphs and BLAS/MIOpen/ATen compute are rejected,
   including ATen operator and backend headers and direct backend operator calls (`at::cuda::mm_out`).

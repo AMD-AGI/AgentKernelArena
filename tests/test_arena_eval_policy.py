@@ -55,6 +55,53 @@ def test_rejected_candidate_code(snippet, message):
         audit_python_sources(_sources(TRITON_OK + "\n" + snippet + "\n"), "triton")
 
 
+@pytest.mark.parametrize("snippet, message", [
+    # Process, FFI and interpreter modules that torch and triton re-export as attributes.
+    ("L = torch.ctypes.CDLL('libhipblaslt.so')", "ctypes reaches a process, FFI or interpreter module"),
+    ("m = torch.sys.modules", "sys reaches"),
+    ("torch.builtins.setattr(torch, 'x', 1)", "builtins reaches"),
+    ("e = torch.os.environ", "os reaches"),
+    ("triton.runtime.build.subprocess.run(['true'])", "subprocess reaches"),
+    # getattr follows the attribute rules, and a computed name works only on self.
+    ("L = getattr(torch, 'ctypes')", "ctypes reaches"),
+    ("L = getattr(torch, '_C')", "torch._C is not a candidate implementation dependency"),
+    ("L = getattr(torch, 'ct' + 'ypes')", "computed name is allowed only on self"),
+    ("import functools\nL = functools.reduce(getattr, ['ctypes'], torch)", "only be called directly"),
+    ("import operator\nL = operator.attrgetter('ctypes')(torch)", "attrgetter"),
+    ("from operator import methodcaller", "methodcaller"),
+    ("L = x._aka_benchmark", "evaluator names"),
+])
+def test_reflective_and_reexported_module_routes_are_rejected(snippet, message):
+    with pytest.raises(PolicyError, match=message):
+        audit_python_sources(_sources(TRITON_OK + "\n" + snippet + "\n"), "triton")
+
+
+def test_literal_getattr_and_self_attribute_proxies_stay_allowed():
+    allowed = ("\nDTYPE = getattr(tl, 'float16')\nHALF = torch.float16\nEXP = tl.math.exp\n\n"
+               "class Proxy:\n    def __getattr__(self, name):\n        return getattr(self._parent, name)\n")
+    audit_python_sources(_sources(TRITON_OK + allowed), "triton")
+
+
+def test_every_python_baseline_passes_the_candidate_audit():
+    # A baseline is also the starting candidate when the run targets its language.
+    from pathlib import Path
+
+    import yaml
+
+    root = Path(__file__).resolve().parents[1] / "tasks"
+    audited = 0
+    for task in sorted(root.glob("*/*/*/*/task.yaml")):
+        language = (yaml.safe_load(task.read_text(encoding="utf-8")).get("baseline") or {}).get("language")
+        if language not in ("triton", "gluon", "flydsl"):
+            continue
+        baseline = task.parent / "baseline"
+        sources = {p.relative_to(baseline).as_posix(): p.read_text(encoding="utf-8")
+                   for p in baseline.rglob("*.py") if "__pycache__" not in p.parts}
+        audit_python_sources(sources, language)
+        audited += 1
+    assert audited
+
+
 def test_a_candidate_must_import_its_language():
     with pytest.raises(PolicyError, match="imports no"):
         audit_python_sources({"kernel.py": "import torch\n\ndef run(*, x, out):\n    pass\n"}, "triton")
@@ -120,6 +167,30 @@ def test_hip_device_and_stream_helpers_stay_allowed():
                "int sms() { return at::cuda::getCurrentDeviceProperties()->multiProcessorCount; }\n"
                "hipStream_t s() { return at::hip::getCurrentHIPStream(); }\n")
     audit_hip_sources({"kernel.hip": HIP_OK + allowed, "util.h": ""}, "kernel.hip")
+
+
+def test_hipified_stream_guard_and_device_utility_spellings_stay_allowed():
+    allowed = ("#include <ATen/hip/Exceptions.h>\n#include <ATen/hip/Atomic.cuh>\n#include <ATen/cuda/DeviceUtils.cuh>\n"
+               "#include <ATen/hip/impl/HIPGuardImplMasqueradingAsCUDA.h>\n"
+               "#include <ATen/hip/impl/HIPStreamMasqueradingAsCUDA.h>\n"
+               "hipStream_t s() { return at::hip::getCurrentHIPStreamMasqueradingAsCUDA(); }\n"
+               "void g(const at::Tensor& x) { const at::hip::OptionalHIPGuardMasqueradingAsCUDA guard(x.device()); }\n")
+    audit_hip_sources({"kernel.hip": HIP_OK + allowed, "util.h": ""}, "kernel.hip")
+
+
+@pytest.mark.parametrize("bad, message", [
+    # Work on another stream escapes same-stream timing.
+    ("void f(hipStream_t s) { at::cuda::CUDAStreamGuard g(s); }", "outside the dispatcher"),
+    ("void f(hipStream_t s) { at::hip::HIPStreamGuardMasqueradingAsCUDA g(s); }", "outside the dispatcher"),
+    ("void f() { auto s = at::cuda::getStreamFromPool(); }", "outside the dispatcher"),
+    # Exceptions.h brings in more library headers; their calls stay rejected.
+    ("void f() { hipsparseCreate(nullptr); }", "not allowed"),
+    ("void f() { hipsolverDnCreate(nullptr); }", "not allowed"),
+    ("#include <ATen/hip/impl/HIPCachingAllocatorMasqueradingAsCUDA.h>", "library operator kernels"),
+])
+def test_stream_switches_and_other_library_calls_stay_rejected(bad, message):
+    with pytest.raises(PolicyError, match=message):
+        audit_hip_sources({"kernel.hip": HIP_OK + bad + "\n", "util.h": ""}, "kernel.hip")
 
 
 def test_every_hip_baseline_passes_the_candidate_audit():

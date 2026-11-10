@@ -714,7 +714,10 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
                   "`at::hip::getCurrentHIPStream()`; include only HIP, ATen/c10, `torch/library.h`, "
                   "standard headers and your own headers. ATen operator and backend headers "
                   "(`ATen/ops/`, `ATen/native/`, `ATen/*Functions.h`) and direct backend operator calls "
-                  "such as `at::cuda::mm_out` are rejected."]
+                  "such as `at::cuda::mm_out` are rejected. The current-stream, device-guard and "
+                  "device-property helpers (including their `MasqueradingAsCUDA` spellings) and the "
+                  "`Exceptions.h`, `Atomic.cuh` and `DeviceUtils.cuh` headers are allowed; stream guards and "
+                  "pool streams are not, because every launch stays on the current stream."]
     else:
         lines += [f"`{SOLUTION_DIR}/kernel.py` defines:", "", "```python", _signature(contract), "```", "",
                   "Other `.py` files in the directory form one flat package; import them relatively "
@@ -738,7 +741,10 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         "views or same-dtype copies and launch. PyTorch arithmetic, reductions, dtype conversions, library "
         "operators and other kernel languages are rejected at run time.",
         "- No synchronization, host round trips, I/O, randomness, reflection, dynamic imports or changes "
-        "to imported modules. Do not import task, reference, baseline or evaluator modules. The evaluator "
+        "to imported modules. Do not import task, reference, baseline or evaluator modules. Process, FFI "
+        "and interpreter modules reached as attributes (`torch.ctypes`, `torch.os`, `torch.sys`, "
+        "`torch.builtins`) are rejected; `getattr` takes a literal attribute name (a computed name only "
+        "on `self`). The evaluator "
         "checks its own, PyTorch's and the interpreter's bindings after every call and timing sample; a "
         "changed binding fails the action as harness tampering.",
         "- Every call is timed by one CUDA-graph replay after a cache flush; launches must be capturable on "
