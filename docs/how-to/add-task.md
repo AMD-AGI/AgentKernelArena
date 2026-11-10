@@ -300,9 +300,19 @@ enforces:
   a few standard modules; no other kernel language, production package, task,
   reference, baseline or evaluator module. No `eval`/`exec`, reflection, frame
   access, module mutation, `global`, I/O, printing, synchronization, host round
-  trips (`.item()`, `.cpu()`), randomness or global PyTorch state. HIP sources
+  trips (`.item()`, `.cpu()`), randomness or global PyTorch state. Process, FFI
+  and interpreter modules reached as attributes of an allowed package
+  (`torch.ctypes`, `torch.os`, `torch.sys`, `torch.builtins`) are rejected, and
+  `getattr` takes a literal attribute name (a computed name only on `self`).
+  HIP sources
   include only HIP, ATen/c10, `torch/library.h`, standard and own headers, call
-  no BLAS/MIOpen/ATen compute and keep no mutable static state.
+  no BLAS/MIOpen/ATen compute and keep no mutable static state. ATen operator and
+  backend headers (`ATen/ops/`, `ATen/native/`, `ATen/*Functions.h`, `ATen/cuda/`
+  and `ATen/hip/` other than the context, `Exceptions.h`, `Atomic.cuh`,
+  `DeviceUtils.cuh` and `MasqueradingAsCUDA` guard/stream headers) and backend operator namespaces
+  (`at::cuda::mm_out`, `at::native::`, `at::_ops::`, dispatcher redispatch) are
+  rejected: they reach library kernels without the dispatcher, so the runtime
+  rules below would not see them.
 - **Runtime rules.** During every candidate call, PyTorch may only allocate,
   take views and make same-dtype copies; arithmetic, reductions, dtype
   conversions and library operators raise. Triton, Gluon and FlyDSL candidates
