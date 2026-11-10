@@ -320,7 +320,8 @@ def attention_xo(q, kt, klen, swa, comp, swa_block, comp_block, sink, pos, cos_s
         p = torch.exp(sc - m[:, None])
         o[t] = (p @ k) / (p.sum(dim=1) + torch.exp(sink.to(f) - m))[:, None]
     cs = cos_sin[pos.long()].to(f)
-    return bf16(rope_rotate(bf16(o), cs[:, None, :])).reshape(s, N_HEADS * HEAD_DIM)
+    # the inverse rotation (e' = e cos + o sin, o' = o cos - e sin): back.stage_combine and check_k2.attention_xo
+    return bf16(rope_rotate(bf16(o), cs[:, None, :], inverse=True)).reshape(s, N_HEADS * HEAD_DIM)
 
 
 def wo_partials(xo, woa, woa_s, wob, wob_s):
