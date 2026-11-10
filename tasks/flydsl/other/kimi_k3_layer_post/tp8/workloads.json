@@ -1,0 +1,14 @@
+{
+  "description": "Narrow steps of Kimi-K3 (and Kimi-K3.1's steps of <= 8 rows) at TP8: the layer launch's widths 1..8 rows, one MoE layer each. The rows the launch sees come from the serving configuration (DSpark verify of one request: 7 drafts + 1 = 8 rows; plain decode: one row a request in flight) weighted by the AgentX in-flight-request distribution (cc-traces-weka-062126; see workload_evidence.json). The launch has no context axis (it starts after the attention) and every non-row dimension is fixed by the model at TP8, so the >= 10 us production range spans 8x: the production-range exemption applies. Derived from corpus statistics and the serving configuration; not yet confirmed by a live capture. Four widths, each a compiled build: 1, 2 and 8 rows carry 82% of the AgentX-weighted steps; 6 rows is the non-power-of-two boundary (DSpark's 6-row verify block, L = 6).",
+  "performance_span": {"policy": "production_range", "evidence": "workload_evidence.json"},
+  "cases": [
+    {"id": "r1", "axes": {"rows": 1}, "checks": ["correctness", "performance"],
+     "source": "boundary (minimum): decode of one request (AgentX weight 13.3%: C1 decode, 90% of a session's busy time with one request in flight)"},
+    {"id": "r2", "axes": {"rows": 2}, "checks": ["correctness", "performance"],
+     "source": "decode of two requests in flight (AgentX weight 12.8%: C2 decode, C1 with a subagent running)"},
+    {"id": "r6", "axes": {"rows": 6}, "checks": ["correctness", "performance"],
+     "source": "boundary (non-power-of-two): one request's DSpark verify with a 6-token block (L = 6), or decode of six requests (AgentX weight 1.4%)"},
+    {"id": "r8", "axes": {"rows": 8}, "checks": ["correctness", "performance"],
+     "source": "DSpark verify of one request, 7 drafts + 1 = 8 rows, the launch's widest step (AgentX weight 56.9%: every DSpark step with one request in flight, and C8 decode)"}
+  ]
+}
