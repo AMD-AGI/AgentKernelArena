@@ -48,6 +48,9 @@ CHECKS = {check.check_id: check for check in (
           "Make the baseline graph-capturable on the current stream."),
     Check("QA-TIMING-FLOOR", BLOCKING, "Every performance case takes the baseline at least 10 us",
           "Use larger production shapes for performance cases; keep small shapes as correctness-only."),
+    Check("QA-SPAN-EVIDENCE", BLOCKING, "The span-exemption evidence agrees with the measured baseline",
+          "Remeasure and correct perf_min/perf_max in the evidence file so that both endpoints, and every "
+          "performance case, take the baseline at least 10 us; keep faster shapes correctness-only."),
     Check("QA-CONTROLS", BLOCKING, "Correctness rejects every known-wrong control implementation",
           "Strengthen inputs, cases or the error bound so the surviving control fails."),
     Check("QA-CONTROLS-RUN", BLOCKING, "The control suite ran to completion",
@@ -67,6 +70,9 @@ CHECKS = {check.check_id: check for check in (
           "tolerance, or k and max_violation_fraction) and justify it in README.md."),
     Check("QA-NONDETERMINISTIC", WARNING, "The baseline is not bitwise deterministic",
           "Informational: baseline_relative compares against one baseline run per draw."),
+    Check("QA-SPAN-EXEMPTION", WARNING, "The performance cases use the production-range span exemption",
+          "Informational: confirm the evidence source and that no context or sequence axis could meet the "
+          "100x span rule instead."),
     Check("QA-README", WARNING, "The task has no README.md",
           "Describe the operator, its production source and the workload origin in README.md."),
     Check("QA-UNVERIFIED-ARCH", WARNING, "The task claims architectures this audit did not run on",

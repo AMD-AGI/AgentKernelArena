@@ -130,6 +130,45 @@ def test_boundary_correctness_cases_are_required():
             _validate(raw, reduced)
 
 
+def _small_domain_task(high: int, step: int = 1, extra_units=()):
+    """Three var axes on [step, high] (multiples of step); cases are given in units of step."""
+    raw, _ = _raw()
+    raw["interface"]["axes"] = {
+        **{name: {"kind": "var", "min": step, "max": high, "multiple_of": step} for name in "abc"},
+        "hidden_size": {"kind": "const", "value": 8192}}
+    for declaration in (raw["interface"]["inputs"]["x"], raw["interface"]["outputs"]["out"]):
+        declaration["shape"] = ["a * b * c", "hidden_size"]
+
+    def case(case_id, units, perf=False):
+        return {"id": case_id, "axes": dict(zip("abc", (u * step for u in units))),
+                "checks": ["correctness", "performance"] if perf else ["correctness"]}
+
+    cases = [case("minimum", (1, 1, 1)), case("odd", (3, 5, 7))]
+    cases += [case(f"p{i}", units, perf=True) for i, units in enumerate([(1, 1, 2), (2, 2, 2), (4, 4, 4), (8, 8, 8)])]
+    cases += [case(f"u{i}", units) for i, units in enumerate(extra_units)]
+    return raw, {"cases": cases}
+
+
+@pytest.mark.parametrize("high, step", [(8, 1), (16, 1), (64, 8), (128, 8)])
+def test_small_domains_need_no_unaligned_case(high, step):
+    # No var axis reaches above 16 units, so no value is "above 16 units and not a multiple of 16".
+    _validate(*_small_domain_task(high, step))
+
+
+@pytest.mark.parametrize("high, step, unaligned", [(17, 1, (17, 1, 1)), (4096, 1, (1, 33, 1)), (136, 8, (1, 1, 17))])
+def test_a_domain_above_16_units_still_needs_an_unaligned_case(high, step, unaligned):
+    with pytest.raises(TaskConfigError, match=r"lack boundary shapes: \['unaligned'\]"):
+        _validate(*_small_domain_task(high, step))
+    _validate(*_small_domain_task(high, step, extra_units=[unaligned]))
+
+
+def test_the_non_power_of_two_case_stays_required_in_small_domains():
+    raw, workloads = _small_domain_task(8)
+    workloads["cases"] = [case for case in workloads["cases"] if case["id"] != "odd"]
+    with pytest.raises(TaskConfigError, match=r"lack boundary shapes: \['non_power_of_two'\]"):
+        _validate(raw, workloads)
+
+
 def test_axis_domain_is_enforced():
     raw, workloads = _raw()
     workloads["cases"][0]["axes"]["n_tokens"] = 300000

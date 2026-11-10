@@ -55,6 +55,9 @@ BOUNDS = {
 MIN_PERFORMANCE_CASES = 4
 MAX_PERFORMANCE_CASES = 16
 MIN_SIZE_SPAN = 100
+SPAN_POLICY = "production_range"
+SPAN_EVIDENCE_METHODS = ("corpus_statistics", "live_capture")
+SPAN_FREQUENCY_SUM = (0.9, 1.1)  # rounded production weights need not sum to exactly 1
 UNALIGNED_BLOCK = 16
 TIMING = {"warmup": 10, "repetition": 100, "cache_flush_bytes": 1 << 30}
 EVAL_DIR = "_aka_eval"
@@ -183,10 +186,11 @@ def case_seeds(task_id: str, case_id: str) -> list[int]:
 class TaskContract:
     """A validated v3 task declaration and its workloads."""
 
-    def __init__(self, raw: dict, workloads: dict, task_id: str):
+    def __init__(self, raw: dict, workloads: dict, task_id: str, performance_span: dict | None = None):
         self.raw = raw
         self.workloads = workloads
         self.task_id = task_id
+        self.performance_span = performance_span
 
     @property
     def baseline_language(self) -> str:
@@ -276,6 +280,9 @@ class TaskContract:
             # report before the framework kills the process group.
             distributed["timeout_s"] = self.raw.get("timeout_s", 3600)
             resolved["distributed"] = distributed
+        if self.performance_span:
+            # Held-out cases of an exempt task stay inside the evidenced production range.
+            resolved["performance_span"] = deepcopy(self.performance_span)
         return resolved
 
     def initial_state(self, target_language: str) -> str:
@@ -495,8 +502,111 @@ def _validate_compare(raw: dict, checked: list[str], outputs: dict, inputs: dict
             raise TaskConfigError(f"compare.{name}.min_db must be positive")
 
 
-def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict) -> None:
-    obj = _mapping(workloads, "workloads", {"cases", "description"}, {"cases"})
+def _span_declaration(workloads: Any) -> dict | None:
+    """The validated ``workloads.performance_span`` declaration, or None when the task has none."""
+    if not isinstance(workloads, dict) or "performance_span" not in workloads:
+        return None
+    declaration = _mapping(workloads["performance_span"], "workloads.performance_span", {"policy", "evidence"},
+                           {"policy", "evidence"})
+    if declaration["policy"] != SPAN_POLICY:
+        raise TaskConfigError(f"workloads.performance_span.policy must be {SPAN_POLICY!r}")
+    name = relative_path(declaration["evidence"], "workloads.performance_span.evidence")
+    if not name.endswith(".json") or "/" in name or name in ("workloads.json", TASK_FILE):
+        raise TaskConfigError("workloads.performance_span.evidence must name a .json file at the task root "
+                              "other than workloads.json")
+    return {"policy": SPAN_POLICY, "evidence": name}
+
+
+def _validate_span_evidence(evidence: Any, declaration: dict, axes: dict, var: list[str],
+                            performance: list[dict]) -> dict:
+    """Check the production-range evidence that exempts a task from the 100x performance-span rule.
+
+    The exemption is for model-specialized kernels whose >= 10 us production shapes span less than
+    100x. The perf range (perf_min..perf_max) is the part of the observed production range whose
+    baseline takes at least 10 us; the observed range is recorded for transparency and may itself
+    span more. Returns the summary carried into the resolved contract.
+    """
+    where = declaration["evidence"]
+    if evidence is None:
+        raise TaskConfigError(f"workloads.performance_span names {where}, which the task package does not contain")
+    obj = _mapping(evidence, where, {"source", "method", "axes", "fixed_dimensions", "notes"},
+                   {"source", "method", "axes", "fixed_dimensions"})
+    _text(obj["source"], f"{where}.source")
+    _text(obj["fixed_dimensions"], f"{where}.fixed_dimensions")
+    if "notes" in obj:
+        _text(obj["notes"], f"{where}.notes")
+    if obj["method"] not in SPAN_EVIDENCE_METHODS:
+        raise TaskConfigError(f"{where}.method must be one of {SPAN_EVIDENCE_METHODS}")
+    evidence_axes = _mapping(obj["axes"], f"{where}.axes", set(obj["axes"]) if isinstance(obj["axes"], dict) else set())
+    if set(evidence_axes) != set(var):
+        raise TaskConfigError(f"{where}.axes names {sorted(evidence_axes)}; it must name exactly the var axes "
+                              f"{sorted(var)}")
+    ranges = {}
+    for name in var:
+        label = f"{where}.axes.{name}"
+        entry = _mapping(evidence_axes[name], label,
+                         {"observed_min", "observed_max", "perf_min", "perf_max", "frequency"},
+                         {"observed_min", "observed_max", "perf_min", "perf_max", "frequency"})
+        values = {key: _int(entry[key], f"{label}.{key}", 1)
+                  for key in ("observed_min", "perf_min", "perf_max", "observed_max")}
+        if not values["observed_min"] <= values["perf_min"] <= values["perf_max"] <= values["observed_max"]:
+            raise TaskConfigError(f"{label}: need observed_min <= perf_min <= perf_max <= observed_max; found "
+                                  f"{values['observed_min']} <= {values['perf_min']} <= {values['perf_max']} <= "
+                                  f"{values['observed_max']}")
+        axis = axes[name]
+        if values["observed_min"] < axis["min"] or values["observed_max"] > axis["max"]:
+            raise TaskConfigError(f"{label}: the observed range {values['observed_min']}..{values['observed_max']} "
+                                  f"must lie inside the axis domain {axis['min']}..{axis['max']}")
+        step = axis.get("multiple_of", 1)
+        if values["perf_min"] % step or values["perf_max"] % step:
+            raise TaskConfigError(f"{label}: perf_min and perf_max must be multiples of {name}'s multiple_of {step}")
+        frequency = entry["frequency"]
+        if not isinstance(frequency, dict) or not frequency:
+            raise TaskConfigError(f"{label}.frequency must map observed values to production weights")
+        total = 0.0
+        for key, weight in frequency.items():
+            if not isinstance(key, str) or not key.isdigit() or \
+                    not values["observed_min"] <= int(key) <= values["observed_max"]:
+                raise TaskConfigError(f"{label}.frequency: {key!r} is not an observed value of {name} "
+                                      f"in {values['observed_min']}..{values['observed_max']}")
+            if _number(weight, f"{label}.frequency.{key}") < 0:
+                raise TaskConfigError(f"{label}.frequency.{key} must be nonnegative")
+            total += weight
+        if not SPAN_FREQUENCY_SUM[0] <= total <= SPAN_FREQUENCY_SUM[1]:
+            raise TaskConfigError(f"{label}.frequency weights sum to {total:.3g}; they are production fractions "
+                                  "and must sum to about 1")
+        ranges[name] = {**values, "perf_frequency": sum(w for k, w in frequency.items()
+                                                       if values["perf_min"] <= int(k) <= values["perf_max"])}
+    perf_span = math.prod(r["perf_max"] for r in ranges.values()) / math.prod(r["perf_min"] for r in ranges.values())
+    observed_span = (math.prod(r["observed_max"] for r in ranges.values())
+                     / math.prod(r["observed_min"] for r in ranges.values()))
+    if perf_span >= MIN_SIZE_SPAN:
+        raise TaskConfigError(f"{where}: the >= 10 us production range spans {perf_span:.3g}x in var-axis size, "
+                              f"so the {MIN_SIZE_SPAN}x rule is reachable; drop workloads.performance_span and "
+                              f"choose performance cases spanning at least {MIN_SIZE_SPAN}x")
+    for name, bounds in ranges.items():
+        for case in performance:
+            value = case["axes"][name]
+            if not bounds["perf_min"] <= value <= bounds["perf_max"]:
+                raise TaskConfigError(f"performance case {case['id']}: {name}={value} lies outside the evidenced "
+                                      f"perf range {bounds['perf_min']}..{bounds['perf_max']}; keep it "
+                                      "correctness-only")
+        for key in ("perf_min", "perf_max"):
+            if not any(case["axes"][name] == bounds[key] for case in performance):
+                raise TaskConfigError(f"No performance case has {name} at {key}={bounds[key]}: an exempt task "
+                                      "times both ends of its evidenced perf range on every var axis")
+    return {"policy": SPAN_POLICY, "evidence": where, "source": obj["source"], "method": obj["method"],
+            "perf_span": perf_span, "observed_span": observed_span,
+            "axes": {name: {key: bounds[key] for key in ("observed_min", "observed_max", "perf_min", "perf_max",
+                                                          "perf_frequency")}
+                     for name, bounds in ranges.items()}}
+
+
+def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict,
+                        evidence: Any = None) -> dict | None:
+    """Validate the cases; returns the production-range exemption summary when one is declared."""
+    obj = _mapping(workloads, "workloads", {"cases", "description", "performance_span"}, {"cases"})
+    declaration = _span_declaration(obj)
     cases = obj["cases"]
     if not isinstance(cases, list) or not cases:
         raise TaskConfigError("workloads.cases must be a nonempty list")
@@ -527,7 +637,7 @@ def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict
             raise TaskConfigError(f"case {case_id} duplicates another case's axes and scalars")
         seen_identities.add(identity)
         if "performance" in checks:
-            performance.append(math.prod(values.values()))
+            performance.append({"id": case_id, "axes": values, "size": math.prod(values.values())})
         for name, value in values.items():
             step = axes[name].get("multiple_of", 1)
             units = value // step
@@ -540,17 +650,35 @@ def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict
     if not MIN_PERFORMANCE_CASES <= len(performance) <= MAX_PERFORMANCE_CASES:
         raise TaskConfigError(f"A task needs {MIN_PERFORMANCE_CASES}-{MAX_PERFORMANCE_CASES} performance "
                               f"cases; found {len(performance)}")
-    if max(performance) < MIN_SIZE_SPAN * min(performance):
+    sizes = [case["size"] for case in performance]
+    span = None
+    if declaration is not None:
+        span = _validate_span_evidence(evidence, declaration, axes, var, performance)
+    elif max(sizes) < MIN_SIZE_SPAN * min(sizes):
         raise TaskConfigError(f"Performance cases must span at least {MIN_SIZE_SPAN}x in var-axis size; "
-                              f"found {min(performance)}..{max(performance)}")
+                              f"found {min(sizes)}..{max(sizes)} (a model-specialized kernel whose >= 10 us "
+                              "production range spans less may declare workloads.performance_span; see "
+                              "docs/how-to/add-task.md)")
+    if not any(_unaligned_reachable(axes[name]) for name in var):
+        # No var axis can hold a value above 16 units that is not a multiple of 16.
+        del boundaries["unaligned"]
     missing = [kind for kind, found in boundaries.items() if not found]
     if missing:
         raise TaskConfigError(f"Correctness cases lack boundary shapes: {missing} "
-                              f"(minimum axis value, non-power-of-two, not a multiple of {UNALIGNED_BLOCK})")
+                              f"(minimum axis value, non-power-of-two, not a multiple of {UNALIGNED_BLOCK} "
+                              f"above {UNALIGNED_BLOCK} units when a var axis's domain reaches that far)")
     chosen = _distinct_representatives(boundaries)
     if chosen is None:
-        raise TaskConfigError("The minimum, non-power-of-two and unaligned boundary shapes must be three "
-                              "distinct cases")
+        raise TaskConfigError(f"The {', '.join(k.replace('_', '-') for k in boundaries)} boundary shapes must be "
+                              f"{len(boundaries)} distinct cases")
+    return span
+
+
+def _unaligned_reachable(axis: dict) -> bool:
+    """Whether the axis domain holds a value above 16 units (of multiple_of) that is not a multiple of 16."""
+    step = axis.get("multiple_of", 1)
+    low, high = max(-(-axis["min"] // step), UNALIGNED_BLOCK + 1), axis["max"] // step
+    return low < high or (low == high and low % UNALIGNED_BLOCK != 0)
 
 
 def _distinct_representatives(groups: dict[str, set[str]]) -> dict | None:
@@ -569,7 +697,8 @@ def _distinct_representatives(groups: dict[str, set[str]]) -> dict | None:
     return search(0, set())
 
 
-def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskContract:
+def validate_task_contract(raw: Any, workloads: Any, *, task_id: str, span_evidence: Any = None) -> TaskContract:
+    """Validate a task; ``span_evidence`` is the parsed file a ``performance_span`` declaration names."""
     relative_path(task_id, "task_id")
     obj = _mapping(raw, TASK_FILE, {"schema_version", "description", "operator", "interface", "reference",
                                     "baseline", "compare", "element_order", "workloads", "platform_support",
@@ -625,7 +754,7 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
             _text(platform.get("skip_reason"), "platform_support.skip_reason")
     if "timeout_s" in obj:
         _int(obj["timeout_s"], "timeout_s", 60)
-    _validate_workloads(workloads, axes, var, interface["inputs"])
+    span = _validate_workloads(workloads, axes, var, interface["inputs"], span_evidence)
     for case in workloads["cases"]:
         symbols_values = {name: (axis["value"] if axis["kind"] == "const" else case["axes"][name])
                           for name, axis in axes.items()}
@@ -641,7 +770,7 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
             if not 1 <= nbytes <= MAX_SYMMETRIC_BYTES:
                 raise TaskConfigError(f"case {case['id']}: distributed.symmetric_bytes is {nbytes}; it must be "
                                       f"between 1 and {MAX_SYMMETRIC_BYTES} bytes")
-    return TaskContract(obj, deepcopy(workloads), task_id)
+    return TaskContract(obj, deepcopy(workloads), task_id, span)
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -680,13 +809,27 @@ def load_task_contract(task_file: Path, *, task_id: str) -> TaskContract:
         raise TaskConfigError(f"Invalid {TASK_FILE}: {exc}") from exc
     workloads_name = (raw or {}).get("workloads", "workloads.json") if isinstance(raw, dict) else "workloads.json"
     try:
-        workloads = json.loads((root / relative_path(workloads_name, "workloads")).read_text(encoding="utf-8"),
-                               object_pairs_hook=_unique_json,
-                               parse_constant=lambda value: (_ for _ in ()).throw(
-                                   TaskConfigError(f"Invalid JSON constant {value}")))
+        workloads = _read_json(root / relative_path(workloads_name, "workloads"))
     except (OSError, ValueError) as exc:
         raise TaskConfigError(f"Cannot read workloads: {exc}") from exc
-    return validate_task_contract(raw, workloads, task_id=task_id)
+    evidence = None
+    declaration = _span_declaration(workloads)
+    if declaration is not None:
+        path = root / declaration["evidence"]
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root.resolve()):
+            raise TaskConfigError(f"workloads.performance_span.evidence {declaration['evidence']} is not a file "
+                                  "in the task package")
+        try:
+            evidence = _read_json(path)
+        except (OSError, ValueError) as exc:
+            raise TaskConfigError(f"Cannot read {declaration['evidence']}: {exc}") from exc
+    return validate_task_contract(raw, workloads, task_id=task_id, span_evidence=evidence)
+
+
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json,
+                      parse_constant=lambda value: (_ for _ in ()).throw(
+                          TaskConfigError(f"Invalid JSON constant {value}")))
 
 
 def package_files(root: Path) -> list[str]:
@@ -708,7 +851,10 @@ def package_files(root: Path) -> list[str]:
 def execution_config(task_file: Path, *, task_id: str, target_language: str) -> dict:
     contract = load_task_contract(task_file, task_id=task_id)
     files = package_files(Path(task_file).parent)
-    for required in (contract.baseline_entry, contract.raw["reference"]["file"], "workloads.json"):
+    required_files = [contract.baseline_entry, contract.raw["reference"]["file"], "workloads.json"]
+    if contract.performance_span:
+        required_files.append(contract.performance_span["evidence"])
+    for required in required_files:
         if required not in files:
             raise TaskConfigError(f"Task package lacks {required}")
     return contract.execution_config(target_language, files)

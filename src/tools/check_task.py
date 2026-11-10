@@ -77,6 +77,13 @@ def check(task_dir: Path, *, smoke_limit: int) -> dict:
         return result
     if problem := contract.layout_problem():
         result["errors"].append(f"layout: {problem}")
+    if contract.performance_span:
+        span = contract.performance_span
+        result["span_exemption"] = span
+        result["warnings"].append(
+            f"workloads.performance_span: production_range exemption from the 100x rule (perf span "
+            f"{span['perf_span']:.3g}x, observed span {span['observed_span']:.3g}x, evidence {span['evidence']}); "
+            "the QA audit reports it and checks both perf endpoints against the 10 us floor")
     baseline_language = contract.baseline_language
     with tempfile.TemporaryDirectory(prefix="aka-check-") as scratch:
         for language in TARGET_LANGUAGES:

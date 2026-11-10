@@ -200,6 +200,43 @@ def check_initial(context: dict, contract_raw: dict | None, findings: list[Findi
                             f"{MIN_BASELINE_CASE_MS} ms", {"case": case.get("test_case_id"), "ms": time_ms}))
 
 
+def check_span_exemption(span: dict | None, workloads: dict, context: dict, findings: list[Finding]) -> None:
+    """Report a production-range span exemption, and check its perf range against the measured baseline.
+
+    The exemption never relaxes QA-TIMING-FLOOR: every performance case is still held to 10 us there.
+    Here the evidence's own claim is checked: each perf_min/perf_max endpoint case was measured and takes
+    the baseline at least 10 us.
+    """
+    if not span:
+        return
+    ranges = "; ".join(f"{name} observed {b['observed_min']}..{b['observed_max']}, perf {b['perf_min']}.."
+                       f"{b['perf_max']} ({b['perf_frequency']:.0%} of observed calls)"
+                       for name, b in span["axes"].items())
+    findings.append(Finding(
+        "QA-SPAN-EXEMPTION",
+        f"performance cases span {span['perf_span']:.3g}x under the production_range exemption: {ranges}; "
+        f"evidence {span['evidence']}: {span['source']} ({span['method']})",
+        {"evidence": span["evidence"], "source": span["source"], "method": span["method"],
+         "perf_span": span["perf_span"], "observed_span": span["observed_span"], "axes": span["axes"]}))
+    measured = {}
+    for record in _actions(context, "baseline", "performance"):
+        for case in record["result"].get("cases", []):
+            measured[case.get("test_case_id")] = case.get("execution_time_ms")
+    if not measured:
+        return  # no baseline timing: QA-INITIAL already fails the audit
+    performance = [case for case in workloads["cases"] if "performance" in case["checks"]]
+    for name, bounds in span["axes"].items():
+        for key in ("perf_min", "perf_max"):
+            for case in (c for c in performance if c["axes"][name] == bounds[key]):
+                time_ms = measured.get(case["id"])
+                if not isinstance(time_ms, (int, float)) or time_ms < MIN_BASELINE_CASE_MS:
+                    findings.append(Finding(
+                        "QA-SPAN-EVIDENCE",
+                        f"the evidence puts {name}={bounds[key]} ({key}) in the >= 10 us range, but the baseline "
+                        f"measured {time_ms} ms on {case['id']}",
+                        {"axis": name, "endpoint": key, "case": case["id"], "ms": time_ms}))
+
+
 def run_controls(workspace: Path, output: Path, timeout_s: int, findings: list[Finding]) -> dict | None:
     env = {key: value for key, value in os.environ.items() if not key.startswith("ARENA_")}
     env.update(ARENA_EVAL_PHASE="task_validation", PYTHONDONTWRITEBYTECODE="1")
@@ -270,15 +307,19 @@ def run_deterministic(workspace: Path, context: dict, state: Path, *, controls_t
     evidence: dict[str, Any] = {}
     config = context.get("task_config") or {}
     contract_raw = None
+    contract = None
     if config.get("contract"):
         from src.task_contract import load_task_contract
         from src.task_spec import TaskConfigError
 
         try:
-            contract_raw = load_task_contract(workspace / "task.yaml", task_id=context["task_id"]).raw
+            contract = load_task_contract(workspace / "task.yaml", task_id=context["task_id"])
+            contract_raw = contract.raw
         except (TaskConfigError, OSError, ValueError) as exc:
             findings.append(Finding("QA-SPEC", str(exc)))
     check_initial(context, contract_raw, findings)
+    if contract is not None:
+        check_span_exemption(contract.performance_span, contract.workloads, context, findings)
     if contract_raw is not None:
         check_package(workspace, findings)
         check_reference(workspace, contract_raw, findings)

@@ -250,11 +250,15 @@ from real production use; the framework records the source but cannot verify
 it. The framework enforces, when it loads the task:
 
 - **4 to 16 performance cases**, whose var-axis size (the product of the var
-  axes) spans at least **100×**. One or two shapes let an agent tune for them
-  alone; too many lengthen every timing round.
-- **Boundary correctness cases**, three distinct ones: a var axis at its
-  declared minimum, a var axis that is not a power of two, and a var axis that
-  is not a multiple of 16 (in units of its `multiple_of`) and larger than 16.
+  axes) spans at least **100×**, unless the task declares the production-range
+  exemption below. One or two shapes let an agent tune for them alone; too many
+  lengthen every timing round.
+- **Boundary correctness cases**, distinct ones: a var axis at its declared
+  minimum, a var axis that is not a power of two, and a var axis that is not a
+  multiple of 16 (in units of its `multiple_of`) and larger than 16. The last
+  one is required only when some var axis's domain holds such a value (its
+  `max` exceeds 16 units); a task whose var axes all stay within 16 units, such
+  as rows 1..8 or rows 8..64 with `multiple_of: 8`, needs only the first two.
   Correctness cases have no upper limit.
 - Unique case IDs and axis/scalar combinations, and values inside the declared
   domain.
@@ -263,6 +267,66 @@ The QA auditor additionally requires every performance case to take the
 baseline **at least 10 µs**: below that, launch overhead dominates the
 measurement. Real shapes that run faster (decode with M=1) stay correctness-only.
 A task whose production shapes are all below 10 µs is not a kernel task.
+
+### Production-range span exemption
+
+Some kernels are specialized to one model: the model fixes every non-batch
+dimension, and the shapes production actually sends them that take the baseline
+at least 10 µs span less than 100×. Such a task may declare, in
+`workloads.json`:
+
+```json
+"performance_span": {"policy": "production_range", "evidence": "workload_evidence.json"}
+```
+
+Prefer a context or sequence axis first: if the kernel's work depends on the
+context length, make it a var axis spanning the production range and meet the
+100× rule without the exemption. The evidence file sits at the task root and is
+part of the task package:
+
+```json
+{
+  "source": "AgentX <corpus> rev <revision> + <model> serving config <flags>; or live capture job <id>",
+  "method": "corpus_statistics",
+  "axes": {
+    "n_tokens": {"observed_min": 1, "observed_max": 65536,
+                 "perf_min": 2048, "perf_max": 16384,
+                 "frequency": {"1": 0.3, "2048": 0.3, "4096": 0.2, "8192": 0.1, "16384": 0.1}}
+  },
+  "fixed_dimensions": "every non-var axis is fixed by <model> at <TP/EP>",
+  "notes": "how the numbers were derived"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `source`, `fixed_dimensions` | Where the range comes from (corpus and revision, serving configuration, capture job) and what fixes the other dimensions. |
+| `method` | `corpus_statistics` or `live_capture`. |
+| `axes.<axis>.observed_min/max` | The full production range of the axis, recorded for transparency. It may span 100× or more. |
+| `axes.<axis>.perf_min/max` | The part of that range whose baseline takes at least 10 µs: the performance range. |
+| `axes.<axis>.frequency` | Production weight of each observed value (keys are values, weights sum to about 1). |
+| `notes` | Optional derivation notes. |
+
+When it loads the task the framework requires: the evidence names exactly the
+var axes; `observed_min <= perf_min <= perf_max <= observed_max`, inside each
+axis domain, with perf endpoints on the axis's `multiple_of`; frequency keys
+inside the observed range and weights summing to 0.9-1.1; the performance range
+spans **less than 100×** in var-axis size (otherwise the 100× rule is reachable
+and the exemption is refused); and, for every var axis, a performance case at
+`perf_min` and one at `perf_max`, with every performance case inside
+`[perf_min, perf_max]`. The 4-16 performance-case count and the boundary
+correctness cases are unchanged; weight the performance cases toward the
+high-frequency values. Shapes below 10 µs stay correctness-only. Never batch
+calls or add warm replays to reach the floor: a kernel with fewer than four
+performance shapes at 10 µs or more is not a task.
+
+The CPU pre-check reports the exemption. The QA auditor reports it as the
+warning `QA-SPAN-EXEMPTION` (observed range, perf range and evidence source)
+and fails the task with `QA-SPAN-EVIDENCE` when a `perf_min` or `perf_max`
+endpoint case was not measured or takes the baseline under 10 µs;
+`QA-TIMING-FLOOR` still applies to every performance case. Held-out cases of an
+exempt task stay inside the observed range, and held-out performance cases
+inside the performance range.
 
 ## The candidate interface
 

@@ -24,8 +24,12 @@ The two framework input draws alternate between samples, and every timed
 sample's outputs are checked. There is no Event fallback for these tasks: a
 baseline that cannot be captured on the current stream fails the QA audit
 (`QA-TIMING-METHOD`), and each performance case must take the baseline at least
-10 us (`QA-TIMING-FLOOR`). The final evaluation remeasures the baseline
-interleaved with the candidate, and the task's speedup is the geometric mean of
+10 us (`QA-TIMING-FLOOR`). The performance cases span at least 100x in
+var-axis size, except for model-specialized tasks with an evidenced
+[production-range span exemption](../how-to/add-task.md#production-range-span-exemption),
+whose cases cover the >= 10 us part of the observed production range at both
+ends; the floor and the timing method are the same for them. The final
+evaluation remeasures the baseline interleaved with the candidate, and the task's speedup is the geometric mean of
 the per-case speedups (baseline time over candidate time). The remaining
 sections of this page describe the shared helper and the older fallback and
 cold-weight policies, which apply to the end-to-end and legacy helper paths.
