@@ -712,7 +712,9 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
                   f"  m.def(\"{hip_op_schema(contract)}\", &run);", "}", "```", "",
                   "Other `.hip` files and headers in the directory are compiled with it. Launch on "
                   "`at::hip::getCurrentHIPStream()`; include only HIP, ATen/c10, `torch/library.h`, "
-                  "standard headers and your own headers."]
+                  "standard headers and your own headers. ATen operator and backend headers "
+                  "(`ATen/ops/`, `ATen/native/`, `ATen/*Functions.h`) and direct backend operator calls "
+                  "such as `at::cuda::mm_out` are rejected."]
     else:
         lines += [f"`{SOLUTION_DIR}/kernel.py` defines:", "", "```python", _signature(contract), "```", "",
                   "Other `.py` files in the directory form one flat package; import them relatively "

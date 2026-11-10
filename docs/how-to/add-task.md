@@ -302,7 +302,12 @@ enforces:
   access, module mutation, `global`, I/O, printing, synchronization, host round
   trips (`.item()`, `.cpu()`), randomness or global PyTorch state. HIP sources
   include only HIP, ATen/c10, `torch/library.h`, standard and own headers, call
-  no BLAS/MIOpen/ATen compute and keep no mutable static state.
+  no BLAS/MIOpen/ATen compute and keep no mutable static state. ATen operator and
+  backend headers (`ATen/ops/`, `ATen/native/`, `ATen/*Functions.h`, `ATen/cuda/`
+  and `ATen/hip/` other than the context headers) and backend operator namespaces
+  (`at::cuda::mm_out`, `at::native::`, `at::_ops::`, dispatcher redispatch) are
+  rejected: they reach library kernels without the dispatcher, so the runtime
+  rules below would not see them.
 - **Runtime rules.** During every candidate call, PyTorch may only allocate,
   take views and make same-dtype copies; arithmetic, reductions, dtype
   conversions and library operators raise. Triton, Gluon and FlyDSL candidates

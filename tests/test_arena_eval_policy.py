@@ -98,6 +98,43 @@ def test_hip_candidate_rules():
                            "util.h": ""}, "kernel.hip")
 
 
+@pytest.mark.parametrize("bad, message", [
+    # The reported exploit: a CUDA-backend operator header and its direct entry point.
+    ("#include <ATen/ops/mm_cuda_dispatch.h>", "declares library operator kernels"),
+    ("#include <ATen/CUDAFunctions.h>", "declares library operator kernels"),
+    ("#include <ATen/native/Resize.h>", "declares library operator kernels"),
+    ("#include <ATen/cuda/CUDABlas.h>", "declares library operator kernels"),
+    ("void f(at::Tensor a, at::Tensor o) { at::cuda::mm_out(o, a, a); }", "outside the dispatcher"),
+    ("void f(at::Tensor a) { at::native::mm(a, a); }", "outside the dispatcher"),
+    ("void f(at::Tensor a) { at::_ops::mm::redispatch(c10::DispatchKeySet(), a, a); }", "outside the dispatcher"),
+    ("void f() { auto& d = c10::Dispatcher::singleton(); }", "outside the dispatcher"),
+    ("void f(at::Tensor a) { torch::matmul(a, a); }", "not allowed"),
+])
+def test_hip_candidates_cannot_call_library_kernels_outside_the_dispatcher(bad, message):
+    with pytest.raises(PolicyError, match=message):
+        audit_hip_sources({"kernel.hip": HIP_OK + bad + "\n", "util.h": ""}, "kernel.hip")
+
+
+def test_hip_device_and_stream_helpers_stay_allowed():
+    allowed = ("#include <ATen/hip/HIPContext.h>\n#include <ATen/cuda/CUDAContext.h>\n#include <ATen/Dispatch.h>\n"
+               "int sms() { return at::cuda::getCurrentDeviceProperties()->multiProcessorCount; }\n"
+               "hipStream_t s() { return at::hip::getCurrentHIPStream(); }\n")
+    audit_hip_sources({"kernel.hip": HIP_OK + allowed, "util.h": ""}, "kernel.hip")
+
+
+def test_every_hip_baseline_passes_the_candidate_audit():
+    # A baseline is also the starting candidate when the run targets its language.
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "tasks"
+    baselines = sorted(p.parent for p in root.glob("*/*/*/*/baseline/kernel.hip"))
+    assert baselines
+    for baseline in baselines:
+        sources = {p.relative_to(baseline).as_posix(): p.read_text(encoding="utf-8")
+                   for p in baseline.rglob("*") if p.is_file() and p.suffix in (".hip", ".h", ".hpp", ".cuh")}
+        audit_hip_sources(sources, "kernel.hip")
+
+
 def test_runtime_audit_allows_preparation_and_rejects_compute():
     x = torch.randn(8)
     with preparation_only("candidate"):

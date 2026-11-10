@@ -190,6 +190,13 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
 
 _INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*(?:<([^>\n]+)>|"([^"\n]+)")', re.MULTILINE)
 _HIP_ALLOWED_HEADERS = ("hip/", "ATen/", "c10/", "torch/library.h", "torch/extension.h")
+# ATen headers that declare operator or backend kernels callable without the
+# dispatcher (for example ATen/ops/mm_cuda_dispatch.h -> at::cuda::mm_out), so
+# the run-time PyTorch-operation check never sees them. Only the device and
+# stream contexts are allowed from the backend directories.
+_HIP_FORBIDDEN_HEADERS = re.compile(
+    r"^ATen/(?:ops|native|functorch)/|^ATen/\w*Functions(?:_inl)?\.h$"
+    r"|^ATen/(?:cuda|hip)/(?!(?:CUDAContext|HIPContext)\.h$)")
 _STD_HEADERS = frozenset({
     "algorithm", "array", "bit", "cfloat", "climits", "cmath", "cstddef", "cstdint", "cstdio",
     "cstdlib", "cstring", "functional", "initializer_list", "limits", "memory", "numeric",
@@ -201,10 +208,20 @@ _HIP_FORBIDDEN = re.compile(
     r"HostFree|ExtMalloc|Ipc|StreamCreate|Graph|Module|MemcpyPeer|DeviceReset)\w*"
     r"|hip(?:Memcpy|Memset)(?!\w*Async)\w*|cuda[A-Z]\w*|rocblas_\w+|hipblas\w*|hipblasLt\w*|"
     r"miopen\w+|rccl\w+|getenv|fopen|system|popen|dlopen|std::thread|std::async|"
-    r"at::(?:matmul|mm|bmm|addmm|baddbmm|einsum|linear|conv\w*|softmax|log_softmax|layer_norm|"
+    r"(?:at|torch)::(?:matmul|mm|bmm|addmm|baddbmm|einsum|linear|conv\w*|softmax|log_softmax|layer_norm|"
     r"rms_norm|group_norm|batch_norm|sort|topk|cumsum|sum|mean|max|min|argmax|argmin|exp|log|"
     r"tanh|sigmoid|relu|gelu|silu|mul|add|sub|div|pow|sqrt|rsqrt|where|gather|scatter\w*|"
     r"index_select|_scaled_mm|_int_mm)\b)")
+# Backend-specific operator namespaces call a library kernel directly, bypassing
+# the dispatcher and so the run-time check; dispatcher redispatch does the same.
+# The device, stream and guard helpers kernels need stay allowed.
+_HIP_BACKEND_CALL = re.compile(
+    r"\b(?:at|torch)::(?:cuda|hip|native|cpu|meta|mps|xpu|_ops|detail|"
+    r"compositeexplicitautograd\w*|compositeimplicitautograd\w*)::(?!(?:getCurrentDeviceProperties|"
+    r"getDeviceProperties|getCurrentCUDAStream|getCurrentHIPStream|getDefaultCUDAStream|"
+    r"getDefaultHIPStream|CUDAGuard|HIPGuard|OptionalCUDAGuard|OptionalHIPGuard|CUDAStream|HIPStream)\b)\w+"
+    r"|\b(?:Dispatcher|DispatchKeySet|redispatch\w*|ExcludeDispatchKeyGuard|IncludeDispatchKeyGuard|"
+    r"_AutoDispatchBelow\w*|AutoDispatchBelow\w*)\b")
 _HIP_STATIC_MUTABLE = re.compile(
     r"^[ \t]*(?:static[ \t]+|__device__[ \t]+)+(?![^;]*\b(?:const|constexpr)\b)[^;(){}\n]*;", re.MULTILINE)
 
@@ -247,11 +264,19 @@ def audit_hip_sources(sources: dict[str, str], entry: str) -> dict:
             local = match.group(2) is not None and header in sources
             if not (local or header.startswith(_HIP_ALLOWED_HEADERS) or header in _STD_HEADERS):
                 raise PolicyError(f"{path}: #include {header} is neither a candidate file nor an allowed header")
+            if not local and _HIP_FORBIDDEN_HEADERS.search(header):
+                raise PolicyError(f"{path}: #include {header} declares library operator kernels; "
+                                  "it is not an allowed header")
         code = _blank_cpp(text)
         found = _HIP_FORBIDDEN.search(code)
         if found:
             line = code.count("\n", 0, found.start()) + 1
             raise PolicyError(f"{path}:{line}: {found.group(0)} is not allowed in a HIP candidate")
+        backend = _HIP_BACKEND_CALL.search(code)
+        if backend:
+            line = code.count("\n", 0, backend.start()) + 1
+            raise PolicyError(f"{path}:{line}: {backend.group(0)} calls a library kernel outside the "
+                              "dispatcher; it is not allowed in a HIP candidate")
         mutable = _HIP_STATIC_MUTABLE.search(code)
         if mutable:
             line = code.count("\n", 0, mutable.start()) + 1
