@@ -1,0 +1,180 @@
+schema_version: 3
+description: >-
+  One launch of the Qwen3.8-Flash-Next (SGLang Qwen4-Exp) decoder for a NEXTN target-verify step of R
+  requests x 4 tokens (rows t = request t // 4, draft step t % 4): four decoder layers in the production
+  middle plan gdn, gdn, gdn, qsa. Each layer runs on the 4 hyper-connection residual branches H[t, b]
+  (2560 each): H1 = H + attn(mix_a(H)) * gate_a(H) and H2 = H1 + moe(mix_m(H1)) * gate_m(H1), where
+  mix(H) RMS-normalizes each branch ((1 + w), eps 1e-6), takes x = mean_b sigmoid(W_up silu(W_down Hn /
+  4))_b * Hn_b and the combine gates 2 sigmoid(W_inj Hn / 4). Attention is a Gated DeltaNet layer (W8A8
+  FP8 in_proj with per-token E4M3 activation quantization a = max|x| / 448; causal 4-tap conv1d over the
+  committed conv state; l2-normalized q, k; beta = sigmoid(b), decay = exp(A softplus(a + dt_bias)); the
+  gated delta rule per value head over the request's 4 tokens from its committed SSM state, writing the
+  state and conv window after every token; gated RMS norm; W8A8 out_proj) or a QSA layer (W8A8 q / gate /
+  k / v and indexer projections; Gemma q / k norms and NeoX RoPE on dims 0..63; the step's raw index keys
+  enter the request's 8-slot ring and the 4-position group they complete is compressed; index logits sum
+  over 4 index heads of relu(q_i . key_b) / sqrt(128) for every complete 4-token block; exact top-512
+  blocks plus the row's incomplete block attended with softmax(q . k / 16), causal inside the request, GQA
+  24 / 2 heads, times sigmoid(gate); W8A8 o_proj). The MoE routes each row to the top 10 of 512 router
+  logits (softmax over the 10) plus the shared expert (index 512, weight sigmoid of its gate logit);
+  experts are MXFP4 (e2m1 codes, e8m0 scale per 32) silu-gated MLPs of width 640. Outputs are the new
+  residual streams with their per-16-element sum-of-squares partials and every state write of the
+  launch: the GDN verify scratch, the new K / V rows, the completed compressed index key and the index
+  ring with its RoPE positions.
+operator: {name: qwen38_flash_next_decoder, category: other}
+interface:
+  axes:
+    num_requests: {kind: var, min: 1, max: 8, description: Requests R of the verify step (compiled widths 1 and 8 here).}
+    context_len: {kind: var, min: 1, max: 262140, description: "Committed context of the longest request (the others draw theirs in [ctx / 2, ctx])."}
+    tokens_per_request: {kind: const, value: 4, description: NEXTN verify tokens a request (3 draft steps + 1).}
+    hidden: {kind: const, value: 2560}
+    hc_dim: {kind: const, value: 10240, description: 4 hyper-connection branches x 2560.}
+    req_slots: {kind: const, value: 16, description: Request slots of the req_to_token / ring pools.}
+    mamba_slots: {kind: const, value: 17, description: GDN state slots (slot 0 unused).}
+    rtt_stride: {kind: const, value: 262208, description: req_to_token row stride (a compile-time constant of the kernel).}
+  derived_axes:
+    rows: num_requests * tokens_per_request
+    rope_positions: context_len + tokens_per_request
+    kv_slots: 64 * (num_requests * ceil_div(context_len + tokens_per_request, 64) + 1)
+    index_key_slots: kv_slots // 4
+    ring_slots: req_slots * 8
+  inputs:
+    h_in: {kind: tensor, shape: [rows, hc_dim], dtype: bfloat16, distribution: {kind: generator},
+           description: "Residual streams from the previous launch, branch-major [t, b * 2560 + d]; unit normal plus a large shared channel d0 and 10 per-row routing-code channels (inputs.py)."}
+    h_in_ssq: {kind: tensor, shape: [rows, 4, 160], dtype: float32, distribution: {kind: generator},
+               description: "Sum of squares of h_in over each 16 consecutive elements of a branch, as the previous launch publishes them."}
+    positions: {kind: tensor, shape: [rows], dtype: int64, role: index, distribution: {kind: generator},
+                description: "RoPE position of row t: seq_lens[t // 4] + t % 4 (1-D text positions)."}
+    seq_lens: {kind: tensor, shape: [num_requests], dtype: int64, role: metadata, distribution: {kind: generator},
+               description: Committed context of each request (its first verify position).}
+    req_pool_indices: {kind: tensor, shape: [num_requests], dtype: int64, role: index, distribution: {kind: generator}}
+    req_to_token: {kind: tensor, shape: [req_slots, rtt_stride], dtype: int32, role: index, distribution: {kind: generator},
+                   description: "KV slot of every position of a request slot, in 64-slot pages (page 0 unused)."}
+    mamba_slot_map: {kind: tensor, shape: [req_slots], dtype: int32, role: index, distribution: {kind: generator}}
+    rope_cos_sin: {kind: tensor, shape: [rope_positions, 64], dtype: bfloat16, role: weight, distribution: {kind: generator},
+                   description: "cos (columns 0..31) and sin (32..63) of position x theta^(-2i/64), theta 1e7."}
+    hc_attn_norm: {kind: tensor, shape: [4, hc_dim], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    hc_attn_down: {kind: tensor, shape: [4, 336, hc_dim], dtype: bfloat16, role: weight, distribution: {kind: generator},
+                   description: "Rows 0..319 input_mix_weight_down, 320..323 block_inject_weight, 324..335 zero; kernel-facing pack_bf16 tiles."}
+    hc_attn_up: {kind: tensor, shape: [4, hc_dim, 320], dtype: bfloat16, role: weight, distribution: {kind: generator},
+                 description: input_mix_weight_up; kernel-facing pack_bf16 tiles.}
+    hc_mlp_norm: {kind: tensor, shape: [4, hc_dim], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    hc_mlp_down: {kind: tensor, shape: [4, 336, hc_dim], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    hc_mlp_up: {kind: tensor, shape: [4, hc_dim, 320], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    router: {kind: tensor, shape: [4, 528, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator},
+             description: "Rows 0..511 mlp.gate, 512 mlp.shared_expert_gate, 513..527 zero; kernel-facing pack_bf16 tiles."}
+    moe_w13: {kind: tensor, shape: [4, 513, 1536, 1280], dtype: uint8, role: weight, distribution: {kind: generator},
+              description: "FusedMoE w13 (experts 0..511 + shared 512): gate rows 0..639, up rows 768..1407, e2m1 pairs along K (low nibble first), zero padding; kernel-facing shuffle_weight (16, 16)."}
+    moe_w13_scale: {kind: tensor, shape: [4, 513, 1536, 80], dtype: uint8, role: weight, distribution: {kind: generator},
+                    description: "e8m0 scale bytes of w13 (one per 32 K); kernel-facing e8m0_shuffle over [513 * 1536, 80]."}
+    moe_w2: {kind: tensor, shape: [4, 513, 2560, 384], dtype: uint8, role: weight, distribution: {kind: generator},
+             description: "FusedMoE w2: K bytes 0..319 real, 320..383 zero; kernel-facing shuffle_weight (16, 16)."}
+    moe_w2_scale: {kind: tensor, shape: [4, 513, 2560, 24], dtype: uint8, role: weight, distribution: {kind: generator},
+                   description: "e8m0 bytes of w2 (groups 0..19 real); kernel-facing e8m0_shuffle over [513 * 2560, 24]."}
+    gdn_in_proj: {kind: tensor, shape: [3, 16384, hidden], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+                  description: "in_proj_qkvz rows [q 2048 | k 2048 | v 6144 | z 6144]; kernel-facing shuffle_weight (16, 16)."}
+    gdn_in_proj_scale: {kind: tensor, shape: [3, 16384], dtype: float32, role: weight, distribution: {kind: generator}}
+    gdn_ba_proj: {kind: tensor, shape: [3, 128, hidden], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+                  description: "in_proj_ba rows [b 48 | a 48 | 32 zero], as SGLang pads it; kernel-facing shuffle_weight (16, 16)."}
+    gdn_ba_proj_scale: {kind: tensor, shape: [3, 128], dtype: float32, role: weight, distribution: {kind: generator}}
+    gdn_conv_weight: {kind: tensor, shape: [3, 10240, 4], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    gdn_neg_a: {kind: tensor, shape: [3, 48], dtype: float32, role: weight, distribution: {kind: generator},
+                description: "A = -exp(A_log) per value head."}
+    gdn_dt_bias: {kind: tensor, shape: [3, 48], dtype: float32, role: weight, distribution: {kind: generator}}
+    gdn_norm_weight: {kind: tensor, shape: [3, 128], dtype: float32, role: weight, distribution: {kind: generator}}
+    gdn_out_proj: {kind: tensor, shape: [3, hidden, 6144], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    gdn_out_proj_scale: {kind: tensor, shape: [3, hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    gdn_conv_state: {kind: tensor, shape: [3, mamba_slots, 10240, 3], dtype: bfloat16, role: state, distribution: {kind: generator},
+                     description: Committed conv windows (last 3 conv inputs) of every mamba slot.}
+    gdn_ssm_state: {kind: tensor, shape: [3, mamba_slots, 48, 128, 128], dtype: float32, role: state, distribution: {kind: generator},
+                    description: "Committed SSM states S[head, v, k] of every mamba slot."}
+    qsa_qkv_proj: {kind: tensor, shape: [13312, hidden], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+                   description: "qkv_proj rows [q_h 256 | gate_h 256] x 24 heads, k 2 x 256, v 2 x 256; kernel-facing shuffle_weight (16, 16)."}
+    qsa_qkv_proj_scale: {kind: tensor, shape: [13312], dtype: float32, role: weight, distribution: {kind: generator}}
+    qsa_index_proj: {kind: tensor, shape: [640, hidden], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+                     description: "indexer.index_qk_proj rows: index q 4 x 128, index k 128; kernel-facing shuffle_weight (16, 16)."}
+    qsa_index_proj_scale: {kind: tensor, shape: [640], dtype: float32, role: weight, distribution: {kind: generator}}
+    qsa_o_proj: {kind: tensor, shape: [hidden, 6144], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator}}
+    qsa_o_proj_scale: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator}}
+    qsa_q_norm: {kind: tensor, shape: [256], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    qsa_k_norm: {kind: tensor, shape: [256], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    qsa_index_q_norm: {kind: tensor, shape: [128], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    qsa_index_k_norm: {kind: tensor, shape: [128], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    k_cache: {kind: tensor, shape: [kv_slots, 2, 256], dtype: bfloat16, role: state, distribution: {kind: generator},
+              description: "QSA layer KV cache (normed, RoPE'd keys) of every context token, at req_to_token slots."}
+    v_cache: {kind: tensor, shape: [kv_slots, 2, 256], dtype: bfloat16, role: state, distribution: {kind: generator}}
+    index_keys: {kind: tensor, shape: [index_key_slots, 128], dtype: bfloat16, role: state, distribution: {kind: generator},
+                 description: "Compressed index key of every complete block b at row req_to_token[req, 4 b] / 4 (planted winners / losers, inputs.py)."}
+    index_ring: {kind: tensor, shape: [ring_slots, 128], dtype: bfloat16, role: state, distribution: {kind: generator},
+                 description: "Raw index keys of each request slot's last 8 positions (slot req * 8 + pos % 8)."}
+    index_ring_positions: {kind: tensor, shape: [ring_slots, 3], dtype: int64, role: state, distribution: {kind: generator},
+                           description: "RoPE position (3 MRoPE axes) of each ring slot's key."}
+  outputs:
+    h_out: {shape: [rows, hc_dim], dtype: bfloat16, description: Residual streams after layer 3.}
+    h_out_ssq: {shape: [rows, 4, 160], dtype: float32, description: Sum of squares of h_out over each 16 consecutive elements of a branch.}
+    gdn_intermediate_ssm: {shape: [3, num_requests, tokens_per_request, 48, 128, 128], dtype: float32,
+                           description: "GDN SSM state of request r after each of its tokens (SGLang's intermediate_ssm rows 0..R-1)."}
+    gdn_intermediate_conv: {shape: [3, num_requests, 10240, 6], dtype: bfloat16,
+                            description: "Conv window after token j = columns j .. j + 2 (SGLang's deduplicated intermediate_conv_window rows)."}
+    k_new: {shape: [rows, 2, 256], dtype: bfloat16, description: "QSA K rows of the step's tokens (SGLang writes them to the KV cache at out_cache_loc)."}
+    v_new: {shape: [rows, 2, 256], dtype: bfloat16, description: QSA V rows of the step's tokens.}
+    index_key_new: {shape: [num_requests, 128], dtype: bfloat16, description: "Compressed index key of the group the step completes (SGLang writes it to the compressed-key pool)."}
+  mutable: [index_ring, index_ring_positions]
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (SGLang AMD monokernel plugin), with ROCm/aiter FlyDSL helpers
+    revision: "52486703"
+    path:
+      - sgl_amd_mono/qwen38_flash_next/gfx950/kernel.py
+      - sgl_amd_mono/qwen38_flash_next/gfx950/layout.py
+      - sgl_amd_mono/qwen38_flash_next/gfx950/config.py
+      - sgl_amd_mono/qwen38_flash_next/gfx950/device.py
+      - sgl_amd_mono/qwen38_flash_next/gfx950/runner.py
+      - sgl_amd_mono/qwen38_flash_next/gfx950/packing.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/guard.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd)
+      - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter dbd8bf5bd)
+    license: >-
+      Apache-2.0 (sgl-amd-mono, SGLang contributors; aiter buffer_ops / dpp_utils, FlyDSL Project
+      Contributors); MIT (ROCm/ATOM, Copyright (C) 2026 Advanced Micro Devices, Inc.) for the portions
+      of common/ops.py and common/plan.py adapted from ATOM. See baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the baseline is vendored from
+      52486703. The kernel is the launch SGLang runs 11 times per verify step (launches 2-12) for layers
+      4-47 of the 48-layer model; this task is one such launch on synthetic weights.
+    modifications: >-
+      layers.py is gfx950/kernel.py with package-relative imports, a constant build-key source tag
+      instead of plan.kernel_sources (which reads source files), the kernel symbol formatted locally,
+      the radix-select LDS atomic through ops.lds_atomic_add (fx.atomic_add needs FlyDSL >= 0.3.3), and
+      stage_qsa_prep writing the new K / V rows and the completed compressed index key to output
+      buffers (new pointer slots 37-39, layout.P_KNEW / P_VNEW / P_CNEW) instead of SGLang's KV cache at
+      out_cache_loc and its compressed-key pool (no read of the launch takes those rows from memory).
+      config.py uses frozen dataclasses instead of msgspec; layout.py drops a nonlocal; plan.py keeps
+      only the execution constants; device.py drops the unguarded fault-injection wait; guard.py drops
+      the environment fault injection and stops a failed launch with an llvm-dialect volatile store;
+      ops.py writes global_ptr / global_load on llvm-dialect ops (the FlyDSL 0.3.2 bridge of
+      muse_spark/gfx950/compat.py, without patching flydsl) and drops KernArgs; buffer_ops.py takes the
+      CDNA descriptor flags without reading the environment. kernel.py is new: the pointer-table
+      construction and launch of runner.VerifyRunner for one middle launch (key gdn,gdn,gdn,qsa, seq_p0,
+      8-slot ring, f32 SSM state, 1-D positions), with a zeroed scratch and epoch per call instead of the
+      runner's persistent scratch and host-advanced epoch.
+compare:
+  h_out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  h_out_ssq: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  gdn_intermediate_ssm: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  gdn_intermediate_conv: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  k_new: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  v_new: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  index_key_new: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  index_ring: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  index_ring_positions: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
