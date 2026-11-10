@@ -62,6 +62,11 @@ SOLUTION_DIR = "solution"
 BASELINE_DIR = "baseline"
 TEMPLATE_MARKER = "AKA-UNIMPLEMENTED-TEMPLATE"
 FORBIDDEN_PACKAGE_NAMES = ("config.yaml", SOLUTION_DIR, EVAL_DIR)
+# Multi-GPU tasks: the framework appends these keyword inputs to every rank's call.
+RESERVED_INPUTS = ("rank", "world_size", "peers", "symmetric")
+RESERVED_SYMBOL = "world_size"
+MIN_WORLD_SIZE, MAX_WORLD_SIZE = 2, 8
+MAX_SYMMETRIC_BYTES = 1 << 32
 
 
 def _mapping(value: Any, where: str, allowed: set[str], required: set[str] = frozenset()) -> dict:
@@ -216,6 +221,21 @@ class TaskContract:
     def checked_tensors(self) -> list[str]:
         return list(self.interface["outputs"]) + list(self.interface.get("mutable", []))
 
+    @property
+    def distributed(self) -> dict | None:
+        """The validated multi-GPU declaration, or None for a single-GPU task."""
+        return self.raw.get("distributed")
+
+    @property
+    def world_size(self) -> int:
+        return self.distributed["world_size"] if self.distributed else 1
+
+    @property
+    def call_names(self) -> list[str]:
+        """Every keyword of one call: inputs, outputs, then the reserved multi-GPU inputs."""
+        names = list(self.interface["inputs"]) + list(self.interface["outputs"])
+        return names + list(RESERVED_INPUTS) if self.distributed else names
+
     def resolved_contract(self, target_language: str) -> dict:
         interface = self.interface
         cases = []
@@ -229,7 +249,7 @@ class TaskContract:
                 declaration.setdefault("k", 2.0)
             compare[name] = declaration
         baseline_entry = self.baseline_entry
-        return {
+        resolved = {
             "version": 1,
             "task_id": self.task_id,
             "axes": deepcopy(interface["axes"]),
@@ -249,6 +269,14 @@ class TaskContract:
                           "entry_file": self.candidate_entry(target_language), "symbol": "run"},
             "cases": cases,
         }
+        if self.distributed:
+            distributed = deepcopy(self.distributed)
+            distributed.setdefault("ranks_agree", [])
+            # The rank launcher bounds itself by the action timeout, so it can stop every rank and
+            # report before the framework kills the process group.
+            distributed["timeout_s"] = self.raw.get("timeout_s", 3600)
+            resolved["distributed"] = distributed
+        return resolved
 
     def initial_state(self, target_language: str) -> str:
         return "implemented" if target_language == self.baseline_language else "unimplemented"
@@ -286,12 +314,16 @@ class TaskContract:
                          "target_language": target_language, "baseline_language": self.baseline_language,
                          "operator": dict(self.raw["operator"])},
         }
+        if self.distributed:
+            # The scheduler places a multi-GPU task only on a worker whose GPU group has this size.
+            config["contract"]["world_size"] = self.world_size
         if "platform_support" in self.raw:
             config["platform_support"] = deepcopy(self.raw["platform_support"])
         return config
 
 
-def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
+def _validate_interface(raw: dict, reserved: frozenset[str] = frozenset()) -> tuple[dict, dict, list[str]]:
+    """Validate the interface; ``reserved`` names framework shape symbols (``world_size``)."""
     interface = _mapping(raw, "interface", {"axes", "derived_axes", "inputs", "outputs", "mutable",
                                             "generator", "layout"}, {"axes", "inputs", "outputs"})
     axes = _mapping(interface["axes"], "interface.axes", set(interface["axes"]))
@@ -300,6 +332,8 @@ def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
     var = []
     for name, axis in axes.items():
         _identifier(name, f"axis {name}")
+        if name in reserved:
+            raise TaskConfigError(f"axis {name} is reserved: the framework sets it for multi-GPU tasks")
         if not isinstance(axis, dict) or axis.get("kind") not in ("var", "const"):
             raise TaskConfigError(f"axis {name} must declare kind var or const")
         if axis["kind"] == "const":
@@ -316,11 +350,13 @@ def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
             var.append(name)
     if not var:
         raise TaskConfigError("interface.axes must declare at least one var axis")
-    symbols = set(axes)
+    symbols = set(axes) | set(reserved)
     derived = interface.get("derived_axes", {})
     _mapping(derived, "interface.derived_axes", set(derived))
     for name, expression in derived.items():
         _identifier(name, f"derived axis {name}")
+        if name in reserved:
+            raise TaskConfigError(f"derived axis {name} is reserved: the framework sets it for multi-GPU tasks")
         if name in symbols:
             raise TaskConfigError(f"derived axis {name} duplicates an axis")
         unknown = _expression_names(expression, f"derived axis {name}") - symbols
@@ -389,6 +425,33 @@ def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
     if generator_needed and "generator" not in interface:
         raise TaskConfigError("Inputs with distribution generator need interface.generator")
     return axes, symbols, var
+
+
+def _validate_distributed(raw: Any, interface: dict, symbols: set[str]) -> dict:
+    """The optional multi-GPU block: world size, symmetric buffer size and per-rank views."""
+    obj = _mapping(raw, "distributed", {"world_size", "symmetric_bytes", "shard", "expected", "ranks_agree"},
+                   {"world_size", "symmetric_bytes", "shard", "expected"})
+    world_size = obj["world_size"]
+    if type(world_size) is not int or not MIN_WORLD_SIZE <= world_size <= MAX_WORLD_SIZE:
+        raise TaskConfigError(f"distributed.world_size must be an integer from {MIN_WORLD_SIZE} to "
+                              f"{MAX_WORLD_SIZE} (the GPUs of one node)")
+    unknown = _expression_names(obj["symmetric_bytes"], "distributed.symmetric_bytes") - symbols
+    if unknown:
+        raise TaskConfigError(f"distributed.symmetric_bytes reads unknown axes {sorted(unknown)}")
+    for key in ("shard", "expected"):
+        obj[key] = _entry(obj[key], f"distributed.{key}")
+        if obj[key]["file"].startswith((BASELINE_DIR + "/", SOLUTION_DIR + "/")):
+            raise TaskConfigError(f"distributed.{key} lives at the task root")
+    for name in [*interface["inputs"], *interface["outputs"]]:
+        if name in RESERVED_INPUTS:
+            raise TaskConfigError(f"{name!r} is a reserved multi-GPU call input {RESERVED_INPUTS}; "
+                                  "the framework passes it, so the task must not declare it")
+    checked = list(interface["outputs"]) + list(interface.get("mutable", []))
+    agree = obj.get("ranks_agree", [])
+    if (not isinstance(agree, list) or any(not isinstance(n, str) for n in agree) or len(set(agree)) != len(agree)
+            or any(n not in checked for n in agree)):
+        raise TaskConfigError(f"distributed.ranks_agree must list distinct outputs or mutable inputs of {checked}")
+    return obj
 
 
 def _shape(shape: Any, symbols: set[str], where: str) -> None:
@@ -510,7 +573,7 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
     relative_path(task_id, "task_id")
     obj = _mapping(raw, TASK_FILE, {"schema_version", "description", "operator", "interface", "reference",
                                     "baseline", "compare", "element_order", "workloads", "platform_support",
-                                    "timeout_s"},
+                                    "timeout_s", "distributed"},
                    {"schema_version", "description", "operator", "interface", "reference", "baseline",
                     "compare", "workloads"})
     if type(obj["schema_version"]) is not int or obj["schema_version"] != SCHEMA_VERSION:
@@ -521,8 +584,11 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
     _identifier(operator["name"], "operator.name")
     if operator["category"] not in CATEGORIES:
         raise TaskConfigError(f"operator.category must be one of {CATEGORIES}")
-    axes, symbols, var = _validate_interface(obj["interface"])
+    reserved = frozenset({RESERVED_SYMBOL}) if "distributed" in obj else frozenset()
+    axes, symbols, var = _validate_interface(obj["interface"], reserved)
     interface = obj["interface"]
+    if "distributed" in obj:
+        obj["distributed"] = _validate_distributed(obj["distributed"], interface, symbols)
     obj["reference"] = _entry(obj["reference"], "reference")
     baseline = _mapping(obj["baseline"], "baseline", {"language", "entry", "provenance"},
                         {"language", "entry", "provenance"})
@@ -563,11 +629,18 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
     for case in workloads["cases"]:
         symbols_values = {name: (axis["value"] if axis["kind"] == "const" else case["axes"][name])
                           for name, axis in axes.items()}
+        if "distributed" in obj:
+            symbols_values[RESERVED_SYMBOL] = obj["distributed"]["world_size"]
         for name, expression in interface.get("derived_axes", {}).items():
             symbols_values[name] = _evaluate(expression, symbols_values)
         for name, declaration in [*interface["inputs"].items(), *interface["outputs"].items()]:
             for entry in declaration.get("shape", []):
                 _evaluate(entry, symbols_values)
+        if "distributed" in obj:
+            nbytes = _evaluate(obj["distributed"]["symmetric_bytes"], symbols_values)
+            if not 1 <= nbytes <= MAX_SYMMETRIC_BYTES:
+                raise TaskConfigError(f"case {case['id']}: distributed.symmetric_bytes is {nbytes}; it must be "
+                                      f"between 1 and {MAX_SYMMETRIC_BYTES} bytes")
     return TaskContract(obj, deepcopy(workloads), task_id)
 
 
@@ -648,31 +721,47 @@ def _hip_type(declaration: dict, name: str, writes: dict) -> str:
     return f"Tensor({writes[name]}!)" if name in writes else "Tensor"
 
 
-def hip_op_schema(contract: TaskContract) -> str:
+def reserved_declarations(contract: TaskContract) -> dict:
+    """The reserved multi-GPU call inputs, declared like task inputs (empty for a single-GPU task)."""
+    if not contract.distributed:
+        return {}
+    return {"rank": {"kind": "scalar", "dtype": "int32"},
+            "world_size": {"kind": "scalar", "dtype": "int32"},
+            "peers": {"kind": "tensor", "shape": [RESERVED_SYMBOL], "dtype": "int64"},
+            "symmetric": {"kind": "tensor", "shape": [contract.distributed["symmetric_bytes"]], "dtype": "uint8"}}
+
+
+def _call_declarations(contract: TaskContract) -> dict:
     interface = contract.interface
-    names = list(interface["inputs"]) + list(interface["outputs"])
-    written = list(interface["outputs"]) + list(interface.get("mutable", []))
-    letters = {name: chr(ord("a") + index) for index, name in enumerate(written)}
-    declarations = {**interface["inputs"], **interface["outputs"]}
-    arguments = ", ".join(f"{_hip_type(declarations[n], n, letters)} {n}" for n in names)
+    return {**interface["inputs"], **interface["outputs"], **reserved_declarations(contract)}
+
+
+def _written(contract: TaskContract) -> list[str]:
+    """Tensors the op writes: outputs, mutable inputs and, for multi-GPU tasks, the symmetric buffer."""
+    return contract.checked_tensors + (["symmetric"] if contract.distributed else [])
+
+
+def hip_op_schema(contract: TaskContract) -> str:
+    letters = {name: chr(ord("a") + index) for index, name in enumerate(_written(contract))}
+    declarations = _call_declarations(contract)
+    arguments = ", ".join(f"{_hip_type(declarations[n], n, letters)} {n}" for n in contract.call_names)
     return f"run({arguments}) -> ()"
 
 
 def _signature(contract: TaskContract) -> str:
-    names = list(contract.interface["inputs"]) + list(contract.interface["outputs"])
-    return "def run(*, " + ", ".join(names) + ") -> None:"
+    return "def run(*, " + ", ".join(contract.call_names) + ") -> None:"
 
 
 def _template(contract: TaskContract, language: str) -> str:
     operator = contract.raw["operator"]["name"]
     if language == "hip":
         cpp_types = {"Tensor": "at::Tensor", "float": "double", "int": "int64_t", "bool": "bool"}
-        interface = contract.interface
-        declarations = {**interface["inputs"], **interface["outputs"]}
+        declarations = _call_declarations(contract)
+        written = _written(contract)
         parameters = []
-        for name in list(interface["inputs"]) + list(interface["outputs"]):
+        for name in contract.call_names:
             kind = _hip_type(declarations[name], name, {}).split("(")[0]
-            parameters.append(f"{'const ' if kind == 'Tensor' and name not in contract.checked_tensors else ''}"
+            parameters.append(f"{'const ' if kind == 'Tensor' and name not in written else ''}"
                               f"{cpp_types[kind]}{'&' if kind == 'Tensor' else ''} {name}")
         return (f"// HIP implementation of {operator}. {TEMPLATE_MARKER}\n"
                 "// Replace this template: launch your __global__ kernels on\n"
@@ -724,6 +813,9 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         lines.append(f"| `{name}` | {kind} | {shape} | {declaration['dtype']} |")
     for name, declaration in interface["outputs"].items():
         lines.append(f"| `{name}` | output | [{', '.join(map(str, declaration['shape']))}] | {declaration['dtype']} |")
+    for name, declaration in reserved_declarations(contract).items():
+        shape = "scalar" if declaration["kind"] == "scalar" else "[" + ", ".join(map(str, declaration["shape"])) + "]"
+        lines.append(f"| `{name}` | reserved multi-GPU input | {shape} | {declaration['dtype']} |")
     lines += ["", "Axes: " + ", ".join(
         f"`{n}` = {a['value']}" if a["kind"] == "const" else f"`{n}` in [{a['min']}, {a['max']}]"
         + (f", multiple of {a['multiple_of']}" if a.get("multiple_of", 1) > 1 else "")
@@ -741,12 +833,45 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         "the current stream.",
         "- Correctness: each output must stay within the declared error bound of the high-precision "
         "reference on every workload, for two input draws and a repeated call on the same buffers.",
+        *_multi_gpu_lines(contract),
         "", "## Commands", "", "```sh",
         f"python3 -m {EVAL_DIR}.evaluate candidate compile",
         f"python3 -m {EVAL_DIR}.evaluate candidate correctness",
         f"python3 -m {EVAL_DIR}.evaluate candidate performance",
         "```", ""]
     return "\n".join(lines)
+
+
+def _multi_gpu_lines(contract: TaskContract) -> list[str]:
+    if not contract.distributed:
+        return []
+    distributed = contract.distributed
+    world = distributed["world_size"]
+    agree = ", ".join(f"`{n}`" for n in distributed.get("ranks_agree", [])) or "none"
+    return [
+        "", "## Multi-GPU", "",
+        f"This operator runs on **{world} GPUs** of one node: the evaluator starts {world} processes and rank "
+        f"`r` calls `run` on `cuda:r`. The interface above is one rank's call; every rank has the same shapes "
+        f"and `world_size` = {world} in shape expressions. Each rank receives its own shard of the inputs and "
+        "is checked against its own slice of the reference.",
+        "",
+        "- `rank` and `world_size` are Python ints (int32 range).",
+        "- `symmetric` is this rank's framework-owned peer buffer of "
+        f"`{distributed['symmetric_bytes']}` bytes (uncached device memory). `peers[p]` is the base address "
+        "of rank `p`'s buffer mapped into this process (`peers[rank]` is `symmetric`). Kernels may load from "
+        "and store to peer memory through these addresses (system-scope atomics/stores for cross-GPU "
+        "visibility).",
+        "- The evaluator zeroes every rank's `symmetric` buffer before every call, outside timing, and starts "
+        "no rank's call before every rank's buffer is zero, so a call never sees a previous call's mailbox "
+        "words. Persistent-kernel state (epoch counters, scratch) is an ordinary input the evaluator resets "
+        "before every call; keep no host-side state.",
+        "- Host-side communication is forbidden: no `torch.distributed`, RCCL, HIP IPC, peer-access or "
+        "memory-allocation APIs. The framework owns all host-side cross-rank work.",
+        f"- Every rank's outputs are checked; outputs that every rank must produce bitwise identical: {agree}.",
+        "- Timing: every sample releases all ranks together (a barrier, then a shared host deadline), each "
+        "rank times its own graph replay with GPU events, and the sample's time is the **maximum over ranks**. "
+        "The reported time is the median of those maxima.",
+    ]
 
 
 def render_workspace(task_root: Path, workspace: Path, *, task_id: str, target_language: str) -> list[str]:

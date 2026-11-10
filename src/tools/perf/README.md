@@ -11,7 +11,11 @@ does not import `src`.
   PyTorch). Schema-v3 kernel tasks receive it as `_aka_eval/_aka_benchmark.py`
   when `src/task_contract.py::render_workspace` writes the evaluator; the
   evaluator times every performance case with
-  `benchmark_cuda_graph_cold_cache_samples` and `ReadOnlyCacheFlush`.
+  `benchmark_cuda_graph_cold_cache_samples` and `ReadOnlyCacheFlush`, and every
+  case of a multi-GPU task with `benchmark_distributed_cold_cache_samples` on
+  each rank (synchronized release, maximum over ranks). The caller passes the
+  ranks' communication object, so the module needs no `torch.distributed` setup
+  of its own; `tests/test_multi_rank_timing.py` covers the aggregation.
 - `serving.py`, `serving_bundle.py`, `serving_backends.py`,
   `serving_scenarios.py`, `serving_request_plan.py` — the end-to-end serving
   client, compute-bundle installation and evidence, and scenario composition.

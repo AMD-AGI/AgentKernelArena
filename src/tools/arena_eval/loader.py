@@ -172,7 +172,7 @@ def _check_op_schema(label: str, op_schema, contract: Contract) -> None:
         raise BuildError(f"{label} takes {names}, not the call keys {list(contract.call_keys)}")
     writes = {argument.name for argument in op_schema.arguments
               if argument.alias_info is not None and argument.alias_info.is_write}
-    expected = set(contract.checked_tensors)
+    expected = set(contract.written_tensors)
     if writes != expected or op_schema.returns:
         raise BuildError(f"{label}: {op_schema} must write exactly {sorted(expected)}, "
                          "each a Tensor(a!), and return ()")

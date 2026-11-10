@@ -8,7 +8,9 @@ Run from the task workspace:
 
 Every action prints exactly one ``ARENA_EVAL_RESULT=`` arena-eval-v1 line and
 exits nonzero on failure. The framework, not this script, decides acceptance,
-pairs actions with the captured manifest and computes scores.
+pairs actions with the captured manifest and computes scores. A multi-GPU task
+(``distributed`` in the contract) runs correctness and performance on one process
+per rank (``distributed.py``); this process prints rank 0's merged report.
 """
 from __future__ import annotations
 
@@ -85,15 +87,25 @@ def validate_task(contract: Contract) -> dict:
         import torch
 
         if torch.cuda.is_available():
+            if contract.distributed is not None and torch.cuda.device_count() < contract.world_size:
+                raise ActionFailure(f"This task runs on {contract.world_size} GPUs, but the worker sees "
+                                    f"{torch.cuda.device_count()}; run it with resources.gpu_groups of that size",
+                                    "environment")
             device = torch.device("cuda", torch.cuda.current_device())
             for case in (contract.cases[0], contract.cases[-1]):
                 inputs = values.make_inputs(contract, case, case.seeds[0], device)
-                values.reference_outputs(contract, inputs.logical)
+                references = values.reference_outputs(contract, inputs.logical)
+                if contract.distributed is not None:
+                    # Every rank's shard and expected outputs, in this one process and without kernels.
+                    values.check_rank_views(contract, case, inputs.logical, references, device)
+                del inputs, references
                 smoke.append(case.case_id)
     except (ContractError, RuntimeError, TypeError, ValueError) as exc:
         raise ActionFailure(f"Task inputs or reference failed: {type(exc).__name__}: {exc}", "task_error")
     metadata = {"candidate_state": state, "target_language": contract.candidate.language,
                 "baseline_language": contract.baseline.language, "smoke_cases": smoke}
+    if contract.distributed is not None:
+        metadata["world_size"] = contract.world_size
     return _report("task", "validate-task", "PASS", rows, metadata=metadata)
 
 
@@ -180,14 +192,37 @@ def _check(contract: Contract, role: str, written: dict, expected: dict, baselin
     return passed, metrics
 
 
-class _CaseData:
-    """Inputs and expected values of one case for its two seeds."""
+def call_once(call, kernel: dict, outputs: dict, case: Case, rank=None) -> None:
+    """One complete operator call. A multi-GPU call starts on no rank before every rank finished its
+    previous call and zeroed its symmetric buffer, and it receives the reserved inputs."""
+    if rank is None:
+        call(**kernel, **outputs)
+        _synchronize()
+        return
+    rank.before_call()
+    call(**kernel, **outputs, **rank.call_inputs(case))
+    rank.after_call()
 
-    def __init__(self, contract: Contract, case: Case, device, baseline_call, need_baseline: bool):
+
+class _CaseData:
+    """Inputs and expected values of one case for its two seeds.
+
+    With a rank context (multi-GPU tasks) the kernel inputs are that rank's shard, the expected
+    values that rank's part of the logical reference, and the baseline outputs that rank's own.
+    """
+
+    def __init__(self, contract: Contract, case: Case, device, baseline_call, need_baseline: bool, rank=None):
         from . import values
 
-        self.inputs = [values.make_inputs(contract, case, seed, device) for seed in case.seeds[:2]]
+        index = None if rank is None else rank.rank
+        self.inputs = [values.make_inputs(contract, case, seed, device, rank=index) for seed in case.seeds[:2]]
+        if rank is not None:
+            for seed, item in zip(case.seeds, self.inputs):
+                rank.agree(values.logical_fingerprint(item.logical), f"the logical inputs of case {case.case_id} "
+                           f"(seed {seed})")
         self.references = [values.reference_outputs(contract, item.logical) for item in self.inputs]
+        if rank is not None:
+            self.references = [values.expected_outputs(contract, case, item, rank.rank) for item in self.references]
         self.baselines = None
         if need_baseline:
             self.baselines = []
@@ -195,13 +230,12 @@ class _CaseData:
                 kernel = values.clone_inputs(item.kernel)
                 outputs = values.allocate_outputs(contract, case, device)
                 values.poison(outputs, 7)
-                baseline_call(**kernel, **outputs)
-                _synchronize()
+                call_once(baseline_call, kernel, outputs, case, rank)
                 self.baselines.append({name: tensor.clone() for name, tensor in
                                        values.checked_values(contract, kernel, outputs).items()})
 
 
-def _invoke_and_check(contract: Contract, role: str, call, case: Case, data: _CaseData, device) -> dict:
+def _invoke_and_check(contract: Contract, role: str, call, case: Case, data: _CaseData, device, rank=None) -> dict:
     from . import values
 
     working = values.clone_inputs(data.inputs[0].kernel)
@@ -214,14 +248,22 @@ def _invoke_and_check(contract: Contract, role: str, call, case: Case, data: _Ca
             values.copy_into(working, data.inputs[index].kernel)
         values.poison(outputs, 11 + index)
         before = values.snapshot(working, read_only)
-        _synchronize()
-        call(**working, **outputs)
-        _synchronize()
+        if rank is None:
+            _synchronize()
+            call(**working, **outputs)
+            _synchronize()
+        else:
+            call_once(call, working, outputs, case, rank)
         changed = values.changed_inputs(before, working)
-        ok, metrics = _check(contract, role, values.checked_values(contract, working, outputs),
-                             data.references[index],
+        if rank is not None and not rank.peers_intact():
+            changed.append("peers")
+        written = values.checked_values(contract, working, outputs)
+        ok, metrics = _check(contract, role, written, data.references[index],
                              None if data.baselines is None else data.baselines[index])
         record = {"seed": case.seeds[index], "outputs": metrics}
+        if rank is not None and contract.ranks_agree:
+            # Rank 0 compares these digests across ranks: equal digests are bitwise-equal outputs.
+            record["ranks_agree"] = {name: values.tensor_digest(written[name]) for name in contract.ranks_agree}
         if changed:
             record["modified_inputs"] = changed
             ok = False
@@ -230,7 +272,7 @@ def _invoke_and_check(contract: Contract, role: str, call, case: Case, data: _Ca
     return {"passed": passed, "calls": calls}
 
 
-def _role_calls(contract: Contract, role: str):
+def role_calls(contract: Contract, role: str):
     """The role's audited call and, when its bound needs it, the baseline's."""
     from .audit import PolicyError
     from .loader import BuildError
@@ -250,15 +292,15 @@ def _role_calls(contract: Contract, role: str):
     return call, baseline_call, need_baseline
 
 
-def correctness_action(contract: Contract, role: str) -> dict:
-    device = _device()
-    call, baseline_call, need_baseline = _role_calls(contract, role)
-    rows, failures, kinds = [], [], set()
+def correctness_action(contract: Contract, role: str, rank=None) -> dict:
+    device = _device() if rank is None else rank.device
+    call, baseline_call, need_baseline = role_calls(contract, role)
+    rows = []
     for case in contract.cases:
         row = case.identity()
         try:
-            data = _CaseData(contract, case, device, baseline_call, need_baseline)
-            result = _invoke_and_check(contract, role, call, case, data, device)
+            data = _CaseData(contract, case, device, baseline_call, need_baseline, rank)
+            result = _invoke_and_check(contract, role, call, case, data, device, rank)
             row["metrics"] = {"calls": result["calls"]}
             if result["passed"]:
                 row["status"] = "PASS"
@@ -267,13 +309,21 @@ def correctness_action(contract: Contract, role: str) -> dict:
                 modified = any(c.get("modified_inputs") for c in result["calls"])
                 row["failure_kind"] = "input_mutation" if modified else "numerical_mismatch"
         except Exception as exc:  # A crash in one case is that case's failure.
+            if rank is not None:
+                raise  # a peer may be waiting on the device for this rank's call: fail every rank
             row.update(status="FAIL", failure_kind="policy_violation" if "PyTorch operation" in str(exc)
                        or "kernel launch" in str(exc) or "launched kernels" in str(exc) else "execution_error",
                        metadata={"error": f"{type(exc).__name__}: {exc}"[:2000]})
+        rows.append(row)
+    return correctness_report(role, rows)
+
+
+def correctness_report(role: str, rows: list) -> dict:
+    failures, kinds = [], set()
+    for row in rows:
         if row["status"] == "FAIL":
             failures.append(row["test_case_id"])
             kinds.add(row["failure_kind"])
-        rows.append(row)
     if failures:
         kind = kinds.pop() if len(kinds) == 1 else "mixed"
         if kind == "mixed":
@@ -294,21 +344,22 @@ def _cache_flush(nbytes: int):
     return _FLUSH
 
 
-def performance_action(contract: Contract, role: str) -> dict:
+def performance_action(contract: Contract, role: str, rank=None) -> dict:
     from . import values
     from ._aka_benchmark import TimedRun, benchmark_cuda_graph_cold_cache_samples
 
-    device = _device()
-    call, baseline_call, need_baseline = _role_calls(contract, role)
+    device = _device() if rank is None else rank.device
+    call, baseline_call, need_baseline = role_calls(contract, role)
     timing = contract.timing
-    flush = _cache_flush(int(timing.get("cache_flush_bytes", 1 << 30)))
-    rows, failures = [], []
+    nbytes = int(timing.get("cache_flush_bytes", 1 << 30))
+    flush = _cache_flush(nbytes) if rank is None else rank.platform.cache_flush(nbytes)
+    rows = []
     for case in contract.cases:
         if "performance" not in case.checks:
             continue
         row = case.identity()
         try:
-            data = _CaseData(contract, case, device, baseline_call, need_baseline)
+            data = _CaseData(contract, case, device, baseline_call, need_baseline, rank)
             working = values.clone_inputs(data.inputs[0].kernel)
             outputs = values.allocate_outputs(contract, case, device)
             state = {"prepared": 0, "current": 0, "checked": 0, "failed": []}
@@ -317,6 +368,8 @@ def performance_action(contract: Contract, role: str) -> dict:
                 index = state["prepared"] % 2
                 values.copy_into(working, data.inputs[index].kernel)
                 values.poison(outputs, 100 + state["prepared"])
+                if rank is not None:
+                    rank.reset()  # zero the symmetric buffer; the benchmark barriers before release
                 state["current"] = index
                 state["prepared"] += 1
 
@@ -329,12 +382,19 @@ def performance_action(contract: Contract, role: str) -> dict:
                 if not ok and len(state["failed"]) < 3:
                     state["failed"].append({"sample": state["checked"], "outputs": metrics})
 
-            timed = TimedRun()
-            timed.after_sample = after_sample
-            samples, metadata = benchmark_cuda_graph_cold_cache_samples(
-                lambda: call(**working, **outputs), cache_flush=flush,
-                warmup=int(timing.get("warmup", 10)), repetition=int(timing.get("repetition", 100)),
-                prepare_fn=prepare, timed_run=timed)
+            warmup, repetition = int(timing.get("warmup", 10)), int(timing.get("repetition", 100))
+            if rank is None:
+                timed = TimedRun()
+                timed.after_sample = after_sample
+                samples, metadata = benchmark_cuda_graph_cold_cache_samples(
+                    lambda: call(**working, **outputs), cache_flush=flush,
+                    warmup=warmup, repetition=repetition,
+                    prepare_fn=prepare, timed_run=timed)
+            else:
+                reserved = rank.call_inputs(case)
+                samples, metadata = rank.platform.benchmark(
+                    lambda: call(**working, **outputs, **reserved), cache_flush=flush, comm=rank.comm,
+                    warmup=warmup, repetition=repetition, prepare_fn=prepare, after_sample=after_sample)
             if state["failed"]:
                 row.update(status="FAIL", failure_kind="numerical_mismatch",
                            metadata={"measured_output_failures": state["failed"]})
@@ -345,15 +405,32 @@ def performance_action(contract: Contract, role: str) -> dict:
                 row.update(status="PASS", execution_time_ms=statistics.median(samples),
                            benchmark_method=metadata["benchmark_method"], metadata=metadata)
         except Exception as exc:
+            if rank is not None:
+                raise  # every rank fails together
             row.update(status="FAIL", failure_kind="execution_error",
                        metadata={"error": f"{type(exc).__name__}: {exc}"[:2000]})
-        if row["status"] == "FAIL":
-            failures.append(row["test_case_id"])
         rows.append(row)
+    return performance_report(role, rows)
+
+
+def performance_report(role: str, rows: list) -> dict:
+    failures = [row["test_case_id"] for row in rows if row["status"] == "FAIL"]
     if failures:
         return _report(role, "performance", "FAIL", rows, f"{len(failures)} case(s) failed: {failures[:8]}",
                        "performance_error")
     return _report(role, "performance", "PASS", rows)
+
+
+def _multi_rank_action(contract: Contract, role: str, action: str) -> dict:
+    """Correctness or performance of a multi-GPU task: one process per rank, rank 0's merged report."""
+    from .distributed import launch
+
+    if role == "candidate" and candidate_state(contract) == "unimplemented":
+        raise ActionFailure("The candidate is still the unimplemented template", "unimplemented")
+    report, failure = launch(contract, "evaluate", role, action)
+    if failure is not None:
+        raise ActionFailure(failure["reason"], failure["kind"])
+    return report
 
 
 def run(argv: list[str]) -> tuple[dict, int]:
@@ -369,6 +446,8 @@ def run(argv: list[str]) -> tuple[dict, int]:
             report = validate_task(contract)
         elif action == "compile":
             report = compile_action(contract, role)
+        elif contract.distributed is not None:
+            report = _multi_rank_action(contract, role, action)
         elif action == "correctness":
             report = correctness_action(contract, role)
         else:

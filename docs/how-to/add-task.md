@@ -87,6 +87,7 @@ interface:
   mutable: []                            # inputs the operator updates in place
   generator: {file: inputs.py, symbol: make_inputs}      # optional
   layout: {file: inputs.py, symbol: to_kernel_layout}    # optional
+distributed: {...}                       # optional: a multi-GPU task (see "Multi-GPU tasks")
 reference: {file: reference.py, symbol: reference}
 baseline:
   language: triton                       # triton | gluon | hip | flydsl | tilelang
@@ -334,6 +335,156 @@ python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
 - **Scoring.** The per-case speedup is baseline time over candidate time; the
   task's speedup is their geometric mean. Any failed correctness case scores 0.
   The final evaluation remeasures the baseline next to the candidate.
+
+## Multi-GPU tasks
+
+Some production kernels do their tensor-parallel collective inside the kernel:
+every rank stores partial results into its peers' buffers over XGMI and polls
+its own buffer. An optional `distributed` block makes a task run on several GPUs
+of one node. Without it a task is single-GPU, exactly as above.
+
+```yaml
+distributed:
+  world_size: 4                         # ranks = GPUs of one node, 2..8
+  symmetric_bytes: "world_size * n_tokens * hidden_size * 2 + 4096"   # int or axis expression
+  shard: {file: inputs.py, symbol: shard_inputs}         # logical inputs -> one rank's inputs
+  expected: {file: inputs.py, symbol: rank_expected}     # logical outputs -> one rank's outputs
+  ranks_agree: [out]                    # optional: outputs every rank writes bitwise identical
+```
+
+| Field | Rule |
+| --- | --- |
+| `world_size` | Integer from 2 to 8. Every rank has the same shapes. |
+| `symmetric_bytes` | Bytes of each rank's framework-owned peer buffer for one call: an integer or an expression over the axes and `world_size`, between 1 byte and 4 GiB in every case. |
+| `shard`, `expected` | Functions in a task-root `.py` file, like `generator` and `layout`. |
+| `ranks_agree` | Distinct outputs or mutable inputs; omitted means none. |
+
+**One rank's call.** `interface.inputs` and `interface.outputs` describe the
+call one rank makes. Shape expressions, derived axes and `symmetric_bytes` may
+use the reserved symbol `world_size`; a multi-GPU task cannot declare an axis
+of that name.
+
+**Logical inputs and outputs.** The inputs are drawn once per case and seed, as
+for a single-GPU task. Every rank draws them identically, and the evaluator
+fails the action when the ranks' draws differ. Built-in distributions draw the
+declared (one-rank) shape, so they suit replicated tensors; a tensor that is
+split across ranks comes from `generator`, which returns its full logical shape
+(its `case["axes"]` includes `world_size`).
+`reference.py` computes the logical outputs from the logical inputs in high
+precision, unchanged. The evaluator then derives each rank's view:
+
+```python
+def shard_inputs(inputs, *, rank, world_size):
+    """Logical inputs -> this rank's kernel inputs: every declared input, by name."""
+    rows = inputs["w"].shape[0] // world_size
+    return {**inputs, "w": inputs["w"][rank * rows:(rank + 1) * rows]}
+
+
+def rank_expected(outputs, *, rank, world_size):
+    """Logical reference outputs (and mutable final values) -> what this rank must write."""
+    return {"out": outputs["out"]}            # a replicated output: the full tensor
+```
+
+`shard` receives copies of the logical inputs and returns every declared input
+(scalars included) at the declared one-rank shape; the optional `layout`
+transform then runs on its result. `expected` returns every output and mutable
+input at its declared shape: the full tensor for a replicated output, the rank's
+slice for a sharded one. Both run outside timing. The CPU pre-check
+(`python3 -m src.tools.check_task`) and `validate-task` run both for every rank
+and reject a missing input or a wrong shape.
+
+**Reserved call inputs.** The evaluator appends four keyword inputs to every
+rank's call. A multi-GPU task must not declare inputs or outputs with these names:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `rank` | int (int32 range) | This process's rank; it runs on `cuda:rank` of the worker's GPU group. |
+| `world_size` | int (int32 range) | The task's `world_size`. |
+| `peers` | int64 device tensor `[world_size]` | `peers[p]` is the base address of rank `p`'s symmetric buffer mapped into this process; `peers[rank]` is the local buffer. |
+| `symmetric` | uint8 device tensor `[symmetric_bytes]` | This rank's symmetric buffer (the same memory as `peers[rank]`). |
+
+The candidate signature is therefore `run(*, <inputs>, <outputs>, rank,
+world_size, peers, symmetric)`, and a HIP op schema ends with `int rank, int
+world_size, Tensor peers, Tensor(x!) symmetric` (the buffer is written by peers
+and by the kernel). `_aka_eval/CANDIDATE.md` states the exact signature.
+
+**Symmetric memory.** Each rank allocates one uncached buffer
+(`hipExtMallocWithFlags(..., hipDeviceMallocUncached)`, rounded up to 2 MiB
+granules and sized for the largest case), exchanges its HIP IPC handle and maps
+every peer's buffer with `hipIpcMemLazyEnablePeerAccess`. The buffers live for
+the whole action. Before every call, outside timing, every rank zeroes its whole
+buffer and restores `peers`, and no rank starts the call before every rank has
+finished its previous call and zeroed its buffer. A call never sees a previous
+call's mailbox words, so a fixed flag value is safe.
+
+**Persistent-kernel state.** Keep no host-side state and change no state from
+the host in `run` (no `epoch.add_()`). Put peer-visible mailbox words, flags and
+guard words in `symmetric` and size `symmetric_bytes` for them: the buffer is
+zeroed before every call and never compared. A device-local value the kernel
+only reads (a fixed epoch tag) is an ordinary input that `shard` (or
+`generator`) initializes, for example `epoch = 1`; every input is reloaded
+before every call, and a read-only input the kernel writes fails correctness.
+Device-local state the kernel writes is a `mutable` input: the reference returns
+its final value (for example `epoch + 1`, or zeros for scratch the kernel
+clears), `expected` returns this rank's part and `compare` checks it (`exact` for
+integers). State whose final contents depend on the implementation belongs in
+`symmetric`.
+
+**Correctness.** For every case and both seeds every rank calls `run` on its
+shard and compares each written tensor with its `expected` values under the
+task's `compare` bound; `baseline_relative` uses that rank's baseline output.
+Read-only inputs and `peers` must be unchanged on every rank. For `ranks_agree`
+outputs every rank reports a SHA-256 digest of the written bytes and rank 0
+requires equal digests (bitwise identity). A case passes only if every rank
+passes and the ranks agree.
+
+**Timing.** Per sample, on every rank: load the sample's inputs, poison the
+outputs and zero the symmetric buffer; run the read-only 1 GiB eviction sweep on
+the rank's own device; synchronize the device, then a host barrier; rank 0
+broadcasts a `CLOCK_MONOTONIC` deadline 2 ms ahead and every rank spins until it,
+records its start event, replays its captured graph (one complete call) and
+records its end event. The sample's time is **the maximum over ranks of the
+per-rank event spans**, and a case's time is the median of those maxima (10
+warm-ups, 100 samples). A barrier after every sample keeps the next sample's
+zeroing behind every rank's replay. A collective finishes when its slowest rank
+finishes, so the maximum is conservative and applies one rule to baseline and
+candidate; the shared deadline keeps launch skew to microseconds, where a
+barrier alone leaves tens. The row metadata keeps every rank's raw samples
+(`benchmark_rank_samples_ms`), the release skew of each sample
+(`benchmark_release_skew_us`) and how often each rank was the slowest. Graphs are
+captured per rank before timing, and a capture failure on any rank fails every
+rank. Every timed sample's outputs are checked on every rank.
+
+**Process model and failures.** A correctness or performance action (and the QA
+control suite) starts `world_size` processes. They form a gloo group over a
+FileStore in a private temporary directory, on the loopback interface, for the
+handle exchange, barriers and result gathering; rank 0 merges the ranks' results
+and the launching process prints them as the single `ARENA_EVAL_RESULT=` line. A rank that raises, dies or outlives
+the action deadline (`timeout_s` minus 30 s) fails the whole action, and the
+remaining ranks are killed. `validate-task` and `compile` run in one process.
+
+**Candidate rules.** Unchanged, plus: kernels may load from and store to peer
+memory through `peers` and `symmetric`. Host-side communication is rejected:
+`torch.distributed`, `torch.multiprocessing` and storage sharing, RCCL/NCCL,
+HIP IPC, peer-access, memory export and allocation APIs statically, and
+collective operators at run time.
+
+**Running and budget.** A multi-GPU task runs only on a worker whose GPU group
+has exactly `world_size` GPUs, so its run configuration sets
+`resources.gpu_groups` (see [parallel runs](parallel-run.md#gpu-groups-for-multi-gpu-tasks));
+a mismatch, including an allocation with fewer GPUs than `world_size`, fails
+before any container starts. One run cannot mix world sizes, or
+multi-GPU with single-GPU tasks. Each task's full evaluation (compile,
+correctness and performance, baseline and candidate) must finish in 10 minutes
+of wall time on one node. Kernels that compile per specialization (FlyDSL
+persistent kernels compile per row count) should keep the number of distinct
+compiled shapes small (two or three) and vary another axis, such as the context
+length, instead.
+
+The GPU path (HIP IPC, peer stores, per-rank graphs and events) needs a ROCm
+PyTorch and is verified only by running a task on MI355X. The framework's CPU
+tests cover the process model, sharding, merging and timing aggregation with an
+emulated symmetric memory.
 
 ## Run configuration
 

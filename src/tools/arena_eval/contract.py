@@ -22,6 +22,8 @@ CONTRACT_VERSION = 1
 
 PYTHON_LANGUAGES = frozenset({"triton", "gluon", "flydsl", "tilelang", "python"})
 TARGET_LANGUAGES = frozenset({"triton", "gluon", "hip", "flydsl"})
+# Keyword inputs the evaluator appends to every rank's call of a multi-GPU task.
+RESERVED_INPUTS = ("rank", "world_size", "peers", "symmetric")
 
 
 class ContractError(ValueError):
@@ -110,21 +112,51 @@ class Contract:
         self.candidate = Implementation("candidate", **raw["candidate"])
         self.cases = tuple(Case(c["id"], dict(c["axes"]), dict(c.get("scalars", {})),
                                 tuple(c["checks"]), tuple(c["seeds"])) for c in raw["cases"])
+        self.distributed = raw.get("distributed")
         names = list(self.inputs) + list(self.outputs)
         if len(names) != len(set(names)):
             raise ContractError("Input and output names must be distinct")
         for name in self.mutable:
             if name not in self.inputs or self.inputs[name]["kind"] != "tensor":
                 raise ContractError(f"Mutable entry {name!r} is not a tensor input")
+        if self.distributed is not None:
+            world = self.distributed.get("world_size")
+            if type(world) is not int or not 2 <= world <= 8:
+                raise ContractError("distributed.world_size must be an integer from 2 to 8")
+            if set(names) & set(RESERVED_INPUTS):
+                raise ContractError(f"Reserved multi-GPU inputs {RESERVED_INPUTS} cannot be task names")
+            if any(n not in self.checked_tensors for n in self.ranks_agree):
+                raise ContractError("distributed.ranks_agree names a tensor the operator does not write")
+
+    @property
+    def world_size(self) -> int:
+        return self.distributed["world_size"] if self.distributed else 1
+
+    @property
+    def ranks_agree(self) -> tuple[str, ...]:
+        return tuple((self.distributed or {}).get("ranks_agree", ()))
 
     @property
     def call_keys(self) -> tuple[str, ...]:
-        return tuple(self.inputs) + tuple(self.outputs)
+        keys = tuple(self.inputs) + tuple(self.outputs)
+        return keys + RESERVED_INPUTS if self.distributed else keys
 
     @property
     def checked_tensors(self) -> tuple[str, ...]:
         """Every tensor the operator writes: outputs, then mutable inputs."""
         return tuple(self.outputs) + self.mutable
+
+    @property
+    def written_tensors(self) -> tuple[str, ...]:
+        """What a HIP op schema marks written: the checked tensors and the symmetric buffer."""
+        return self.checked_tensors + (("symmetric",) if self.distributed else ())
+
+    def symmetric_bytes(self, case: Case) -> int:
+        """Bytes of the symmetric peer buffer one call of ``case`` receives."""
+        value = evaluate_dim(self.distributed["symmetric_bytes"], self.symbols(case))
+        if value < 1:
+            raise ContractError(f"case {case.case_id}: symmetric_bytes must be positive")
+        return value
 
     def implementation(self, role: str) -> Implementation:
         if role == "baseline":
@@ -137,6 +169,8 @@ class Contract:
         symbols = {}
         for name, axis in self.axes.items():
             symbols[name] = axis["value"] if axis["kind"] == "const" else case.axes[name]
+        if self.distributed is not None:
+            symbols["world_size"] = self.distributed["world_size"]
         for name, expression in self.derived_axes.items():
             symbols[name] = evaluate_dim(expression, symbols)
         return symbols

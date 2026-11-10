@@ -45,11 +45,16 @@ FORBIDDEN_ATTRIBUTES = frozenset({
     # Dispatch and evaluator state.
     "_python_dispatch", "_disable_current_modes", "_DisableTorchDispatch", "_pop_mode",
     "_pop_mode_temporarily", "_unset_dispatch_mode", "_DisablePythonDispatcher",
+    # Host-side inter-process memory sharing (CUDA/HIP IPC handles, shared storages). Multi-GPU
+    # candidates reach peer memory only through the framework's ``peers`` addresses.
+    "_share_cuda_", "_new_shared_cuda", "_release_ipc_counter_cuda", "_share_fd_cpu_", "_share_filename_cpu_",
+    "_new_shared_fd_cpu", "_new_shared_filename_cpu", "share_memory_", "_shared_incref", "_shared_decref",
 })
 TORCH_FORBIDDEN_PREFIXES = (
     "torch.ops", "torch._C", "torch._ops", "torch.library", "torch.utils", "torch.nn",
     "torch.compile", "torch._dynamo", "torch._inductor", "torch.autograd", "torch.backends",
-    "torch.fx", "torch.jit", "torch.distributed", "torch.profiler", "torch.hub", "torch.cuda.graphs",
+    "torch.fx", "torch.jit", "torch.distributed", "torch.multiprocessing", "torch.profiler", "torch.hub",
+    "torch.cuda.graphs",
     "torch.set_", "torch.cuda.set_", "torch.manual_seed", "torch.seed", "torch.cuda.manual_seed",
     "torch.cuda.seed", "torch.use_deterministic_algorithms", "torch.cuda.stream",
     "torch.save", "torch.load", "torch.rand", "torch.randn", "torch.randint", "torch.randperm",
@@ -198,9 +203,12 @@ _STD_HEADERS = frozenset({
 })
 _HIP_FORBIDDEN = re.compile(
     r"\b(hip(?:DeviceSynchronize|StreamSynchronize|EventSynchronize|SetDevice|Malloc|Free|HostMalloc|"
-    r"HostFree|ExtMalloc|Ipc|StreamCreate|Graph|Module|MemcpyPeer|DeviceReset)\w*"
+    r"HostFree|ExtMalloc|Ipc|StreamCreate|Graph|Module|MemcpyPeer|DeviceReset|DeviceEnablePeerAccess|"
+    r"DeviceDisablePeerAccess|DeviceCanAccessPeer|CtxEnablePeerAccess|CtxDisablePeerAccess|MemExport|"
+    r"MemImport|MemCreate|MemMap|MemSetAccess)\w*"
     r"|hip(?:Memcpy|Memset)(?!\w*Async)\w*|cuda[A-Z]\w*|rocblas_\w+|hipblas\w*|hipblasLt\w*|"
-    r"miopen\w+|rccl\w+|getenv|fopen|system|popen|dlopen|std::thread|std::async|"
+    r"miopen\w+|rccl\w+|nccl[A-Z]\w*|roc_?shmem\w*|mscclpp\w*|MPI_\w+|getenv|fopen|system|popen|dlopen|"
+    r"std::thread|std::async|"
     r"at::(?:matmul|mm|bmm|addmm|baddbmm|einsum|linear|conv\w*|softmax|log_softmax|layer_norm|"
     r"rms_norm|group_norm|batch_norm|sort|topk|cumsum|sum|mean|max|min|argmax|argmin|exp|log|"
     r"tanh|sigmoid|relu|gelu|silu|mul|add|sub|div|pow|sqrt|rsqrt|where|gather|scatter\w*|"
@@ -281,6 +289,9 @@ PREPARATION_OPS = frozenset({
     "aten::set_",
 })
 DTYPE_PRESERVING_COPIES = frozenset({"aten::copy_", "aten::clone", "aten::_to_copy", "aten::contiguous"})
+# Collective and process-group operators (torch.distributed, functional collectives, symmetric memory).
+HOST_COMMUNICATION_NAMESPACES = frozenset({"c10d", "_c10d_functional", "c10d_functional", "_c10d_functional_autograd",
+                                           "symm_mem", "_dtensor"})
 
 
 def _dtype_preserved(name: str, args: tuple, kwargs: dict) -> bool:
@@ -304,6 +315,9 @@ def preparation_only(label: str) -> Iterator[None]:
         def __torch_dispatch__(self, func, types, args=(), kwargs=None):
             kwargs = kwargs or {}
             name = func._schema.name
+            if name.split("::")[0] in HOST_COMMUNICATION_NAMESPACES:
+                raise RuntimeError(f"{label} issued {name}: host-side communication belongs to the "
+                                   "framework; candidates reach peers only through device loads and stores")
             allowed = name in PREPARATION_OPS or (
                 name in DTYPE_PRESERVING_COPIES and _dtype_preserved(name, args, kwargs))
             if not allowed:

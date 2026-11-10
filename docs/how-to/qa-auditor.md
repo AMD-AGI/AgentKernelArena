@@ -26,7 +26,9 @@ contract; this page owns the audit rubric.
    correctness check must reject). A perturbing control that never changes a
    checked tensor (for example fp8 rounding of integer outputs, or zeroing half
    of a single-element output) is reported as not applicable instead. No model
-   is involved, and the checks run before any model sees the workspace.
+   is involved, and the checks run before any model sees the workspace. For a
+   [multi-GPU task](add-task.md#multi-gpu-tasks) the suite runs on every rank,
+   and a control that fails on any rank is rejected.
 3. A **model review** reads the task for problems the deterministic checks
    cannot see (semantic mismatches, unexercised input domains,
    unrepresentative workloads, false README or provenance claims). Its

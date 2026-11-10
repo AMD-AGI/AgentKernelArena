@@ -21,7 +21,7 @@ import torch
 
 from . import values
 from .contract import load_contract
-from .evaluate import _CaseData, _invoke_and_check, _load
+from .evaluate import _CaseData, _invoke_and_check, _load, call_once
 
 RELATIVE_SHIFT_ULPS = 16
 
@@ -128,7 +128,7 @@ def _float32_torch():
         torch.float64, torch.double, torch.Tensor.double = saved
 
 
-def _calibration_probe(contract, case, data: _CaseData) -> list[dict]:
+def _calibration_probe(contract, case, data: _CaseData, rank=None) -> list[dict]:
     """Whether a float32 evaluation of the reference passes each non-exact error bound.
 
     It runs only when the evaluation actually differs from the float64 reference.
@@ -146,6 +146,8 @@ def _calibration_probe(contract, case, data: _CaseData) -> list[dict]:
     try:
         with _float32_torch():
             probe = values.reference_outputs(contract, data.inputs[0].logical)
+        if rank is not None:
+            probe = values.expected_outputs(contract, case, probe, rank.rank)
     except Exception as exc:  # noqa: BLE001 - a reference that cannot run in float32 is not probed
         return [{"case": case.case_id, "skipped": f"{type(exc).__name__}: {str(exc)[:200]}"}]
     results = []
@@ -159,6 +161,8 @@ def _calibration_probe(contract, case, data: _CaseData) -> list[dict]:
         result = compare_tensor(_bound(contract, name), candidate, reference, dtype_name=_dtype_name(baseline),
                                 baseline=baseline, element_order=contract.element_order)
         results.append({"case": case.case_id, "output": name, **result.to_mapping()})
+        if rank is not None:
+            results[-1]["rank"] = rank.rank
     return results
 
 
@@ -185,9 +189,18 @@ def _input_findings(contract, data: _CaseData) -> list[dict]:
     return findings
 
 
-def run_controls() -> dict:
+def run_controls(rank=None) -> dict:
+    """The control suite; with a rank context (multi-GPU tasks) every rank runs it on its own shard,
+    the ranks agree on each control's outcome before the next call, and all return one report."""
     contract = load_contract()
-    device = torch.device("cuda", torch.cuda.current_device())
+    if contract.distributed is not None and rank is None:
+        from .distributed import launch
+
+        report, failure = launch(contract, "controls", "task", "controls")
+        if failure is not None:
+            raise RuntimeError(failure["reason"])
+        return report
+    device = torch.device("cuda", torch.cuda.current_device()) if rank is None else rank.device
     baseline, _ = _load(contract, "baseline", audit=False)
     mutants = _mutants(contract, baseline)
     reset = mutants.pop("_reset")
@@ -195,13 +208,13 @@ def run_controls() -> dict:
     rejected = {name: [] for name in mutants}
     input_findings, determinism, reference_dtypes, calibration = [], [], {}, []
     for case in contract.cases:
-        data = _CaseData(contract, case, device, baseline, need_baseline=True)
+        data = _CaseData(contract, case, device, baseline, need_baseline=True, rank=rank)
         if case is contract.cases[0] or case is contract.cases[-1]:
             input_findings += [{"case": case.case_id, **item} for item in _input_findings(contract, data)]
             reference_dtypes.update({name: str(tensor.dtype).removeprefix("torch.")
                                      for name, tensor in data.references[0].items()})
         try:
-            calibration += _calibration_probe(contract, case, data)
+            calibration += _calibration_probe(contract, case, data, rank)
         except Exception as exc:  # noqa: BLE001 - the probe is informational and must not stop the controls
             calibration.append({"case": case.case_id, "skipped": f"{type(exc).__name__}: {str(exc)[:200]}"})
         # Baseline run-to-run agreement on identical inputs (informational).
@@ -210,8 +223,7 @@ def run_controls() -> dict:
             working = values.clone_inputs(data.inputs[0].kernel)
             outputs = values.allocate_outputs(contract, case, device)
             values.poison(outputs, 3)
-            baseline(**working, **outputs)
-            torch.cuda.synchronize()
+            call_once(baseline, working, outputs, case, rank)
             runs.append({n: t.clone() for n, t in _tensors(contract, outputs, working).items()})
         if any(not torch.equal(values.tensor_bytes(runs[0][n]), values.tensor_bytes(runs[1][n])) for n in runs[0]):
             determinism.append(case.case_id)
@@ -219,12 +231,22 @@ def run_controls() -> dict:
             if rejected[name]:
                 continue
             reset()
+            outcome = None
             try:
-                result = _invoke_and_check(contract, "candidate", mutant, case, data, device)
+                result = _invoke_and_check(contract, "candidate", mutant, case, data, device, rank)
                 if not result["passed"]:
-                    rejected[name].append(case.case_id)
+                    outcome = case.case_id
             except Exception as exc:  # A crash also rejects the control.
-                rejected[name].append(f"{case.case_id}:{type(exc).__name__}")
+                outcome = f"{case.case_id}:{type(exc).__name__}"
+            if rank is not None:
+                # Every rank must make the same next call: a control rejected on any rank is rejected.
+                outcome = next((item for item in rank.gather(outcome) if item is not None), None)
+            if outcome is not None:
+                rejected[name].append(outcome)
+    if rank is not None:
+        effective = set().union(*rank.gather(sorted(effective)))
+        determinism = sorted(set().union(*rank.gather(determinism)))
+        calibration = [item for part in rank.gather(calibration) for item in part]
     # A perturbing control that never changed a checked tensor returned the baseline's own outputs, so it
     # proves nothing about the task and is not applicable: fp8 rounding of integer outputs or of values fp8
     # represents exactly, zeroing a half that is already zero, a single-element output, an all-zero output.
