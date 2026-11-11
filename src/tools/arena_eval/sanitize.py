@@ -26,7 +26,14 @@ Lanes:
     PyTorch-visible operations, including a HIP candidate's custom op).
 ``tilelens``
     The smallest case with each Triton or Gluon kernel run by TileLens's
-    symbolic out-of-bounds checker in Triton's CPU interpreter.
+    symbolic out-of-bounds checker in Triton's CPU interpreter. A reported
+    access counts only after the ``bounds`` lane reproduces it.
+``bounds``
+    The smallest case with every Triton kernel run concretely in Triton's CPU
+    interpreter (``TRITON_INTERPRET=1``), each active load, store and atomic
+    address checked against the argument buffers of its launch. The
+    ``tilelens`` lane runs it to confirm a symbolic finding: TileLens
+    over-approximates loop-carried pointer updates and loaded indices.
 ``fpsan``
     The smallest case through Triton FpSan for the candidate and the baseline
     (both Triton or Gluon); a differing digest means a different floating-point
@@ -53,7 +60,7 @@ import sys
 import warnings
 from pathlib import Path
 
-LANES = ("page_fault_guard", "csan", "tilelens", "fpsan", "gpu_asan", "capture")
+LANES = ("page_fault_guard", "csan", "tilelens", "bounds", "fpsan", "gpu_asan", "capture")
 
 # The allocator switches a lane requires; the sidecar sets them before start-up.
 NO_CACHING = {"PYTORCH_NO_HIP_MEMORY_CACHING": "1", "AMD_PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
@@ -284,9 +291,19 @@ def tilelens(contract, role: str) -> dict:
     metadata = {"case": case.case_id, "kernels": len(sanitizers), "violations": violations[:16],
                 "violation_count": len(violations), "approximations": approximations}
     if violations:
-        row.update(status="FAIL", failure_kind="out_of_bounds")
+        # TileLens's model can place an access out of bounds that no execution
+        # reaches; only a concrete run of the same case decides.
+        confirmation = _confirm_bounds(role)
+        metadata["confirmation"] = confirmation
+        if confirmation["status"] == "confirmed":
+            row.update(status="FAIL", failure_kind="out_of_bounds")
+            return _report(role, "FAIL", [row], "tilelens", metadata,
+                           f"TileLens found {len(violations)} out-of-bounds access(es); a concrete interpreter run "
+                           f"reproduced {confirmation['violation_count']}", "out_of_bounds")
+        row.update(status="FAIL", failure_kind="unconfirmed")
         return _report(role, "FAIL", [row], "tilelens", metadata,
-                       f"TileLens found {len(violations)} out-of-bounds access(es)", "out_of_bounds")
+                       f"TileLens reported {len(violations)} out-of-bounds access(es) that a concrete interpreter "
+                       f"run did not reproduce ({confirmation['status']})", "unconfirmed")
     if error is not None:
         row.update(status="FAIL", failure_kind="unanalyzable", metadata={"error": error})
         return _report(role, "FAIL", [row], "tilelens", metadata, f"TileLens could not analyze the call: {error}",
@@ -295,6 +312,200 @@ def tilelens(contract, role: str) -> dict:
         return _report(role, "FAIL", [row], "tilelens", metadata, "No Triton or Gluon kernel was traced",
                        "unanalyzable")
     return _report(role, "PASS", [row], "tilelens", metadata)
+
+
+# ---------------------------------------------------------------------------
+# bounds
+
+BOUNDS_TIMEOUT_S = 1200
+BOUNDS_MAX_RECORDS = 16
+
+
+class _BoundsStop(Exception):
+    """An access the interpreter cannot mask (atomic CAS) left every buffer; stop the run."""
+
+
+def _bounds_location() -> list:
+    import traceback
+
+    frames = [frame for frame in traceback.extract_stack()[:-2] if "/solution/" in frame.filename.replace("\\", "/")]
+    return [f"{frame.filename}:{frame.lineno} {frame.name}: {(frame.line or '').strip()}"[:300]
+            for frame in frames[-3:]]
+
+
+def _bounds_patch(state: dict):
+    """Check every active access of Triton's interpreter against its launch's argument buffers.
+
+    The interpreter copies each argument's whole storage to the host and the
+    kernel addresses those copies, so an access is in bounds when it lies in
+    one of them. An access outside every buffer is recorded and masked off
+    (never performed). Returns a function that removes the patch.
+    """
+    import inspect
+
+    import numpy as np
+    import triton.language as tl
+    import triton.runtime.interpreter as interpreter
+
+    restore = []
+    unwrap = getattr(interpreter, "_unwrap_tensor", lambda value: value)
+    try:
+        from triton.tools.tensor_descriptor import TensorDescriptor
+    except ImportError:  # pragma: no cover - older Triton
+        TensorDescriptor = ()
+
+    executor = interpreter.GridExecutor
+    original_init = executor._init_args_hst
+
+    def init_args_hst(self, args_dev, kwargs):
+        args_hst, kwargs_hst = original_init(self, args_dev, kwargs)
+        buffers = {}
+
+        def walk(value):
+            if isinstance(value, (tuple, list)):
+                for item in value:
+                    walk(item)
+            elif TensorDescriptor and isinstance(value, TensorDescriptor):
+                walk(value.base)
+            elif hasattr(value, "data_ptr"):
+                storage = unwrap(value).untyped_storage()
+                buffers[storage.data_ptr()] = storage.data_ptr() + storage.nbytes()
+
+        walk(list(args_hst))
+        walk(list(kwargs_hst.values()))
+        ordered = sorted(buffers.items())
+        state["starts"] = np.array([start for start, _ in ordered], dtype=np.uint64)
+        state["ends"] = np.array([end for _, end in ordered], dtype=np.uint64)
+        state["kernel"] = getattr(getattr(self, "fn", None), "__name__", None)
+        state["launches"] += 1
+        return args_hst, kwargs_hst
+
+    executor._init_args_hst = init_args_hst
+    restore.append((executor, "_init_args_hst", original_init))
+
+    def keep_mask(op, ptrs, mask):
+        """None when every active access is in bounds, else the mask without the stray accesses."""
+        addresses = np.asarray(ptrs.data).astype(np.uint64, copy=False)
+        active = (np.ones(addresses.shape, dtype=bool) if mask is None
+                  else np.broadcast_to(np.asarray(mask.data, dtype=bool), addresses.shape))
+        element = ptrs.dtype
+        while hasattr(element, "element_ty"):
+            element = element.element_ty
+        size = np.uint64(max(1, int(getattr(element, "primitive_bitwidth", 8)) // 8))
+        starts, ends = state["starts"], state["ends"]
+        inside = np.zeros(addresses.shape, dtype=bool)
+        if starts.size:
+            index = np.searchsorted(starts, addresses, side="right").astype(np.int64) - 1
+            inside = (index >= 0) & (addresses + size <= ends[np.clip(index, 0, None)])
+        stray = active & ~inside
+        if not stray.any():
+            return None
+        state["violation_count"] += int(stray.sum())
+        if len(state["violations"]) < BOUNDS_MAX_RECORDS:
+            address = int(addresses[stray].flat[0])
+            below = int(np.searchsorted(starts, np.uint64(address), side="right")) - 1 if starts.size else -1
+            nearest = ({"buffer_bytes": int(ends[below]) - int(starts[below]), "offset": address - int(starts[below])}
+                       if below >= 0 else None)
+            state["violations"].append({"op": op, "kernel": state["kernel"], "address": hex(address),
+                                        "bytes": int(size), "lanes": int(stray.sum()), "nearest_buffer": nearest,
+                                        "location": _bounds_location()})
+        return np.ascontiguousarray(active & inside)
+
+    builder = type(interpreter.interpreter_builder)
+    for name, op in (("create_masked_load", "load"), ("create_masked_store", "store"),
+                     ("create_atomic_rmw", "atomic_rmw"), ("create_atomic_cas", "atomic_cas")):
+        original = getattr(builder, name, None)
+        if original is None:
+            continue
+        params = list(inspect.signature(original).parameters)[1:]
+        pointer = "ptrs" if "ptrs" in params else "ptr"
+
+        def checked(self, *args, _original=original, _params=params, _pointer=pointer, _op=op, **kwargs):
+            bound = dict(zip(_params, args), **kwargs)
+            keep = keep_mask(_op, bound[_pointer], bound.get("mask"))
+            if keep is None:
+                return _original(self, *args, **kwargs)
+            if "mask" not in _params:
+                raise _BoundsStop(_op)
+            bound["mask"] = interpreter.TensorHandle(keep, tl.int1)
+            return _original(self, **bound)
+
+        setattr(builder, name, checked)
+        restore.append((builder, name, original))
+
+    def unpatch():
+        for owner, name, original in reversed(restore):
+            setattr(owner, name, original)
+
+    return unpatch
+
+
+def bounds(contract, role: str) -> dict:
+    evaluate = _evaluate()
+    implementation = contract.implementation(role)
+    if implementation.language != "triton":
+        raise evaluate.ActionFailure(f"The bounds lane checks Triton, not {implementation.language}", "unsupported")
+    _require_env({"TRITON_INTERPRET": "1"})
+    device = evaluate._device()
+    state = {"violations": [], "violation_count": 0, "launches": 0, "kernel": None, "starts": None, "ends": None}
+    unpatch = _bounds_patch(state)
+    # Kernels execute in the CPU interpreter, which the GPU launch audit cannot
+    # observe; the call keeps its integrity check and ran audited in correctness.
+    call, _, check = _load_role(contract, role, enforce=False)
+    case = smallest_case(contract)
+    row = case.identity()
+    error = None
+    try:
+        _run_once(contract, call, case, device)
+        row["status"] = "PASS"
+    except _BoundsStop:
+        pass
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"[:2000]
+    finally:
+        unpatch()
+    if check is not None:
+        check("sanitize")
+    metadata = {"case": case.case_id, "launches": state["launches"], "violations": state["violations"],
+                "violation_count": state["violation_count"]}
+    if state["violation_count"]:
+        row.update(status="FAIL", failure_kind="out_of_bounds")
+        return _report(role, "FAIL", [row], "bounds", metadata,
+                       f"{state['violation_count']} access(es) outside every argument buffer", "out_of_bounds")
+    if error is not None:
+        row.update(status="FAIL", failure_kind="unanalyzable", metadata={"error": error})
+        return _report(role, "FAIL", [row], "bounds", metadata, f"The interpreter run failed: {error}",
+                       "unanalyzable")
+    if not state["launches"]:
+        return _report(role, "FAIL", [row], "bounds", metadata, "No Triton kernel ran in the interpreter",
+                       "unanalyzable")
+    return _report(role, "PASS", [row], "bounds", metadata)
+
+
+def _confirm_bounds(role: str) -> dict:
+    """Run the ``bounds`` lane in a fresh interpreter-mode process; summarize its verdict."""
+    evaluate = _evaluate()
+    environment = {**os.environ, "TRITON_INTERPRET": "1"}
+    try:
+        process = subprocess.run([sys.executable, "-m", "_aka_eval.evaluate", role, "sanitize", "bounds"],
+                                 cwd=str(evaluate.WORKSPACE), env=environment, capture_output=True, text=True,
+                                 timeout=BOUNDS_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "violation_count": 0, "violations": [],
+                "error": f"no verdict within {BOUNDS_TIMEOUT_S} s"}
+    lines = [line for line in process.stdout.splitlines() if line.startswith(evaluate.PREFIX)]
+    try:
+        report = json.loads(lines[-1][len(evaluate.PREFIX):])
+    except (IndexError, ValueError):
+        return {"status": "error", "violation_count": 0, "violations": [],
+                "error": f"exit {process.returncode}: {process.stderr.strip()[-1500:]}"}
+    metadata = report.get("metadata") or {}
+    status = {"out_of_bounds": "confirmed"}.get(report.get("failure_kind"),
+                                                 "reproduced_nothing" if report.get("status") == "PASS" else "error")
+    return {"status": status, "violation_count": int(metadata.get("violation_count") or 0),
+            "violations": (metadata.get("violations") or [])[:BOUNDS_MAX_RECORDS],
+            "launches": metadata.get("launches"),
+            "error": None if status in ("confirmed", "reproduced_nothing") else (report.get("reason") or "")[:1500]}
 
 
 # ---------------------------------------------------------------------------
@@ -789,7 +1000,7 @@ def capture(contract, role: str) -> dict:
     return _report(role, "PASS", [case.identity() | {"status": "PASS"}], "capture", metadata)
 
 
-_LANES = {"page_fault_guard": page_fault_guard, "csan": csan, "tilelens": tilelens, "fpsan": fpsan,
+_LANES = {"page_fault_guard": page_fault_guard, "csan": csan, "tilelens": tilelens, "bounds": bounds, "fpsan": fpsan,
           "gpu_asan": gpu_asan, "capture": capture}
 
 

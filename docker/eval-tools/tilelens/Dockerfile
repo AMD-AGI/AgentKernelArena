@@ -14,6 +14,9 @@ RUN /opt/venv/bin/python -m pip install --no-cache-dir --no-deps --require-hashe
         "import tilelens, z3; from tilelens.clients import Sanitizer; print('tilelens', z3.get_version_string())"
 
 COPY src/eval_tools /opt/aka-eval-tools/src/eval_tools
+# The startup control exercises the lane's concrete bounds check, which
+# confirms a TileLens finding before it counts.
+COPY src/tools/arena_eval/sanitize.py /opt/aka-eval-tools/src/tools/arena_eval/sanitize.py
 
 ENV AKA_EVAL_TOOL_FRAMEWORK_ROOT=/opt/aka-eval-tools \
     PYTHONPATH=/opt/aka-eval-tools \

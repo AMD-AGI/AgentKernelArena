@@ -242,6 +242,13 @@ class TileLensPlugin(_LanePlugin):
     every load and store address is checked against its tensor (z3 over the
     symbolic program id, mask and loop bounds). No GPU time is used.
 
+    A symbolic violation is a finding only when the lane's concrete rerun
+    (the ``bounds`` lane: the same case in Triton's interpreter, every active
+    address checked against the launch's argument buffers) reproduces an
+    out-of-bounds access. TileLens over-approximates loop-carried pointer
+    updates and loaded indices, so it can report an access that no execution
+    reaches. An unreproduced violation is recorded as unverified.
+
     Gluon is reported unsupported: TileLens 3.1.1's interpreter failed on
     every Gluon task kernel tried (symbolic program ids, tuple values and
     ``@triton.jit`` helpers called from Gluon).
@@ -265,13 +272,27 @@ class TileLensPlugin(_LanePlugin):
         if error is not None:
             return error
         metadata = report.get("metadata") or {}
+        confirmation = metadata.get("confirmation") or {}
         if report.get("failure_kind") == "out_of_bounds":
+            if confirmation.get("status") != "confirmed":
+                return ParseResult(INCONCLUSIVE, reason_code="tilelens_unconfirmed",
+                                   details="out-of-bounds report without a concrete confirmation")
             findings = tuple(
-                FindingRecord(kind="out-of-bounds", message=f"{item.get('op')} on {item.get('tensor')} at "
-                              f"{item.get('address')}", location="; ".join(item.get("location") or [])[:600] or None)
-                for item in (metadata.get("violations") or [])[:16]
-            ) or (FindingRecord(kind="out-of-bounds", message="TileLens reported an out-of-bounds access"),)
+                FindingRecord(kind="out-of-bounds",
+                              message=f"{item.get('op')} of {item.get('bytes')} byte(s) at {item.get('address')} "
+                                      f"({item.get('lanes')} lane(s)) outside every argument buffer of "
+                                      f"{item.get('kernel')}",
+                              location="; ".join(item.get("location") or [])[:600] or None)
+                for item in (confirmation.get("violations") or [])[:16]
+            ) or (FindingRecord(kind="out-of-bounds", message="An interpreter run accessed outside every buffer"),)
             return ParseResult(FINDING, findings, "tilelens_out_of_bounds", attested=True)
+        if report.get("failure_kind") == "unconfirmed":
+            symbolic = "; ".join(f"{item.get('op')} on {item.get('tensor')}"
+                                 for item in (metadata.get("violations") or [])[:8])
+            return ParseResult(INCONCLUSIVE, reason_code="tilelens_unconfirmed",
+                               details=(f"concrete rerun: {confirmation.get('status')}"
+                                        f"{' (' + str(confirmation.get('error')) + ')' if confirmation.get('error') else ''}"
+                                        f"; symbolic: {symbolic}")[:4000])
         if report.get("failure_kind") == "unanalyzable":
             return ParseResult(INCONCLUSIVE, reason_code="tilelens_unanalyzable", details=_failure_text(report)[:4000])
         if report.get("status") == "PASS":

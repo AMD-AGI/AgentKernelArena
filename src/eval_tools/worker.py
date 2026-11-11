@@ -982,26 +982,41 @@ def _csan_positive(probe_root: Path, work_dir: Path, artifact_dir: Path) -> dict
 def _tilelens_positive(evidence: Mapping[str, Any], probe_root: Path, work_dir: Path,
                        artifact_dir: Path) -> dict[str, Any]:
     root = str(evidence.get("tilelens_root") or "")
+    # The lane's concrete bounds check (src/tools/arena_eval/sanitize.py) is
+    # copied beside src/eval_tools in the image.
+    framework = str(probe_root.parents[2])
     steps, records = {}, {}
-    for name in ("safe", "oob"):
+    for name, marker, field, extra in (
+        ("safe", "TILELENS_RESULT ", "records", {}),
+        ("oob", "TILELENS_RESULT ", "records", {}),
+        ("bounds_safe", "BOUNDS_RESULT ", "violations", {"TRITON_INTERPRET": "1"}),
+        ("bounds_oob", "BOUNDS_RESULT ", "violations", {"TRITON_INTERPRET": "1"}),
+    ):
         steps[name] = _run_probe_step(
             name, [_python(), str(probe_root / "tilelens_probe.py"), name], cwd=work_dir,
-            environment=_probe_environment(work_dir, PYTHONPATH=root), artifact_dir=artifact_dir,
+            environment=_probe_environment(work_dir, PYTHONPATH=os.pathsep.join(filter(None, (root, framework))),
+                                           **extra),
+            artifact_dir=artifact_dir,
         )
         for line in str(steps[name]["_stdout"]).splitlines():
-            if line.startswith("TILELENS_RESULT "):
+            if line.startswith(marker):
                 try:
-                    records[name] = int(json.loads(line[len("TILELENS_RESULT "):])["records"])
+                    records[name] = int(json.loads(line[len(marker):])[field])
                 except (ValueError, KeyError, TypeError):
                     pass
-    safe_ok = steps["safe"]["returncode"] == 0 and records.get("safe") == 0
-    oob_ok = steps["oob"]["returncode"] == 0 and (records.get("oob") or 0) > 0
+    ok = {name: steps[name]["returncode"] == 0 and name in records for name in steps}
+    safe_ok = ok["safe"] and records["safe"] == 0
+    oob_ok = ok["oob"] and records["oob"] > 0
+    bounds_safe_ok = ok["bounds_safe"] and records["bounds_safe"] == 0
+    bounds_oob_ok = ok["bounds_oob"] and records["bounds_oob"] > 0
     return _positive_result(
-        passed=bool(root) and safe_ok and oob_ok,
+        passed=bool(root) and safe_ok and oob_ok and bounds_safe_ok and bounds_oob_ok,
         kind="tilelens_safe_and_off_by_one",
-        detail="TileLens must record no violation for an in-bounds copy and at least one for an off-by-one copy",
+        detail=("TileLens must record no violation for an in-bounds copy and at least one for an off-by-one copy, "
+                "and the concrete interpreter check that confirms its findings must agree on both"),
         artifact_dir=artifact_dir, steps=steps,
-        controls={"safe": {"passed": safe_ok}, "off_by_one": {"passed": oob_ok}},
+        controls={"safe": {"passed": safe_ok}, "off_by_one": {"passed": oob_ok},
+                  "concrete_safe": {"passed": bounds_safe_ok}, "concrete_off_by_one": {"passed": bounds_oob_ok}},
     )
 
 

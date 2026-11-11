@@ -1,7 +1,10 @@
 """CPU checks of the v3 runner's sanitizer lanes: build flags, routing, environment and helpers."""
 from __future__ import annotations
 
+import json
 import struct
+import subprocess
+import sys
 
 import pytest
 
@@ -176,3 +179,112 @@ def test_flydsl_observer_records_artifacts_reached_through_executor_methods():
     finally:
         sys.setprofile(previous)
     assert observed == [artifact]
+
+
+def _fake_interpreter(monkeypatch, calls):
+    """A stand-in for triton.runtime.interpreter with the methods the bounds lane wraps."""
+    import types
+
+    class TensorHandle:
+        def __init__(self, data, dtype):
+            self.data, self.dtype = data, dtype
+
+    class Builder:
+        def create_masked_load(self, ptrs, mask, other, cache_policy, is_volatile):
+            calls.append(("load", list(mask.data)))
+            return "loaded"
+
+        def create_masked_store(self, ptrs, value, mask, cache_policy):
+            calls.append(("store", list(mask.data)))
+
+        def create_atomic_cas(self, ptr, cmp, val, sem, scope):
+            calls.append(("cas",))
+
+    class GridExecutor:
+        def __init__(self, fn):
+            self.fn = fn
+
+        def _init_args_hst(self, args_dev, kwargs):
+            return list(args_dev), dict(kwargs)
+
+    interpreter = types.ModuleType("triton.runtime.interpreter")
+    interpreter.TensorHandle, interpreter.GridExecutor = TensorHandle, GridExecutor
+    interpreter.interpreter_builder = Builder()
+    language = types.ModuleType("triton.language")
+    language.int1 = "int1"
+    runtime = types.ModuleType("triton.runtime")
+    runtime.interpreter = interpreter
+    triton = types.ModuleType("triton")
+    triton.language, triton.runtime = language, runtime
+    for name, module in (("triton", triton), ("triton.language", language), ("triton.runtime", runtime),
+                         ("triton.runtime.interpreter", interpreter)):
+        monkeypatch.setitem(sys.modules, name, module)
+    pointer = types.SimpleNamespace(element_ty=types.SimpleNamespace(primitive_bitwidth=32))
+    return interpreter, pointer
+
+
+def test_bounds_checks_active_accesses_against_the_launch_buffers(monkeypatch):
+    import numpy as np
+    import torch
+
+    calls = []
+    interpreter, pointer = _fake_interpreter(monkeypatch, calls)
+    builder_type = type(interpreter.interpreter_builder)
+    original_load = builder_type.create_masked_load
+    state = {"violations": [], "violation_count": 0, "launches": 0, "kernel": None, "starts": None, "ends": None}
+    unpatch = sanitize._bounds_patch(state)
+    try:
+        buffer = torch.zeros(4, dtype=torch.float32)  # 16 bytes: the only argument buffer
+        interpreter.GridExecutor(sanitize)._init_args_hst([buffer, 3], {})
+        base = buffer.data_ptr()
+        builder = interpreter.interpreter_builder
+        ptrs = interpreter.TensorHandle(np.array([base, base + 12, base + 16], dtype=np.uint64), pointer)
+
+        # A masked-off lane may hold any address: it is never accessed.
+        builder.create_masked_load(ptrs, interpreter.TensorHandle(np.array([True, True, False]), "int1"),
+                                   None, None, False)
+        assert state["violation_count"] == 0 and calls[-1] == ("load", [True, True, False])
+
+        # An active lane one element past the buffer is recorded and masked off.
+        assert builder.create_masked_load(ptrs, interpreter.TensorHandle(np.array([True, True, True]), "int1"),
+                                          None, None, False) == "loaded"
+        assert calls[-1] == ("load", [True, True, False])
+        assert state["violation_count"] == 1
+        record = state["violations"][0]
+        assert record["op"] == "load" and record["bytes"] == 4 and record["address"] == hex(base + 16)
+        assert record["nearest_buffer"] == {"buffer_bytes": 16, "offset": 16}
+
+        builder.create_masked_store(ptrs, None, interpreter.TensorHandle(np.array([False, False, True]), "int1"), None)
+        assert calls[-1] == ("store", [False, False, False]) and state["violation_count"] == 2
+
+        # An atomic CAS has no mask to clear: the run stops at the stray access.
+        with pytest.raises(sanitize._BoundsStop):
+            builder.create_atomic_cas(ptrs, None, None, None, None)
+        assert state["launches"] == 1
+    finally:
+        unpatch()
+    assert type(interpreter.interpreter_builder).create_masked_load is original_load
+
+
+@pytest.mark.parametrize("stdout,returncode,status,count", [
+    (evaluate.PREFIX + json.dumps({"status": "FAIL", "failure_kind": "out_of_bounds",
+                                   "metadata": {"violation_count": 3, "violations": [{"op": "store"}]}}),
+     1, "confirmed", 3),
+    (evaluate.PREFIX + json.dumps({"status": "PASS", "metadata": {"violation_count": 0, "launches": 2}}),
+     0, "reproduced_nothing", 0),
+    (evaluate.PREFIX + json.dumps({"status": "FAIL", "failure_kind": "unanalyzable", "reason": "boom"}),
+     1, "error", 0),
+    ("Segmentation fault", -11, "error", 0),
+])
+def test_a_tilelens_finding_is_confirmed_only_by_a_concrete_violation(monkeypatch, stdout, returncode, status,
+                                                                       count):
+    seen = {}
+
+    def run(argv, **kwargs):
+        seen.update(argv=argv, env=kwargs["env"])
+        return subprocess.CompletedProcess(argv, returncode, stdout=stdout + "\n", stderr="")
+
+    monkeypatch.setattr(sanitize.subprocess, "run", run)
+    confirmation = sanitize._confirm_bounds("candidate")
+    assert seen["argv"][-3:] == ["candidate", "sanitize", "bounds"] and seen["env"]["TRITON_INTERPRET"] == "1"
+    assert confirmation["status"] == status and confirmation["violation_count"] == count

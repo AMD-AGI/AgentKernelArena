@@ -317,9 +317,24 @@ def test_csan_verdicts(tmp_path):
 
 def test_tilelens_verdicts(tmp_path):
     violation = {"op": "Load", "tensor": "x", "address": "0x10", "location": ["kernel.py:18"]}
-    found = _parse("tilelens", tmp_path, execution(report("tilelens", "FAIL", failure_kind="out_of_bounds",
-                                                          metadata={"violations": [violation]}), returncode=1))
-    assert found.finding == FindingStatus.FOUND and "kernel.py:18" in found.findings[0].locations[0]
+    concrete = {"op": "store", "kernel": "k", "address": "0x2000", "bytes": 4, "lanes": 1,
+                "location": ["solution/kernel.py:21 k: tl.store(out_ptrs + 1, o)"]}
+    found = _parse("tilelens", tmp_path, execution(report("tilelens", "FAIL", failure_kind="out_of_bounds", metadata={
+        "violations": [violation],
+        "confirmation": {"status": "confirmed", "violation_count": 1, "violations": [concrete]}}), returncode=1))
+    assert found.finding == FindingStatus.FOUND and "kernel.py:21" in found.findings[0].locations[0]
+    # A symbolic violation that a concrete interpreter run does not reproduce
+    # (TileLens over-approximates loop-carried pointers) is unverified.
+    for status in ("reproduced_nothing", "error", "timeout"):
+        unconfirmed = _parse("tilelens", tmp_path, execution(report("tilelens", "FAIL", failure_kind="unconfirmed",
+                                                                    metadata={"violations": [violation],
+                                                                              "confirmation": {"status": status}}),
+                                                             returncode=1))
+        assert unconfirmed.finding == FindingStatus.INCONCLUSIVE
+        assert unconfirmed.metadata["reason_code"] == "tilelens_unconfirmed"
+    unattested = _parse("tilelens", tmp_path, execution(report("tilelens", "FAIL", failure_kind="out_of_bounds",
+                                                               metadata={"violations": [violation]}), returncode=1))
+    assert unattested.finding == FindingStatus.INCONCLUSIVE
     unanalyzable = _parse("tilelens", tmp_path, execution(report("tilelens", "FAIL", failure_kind="unanalyzable"),
                                                           returncode=1))
     assert unanalyzable.finding == FindingStatus.INCONCLUSIVE

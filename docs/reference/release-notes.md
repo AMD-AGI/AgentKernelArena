@@ -60,7 +60,8 @@ This topic summarizes the features available in each AgentKernelArena release. F
   and with no task configuration. `src/eval_tools/defaults.py` defines the set:
   - the new page-fault guard (correctness with the caching allocators off);
   - PyTorch CSAN;
-  - TileLens (symbolic out-of-bounds checks of Triton kernels);
+  - TileLens (symbolic out-of-bounds checks of Triton kernels; a reported access
+    counts only when a concrete interpreter rerun reproduces it);
   - rocJITsu Waitcheck and the rocJITsu race detector, fed by an automatic
     capture of the kernels each call dispatches;
   - Triton FpSan.

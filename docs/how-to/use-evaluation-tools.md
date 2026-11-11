@@ -63,7 +63,7 @@ network access (see below), or set `evaluation_tools: false`.
 | --- | --- | --- | --- | --- |
 | `page_fault_guard` | on | gate | Every correctness case with PyTorch's caching allocator and ROCr's fragment allocator off. An access past an allocation then reaches an unmapped page and the GPU faults instead of landing silently in a neighbouring tensor; an output that passed correctness but then fails it far outside its bound (a non-finite value, more than 10 times the bound, or more than 1% of elements over it) is also a finding; a smaller excess is recorded as unverified, since split-K and atomic kernels vary that much from run to run. | Triton, Gluon, HIP, FlyDSL |
 | `csan` | on | gate | Every correctness case under PyTorch's CUDA Sanitizer: unsynchronized access to a tensor from two streams by PyTorch-visible work, which includes a HIP candidate's custom op. Raw Triton, Gluon and FlyDSL launches are not visible to it. | all four |
-| `tilelens` | on | gate | The smallest case with every Triton kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). Uses no GPU time. Gluon is reported unsupported. | Triton |
+| `tilelens` | on | gate | The smallest case with every Triton kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). A reported access is a finding only when a concrete rerun of the same case in the interpreter, with every active load, store and atomic address checked against the launch's argument buffers, reproduces an out-of-bounds access; otherwise it is unverified. Uses no GPU time. Gluon is reported unsupported. | Triton |
 | `rocjitsu_waitcheck` | on | gate | Static missing or too-weak wait detection on every kernel the role dispatched. One call on the smallest case captures the final code objects (Triton/Gluon cache, the HIP extension's embedded bundle, FlyDSL's embedded HSACO). | all four |
 | `rocjitsu` | on | gate | rocJITsu's simulated LDS/register race detector. Each captured Triton or Gluon launch becomes a replay capsule (code object, lowered ABI, launch geometry, memory before and after) replayed once in the simulator. | Triton, Gluon |
 | `triton_fpsan` | on | signal | The smallest case through Triton FpSan for the candidate and the baseline. A different digest means a different floating-point expression, which a correct rewrite (online softmax, another reduction order or precision) also produces, so this never blocks. | Triton or Gluon candidate with a Triton or Gluon baseline |
@@ -121,6 +121,11 @@ default per-tool deadline is 1200 seconds.
   guard covers instead. An ASan-built HIP extension loads only in a process
   with the ASan runtime preloaded, so the lane is always a separate process.
 - TileLens approximates inline assembly, which is unverified, not clean.
+  Its symbolic model also over-approximates loop-carried pointer updates and
+  loaded indices, so it can report an access that no execution reaches; the
+  concrete rerun decides. That rerun checks only the smallest case's actual
+  execution, and only against whole argument storages: an access outside a
+  view but inside the storage it was sliced from is not caught.
   Its interpreter failed on every schema-v3 Gluon kernel tried (symbolic
   program ids, tuple values, `@triton.jit` helpers called from Gluon), so a
   Gluon role is reported `unsupported` rather than run.
@@ -409,7 +414,7 @@ worker:
 | `hip_fpsan` | Require explicitly ported equivalent expressions to match and a known-wrong expression to produce a different digest. |
 | `page_fault_guard` | With the caching allocators off, a safe Triton copy must pass and a store 256 MiB past its output must fault. |
 | `csan` | A side-stream read ordered with `wait_stream` in both directions (after the write, before the next default-stream use) must pass; without the waits CSAN must report a race. |
-| `tilelens` | Through the lane's programmatic API (a `Sanitizer` with `abort_on_error` off), an in-bounds Triton copy must record no violation and an off-by-one copy at least one. |
+| `tilelens` | Through the lane's programmatic API (a `Sanitizer` with `abort_on_error` off), an in-bounds Triton copy must record no violation and an off-by-one copy at least one; the lane's concrete interpreter check, which confirms TileLens findings, must agree on both copies. |
 
 `eval-tools-smoke` prints this evidence and exits nonzero if a worker reports
 `degraded`, including a failed nested positive control. Inspect and retain the
