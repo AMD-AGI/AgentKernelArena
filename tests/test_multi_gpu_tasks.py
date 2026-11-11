@@ -680,6 +680,17 @@ def test_a_failing_rank_fails_the_action_and_stops_its_peers(tmp_path):
     assert time.monotonic() - started < 90  # rank 0 was spinning on its flags and was killed
 
 
+def test_tampering_found_on_one_rank_fails_the_job_as_harness_tampering(tmp_path):
+    # TamperError is a BaseException, so no per-case handler may turn it into an ordinary failure
+    workspace = _workspace(tmp_path, hook=(
+        "    if rank == 1:\n"
+        "        from _aka_eval.integrity import TamperError\n"
+        "        raise TamperError('Harness tampering detected after a candidate call: [test]')\n"))
+    failure = _launch(workspace, "baseline", "correctness")["failure"]
+    assert failure is not None and failure["kind"] == "harness_tampering"
+    assert "rank 1 of 2 failed" in failure["reason"] and "Harness tampering detected" in failure["reason"]
+
+
 def test_a_hanging_rank_is_killed_at_the_deadline(tmp_path):
     workspace = _workspace(tmp_path)
     path = workspace / "baseline" / "kernel.py"
