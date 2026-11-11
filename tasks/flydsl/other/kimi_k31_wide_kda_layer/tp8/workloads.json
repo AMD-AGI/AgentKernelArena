@@ -1,0 +1,84 @@
+{
+ "description": "Wide DSpark verify steps of Kimi-K3.1 at TP8: R requests x 8 rows (7 draft tokens + 1), padded to the launch's row bucket (16, 128 and 384 rows here: three compiled widths for the 10-minute budget; the 32-, 64- and 256-row buckets are not built). The KDA layer's work does not depend on context (the recurrent state is fixed-size), so requests is the only var axis. Request counts are derived from the AgentX corpus (cc-traces-weka-062126) per-session in-flight distribution at concurrency points C in {1, 2, 4, 8, 16, 32, 48} (equal weight per point, steps of 2 .. 48 requests); not yet confirmed by a live capture. The 2 .. 48 range spans 24x, so performance_span declares the production-range exemption (workload_evidence.json).",
+ "performance_span": {
+  "policy": "production_range",
+  "evidence": "workload_evidence.json"
+ },
+ "cases": [
+  {
+   "id": "r2",
+   "axes": {
+    "requests": 2
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "boundary: the minimum, two requests x 8 rows in the 16-row bucket; AgentX R=2 is the most frequent wide step (17.1% of wide steps: C=2 sessions, or C=1 with two requests in flight) [16-row bucket]"
+  },
+  {
+   "id": "r9",
+   "axes": {
+    "requests": 9
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "boundary: non-power-of-two, 9 requests padded into the 128-row bucket (4.5% of wide steps; the C=8 tail) [128-row bucket]"
+  },
+  {
+   "id": "r12",
+   "axes": {
+    "requests": 12
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "12 requests padded into the 128-row bucket (1.1% of wide steps) [128-row bucket]"
+  },
+  {
+   "id": "r16",
+   "axes": {
+    "requests": 16
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "16 requests, the full 128-row bucket (3.9% of wide steps; C=16) [128-row bucket]"
+  },
+  {
+   "id": "r33",
+   "axes": {
+    "requests": 33
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "boundary: not a multiple of 16 and > 16, 33 requests padded into the 384-row bucket (1.3% of wide steps; the C=32 tail) [384-row bucket]"
+  },
+  {
+   "id": "r36",
+   "axes": {
+    "requests": 36
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "36 requests in the 384-row bucket, the mode of the C=32 point (1.9% of wide steps) [384-row bucket]"
+  },
+  {
+   "id": "r48",
+   "axes": {
+    "requests": 48
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "48 requests, the full 384-row bucket: the largest compiled width (0.38% of wide steps; C=48 steps mostly exceed 48 requests and leave the launch) [384-row bucket]"
+  }
+ ]
+}
