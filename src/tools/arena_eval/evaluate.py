@@ -23,6 +23,7 @@ import traceback
 from pathlib import Path
 
 from .contract import WORKSPACE, Case, Contract, ContractError, load_contract
+from .integrity import TamperError, snapshot
 
 PREFIX = "ARENA_EVAL_RESULT="
 PROTOCOL = "arena-eval-v1"
@@ -111,7 +112,7 @@ def validate_task(contract: Contract) -> dict:
     return _report("task", "validate-task", "PASS", rows, metadata=metadata)
 
 
-def _load(contract: Contract, role: str, *, audit: bool):
+def _load(contract: Contract, role: str, *, audit: bool, integrity=None):
     from . import audit as policy
     from .loader import implementation_sources, load_implementation
 
@@ -128,8 +129,10 @@ def _load(contract: Contract, role: str, *, audit: bool):
             loaded = load_implementation(contract, role)
     else:
         loaded = load_implementation(contract, role)
+    if integrity is not None:
+        integrity(f"{role} import")
     call = policy.audited_call(loaded.call, language=implementation.language, package=loaded.package,
-                               role=role, enforce=audit)
+                               role=role, enforce=audit, integrity=integrity)
     evidence["package"] = loaded.package
     if loaded.hip_op:
         evidence["hip_op"] = loaded.hip_op
@@ -142,6 +145,11 @@ def _policy_enforced(role: str) -> bool:
     return role == "candidate"
 
 
+def _integrity(role: str):
+    """A check of the evaluator's bindings, snapshotted before candidate code imports."""
+    return snapshot(__package__) if _policy_enforced(role) else None
+
+
 def compile_action(contract: Contract, role: str) -> dict:
     from .audit import PolicyError
     from .loader import BuildError
@@ -151,7 +159,7 @@ def compile_action(contract: Contract, role: str) -> dict:
     try:
         if contract.implementation(role).language == "hip" or role == "candidate":
             _device()
-        _, evidence = _load(contract, role, audit=_policy_enforced(role))
+        _, evidence = _load(contract, role, audit=_policy_enforced(role), integrity=_integrity(role))
     except PolicyError as exc:
         raise ActionFailure(str(exc), "policy_violation")
     except BuildError as exc:
@@ -294,7 +302,7 @@ def _invoke_and_check(contract: Contract, role: str, call, case: Case, data: _Ca
     return {"passed": passed, "calls": calls}
 
 
-def role_calls(contract: Contract, role: str):
+def _role_calls(contract: Contract, role: str):
     """The role's audited call and, when its bound needs it, the baseline's."""
     from . import values
     from .audit import PolicyError
@@ -309,17 +317,19 @@ def role_calls(contract: Contract, role: str):
         baseline_call = _load(contract, "baseline", audit=False)[0] if (role == "baseline" or need_baseline) else None
         for name in contract.checked_tensors:
             values.decode_function(contract, name)
-        call = baseline_call if role == "baseline" else _load(contract, "candidate", audit=True)[0]
+        check = _integrity(role)
+        call = baseline_call if role == "baseline" else _load(contract, "candidate", audit=True,
+                                                              integrity=check)[0]
     except PolicyError as exc:
         raise ActionFailure(str(exc), "policy_violation")
     except BuildError as exc:
         raise ActionFailure(str(exc), "compile_error")
-    return call, baseline_call, need_baseline
+    return call, baseline_call, need_baseline, check
 
 
 def correctness_action(contract: Contract, role: str, rank=None) -> dict:
     device = _device() if rank is None else rank.device
-    call, baseline_call, need_baseline = role_calls(contract, role)
+    call, baseline_call, need_baseline, check = _role_calls(contract, role)
     rows = []
     for case in contract.cases:
         row = case.identity()
@@ -333,13 +343,15 @@ def correctness_action(contract: Contract, role: str, rank=None) -> dict:
                 row["status"] = "FAIL"
                 modified = any(c.get("modified_inputs") for c in result["calls"])
                 row["failure_kind"] = "input_mutation" if modified else "numerical_mismatch"
-        except Exception as exc:  # A crash in one case is that case's failure.
+        except Exception as exc:  # A crash in one case is that case's failure; a TamperError is not an Exception.
             if rank is not None:
                 raise  # a peer may be waiting on the device for this rank's call: fail every rank
             row.update(status="FAIL", failure_kind="policy_violation" if "PyTorch operation" in str(exc)
                        or "kernel launch" in str(exc) or "launched kernels" in str(exc) else "execution_error",
                        metadata={"error": f"{type(exc).__name__}: {exc}"[:2000]})
         rows.append(row)
+    if check is not None and all(row["status"] == "PASS" for row in rows):
+        check("correctness")
     return correctness_report(role, rows)
 
 
@@ -374,7 +386,7 @@ def performance_action(contract: Contract, role: str, rank=None) -> dict:
     from ._aka_benchmark import TimedRun, benchmark_cuda_graph_cold_cache_samples
 
     device = _device() if rank is None else rank.device
-    call, baseline_call, need_baseline = role_calls(contract, role)
+    call, baseline_call, need_baseline, check = _role_calls(contract, role)
     timing = contract.timing
     nbytes = int(timing.get("cache_flush_bytes", 1 << 30))
     flush = _cache_flush(nbytes) if rank is None else rank.platform.cache_flush(nbytes)
@@ -399,6 +411,9 @@ def performance_action(contract: Contract, role: str, rank=None) -> dict:
                 state["prepared"] += 1
 
             def after_sample(_outputs) -> None:
+                # First, before the sample is used: candidate code ran while it was measured.
+                if check is not None:
+                    check("a timing sample")
                 index = state["current"]
                 ok, metrics = _check(contract, role, values.checked_values(contract, working, outputs),
                                      data.references[index],
@@ -420,6 +435,8 @@ def performance_action(contract: Contract, role: str, rank=None) -> dict:
                 samples, metadata = rank.platform.benchmark(
                     lambda: call(**working, **outputs, **reserved), cache_flush=flush, comm=rank.comm,
                     warmup=warmup, repetition=repetition, prepare_fn=prepare, after_sample=after_sample)
+            if check is not None:
+                check("timing")
             if state["failed"]:
                 row.update(status="FAIL", failure_kind="numerical_mismatch",
                            metadata={"measured_output_failures": state["failed"]})
@@ -471,7 +488,7 @@ def run(argv: list[str]) -> tuple[dict, int]:
             report = validate_task(contract)
         elif action == "compile":
             report = compile_action(contract, role)
-        elif contract.distributed is not None:
+        elif getattr(contract, "distributed", None) is not None:
             report = _multi_rank_action(contract, role, action)
         elif action == "correctness":
             report = correctness_action(contract, role)
@@ -479,6 +496,8 @@ def run(argv: list[str]) -> tuple[dict, int]:
             report = performance_action(contract, role)
     except ActionFailure as exc:
         report = _report(role, action, "FAIL", exc.cases, str(exc), exc.kind)
+    except TamperError as exc:
+        report = _report(role, action, "FAIL", [], str(exc), "harness_tampering")
     except ContractError as exc:
         report = _report(role, action, "FAIL", [], f"Contract error: {exc}", "task_error")
     except Exception as exc:

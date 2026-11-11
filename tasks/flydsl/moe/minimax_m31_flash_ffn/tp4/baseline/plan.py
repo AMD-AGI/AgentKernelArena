@@ -45,9 +45,11 @@ _SCALARS = (int, float, bool, str, enum.Enum, type(None))
 
 def _key_pairs(prefix: str, items):
     for name, value in items:
-        if dataclasses.is_dataclass(value):
-            yield from _key_pairs(f"{prefix}{name}.", [(f.name, getattr(value, f.name))
-                                                       for f in dataclasses.fields(value)])
+        if isinstance(value, dict):
+            yield from _key_pairs(f"{prefix}{name}.", value.items())
+        elif dataclasses.is_dataclass(value):
+            # asdict keeps the field order and turns nested dataclasses into dicts (no computed getattr)
+            yield from _key_pairs(f"{prefix}{name}.", dataclasses.asdict(value).items())
         elif isinstance(value, _SCALARS):
             yield f"{prefix}{name}", value
         else:
@@ -61,4 +63,4 @@ def key_tuple(key) -> tuple:
     """Every build parameter of the build dataclass ``key`` as a (name, value) pair; a nested
     dataclass's fields are flattened, as FlyDSL leaves dataclasses and dicts a kernel closes over out
     of its key."""
-    return tuple(_key_pairs("", [(f.name, getattr(key, f.name)) for f in dataclasses.fields(key)]))
+    return tuple(_key_pairs("", list(dataclasses.asdict(key).items())))

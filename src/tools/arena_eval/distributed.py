@@ -454,7 +454,7 @@ def _run_job(job: str, role: str, action: str, context: RankContext) -> dict:
     if job == "evaluate":
         # Rank 0 builds (HIP extensions, imports) first, so ranks never race on one build directory.
         if context.rank == 0:
-            evaluate.role_calls(contract, role)
+            evaluate._role_calls(contract, role)
         context.comm.barrier()
         if action == "correctness":
             return evaluate.correctness_action(contract, role, rank=context)
@@ -491,6 +491,10 @@ def _failure_kind(exc: BaseException) -> str:
     kind = getattr(exc, "kind", None)
     if isinstance(kind, str):
         return kind
+    from .integrity import TamperError
+
+    if isinstance(exc, TamperError):
+        return "harness_tampering"
     if isinstance(exc, ContractError):
         return "task_error"
     if isinstance(exc, PolicyError):

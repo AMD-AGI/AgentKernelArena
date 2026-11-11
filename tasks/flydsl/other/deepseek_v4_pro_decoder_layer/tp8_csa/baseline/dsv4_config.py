@@ -2,7 +2,9 @@
 # Adapted from ROCm/ATOM (https://github.com/ROCm/ATOM) at 4cd75a2
 # (ROCm/ATOM#2559), MIT License, Copyright (C) 2026, Advanced Micro Devices, Inc.:
 # atom/models/deepseek_v4/mono/config.py
-# Vendored for AgentKernelArena from sgl-amd-mono 52486703: unchanged.
+# Vendored for AgentKernelArena from sgl-amd-mono 52486703. AKA: checkpoint_refusal (the serving-time
+# check of a checkpoint's config, which reads attributes by computed name) is removed; the task loads
+# no checkpoint.
 """Static DeepSeek-V4 shard dimensions (V4-Pro at TP8)."""
 
 from __future__ import annotations
@@ -102,19 +104,6 @@ V4_PRO_CONFIG = {
     "compress_rope_theta": COMPRESS_ROPE_THETA,
     "num_hidden_layers": 61,
 }
-
-
-def checkpoint_refusal(hf_config) -> str | None:
-    """Why a checkpoint is not the one the kernel is built for, or None."""
-    for key, want in V4_PRO_CONFIG.items():
-        got = getattr(hf_config, key, None)
-        if got != want:
-            return f"{key} {got!r}, the kernel's is {want!r}"
-    n = hf_config.num_hidden_layers
-    ratios = tuple(getattr(hf_config, "compress_ratios", ()))[:n]
-    if ratios != compress_ratios(n, n_mtp=0):
-        return "compress_ratios differ from V4-Pro's layer schedule"
-    return None
 
 
 def validate_shard(

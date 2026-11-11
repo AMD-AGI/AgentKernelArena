@@ -53,9 +53,11 @@ def kernel_sources(module: str) -> str:
 
 def _key_pairs(prefix: str, items):
     for name, value in items:
-        if dataclasses.is_dataclass(value):
-            yield from _key_pairs(f"{prefix}{name}.", [(f.name, getattr(value, f.name))
-                                                       for f in dataclasses.fields(value)])
+        if isinstance(value, dict):
+            yield from _key_pairs(f"{prefix}{name}.", value.items())
+        elif dataclasses.is_dataclass(value):
+            # asdict keeps the field order and turns nested dataclasses into dicts (no computed getattr)
+            yield from _key_pairs(f"{prefix}{name}.", dataclasses.asdict(value).items())
         elif isinstance(value, _SCALARS):
             yield f"{prefix}{name}", value
         else:
@@ -66,5 +68,5 @@ def _key_pairs(prefix: str, items):
 def key_tuple(key, sources: str) -> tuple:
     """Every build parameter in ``key`` (a dataclass) as a (name, value) pair, then ("sources",
     ``sources``): FlyDSL leaves dataclasses a kernel closes over out of its key."""
-    items = [(f.name, getattr(key, f.name)) for f in dataclasses.fields(key)]
+    items = list(dataclasses.asdict(key).items())
     return (*_key_pairs("", items), ("sources", sources))

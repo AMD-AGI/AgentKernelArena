@@ -23,14 +23,15 @@ _SCALARS = (int, float, bool, str, enum.Enum, type(None))
 
 
 def _key_pairs(prefix, value):
-    for field in dataclasses.fields(value):
-        item = getattr(value, field.name)
-        if dataclasses.is_dataclass(item):
-            yield from _key_pairs(f"{prefix}{field.name}.", item)
+    # asdict keeps the field order and turns nested dataclasses into dicts (no computed getattr)
+    items = value.items() if isinstance(value, dict) else dataclasses.asdict(value).items()
+    for name, item in items:
+        if isinstance(item, dict):
+            yield from _key_pairs(f"{prefix}{name}.", item)
         elif isinstance(item, _SCALARS):
-            yield f"{prefix}{field.name}", item
+            yield f"{prefix}{name}", item
         else:
-            raise TypeError(f"{prefix}{field.name} = {item!r}: a build parameter must be a scalar")
+            raise TypeError(f"{prefix}{name} = {item!r}: a build parameter must be a scalar")
 
 
 def key_tuple(key, sources: str) -> tuple:

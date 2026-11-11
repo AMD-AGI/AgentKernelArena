@@ -6,7 +6,7 @@
 # plan.kernel_sources (which reads source files); scratch_layout keeps its running offset in a
 # list instead of a nonlocal; the index-source index query (attention/index_query.py, a NumPy
 # importer) is not vendored, so its iq branches (MonoBuild.iq, which these tasks never set)
-# are removed.
+# are removed; route_of names the ROUTE fields directly instead of a computed getattr.
 """Build K1 (attention seam and front), K2 (attention back, seam, MoE and TP
 all-reduces) and the FFN launch (seam, MoE and TP all-reduce)."""
 
@@ -118,14 +118,15 @@ ROUTE = ("experts", "topk", "ug_groups", "swa_width")
 
 
 def route_of(key: MonoBuild) -> dict:
-    return {f: getattr(key, f) for f in ROUTE}
+    # AKA: the ROUTE fields by name (the candidate rules allow no computed getattr)
+    return {"experts": key.experts, "topk": key.topk, "ug_groups": key.ug_groups, "swa_width": key.swa_width}
 
 
 def _variant(key: MonoBuild) -> dict:
     """A kernel name's route parameters, where they are not the target's."""
-    base = MonoBuild(key.tokens, key.tp)
+    base = route_of(MonoBuild(key.tokens, key.tp))
     short = {"experts": "e", "topk": "k", "ug_groups": "u", "swa_width": "w"}
-    out = {short[f]: v for f, v in route_of(key).items() if v != getattr(base, f)}
+    out = {short[f]: v for f, v in route_of(key).items() if v != base[f]}
     return (
         out
         | ({"tl": 1} if key.timeline else {})

@@ -50,6 +50,17 @@ FORBIDDEN_ATTRIBUTES = frozenset({
     "_share_cuda_", "_new_shared_cuda", "_release_ipc_counter_cuda", "_share_fd_cpu_", "_share_filename_cpu_",
     "_new_shared_fd_cpu", "_new_shared_filename_cpu", "share_memory_", "_shared_incref", "_shared_decref",
 })
+# Process, FFI and interpreter modules that allowed packages re-export as
+# attributes (``torch.ctypes``, ``torch.os``, ``torch.sys``, ``torch.builtins``).
+# They reach library kernels, processes or evaluator state without an import,
+# so no attribute of these names is allowed.
+REEXPORTED_MODULES = frozenset({
+    "ctypes", "_ctypes", "cffi", "subprocess", "os", "posix", "sys", "builtins", "importlib",
+    "inspect", "gc", "threading", "_thread", "multiprocessing", "socket", "shutil", "mmap",
+    "pickle", "marshal", "runpy",
+})
+# Callables that look attributes up by a run-time name, bypassing the rules above.
+REFLECTIVE_HELPERS = frozenset({"attrgetter", "methodcaller"})
 TORCH_FORBIDDEN_PREFIXES = (
     "torch.ops", "torch._C", "torch._ops", "torch.library", "torch.utils", "torch.nn",
     "torch.compile", "torch._dynamo", "torch._inductor", "torch.autograd", "torch.backends",
@@ -93,6 +104,46 @@ def _qualified(node: ast.AST, names: dict[str, str]) -> str | None:
     return None
 
 
+def _check_attribute_name(where: str, attr: str) -> None:
+    if attr in FORBIDDEN_ATTRIBUTES or attr in REFLECTIVE_HELPERS:
+        raise PolicyError(f"{where}: attribute {attr} is not allowed in candidate code")
+    if attr in REEXPORTED_MODULES:
+        raise PolicyError(f"{where}: {attr} reaches a process, FFI or interpreter module; it is not "
+                          "allowed in candidate code")
+    if attr.startswith("_aka"):
+        raise PolicyError(f"{where}: evaluator names are not available to candidates")
+
+
+def _check_torch_path(where: str, qualified: str) -> None:
+    if qualified.startswith("torch.cuda.") and qualified not in TORCH_CUDA_ALLOWED and \
+            not any(qualified.startswith(a + ".") for a in TORCH_CUDA_ALLOWED):
+        raise PolicyError(f"{where}: {qualified} is not allowed in candidate code")
+    if any(qualified == p or qualified.startswith(p + ".") or
+           (p.endswith("_") and qualified.startswith(p)) for p in TORCH_FORBIDDEN_PREFIXES):
+        raise PolicyError(f"{where}: {qualified} is not a candidate implementation dependency")
+
+
+def _rooted_at_self(node: ast.AST) -> bool:
+    while isinstance(node, (ast.Attribute, ast.Subscript)):
+        node = node.value
+    return isinstance(node, ast.Name) and node.id == "self"
+
+
+def _check_getattr(where: str, node: ast.Call, names: dict[str, str]) -> None:
+    """``getattr(obj, "name")`` follows the attribute rules; a computed name only works on ``self``."""
+    if len(node.args) < 2 or node.keywords:
+        raise PolicyError(f"{where}: getattr takes an object and an attribute name")
+    obj, name = node.args[0], node.args[1]
+    if isinstance(name, ast.Constant) and isinstance(name.value, str):
+        _check_attribute_name(where, name.value)
+        base = _qualified(obj, names)
+        if base and f"{base}.{name.value}".startswith("torch."):
+            _check_torch_path(where, f"{base}.{name.value}")
+    elif not _rooted_at_self(obj):
+        raise PolicyError(f"{where}: getattr with a computed name is allowed only on self (attribute "
+                          "proxies); name the attribute directly")
+
+
 def _allowed_import(module: str, language: str) -> bool:
     top = module.split(".")[0]
     if top in STDLIB_ALLOWED and module == top:
@@ -134,6 +185,7 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
         except SyntaxError as exc:
             raise PolicyError(f"{path}: {exc}") from exc
         names = _bindings(tree)
+        called = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
         for node in ast.walk(tree):
             where = f"{path}:{getattr(node, 'lineno', '?')}"
             if isinstance(node, (ast.Global, ast.Nonlocal)):
@@ -159,23 +211,22 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                     if alias.name == "*":
                         raise PolicyError(f"{where}: star imports are not allowed")
                     full = f"{module}.{alias.name}"
+                    _check_attribute_name(where, alias.name)
                     if module == "torch" and any(full.startswith(p) for p in TORCH_FORBIDDEN_PREFIXES):
                         raise PolicyError(f"{where}: {full} is not a candidate implementation dependency")
                 backend_seen |= module.split(".")[0] in ("triton", "flydsl")
             elif isinstance(node, ast.Attribute):
-                if node.attr in FORBIDDEN_ATTRIBUTES:
-                    raise PolicyError(f"{where}: attribute {node.attr} is not allowed in candidate code")
+                _check_attribute_name(where, node.attr)
                 qualified = _qualified(node, names)
                 if qualified and qualified.startswith("torch."):
-                    if qualified.startswith("torch.cuda.") and qualified not in TORCH_CUDA_ALLOWED and \
-                            not any(qualified.startswith(a + ".") for a in TORCH_CUDA_ALLOWED):
-                        raise PolicyError(f"{where}: {qualified} is not allowed in candidate code")
-                    if any(qualified == p or qualified.startswith(p + ".") or
-                           (p.endswith("_") and qualified.startswith(p)) for p in TORCH_FORBIDDEN_PREFIXES):
-                        raise PolicyError(f"{where}: {qualified} is not a candidate implementation dependency")
+                    _check_torch_path(where, qualified)
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr":
+                _check_getattr(where, node, names)
             elif isinstance(node, ast.Name):
                 if node.id in FORBIDDEN_CALLS and isinstance(node.ctx, ast.Load):
                     raise PolicyError(f"{where}: {node.id} is not allowed in candidate code")
+                if node.id == "getattr" and id(node) not in called:
+                    raise PolicyError(f"{where}: getattr may only be called directly with an attribute name")
                 if node.id.startswith("_aka"):
                     raise PolicyError(f"{where}: evaluator names are not available to candidates")
             elif isinstance(node, (ast.BinOp, ast.AugAssign)) and isinstance(node.op, ast.MatMult):
@@ -195,6 +246,14 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
 
 _INCLUDE = re.compile(r'^[ \t]*#[ \t]*include[ \t]*(?:<([^>\n]+)>|"([^"\n]+)")', re.MULTILINE)
 _HIP_ALLOWED_HEADERS = ("hip/", "ATen/", "c10/", "torch/library.h", "torch/extension.h")
+# ATen headers that declare operator or backend kernels callable without the
+# dispatcher (for example ATen/ops/mm_cuda_dispatch.h -> at::cuda::mm_out), so
+# the run-time PyTorch-operation check never sees them. Only the device and
+# stream contexts are allowed from the backend directories.
+_HIP_FORBIDDEN_HEADERS = re.compile(
+    r"^ATen/(?:ops|native|functorch)/|^ATen/\w*Functions(?:_inl)?\.h$"
+    r"|^ATen/(?:cuda|hip)/(?!(?:CUDAContext|HIPContext|Exceptions)\.h$|(?:Atomic|DeviceUtils)\.cuh$"
+    r"|impl/HIP(?:GuardImpl|Stream)MasqueradingAsCUDA\.h$)")
 _STD_HEADERS = frozenset({
     "algorithm", "array", "bit", "cfloat", "climits", "cmath", "cstddef", "cstdint", "cstdio",
     "cstdlib", "cstring", "functional", "initializer_list", "limits", "memory", "numeric",
@@ -207,12 +266,25 @@ _HIP_FORBIDDEN = re.compile(
     r"DeviceDisablePeerAccess|DeviceCanAccessPeer|CtxEnablePeerAccess|CtxDisablePeerAccess|MemExport|"
     r"MemImport|MemCreate|MemMap|MemSetAccess)\w*"
     r"|hip(?:Memcpy|Memset)(?!\w*Async)\w*|cuda[A-Z]\w*|rocblas_\w+|hipblas\w*|hipblasLt\w*|"
+    r"hipsparse\w*|rocsparse_\w+|hipsolver\w*|rocsolver_\w+|hipfft\w*|rocfft_\w+|"
     r"miopen\w+|rccl\w+|nccl[A-Z]\w*|roc_?shmem\w*|mscclpp\w*|MPI_\w+|getenv|fopen|system|popen|dlopen|"
     r"std::thread|std::async|"
-    r"at::(?:matmul|mm|bmm|addmm|baddbmm|einsum|linear|conv\w*|softmax|log_softmax|layer_norm|"
+    r"(?:at|torch)::(?:matmul|mm|bmm|addmm|baddbmm|einsum|linear|conv\w*|softmax|log_softmax|layer_norm|"
     r"rms_norm|group_norm|batch_norm|sort|topk|cumsum|sum|mean|max|min|argmax|argmin|exp|log|"
     r"tanh|sigmoid|relu|gelu|silu|mul|add|sub|div|pow|sqrt|rsqrt|where|gather|scatter\w*|"
     r"index_select|_scaled_mm|_int_mm)\b)")
+# Backend-specific operator namespaces call a library kernel directly, bypassing
+# the dispatcher and so the run-time check; dispatcher redispatch does the same.
+# The device, stream and guard helpers kernels need stay allowed.
+_HIP_BACKEND_CALL = re.compile(
+    r"\b(?:at|torch)::(?:cuda|hip|native|cpu|meta|mps|xpu|_ops|detail|"
+    r"compositeexplicitautograd\w*|compositeimplicitautograd\w*)::(?!(?:getCurrentDeviceProperties|"
+    r"getDeviceProperties|getCurrentCUDAStream|getCurrentHIPStream|getDefaultCUDAStream|"
+    r"getDefaultHIPStream|CUDAGuard|HIPGuard|OptionalCUDAGuard|OptionalHIPGuard|CUDAStream|HIPStream|"
+    r"getCurrentHIPStreamMasqueradingAsCUDA|getDefaultHIPStreamMasqueradingAsCUDA|HIPGuardMasqueradingAsCUDA|"
+    r"OptionalHIPGuardMasqueradingAsCUDA|HIPStreamMasqueradingAsCUDA)\b)\w+"
+    r"|\b(?:Dispatcher|DispatchKeySet|redispatch\w*|ExcludeDispatchKeyGuard|IncludeDispatchKeyGuard|"
+    r"_AutoDispatchBelow\w*|AutoDispatchBelow\w*)\b")
 _HIP_STATIC_MUTABLE = re.compile(
     r"^[ \t]*(?:static[ \t]+|__device__[ \t]+)+(?![^;]*\b(?:const|constexpr)\b)[^;(){}\n]*;", re.MULTILINE)
 
@@ -255,11 +327,19 @@ def audit_hip_sources(sources: dict[str, str], entry: str) -> dict:
             local = match.group(2) is not None and header in sources
             if not (local or header.startswith(_HIP_ALLOWED_HEADERS) or header in _STD_HEADERS):
                 raise PolicyError(f"{path}: #include {header} is neither a candidate file nor an allowed header")
+            if not local and _HIP_FORBIDDEN_HEADERS.search(header):
+                raise PolicyError(f"{path}: #include {header} declares library operator kernels; "
+                                  "it is not an allowed header")
         code = _blank_cpp(text)
         found = _HIP_FORBIDDEN.search(code)
         if found:
             line = code.count("\n", 0, found.start()) + 1
             raise PolicyError(f"{path}:{line}: {found.group(0)} is not allowed in a HIP candidate")
+        backend = _HIP_BACKEND_CALL.search(code)
+        if backend:
+            line = code.count("\n", 0, backend.start()) + 1
+            raise PolicyError(f"{path}:{line}: {backend.group(0)} calls a library kernel outside the "
+                              "dispatcher; it is not allowed in a HIP candidate")
         mutable = _HIP_STATIC_MUTABLE.search(code)
         if mutable:
             line = code.count("\n", 0, mutable.start()) + 1
@@ -391,8 +471,12 @@ class LaunchObserver:
             raise RuntimeError(f"No {self.language} kernel launch was observed in the {role} call")
 
 
-def audited_call(call, *, language: str, package: str, role: str, enforce: bool):
-    """Wrap ``call`` so each eager invocation is policy-checked."""
+def audited_call(call, *, language: str, package: str, role: str, enforce: bool, integrity=None):
+    """Wrap ``call`` so each eager invocation is policy-checked.
+
+    ``integrity``, when given, runs after each call, once the launch observer
+    has restored what it temporarily replaced.
+    """
     def run(**arguments: Any) -> None:
         if not enforce:
             result = call(**arguments)
@@ -401,6 +485,8 @@ def audited_call(call, *, language: str, package: str, role: str, enforce: bool)
             with observer.observe(), preparation_only(role):
                 result = call(**arguments)
             observer.require(role)
+        if integrity is not None:
+            integrity(f"a {role} call")
         if result is not None:
             raise RuntimeError(f"{role} run must write its outputs and return None")
     return run

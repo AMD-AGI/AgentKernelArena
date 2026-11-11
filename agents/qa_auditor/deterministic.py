@@ -53,6 +53,9 @@ class Finding:
 
 
 def _python_imports(path: Path) -> list[tuple[str, int]]:
+    """Imported modules, plus dynamic imports and process/FFI modules reached as attributes (``torch.ctypes``)."""
+    from src.tools.arena_eval.audit import REEXPORTED_MODULES
+
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     found = []
     for node in ast.walk(tree):
@@ -66,6 +69,8 @@ def _python_imports(path: Path) -> list[tuple[str, int]]:
         elif isinstance(node, ast.Attribute) and node.attr in ("ops", "_C") and isinstance(node.value, ast.Name) \
                 and node.value.id == "torch":
             found.append((f"torch.{node.attr}", node.lineno))
+        elif isinstance(node, ast.Attribute) and node.attr in REEXPORTED_MODULES:
+            found.append((f"<{ast.unparse(node)}>", node.lineno))
     return found
 
 

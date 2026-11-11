@@ -158,7 +158,8 @@ class _KdaKernArgs:
 
     def __getitem__(self, k):
         assert k in pre.KDA_PTRS or k in pre.KDA_INTS, k
-        return getattr(self.ka(k), k)
+        # AKA: ka(k) returns a namedtuple of the one argument k
+        return self.ka(k)[0]
 
 
 _BUILDS: dict = {}

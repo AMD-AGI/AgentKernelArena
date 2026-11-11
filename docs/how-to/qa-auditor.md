@@ -114,11 +114,11 @@ not prove.
 | --- | --- | --- | --- |
 | `QA-AUDIT` | blocking | The audit did not run to completion (framework or environment failure, a missing or altered report, or the audit changed protected task state). | Fix the reported failure and rerun. |
 | `QA-SPEC` | blocking | `task.yaml` or `workloads.json` does not load. | Fix them until the framework loads them. |
-| `QA-PACKAGE` | blocking | A task file imports a production package (`aiter`, `vllm`, `sglang`, ...), uses a process, network, dynamic-import or file API, names an absolute path, includes a vendor library header in a HIP baseline, or ships a binary. | Vendor the code into the task; use only the task and allowed libraries. |
+| `QA-PACKAGE` | blocking | A task file imports a production package (`aiter`, `vllm`, `sglang`, ...), uses a process, network, dynamic-import or file API (including one reached as an attribute, such as `torch.ctypes` or `torch.os`), names an absolute path, includes a vendor library header in a HIP baseline, or ships a binary. | Vendor the code into the task; use only the task and allowed libraries. |
 | `QA-REFERENCE` | blocking | The reference imports anything but PyTorch, standard math helpers and task-root helpers, or returns a bfloat16, float16 or float8 result. | Write `reference.py` in float32/float64 PyTorch only. |
 | `QA-PROVENANCE` | blocking | The baseline's revision is not a fixed commit or release, a provenance field is a placeholder, or a non-Apache-2.0 baseline has no `baseline/LICENSE`. | Fill `baseline.provenance` with the real source, revision, path and license. |
 | `QA-INITIAL` | blocking | Framework initial validation did not accept the task. | Make `validate-task` and baseline compile, correctness and performance pass; read the captured evidence. |
-| `QA-POSITIVE` | blocking | A copy of the baseline fails as a candidate. | Make the baseline satisfy its language's candidate rules (kernels only, no PyTorch computation, capturable launches). |
+| `QA-POSITIVE` | blocking | A copy of the baseline fails as a candidate, including a `harness_tampering` failure. | Make the baseline satisfy its language's candidate rules (kernels only, no PyTorch computation, no process/FFI/interpreter modules reached through attributes, capturable launches) and stop changing evaluator, PyTorch or interpreter bindings. |
 | `QA-TIMING-METHOD` | blocking | A performance case was not timed as a cold-cache CUDA graph. | Make the baseline graph-capturable on the current stream. |
 | `QA-TIMING-FLOOR` | blocking | A performance case takes the baseline under 10 us. | Use larger production shapes; keep small shapes correctness-only. |
 | `QA-SPAN-EVIDENCE` | blocking | A task with the [production-range span exemption](add-task.md#production-range-span-exemption) has a `perf_min` or `perf_max` endpoint case that the baseline run did not measure or that takes under 10 us. | Remeasure and correct the evidence's perf range; keep faster shapes correctness-only. |
@@ -160,7 +160,7 @@ as absent. Key fields:
 
 ```yaml
 qa_report_version: 1
-rubric_version: "2026-11-05.3"
+rubric_version: "2026-11-10.1"
 task_id: triton/normalization/rms_norm/bf16_h8192
 task_package_sha256: ...        # the exact task package audited
 target_language: triton         # the candidate language used for the positive control
