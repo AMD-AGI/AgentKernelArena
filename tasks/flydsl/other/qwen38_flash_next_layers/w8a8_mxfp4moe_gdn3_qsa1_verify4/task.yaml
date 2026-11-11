@@ -17,8 +17,8 @@ operator:
 interface:
   axes:
     requests: {kind: var, min: 1, max: 8, description: Requests in the verify step (4 verify tokens each).}
-    ctx: {kind: var, min: 16, max: 131072, description: "Context tokens of the longest request before its verify tokens; the others hold between half of it and all of it."}
-    rtt_stride: {kind: const, value: 131136, description: Row stride of the request-to-token map (tokens a request slot can hold).}
+    ctx: {kind: var, min: 16, max: 262140, description: "Context tokens of the longest request before its verify tokens; the others hold between half of it and all of it. 262140 + 4 verify tokens is the model limit (max_position_embeddings 262144)."}
+    rtt_stride: {kind: const, value: 262144, description: Row stride of the request-to-token map (tokens a request slot can hold).}
     rope_rows: {kind: const, value: 262144, description: "Rows of the bf16 RoPE table (SGLang's cache: theta 1e7, 64 rotary dims)."}
   derived_axes:
     rows: requests * 4

@@ -215,14 +215,16 @@ deterministic, because their pad rows race on KV slot 0.
 Every floating-point output and mutable input uses the default `baseline_relative` bound. `index_ring_pos`
 holds integer positions and uses `exact`. The auditor's `QA-BOUND-OVERRIDE` warning names this override.
 
-The SQNR of the baseline against the float64 reference (MI355X, the workload shapes):
+The SQNR of the baseline against the float64 reference (MI355X). The first four rows are for the 13 workload
+cases. The other rows are for the new entries only, at the earlier shapes (1 to 8 requests over 2k to 128k
+context tokens).
 
 | Tensor | SQNR |
 |---|---|
-| `h_out` | 27.3-30.3 dB (the layers' contribution: 27.0-28.0 dB) |
-| `h_out_ssq` | 33.2-36.9 dB |
-| `gdn_issm` | 33.2-33.6 dB |
-| `gdn_iconv` | 32.3-32.5 dB |
+| `h_out` | 27.6-30.7 dB (the layers' contribution at 2k to 128k: 27.0-28.0 dB) |
+| `h_out_ssq` | 33.6-37.1 dB |
+| `gdn_issm` | 33.2-33.7 dB |
+| `gdn_iconv` | 32.3-32.7 dB |
 | New K and V entries | 27.8-28.3 dB |
 | New ring entries | 27.5-28.3 dB |
 | New compressed keys | 29.6-32.9 dB |
@@ -234,26 +236,48 @@ when it runs in float32. The calibration probe of the auditor checks this.
 
 ## Workloads
 
-The performance cases are verify steps of 1, 2, 4 and 8 requests over 2k to 128k context tokens. The context
-length is that of the longest request. The other requests hold half to all of it.
+The contexts come from AgentX corpus statistics (`semianalysisai/cc-traces-weka-062126` rev `23f152f6`, 98,827
+requests). When each request is weighted by its decode steps, the context is 52k tokens at p10, 108k at p25,
+220k at p50 and 426k at p75. A live capture did not confirm these shapes.
 
-- The kernel serves up to 8 requests (32 rows).
-- Contexts above 2048 tokens select 512 of up to 32768 blocks. The selection runs over up to 4 index segments
-  of 8192 blocks.
-- Contexts above 32768 tokens also test the merge of the segment winners.
-- The span of `requests * ctx` is 128x.
+- 43.6 % of the AgentX decode steps have more than 256k context tokens. The model holds at most 262,144
+  positions. So the largest cases have 262,140 context tokens and 4 verify tokens.
+- The kernel compiles once for each request count. So the cases use two request counts: 1 request (4 rows, one
+  interactive user) and 8 requests (32 rows, the largest CUDA-graph batch).
+- The context length of a case is that of its first request. The other requests hold half to all of it.
+- Contexts above 2048 tokens select 512 of up to 65,536 blocks. The selection runs over up to 8 index segments
+  of 8192 blocks. Contexts above 32,768 tokens also test the merge of the segment winners.
 
-The baseline takes 0.37 ms (1 request) to 1.61 ms (8 requests) per case (cold-cache CUDA graph, MI355X). The
-request count sets most of this time, through the experts that the rows route to.
+The performance cases (cold-cache CUDA graph, MI355X):
+
+| Requests | Context tokens | AgentX decode steps | Baseline |
+|---|---|---|---|
+| 1 | 16,384 | 4k to 64k: 9.2 % | 371 us |
+| 1 | 65,536 | 64k to 128k: 17 % | 396 us |
+| 1 | 131,072 | 128k to 256k: 25.9 % | 401 us |
+| 1 | 225,280 | p50 | 405 us |
+| 1 | 262,140 | the model limit | 400 us |
+| 8 | 65,536 | 64k to 128k: 17 % | 1601 us |
+| 8 | 131,072 | 128k to 256k: 25.9 % | 1597 us |
+| 8 | 262,140 | the model limit | 1640 us |
+
+The span of `requests * ctx` is 128x. The request count sets most of the time, through the experts that the
+rows route to.
 
 The correctness-only cases add these shapes:
 
 - the minimum: 1 request and 16 tokens
-- odd request counts: 3 and 5
-- contexts that are not a multiple of 4, 16 or 64
+- the top-512 boundary: 2049 tokens, so the rows have 512 and 513 complete blocks
+- the boundary between one and two index segments: 32,769 tokens, so the rows have 8192 and 8193 blocks
+- an unaligned context: 70,001 tokens
+- short ragged contexts: 8 requests of 1500 to 3000 tokens. Some requests attend to every block, and the others
+  select 512 blocks.
 
 The generator moves context lengths of 2045 to 2047 tokens to 2044. So a request either has at most 512 blocks
 in all its rows, or it has at least 512 blocks before its verify window.
+
+One evaluation of one implementation (compile, correctness and performance) takes about 7 minutes on MI355X.
+The QA audit evaluates the baseline and a candidate, and it takes 14 minutes.
 
 ## Not covered
 
@@ -263,6 +287,8 @@ in all its rows, or it has at least 512 blocks before its verify window.
   - the model-level mixer of the last launch
 - The MTP draft launches, padded graph batches, multimodal MRoPE positions, the 4-slot index ring and an f32
   SSM state.
+- Request counts 2 to 7. Each request count compiles its own kernel (35 s for 1 request to 125 s for 8), and
+  two counts keep one evaluation near 7 minutes.
 - The other sgl-amd-mono monokernels:
   - GLM-5.3, GLM-5.3-Flash, DeepSeek-V4 / V4.1, Kimi-K3 and MiniMax-M3 run each layer on 2 to 8 GPUs. Their
     tensor-parallel all-reduces run inside the launch. A single-GPU kernel task cannot express this.
