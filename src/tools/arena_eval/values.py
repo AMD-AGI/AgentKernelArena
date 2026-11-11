@@ -7,6 +7,7 @@ the task's optional layout transform, all prepared outside any timed interval.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import math
 import sys
@@ -74,6 +75,19 @@ def reference_function(contract: Contract) -> Callable:
     return _load_task_function(contract.reference, "reference")
 
 
+def decode_function(contract: Contract, name: str) -> Callable | None:
+    """The decode hook ``compare.<name>.decode`` of a checked tensor, if the task declares one."""
+    return _load_task_function(contract.compare[name].get("decode"), f"decode_{name}")
+
+
+def decode_values(contract: Contract, name: str, packed: torch.Tensor) -> torch.Tensor:
+    """The floating values the task's decode hook reads from one packed tensor of ``name``."""
+    value = decode_function(contract, name)(packed)
+    if not isinstance(value, torch.Tensor) or value.dtype not in (torch.float32, torch.float64):
+        raise ContractError(f"The decode hook of {name} must return a float32 or float64 tensor")
+    return value
+
+
 def _builtin(declaration: dict, shape: tuple[int, ...], generator: torch.Generator,
              device: torch.device) -> torch.Tensor:
     dist = declaration["distribution"]
@@ -122,8 +136,14 @@ class CaseInputs:
     kernel: dict[str, Any]
 
 
-def make_inputs(contract: Contract, case: Case, seed: int, device: torch.device) -> CaseInputs:
-    """Logical and kernel-facing inputs for one case and seed, validated against the interface."""
+def make_inputs(contract: Contract, case: Case, seed: int, device: torch.device, *,
+                rank: int | None = None) -> CaseInputs:
+    """Logical and kernel-facing inputs for one case and seed, validated against the interface.
+
+    For a multi-GPU task the declared interface is one rank's call: ``rank`` selects the rank whose
+    shard (then layout) becomes the kernel-facing inputs. Without a rank only the logical inputs,
+    which every rank draws identically from the same seed, are returned (``kernel`` is None).
+    """
     symbols = contract.symbols(case)
     generator = device_generator(seed, device)
     scalars = contract.scalars(case)
@@ -145,16 +165,32 @@ def make_inputs(contract: Contract, case: Case, seed: int, device: torch.device)
         if not isinstance(produced, dict) or set(produced) != set(owned):
             raise ContractError(f"Task generator must return exactly {sorted(owned)}")
         logical.update(produced)
+    if contract.distributed is not None and rank is None:
+        return CaseInputs(logical, None)
+    return CaseInputs(logical, kernel_inputs(contract, case, logical, device, rank=rank))
+
+
+def kernel_inputs(contract: Contract, case: Case, logical: dict[str, Any], device: torch.device, *,
+                  rank: int | None = None) -> dict[str, Any]:
+    """The kernel-facing inputs: the rank's shard (multi-GPU tasks), then the layout transform."""
+    symbols = contract.symbols(case)
+    scalars = contract.scalars(case)
+    if contract.distributed is None:
+        source = logical
+        owner = ""
+    else:
+        source = shard_inputs(contract, logical, rank)
+        owner = f" for rank {rank}"
     layout = _load_task_function(contract.layout, "layout")
     if layout is None:
-        kernel = dict(logical)
+        kernel = dict(source)
     else:
         transformed = layout({"id": case.case_id, "axes": dict(symbols), "scalars": dict(scalars)},
-                             {name: clone_value(value) for name, value in logical.items()})
+                             {name: clone_value(value) for name, value in source.items()})
         if not isinstance(transformed, dict) or set(transformed) != set(contract.inputs):
             raise ContractError("Task layout transform must return every declared input")
         if any(name in contract.mutable and transformed[name] is not None and
-               not torch.equal(transformed[name], logical[name]) for name in contract.mutable):
+               not torch.equal(transformed[name], source[name]) for name in contract.mutable):
             raise ContractError("A layout transform cannot change a mutable input")
         kernel = transformed
     for name, declaration in contract.inputs.items():
@@ -163,15 +199,99 @@ def make_inputs(contract: Contract, case: Case, seed: int, device: torch.device)
             continue
         expected = contract.shape(declaration, symbols)
         if not isinstance(value, torch.Tensor):
-            raise ContractError(f"Input {name} is not a tensor")
+            raise ContractError(f"Input {name}{owner} is not a tensor")
         if tuple(value.shape) != expected or value.dtype != _dtype(declaration["dtype"]):
-            raise ContractError(f"Input {name} is {tuple(value.shape)}/{value.dtype}, "
+            raise ContractError(f"Input {name}{owner} is {tuple(value.shape)}/{value.dtype}, "
                                 f"declared {expected}/{declaration['dtype']}")
         if value.device != device:
-            raise ContractError(f"Input {name} is not on {device}")
+            raise ContractError(f"Input {name}{owner} is not on {device}")
         if not value.is_contiguous():
             kernel[name] = value.contiguous()
-    return CaseInputs(logical, kernel)
+        elif contract.distributed is not None and _is_partial_view(value):
+            # A shard is often a slice of a full logical tensor; own it, so the full copy is freed.
+            kernel[name] = value.clone()
+    return kernel
+
+
+def _is_partial_view(value: torch.Tensor) -> bool:
+    return value.untyped_storage().nbytes() != value.numel() * value.element_size()
+
+
+def shard_inputs(contract: Contract, logical: dict[str, Any], rank: int) -> dict[str, Any]:
+    """One rank's kernel-facing inputs (before the layout transform) from the logical inputs."""
+    world_size = contract.world_size
+    if type(rank) is not int or not 0 <= rank < world_size:
+        raise ContractError(f"rank {rank!r} is outside 0..{world_size - 1}")
+    shard = _load_task_function(contract.distributed["shard"], "shard")
+    produced = shard({name: clone_value(value) for name, value in logical.items()},
+                     rank=rank, world_size=world_size)
+    if not isinstance(produced, dict) or set(produced) != set(contract.inputs):
+        missing = sorted(set(contract.inputs) - set(produced or {})) if isinstance(produced, dict) else None
+        raise ContractError(f"Task shard function must return every declared input for rank {rank}"
+                            + (f"; missing {missing}" if missing else ""))
+    return produced
+
+
+def expected_outputs(contract: Contract, case: Case, references: dict[str, torch.Tensor],
+                     rank: int) -> dict[str, torch.Tensor]:
+    """The tensors one rank must write, from the logical reference outputs."""
+    expected = _load_task_function(contract.distributed["expected"], "expected")
+    produced = expected(dict(references), rank=rank, world_size=contract.world_size)
+    names = contract.checked_tensors
+    if not isinstance(produced, dict) or set(produced) != set(names):
+        raise ContractError(f"Task expected function must return exactly {list(names)} for rank {rank}")
+    symbols = contract.symbols(case)
+    for name in names:
+        value = produced[name]
+        declaration = contract.outputs.get(name) or contract.inputs[name]
+        shape = contract.shape(declaration, symbols)
+        if not isinstance(value, torch.Tensor) or tuple(value.shape) != shape:
+            got = tuple(value.shape) if isinstance(value, torch.Tensor) else type(value).__name__
+            raise ContractError(f"Expected {name} for rank {rank} is {got}; one rank writes {shape}")
+        if _is_partial_view(value):
+            produced[name] = value.clone()  # do not keep the full logical reference alive
+    return produced
+
+
+_FINGERPRINT_SAMPLE = 1 << 20
+
+
+def _host_bytes(flat: torch.Tensor) -> bytes:
+    host = flat.cpu()
+    try:
+        return host.numpy().tobytes()
+    except (RuntimeError, ImportError):  # PyTorch built without NumPy
+        return bytes(host.tolist())
+
+
+def tensor_digest(tensor: torch.Tensor) -> str:
+    """SHA-256 of a tensor's dtype, shape and bytes: equal digests mean bitwise-equal tensors."""
+    digest = hashlib.sha256(f"{tuple(tensor.shape)}|{tensor.dtype}|".encode())
+    digest.update(_host_bytes(tensor_bytes(tensor)))
+    return digest.hexdigest()
+
+
+def logical_fingerprint(logical: dict[str, Any]) -> str:
+    """A cheap identity of the logical inputs: every rank must draw the same values from one seed.
+
+    Large tensors contribute an evenly spaced byte sample; a diverging random stream differs almost
+    everywhere, so the sample detects it without copying whole weights to the host.
+    """
+    digest = hashlib.sha256()
+    for name in sorted(logical):
+        value = logical[name]
+        digest.update(name.encode() + b"\0")
+        if isinstance(value, torch.Tensor):
+            digest.update(f"{tuple(value.shape)}|{value.dtype}|".encode())
+            flat = tensor_bytes(value)
+            if flat.numel() > _FINGERPRINT_SAMPLE:
+                index = torch.linspace(0, flat.numel() - 1, _FINGERPRINT_SAMPLE, device=flat.device,
+                                       dtype=torch.float64).to(torch.int64)
+                flat = flat[index]
+            digest.update(_host_bytes(flat))
+        else:
+            digest.update(repr(value).encode())
+    return digest.hexdigest()
 
 
 def clone_value(value: Any) -> Any:
@@ -258,3 +378,21 @@ def workspace_path(relative: str) -> Path:
     if not path.is_relative_to(WORKSPACE):
         raise ContractError(f"{relative} escapes the workspace")
     return path
+
+
+def check_rank_views(contract: Contract, case: Case, logical: dict[str, Any],
+                     references: dict[str, torch.Tensor], device: torch.device) -> list[dict]:
+    """Every rank's shard and expected outputs exist and match the one-rank interface.
+
+    Runs the task's shard, layout and expected functions for each rank in one process, without
+    kernels, so validate-task and the CPU pre-check can reject a malformed multi-GPU task early.
+    """
+    views = []
+    for rank in range(contract.world_size):
+        kernel = kernel_inputs(contract, case, logical, device, rank=rank)
+        expected = expected_outputs(contract, case, references, rank)
+        views.append({"rank": rank,
+                      "inputs": {n: list(v.shape) for n, v in kernel.items() if isinstance(v, torch.Tensor)},
+                      "expected": {n: list(v.shape) for n, v in expected.items()}})
+        del kernel, expected
+    return views

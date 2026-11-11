@@ -1,0 +1,386 @@
+schema_version: 3
+description: 'One GLM-5.3 indexed (DSA) decoder layer for a decode or MTP-verify step on one rank of tensor parallelism
+  8, the whole layer in one launch: input RMSNorm, block-FP8 q_a | kv_a, q_a RMSNorm, q_b with RoPE, the MLA cache write
+  (bf16), the indexer (index query RoPE + Hadamard, index key LayerNorm + RoPE + Hadamard quantized to E4M3 with a power-of-two
+  scale into the paged index cache, scores scale * sum_h w_h relu(q_h . k) over every key up to the row''s position, exact
+  top-2048), absorbed sparse MLA over the 2048 selected keys (64 heads, softmax scale 1/16), W_UV, o_proj, the TP sum and
+  residual, the post-attention RMSNorm, the sigmoid router''s top-8 of 256 (+ bias, weights renormalized x 2.5) plus the
+  shared expert, FP8 experts on per-128 E4M3 activations (SiLU(gate) * up, per-128 E4M3 mid, down), the TP sum and residual.
+  Each rank holds 8 of the 64 heads and 256 of the 2048 expert intermediates; the TP sums run inside the kernel over the
+  framework''s symmetric peer memory. Outputs: the new hidden rows and each row''s top-2048 cache slots, plus the two caches.'
+operator:
+  name: glm53_decoder_layer
+  category: other
+interface:
+  axes:
+    rows:
+      kind: var
+      min: 2
+      max: 8
+      multiple_of: 2
+      description: 'Rows of the step: 2 decode requests, or 4-token MTP-verify chains (4 a request).'
+    ctx:
+      kind: var
+      min: 2048
+      max: 1048000
+      description: Cached tokens of the longest request (the others hold ctx / 2 .. ctx).
+    hidden:
+      kind: const
+      value: 6144
+    q_lora:
+      kind: const
+      value: 2048
+    kv_lora:
+      kind: const
+      value: 512
+    qk_dim:
+      kind: const
+      value: 576
+    local_heads:
+      kind: const
+      value: 8
+      description: 64 attention heads / tensor parallelism 8.
+    local_inter:
+      kind: const
+      value: 256
+      description: 2048 expert intermediates / tensor parallelism 8.
+  derived_axes:
+    requests: rows // 4 + rows % 4
+    req_pages: ceil_div(ctx + 4, 64) + 1
+    pages: 1 + requests * req_pages
+    cache_slots: pages * 64
+    rope_rows: ctx + 8
+  inputs:
+    hidden:
+      kind: tensor
+      shape: [rows, hidden]
+      dtype: bfloat16
+      role: activation
+      distribution: &id001
+        kind: generator
+      description: The layer's input hidden rows (replicated on every rank).
+    positions:
+      kind: tensor
+      shape: [rows]
+      dtype: int64
+      role: index
+      distribution: *id001
+      description: Each row's position (its keys are 0 .. position).
+    slots:
+      kind: tensor
+      shape: [rows]
+      dtype: int64
+      role: index
+      distribution: *id001
+      description: Each row's MLA / index cache slot (SGLang out_cache_loc).
+    indptr:
+      kind: tensor
+      shape: [rows + 1]
+      dtype: int32
+      role: index
+      distribution: *id001
+      description: Row s's 2048 top-k entries start at indptr[s] (s * 2048).
+    req_ids:
+      kind: tensor
+      shape: [rows]
+      dtype: int32
+      role: index
+      distribution: *id001
+      description: 'Each row''s page-table row (row s: s).'
+    page_table:
+      kind: tensor
+      shape: [rows, req_pages]
+      dtype: int32
+      role: index
+      distribution: *id001
+      description: Each row's request's 64-token pages (rows of one verify request repeat one row).
+    kv_cache:
+      kind: tensor
+      shape: [cache_slots, qk_dim]
+      dtype: bfloat16
+      role: state
+      distribution: *id001
+      description: MLA cache [slots, 512 latent | 64 rope] (ATOM layout).
+    index_cache:
+      kind: tensor
+      shape: [pages, 64, 132]
+      dtype: uint8
+      role: state
+      distribution: *id001
+      description: 'SGLang''s paged DSA index cache: per page 64 x 128 E4M3 keys in 16-token x 16-byte tiles, then 64 f32
+        scales.'
+    rope_cos:
+      kind: tensor
+      shape: [rope_rows, 32]
+      dtype: bfloat16
+      role: metadata
+      distribution: *id001
+      description: RoPE cos table (theta 1e6, interleaved pairs).
+    rope_sin:
+      kind: tensor
+      shape: [rope_rows, 32]
+      dtype: bfloat16
+      role: metadata
+      distribution: *id001
+      description: RoPE sin table.
+    g_in:
+      kind: tensor
+      shape: [hidden]
+      dtype: bfloat16
+      role: weight
+      distribution: *id001
+    g_q:
+      kind: tensor
+      shape: [q_lora]
+      dtype: bfloat16
+      role: weight
+      distribution: *id001
+    g_kv:
+      kind: tensor
+      shape: [kv_lora]
+      dtype: bfloat16
+      role: weight
+      distribution: *id001
+    g_post:
+      kind: tensor
+      shape: [hidden]
+      dtype: bfloat16
+      role: weight
+      distribution: *id001
+    w_qkv_a:
+      kind: tensor
+      shape: [2624, hidden]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: Fused q_a | kv_a | k_pe projection, AITER (16, 16) shuffled; logical row-major.
+    s_qkv_a:
+      kind: tensor
+      shape: [21, 48]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Its 128 x 128 block scales.
+    w_q_b:
+      kind: tensor
+      shape: [local_heads * 256, q_lora]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: This rank's q_b rows (8 heads x (192 nope | 64 rope)), shuffled; logical [16384, 2048].
+    s_q_b:
+      kind: tensor
+      shape: [local_heads * 2, 16]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Block scales; logical [128, 16].
+    w_uk:
+      kind: tensor
+      shape: [local_heads * 512 * 192]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: W_UK of this rank's heads packed in the kernel's 16 x 64 tiles; logical SGLang w_kc [64, 192, 512].
+    s_uk:
+      kind: tensor
+      shape: [local_heads * 4, 3]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: W_UK's per-tensor scale as a block table; logical [1].
+    w_uv:
+      kind: tensor
+      shape: [local_heads * 256 * 512]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: W_UV packed; logical SGLang w_vc [64, 512, 256].
+    s_uv:
+      kind: tensor
+      shape: [local_heads * 2, 4]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: W_UV's per-tensor scale as a block table; logical [1].
+    w_o:
+      kind: tensor
+      shape: [hidden, local_heads * 256]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: This rank's o_proj columns, shuffled; logical [6144, 16384].
+    s_o:
+      kind: tensor
+      shape: [48, local_heads * 2]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Block scales; logical [48, 128].
+    w_ik:
+      kind: tensor
+      shape: [128, hidden]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: Indexer wk, shuffled.
+    s_ik:
+      kind: tensor
+      shape: [1, 48]
+      dtype: float32
+      role: weight
+      distribution: *id001
+    w_iw:
+      kind: tensor
+      shape: [32 * hidden]
+      dtype: bfloat16
+      role: weight
+      distribution: *id001
+      description: Indexer weights_proj packed in 16 x 64 tiles; logical [32, 6144] (planted, see inputs.py).
+    w_iq:
+      kind: tensor
+      shape: [4096, q_lora]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: Indexer wq_b, shuffled.
+    s_iq:
+      kind: tensor
+      shape: [32, 16]
+      dtype: float32
+      role: weight
+      distribution: *id001
+    g_ik:
+      kind: tensor
+      shape: [128]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Indexer k LayerNorm weight.
+    b_ik:
+      kind: tensor
+      shape: [128]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Indexer k LayerNorm bias.
+    w_r:
+      kind: tensor
+      shape: [256 * hidden]
+      dtype: bfloat16
+      role: weight
+      distribution: *id001
+      description: Router packed in 16 x 64 tiles; logical [256, 6144] (planted, see inputs.py).
+    bias:
+      kind: tensor
+      shape: [256]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Router e_score_correction_bias.
+    w_ug:
+      kind: tensor
+      shape: [257, 2 * local_inter, hidden]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: This rank's expert w13 rows (gate | up), shuffled; expert 256 is the shared expert; logical [257, 4096,
+        6144].
+    s_ug:
+      kind: tensor
+      shape: [257, 2 * local_inter // 128, 48]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Block scales; logical [257, 32, 48].
+    w_dn:
+      kind: tensor
+      shape: [257, hidden, local_inter]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: *id001
+      description: This rank's expert w2 columns, shuffled; logical [257, 6144, 2048].
+    s_dn:
+      kind: tensor
+      shape: [257, 48, local_inter // 128]
+      dtype: float32
+      role: weight
+      distribution: *id001
+      description: Block scales; logical [257, 48, 16].
+    step_guard:
+      kind: tensor
+      shape: [8]
+      dtype: int32
+      role: metadata
+      distribution: *id001
+      description: 'The kernel''s guard block: epoch 1 and a 600 s wait deadline; read-only.'
+  outputs:
+    out:
+      shape: [rows, hidden]
+      dtype: bfloat16
+      description: The layer's output hidden rows (replicated).
+    topk:
+      shape: [rows, 2048]
+      dtype: int32
+      description: Each row's 2048 selected cache slots (any order).
+  mutable: [kv_cache, index_cache]
+  generator:
+    file: inputs.py
+    symbol: make_inputs
+distributed:
+  world_size: 8
+  symmetric_bytes: rows * 11854336 + 4096
+  shard:
+    file: inputs.py
+    symbol: shard_inputs
+  expected:
+    file: inputs.py
+    symbol: rank_expected
+  ranks_agree: [out, topk]
+reference:
+  file: reference.py
+  symbol: reference
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (GLM-5.3 gfx950 monokernel glm5_monokernel, adapted there from ROCm/aiter#6173)
+    revision: '52486703'
+    path: [sgl_amd_mono/glm53/gfx950/kernel.py, sgl_amd_mono/glm53/gfx950/config.py, sgl_amd_mono/glm53/gfx950/layout.py,
+      sgl_amd_mono/glm53/gfx950/tiles.py, sgl_amd_mono/glm53/gfx950/runner.py, sgl_amd_mono/common/ops.py, sgl_amd_mono/common/guard.py,
+      sgl_amd_mono/common/sync.py, sgl_amd_mono/common/epoch.py, sgl_amd_mono/common/plan.py, sgl_amd_mono/muse_spark/gfx950/compat.py,
+      sgl_amd_mono/muse_spark/gfx950/device.py]
+    license: Apache-2.0 (sgl-amd-mono, FlyDSL contributors); MIT (ROCm/ATOM-derived ops/sync/plan and muse_spark device.py)
+    notes: SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the task vendors 52486703. buffer_ops.py and
+      dpp_utils.py are the FlyDSL helpers as vendored by ROCm/aiter, copied from this repository's existing FlyDSL tasks.
+    modifications: 'Flat package with relative imports (no aiter, sgl_amd_mono or msgspec). glm5_mono.py: the source-hash
+      build key is the tuple of build arguments; reload_args returns the reloaded pointers (the call sites rebind them)
+      instead of nonlocal rebinding; the indexer''s seven weight pointers are kernel arguments instead of a device pointer
+      table (one launch per call, no table build); the unused 64-bit pair load removed; fx.atomic_add replaced by an llvm
+      atomicrmw (compat.py). FlyDSL 0.3.2 forms (compat.py) of global_ptr, global_load and the guard''s stop store. guard.py
+      without the fault-injection environment reader; epoch.py and plan.py reduced to what the kernel uses; config.py and
+      sync.py with dataclasses for msgspec structs. kernel.py replaces runner.py''s runtime: the build flags of SGLang''s
+      GLM-5.3 indexer layer (TP 8, fp8_block128 attention weights read shuffled, ATOM bf16 MLA cache, paged shuffled index
+      cache, FP8 experts, index_max_seq 2^20, one launch a step); the guard block is an input; the peer buffer and the hand-off
+      scratch are the framework''s symmetric buffer.'
+compare:
+  out:
+    bound: baseline_relative
+    k: 4
+    max_violation_fraction: 0.001
+  topk:
+    bound: exact
+  kv_cache:
+    bound: baseline_relative
+  index_cache:
+    # Compared as decoded key values (E4M3 code x the token's scale), not bytes: a correct kernel's key
+    # code may round one step away from the float64 reference's, and a scale that rounds to the other
+    # power of two rewrites every byte of the token. precision E4M3 adds one code step to the default
+    # bound (k 2 x the baseline's own per-token error covers the rest). max_violation_fraction stays 0:
+    # the cache is mostly unchanged state, so any fraction of it would exceed every newly written key.
+    bound: baseline_relative
+    decode: {file: inputs.py, symbol: index_cache_values, precision: float8_e4m3fn}
+element_order: any_in_full_rows
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

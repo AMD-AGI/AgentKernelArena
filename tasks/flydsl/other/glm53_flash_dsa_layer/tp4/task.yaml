@@ -1,0 +1,220 @@
+schema_version: 3
+description: >-
+  One GLM-5.3-Flash sparse-attention (DSA) decoder layer for a decode step, on one of 4 tensor-parallel
+  ranks, as a single persistent launch: the attention-side mHC (the previous layer's owed post and comb
+  applied to its 4 residual streams, the 24 mix projections and a 20-iteration Sinkhorn gate, RMSNorm),
+  the q_a | kv_a projection (FP8 128x128-block weights), q and kv RMSNorms, the MLA latent cache write,
+  the indexer key LayerNorm and kpool ring update (a row whose token completes a 4-token pool compresses
+  it: softmax(gate + ape)-weighted key, Hadamard-128, UE8M0 FP8 into the index cache), q_b, the index
+  query (Hadamard-128, UE8M0 FP8), W_UK absorption, index scoring of the row's complete pools
+  (scale * sum_h w_h relu(q8_h . k8)), exact top-512 pool selection (rows with more than 512 complete
+  pools; others attend to every token), NoPE sparse MLA over the selected pools' 2048 tokens plus the
+  row's tail, W_UV and o_proj (this rank's 16 of 64 heads, summed over the ranks through peer memory),
+  then the FFN-side mHC and the MoE: bf16 router, top-8 of 288 by sigmoid score + bias (weights
+  renormalized, x 2.5) plus the shared expert, MXFP8 activations, MXFP4 experts (this rank's 512 of 2048
+  intermediate columns), clamped SwiGLU (limit 10), MXFP8 mid, and the MoE TP reduce through peer
+  memory. Outputs: the layer's FFN output x_out, the streams after its attention res_out, and the FFN
+  mHC post_out and comb_out (owed to the next layer); the caches are updated in place. The float64
+  definition is dsa_layer_math.py.
+operator:
+  name: glm53_flash_dsa_layer
+  category: other
+interface:
+  axes:
+    requests: {kind: var, min: 1, max: 8, description: "Decode requests in the step (one row each)."}
+    ctx:
+      kind: var
+      min: 1
+      max: 1048576
+      description: Tokens the step's longest request holds after this step's token (the others hold ctx / 2 to ctx).
+    hidden: {kind: const, value: 4096}
+    hc: {kind: const, value: 4, description: "mHC residual streams."}
+    n_mix: {kind: const, value: 24, description: "mHC mix projections (pre 4, post 4, comb 16)."}
+    q_lora: {kind: const, value: 1536}
+    kv_lora: {kind: const, value: 512}
+    nope_dim: {kind: const, value: 256}
+    v_dim: {kind: const, value: 256}
+    mla_heads: {kind: const, value: 64}
+    index_heads: {kind: const, value: 32}
+    index_dim: {kind: const, value: 128}
+    kpool: {kind: const, value: 4, description: "Tokens of one indexer pool."}
+    n_experts: {kind: const, value: 288}
+    global_inter: {kind: const, value: 2048, description: "Expert intermediate width of the whole model."}
+    page_tokens: {kind: const, value: 256, description: "Tokens of one DSA cache page."}
+    index_page_bytes: {kind: const, value: 8448, description: "64 pools x (128 FP8 bytes + a float32 scale)."}
+    row_words: {kind: const, value: 8}
+    guard_words: {kind: const, value: 8}
+  derived_axes:
+    # the compiled width (2, 4 or 8): a step of fewer rows runs at the next width, the rest pad rows
+    rows: 2 + 2 * min(1, max(0, requests - 2)) + 4 * min(1, max(0, requests - 4))
+    pages: ceil_div(ctx, page_tokens)
+    kv_slots: page_tokens * (1 + requests * pages)
+    index_pages: 1 + requests * pages
+    ring_rows: requests + 1
+    heads_rank: mla_heads // world_size
+    inter_rank: global_inter // world_size
+    expert_slots: n_experts + 1
+  inputs:
+    x: {kind: tensor, shape: [rows, hidden], dtype: bfloat16, distribution: {kind: generator},
+        description: "The previous layer's FFN output (its mHC post still owed)."}
+    residual: {kind: tensor, shape: [rows, hc, hidden], dtype: bfloat16, distribution: {kind: generator},
+               description: "The previous layer's streams after its attention."}
+    post: {kind: tensor, shape: [rows, hc, 1], dtype: float32, distribution: {kind: generator},
+           description: "The previous layer's FFN mHC post."}
+    comb: {kind: tensor, shape: [rows, hc, hc], dtype: float32, distribution: {kind: generator},
+           description: "The previous layer's FFN mHC comb."}
+    hc_attn_fn: {kind: tensor, shape: [n_mix, hc * hidden], dtype: float32, role: weight,
+                 distribution: {kind: generator}}
+    hc_attn_scale: {kind: tensor, shape: [3], dtype: float32, role: weight, distribution: {kind: generator}}
+    hc_attn_base: {kind: tensor, shape: [n_mix], dtype: float32, role: weight, distribution: {kind: generator}}
+    input_norm: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    w_qkv_a:
+      kind: tensor
+      shape: [q_lora + kv_lora, hidden]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: q_a | kv_a (fused_qkv_a_proj_with_mqa), kernel-facing in AITER's (16, 16) shuffle.
+    s_qkv_a: {kind: tensor, shape: ["(q_lora + kv_lora) // 128", hidden // 128], dtype: float32, role: weight,
+              distribution: {kind: generator}}
+    w_idx: {kind: tensor, shape: [index_dim + index_heads, hidden], dtype: bfloat16, role: weight,
+            distribution: {kind: generator}, description: "The indexer's wk rows, then its weights_proj rows."}
+    w_kpool_gate: {kind: tensor, shape: [index_dim, hidden], dtype: bfloat16, role: weight,
+                   distribution: {kind: generator}}
+    q_a_norm: {kind: tensor, shape: [q_lora], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    kv_a_norm: {kind: tensor, shape: [kv_lora], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    k_norm_w: {kind: tensor, shape: [index_dim], dtype: float32, role: weight, distribution: {kind: generator}}
+    k_norm_b: {kind: tensor, shape: [index_dim], dtype: float32, role: weight, distribution: {kind: generator}}
+    kpool_ape: {kind: tensor, shape: [kpool, index_dim], dtype: float32, role: weight,
+                distribution: {kind: generator}}
+    w_q_b:
+      kind: tensor
+      shape: [heads_rank * nope_dim, q_lora]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: This rank's q_b_proj rows, kernel-facing in AITER's (16, 16) shuffle.
+    s_q_b: {kind: tensor, shape: [heads_rank * nope_dim // 128, q_lora // 128], dtype: float32, role: weight,
+            distribution: {kind: generator}}
+    w_index_q: {kind: tensor, shape: [index_heads * index_dim, q_lora], dtype: bfloat16, role: weight,
+                distribution: {kind: generator}, description: "The indexer's wq_b."}
+    w_uk: {kind: tensor, shape: [heads_rank, kv_lora, nope_dim], dtype: bfloat16, role: weight,
+           distribution: {kind: generator}, description: "W_UK^T of this rank's heads, packed from w_kv_b."}
+    w_kv_b: {kind: tensor, shape: ["heads_rank * (nope_dim + v_dim)", kv_lora], dtype: bfloat16, role: weight,
+             distribution: {kind: generator}, description: "This rank's kv_b_proj rows (W_UK then W_UV a head)."}
+    w_o:
+      kind: tensor
+      shape: [hidden, heads_rank * v_dim]
+      dtype: float8_e4m3fn
+      role: weight
+      distribution: {kind: generator}
+      description: This rank's o_proj columns, kernel-facing in AITER's (16, 16) shuffle.
+    s_o: {kind: tensor, shape: [hidden // 128, heads_rank * v_dim // 128], dtype: float32, role: weight,
+          distribution: {kind: generator}}
+    kv_cache: {kind: tensor, shape: [kv_slots, kv_lora], dtype: bfloat16, role: state,
+               distribution: {kind: generator}, description: "The MLA latent cache (replicated on every rank)."}
+    index_cache: {kind: tensor, shape: [index_pages, index_page_bytes], dtype: uint8, role: state,
+                  distribution: {kind: generator}, description: "The kpool index cache (FP8 keys and scales)."}
+    kpool_tail_k: {kind: tensor, shape: [ring_rows, kpool, index_dim], dtype: bfloat16, role: state,
+                   distribution: {kind: generator}}
+    kpool_tail_gate: {kind: tensor, shape: [ring_rows, kpool, index_dim], dtype: bfloat16, role: state,
+                      distribution: {kind: generator}}
+    row_table: {kind: tensor, shape: [rows, row_words], dtype: int32, role: metadata,
+                distribution: {kind: generator},
+                description: "Per row: position, MLA slot, index pool slot, ring slot, page-table row (-1: pad)."}
+    page_table: {kind: tensor, shape: [rows, 4 * pages], dtype: int32, role: index,
+                 distribution: {kind: generator}, description: "SGLang's 64-token page table of the requests."}
+    hc_ffn_fn: {kind: tensor, shape: [n_mix, hc * hidden], dtype: float32, role: weight,
+                distribution: {kind: generator}}
+    hc_ffn_scale: {kind: tensor, shape: [3], dtype: float32, role: weight, distribution: {kind: generator}}
+    hc_ffn_base: {kind: tensor, shape: [n_mix], dtype: float32, role: weight, distribution: {kind: generator}}
+    post_attn_norm: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    router_w: {kind: tensor, shape: [n_experts, hidden], dtype: bfloat16, role: weight,
+               distribution: {kind: generator}, description: "Kernel-facing in the kernel's 16 x 64 MFMA tiles."}
+    router_bias: {kind: tensor, shape: [n_experts], dtype: float32, role: weight, distribution: {kind: generator}}
+    w13:
+      kind: tensor
+      shape: [expert_slots, 2 * inter_rank, hidden // 2]
+      dtype: uint8
+      role: weight
+      distribution: {kind: generator}
+      description: >-
+        MXFP4 gate rows then up rows of this rank's intermediate columns, the 288 routed experts and the shared
+        expert (slot 288); kernel-facing in AITER's (16, 16) shuffle.
+    w13_scale: {kind: tensor, shape: [expert_slots, 2 * inter_rank, hidden // 32], dtype: uint8, role: weight,
+                distribution: {kind: generator}, description: "E8M0 scales of w13, kernel-facing e8m0_shuffle."}
+    w2: {kind: tensor, shape: [expert_slots, hidden, inter_rank // 2], dtype: uint8, role: weight,
+         distribution: {kind: generator}, description: "MXFP4 down projections, kernel-facing (16, 16) shuffle."}
+    w2_scale: {kind: tensor, shape: [expert_slots, hidden, inter_rank // 32], dtype: uint8, role: weight,
+               distribution: {kind: generator}, description: "E8M0 scales of w2, kernel-facing e8m0_shuffle."}
+    guard: {kind: tensor, shape: [guard_words], dtype: int32, role: metadata, distribution: {kind: generator},
+            description: "The launch's guard block: epoch 0, the wait deadline (int64 ticks of 100 MHz), error words."}
+  outputs:
+    x_out: {shape: [rows, hidden], dtype: bfloat16}
+    res_out: {shape: [rows, hc, hidden], dtype: bfloat16}
+    post_out: {shape: [rows, hc, 1], dtype: float32}
+    comb_out: {shape: [rows, hc, hc], dtype: float32}
+  mutable: [kv_cache, index_cache, kpool_tail_k, kpool_tail_gate]
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+distributed:
+  world_size: 4
+  # the kernel's TP exchange regions and guard flags (4 MiB a row at most) plus its scratch mailboxes
+  symmetric_bytes: (rows + 1) * 4194304
+  shard: {file: inputs.py, symbol: shard_inputs}
+  expected: {file: inputs.py, symbol: rank_expected}
+  ranks_agree: [x_out, res_out, post_out, comb_out, kpool_tail_k, kpool_tail_gate]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/glm53_flash/gfx950/kernel.py
+      - sgl_amd_mono/glm53_flash/gfx950/config.py
+      - sgl_amd_mono/glm53_flash/gfx950/layout.py
+      - sgl_amd_mono/glm53_flash/gfx950/tiles.py
+      - sgl_amd_mono/glm53_flash/gfx950/runner.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/guard.py
+      - sgl_amd_mono/common/sync.py
+      - sgl_amd_mono/common/epoch.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py
+    license: >-
+      Apache-2.0 (sgl-amd-mono; the kernel, config, layout and tiles adapted from vLLM ca328e297b and
+      ROCm/aiter#6173 c39b56c36, FlyDSL Project Contributors; buffer_ops.py and dpp_utils.py from ROCm/FlyDSL);
+      MIT (the common/ops, guard, sync, epoch and plan parts adapted from ROCm/ATOM 97359d6)
+    notes: >-
+      buffer_ops.py is the AITER copy of FlyDSL's buffer_ops (ROCm/aiter 652f2d4b768239aefd515c929e84817681ff598d,
+      with its FlyDSL 0.3.2 cache-policy adaptation) as vendored in tasks/flydsl/attention/paged_mqa_logits;
+      dpp_utils.py is ROCm/FlyDSL kernels/common/dpp_utils.py as vendored in
+      tasks/flydsl/attention/paged_attention_decode. sgl-amd-mono imports both from AITER (aiter.ops.flydsl.kernels).
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); this task vendors 52486703.
+    modifications: >-
+      flash_kernel.py is kernel.py with package-relative imports of the vendored helpers, FlashBuild as a frozen
+      dataclass, a fixed source digest instead of plan.kernel_sources (which reads the imported files from
+      disk), the sparse-attention argument table (layout.DSA_TAB: 20 pointers and 7 geometry words) passed as
+      27 kernel arguments instead of a device table built with torch.tensor on the host (the launch's other
+      arguments are unchanged), and FlyDSL 0.3.2 stand-ins (compat.py, llvm-dialect fence, LDS atomicrmw and
+      null-page store) for fx.memory_fence, fx.atomic_add and fx.generic_store; the kernel algorithm and its
+      stage schedule are unchanged. config.py: FlashShard a dataclass. ops/guard/sync/epoch/plan keep only what
+      the kernel uses (no msgspec, os or file access; deadline_ticks and fault injection are host-side and
+      dropped). kernel.py's run() is FlashLayerOp.launch for one sparse-attention layer (layer 0 of 1 a step,
+      epoch 0 from the guard input), with the scratch mailboxes placed in the framework's symmetric buffer past
+      the exchange regions (production allocates them as a separate uncached buffer of the same kind) and the
+      FP8 projections read in AITER's preshuffled layout, as SGLang's gfx950 block-FP8 linear method leaves them.
+compare:
+  x_out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  res_out: {bound: baseline_relative}
+  post_out: {bound: baseline_relative}
+  comb_out: {bound: baseline_relative}
+  kv_cache: {bound: baseline_relative}
+  index_cache: {bound: exact}
+  kpool_tail_k: {bound: baseline_relative}
+  kpool_tail_gate: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

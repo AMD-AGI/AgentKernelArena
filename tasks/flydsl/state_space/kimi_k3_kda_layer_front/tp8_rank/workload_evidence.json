@@ -1,0 +1,11 @@
+{
+  "source": "sgl-amd-mono 52486703 Kimi-K3 serving configuration (README.md: --tp 8 --speculative-algorithm DSPARK --speculative-dspark-block-size 7 --enable-amd-monokernel; kimi_k3/gfx950/k1.py: K1 engages on verify steps of one request at qlen = draft tokens, snapshot state without --enable-linear-replayssm-spec) + Kimi-K3 layer structure (93 layers, attn_res_block_size 12, full attention on layers 4, 8, ..., 92; test/unit/test_kimi_k3_spec.py) + AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 per-session in-flight statistics",
+  "method": "corpus_statistics",
+  "axes": {
+    "rows": {"observed_min": 8, "observed_max": 8, "perf_min": 8, "perf_max": 8, "frequency": {"8": 1.0}},
+    "nblocks": {"observed_min": 1, "observed_max": 8, "perf_min": 1, "perf_max": 8,
+                "frequency": {"1": 0.1304, "2": 0.1304, "3": 0.1304, "4": 0.1304, "5": 0.1304, "6": 0.1304, "7": 0.1304, "8": 0.087}}
+  },
+  "fixed_dimensions": "every non-var axis is fixed by Kimi-K3 at TP8: hidden 7168, 12 KDA heads of 128 a rank (96 / 8), in_proj 6288 rows a rank, conv width 4, AttnRes bank of at most 8 rows; one request a launch",
+  "notes": "rows: K1 runs only on speculative verify steps of exactly one request (k1.covered refuses more; a step of 2+ requests is 16+ rows and takes SGLang's attention on Kimi-K3), at qlen = the DSpark draft tokens, 8 with the documented block size 7; the compiled widths 1..8 serve other block sizes, which no documented configuration uses. AgentX at concurrency 1: one request in flight for 90.0% of session busy time (agentx_inflight.json), so the steps K1 serves are these. nblocks: every verify step runs K1 once on each of the 69 KDA layers; layer i reads i // 12 + 1 bank rows (k1.build nblocks = prev_valid_blocks; spec.py's MAX_BLOCKS check: layer 92 reads 8), so depths 1..7 each cover 9 KDA layers and depth 8 covers 6 (85, 86, 87, 89, 90, 91); the frequency is that share of a step's K1 launches. No KDA layer is a block-write layer (those are layers 12, 24, ..., 84, all full attention). Every (rows, nblocks) point reads the 90 MB in_proj weight once, so every production point takes the baseline well over 10 us (estimate 25-35 us); perf range = observed range. Not yet confirmed by a live capture."
+}

@@ -289,14 +289,8 @@ The QA audit evaluates the baseline and a candidate, and it takes 14 minutes.
   SSM state.
 - Request counts 2 to 7. Each request count compiles its own kernel (35 s for 1 request to 125 s for 8), and
   two counts keep one evaluation near 7 minutes.
-- The other sgl-amd-mono monokernels:
-  - GLM-5.3, GLM-5.3-Flash, DeepSeek-V4 / V4.1, Kimi-K3 and MiniMax-M3 run each layer on 2 to 8 GPUs. Their
-    tensor-parallel all-reduces run inside the launch. A single-GPU kernel task cannot express this.
-  - Some rank-local launches do not attend over the context, for example Kimi-K3's KDA and MLA front launches
-    and MiniMax-M3.1's FFN launch. They serve at most 8 to 16 rows. They have no other variable axis. So they
-    cannot meet the workload rules.
-  - Muse Spark's attention and whole-layer launches and DeepSeek-V4.1's K2i FP4 index scorer have a context
-    axis. They are possible follow-up tasks.
+- The other sgl-amd-mono monokernels. They are separate tasks, and 14 of them run on 4 or 8 GPUs with the
+  tensor-parallel collectives inside the launch. The release notes list them.
 
 ## Provenance
 

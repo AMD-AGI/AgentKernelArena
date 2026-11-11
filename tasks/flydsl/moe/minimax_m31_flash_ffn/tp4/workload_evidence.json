@@ -1,0 +1,32 @@
+{
+  "source": "AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 (traces.jsonl sha256 29b6a19e...; 393 traces, 98,827 requests): the per-session in-flight request distribution (main agent + subagents, wall-time weighted: k = 1 90.0%, 2 5.4%, 3 2.1%, 4 0.85%, 5 0.67%, 6 0.45%, 7 0.20%, 8 0.11%, >= 9 0.2%) + the MiniMax-M3.1-Flash TP4 serving configuration of sgl-amd-mono 52486703 (README: --tp 4 --speculative-algorithm DSPARK --monokernel-backend amd; test/e2e/minimax_m31_server.py: DSpark verify steps of 8 rows a request, and decode steps without DSpark; minimax_m31/spec.py: every width 1..16 compiled at TP 4, larger steps run SGLang's own path)",
+  "method": "corpus_statistics",
+  "axes": {
+    "rows": {
+      "observed_min": 1,
+      "observed_max": 16,
+      "perf_min": 1,
+      "perf_max": 16,
+      "frequency": {
+        "1": 0.1568,
+        "2": 0.1506,
+        "3": 0.0206,
+        "4": 0.1229,
+        "5": 0.0317,
+        "6": 0.0163,
+        "7": 0.0083,
+        "8": 0.2375,
+        "9": 0.04,
+        "10": 0.0238,
+        "11": 0.0138,
+        "12": 0.01,
+        "13": 0.0073,
+        "14": 0.0047,
+        "15": 0.003,
+        "16": 0.1527
+      }
+    }
+  },
+  "fixed_dimensions": "every non-var axis is fixed by MiniMax-M3.1-Flash at TP4: hidden 6144, o_proj input 2048 a rank (64 heads x 128 / 4), 128 routed experts top-4 plus one shared expert, expert intermediate 768 a rank (3072 / 4), MXFP4 / MXFP8 group 32",
+  "notes": "rows is the step's token rows: R requests in a decode step (rows = R), or R x 8 in a DSpark verify step (rows = 8 R). The spec compiles every width 1..16, so a step runs at its own row count, unpadded; steps above 16 rows (decode R > 16, DSpark R > 2) run SGLang's own path and are not this kernel's. Frequency: for each serving mode (decode, DSpark verify; equal weight) and AgentX concurrency point C in {1, 2, 4, 8} (equal weight), R = the sum of C independent per-session in-flight counts, mapped to rows, renormalized over the steps the kernel serves. The FFN reads no KV cache, so its work does not depend on the context length (no context axis exists) and the 100x rule is unreachable: the served rows span 16x and every row count is estimated >= 10 us (README.md). Derived from corpus statistics; the MiniMax-M3.1-Flash checkpoint is not on the cluster, so no live capture confirms it yet."
+}

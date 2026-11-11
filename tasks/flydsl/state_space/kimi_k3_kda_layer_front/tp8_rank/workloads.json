@@ -1,0 +1,12 @@
+{
+  "description": "DSpark verify steps of one request on one Kimi-K3 KDA layer at TP8 (snapshot spec state): rows = the verify tokens of the request (8 with the documented --speculative-dspark-block-size 7), nblocks = the AttnRes bank rows the layer reads (layer // 12 + 1: 1 on KDA layers 1-11 up to 8 on layers 85-91). The kernel has no context dependence and the model fixes every non-batch dimension, so the performance cases cover the production range under the production-range span exemption (workload_evidence.json). Derived from the serving configuration, the model's layer structure and the AgentX corpus statistics; not yet confirmed by a live capture. Rows 1 and 3 (compiled widths a DSpark-7 verify step does not use) are correctness-only.",
+  "performance_span": {"policy": "production_range", "evidence": "workload_evidence.json"},
+  "cases": [
+    {"id": "r1_nb1", "axes": {"rows": 1, "nblocks": 1}, "checks": ["correctness"], "source": "minimum: one token (compiled width 1), bank depth 1 (KDA layers 1-11)"},
+    {"id": "r3_nb2", "axes": {"rows": 3, "nblocks": 2}, "checks": ["correctness"], "source": "odd row count (compiled width 3, a DSpark block size 2 verify), bank depth 2 (KDA layers 13-23)"},
+    {"id": "r8_nb1", "axes": {"rows": 8, "nblocks": 1}, "checks": ["correctness", "performance"], "source": "DSpark block 7 verify of one request (8 rows; AgentX: one request in flight 90% of session busy time), bank depth 1 (KDA layers 1-11, 9 of 69)"},
+    {"id": "r8_nb4", "axes": {"rows": 8, "nblocks": 4}, "checks": ["correctness", "performance"], "source": "DSpark block 7 verify of one request (8 rows), bank depth 4 (KDA layers 37-47, 9 of 69)"},
+    {"id": "r8_nb6", "axes": {"rows": 8, "nblocks": 6}, "checks": ["correctness", "performance"], "source": "DSpark block 7 verify of one request (8 rows), bank depth 6 (KDA layers 61-71, 9 of 69)"},
+    {"id": "r8_nb8", "axes": {"rows": 8, "nblocks": 8}, "checks": ["correctness", "performance"], "source": "DSpark block 7 verify of one request (8 rows), bank depth 8, the deepest (KDA layers 85-91, 6 of 69)"}
+  ]
+}

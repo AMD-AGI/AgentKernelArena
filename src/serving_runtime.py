@@ -167,9 +167,76 @@ def gpu_groups(config: dict, available: list[str]) -> list[list[str]]:
             raise ValueError("GPU groups must be nonempty lists")
         for index in group:
             if type(index) is not int or index < 0 or index >= len(available) or index in used:
-                raise ValueError("GPU groups overlap or escape the allocated device pool")
+                raise ValueError("GPU groups overlap or escape the allocated device pool "
+                                 f"({len(available)} GPU(s): {','.join(available)})")
             used.add(index)
     return [[available[i] for i in group] for group in groups]
+
+
+def kernel_task_world_sizes(config: dict, root: Path) -> dict[str, int]:
+    """GPUs one evaluation of each selected schema-v3 kernel task uses (its ``distributed.world_size``)."""
+    sizes: dict[str, int] = {}
+    for selector in config.get("tasks") or []:
+        if isinstance(selector, dict):
+            selector = selector.get("path")
+        if not isinstance(selector, str) or not selector:
+            continue
+        for task_id, path in get_task_config(str(root / "tasks"), None if selector == "all" else selector).items():
+            if Path(path).name != "task.yaml":
+                continue
+            raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+            distributed = raw.get("distributed") if isinstance(raw, dict) else None
+            if distributed is None:
+                sizes[task_id] = 1
+                continue
+            world = distributed.get("world_size") if isinstance(distributed, dict) else None
+            if type(world) is not int or not 2 <= world <= 8:
+                raise ValueError(f"Task {task_id}: distributed.world_size must be an integer from 2 to 8")
+            sizes[task_id] = world
+    return sizes
+
+
+def kernel_world_size(config: dict, root: Path) -> int:
+    """The GPU count every worker needs for the selected kernel tasks: 1 unless they are multi-GPU.
+
+    A worker runs one task at a time on its whole GPU group, so one run cannot mix multi-GPU tasks
+    of different world sizes, or multi-GPU tasks with single-GPU ones.
+    """
+    sizes = kernel_task_world_sizes(config, root)
+    if all(size == 1 for size in sizes.values()):
+        return 1
+    distinct = sorted(set(sizes.values()))
+    if len(distinct) > 1:
+        examples = {size: next(t for t, s in sizes.items() if s == size) for size in distinct}
+        raise ValueError(f"Selected kernel tasks run on different GPU counts {examples}; a run uses one GPU group "
+                         "size, so run multi-GPU tasks separately, one world_size per run")
+    return distinct[0]
+
+
+def check_pool_size(available: list[str], world_size: int) -> None:
+    """A multi-GPU kernel task needs at least world_size GPUs in the scheduler-provided pool.
+
+    Schedulers can allocate fewer GPUs than requested (some burst nodes expose 7 of 8), so the
+    run fails here, naming the allocation, instead of starting ranks without a GPU.
+    """
+    if world_size > 1 and len(available) < world_size:
+        raise ValueError(f"The selected multi-GPU kernel tasks run on {world_size} GPUs each, but the scheduler "
+                         f"allocated only {len(available)} GPU(s) ({','.join(available)}); rerun on an allocation "
+                         f"with at least {world_size} GPUs")
+
+
+def check_group_sizes(groups: list[list[str]], world_size: int) -> None:
+    """Multi-GPU kernel tasks need workers whose GPU group size equals their world_size."""
+    if world_size == 1:
+        return
+    wrong = [group for group in groups if len(group) != world_size]
+    if wrong:
+        detail = "; ".join(f"group {','.join(group)} has {len(group)}" for group in wrong[:4])
+        short = any(len(group) < world_size for group in wrong)
+        raise ValueError(f"The selected multi-GPU kernel tasks run on {world_size} GPUs each, but {detail} GPU(s)"
+                         + (" (fewer than world_size: some rank would have no GPU)" if short else "")
+                         + f"; set resources.gpu_groups to groups of exactly {world_size} "
+                         "(see docs/how-to/parallel-run.md)")
 
 
 def action_client(*, task_id: str, workspace: Path, role: str, action: str,
@@ -402,7 +469,8 @@ def request_handler(executor):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", choices=["config-image", "image", "groups", "verifier", "recipe-tasks", "serve"])
+    parser.add_argument("mode", choices=["config-image", "image", "groups", "world-size", "verifier",
+                                         "recipe-tasks", "serve"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--container-root", default="/workspace")
@@ -421,8 +489,16 @@ def main():
             print(image)
         return
     if args.mode == "groups":
-        for group in gpu_groups(config, args.devices.split(",")):
+        pool = args.devices.split(",")
+        world = kernel_world_size(config, args.root)
+        check_pool_size(pool, world)
+        groups = gpu_groups(config, pool)
+        check_group_sizes(groups, world)
+        for group in groups:
             print(",".join(group))
+        return
+    if args.mode == "world-size":
+        print(kernel_world_size(config, args.root))
         return
     tasks = selected_serving_tasks(args.config, args.root)
     if args.mode == 'recipe-tasks':

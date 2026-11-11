@@ -1,0 +1,82 @@
+schema_version: 3
+description: >-
+  The all-gather of a decode or verify step's activations fused with the bfloat16 in_proj GEMM of
+  Kimi-K3.1's KDA layers, one launch per rank of a TP8 group (8 GPUs; the all-gather runs inside the kernel
+  over peer memory). Every rank holds an m x 896 column slice of the step's activations x (the 7168-wide
+  hidden state, column-sharded across the ranks) and its own 6288 in_proj rows w; rank r writes
+  out = x_full @ w^T, where x_full [m, 7168] is the ranks' slices side by side in rank order (bf16 inputs,
+  high-precision accumulation, a bf16 output). See README.md for the exact semantics and shards.
+operator: {name: allgather_gemm_a16w16, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 384, description: "Rows of the step (tokens of a decode or DSpark verify step)."}
+    n: {kind: const, value: 6288, description: "A rank's in_proj rows (output features; 6284 padded to 6288)."}
+    k: {kind: const, value: 7168, description: "Hidden size: the reduction length of the gathered activations."}
+    guard_words: {kind: const, value: 8, description: "The launch's epoch / guard-word buffer (int32)."}
+  derived_axes:
+    cols: k // world_size  # a rank's columns of the activations (896)
+  inputs:
+    x: {kind: tensor, shape: [m, cols], dtype: bfloat16, distribution: {kind: generator},
+        description: "This rank's column slice of the step's activations (columns 896 rank ..)."}
+    w: {kind: tensor, shape: [n, k], dtype: bfloat16, role: weight, distribution: {kind: generator},
+        description: "This rank's in_proj rows (row-major, out x in)."}
+    epoch: {kind: tensor, shape: [guard_words], dtype: int32, role: state, distribution: {kind: generator},
+            description: "The baseline's epoch / wait-deadline / error words (read only unless a wait fails)."}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16, description: "x_full @ w^T: this rank's in_proj outputs of every row."}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+distributed:
+  world_size: 8
+  # the baseline's peer region (coll.peer_bytes(rows, 7168, "flag") = 57344 rows + 65792 bytes: 22,085,888 at
+  # the 384-row build) and its arrival counter past it (baseline/kernel.py::_layout), under one bound for
+  # every case; the framework zeroes the whole buffer before every call
+  symmetric_bytes: "24 * 1048576"
+  shard: {file: inputs.py, symbol: shard_inputs}
+  expected: {file: inputs.py, symbol: rank_expected}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path: >-
+      sgl_amd_mono/kimi_k31/gfx950/stages/{gemm_coll,coll,tile_mma,tile}.py,
+      sgl_amd_mono/kimi_k3/gfx950/tag.py, sgl_amd_mono/common/{guard,ops,plan,sync}.py,
+      sgl_amd_mono/muse_spark/gfx950/compat.py, test/kernels/kimi_k31/ag_gemm_bench.py (launch configurations
+      and launch arguments); buffer_ops.py from ROCm/aiter dbd8bf5bd aiter/ops/flydsl/kernels/buffer_ops.py
+      (a FlyDSL 0.3.2-compatible copy; its header lists its change)
+    license: Apache-2.0 AND MIT (common/ops.py, plan.py and sync.py adapted from ROCm/ATOM, see baseline/LICENSE)
+    modifications: >-
+      Flattened into one package (imports made relative; buffer_ops.py is the bundled copy). Only the
+      definitions the launch uses are vendored: gemm_coll.py's _ag_push, _ag_wait and ag_gemm (not gemm_rs
+      and its helpers, nor dev_emit), coll.py's peer layout and region context (not the collectives,
+      _delay or the standalone builder), tile.py's atomic_lin, tile_mma.py's mma_tile and its helpers (not
+      the standalone builders), sync.py's mailbox and wait (not publish or the sentinel words), ops.py's
+      primitives the launch calls, plan.py's execution model and key_tuple; kernel_sources (a digest of the
+      package's source files) is dropped (SOURCES = "aka-flat"), as FlyDSL hashes the helpers of a kernel's
+      own directory, and ag_gemm's build key lists its parameters by name instead of locals() (not allowed in
+      candidate code). FlyDSL 0.3.2: guard.stop_launch is compat.py's llvm-dialect store (the bridge's
+      function called directly, as the muse_spark_layer task's copies of guard.py and compat.py do), and
+      _ag_push's arrival counter (fx.inttoptr + fx.llvm.atomic_add) is compat.global_atomic_add, the same
+      llvm atomicrmw add (agent scope, monotonic); msgspec (not a candidate dependency) is replaced by a
+      slotted class for sync.Addr; guard.fault_injection (an environment read for the test fault injection)
+      is not vendored. One kernel change, ag_gemm: the build's m is the row bucket (it sets the
+      peer layout), and the launch takes its row count rows as a kernel argument where upstream bakes m into
+      the push loop, the task count, the x-load clamp and the output masks, so one build serves every row
+      count up to its bucket and a launch at rows == m does the upstream build's work; only the "linbf"
+      merge with ks > 1 and phases 3 is kept (no "part", ks = 1, timing-only phases or stress delays, so no
+      delay argument). kernel.py is new: run() takes the bench's default configuration of the smallest of
+      its 16-, 32-, 128- and 384-row builds holding m (16:128:1:8:4, 32:128:2:4:4, 128:128:2:4:4,
+      192:128:4:2:2 as bm:bn:wm:wn:ks), zeroes out (linbf), and launches with the bench's arguments (epoch
+      word 0 = 1, slot 0 of a one-launch step), with the framework's symmetric buffer as the peer buffer and,
+      past it, as the arrival counter.
+compare:
+  # linbf merges the K slices with bf16 atomic adds in arrival order, so out is not bitwise deterministic
+  # (ks = 4 builds). The bound is 3 dB below the lowest SQNR of 9984 baseline re-runs on MI355X (two nodes,
+  # 49.7 dB); every known-wrong output is <= 32 dB. See README.md (Comparison).
+  out: {bound: sqnr, min_db: 46}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

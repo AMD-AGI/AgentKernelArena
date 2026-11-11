@@ -55,6 +55,9 @@ BOUNDS = {
 MIN_PERFORMANCE_CASES = 4
 MAX_PERFORMANCE_CASES = 16
 MIN_SIZE_SPAN = 100
+SPAN_POLICY = "production_range"
+SPAN_EVIDENCE_METHODS = ("corpus_statistics", "live_capture")
+SPAN_FREQUENCY_SUM = (0.9, 1.1)  # rounded production weights need not sum to exactly 1
 UNALIGNED_BLOCK = 16
 TIMING = {"warmup": 10, "repetition": 100, "cache_flush_bytes": 1 << 30}
 EVAL_DIR = "_aka_eval"
@@ -62,6 +65,11 @@ SOLUTION_DIR = "solution"
 BASELINE_DIR = "baseline"
 TEMPLATE_MARKER = "AKA-UNIMPLEMENTED-TEMPLATE"
 FORBIDDEN_PACKAGE_NAMES = ("config.yaml", SOLUTION_DIR, EVAL_DIR)
+# Multi-GPU tasks: the framework appends these keyword inputs to every rank's call.
+RESERVED_INPUTS = ("rank", "world_size", "peers", "symmetric")
+RESERVED_SYMBOL = "world_size"
+MIN_WORLD_SIZE, MAX_WORLD_SIZE = 2, 8
+MAX_SYMMETRIC_BYTES = 1 << 32
 
 
 def _mapping(value: Any, where: str, allowed: set[str], required: set[str] = frozenset()) -> dict:
@@ -178,10 +186,11 @@ def case_seeds(task_id: str, case_id: str) -> list[int]:
 class TaskContract:
     """A validated v3 task declaration and its workloads."""
 
-    def __init__(self, raw: dict, workloads: dict, task_id: str):
+    def __init__(self, raw: dict, workloads: dict, task_id: str, performance_span: dict | None = None):
         self.raw = raw
         self.workloads = workloads
         self.task_id = task_id
+        self.performance_span = performance_span
 
     @property
     def baseline_language(self) -> str:
@@ -216,6 +225,21 @@ class TaskContract:
     def checked_tensors(self) -> list[str]:
         return list(self.interface["outputs"]) + list(self.interface.get("mutable", []))
 
+    @property
+    def distributed(self) -> dict | None:
+        """The validated multi-GPU declaration, or None for a single-GPU task."""
+        return self.raw.get("distributed")
+
+    @property
+    def world_size(self) -> int:
+        return self.distributed["world_size"] if self.distributed else 1
+
+    @property
+    def call_names(self) -> list[str]:
+        """Every keyword of one call: inputs, outputs, then the reserved multi-GPU inputs."""
+        names = list(self.interface["inputs"]) + list(self.interface["outputs"])
+        return names + list(RESERVED_INPUTS) if self.distributed else names
+
     def resolved_contract(self, target_language: str) -> dict:
         interface = self.interface
         cases = []
@@ -229,7 +253,7 @@ class TaskContract:
                 declaration.setdefault("k", 2.0)
             compare[name] = declaration
         baseline_entry = self.baseline_entry
-        return {
+        resolved = {
             "version": 1,
             "task_id": self.task_id,
             "axes": deepcopy(interface["axes"]),
@@ -249,6 +273,17 @@ class TaskContract:
                           "entry_file": self.candidate_entry(target_language), "symbol": "run"},
             "cases": cases,
         }
+        if self.distributed:
+            distributed = deepcopy(self.distributed)
+            distributed.setdefault("ranks_agree", [])
+            # The rank launcher bounds itself by the action timeout, so it can stop every rank and
+            # report before the framework kills the process group.
+            distributed["timeout_s"] = self.raw.get("timeout_s", 3600)
+            resolved["distributed"] = distributed
+        if self.performance_span:
+            # Held-out cases of an exempt task stay inside the evidenced production range.
+            resolved["performance_span"] = deepcopy(self.performance_span)
+        return resolved
 
     def initial_state(self, target_language: str) -> str:
         return "implemented" if target_language == self.baseline_language else "unimplemented"
@@ -286,12 +321,16 @@ class TaskContract:
                          "target_language": target_language, "baseline_language": self.baseline_language,
                          "operator": dict(self.raw["operator"])},
         }
+        if self.distributed:
+            # The scheduler places a multi-GPU task only on a worker whose GPU group has this size.
+            config["contract"]["world_size"] = self.world_size
         if "platform_support" in self.raw:
             config["platform_support"] = deepcopy(self.raw["platform_support"])
         return config
 
 
-def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
+def _validate_interface(raw: dict, reserved: frozenset[str] = frozenset()) -> tuple[dict, dict, list[str]]:
+    """Validate the interface; ``reserved`` names framework shape symbols (``world_size``)."""
     interface = _mapping(raw, "interface", {"axes", "derived_axes", "inputs", "outputs", "mutable",
                                             "generator", "layout"}, {"axes", "inputs", "outputs"})
     axes = _mapping(interface["axes"], "interface.axes", set(interface["axes"]))
@@ -300,6 +339,8 @@ def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
     var = []
     for name, axis in axes.items():
         _identifier(name, f"axis {name}")
+        if name in reserved:
+            raise TaskConfigError(f"axis {name} is reserved: the framework sets it for multi-GPU tasks")
         if not isinstance(axis, dict) or axis.get("kind") not in ("var", "const"):
             raise TaskConfigError(f"axis {name} must declare kind var or const")
         if axis["kind"] == "const":
@@ -316,11 +357,13 @@ def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
             var.append(name)
     if not var:
         raise TaskConfigError("interface.axes must declare at least one var axis")
-    symbols = set(axes)
+    symbols = set(axes) | set(reserved)
     derived = interface.get("derived_axes", {})
     _mapping(derived, "interface.derived_axes", set(derived))
     for name, expression in derived.items():
         _identifier(name, f"derived axis {name}")
+        if name in reserved:
+            raise TaskConfigError(f"derived axis {name} is reserved: the framework sets it for multi-GPU tasks")
         if name in symbols:
             raise TaskConfigError(f"derived axis {name} duplicates an axis")
         unknown = _expression_names(expression, f"derived axis {name}") - symbols
@@ -391,6 +434,33 @@ def _validate_interface(raw: dict) -> tuple[dict, dict, list[str]]:
     return axes, symbols, var
 
 
+def _validate_distributed(raw: Any, interface: dict, symbols: set[str]) -> dict:
+    """The optional multi-GPU block: world size, symmetric buffer size and per-rank views."""
+    obj = _mapping(raw, "distributed", {"world_size", "symmetric_bytes", "shard", "expected", "ranks_agree"},
+                   {"world_size", "symmetric_bytes", "shard", "expected"})
+    world_size = obj["world_size"]
+    if type(world_size) is not int or not MIN_WORLD_SIZE <= world_size <= MAX_WORLD_SIZE:
+        raise TaskConfigError(f"distributed.world_size must be an integer from {MIN_WORLD_SIZE} to "
+                              f"{MAX_WORLD_SIZE} (the GPUs of one node)")
+    unknown = _expression_names(obj["symmetric_bytes"], "distributed.symmetric_bytes") - symbols
+    if unknown:
+        raise TaskConfigError(f"distributed.symmetric_bytes reads unknown axes {sorted(unknown)}")
+    for key in ("shard", "expected"):
+        obj[key] = _entry(obj[key], f"distributed.{key}")
+        if obj[key]["file"].startswith((BASELINE_DIR + "/", SOLUTION_DIR + "/")):
+            raise TaskConfigError(f"distributed.{key} lives at the task root")
+    for name in [*interface["inputs"], *interface["outputs"]]:
+        if name in RESERVED_INPUTS:
+            raise TaskConfigError(f"{name!r} is a reserved multi-GPU call input {RESERVED_INPUTS}; "
+                                  "the framework passes it, so the task must not declare it")
+    checked = list(interface["outputs"]) + list(interface.get("mutable", []))
+    agree = obj.get("ranks_agree", [])
+    if (not isinstance(agree, list) or any(not isinstance(n, str) for n in agree) or len(set(agree)) != len(agree)
+            or any(n not in checked for n in agree)):
+        raise TaskConfigError(f"distributed.ranks_agree must list distinct outputs or mutable inputs of {checked}")
+    return obj
+
+
 def _shape(shape: Any, symbols: set[str], where: str) -> None:
     if not isinstance(shape, list):
         raise TaskConfigError(f"{where}.shape must be a list")
@@ -410,15 +480,33 @@ def _scalar_value(dtype: str, value: Any, where: str) -> None:
         _number(value, where)
 
 
+def _decode(value: Any, where: str) -> dict:
+    """A packed output's decode hook: a task-root function and the precision its decoded values carry."""
+    entry = _mapping(value, where, {"file", "symbol", "precision"}, {"file", "symbol"})
+    decode = _entry({key: entry[key] for key in ("file", "symbol")}, where)
+    if "precision" in entry:
+        if entry["precision"] not in FLOAT_DTYPES:
+            raise TaskConfigError(f"{where}.precision must be one of {FLOAT_DTYPES}")
+        decode["precision"] = entry["precision"]
+    return decode
+
+
 def _validate_compare(raw: dict, checked: list[str], outputs: dict, inputs: dict) -> None:
     compare = _mapping(raw, "compare", set(checked), set(checked))
     for name, declaration in compare.items():
         if not isinstance(declaration, dict) or declaration.get("bound") not in BOUNDS:
             raise TaskConfigError(f"compare.{name}.bound must be one of {sorted(BOUNDS)}")
-        _mapping(declaration, f"compare.{name}", {"bound"} | BOUNDS[declaration["bound"]])
+        _mapping(declaration, f"compare.{name}", {"bound", "decode"} | BOUNDS[declaration["bound"]])
         dtype = (outputs.get(name) or inputs[name])["dtype"]
-        if dtype not in FLOAT_DTYPES and declaration["bound"] != "exact":
-            raise TaskConfigError(f"compare.{name}: {dtype} outputs compare exactly")
+        if "decode" in declaration:
+            if declaration["bound"] == "exact":
+                raise TaskConfigError(f"compare.{name}.decode needs a numeric bound; exact compares the bytes")
+            if dtype in FLOAT_DTYPES:
+                raise TaskConfigError(f"compare.{name}.decode is for integral or packed outputs; {dtype} "
+                                      "values compare directly")
+            declaration["decode"] = _decode(declaration["decode"], f"compare.{name}.decode")
+        elif dtype not in FLOAT_DTYPES and declaration["bound"] != "exact":
+            raise TaskConfigError(f"compare.{name}: {dtype} outputs compare exactly unless they declare decode")
         if "k" in declaration and not 1.0 <= _number(declaration["k"], f"compare.{name}.k") <= 8.0:
             raise TaskConfigError(f"compare.{name}.k must be between 1 and 8")
         if "max_violation_fraction" in declaration and not 0.0 <= _number(
@@ -432,8 +520,111 @@ def _validate_compare(raw: dict, checked: list[str], outputs: dict, inputs: dict
             raise TaskConfigError(f"compare.{name}.min_db must be positive")
 
 
-def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict) -> None:
-    obj = _mapping(workloads, "workloads", {"cases", "description"}, {"cases"})
+def _span_declaration(workloads: Any) -> dict | None:
+    """The validated ``workloads.performance_span`` declaration, or None when the task has none."""
+    if not isinstance(workloads, dict) or "performance_span" not in workloads:
+        return None
+    declaration = _mapping(workloads["performance_span"], "workloads.performance_span", {"policy", "evidence"},
+                           {"policy", "evidence"})
+    if declaration["policy"] != SPAN_POLICY:
+        raise TaskConfigError(f"workloads.performance_span.policy must be {SPAN_POLICY!r}")
+    name = relative_path(declaration["evidence"], "workloads.performance_span.evidence")
+    if not name.endswith(".json") or "/" in name or name in ("workloads.json", TASK_FILE):
+        raise TaskConfigError("workloads.performance_span.evidence must name a .json file at the task root "
+                              "other than workloads.json")
+    return {"policy": SPAN_POLICY, "evidence": name}
+
+
+def _validate_span_evidence(evidence: Any, declaration: dict, axes: dict, var: list[str],
+                            performance: list[dict]) -> dict:
+    """Check the production-range evidence that exempts a task from the 100x performance-span rule.
+
+    The exemption is for model-specialized kernels whose >= 10 us production shapes span less than
+    100x. The perf range (perf_min..perf_max) is the part of the observed production range whose
+    baseline takes at least 10 us; the observed range is recorded for transparency and may itself
+    span more. Returns the summary carried into the resolved contract.
+    """
+    where = declaration["evidence"]
+    if evidence is None:
+        raise TaskConfigError(f"workloads.performance_span names {where}, which the task package does not contain")
+    obj = _mapping(evidence, where, {"source", "method", "axes", "fixed_dimensions", "notes"},
+                   {"source", "method", "axes", "fixed_dimensions"})
+    _text(obj["source"], f"{where}.source")
+    _text(obj["fixed_dimensions"], f"{where}.fixed_dimensions")
+    if "notes" in obj:
+        _text(obj["notes"], f"{where}.notes")
+    if obj["method"] not in SPAN_EVIDENCE_METHODS:
+        raise TaskConfigError(f"{where}.method must be one of {SPAN_EVIDENCE_METHODS}")
+    evidence_axes = _mapping(obj["axes"], f"{where}.axes", set(obj["axes"]) if isinstance(obj["axes"], dict) else set())
+    if set(evidence_axes) != set(var):
+        raise TaskConfigError(f"{where}.axes names {sorted(evidence_axes)}; it must name exactly the var axes "
+                              f"{sorted(var)}")
+    ranges = {}
+    for name in var:
+        label = f"{where}.axes.{name}"
+        entry = _mapping(evidence_axes[name], label,
+                         {"observed_min", "observed_max", "perf_min", "perf_max", "frequency"},
+                         {"observed_min", "observed_max", "perf_min", "perf_max", "frequency"})
+        values = {key: _int(entry[key], f"{label}.{key}", 1)
+                  for key in ("observed_min", "perf_min", "perf_max", "observed_max")}
+        if not values["observed_min"] <= values["perf_min"] <= values["perf_max"] <= values["observed_max"]:
+            raise TaskConfigError(f"{label}: need observed_min <= perf_min <= perf_max <= observed_max; found "
+                                  f"{values['observed_min']} <= {values['perf_min']} <= {values['perf_max']} <= "
+                                  f"{values['observed_max']}")
+        axis = axes[name]
+        if values["observed_min"] < axis["min"] or values["observed_max"] > axis["max"]:
+            raise TaskConfigError(f"{label}: the observed range {values['observed_min']}..{values['observed_max']} "
+                                  f"must lie inside the axis domain {axis['min']}..{axis['max']}")
+        step = axis.get("multiple_of", 1)
+        if values["perf_min"] % step or values["perf_max"] % step:
+            raise TaskConfigError(f"{label}: perf_min and perf_max must be multiples of {name}'s multiple_of {step}")
+        frequency = entry["frequency"]
+        if not isinstance(frequency, dict) or not frequency:
+            raise TaskConfigError(f"{label}.frequency must map observed values to production weights")
+        total = 0.0
+        for key, weight in frequency.items():
+            if not isinstance(key, str) or not key.isdigit() or \
+                    not values["observed_min"] <= int(key) <= values["observed_max"]:
+                raise TaskConfigError(f"{label}.frequency: {key!r} is not an observed value of {name} "
+                                      f"in {values['observed_min']}..{values['observed_max']}")
+            if _number(weight, f"{label}.frequency.{key}") < 0:
+                raise TaskConfigError(f"{label}.frequency.{key} must be nonnegative")
+            total += weight
+        if not SPAN_FREQUENCY_SUM[0] <= total <= SPAN_FREQUENCY_SUM[1]:
+            raise TaskConfigError(f"{label}.frequency weights sum to {total:.3g}; they are production fractions "
+                                  "and must sum to about 1")
+        ranges[name] = {**values, "perf_frequency": sum(w for k, w in frequency.items()
+                                                       if values["perf_min"] <= int(k) <= values["perf_max"])}
+    perf_span = math.prod(r["perf_max"] for r in ranges.values()) / math.prod(r["perf_min"] for r in ranges.values())
+    observed_span = (math.prod(r["observed_max"] for r in ranges.values())
+                     / math.prod(r["observed_min"] for r in ranges.values()))
+    if perf_span >= MIN_SIZE_SPAN:
+        raise TaskConfigError(f"{where}: the >= 10 us production range spans {perf_span:.3g}x in var-axis size, "
+                              f"so the {MIN_SIZE_SPAN}x rule is reachable; drop workloads.performance_span and "
+                              f"choose performance cases spanning at least {MIN_SIZE_SPAN}x")
+    for name, bounds in ranges.items():
+        for case in performance:
+            value = case["axes"][name]
+            if not bounds["perf_min"] <= value <= bounds["perf_max"]:
+                raise TaskConfigError(f"performance case {case['id']}: {name}={value} lies outside the evidenced "
+                                      f"perf range {bounds['perf_min']}..{bounds['perf_max']}; keep it "
+                                      "correctness-only")
+        for key in ("perf_min", "perf_max"):
+            if not any(case["axes"][name] == bounds[key] for case in performance):
+                raise TaskConfigError(f"No performance case has {name} at {key}={bounds[key]}: an exempt task "
+                                      "times both ends of its evidenced perf range on every var axis")
+    return {"policy": SPAN_POLICY, "evidence": where, "source": obj["source"], "method": obj["method"],
+            "perf_span": perf_span, "observed_span": observed_span,
+            "axes": {name: {key: bounds[key] for key in ("observed_min", "observed_max", "perf_min", "perf_max",
+                                                          "perf_frequency")}
+                     for name, bounds in ranges.items()}}
+
+
+def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict,
+                        evidence: Any = None) -> dict | None:
+    """Validate the cases; returns the production-range exemption summary when one is declared."""
+    obj = _mapping(workloads, "workloads", {"cases", "description", "performance_span"}, {"cases"})
+    declaration = _span_declaration(obj)
     cases = obj["cases"]
     if not isinstance(cases, list) or not cases:
         raise TaskConfigError("workloads.cases must be a nonempty list")
@@ -464,7 +655,7 @@ def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict
             raise TaskConfigError(f"case {case_id} duplicates another case's axes and scalars")
         seen_identities.add(identity)
         if "performance" in checks:
-            performance.append(math.prod(values.values()))
+            performance.append({"id": case_id, "axes": values, "size": math.prod(values.values())})
         for name, value in values.items():
             step = axes[name].get("multiple_of", 1)
             units = value // step
@@ -477,17 +668,35 @@ def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict
     if not MIN_PERFORMANCE_CASES <= len(performance) <= MAX_PERFORMANCE_CASES:
         raise TaskConfigError(f"A task needs {MIN_PERFORMANCE_CASES}-{MAX_PERFORMANCE_CASES} performance "
                               f"cases; found {len(performance)}")
-    if max(performance) < MIN_SIZE_SPAN * min(performance):
+    sizes = [case["size"] for case in performance]
+    span = None
+    if declaration is not None:
+        span = _validate_span_evidence(evidence, declaration, axes, var, performance)
+    elif max(sizes) < MIN_SIZE_SPAN * min(sizes):
         raise TaskConfigError(f"Performance cases must span at least {MIN_SIZE_SPAN}x in var-axis size; "
-                              f"found {min(performance)}..{max(performance)}")
+                              f"found {min(sizes)}..{max(sizes)} (a model-specialized kernel whose >= 10 us "
+                              "production range spans less may declare workloads.performance_span; see "
+                              "docs/how-to/add-task.md)")
+    if not any(_unaligned_reachable(axes[name]) for name in var):
+        # No var axis can hold a value above 16 units that is not a multiple of 16.
+        del boundaries["unaligned"]
     missing = [kind for kind, found in boundaries.items() if not found]
     if missing:
         raise TaskConfigError(f"Correctness cases lack boundary shapes: {missing} "
-                              f"(minimum axis value, non-power-of-two, not a multiple of {UNALIGNED_BLOCK})")
+                              f"(minimum axis value, non-power-of-two, not a multiple of {UNALIGNED_BLOCK} "
+                              f"above {UNALIGNED_BLOCK} units when a var axis's domain reaches that far)")
     chosen = _distinct_representatives(boundaries)
     if chosen is None:
-        raise TaskConfigError("The minimum, non-power-of-two and unaligned boundary shapes must be three "
-                              "distinct cases")
+        raise TaskConfigError(f"The {', '.join(k.replace('_', '-') for k in boundaries)} boundary shapes must be "
+                              f"{len(boundaries)} distinct cases")
+    return span
+
+
+def _unaligned_reachable(axis: dict) -> bool:
+    """Whether the axis domain holds a value above 16 units (of multiple_of) that is not a multiple of 16."""
+    step = axis.get("multiple_of", 1)
+    low, high = max(-(-axis["min"] // step), UNALIGNED_BLOCK + 1), axis["max"] // step
+    return low < high or (low == high and low % UNALIGNED_BLOCK != 0)
 
 
 def _distinct_representatives(groups: dict[str, set[str]]) -> dict | None:
@@ -506,11 +715,12 @@ def _distinct_representatives(groups: dict[str, set[str]]) -> dict | None:
     return search(0, set())
 
 
-def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskContract:
+def validate_task_contract(raw: Any, workloads: Any, *, task_id: str, span_evidence: Any = None) -> TaskContract:
+    """Validate a task; ``span_evidence`` is the parsed file a ``performance_span`` declaration names."""
     relative_path(task_id, "task_id")
     obj = _mapping(raw, TASK_FILE, {"schema_version", "description", "operator", "interface", "reference",
                                     "baseline", "compare", "element_order", "workloads", "platform_support",
-                                    "timeout_s"},
+                                    "timeout_s", "distributed"},
                    {"schema_version", "description", "operator", "interface", "reference", "baseline",
                     "compare", "workloads"})
     if type(obj["schema_version"]) is not int or obj["schema_version"] != SCHEMA_VERSION:
@@ -521,8 +731,11 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
     _identifier(operator["name"], "operator.name")
     if operator["category"] not in CATEGORIES:
         raise TaskConfigError(f"operator.category must be one of {CATEGORIES}")
-    axes, symbols, var = _validate_interface(obj["interface"])
+    reserved = frozenset({RESERVED_SYMBOL}) if "distributed" in obj else frozenset()
+    axes, symbols, var = _validate_interface(obj["interface"], reserved)
     interface = obj["interface"]
+    if "distributed" in obj:
+        obj["distributed"] = _validate_distributed(obj["distributed"], interface, symbols)
     obj["reference"] = _entry(obj["reference"], "reference")
     baseline = _mapping(obj["baseline"], "baseline", {"language", "entry", "provenance"},
                         {"language", "entry", "provenance"})
@@ -559,16 +772,23 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
             _text(platform.get("skip_reason"), "platform_support.skip_reason")
     if "timeout_s" in obj:
         _int(obj["timeout_s"], "timeout_s", 60)
-    _validate_workloads(workloads, axes, var, interface["inputs"])
+    span = _validate_workloads(workloads, axes, var, interface["inputs"], span_evidence)
     for case in workloads["cases"]:
         symbols_values = {name: (axis["value"] if axis["kind"] == "const" else case["axes"][name])
                           for name, axis in axes.items()}
+        if "distributed" in obj:
+            symbols_values[RESERVED_SYMBOL] = obj["distributed"]["world_size"]
         for name, expression in interface.get("derived_axes", {}).items():
             symbols_values[name] = _evaluate(expression, symbols_values)
         for name, declaration in [*interface["inputs"].items(), *interface["outputs"].items()]:
             for entry in declaration.get("shape", []):
                 _evaluate(entry, symbols_values)
-    return TaskContract(obj, deepcopy(workloads), task_id)
+        if "distributed" in obj:
+            nbytes = _evaluate(obj["distributed"]["symmetric_bytes"], symbols_values)
+            if not 1 <= nbytes <= MAX_SYMMETRIC_BYTES:
+                raise TaskConfigError(f"case {case['id']}: distributed.symmetric_bytes is {nbytes}; it must be "
+                                      f"between 1 and {MAX_SYMMETRIC_BYTES} bytes")
+    return TaskContract(obj, deepcopy(workloads), task_id, span)
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -607,13 +827,44 @@ def load_task_contract(task_file: Path, *, task_id: str) -> TaskContract:
         raise TaskConfigError(f"Invalid {TASK_FILE}: {exc}") from exc
     workloads_name = (raw or {}).get("workloads", "workloads.json") if isinstance(raw, dict) else "workloads.json"
     try:
-        workloads = json.loads((root / relative_path(workloads_name, "workloads")).read_text(encoding="utf-8"),
-                               object_pairs_hook=_unique_json,
-                               parse_constant=lambda value: (_ for _ in ()).throw(
-                                   TaskConfigError(f"Invalid JSON constant {value}")))
+        workloads = _read_json(root / relative_path(workloads_name, "workloads"))
     except (OSError, ValueError) as exc:
         raise TaskConfigError(f"Cannot read workloads: {exc}") from exc
-    return validate_task_contract(raw, workloads, task_id=task_id)
+    evidence = None
+    declaration = _span_declaration(workloads)
+    if declaration is not None:
+        path = root / declaration["evidence"]
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root.resolve()):
+            raise TaskConfigError(f"workloads.performance_span.evidence {declaration['evidence']} is not a file "
+                                  "in the task package")
+        try:
+            evidence = _read_json(path)
+        except (OSError, ValueError) as exc:
+            raise TaskConfigError(f"Cannot read {declaration['evidence']}: {exc}") from exc
+    contract = validate_task_contract(raw, workloads, task_id=task_id, span_evidence=evidence)
+    for name, declaration in contract.raw["compare"].items():
+        if "decode" in declaration:
+            _check_task_function(root, declaration["decode"], f"compare.{name}.decode")
+    return contract
+
+
+def _check_task_function(root: Path, entry: dict, where: str) -> None:
+    """A task-root function the evaluator imports: a file of the package that defines it at top level."""
+    path = root / entry["file"]
+    if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root.resolve()):
+        raise TaskConfigError(f"{where}.file {entry['file']} is not a file in the task package")
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=entry["file"])
+    except (OSError, SyntaxError, UnicodeDecodeError) as exc:
+        raise TaskConfigError(f"Cannot parse {entry['file']}: {exc}") from exc
+    if not any(isinstance(node, ast.FunctionDef) and node.name == entry["symbol"] for node in tree.body):
+        raise TaskConfigError(f"{where}: {entry['file']} does not define function {entry['symbol']}")
+
+
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json,
+                      parse_constant=lambda value: (_ for _ in ()).throw(
+                          TaskConfigError(f"Invalid JSON constant {value}")))
 
 
 def package_files(root: Path) -> list[str]:
@@ -635,7 +886,10 @@ def package_files(root: Path) -> list[str]:
 def execution_config(task_file: Path, *, task_id: str, target_language: str) -> dict:
     contract = load_task_contract(task_file, task_id=task_id)
     files = package_files(Path(task_file).parent)
-    for required in (contract.baseline_entry, contract.raw["reference"]["file"], "workloads.json"):
+    required_files = [contract.baseline_entry, contract.raw["reference"]["file"], "workloads.json"]
+    if contract.performance_span:
+        required_files.append(contract.performance_span["evidence"])
+    for required in required_files:
         if required not in files:
             raise TaskConfigError(f"Task package lacks {required}")
     return contract.execution_config(target_language, files)
@@ -648,31 +902,47 @@ def _hip_type(declaration: dict, name: str, writes: dict) -> str:
     return f"Tensor({writes[name]}!)" if name in writes else "Tensor"
 
 
-def hip_op_schema(contract: TaskContract) -> str:
+def reserved_declarations(contract: TaskContract) -> dict:
+    """The reserved multi-GPU call inputs, declared like task inputs (empty for a single-GPU task)."""
+    if not contract.distributed:
+        return {}
+    return {"rank": {"kind": "scalar", "dtype": "int32"},
+            "world_size": {"kind": "scalar", "dtype": "int32"},
+            "peers": {"kind": "tensor", "shape": [RESERVED_SYMBOL], "dtype": "int64"},
+            "symmetric": {"kind": "tensor", "shape": [contract.distributed["symmetric_bytes"]], "dtype": "uint8"}}
+
+
+def _call_declarations(contract: TaskContract) -> dict:
     interface = contract.interface
-    names = list(interface["inputs"]) + list(interface["outputs"])
-    written = list(interface["outputs"]) + list(interface.get("mutable", []))
-    letters = {name: chr(ord("a") + index) for index, name in enumerate(written)}
-    declarations = {**interface["inputs"], **interface["outputs"]}
-    arguments = ", ".join(f"{_hip_type(declarations[n], n, letters)} {n}" for n in names)
+    return {**interface["inputs"], **interface["outputs"], **reserved_declarations(contract)}
+
+
+def _written(contract: TaskContract) -> list[str]:
+    """Tensors the op writes: outputs, mutable inputs and, for multi-GPU tasks, the symmetric buffer."""
+    return contract.checked_tensors + (["symmetric"] if contract.distributed else [])
+
+
+def hip_op_schema(contract: TaskContract) -> str:
+    letters = {name: chr(ord("a") + index) for index, name in enumerate(_written(contract))}
+    declarations = _call_declarations(contract)
+    arguments = ", ".join(f"{_hip_type(declarations[n], n, letters)} {n}" for n in contract.call_names)
     return f"run({arguments}) -> ()"
 
 
 def _signature(contract: TaskContract) -> str:
-    names = list(contract.interface["inputs"]) + list(contract.interface["outputs"])
-    return "def run(*, " + ", ".join(names) + ") -> None:"
+    return "def run(*, " + ", ".join(contract.call_names) + ") -> None:"
 
 
 def _template(contract: TaskContract, language: str) -> str:
     operator = contract.raw["operator"]["name"]
     if language == "hip":
         cpp_types = {"Tensor": "at::Tensor", "float": "double", "int": "int64_t", "bool": "bool"}
-        interface = contract.interface
-        declarations = {**interface["inputs"], **interface["outputs"]}
+        declarations = _call_declarations(contract)
+        written = _written(contract)
         parameters = []
-        for name in list(interface["inputs"]) + list(interface["outputs"]):
+        for name in contract.call_names:
             kind = _hip_type(declarations[name], name, {}).split("(")[0]
-            parameters.append(f"{'const ' if kind == 'Tensor' and name not in contract.checked_tensors else ''}"
+            parameters.append(f"{'const ' if kind == 'Tensor' and name not in written else ''}"
                               f"{cpp_types[kind]}{'&' if kind == 'Tensor' else ''} {name}")
         return (f"// HIP implementation of {operator}. {TEMPLATE_MARKER}\n"
                 "// Replace this template: launch your __global__ kernels on\n"
@@ -729,6 +999,9 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         lines.append(f"| `{name}` | {kind} | {shape} | {declaration['dtype']} |")
     for name, declaration in interface["outputs"].items():
         lines.append(f"| `{name}` | output | [{', '.join(map(str, declaration['shape']))}] | {declaration['dtype']} |")
+    for name, declaration in reserved_declarations(contract).items():
+        shape = "scalar" if declaration["kind"] == "scalar" else "[" + ", ".join(map(str, declaration["shape"])) + "]"
+        lines.append(f"| `{name}` | reserved multi-GPU input | {shape} | {declaration['dtype']} |")
     lines += ["", "Axes: " + ", ".join(
         f"`{n}` = {a['value']}" if a["kind"] == "const" else f"`{n}` in [{a['min']}, {a['max']}]"
         + (f", multiple of {a['multiple_of']}" if a.get("multiple_of", 1) > 1 else "")
@@ -751,12 +1024,45 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         "the current stream.",
         "- Correctness: each output must stay within the declared error bound of the high-precision "
         "reference on every workload, for two input draws and a repeated call on the same buffers.",
+        *_multi_gpu_lines(contract),
         "", "## Commands", "", "```sh",
         f"python3 -m {EVAL_DIR}.evaluate candidate compile",
         f"python3 -m {EVAL_DIR}.evaluate candidate correctness",
         f"python3 -m {EVAL_DIR}.evaluate candidate performance",
         "```", ""]
     return "\n".join(lines)
+
+
+def _multi_gpu_lines(contract: TaskContract) -> list[str]:
+    if not contract.distributed:
+        return []
+    distributed = contract.distributed
+    world = distributed["world_size"]
+    agree = ", ".join(f"`{n}`" for n in distributed.get("ranks_agree", [])) or "none"
+    return [
+        "", "## Multi-GPU", "",
+        f"This operator runs on **{world} GPUs** of one node: the evaluator starts {world} processes and rank "
+        f"`r` calls `run` on `cuda:r`. The interface above is one rank's call; every rank has the same shapes "
+        f"and `world_size` = {world} in shape expressions. Each rank receives its own shard of the inputs and "
+        "is checked against its own slice of the reference.",
+        "",
+        "- `rank` and `world_size` are Python ints (int32 range).",
+        "- `symmetric` is this rank's framework-owned peer buffer of "
+        f"`{distributed['symmetric_bytes']}` bytes (uncached device memory). `peers[p]` is the base address "
+        "of rank `p`'s buffer mapped into this process (`peers[rank]` is `symmetric`). Kernels may load from "
+        "and store to peer memory through these addresses (system-scope atomics/stores for cross-GPU "
+        "visibility).",
+        "- The evaluator zeroes every rank's `symmetric` buffer before every call, outside timing, and starts "
+        "no rank's call before every rank's buffer is zero, so a call never sees a previous call's mailbox "
+        "words. Persistent-kernel state (epoch counters, scratch) is an ordinary input the evaluator resets "
+        "before every call; keep no host-side state.",
+        "- Host-side communication is forbidden: no `torch.distributed`, RCCL, HIP IPC, peer-access or "
+        "memory-allocation APIs. The framework owns all host-side cross-rank work.",
+        f"- Every rank's outputs are checked; outputs that every rank must produce bitwise identical: {agree}.",
+        "- Timing: every sample releases all ranks together (a barrier, then a shared host deadline), each "
+        "rank times its own graph replay with GPU events, and the sample's time is the **maximum over ranks**. "
+        "The reported time is the median of those maxima.",
+    ]
 
 
 def render_workspace(task_root: Path, workspace: Path, *, task_id: str, target_language: str) -> list[str]:

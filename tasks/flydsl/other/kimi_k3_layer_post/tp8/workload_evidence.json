@@ -1,0 +1,15 @@
+{
+  "source": "AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 (traces.jsonl sha256 29b6a19e..., 393 traces, 98,827 requests), per-session in-flight request distribution (agentx_inflight.json: k=1 90.0%, 2 5.4%, 3 2.1%, 4 0.85%, 5 0.67%, 6 0.45%, 7 0.20%, 8 0.11%), with the Kimi-K3 mono serving configuration of sgl-amd-mono 52486703 (kimi_k3/spec.py: TP 8, widths 1..8 rows, speculative_algorithm None or DSPARK)",
+  "method": "corpus_statistics",
+  "axes": {
+    "rows": {
+      "observed_min": 1,
+      "observed_max": 8,
+      "perf_min": 1,
+      "perf_max": 8,
+      "frequency": {"1": 0.1333, "2": 0.128, "3": 0.0175, "4": 0.1046, "5": 0.027, "6": 0.0138, "7": 0.0071, "8": 0.5687}
+    }
+  },
+  "fixed_dimensions": "every non-row dimension is fixed by Kimi-K3 at TP8: hidden 7168, the rank's 1536 attention core columns, 896 experts with top-16, latent 3584, the rank's 384 routed and 768 shared intermediate columns, 896 up-projected hidden columns; the launch reads no context (it starts at the attention's core output)",
+  "notes": "Rows the launch sees = requests in flight x tokens a request, for steps of at most 8 rows (wider steps leave this launch: Kimi-K3.1's wide launch or SGLang's path). Two serving modes, weighted equally (the corpus does not say which a deployment runs): plain decode (1 row a request) and DSpark verify (8 rows a request, so only steps with one request in flight fit). In each mode the AgentX concurrency points C = 1, 2, 4, 8 session trees are weighted equally; the C-session in-flight count is the C-fold convolution of the per-session distribution, and only counts whose rows are <= 8 contribute (the mass that fits: decode 84%, verify 23% of the steps); each mode's weights are then normalized and the two modes averaged. Every width 1..8 is estimated above 10 us (the launch streams ~69 MB of dense weights a rank plus 2.2 MB a distinct picked expert at ~5 TB/s, behind about ten in-kernel hand-offs), so the perf range is the whole observed range. Not yet confirmed by a live capture."
+}

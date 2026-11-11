@@ -1,0 +1,218 @@
+{
+ "description": "DeepSeek-V4.1-Flash DSpark verify steps of 1-8 requests x 6 rows over SGLang's FP4 index plane (64-row pages): ragged contexts (the longest is ctx columns, the others between ctx/2 and ctx), scored by one FULL index-source launch with the step's walk plan. Derived from AgentX corpus statistics (decode-step-weighted context, in-flight requests per session); not yet confirmed by a live capture. Steps estimated below or near the 10 us floor (short contexts; one or two requests below 256K) are correctness-only.",
+ "performance_span": {
+  "policy": "production_range",
+  "evidence": "workload_evidence.json"
+ },
+ "cases": [
+  {
+   "id": "r1_c518",
+   "axes": {
+    "num_requests": 1,
+    "ctx": 518
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minima: one request at the shortest context whose six rows are all scored (its first row sees 513 columns, one into its fifth 128-column chunk)"
+  },
+  {
+   "id": "r3_c1000",
+   "axes": {
+    "num_requests": 3,
+    "ctx": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-power-of-two request count; context not a multiple of 16 (the other requests see 513..1000 columns)"
+  },
+  {
+   "id": "r5_c4097",
+   "axes": {
+    "num_requests": 5,
+    "ctx": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short context (AgentX's <=4K decode bucket, 4.4% of steps), one past a 4096 boundary"
+  },
+  {
+   "id": "r8_c8191",
+   "axes": {
+    "num_requests": 8,
+    "ctx": 8191
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "the widest step (48 rows) at a short context"
+  },
+  {
+   "id": "r7_c33333",
+   "axes": {
+    "num_requests": 7,
+    "ctx": 33333
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd request count at a 32K context (correctness only: est. ~9 us, below the timing floor)"
+  },
+  {
+   "id": "r2_c65536",
+   "axes": {
+    "num_requests": 2,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "two requests at the 64K bucket (correctness only, est. ~7 us)"
+  },
+  {
+   "id": "r1_c131072",
+   "axes": {
+    "num_requests": 1,
+    "ctx": 131072
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one request at the 128K bucket (correctness only, est. ~8 us)"
+  },
+  {
+   "id": "r1_c458752",
+   "axes": {
+    "num_requests": 1,
+    "ctx": 458752
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "448K, inside the 256K-512K bucket (26.9% of AgentX decode steps); 1 request(s) x 6 DSpark verify rows (R weight 0.226 at AgentX concurrency 1/2/4/8); est. ~14 us"
+  },
+  {
+   "id": "r1_c524288",
+   "axes": {
+    "num_requests": 1,
+    "ctx": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512K cap: the 256K-512K bucket's top and every AgentX step above 512K (16.7%), clipped; 1 request(s) x 6 DSpark verify rows (R weight 0.226 at AgentX concurrency 1/2/4/8); est. ~16 us"
+  },
+  {
+   "id": "r2_c262144",
+   "axes": {
+    "num_requests": 2,
+    "ctx": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "256K bucket (128K-256K], 25.9% of AgentX decode steps; 2 request(s) x 6 DSpark verify rows (R weight 0.217 at AgentX concurrency 1/2/4/8); est. ~15 us"
+  },
+  {
+   "id": "r2_c524288",
+   "axes": {
+    "num_requests": 2,
+    "ctx": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512K cap: the 256K-512K bucket's top and every AgentX step above 512K (16.7%), clipped; 2 request(s) x 6 DSpark verify rows (R weight 0.217 at AgentX concurrency 1/2/4/8); est. ~24 us"
+  },
+  {
+   "id": "r3_c220000",
+   "axes": {
+    "num_requests": 3,
+    "ctx": 220000
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-step-weighted median context (220K; 128K-256K bucket, 25.9%); 3 request(s) x 6 DSpark verify rows (R weight 0.030 at AgentX concurrency 1/2/4/8); est. ~17 us"
+  },
+  {
+   "id": "r4_c131072",
+   "axes": {
+    "num_requests": 4,
+    "ctx": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "128K bucket (64K-128K], 17.0% of AgentX decode steps; 4 request(s) x 6 DSpark verify rows (R weight 0.185 at AgentX concurrency 1/2/4/8); est. ~14 us"
+  },
+  {
+   "id": "r4_c327680",
+   "axes": {
+    "num_requests": 4,
+    "ctx": 327680
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "320K, inside the 256K-512K bucket (26.9% of AgentX decode steps); 4 request(s) x 6 DSpark verify rows (R weight 0.185 at AgentX concurrency 1/2/4/8); est. ~28 us"
+  },
+  {
+   "id": "r8_c65536",
+   "axes": {
+    "num_requests": 8,
+    "ctx": 65536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "64K bucket (32K-64K], 7.4% of AgentX decode steps; 8 request(s) x 6 DSpark verify rows (R weight 0.258 at AgentX concurrency 1/2/4/8); est. ~14 us"
+  },
+  {
+   "id": "r8_c131072",
+   "axes": {
+    "num_requests": 8,
+    "ctx": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "128K bucket (64K-128K], 17.0% of AgentX decode steps; 8 request(s) x 6 DSpark verify rows (R weight 0.258 at AgentX concurrency 1/2/4/8); est. ~23 us"
+  },
+  {
+   "id": "r8_c262144",
+   "axes": {
+    "num_requests": 8,
+    "ctx": 262144
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "256K bucket (128K-256K], 25.9% of AgentX decode steps; 8 request(s) x 6 DSpark verify rows (R weight 0.258 at AgentX concurrency 1/2/4/8); est. ~41 us"
+  },
+  {
+   "id": "r8_c524288",
+   "axes": {
+    "num_requests": 8,
+    "ctx": 524288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "512K cap: the 256K-512K bucket's top and every AgentX step above 512K (16.7%), clipped; 8 request(s) x 6 DSpark verify rows (R weight 0.258 at AgentX concurrency 1/2/4/8); est. ~77 us"
+  }
+ ]
+}

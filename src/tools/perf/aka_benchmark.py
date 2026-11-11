@@ -15,6 +15,7 @@ import os
 import random
 import re
 import statistics
+import time
 import warnings
 from typing import Any, Callable
 
@@ -1491,6 +1492,238 @@ def benchmark_cuda_graph_cold_cache_samples(
     return values, metadata
 
 
+# Multi-rank (multi-GPU) cold-cache timing. A collective operator finishes when its slowest rank
+# finishes, so one sample is the maximum over ranks of each rank's own GPU-event span around one graph
+# replay. All ranks are released together: a host barrier, then rank 0 broadcasts a CLOCK_MONOTONIC
+# deadline shortly ahead and every rank spins until it, which keeps launch skew to microseconds
+# instead of a barrier's tens. Communication is passed in (``comm``), so this module keeps depending
+# only on the standard library and PyTorch.
+RANK_AGGREGATION = "max_over_ranks"
+RELEASE_POLICY = "barrier_then_rank0_monotonic_deadline"
+DEFAULT_RELEASE_LEAD_MS = 2.0
+
+
+def max_over_ranks(rank_samples: list[list[float]]) -> list[float]:
+    """Per-sample maximum over ranks of the per-rank device spans (milliseconds)."""
+    if not rank_samples or any(not isinstance(samples, (list, tuple)) for samples in rank_samples):
+        raise ValueError("multi-rank timing needs one sample list per rank")
+    if len({len(samples) for samples in rank_samples}) != 1 or not rank_samples[0]:
+        raise ValueError("every rank must report the same, nonzero number of samples")
+    for rank, samples in enumerate(rank_samples):
+        for value in samples:
+            if type(value) not in (int, float) or not math.isfinite(value) or value <= 0.0:
+                raise RuntimeError(f"invalid GPU event elapsed time on rank {rank}: {value!r}")
+    return [float(max(column)) for column in zip(*rank_samples)]
+
+
+def release_skew_us(rank_release_ns: list[list[int]]) -> list[float]:
+    """Per-sample spread (latest minus earliest) of the ranks' host release times, in microseconds."""
+    if not rank_release_ns or len({len(times) for times in rank_release_ns}) != 1:
+        raise ValueError("every rank must report one release time per sample")
+    return [(max(column) - min(column)) / 1000.0 for column in zip(*rank_release_ns)]
+
+
+def summarize_rank_samples(
+    rank_samples: list[list[float]],
+    rank_release_ns: list[list[int]],
+    rank_late_ns: list[list[int]] | None = None,
+) -> tuple[list[float], dict[str, Any]]:
+    """Aggregate per-rank samples into the reported samples and their raw evidence.
+
+    The reported sample is the maximum over ranks; the per-rank samples, the release skew of every
+    sample and how often each rank was the slowest are kept so a reader can audit the aggregation.
+    """
+    samples = max_over_ranks(rank_samples)
+    if len(rank_release_ns) != len(rank_samples):
+        raise ValueError("release times and samples must come from the same ranks")
+    skew = release_skew_us(rank_release_ns)
+    if len(skew) != len(samples):
+        raise ValueError("every sample needs one release time per rank")
+    slowest = [0] * len(rank_samples)
+    for column in zip(*rank_samples):
+        slowest[max(range(len(column)), key=column.__getitem__)] += 1
+    metadata: dict[str, Any] = {
+        "benchmark_rank_aggregation": RANK_AGGREGATION,
+        "benchmark_world_size": len(rank_samples),
+        "benchmark_rank_samples_ms": [[float(v) for v in samples_] for samples_ in rank_samples],
+        "benchmark_release_skew_us": skew,
+        "benchmark_release_skew_us_median": statistics.median(skew),
+        "benchmark_release_skew_us_max": max(skew),
+        "benchmark_slowest_rank_counts": slowest,
+    }
+    if rank_late_ns is not None:
+        # How far past the shared deadline a rank released: large values mean the lead was too short.
+        metadata["benchmark_release_late_us_max"] = max(max(times) for times in rank_late_ns) / 1000.0
+    return samples, metadata
+
+
+def synchronized_release_samples(
+    run_sample: Callable[[], float],
+    *,
+    comm: Any,
+    repetition: int,
+    prepare: Callable[[], Any] | None = None,
+    synchronize: Callable[[], Any] | None = None,
+    after_sample: Callable[[int], Any] | None = None,
+    release_lead_ms: float = DEFAULT_RELEASE_LEAD_MS,
+    clock: Callable[[], int] = time.monotonic_ns,
+) -> tuple[list[float], dict[str, Any]]:
+    """Run ``repetition`` samples of a collective operator with all ranks released together.
+
+    Per sample, on every rank: ``prepare`` (input reset, cache eviction) -> ``synchronize`` (device)
+    -> ``comm.barrier()`` -> rank 0 broadcasts ``clock() + release_lead_ms`` -> spin until that
+    deadline -> record the release time -> ``run_sample()`` (this rank's device span in ms, after
+    its end event completed) -> ``after_sample(index)`` (output checks) -> ``comm.barrier()``, so no
+    rank prepares the next sample while a peer still runs this one.
+
+    ``comm`` provides ``rank``, ``world_size``, ``barrier()``, ``broadcast_int(value)`` (rank 0's
+    value on every rank) and ``all_gather_object(obj)``. ``clock`` must be one host-wide monotonic
+    clock (CLOCK_MONOTONIC), shared by the ranks' processes. Returns the same aggregated samples and
+    metadata on every rank; see :func:`summarize_rank_samples`.
+    """
+    if type(repetition) is not int or repetition < 1:
+        raise ValueError("multi-rank timing requires an integer repetition >= 1")
+    lead_ms = float(release_lead_ms)
+    if not math.isfinite(lead_ms) or lead_ms <= 0.0:
+        raise ValueError("release_lead_ms must be finite and positive")
+    lead_ns = int(lead_ms * 1.0e6)
+    spans: list[float] = []
+    released: list[int] = []
+    late: list[int] = []
+    for index in range(repetition):
+        if prepare is not None:
+            prepare()
+        if synchronize is not None:
+            synchronize()
+        comm.barrier()
+        deadline = int(comm.broadcast_int(clock() + lead_ns if comm.rank == 0 else 0))
+        now = clock()
+        while now < deadline:
+            now = clock()
+        released.append(now)
+        late.append(now - deadline)
+        spans.append(float(run_sample()))
+        if after_sample is not None:
+            after_sample(index)
+        comm.barrier()
+    gathered = comm.all_gather_object((spans, released, late))
+    if len(gathered) != comm.world_size:
+        raise RuntimeError("multi-rank timing gathered the wrong number of ranks")
+    samples, metadata = summarize_rank_samples([g[0] for g in gathered], [g[1] for g in gathered],
+                                               [g[2] for g in gathered])
+    metadata.update(benchmark_release_policy=RELEASE_POLICY, benchmark_release_lead_ms=lead_ms)
+    return samples, metadata
+
+
+def _agree(comm: Any, error: str | None, what: str) -> None:
+    """Fail on every rank together when ``what`` failed on any rank."""
+    errors = comm.all_gather_object(error)
+    failed = {rank: message for rank, message in enumerate(errors) if message is not None}
+    if failed:
+        detail = "; ".join(f"rank {rank}: {message}" for rank, message in sorted(failed.items()))
+        raise RuntimeError(f"{what} failed: {detail}"[:2000])
+
+
+def benchmark_distributed_cold_cache_samples(
+    fn: Callable[[], Any],
+    *,
+    cache_flush: ReadOnlyCacheFlush,
+    comm: Any,
+    warmup: int = 10,
+    repetition: int = 100,
+    prepare_fn: Callable[[], Any] | None = None,
+    after_sample: Callable[[int], Any] | None = None,
+    release_lead_ms: float = DEFAULT_RELEASE_LEAD_MS,
+) -> tuple[list[float], dict[str, Any]]:
+    """Cold-cache timing of one collective operator call per rank and replay, max over ranks.
+
+    Every rank of ``comm`` calls this together with its own ``fn`` (one complete call on its own
+    device), ``cache_flush`` (its own device) and ``prepare_fn`` (input reset, output poisoning and
+    symmetric-buffer zeroing). Warm-up calls run eagerly from a prepared state with every rank
+    fenced before and after each call. Each rank then captures one call into a CUDA graph; a capture
+    failure on any rank fails every rank. One unreported synchronized replay primes the graph
+    executables; each reported sample is then, per rank, prepare -> read-only eviction -> device
+    synchronize -> barrier -> shared-deadline release -> start Event -> replay -> end Event, and the
+    sample is the maximum of the ranks' event spans (:func:`synchronized_release_samples`).
+    ``after_sample(index)`` runs after every reported sample's end Event, to check its outputs.
+    Event-only timing and empty captures fail closed, as in the single-GPU protocol.
+    """
+    _require_gpu_timing()
+    if type(warmup) is not int or warmup < 0 or type(repetition) is not int or repetition < 1:
+        raise ValueError("cold-cache timing requires integer warmup >= 0 and repetition >= 1")
+    if os.environ.get(_FORCE_EVENT_ENV) == "1":
+        raise RuntimeError("cold-cache measurement requires CUDA-graph replay; Event timing is forbidden")
+    if not isinstance(cache_flush, ReadOnlyCacheFlush):
+        raise TypeError("cache_flush must be a ReadOnlyCacheFlush instance")
+    if cache_flush.device.index != torch.cuda.current_device():
+        raise ValueError("cache eviction and graph replay must use the same current device")
+
+    def prepare_cold() -> None:
+        if prepare_fn is not None:
+            prepare_fn()
+        cache_flush()
+
+    def fence() -> None:
+        torch.cuda.synchronize()
+        comm.barrier()
+
+    fence()
+    for _ in range(warmup):
+        prepare_cold()
+        fence()
+        fn()
+        fence()
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    graph = None
+    error = None
+    try:
+        graph = _capture_graph(fn, 1, stream, prepare_fn=prepare_cold)
+    except Exception as exc:  # every rank must learn about it, or the others would wait forever
+        try:
+            torch.cuda.synchronize()
+        except Exception:
+            pass
+        error = f"{type(exc).__name__}: {str(exc).replace(chr(10), ' ')[:300]}"
+    _agree(comm, error, "CUDA-graph capture")
+
+    def prepare_sample() -> None:
+        with torch.cuda.stream(stream):
+            prepare_cold()
+
+    def replay_span() -> float:
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        with torch.cuda.stream(stream):
+            start_event.record(stream)
+            graph.replay()
+            end_event.record(stream)
+        _wait_for_event(end_event)
+        # Validated after the ranks' samples are gathered, so every rank fails together.
+        return float(start_event.elapsed_time(end_event))
+
+    common: dict[str, Any] = {"comm": comm, "prepare": prepare_sample, "synchronize": torch.cuda.synchronize,
+                              "release_lead_ms": release_lead_ms}
+    # Prime every rank's graph executable outside the reported samples.
+    synchronized_release_samples(replay_span, repetition=1, **common)
+    samples, metadata = synchronized_release_samples(replay_span, repetition=repetition,
+                                                     after_sample=after_sample, **common)
+    if any(value < _EMPTY_GRAPH_FLOOR_MS for row in metadata["benchmark_rank_samples_ms"] for value in row):
+        raise RuntimeError("cold-cache measurement saw an empty or invalid CUDA-graph replay on some rank")
+    metadata.update(
+        benchmark_method=COLD_CACHE_METHOD,
+        benchmark_samples=repetition,
+        benchmark_warmup=warmup,
+        benchmark_effective_repeats=1,
+        benchmark_cache_policy="read_only_eviction_before_each_invocation",
+        benchmark_cache_flush_bytes=cache_flush.nbytes,
+        benchmark_cache_flush_in_timing=False,
+        benchmark_metric="gpu_event_graph_span",
+        benchmark_timed_run_kind="captured_graph",
+    )
+    return samples, metadata
+
+
 def summarize_paired_speedup(rounds: list[dict[str, Any]], *, seed: int = 0,
                             bootstrap_samples: int = 10000) -> dict[str, Any]:
     """Paired geometric-mean speedup and a 95% percentile-bootstrap interval.
@@ -1591,9 +1824,16 @@ __all__ = [
     "COLD_CACHE_METHOD",
     "COLD_WEIGHTS_METHOD",
     "DEFAULT_CACHE_FLUSH_BYTES",
+    "DEFAULT_RELEASE_LEAD_MS",
+    "RANK_AGGREGATION",
     "ReadOnlyCacheFlush",
     "TimedRun",
     "benchmark_cuda_graph_cold_cache_samples",
+    "benchmark_distributed_cold_cache_samples",
+    "max_over_ranks",
+    "release_skew_us",
+    "summarize_rank_samples",
+    "synchronized_release_samples",
     "benchmark_paired_cuda_graph_cold_cache",
     "benchmark_cuda_event_samples",
     "benchmark_cuda_graph_or_events",

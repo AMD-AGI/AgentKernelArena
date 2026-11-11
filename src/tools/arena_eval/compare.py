@@ -8,7 +8,9 @@
 ``baseline_relative`` (the default) allows each element twice the baseline
 kernel's own error, or its per-row RMS, plus one output rounding; the mean error
 must also stay unbiased relative to the baseline's. Integral, boolean and packed
-outputs compare exactly. Non-finite reference elements must be matched exactly.
+outputs compare exactly, unless the task declares a decode hook for the output:
+the evaluator then compares the decoded values (``decoded``). Non-finite
+reference elements must be matched exactly.
 """
 from __future__ import annotations
 
@@ -23,6 +25,9 @@ OUTPUT_ROUNDING_MULTIPLE = 2.0
 MIN_ROW_ELEMENTS = 8
 VIOLATION_PEAK_LIMIT = 16.0
 DEFAULT_MAX_ERROR_MULTIPLE = 2.0
+# A decoded reference is itself quantized to the declared precision, so a correct candidate's code may sit
+# one code step (two roundings) from the reference's: decoded values use twice the unit roundoff.
+DECODED_ROUNDING_MULTIPLE = 2.0
 
 
 @dataclass(frozen=True)
@@ -120,8 +125,13 @@ def _elementwise(name: str, a, rounded, reference, limit, max_violation_fraction
 
 def compare_tensor(declaration: dict, actual: torch.Tensor, reference: torch.Tensor, *,
                    dtype_name: str, baseline: torch.Tensor | None = None,
-                   element_order: str = "fixed") -> CompareResult:
-    """``actual`` against the reference under the declared bound."""
+                   element_order: str = "fixed", decoded: bool = False) -> CompareResult:
+    """``actual`` against the reference under the declared bound.
+
+    ``decoded`` marks the floating values a task decode hook read from packed outputs; ``dtype_name`` is
+    then the precision their codes carry, the rounding unit is one code step of it and the exact-dtype
+    shortcut does not apply.
+    """
     if tuple(actual.shape) != tuple(reference.shape):
         return CompareResult(False, declaration.get("bound", "exact"), 1.0,
                              mismatched_elements=actual.numel())
@@ -129,9 +139,9 @@ def compare_tensor(declaration: dict, actual: torch.Tensor, reference: torch.Ten
     if baseline is not None:
         baseline, _ = arrange(element_order, baseline, reference)
     kind = declaration.get("bound", "baseline_relative")
-    if kind == "exact" or is_exact_dtype(dtype_name):
+    if kind == "exact" or (not decoded and is_exact_dtype(dtype_name)):
         return _exact(actual, reference)
-    u = UNIT_ROUNDOFF[dtype_name]
+    u = UNIT_ROUNDOFF[dtype_name] * (DECODED_ROUNDING_MULTIPLE if decoded else 1.0)
     a = actual.double()
     y = reference.double()
     rounded = reference.to(actual.dtype).double()

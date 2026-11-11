@@ -1,0 +1,29 @@
+{
+  "description": "DFlash2 verify steps of Muse Spark at TP8: requests x 8 rows (8, 16 and 64 rows: one, two and eight requests; 8 and 16 are the default served widths) over a full-attention layer, with the longest request's context ctx taken from the AgentX decode-step-weighted context distribution (cc-traces-weka-062126; p10 52K, p25 108K, p50 220K, p75 426K, p90 632K; share of decode steps by context bucket: <=16K 5.2%, 16-32K 1.0%, 32-64K 7.4%, 64-128K 17.0%, 128-256K 25.9%, 256-512K 26.9%, 512K-1M 16.7%). The other requests of a step hold between ctx/2 and ctx keys. Derived from corpus statistics; not yet confirmed by a live capture. The minimum, unaligned and short contexts and the 1M cap are correctness-only.",
+  "cases": [
+    {"id": "r1_c8", "axes": {"requests": 1, "ctx": 8}, "checks": ["correctness"],
+     "source": "boundary: one request whose only keys are the step's 8 rows (minimum requests and context)"},
+    {"id": "r2_c3000", "axes": {"requests": 2, "ctx": 3000}, "checks": ["correctness"],
+     "source": "boundary: two requests, non-power-of-two short context (AgentX <=4K bucket, 4.3% of decode steps)"},
+    {"id": "r8_c4099", "axes": {"requests": 8, "ctx": 4099}, "checks": ["correctness"],
+     "source": "boundary: eight requests (64 rows), context not a multiple of 16 or of a page"},
+    {"id": "r1_c25859", "axes": {"requests": 1, "ctx": 25859}, "checks": ["correctness"],
+     "source": "regression: the step's rows straddle a chunk boundary (keys % 256 = 3) inside a two-chunk attention partition, where the upstream kernel's causal mask failed (README.md); AgentX 16-32K bucket"},
+    {"id": "r1_c1048576", "axes": {"requests": 1, "ctx": 1048576}, "checks": ["correctness"],
+     "source": "the 1M context cap (AgentX request max 990K; no request exceeds 1M)"},
+    {"id": "r1_c16k", "axes": {"requests": 1, "ctx": 16384}, "checks": ["correctness", "performance"],
+     "source": "AgentX decode-weighted low end (<=16K, 5.2% of decode steps), R=1 x 8-row verify (C1)"},
+    {"id": "r1_c128k", "axes": {"requests": 1, "ctx": 131072}, "checks": ["correctness", "performance"],
+     "source": "AgentX 64-128K bucket (17.0% of decode steps, decode p25 108K), R=1 x 8-row verify (C1)"},
+    {"id": "r1_c256k", "axes": {"requests": 1, "ctx": 262144}, "checks": ["correctness", "performance"],
+     "source": "AgentX 128-256K bucket (25.9% of decode steps, decode p50 220K), R=1 x 8-row verify (C1)"},
+    {"id": "r1_c512k", "axes": {"requests": 1, "ctx": 524288}, "checks": ["correctness", "performance"],
+     "source": "AgentX 256-512K bucket (26.9% of decode steps, decode p75 426K), R=1 x 8-row verify (C1)"},
+    {"id": "r2_c256k", "axes": {"requests": 2, "ctx": 262144}, "checks": ["correctness", "performance"],
+     "source": "AgentX decode p50 (220K), R=2 x 8-row verify (C2, the second default served width)"},
+    {"id": "r8_c64k", "axes": {"requests": 8, "ctx": 65536}, "checks": ["correctness", "performance"],
+     "source": "AgentX 32-64K bucket (7.4% of decode steps), R=8 x 8-row verify (C8, 64 rows: largest compiled width)"},
+    {"id": "r8_c256k", "axes": {"requests": 8, "ctx": 262144}, "checks": ["correctness", "performance"],
+     "source": "AgentX decode p50 (220K), R=8 x 8-row verify (C8, 64 rows)"}
+  ]
+}

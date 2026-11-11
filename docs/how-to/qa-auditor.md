@@ -26,7 +26,9 @@ contract; this page owns the audit rubric.
    correctness check must reject). A perturbing control that never changes a
    checked tensor (for example fp8 rounding of integer outputs, or zeroing half
    of a single-element output) is reported as not applicable instead. No model
-   is involved, and the checks run before any model sees the workspace.
+   is involved, and the checks run before any model sees the workspace. For a
+   [multi-GPU task](add-task.md#multi-gpu-tasks) the suite runs on every rank,
+   and a control that fails on any rank is rejected.
 3. A **model review** reads the task for problems the deterministic checks
    cannot see (semantic mismatches, unexercised input domains,
    unrepresentative workloads, false README or provenance claims). Its
@@ -119,14 +121,16 @@ not prove.
 | `QA-POSITIVE` | blocking | A copy of the baseline fails as a candidate, including a `harness_tampering` failure. | Make the baseline satisfy its language's candidate rules (kernels only, no PyTorch computation, no process/FFI/interpreter modules reached through attributes, capturable launches) and stop changing evaluator, PyTorch or interpreter bindings. |
 | `QA-TIMING-METHOD` | blocking | A performance case was not timed as a cold-cache CUDA graph. | Make the baseline graph-capturable on the current stream. |
 | `QA-TIMING-FLOOR` | blocking | A performance case takes the baseline under 10 us. | Use larger production shapes; keep small shapes correctness-only. |
+| `QA-SPAN-EVIDENCE` | blocking | A task with the [production-range span exemption](add-task.md#production-range-span-exemption) has a `perf_min` or `perf_max` endpoint case that the baseline run did not measure or that takes under 10 us. | Remeasure and correct the evidence's perf range; keep faster shapes correctness-only. |
 | `QA-CONTROLS` | blocking | A known-wrong control implementation passes correctness. | Strengthen inputs, cases or the error bound. |
 | `QA-CONTROLS-RUN` | blocking | The control suite timed out, wrote no report or did not complete. | Fix the input, reference or baseline failure it reports. |
 | `QA-INPUTS` | blocking | An input draw is degenerate (constant, or exactly representable in a lower precision than declared). | Use a distribution whose values vary. |
 | `QA-COUNTEREXAMPLE` | blocking | A wrong implementation that the task accepts fails an in-domain case, reproduced by the framework. | Add the counterexample's input domain to the workloads or tighten the bound. |
 | `QA-POSITIVE-UNAVAILABLE` | warning | The baseline language (TileLang) cannot be copied as a candidate, so no positive control ran. | Consider a Triton baseline. |
-| `QA-BOUND-OVERRIDE` | warning | `compare` departs from `baseline_relative` with `k: 2`, or sets `baseline_min_sqnr_db` or a violation fraction. | Justify the override in README.md or return to the default. |
+| `QA-BOUND-OVERRIDE` | warning | `compare` departs from `baseline_relative` with `k: 2`, or sets `baseline_min_sqnr_db`, a violation fraction or a `decode` hook. | Justify the override in README.md or return to the default. |
 | `QA-BOUND-CALIBRATION` | warning | The reference evaluated with float32 instead of float64 (a correct implementation with float32 accumulation and library reduction orders) fails a non-exact bound (`baseline_relative`, `sqnr`, `tolerance` or `output_rounding`). | Unless the baseline is known to be more accurate than float32 accumulation, loosen the bound (`sqnr` `min_db`, `tolerance`, or `k` and `max_violation_fraction`) and justify it in README.md. |
 | `QA-NONDETERMINISTIC` | warning | The baseline is not bitwise deterministic across repeated runs. | Informational: `baseline_relative` compares against one baseline run per draw. |
+| `QA-SPAN-EXEMPTION` | warning | The performance cases use the production-range span exemption instead of the 100× span rule; the finding shows the observed range, the perf range, the share of observed calls it covers and the evidence source. | Informational: confirm the evidence and that no context or sequence axis could meet the 100× rule. |
 | `QA-README` | warning | The task has no README.md. | Describe the operator, production source and workload origin. |
 | `QA-UNVERIFIED-ARCH` | warning | `platform_support.required_arch` names an architecture the audit did not run on. | Audit on each claimed architecture or document it as unverified. |
 | `QA-REVIEW` | warning | A model-review finding without a reproduced counterexample. | Review it; supply a counterexample to make it blocking. |

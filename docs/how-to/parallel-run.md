@@ -109,6 +109,23 @@ each GPU remains its own worker, so kernel runs are unchanged. See
 [the e2e guide](e2e-kernel-tasks.md) for budgets and the host-side runtime
 that serving tasks also need.
 
+Multi-GPU kernel tasks (a `distributed` block in `task.yaml`, see
+[Multi-GPU tasks](add-task.md#multi-gpu-tasks)) use the same groups: every group
+must have exactly the task's `distributed.world_size` GPUs, and rank `r` runs on
+logical GPU `r` of its worker's group. Without `resources`, or with groups of
+another size, the run fails before any container starts. A scheduler can also
+allocate fewer GPUs than requested (some burst nodes expose 7 of 8); an
+allocation or a group smaller than `world_size` fails the same way, and the
+error names the GPUs that were allocated, so rerun on a full allocation. All kernel tasks of one
+run must share one world size, so run multi-GPU tasks separately from
+single-GPU tasks and from multi-GPU tasks of another world size. A serial
+`make docker-run` of multi-GPU tasks needs exactly one group:
+
+```yaml
+resources:
+  gpu_groups: [[0, 1, 2, 3]]     # world_size: 4
+```
+
 ## Resume a parallel run
 
 Resume works the same way as serial runs. Completed tasks are skipped, and

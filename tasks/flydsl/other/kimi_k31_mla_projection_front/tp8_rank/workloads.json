@@ -1,0 +1,12 @@
+{
+  "description": "Speculative verify steps of one request (DSpark block 7: 8 rows; DFLASH with 6 draft tokens: 6 rows) on one Kimi-K3.1 MLA (DSA) layer at TP8 that is not a block-write layer: rows = the verify tokens, nblocks = the AttnRes bank rows the layer reads (layer // 12 + 1: 1 on layers 4 and 8 up to 8 on layers 88 and 92). The kernel has no context dependence and the model fixes every non-batch dimension, so the performance cases cover the production range under the production-range span exemption (workload_evidence.json). Derived from the serving configuration, the model's layer structure and the AgentX corpus statistics; not yet confirmed by a live capture. Rows 1 and 3 (compiled widths no documented verify configuration uses) are correctness-only.",
+  "performance_span": {"policy": "production_range", "evidence": "workload_evidence.json"},
+  "cases": [
+    {"id": "r1_nb1", "axes": {"rows": 1, "nblocks": 1}, "checks": ["correctness"], "source": "minimum: one token (compiled width 1), bank depth 1 (MLA layers 4, 8)"},
+    {"id": "r3_nb5", "axes": {"rows": 3, "nblocks": 5}, "checks": ["correctness"], "source": "odd row count (compiled width 3), bank depth 5 (MLA layers 52, 56)"},
+    {"id": "r8_nb1", "axes": {"rows": 8, "nblocks": 1}, "checks": ["correctness", "performance"], "source": "DSpark block 7 verify of one request (8 rows; AgentX: one request in flight 90% of session busy time), bank depth 1 (MLA layers 4, 8)"},
+    {"id": "r8_nb8", "axes": {"rows": 8, "nblocks": 8}, "checks": ["correctness", "performance"], "source": "DSpark block 7 verify of one request (8 rows), bank depth 8, the deepest (MLA layers 88, 92)"},
+    {"id": "r6_nb1", "axes": {"rows": 6, "nblocks": 1}, "checks": ["correctness", "performance"], "source": "DFLASH verify of one request (6 draft tokens, 6 rows; the documented Kimi-K3.1 launch), bank depth 1 (MLA layers 4, 8)"},
+    {"id": "r6_nb8", "axes": {"rows": 6, "nblocks": 8}, "checks": ["correctness", "performance"], "source": "DFLASH verify of one request (6 rows), bank depth 8 (MLA layers 88, 92)"}
+  ]
+}

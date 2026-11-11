@@ -1,0 +1,11 @@
+{
+  "source": "sgl-amd-mono 52486703 Kimi-K3.1 serving configuration (README.md: --tp 8 --speculative-algorithm DFLASH --speculative-num-draft-tokens 6 --enable-linear-replayssm-spec --enable-amd-monokernel; kimi_k31/spec.py: a narrow step is a DSpark or DFLASH verify of one request of L = 6 or 8 tokens, wide.SUPPORTED_L) + Kimi-K3 / K3.1 layer structure (93 layers, attn_res_block_size 12, full-attention (DSA) layers 4, 8, ..., 92; test/unit/test_kimi_k3_spec.py) + AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 per-session in-flight statistics",
+  "method": "corpus_statistics",
+  "axes": {
+    "rows": {"observed_min": 6, "observed_max": 8, "perf_min": 6, "perf_max": 8, "frequency": {"6": 0.5, "8": 0.5}},
+    "nblocks": {"observed_min": 1, "observed_max": 8, "perf_min": 1, "perf_max": 8,
+                "frequency": {"1": 0.125, "2": 0.125, "3": 0.125, "4": 0.125, "5": 0.125, "6": 0.125, "7": 0.125, "8": 0.125}}
+  },
+  "fixed_dimensions": "every non-var axis is fixed by Kimi-K3.1 at TP8: hidden 7168, q_lora 1536, kv_lora 512, rope 64, 12 MLA query heads of 192 a rank (96 / 8), g_proj 1536 rows a rank, the DSA indexer's 32 heads of 128 (wk 128, weights_proj 32, wq_b 4096 rows), AttnRes bank of at most 8 rows",
+  "notes": "rows: Kimi-K3.1 serves the narrow launches (Kimi-K3's K1 / mla_pre / layer launch) only on speculative verify steps of one request, L = 6 (DFLASH, 6 draft tokens, the documented launch) or 8 (DSpark block 7); a step of 2+ requests (12+ rows) takes the wide path and SGLang's attention on the DSA layers. No usage split between the two draft configurations is known, so they are weighted equally. AgentX at concurrency 1: one request in flight for 90.0% of session busy time (agentx_inflight.json). nblocks: a verify step runs this launch on each of the 16 DSA layers that are not block-write layers (layers 12, 24, ..., 84 also store the prefix as a bank row: a separate build, not covered here); layer i reads i // 12 + 1 bank rows (spec._mla_build nblocks = prev_valid_blocks), two layers a depth, so each depth is 1/8 of the launches. Every (rows, nblocks) point reads the 76 MB of projection weights once, so every production point takes the baseline well over 10 us (estimate 22-32 us); perf range = observed range. Not yet confirmed by a live capture."
+}

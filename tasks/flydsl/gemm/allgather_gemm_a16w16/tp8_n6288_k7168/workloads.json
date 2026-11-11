@@ -1,0 +1,18 @@
+{
+  "description": "Rows m of a Kimi-K3.1 decode or DSpark verify step at TP8 entering the fused all-gather + in_proj GEMM (each rank holds an m x 896 activation slice and 6288 in_proj rows; K = 7168). Rows are the serving configuration's narrow steps (up to 8 rows) and wide verify steps of R requests x 8 tokens (R = 2 .. 48), within the 16-, 32-, 128- and 384-row builds of the baseline (the bench's launch configurations; four compiled widths for the 10-minute budget). Frequencies are AgentX-derived (cc-traces-weka-062126 per-session in-flight distribution at concurrency points C in {1, 2, 4, 8, 16, 32, 48}, equal weight per point, renormalized over steps of up to 48 requests); derived from corpus statistics, not yet confirmed by a live capture. Every case reads each rank's 90 MB weight.",
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness", "performance"], "source": "boundary: the minimum, a one-row step (one request decoding without speculation; the DSpark configuration verifies 8 rows a request, so AgentX gives it no weight) [16-row build]"},
+    {"id": "m3", "axes": {"m": 3}, "checks": ["correctness"], "source": "boundary: non-power-of-two rows, a three-request decode step [16-row build]"},
+    {"id": "m8", "axes": {"m": 8}, "checks": ["correctness", "performance"], "source": "DSpark verify of one request, R=1 x L=8: the most frequent step (15.1% of steps up to 48 requests; C=1 sessions with one request in flight), a narrow step [16-row build]"},
+    {"id": "m16", "axes": {"m": 16}, "checks": ["correctness", "performance"], "source": "wide verify R=2 x 8, the most frequent wide step (14.5%) [16-row build]"},
+    {"id": "m27", "axes": {"m": 27}, "checks": ["correctness"], "source": "boundary: not a multiple of 16 and > 16, a partial row tile of the 32-row build"},
+    {"id": "m32", "axes": {"m": 32}, "checks": ["correctness", "performance"], "source": "wide verify R=4 x 8 (11.8%; the 24-32-row band holds 13.8%) [32-row build]"},
+    {"id": "m64", "axes": {"m": 64}, "checks": ["correctness", "performance"], "source": "wide verify R=8 x 8 (7.8%; the 40-64-row band holds 13.2%: the C=8 point) [128-row build]"},
+    {"id": "m100", "axes": {"m": 100}, "checks": ["correctness"], "source": "unaligned rows (not a multiple of 8) inside the 128-row build's single row tile"},
+    {"id": "m128", "axes": {"m": 128}, "checks": ["correctness", "performance"], "source": "wide verify R=16 x 8 (3.3%; the 72-128-row band holds 13.2%: the C=16 point), the full 128-row build"},
+    {"id": "m136", "axes": {"m": 136}, "checks": ["correctness", "performance"], "source": "wide verify R=17 x 8 (3.1%, the mode of the 136-256-row band, which holds 14.5%: the C=16 tail) [384-row build, one 192-row tile]"},
+    {"id": "m288", "axes": {"m": 288}, "checks": ["correctness", "performance"], "source": "wide verify R=36 x 8 (1.6%, the mode of the 264-384-row band, which holds 15.7%: the C=32 point) [384-row build, two 192-row tiles]"},
+    {"id": "m333", "axes": {"m": 333}, "checks": ["correctness"], "source": "unaligned rows ending inside the second 192-row tile of the 384-row build"},
+    {"id": "m384", "axes": {"m": 384}, "checks": ["correctness", "performance"], "source": "wide verify R=48 x 8 (0.3%; most C=48 steps exceed 48 requests and leave the mono path), the largest compiled width [384-row build]"}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "description": "Decode steps of one DeepSeek-V4-Pro CSA layer at TP8 (sgl-amd-mono monokernel widths 1, 4 and 8 rows; one request a row). Contexts are AgentX (semianalysisai/cc-traces-weka-062126, decode-step weighted, context = in + out / 2) quantiles: p10 52K, p25 108K, p50 220K, p75 426K, p90 632K and the corpus maximum 990K, below the kernel's 1M cap; derived from corpus statistics, not yet confirmed by a live capture. Other rows of a step decode at contexts drawn in [ctx / 2, ctx]. Short contexts (up to 4K, 4.4% of decode steps), the 1025-entry indexer threshold, mixed below/above-threshold batches and the 1M cap are correctness-only.",
+  "cases": [
+    {"id": "r1_c1", "axes": {"rows": 1, "ctx": 1}, "checks": ["correctness"], "source": "minimum: first decode step of a request (no compressed entry, 2 window keys)"},
+    {"id": "r4_c1000", "axes": {"rows": 4, "ctx": 1000}, "checks": ["correctness"], "source": "short contexts (AgentX <= 4K bucket, 4.4% of decode steps), all compressed entries attended"},
+    {"id": "r8_c3000", "axes": {"rows": 8, "ctx": 3000}, "checks": ["correctness"], "source": "8 short requests (<= 4K), unaligned context"},
+    {"id": "r1_c4100", "axes": {"rows": 1, "ctx": 4100}, "checks": ["correctness"], "source": "first context past the indexer threshold: top-1024 of 1025 live entries"},
+    {"id": "r8_c6000", "axes": {"rows": 8, "ctx": 6000}, "checks": ["correctness"], "source": "a batch mixing rows below (all entries) and above (top-1024) the indexer threshold"},
+    {"id": "r1_c1048575", "axes": {"rows": 1, "ctx": 1048575}, "checks": ["correctness"], "source": "the kernel's context cap (SGLang DeepSeek-V4 MAX_CONTEXT 2^20)"},
+    {"id": "r1_c52k", "axes": {"rows": 1, "ctx": 53248}, "checks": ["correctness", "performance"], "source": "AgentX decode-weighted context p10 (52K), interactive single request"},
+    {"id": "r1_c220k", "axes": {"rows": 1, "ctx": 225280}, "checks": ["correctness", "performance"], "source": "AgentX decode-weighted context p50 (220K), single request"},
+    {"id": "r1_c632k", "axes": {"rows": 1, "ctx": 647168}, "checks": ["correctness", "performance"], "source": "AgentX decode-weighted context p90 (632K), single request"},
+    {"id": "r4_c108k", "axes": {"rows": 4, "ctx": 110592}, "checks": ["correctness", "performance"], "source": "AgentX decode-weighted context p25 (108K), 4 concurrent requests (launch width 4)"},
+    {"id": "r4_c426k", "axes": {"rows": 4, "ctx": 436224}, "checks": ["correctness", "performance"], "source": "AgentX decode-weighted context p75 (426K), 4 concurrent requests"},
+    {"id": "r8_c52k", "axes": {"rows": 8, "ctx": 53248}, "checks": ["correctness", "performance"], "source": "AgentX p10 (52K), 8 concurrent requests (the largest decode width)"},
+    {"id": "r8_c220k", "axes": {"rows": 8, "ctx": 225280}, "checks": ["correctness", "performance"], "source": "AgentX p50 (220K), 8 concurrent requests"},
+    {"id": "r8_c990k", "axes": {"rows": 8, "ctx": 1013760}, "checks": ["correctness", "performance"], "source": "AgentX maximum context (990K), 8 concurrent requests"}
+  ]
+}

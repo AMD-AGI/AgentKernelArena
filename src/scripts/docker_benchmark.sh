@@ -400,12 +400,14 @@ append_serving_task_mounts() {
 }
 
 assign_serial_gpu_group() {
-    local config="$1" image pool groups
+    local config="$1" image world pool groups
     image="$(serving_runtime_metadata image "$config")" || return 1
-    [[ -n "$image" ]] || return 0
+    # Multi-GPU kernel tasks (task.yaml distributed.world_size > 1) also need one GPU group.
+    world="$(serving_runtime_metadata world-size "$config")" || return 1
+    [[ -n "$image" || "${world:-1}" != "1" ]] || return 0
     pool="$(resolve_gpu_ids | paste -sd, -)"
     groups="$(serving_runtime_metadata groups "$config" --devices "$pool")" || return 1
-    [[ "$groups" != *$'\n'* ]] || die "Serial serving run requires exactly one GPU group"
+    [[ "$groups" != *$'\n'* ]] || die "A serial serving or multi-GPU kernel run requires exactly one GPU group"
     export AKA_VISIBLE_GPU="$groups"
 }
 

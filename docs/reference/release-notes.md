@@ -21,15 +21,26 @@ This topic summarizes the features available in each AgentKernelArena release. F
   task names no implementation language. The run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
   `{path, target_language}` overrides) selects it. See
   [Task definition, schema, and authoring](../how-to/add-task.md).
-- The suite has 380 kernel tasks covering 238 operators in 16 categories, with
+- The suite has 400 kernel tasks covering 256 operators in 16 categories, with
   production baselines vendored from vLLM, SGLang, sgl-amd-mono, AITER and FlyDSL
-  (278 Triton, 56 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
+  (278 Triton, 76 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
   framework-finalized QA `PASS` on MI355X for its exact package.
-- The first monokernel task, `flydsl/other/qwen38_flash_next_layers`, is one
-  launch of sgl-amd-mono's Qwen3.8-Flash-Next kernel: four whole decoder layers
-  (three Gated DeltaNet, one QSA sparse attention, each with a 512-expert MXFP4
-  MoE) of a speculative-verify step in one persistent kernel, with the pools it
-  writes compared as outputs.
+- 21 tasks vendor the sgl-amd-mono SGLang plugin's persistent FlyDSL
+  monokernels (DeepSeek-V4-Pro, DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi-K3, Kimi-K3.1,
+  MiniMax-M3, MiniMax-M3.1-Flash, Muse Spark, Qwen3.8-Flash-Next), with
+  workloads derived from the AgentX agentic-coding traces. The first,
+  `flydsl/other/qwen38_flash_next_layers`, is one launch of the Qwen3.8-Flash-Next
+  kernel: four whole decoder layers (three Gated DeltaNet, one QSA sparse
+  attention, each with a 512-expert MXFP4 MoE) of a speculative-verify step in
+  one persistent kernel, with the pools it writes compared as outputs. 14 of the
+  others are multi-GPU tasks: a `distributed` block in `task.yaml` runs one kernel call
+  per rank on 4 or 8 GPUs with framework-owned symmetric peer memory, checks
+  every rank against its part of the reference and times the slowest rank of
+  each synchronized cold-cache sample. See
+  [Multi-GPU tasks](../how-to/add-task.md#multi-gpu-tasks).
+- A model-specialized task whose observed production range spans less than
+  100× may use that range with recorded evidence
+  (`performance_span: {policy: production_range}`); the QA auditor reports it.
 - 53 tasks from production kernels add 28 operators and the first Gluon
   baselines. They cover convolution (conv2d, conv3d), attention backward,
   HSTU, sliding-window and sparse MLA attention, fused GEMM epilogues
@@ -42,7 +53,8 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `baseline_relative` bound allows twice the baseline's own error (or its
   per-row RMS over the row's nonzero elements) plus one output rounding.
   `max_violation_fraction` never admits an element more than 16× over the
-  bound. Integer and packed outputs compare exactly.
+  bound. Integer and packed outputs compare exactly, unless the task declares a
+  `decode` hook that maps them to values for a numeric bound.
 - Timing is a cold-cache CUDA graph per call. The final evaluation remeasures
   the baseline interleaved with the candidate, and a task's speedup is the
   geometric mean over its performance cases.

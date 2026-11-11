@@ -87,6 +87,7 @@ interface:
   mutable: []                            # inputs the operator updates in place
   generator: {file: inputs.py, symbol: make_inputs}      # optional
   layout: {file: inputs.py, symbol: to_kernel_layout}    # optional
+distributed: {...}                       # optional: a multi-GPU task (see "Multi-GPU tasks")
 reference: {file: reference.py, symbol: reference}
 baseline:
   language: triton                       # triton | gluon | hip | flydsl | tilelang
@@ -174,7 +175,7 @@ value before every call.
 | Bound | Parameters | Meaning |
 | --- | --- | --- |
 | `baseline_relative` (default) | `k` (2), `max_violation_fraction` (0), `baseline_min_sqnr_db` (25) | Each element within `k ×` the baseline's own error (or its per-row RMS over the elements that are nonzero in the reference or the baseline; rows with fewer than 8 such elements use the whole output's RMS) plus one output rounding; the mean error must be unbiased relative to the baseline's. |
-| `exact` | | Bitwise equality. Required for integer, boolean and packed outputs. |
+| `exact` | | Bitwise equality. Required for integer, boolean and packed outputs without `decode`. |
 | `tolerance` | `atol`, `rtol`, `max_violation_fraction` | Fixed tolerances. |
 | `sqnr` | `min_db` | Signal-to-noise ratio of the whole output. |
 | `output_rounding` | `max_violation_fraction` | Within twice the output dtype's rounding of the reference. |
@@ -184,6 +185,44 @@ every departure as a warning that README.md must justify. `k` stays within
 `[1, 8]`; `max_violation_fraction` within `[0, 0.01]`. Tune them per task, never
 globally. Elements admitted by `max_violation_fraction` must still lie within 16 times the bound, so it absorbs accumulation-order outliers, not skipped or zeroed elements. `element_order: any_in_full_rows` compares sorted rows (top-k ids with
 ties).
+
+#### Decoded packed outputs
+
+An integral or packed output (quantized codes and their scales packed into one
+`uint8` tensor, for example) whose bytes legitimately differ between correct
+implementations may declare a `decode` hook with a numeric bound
+(`baseline_relative`, `tolerance`, `sqnr` or `output_rounding`):
+
+```yaml
+compare:
+  index_cache:
+    bound: baseline_relative
+    decode: {file: inputs.py, symbol: index_cache_values, precision: float8_e4m3fn}
+```
+
+- `file` and `symbol` name a top-level function in a `.py` file at the task
+  root, like `interface.generator`. It takes the packed tensor and returns its
+  values as a float32 or float64 tensor. Write it in PyTorch only, deterministic
+  and without modifying its argument; it runs on the device the tensor is on.
+- The evaluator decodes the candidate's written tensor, the reference's and,
+  for `baseline_relative`, the baseline's with the same function and compares the
+  decoded tensors under the bound, with `element_order` applied to the decoded
+  rows. The reference returns the packed tensor, with the operator's exact
+  quantization and packing.
+- `precision` (optional) is the floating dtype the decoded values carry, such as
+  `float8_e4m3fn` for E4M3 codes times a scale. Because the decoded reference is
+  quantized to it as well, a correct candidate's code may sit one code step from
+  the reference's, so the bound's rounding unit is one code step of `precision`:
+  twice its unit roundoff. Without `precision` the decoded dtype takes its
+  place, which makes the rounding term negligible (use this for integer codes,
+  whose step is not relative to the value).
+- `decode` is not allowed with `exact` or on a floating output, and the QA
+  auditor reports it as a bound override. Elementwise bounds hold every decoded
+  element, including state a mutable input keeps unchanged. Keep
+  `max_violation_fraction` at 0: with a coarse precision such as E4M3 the
+  rounding term alone keeps a zeroed element within 16 times the bound, and when
+  most of the tensor is unchanged state a fraction of the whole tensor can
+  exceed every newly written element.
 
 Under `baseline_relative`, the baseline itself must pass a sanity check: no
 non-finite or unwritten element, and SQNR against the reference of at least
@@ -249,11 +288,15 @@ from real production use; the framework records the source but cannot verify
 it. The framework enforces, when it loads the task:
 
 - **4 to 16 performance cases**, whose var-axis size (the product of the var
-  axes) spans at least **100×**. One or two shapes let an agent tune for them
-  alone; too many lengthen every timing round.
-- **Boundary correctness cases**, three distinct ones: a var axis at its
-  declared minimum, a var axis that is not a power of two, and a var axis that
-  is not a multiple of 16 (in units of its `multiple_of`) and larger than 16.
+  axes) spans at least **100×**, unless the task declares the production-range
+  exemption below. One or two shapes let an agent tune for them alone; too many
+  lengthen every timing round.
+- **Boundary correctness cases**, distinct ones: a var axis at its declared
+  minimum, a var axis that is not a power of two, and a var axis that is not a
+  multiple of 16 (in units of its `multiple_of`) and larger than 16. The last
+  one is required only when some var axis's domain holds such a value (its
+  `max` exceeds 16 units); a task whose var axes all stay within 16 units, such
+  as rows 1..8 or rows 8..64 with `multiple_of: 8`, needs only the first two.
   Correctness cases have no upper limit.
 - Unique case IDs and axis/scalar combinations, and values inside the declared
   domain.
@@ -262,6 +305,66 @@ The QA auditor additionally requires every performance case to take the
 baseline **at least 10 µs**: below that, launch overhead dominates the
 measurement. Real shapes that run faster (decode with M=1) stay correctness-only.
 A task whose production shapes are all below 10 µs is not a kernel task.
+
+### Production-range span exemption
+
+Some kernels are specialized to one model: the model fixes every non-batch
+dimension, and the shapes production actually sends them that take the baseline
+at least 10 µs span less than 100×. Such a task may declare, in
+`workloads.json`:
+
+```json
+"performance_span": {"policy": "production_range", "evidence": "workload_evidence.json"}
+```
+
+Prefer a context or sequence axis first: if the kernel's work depends on the
+context length, make it a var axis spanning the production range and meet the
+100× rule without the exemption. The evidence file sits at the task root and is
+part of the task package:
+
+```json
+{
+  "source": "AgentX <corpus> rev <revision> + <model> serving config <flags>; or live capture job <id>",
+  "method": "corpus_statistics",
+  "axes": {
+    "n_tokens": {"observed_min": 1, "observed_max": 65536,
+                 "perf_min": 2048, "perf_max": 16384,
+                 "frequency": {"1": 0.3, "2048": 0.3, "4096": 0.2, "8192": 0.1, "16384": 0.1}}
+  },
+  "fixed_dimensions": "every non-var axis is fixed by <model> at <TP/EP>",
+  "notes": "how the numbers were derived"
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `source`, `fixed_dimensions` | Where the range comes from (corpus and revision, serving configuration, capture job) and what fixes the other dimensions. |
+| `method` | `corpus_statistics` or `live_capture`. |
+| `axes.<axis>.observed_min/max` | The full production range of the axis, recorded for transparency. It may span 100× or more. |
+| `axes.<axis>.perf_min/max` | The part of that range whose baseline takes at least 10 µs: the performance range. |
+| `axes.<axis>.frequency` | Production weight of each observed value (keys are values, weights sum to about 1). |
+| `notes` | Optional derivation notes. |
+
+When it loads the task the framework requires: the evidence names exactly the
+var axes; `observed_min <= perf_min <= perf_max <= observed_max`, inside each
+axis domain, with perf endpoints on the axis's `multiple_of`; frequency keys
+inside the observed range and weights summing to 0.9-1.1; the performance range
+spans **less than 100×** in var-axis size (otherwise the 100× rule is reachable
+and the exemption is refused); and, for every var axis, a performance case at
+`perf_min` and one at `perf_max`, with every performance case inside
+`[perf_min, perf_max]`. The 4-16 performance-case count and the boundary
+correctness cases are unchanged; weight the performance cases toward the
+high-frequency values. Shapes below 10 µs stay correctness-only. Never batch
+calls or add warm replays to reach the floor: a kernel with fewer than four
+performance shapes at 10 µs or more is not a task.
+
+The CPU pre-check reports the exemption. The QA auditor reports it as the
+warning `QA-SPAN-EXEMPTION` (observed range, perf range and evidence source)
+and fails the task with `QA-SPAN-EVIDENCE` when a `perf_min` or `perf_max`
+endpoint case was not measured or takes the baseline under 10 µs;
+`QA-TIMING-FLOOR` still applies to every performance case. Held-out cases of an
+exempt task stay inside the observed range, and held-out performance cases
+inside the performance range.
 
 ## The candidate interface
 
@@ -344,6 +447,156 @@ python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
 - **Scoring.** The per-case speedup is baseline time over candidate time; the
   task's speedup is their geometric mean. Any failed correctness case scores 0.
   The final evaluation remeasures the baseline next to the candidate.
+
+## Multi-GPU tasks
+
+Some production kernels do their tensor-parallel collective inside the kernel:
+every rank stores partial results into its peers' buffers over XGMI and polls
+its own buffer. An optional `distributed` block makes a task run on several GPUs
+of one node. Without it a task is single-GPU, exactly as above.
+
+```yaml
+distributed:
+  world_size: 4                         # ranks = GPUs of one node, 2..8
+  symmetric_bytes: "world_size * n_tokens * hidden_size * 2 + 4096"   # int or axis expression
+  shard: {file: inputs.py, symbol: shard_inputs}         # logical inputs -> one rank's inputs
+  expected: {file: inputs.py, symbol: rank_expected}     # logical outputs -> one rank's outputs
+  ranks_agree: [out]                    # optional: outputs every rank writes bitwise identical
+```
+
+| Field | Rule |
+| --- | --- |
+| `world_size` | Integer from 2 to 8. Every rank has the same shapes. |
+| `symmetric_bytes` | Bytes of each rank's framework-owned peer buffer for one call: an integer or an expression over the axes and `world_size`, between 1 byte and 4 GiB in every case. |
+| `shard`, `expected` | Functions in a task-root `.py` file, like `generator` and `layout`. |
+| `ranks_agree` | Distinct outputs or mutable inputs; omitted means none. |
+
+**One rank's call.** `interface.inputs` and `interface.outputs` describe the
+call one rank makes. Shape expressions, derived axes and `symmetric_bytes` may
+use the reserved symbol `world_size`; a multi-GPU task cannot declare an axis
+of that name.
+
+**Logical inputs and outputs.** The inputs are drawn once per case and seed, as
+for a single-GPU task. Every rank draws them identically, and the evaluator
+fails the action when the ranks' draws differ. Built-in distributions draw the
+declared (one-rank) shape, so they suit replicated tensors; a tensor that is
+split across ranks comes from `generator`, which returns its full logical shape
+(its `case["axes"]` includes `world_size`).
+`reference.py` computes the logical outputs from the logical inputs in high
+precision, unchanged. The evaluator then derives each rank's view:
+
+```python
+def shard_inputs(inputs, *, rank, world_size):
+    """Logical inputs -> this rank's kernel inputs: every declared input, by name."""
+    rows = inputs["w"].shape[0] // world_size
+    return {**inputs, "w": inputs["w"][rank * rows:(rank + 1) * rows]}
+
+
+def rank_expected(outputs, *, rank, world_size):
+    """Logical reference outputs (and mutable final values) -> what this rank must write."""
+    return {"out": outputs["out"]}            # a replicated output: the full tensor
+```
+
+`shard` receives copies of the logical inputs and returns every declared input
+(scalars included) at the declared one-rank shape; the optional `layout`
+transform then runs on its result. `expected` returns every output and mutable
+input at its declared shape: the full tensor for a replicated output, the rank's
+slice for a sharded one. Both run outside timing. The CPU pre-check
+(`python3 -m src.tools.check_task`) and `validate-task` run both for every rank
+and reject a missing input or a wrong shape.
+
+**Reserved call inputs.** The evaluator appends four keyword inputs to every
+rank's call. A multi-GPU task must not declare inputs or outputs with these names:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `rank` | int (int32 range) | This process's rank; it runs on `cuda:rank` of the worker's GPU group. |
+| `world_size` | int (int32 range) | The task's `world_size`. |
+| `peers` | int64 device tensor `[world_size]` | `peers[p]` is the base address of rank `p`'s symmetric buffer mapped into this process; `peers[rank]` is the local buffer. |
+| `symmetric` | uint8 device tensor `[symmetric_bytes]` | This rank's symmetric buffer (the same memory as `peers[rank]`). |
+
+The candidate signature is therefore `run(*, <inputs>, <outputs>, rank,
+world_size, peers, symmetric)`, and a HIP op schema ends with `int rank, int
+world_size, Tensor peers, Tensor(x!) symmetric` (the buffer is written by peers
+and by the kernel). `_aka_eval/CANDIDATE.md` states the exact signature.
+
+**Symmetric memory.** Each rank allocates one uncached buffer
+(`hipExtMallocWithFlags(..., hipDeviceMallocUncached)`, rounded up to 2 MiB
+granules and sized for the largest case), exchanges its HIP IPC handle and maps
+every peer's buffer with `hipIpcMemLazyEnablePeerAccess`. The buffers live for
+the whole action. Before every call, outside timing, every rank zeroes its whole
+buffer and restores `peers`, and no rank starts the call before every rank has
+finished its previous call and zeroed its buffer. A call never sees a previous
+call's mailbox words, so a fixed flag value is safe.
+
+**Persistent-kernel state.** Keep no host-side state and change no state from
+the host in `run` (no `epoch.add_()`). Put peer-visible mailbox words, flags and
+guard words in `symmetric` and size `symmetric_bytes` for them: the buffer is
+zeroed before every call and never compared. A device-local value the kernel
+only reads (a fixed epoch tag) is an ordinary input that `shard` (or
+`generator`) initializes, for example `epoch = 1`; every input is reloaded
+before every call, and a read-only input the kernel writes fails correctness.
+Device-local state the kernel writes is a `mutable` input: the reference returns
+its final value (for example `epoch + 1`, or zeros for scratch the kernel
+clears), `expected` returns this rank's part and `compare` checks it (`exact` for
+integers). State whose final contents depend on the implementation belongs in
+`symmetric`.
+
+**Correctness.** For every case and both seeds every rank calls `run` on its
+shard and compares each written tensor with its `expected` values under the
+task's `compare` bound; `baseline_relative` uses that rank's baseline output.
+Read-only inputs and `peers` must be unchanged on every rank. For `ranks_agree`
+outputs every rank reports a SHA-256 digest of the written bytes and rank 0
+requires equal digests (bitwise identity). A case passes only if every rank
+passes and the ranks agree.
+
+**Timing.** Per sample, on every rank: load the sample's inputs, poison the
+outputs and zero the symmetric buffer; run the read-only 1 GiB eviction sweep on
+the rank's own device; synchronize the device, then a host barrier; rank 0
+broadcasts a `CLOCK_MONOTONIC` deadline 2 ms ahead and every rank spins until it,
+records its start event, replays its captured graph (one complete call) and
+records its end event. The sample's time is **the maximum over ranks of the
+per-rank event spans**, and a case's time is the median of those maxima (10
+warm-ups, 100 samples). A barrier after every sample keeps the next sample's
+zeroing behind every rank's replay. A collective finishes when its slowest rank
+finishes, so the maximum is conservative and applies one rule to baseline and
+candidate; the shared deadline keeps launch skew to microseconds, where a
+barrier alone leaves tens. The row metadata keeps every rank's raw samples
+(`benchmark_rank_samples_ms`), the release skew of each sample
+(`benchmark_release_skew_us`) and how often each rank was the slowest. Graphs are
+captured per rank before timing, and a capture failure on any rank fails every
+rank. Every timed sample's outputs are checked on every rank.
+
+**Process model and failures.** A correctness or performance action (and the QA
+control suite) starts `world_size` processes. They form a gloo group over a
+FileStore in a private temporary directory, on the loopback interface, for the
+handle exchange, barriers and result gathering; rank 0 merges the ranks' results
+and the launching process prints them as the single `ARENA_EVAL_RESULT=` line. A rank that raises, dies or outlives
+the action deadline (`timeout_s` minus 30 s) fails the whole action, and the
+remaining ranks are killed. `validate-task` and `compile` run in one process.
+
+**Candidate rules.** Unchanged, plus: kernels may load from and store to peer
+memory through `peers` and `symmetric`. Host-side communication is rejected:
+`torch.distributed`, `torch.multiprocessing` and storage sharing, RCCL/NCCL,
+HIP IPC, peer-access, memory export and allocation APIs statically, and
+collective operators at run time.
+
+**Running and budget.** A multi-GPU task runs only on a worker whose GPU group
+has exactly `world_size` GPUs, so its run configuration sets
+`resources.gpu_groups` (see [parallel runs](parallel-run.md#gpu-groups-for-multi-gpu-tasks));
+a mismatch, including an allocation with fewer GPUs than `world_size`, fails
+before any container starts. One run cannot mix world sizes, or
+multi-GPU with single-GPU tasks. Each task's full evaluation (compile,
+correctness and performance, baseline and candidate) must finish in 10 minutes
+of wall time on one node. Kernels that compile per specialization (FlyDSL
+persistent kernels compile per row count) should keep the number of distinct
+compiled shapes small (two or three) and vary another axis, such as the context
+length, instead.
+
+The GPU path (HIP IPC, peer stores, per-rank graphs and events) needs a ROCm
+PyTorch and is verified only by running a task on MI355X. The framework's CPU
+tests cover the process model, sharding, merging and timing aggregation with an
+emulated symmetric memory.
 
 ## Run configuration
 

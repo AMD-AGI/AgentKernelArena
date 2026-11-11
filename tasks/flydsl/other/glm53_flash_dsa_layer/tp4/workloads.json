@@ -1,0 +1,167 @@
+{
+  "description": "Decode steps of one GLM-5.3-Flash sparse-attention layer at TP4 (the serving test's tensor parallelism): R requests of one row each, run at the kernel's compiled widths 2 (R 1-2) and 8 (R 5-8); a step of fewer rows than its width carries pad rows. Contexts are AgentX decode-step-weighted quantiles (semianalysisai/cc-traces-weka-062126 rev 23f152f6, 98,827 requests; weight = tokens decoded, context = input + output / 2: p10 52K, p25 108K, p50 220K, p75 426K, p90 632K), derived from corpus statistics and not yet confirmed by a live capture. The leading request holds ctx tokens, the others ctx/2 to ctx (ragged). Every performance context is above 2051 tokens, so the index scoring and the top-512 pool selection run; short contexts, the 1M cap, odd widths and the expert-clamp range are correctness-only. Monokernel steps are decode only; prefill shapes do not apply.",
+  "cases": [
+    {
+      "id": "r1_c1",
+      "axes": {
+        "requests": 1,
+        "ctx": 1
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "first decode token of a request (one key), width 2 with a pad row"
+    },
+    {
+      "id": "r2_c2051",
+      "axes": {
+        "requests": 2,
+        "ctx": 2051
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "longest context that attends to every token (2048 + a 3-token tail); request 1 completes a pool"
+    },
+    {
+      "id": "r8_c2052_clamp",
+      "axes": {
+        "requests": 8,
+        "ctx": 2052
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "shortest scored context (513 complete pools, the step's other requests 1026-2052 tokens); expert scales 2^-8..2^-4 so the SwiGLU limit of 10 clamps"
+    },
+    {
+      "id": "r5_c3001",
+      "axes": {
+        "requests": 5,
+        "ctx": 3001
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd batch at width 8 (3 pad rows), scored and unscored rows mixed"
+    },
+    {
+      "id": "r7_c4000",
+      "axes": {
+        "requests": 7,
+        "ctx": 4000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "short-context decode (<= 4K: 4.4% of AgentX decode steps)"
+    },
+    {
+      "id": "r2_c1048576",
+      "axes": {
+        "requests": 2,
+        "ctx": 1048576
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "the compiled launch's 1M-token cap (262144 pools; AgentX max context 990K)"
+    },
+    {
+      "id": "r1_c16384",
+      "axes": {
+        "requests": 1,
+        "ctx": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode low end (16K; 5% of decode steps are at or below 16K), single-request decode at width 2 (one pad row)"
+    },
+    {
+      "id": "r1_c51891",
+      "axes": {
+        "requests": 1,
+        "ctx": 51891
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step-weighted p10 context (51,891), single-request decode"
+    },
+    {
+      "id": "r1_c108326",
+      "axes": {
+        "requests": 1,
+        "ctx": 108326
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step-weighted p25 (108,326; 64-128K bucket 17% of decode steps), single request"
+    },
+    {
+      "id": "r1_c219840",
+      "axes": {
+        "requests": 1,
+        "ctx": 219840
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step-weighted p50 (219,840; 128-256K bucket 25.9%), single request"
+    },
+    {
+      "id": "r1_c426387",
+      "axes": {
+        "requests": 1,
+        "ctx": 426387
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step-weighted p75 (426,387; 256-512K bucket 26.9%), single request"
+    },
+    {
+      "id": "r1_c631824",
+      "axes": {
+        "requests": 1,
+        "ctx": 631824
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "AgentX decode-step-weighted p90 (631,824; 512K-1M bucket 16.7%), single request"
+    },
+    {
+      "id": "r8_c108326",
+      "axes": {
+        "requests": 8,
+        "ctx": 108326
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "8 concurrent decodes (the per-row MoE's widest width) at the decode p25 (108K), the others ragged down to 54K"
+    },
+    {
+      "id": "r8_c219840",
+      "axes": {
+        "requests": 8,
+        "ctx": 219840
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "8 concurrent decodes at the decode p50 (220K), the others ragged down to 110K"
+    }
+  ]
+}

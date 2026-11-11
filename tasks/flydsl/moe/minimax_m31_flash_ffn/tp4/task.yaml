@@ -1,0 +1,145 @@
+schema_version: 3
+description: >-
+  The MiniMax-M3.1-Flash sparse-layer FFN (decode / DSpark verify step) on a tensor-parallel-4 group, as one
+  launch per rank, from the attention output to the reduced MoE output. Per row, on rank r: per-token FP8 of
+  the rank's attention output (scale amax / 448, RNE E4M3) times its rowwise-FP8 o_proj columns, a bf16
+  partial; the partials summed over the 4 ranks in rank order to bf16 (a); res_out = bf16(a + res); Gemma
+  RMSNorm of a + res (eps 1e-6, gain 1 + norm_w) to bf16 (xn); FP32 router logits xn . router_w; top 4 of
+  sigmoid(logits) + bias, weights = the picks' sigmoids / their sum x 2.0; on the rank's intermediate slice
+  (768 of 3072): the 4 routed experts in MXFP4 (E2M1 codes, E8M0 per 32; AITER-shuffled) and the shared
+  expert in MXFP8 (E4M3, E8M0 per 32), gate | up = xn . w13^T, SwiGLU-OAI (alpha 1.702, limit 7: min(g, 7)
+  sigmoid(1.702 min(g, 7)) (clamp(u, -7, 7) + 1)) to bf16, . w2^T; the rank's partial = bf16(shared + the
+  route-weighted routed outputs); out = the partials summed over the ranks in rank order, bf16. The ranks
+  exchange both partials through the framework's symmetric peer buffers inside the launch. Logical inputs,
+  sharding and layouts are described in inputs.py.
+operator:
+  name: minimax_m31_flash_ffn
+  category: moe
+interface:
+  axes:
+    rows: {kind: var, min: 1, max: 16,
+           description: "Token rows of the step: decode requests, or DSpark verify requests x 8 (the compiled widths 1-16)."}
+    hidden: {kind: const, value: 6144}
+    attn_k: {kind: const, value: 2048, description: "A rank's o_proj input columns (16 heads x 128)."}
+    n_experts: {kind: const, value: 128}
+    w13_rows: {kind: const, value: 1536, description: "Gate then up rows of a rank's intermediate slice (2 x 768)."}
+    inter: {kind: const, value: 768, description: "Expert intermediate width per rank (3072 / 4)."}
+  inputs:
+    attn:
+      kind: tensor
+      shape: [rows, attn_k]
+      dtype: bfloat16
+      distribution: {kind: generator}
+      description: This rank's attention output (its 16 heads), o_proj's input.
+    res:
+      kind: tensor
+      shape: [rows, hidden]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 4.0}
+      description: The residual stream entering the layer, replicated.
+    wo: {kind: tensor, shape: [hidden, attn_k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+         description: "The rank's o_proj columns in SGLang's rowwise FP8, AITER shuffle_weight (16, 16) order."}
+    wos: {kind: tensor, shape: [hidden], dtype: float32, role: weight, distribution: {kind: generator},
+          description: "Its per-row scales (amax / 448)."}
+    norm_w: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight,
+             distribution: {kind: normal, mean: 0.0, std: 0.1},
+             description: "post_attention_layernorm gain (Gemma: applied as 1 + norm_w)."}
+    router_w: {kind: tensor, shape: [n_experts, hidden], dtype: float32, role: weight,
+               distribution: {kind: generator}, description: "The FP32 router weight, replicated."}
+    bias: {kind: tensor, shape: [n_experts], dtype: float32, role: weight,
+           distribution: {kind: uniform, low: -0.03, high: 0.03},
+           description: "The routing correction bias (selection only), replicated."}
+    w13: {kind: tensor, shape: [n_experts, w13_rows, hidden // 2], dtype: uint8, role: weight,
+          distribution: {kind: generator},
+          description: "MXFP4 E2M1 codes of the rank's gate (rows 0-767) and up (768-1535) slices of the routed experts, shuffle_weight (16, 16) order."}
+    s13: {kind: tensor, shape: [n_experts, w13_rows, hidden // 32], dtype: uint8, role: weight,
+          distribution: {kind: generator}, description: "E8M0 scales of w13, one per 32 hidden elements, e8m0_shuffle order."}
+    w2: {kind: tensor, shape: [n_experts, hidden, inter // 2], dtype: uint8, role: weight,
+         distribution: {kind: generator}, description: "MXFP4 codes of the rank's down slice, shuffle_weight (16, 16) order."}
+    s2: {kind: tensor, shape: [n_experts, hidden, inter // 32], dtype: uint8, role: weight,
+         distribution: {kind: generator}, description: "E8M0 scales of w2, e8m0_shuffle order."}
+    w13s: {kind: tensor, shape: [w13_rows // 16, hidden // 128, 64, 32], dtype: uint8, role: weight,
+           distribution: {kind: generator},
+           description: "The shared expert's gate | up slice in MXFP8 (the checkpoint's E4M3 bytes) in the launch's a16w8 lane order."}
+    s13s: {kind: tensor, shape: [w13_rows // 16, hidden // 128, 64], dtype: float32, role: weight,
+           distribution: {kind: generator}, description: "Its E8M0 group-32 scales as fp32 powers of two, a16w8 order."}
+    w2s: {kind: tensor, shape: [hidden // 16, inter // 128, 64, 32], dtype: uint8, role: weight,
+          distribution: {kind: generator}, description: "The shared expert's down slice in MXFP8, a16w8 order."}
+    s2s: {kind: tensor, shape: [hidden // 16, inter // 128, 64], dtype: float32, role: weight,
+          distribution: {kind: generator}, description: "Its scales, a16w8 order."}
+  outputs:
+    out: {shape: [rows, hidden], dtype: bfloat16, description: "The all-reduced MoE output (shared + routed experts)."}
+    res_out: {shape: [rows, hidden], dtype: bfloat16, description: "bf16(a + res), the residual after attention, a the all-reduced o_proj output."}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+distributed:
+  world_size: 4
+  # ffn.peer_bytes(4): both parity halves of the attention (triple pairs) and MoE (bf16-pair pairs)
+  # partials, 2 x 2,621,440 bytes, then the guard's peer error flags (256 bytes)
+  symmetric_bytes: 5243136
+  shard: {file: inputs.py, symbol: shard_inputs}
+  expected: {file: inputs.py, symbol: rank_expected}
+  ranks_agree: [out, res_out]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: >-
+      sgl-project/sgl-amd-mono (the MiniMax-M3.1-Flash FFN monokernel, which sgl-amd-mono adapted from
+      vllm-project/vllm@a50259bb325366e7dd7c24461e1eb48e9b9ed7cf vllm/models/minimax_m3/amd/specialized_decode/mono,
+      on its common/ device library), with ROCm/aiter's FlyDSL buffer / DPP helpers
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/minimax_m31/ffn.py
+      - sgl_amd_mono/minimax_m31/sync.py
+      - sgl_amd_mono/minimax_m31/a16w4.py
+      - sgl_amd_mono/minimax_m31/a16w8.py
+      - sgl_amd_mono/minimax_m31/runner.py
+      - sgl_amd_mono/minimax_m31/spec.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/sync.py
+      - sgl_amd_mono/common/guard.py
+      - sgl_amd_mono/common/epoch.py
+      - sgl_amd_mono/common/plan.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py
+      - aiter/ops/flydsl/kernels/dpp_utils.py
+    license: >-
+      Apache-2.0 (sgl-amd-mono; ffn.py, sync.py, a16w4.py, runner.py and common/ "Copyright contributors to the
+      vLLM project"; aiter's buffer_ops.py / dpp_utils.py, FlyDSL Project Contributors, from ROCm/aiter at
+      dbd8bf5bd); common/ops.py, sync.py and plan.py are adapted from ROCm/ATOM 97359d6 (MIT, Copyright (C)
+      2026 Advanced Micro Devices, Inc.); see baseline/LICENSE
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9, 11 commits older; the baseline is vendored from 52486703.
+      The sgl-amd-mono README lists MI350X (gfx950) for MiniMax-M3.1-Flash; the kernel is gfx950 code with
+      nothing MI350X-specific (no CU-count or clock constant: its 256-CTA persistent grid needs 256 co-resident
+      CTAs, which MI350X and MI355X both provide), and this task is validated on MI355X. Serving it needs SGLang
+      PRs #45925 and #45936 (MiniMax-M3.1-Flash support and its gfx950 path); the task does not depend on them.
+      ops.py and guard.py are sgl-amd-mono's common/ops.py and common/guard.py with the FlyDSL 0.3.2
+      changes in their headers, buffer_ops.py and dpp_utils.py ROCm/aiter dbd8bf5bd's, sync.py the one in
+      tasks/flydsl/other/minimax_m3_sparse_layer/tp4.
+    modifications: >-
+      Imports made relative to the flat baseline package. FlyDSL 0.3.2 (the AgentKernelArena runtime) lacks
+      fx.generic_load / generic_store / AtomicOrdering / memory_fence / fx.llvm and its bundled LLVM predates
+      the image the kernel was written for, so ffn_sync.py (minimax_m31/sync.py) emits the monotonic loads and
+      stores as llvm-dialect atomics (the bf16 store as an i16 atomic store of its bits), its 128-bit
+      llvm.amdgcn.av.load.b128 as the buffer load with the agent-scope cache bit (sc1) that intrinsic lowers
+      to, and its amdgcn-av:none MMRA fences as the waits they lower to (s_waitcnt vmcnt(0) before a release)
+      beside workgroup-scope fences that keep the compiler's order; the two LDS atomics of ffn.py and the wave
+      counter take llvm atomicrmw directly. ops.py / guard.py / epoch.py store through llvm-dialect stores;
+      guard.py drops the environment fault injection; sync.py uses a dataclass instead of msgspec; plan.py
+      keeps the execution model, pair_layout and key_tuple without the source digest (kernel_sources read the
+      installed package's files); a16w8.py's host-side layout moved to inputs.py; epoch.py drops kernel_symbol
+      and epoch_begin. The device code of ffn.py, a16w4.py and a16w8.py is otherwise unchanged. Host-side
+      runner, spec, peer-memory, residency check and SGLang glue are not vendored: kernel.py's run() builds the
+      kernel per row count at TP 4 (FfnBuild(tokens, tp=4)), allocates the epoch / guard block, an all-valid
+      slot mapping and the mailbox scratch in one workspace inside the call, zeroes its tagged regions and sets
+      the 10 s wait deadline (the runner keeps them across steps and moves the epoch on; the framework zeroes
+      the peer buffer), and launches on the current stream.
+compare:
+  out: {bound: baseline_relative}
+  res_out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

@@ -1,0 +1,55 @@
+The baseline is vendored from sgl-amd-mono (https://github.com/sgl-project/sgl-amd-mono) at 52486703
+and from ROCm/aiter (https://github.com/ROCm/aiter) at dbd8bf5bd, with the modifications listed in the
+task's task.yaml (baseline.provenance) and in each file's header.
+
+sgl-amd-mono
+Copyright 2026 SGLang contributors. Licensed under the Apache License 2.0.
+The deepseek_v41 files carry "SPDX-FileCopyrightText: Copyright contributors to the vLLM project"
+(sgl-amd-mono adapted them from vLLM's DeepSeek-V4.1 mono decode; Apache License 2.0).
+
+aiter/ops/flydsl/kernels/buffer_ops.py and dpp_utils.py
+Copyright (c) 2025-2026 FlyDSL Project Contributors; Modifications Copyright (C) 2026 Advanced Micro
+Devices, Inc. Licensed under the Apache License 2.0.
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+
+Portions are adapted from ROCm/ATOM (https://github.com/ROCm/ATOM), as each file's header states: the
+shared device primitives (ops.py, sync.py, mx.py, plan.py, stamps.py, attn_device.py), the
+DeepSeek-V4.1 seam, MoE, router, GEMV and dims stages (seam.py, moe.py, moe_plan.py, moe_shape.py,
+router.py, gemv.py, dims.py, at ATOM 97359d6) and token parallel (token_par.py, at ATOM 5e8d913).
+ROCm/ATOM is distributed under this license:
+  MIT License
+
+  Copyright (C) 2026, Advanced Micro Devices, Inc.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.

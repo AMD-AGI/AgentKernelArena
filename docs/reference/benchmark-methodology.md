@@ -24,11 +24,40 @@ The two framework input draws alternate between samples, and every timed
 sample's outputs are checked. There is no Event fallback for these tasks: a
 baseline that cannot be captured on the current stream fails the QA audit
 (`QA-TIMING-METHOD`), and each performance case must take the baseline at least
-10 us (`QA-TIMING-FLOOR`). The final evaluation remeasures the baseline
-interleaved with the candidate, and the task's speedup is the geometric mean of
+10 us (`QA-TIMING-FLOOR`). The performance cases span at least 100x in
+var-axis size, except for model-specialized tasks with an evidenced
+[production-range span exemption](../how-to/add-task.md#production-range-span-exemption),
+whose cases cover the >= 10 us part of the observed production range at both
+ends; the floor and the timing method are the same for them. The final
+evaluation remeasures the baseline interleaved with the candidate, and the task's speedup is the geometric mean of
 the per-case speedups (baseline time over candidate time). The remaining
 sections of this page describe the shared helper and the older fallback and
 cold-weight policies, which apply to the end-to-end and legacy helper paths.
+
+### Multi-GPU kernel tasks
+
+A [multi-GPU task](../how-to/add-task.md#multi-gpu-tasks) keeps the cold-cache
+protocol on every rank and adds a synchronized release
+(`benchmark_distributed_cold_cache_samples`). Per sample, every rank prepares its
+inputs and zeroes its symmetric buffer, sweeps its own device's caches,
+synchronizes and meets a host barrier; rank 0 then broadcasts a
+`CLOCK_MONOTONIC` deadline 2 ms ahead, every rank spins until it and times one
+replay of its own captured graph with GPU events, and a second barrier ends the
+sample. The sample's time is the maximum over ranks of the per-rank event spans
+(`benchmark_rank_aggregation: max_over_ranks`); the case's time is the median of
+those maxima. The method, metric, eviction policy and byte count are those of
+`cuda_graph_cold_cache`, so the protocol checks and comparison rules above apply
+unchanged; baseline and candidate of one task always use the same rule. The
+metadata adds `benchmark_world_size`, every rank's raw samples
+(`benchmark_rank_samples_ms`), the per-sample spread of release times
+(`benchmark_release_skew_us`, with its median and maximum), the latest release
+after a deadline (`benchmark_release_late_us_max`) and how often each rank was
+the slowest. A collective finishes when its slowest rank does, so the maximum is
+the conservative per-call time; the shared deadline keeps the ranks' launch skew
+to microseconds instead of a barrier's tens. The pure aggregation
+(`max_over_ranks`, `release_skew_us`, `summarize_rank_samples`) and the release
+loop (`synchronized_release_samples`) take the communication object as an
+argument, so the helper still depends only on the standard library and PyTorch.
 
 ## Canonical Python API
 

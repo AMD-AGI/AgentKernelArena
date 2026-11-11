@@ -1,0 +1,15 @@
+{
+  "source": "AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 (traces.jsonl sha256 29b6a19e..., per-session in-flight request time shares) + the Muse Spark DFlash2 serving configuration of sgl-amd-mono 52486703 (8 draft rows a request; compiled widths 8, 16, 32, 64, muse_spark/gfx950/config.py WIDTHS with SGLANG_AMD_MONO_MUSE_WIDTHS=8,16,32,64; the default serves 8 and 16)",
+  "method": "corpus_statistics",
+  "axes": {
+    "rows": {
+      "observed_min": 8,
+      "observed_max": 64,
+      "perf_min": 8,
+      "perf_max": 64,
+      "frequency": {"8": 0.267, "16": 0.256, "32": 0.244, "64": 0.233}
+    }
+  },
+  "fixed_dimensions": "every non-var axis is fixed by the Muse Spark DFlash2 draft model (hidden 8192, 2048 conv coefficients a row, 8 query heads and 1 KV head of 128 a rank, a 4096-slot cache and 65,536-row RoPE table in this task) at TP8",
+  "notes": "Requests a step at AgentX concurrency C in {1, 2, 4, 8} (weighted equally): the sum of C independent per-session in-flight counts (k = 1: 90.0%, 2: 5.4%, 3: 2.1%, 4: 0.85%, 5: 0.67%, 6: 0.45%, 7: 0.20%, 8: 0.11%, ...); rows = 8 x requests padded to the next compiled width; steps above 64 rows (15.6% of the weight) leave the monokernel path and are excluded, the rest renormalized. The kernel streams 54.5 MB of weights a launch whatever the rows (an estimated 20-30 us at ~5 TB/s cold HBM plus four serialized mailbox hand-offs), so every observed width is in the >= 10 us range and perf_min / perf_max are the observed range; its 8x span is below 100x and no context axis applies (D-pre reads one RoPE row and writes one cache slot a row). Estimates, not measurements: QA-SPAN-EVIDENCE checks the 8- and 64-row cases on MI355X."
+}

@@ -11,7 +11,9 @@ finished, accepted schema-v3 candidate on the same task with new inputs:
 * optional extra in-domain cases, from ``<cases-dir>/<task id>/held_out_cases.json``
   (``{"cases": [...]}`` in the ``workloads.json`` case format), are added. They
   must name exactly the task's ``var`` axes within their declared domains and
-  differ from every existing case; seeds are never supplied by the file.
+  differ from every existing case; seeds are never supplied by the file. For a
+  task with the production-range span exemption they also stay inside its
+  evidenced observed range, and performance cases inside its perf range.
 
 Per task workspace of a completed run:
 
@@ -129,6 +131,19 @@ def _extra_case(contract: dict, case, taken: set[str], identities: set[str]) -> 
             raise ValueError(f"Held-out case {case_id}: scalar {name}={value!r} is not a {dtype}")
     if case["checks"] not in _CHECKS:
         raise ValueError(f"Held-out case {case_id}: checks must be one of {list(_CHECKS)}")
+    span = contract.get("performance_span")
+    if span:
+        # A production-range exempt task is specialized to its evidenced range: held-out cases stay in the
+        # observed production range, and held-out performance cases in its >= 10 us perf range.
+        timed = "performance" in case["checks"]
+        for name, value in axes.items():
+            bounds = span["axes"][name]
+            low, high = (bounds["perf_min"], bounds["perf_max"]) if timed else \
+                (bounds["observed_min"], bounds["observed_max"])
+            if not low <= value <= high:
+                kind = "perf" if timed else "observed production"
+                raise ValueError(f"Held-out case {case_id}: {name}={value} is outside the task's {kind} range "
+                                 f"{low}..{high} ({span['evidence']})")
     row = {"id": case_id, "axes": dict(axes), "scalars": dict(scalars), "checks": list(case["checks"])}
     if _identity(row) in identities:
         raise ValueError(f"Held-out case {case_id} repeats the axes and scalars of another case")

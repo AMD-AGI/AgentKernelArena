@@ -1,0 +1,63 @@
+{
+  "description": "Muse Spark K2 (the attention output through the experts' input) at TP8 for one DFlash2 verify step: rows = requests x 8 draft tokens at the compiled widths 8, 16, 32 and 64 (1, 2, 4 and 8 requests; 8 and 16 are the default served widths, 32 and 64 are under test upstream). The kernel's work does not depend on the context. Width weights from the AgentX corpus (cc-traces-weka-062126) in-flight request distribution at concurrency 1, 2, 4 and 8; derived from corpus statistics, not yet confirmed by a live capture. Production-range span exemption: the model fixes every other dimension and the served rows span 8x (workload_evidence.json). rows = 24 is a correctness-only boundary case.",
+  "performance_span": {
+    "policy": "production_range",
+    "evidence": "workload_evidence.json"
+  },
+  "cases": [
+    {
+      "id": "r8",
+      "axes": {
+        "rows": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "DFlash2 verify step of 1 request(s) x 8 rows: C1 (R = 1: 90.0% of C1 steps); AgentX width weight 22.6%; the minimum width"
+    },
+    {
+      "id": "r16",
+      "axes": {
+        "rows": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "DFlash2 verify step of 2 request(s) x 8 rows: R = 2 (C2: 81.0% of steps; C1: 5.4%); AgentX width weight 21.8%"
+    },
+    {
+      "id": "r24",
+      "axes": {
+        "rows": 24
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "boundary: 3 requests x 8 rows, a non-power-of-two width (production pads 3 requests to the 32-row width; the kernel builds any multiple of 8 rows)"
+    },
+    {
+      "id": "r32",
+      "axes": {
+        "rows": 32
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "DFlash2 verify step of 4 request(s) x 8 rows: R = 3-4 padded to 4 (C4: 65.7% of steps; C2: 13.8%); AgentX width weight 21.4%"
+    },
+    {
+      "id": "r64",
+      "axes": {
+        "rows": 64
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "DFlash2 verify step of 8 request(s) x 8 rows: R = 5-8 padded to 8 (C8: 43.1% of steps fit; C4: 29.7%); AgentX width weight 34.3%"
+    }
+  ]
+}

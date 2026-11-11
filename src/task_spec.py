@@ -365,11 +365,14 @@ def _optional_fields(obj: dict) -> None:
         # Written only by task_contract when it resolves a schema-v3 package for
         # one target language; a task author never declares it.
         contract = _mapping(obj["contract"], "contract", {
-            "schema_version", "task_file", "target_language", "baseline_language", "operator"})
+            "schema_version", "task_file", "target_language", "baseline_language", "operator", "world_size"})
         if contract.get("schema_version") != 3 or contract.get("task_file") != "task.yaml":
             raise TaskConfigError("contract identifies a schema-v3 task.yaml")
         if contract.get("target_language") != obj["candidate"]["language"]:
             raise TaskConfigError("contract.target_language must equal candidate.language")
+        if "world_size" in contract and (type(contract["world_size"]) is not int
+                                         or not 2 <= contract["world_size"] <= 8):
+            raise TaskConfigError("contract.world_size (a multi-GPU task's GPU count) must be 2 to 8")
 
 
 @dataclass(frozen=True)
@@ -417,6 +420,11 @@ class TaskSpec:
     @property
     def target_language(self) -> str | None:
         return (self._config.get("contract") or {}).get("target_language")
+
+    @property
+    def world_size(self) -> int:
+        """GPUs (ranks) one evaluation of this task uses; 1 unless a schema-v3 task is multi-GPU."""
+        return (self._config.get("contract") or {}).get("world_size", 1)
 
     def action(self, role: str, action: str) -> ActionSpec:
         for spec in self.actions:

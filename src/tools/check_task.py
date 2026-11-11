@@ -7,8 +7,9 @@ Checks that the contract loads and its path matches its baseline language,
 category and operator, that a workspace renders for every target
 language, that the baseline meets the candidate rules of its own language, the
 QA auditor's static package/reference/provenance rules, and that inputs and the
-reference run on the CPU for the smallest and largest correctness cases. It
-cannot replace the GPU audit (kernels, timing, controls).
+reference run on the CPU for the smallest and largest correctness cases (for a
+multi-GPU task, also every rank's shard and expected outputs). It cannot replace
+the GPU audit (kernels, timing, controls).
 """
 from __future__ import annotations
 
@@ -47,12 +48,26 @@ for case in (cases[0], cases[-1]) if len(cases) > 1 else cases:
         declaration = contract.outputs.get(name) or contract.inputs[name]
         expected = contract.shape(declaration, symbols)
         actual = tuple(outputs[name].shape)
-        if actual != expected:
+        # A multi-GPU task declares one rank's shapes; its logical outputs are checked through expected().
+        if actual != expected and contract.distributed is None:
             raise SystemExit(f"reference output {name} has shape {actual}, declared {expected}")
         if outputs[name].dtype.is_floating_point and outputs[name].dtype not in (torch.float32, torch.float64):
             raise SystemExit(f"reference output {name} is {outputs[name].dtype}; use float32/float64")
+        if contract.compare[name].get("decode"):
+            packed = outputs[name] if contract.distributed is None else \
+                values.expected_outputs(contract, case, outputs, 0)[name]
+            if packed.dtype != values.torch_dtype(declaration["dtype"]):
+                raise SystemExit(f"reference output {name} is {packed.dtype}; its decode hook reads the packed "
+                                 f"{declaration['dtype']}")
+            values.decode_values(contract, name, packed)
         shapes[name] = list(actual)
-    report.append({"case": case.case_id, "outputs": shapes})
+    entry = {"case": case.case_id, "outputs": shapes}
+    if contract.distributed is not None:
+        try:
+            entry["ranks"] = values.check_rank_views(contract, case, inputs.logical, outputs, device)
+        except Exception as exc:
+            raise SystemExit(f"case {case.case_id}: per-rank shard/expected check failed: {type(exc).__name__}: {exc}")
+    report.append(entry)
     del inputs, outputs  # free the first case before drawing the next one
 print("SMOKE=" + json.dumps(report))
 '''
@@ -69,6 +84,13 @@ def check(task_dir: Path, *, smoke_limit: int) -> dict:
         return result
     if problem := contract.layout_problem():
         result["errors"].append(f"layout: {problem}")
+    if contract.performance_span:
+        span = contract.performance_span
+        result["span_exemption"] = span
+        result["warnings"].append(
+            f"workloads.performance_span: production_range exemption from the 100x rule (perf span "
+            f"{span['perf_span']:.3g}x, observed span {span['observed_span']:.3g}x, evidence {span['evidence']}); "
+            "the QA audit reports it and checks both perf endpoints against the 10 us floor")
     baseline_language = contract.baseline_language
     with tempfile.TemporaryDirectory(prefix="aka-check-") as scratch:
         for language in TARGET_LANGUAGES:

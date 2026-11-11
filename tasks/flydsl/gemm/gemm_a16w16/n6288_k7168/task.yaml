@@ -1,0 +1,66 @@
+schema_version: 3
+description: >-
+  Dense bfloat16 GEMM in the NT layout, out = a @ b.T, with a[m, 7168] activations, a [6288, 7168]
+  row-major weight b and a bfloat16 output, accumulated in high precision.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 384, description: Rows of a (tokens of a decode or verify step).}
+    n: {kind: const, value: 6288, description: Output features (rows of b).}
+    k: {kind: const, value: 7168, description: Reduction length.}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/kimi_k31/gfx950/stages/tile_mma.py
+      - sgl_amd_mono/kimi_k31/gfx950/stages/tile.py
+      - sgl_amd_mono/kimi_k31/wide.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/plan.py
+    license: Apache-2.0 (sgl-amd-mono; buffer_ops.py from ROCm/FlyDSL); MIT (ROCm/ATOM portions of common/ops.py and common/plan.py)
+    notes: >-
+      The kernel is the LDS tile GEMM stage that the Kimi-K3.1 wide-row KDA layer launch
+      (kimi_k31/gfx950/layer.py) runs for its in_proj (N=6288 rows a rank at TP8, K=7168), launched
+      as the stage's standalone build (test/kernels/kimi_k31/mma_bench.py). The per-row-bucket
+      configuration is the in_proj column of the layer's tuned table (wide.py CFGS / INP_ROWS /
+      cfg_rows) for 8-token (DSpark) verify buckets. buffer_ops.py is ROCm/aiter's copy of FlyDSL's
+      kernels/common/buffer_ops.py (aiter 652f2d4b768239aefd515c929e84817681ff598d), identical to the
+      copy bundled with tasks/flydsl/attention/paged_mqa_logits/fp4_h64_d128_bs64. stages/tile.py
+      (the register-operand row-tile GEMM, k31.tile) implements the same operator and is not the
+      baseline (see README.md).
+    modifications: >-
+      tile_mma.py: mma_tile and its helpers unchanged apart from the imports; standalone keeps the
+      bf16 (ks = 1) and f32-partial (ks > 1, "part") outputs and drops the atomic split-K modes,
+      lds_words and the source-file build-key hashing (kernel_sources / key_tuple). tile.py: only
+      bf16_emit and f32_emit. ops.py: CM_NT, rsrc, mfma_bf16 and bf16_pair from common/ops.py and
+      THREADS / WAVES from common/plan.py, unchanged. wide.py dispatch tables and cfg_rows unchanged;
+      buckets() drops the SGLANG_AMD_MONO_K31_WIDE_BUCKETS environment override. New in kernel.py:
+      run() pads m to the selected bucket as the layer launch does (a same-dtype copy of a when m is
+      below it) and adds a FlyDSL consumer kernel that sums the K-slice partials in slice order and
+      rounds to bfloat16 once, in place of the layer's in-launch finish (which merges packed-bf16
+      atomic adds). No FlyDSL 0.3.4 API is used, so the muse_spark compat bridge is not needed.
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

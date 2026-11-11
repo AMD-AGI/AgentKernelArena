@@ -1,0 +1,192 @@
+schema_version: 3
+description: >-
+  DeepSeek-V4.1-Flash K2: the attention back, the FFN mHC seam and the MoE of one decoder layer's decode step on a
+  tensor-parallel-4 group, as one launch per rank. Per row t (a decode request) and each of the rank's 16 heads:
+  sparse MQA decode over the row's keys of K1's key table (its top-512 compressed rows and its 128-position window,
+  V4.1 fp8_ds_mla records: 448 E4M3 dims with E8M0 scales per 64, then 64 bf16 RoPE dims; K = V, all 512 dims),
+  softmax over the scaled scores and the head's sink, bf16 o, inverse GPT-J RoPE of dims 448.., bf16 -> XO. wo_a per
+  group of 8 heads (FP8 32 x 32 E8M0 blocks) -> bf16 -> MXFP8 (vLLM rule) -> wo_b (the rank's 2048 columns) -> bf16
+  partial, summed over the 4 ranks in rank order: a = bf16(sum). FFN mHC seam: R' = bf16(post a + comb^T R) (-> res_out),
+  x = bf16(pre . R'), 24 mix projections, Sinkhorn gate (-> pre_out, post_out, comb_out), RMSNorm (ffn_norm) -> h.
+  Router: bf16 logits h W_g^T, score = sqrt(softplus), the 6 largest score + bias routed, weights = scores
+  renormalized x 1.5. MoE on the rank's 576 of 2304 intermediate columns: 6 routed MXFP4 experts (MXFP8 x, aiter rule;
+  swiglu clamped at 10; MXFP8 mid; down; bf16 at every weighted add in top-k order) plus the FP8 shared expert, bf16
+  partial, summed over the 4 ranks in rank order -> out. The ranks exchange partial rows through the framework's
+  symmetric peer buffers inside the launch. Logical inputs, sharding and layouts are described in inputs.py; the
+  float64 definition in dsv41_math.py.
+operator:
+  name: deepseek_v41_flash_attention_back_moe
+  category: other
+interface:
+  axes:
+    rows: {kind: var, min: 1, max: 8, description: "Decode rows of the step, one request each (the AgentX interactive widths)."}
+    ctx: {kind: var, min: 1, max: 1048576,
+          description: "Context of row 0 (its keys); the other rows draw theirs in [ctx / 2, ctx]."}
+    hidden: {kind: const, value: 5120}
+    hc: {kind: const, value: 4, description: "mHC residual streams."}
+    mix: {kind: const, value: 24, description: "mHC mix projections: pre 4, post 4, comb 16."}
+    k_mix: {kind: const, value: 20480}
+    heads: {kind: const, value: 16, description: "A rank's attention heads (64 / 4)."}
+    head_dim: {kind: const, value: 512}
+    keys: {kind: const, value: 640, description: "A row's key-table entries: 512 top-k rows and the 128 window slots."}
+    o_rows: {kind: const, value: 2048, description: "A rank's wo_a rows / wo_b columns (2 groups of 1024)."}
+    group_k: {kind: const, value: 4096, description: "wo_a's K a group: 8 heads x 512."}
+    experts: {kind: const, value: 384}
+    w13_rows: {kind: const, value: 1280, description: "A rank's gate and up rows, each 576 padded to 640 with zero weights."}
+    inter_pad: {kind: const, value: 640}
+    sh_inter: {kind: const, value: 576, description: "A rank's shared-expert intermediate columns (2304 / 4)."}
+    down_scale_cols: {kind: const, value: 24, description: "w2_s columns: 640 / 32 padded to a multiple of 8."}
+    positions: {kind: const, value: 1048576, description: "RoPE table rows: the served context, 1M tokens."}
+    swa_page_bytes: {kind: const, value: 37440, description: "A 64-record SWA page: 64 x 576 B data, 64 x 8 B scales, padded to 576 B."}
+    comp_page_bytes: {kind: const, value: 74880, description: "A 128-record compressed page."}
+  derived_axes:
+    swa_pages: 3 * rows + 1
+    comp_pages: 512 * rows + 1
+  inputs:
+    q: {kind: tensor, shape: [rows, heads, head_dim], dtype: bfloat16, distribution: {kind: generator},
+        description: "K1's rotated query, the rank's heads."}
+    swa: {kind: tensor, shape: [swa_pages, swa_page_bytes], dtype: uint8, role: state, distribution: {kind: generator},
+          description: "The layer's paged SWA cache (replicated), the step's records included."}
+    comp: {kind: tensor, shape: [comp_pages, comp_page_bytes], dtype: uint8, role: state, distribution: {kind: generator},
+           description: "The layer's paged compressed cache (replicated)."}
+    kt: {kind: tensor, shape: [rows, keys], dtype: int32, role: index, distribution: {kind: generator},
+         description: "K1's key table: compressed slot | 1 << 31 for the top-k rows, then the window slots, -1 past kv_len."}
+    klen: {kind: tensor, shape: [2 * rows], dtype: int32, role: metadata, distribution: {kind: generator},
+           description: "kv_len per row, then the top-k count per row."}
+    pos: {kind: tensor, shape: [rows], dtype: int64, role: index, distribution: {kind: generator}}
+    sink: {kind: tensor, shape: [heads], dtype: float32, role: weight, distribution: {kind: generator},
+           description: "The rank's attention sinks."}
+    cos_sin: {kind: tensor, shape: [positions, 64], dtype: float32, role: weight, distribution: {kind: generator},
+              description: "RoPE table: 32 cos, then 32 sin."}
+    woa: {kind: tensor, shape: [o_rows, group_k], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+          description: "The rank's wo_a (groups 2 r, 2 r + 1), row-major."}
+    woa_s: {kind: tensor, shape: [o_rows // 32, group_k // 32], dtype: uint8, role: weight, distribution: {kind: generator},
+            description: "Its E8M0 32 x 32 block codes."}
+    wob: {kind: tensor, shape: [hidden, o_rows], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+          description: "The rank's wo_b columns, row-major."}
+    wob_s: {kind: tensor, shape: [hidden // 32, o_rows // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+    res_in: {kind: tensor, shape: [rows, hc, hidden], dtype: bfloat16, distribution: {kind: generator},
+             description: "K1's residual streams (after the attention seam)."}
+    post_in: {kind: tensor, shape: [rows, hc], dtype: float32, distribution: {kind: generator},
+              description: "K1's attention post mix."}
+    comb_in: {kind: tensor, shape: [rows, hc, hc], dtype: float32, distribution: {kind: generator},
+              description: "K1's attention comb mix [h][o]."}
+    pre_in: {kind: tensor, shape: [rows, hc], dtype: float32, distribution: {kind: generator},
+             description: "K1's next pre mix (the FFN input's collapse)."}
+    hc_fn: {kind: tensor, shape: [mix, k_mix], dtype: float32, role: weight, distribution: {kind: generator},
+            description: "hc_ffn_fn: the FFN mHC mix projections over the stream-major 4 x 5120 row."}
+    hc_scale: {kind: tensor, shape: [3], dtype: float32, role: weight, distribution: {kind: generator}}
+    hc_base: {kind: tensor, shape: [mix], dtype: float32, role: weight, distribution: {kind: generator}}
+    ffn_norm: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: generator},
+               description: "post_attention_layernorm weight."}
+    gate_w: {kind: tensor, shape: [experts, hidden], dtype: bfloat16, role: weight, distribution: {kind: generator},
+             description: "Router weight (replicated); carries the planted routing margins."}
+    bias: {kind: tensor, shape: [experts], dtype: float32, role: weight, distribution: {kind: generator},
+           description: "e_score_correction_bias (float32), selection only."}
+    w13: {kind: tensor, shape: [experts, w13_rows, hidden // 2], dtype: uint8, role: weight, distribution: {kind: generator},
+          description: "MXFP4 E2M1 codes of the rank's gate | up rows, aiter shuffle_weight with the gate / up interleave."}
+    w13_s: {kind: tensor, shape: [experts * w13_rows, hidden // 32], dtype: uint8, role: weight,
+            distribution: {kind: generator}, description: "Their E8M0 scales, aiter shuffle_scale order."}
+    w2: {kind: tensor, shape: [experts, hidden, inter_pad // 2], dtype: uint8, role: weight, distribution: {kind: generator},
+         description: "MXFP4 codes of the rank's down columns, aiter shuffle_weight."}
+    w2_s: {kind: tensor, shape: [experts * hidden, down_scale_cols], dtype: uint8, role: weight,
+           distribution: {kind: generator}, description: "Their E8M0 scales, aiter shuffle_scale order."}
+    sgu: {kind: tensor, shape: [2 * sh_inter, hidden], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+          description: "The rank's shared-expert gate then up rows, row-major."}
+    sgu_s: {kind: tensor, shape: [2 * sh_inter // 32, hidden // 32], dtype: uint8, role: weight,
+            distribution: {kind: generator}}
+    sw2: {kind: tensor, shape: [hidden, sh_inter], dtype: float8_e4m3fn, role: weight, distribution: {kind: generator},
+          description: "The rank's shared-expert down columns, row-major."}
+    sw2_s: {kind: tensor, shape: [hidden // 32, sh_inter // 32], dtype: uint8, role: weight,
+            distribution: {kind: generator}}
+  outputs:
+    out: {shape: [rows, hidden], dtype: bfloat16, description: "The all-reduced MoE output (the next layer's pending x)."}
+    res_out: {shape: [rows, hc, hidden], dtype: bfloat16, description: "The residual streams after the FFN seam."}
+    post_out: {shape: [rows, hc], dtype: float32, description: "The FFN post mix (owed to the next layer's K1)."}
+    comb_out: {shape: [rows, hc, hc], dtype: float32, description: "The FFN comb mix."}
+    pre_out: {shape: [rows, hc], dtype: float32, description: "The next layer's pre mix."}
+  mutable: []
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+distributed:
+  world_size: 4
+  # two parity halves of layer.peer_layout(48, 4) (10276608 bytes each) plus the guard's error flags (256 bytes)
+  symmetric_bytes: 20553472
+  shard: {file: inputs.py, symbol: shard_inputs}
+  expected: {file: inputs.py, symbol: rank_expected}
+  ranks_agree: [out, res_out, post_out, comb_out, pre_out]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: >-
+      sgl-project/sgl-amd-mono (DeepSeek-V4.1-Flash gfx950 monokernels, adapted from vLLM's DeepSeek-V4.1 mono
+      decode, whose shared stages come from ROCm/ATOM 97359d6), with ROCm/aiter's FlyDSL buffer / DPP helpers
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/deepseek_v41/gfx950/layer.py
+      - sgl_amd_mono/deepseek_v41/gfx950/token_par.py
+      - sgl_amd_mono/deepseek_v41/gfx950/runner.py
+      - sgl_amd_mono/deepseek_v41/gfx950/attention/back.py
+      - sgl_amd_mono/deepseek_v41/gfx950/attention/front.py
+      - sgl_amd_mono/deepseek_v41/gfx950/attention/gemv.py
+      - sgl_amd_mono/deepseek_v41/gfx950/attention/plan.py
+      - sgl_amd_mono/deepseek_v41/gfx950/attention/device.py
+      - sgl_amd_mono/deepseek_v41/gfx950/stages/seam.py
+      - sgl_amd_mono/deepseek_v41/gfx950/stages/moe.py
+      - sgl_amd_mono/deepseek_v41/gfx950/stages/moe_plan.py
+      - sgl_amd_mono/deepseek_v41/gfx950/stages/moe_shape.py
+      - sgl_amd_mono/deepseek_v41/gfx950/stages/router.py
+      - sgl_amd_mono/deepseek_v41/gfx950/stages/gemv.py
+      - sgl_amd_mono/deepseek_v41/gfx950/stages/dims.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/sync.py
+      - sgl_amd_mono/common/guard.py
+      - sgl_amd_mono/common/epoch.py
+      - sgl_amd_mono/common/mx.py
+      - sgl_amd_mono/common/plan.py
+      - sgl_amd_mono/common/stamps.py
+      - sgl_amd_mono/muse_spark/gfx950/compat.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd)
+      - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter dbd8bf5bd)
+    license: >-
+      Apache-2.0 (sgl-amd-mono, SGLang contributors; the deepseek_v41 files carry "Copyright contributors to the vLLM
+      project"; aiter buffer_ops / dpp_utils, FlyDSL Project Contributors); MIT (ROCm/ATOM, Copyright (C) 2026 Advanced
+      Micro Devices, Inc.) for the stages and common files adapted from ATOM 97359d6 / 5e8d913. See baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9, 11 commits older; the baseline is vendored from 52486703. K2 is the
+      second of the two launches every covered DeepSeek-V4.1-Flash layer runs per decode step on the monokernel path
+      (spec.py _launch); this task is the build of a layer with a compressed cache that is not an index source
+      (MonoBuild(kt=True, compressed=True, index=False)) on synthetic weights. The test-only FFN launch (kffn, which
+      runs in no forward) is K2's FFN half: its golden model (test/kernels/deepseek_v41/check_ffn.py golden_partial)
+      is the MoE part of this task's reference. ops.py and guard.py are sgl-amd-mono's common/ops.py and
+      common/guard.py with the FlyDSL 0.3.2 bridge (ops.py plus global_atomic_add), buffer_ops.py and dpp_utils.py
+      ROCm/aiter dbd8bf5bd aiter/ops/flydsl/kernels; each file's header lists its change.
+    modifications: >-
+      Imports made relative to one flat package: attention/plan.py, gemv.py and device.py became attn_plan.py,
+      attn_gemv.py and attn_device.py; stages/* and common/* keep their names. msgspec Structs became frozen
+      dataclasses; plan.py drops the build-key source digest (kernel_sources reads source files) for a constant tag;
+      layer.py's scratch_layout keeps its offset in a list instead of a nonlocal. The index-source index query
+      (attention/index_query.py, which imports NumPy) is not vendored and its iq branches in layer.py / front.py are
+      removed (no build here sets iq). FlyDSL 0.3.2 bridge (sgl_amd_mono/muse_spark/gfx950/compat.py, written as plain
+      functions instead of patching flydsl): epoch.gstore and stamps.stamp store through ops.global_store, ops.global_ptr /
+      global_load and guard.stop_launch are llvm-dialect ops, guard.py reads zero deadline words as
+      DEFAULT_DEADLINE_TICKS (10 s), and moe's ug-queue / down-count atomics go through
+      ops.global_atomic_add (llvm atomicrmw, monotonic, agent scope) instead of fx.inttoptr(fx.PointerType...) +
+      fx.llvm.atomic_add, and the route-mask OR goes through ops.lds_atomic_or (llvm atomicrmw or,
+      monotonic, workgroup scope) instead of fx.llvm.atomic_or; epoch.kernel_signature is a local stand-in for aiter's. Host-side runner, spec, peer-memory
+      and SGLang glue are not vendored: kernel.py's run() builds K2 per row count as DSV41MonoRunner.k2_kernel does
+      (route_at: ug_groups 1 below 7 rows), allocates the epoch buffer and the scratch mailboxes in one zeroed buffer
+      inside the call (epoch 0; guard.py reads zero deadline words as a 10 s deadline, DEFAULT_DEADLINE_TICKS; the
+      framework zeroes the peer buffer), allocates the zero record and launches
+      on the current stream.
+compare:
+  out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  res_out: {bound: baseline_relative, k: 4, max_violation_fraction: 0.01}
+  post_out: {bound: baseline_relative, k: 4}
+  comb_out: {bound: baseline_relative, k: 4}
+  pre_out: {bound: baseline_relative, k: 4}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

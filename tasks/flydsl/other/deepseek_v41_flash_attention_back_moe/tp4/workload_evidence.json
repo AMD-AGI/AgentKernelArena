@@ -1,0 +1,16 @@
+{
+  "source": "AgentX semianalysisai/cc-traces-weka-062126 rev 23f152f6 (traces.jsonl sha256 29b6a19e..., 393 traces, 98,827 requests incl. subagents) + DeepSeek-V4.1-Flash SGLang TP4 monokernel serving (--enable-amd-monokernel, deepseek_v41_hip widths 1..48, decode bs 1-4 captured in CRS smoke job 278746)",
+  "method": "corpus_statistics",
+  "axes": {
+    "rows": {
+      "observed_min": 1, "observed_max": 8, "perf_min": 1, "perf_max": 8,
+      "frequency": {"1": 0.2667, "2": 0.2561, "3": 0.0351, "4": 0.2091, "5": 0.054, "6": 0.0277, "7": 0.0141, "8": 0.1373}
+    },
+    "ctx": {
+      "observed_min": 128, "observed_max": 1048576, "perf_min": 262144, "perf_max": 262144,
+      "frequency": {"1024": 0.0003, "2048": 0.0003, "4096": 0.0433, "8192": 0.0041, "16384": 0.0037, "32768": 0.0096, "65536": 0.0741, "131072": 0.1697, "262144": 0.2587, "524288": 0.2689, "1048576": 0.1672}
+    }
+  },
+  "fixed_dimensions": "every non-var axis is fixed by DeepSeek-V4.1-Flash at TP4: hidden 5120, 4 mHC streams, 16 of 64 heads of dim 512 a rank, a 128-position window plus the top-512 compressed rows a row (640 keys), wo_a 2 of 8 groups (1024 x 4096) a rank, 384 routed experts top-6 with a 576-column intermediate slice (2304 / 4, padded to 640) a rank, the shared expert's 576 columns a rank",
+  "notes": "rows: a decode step's rows are the requests in flight. At AgentX concurrency C (C agent sessions) the rows are the sum of C draws of the per-session in-flight distribution (agentx/agentx_inflight.json: 1 90.0 %, 2 5.4 %, 3 2.1 %, 4 0.85 %, ...); the four interactive concurrency points C = 1, 2, 4, 8 are weighted equally and only steps of at most 8 rows (the task's domain; wider steps use other widths or token parallel from 12 rows) are kept, then normalized. ctx: decode-step-weighted context share per power-of-two bucket (weight = tokens decoded, context = in + out / 2; agentx/agentx_decode_weighted.json), keyed by the bucket's upper bound; observed_min is the corpus's shortest input (128). K2's keys are the 128-position window and min(512, c / 2) compressed rows, so every AgentX context from 1,024 tokens up gives the same work: the performance cases fix ctx at 262,144 (the bucket holding the decode-step-weighted median 219,840, 25.9 % of decode steps) and vary rows over its whole production range 1..8, which spans 8x, below the 100x rule; shorter and boundary contexts are correctness-only. Live capture of the step shapes (CRS smoke 278746 built k1 / k2 widths s1-s4 and ran decode bs 1-4 on them) has not yet produced per-step statistics."
+}

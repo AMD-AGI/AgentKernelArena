@@ -1,0 +1,169 @@
+{
+ "description": "Decode and MTP-verify steps of GLM-5.3 at tensor parallelism 8 (SGLang widths 2, 4, 8; MTP verifies 4-token chains). Contexts are AgentX decode-step-weighted quantiles (semianalysisai/cc-traces-weka-062126, derived from corpus statistics, not yet confirmed by a live capture); other requests of a step hold ctx/2..ctx. Three compiled widths (2, 4, 8) keep the FlyDSL compile budget; prefill does not apply (the monokernel serves decode and verify only).",
+ "cases": [
+  {
+   "id": "r2_ctx2048",
+   "axes": {
+    "rows": 2,
+    "ctx": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "boundary: both axes at their minimum (every row selects 2048 of 2049-2050 keys)"
+  },
+  {
+   "id": "r4_ctx3072",
+   "axes": {
+    "rows": 4,
+    "ctx": 3072
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "boundary: non-power-of-two context, one verify request; AgentX <=4K bucket (4.4% of decode steps)"
+  },
+  {
+   "id": "r8_ctx5000",
+   "axes": {
+    "rows": 8,
+    "ctx": 5000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "boundary: context not a multiple of 16, two verify requests"
+  },
+  {
+   "id": "r2_ctx11299",
+   "axes": {
+    "rows": 2,
+    "ctx": 11299
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p5 (11K), 2 decode requests"
+  },
+  {
+   "id": "r2_ctx108326",
+   "axes": {
+    "rows": 2,
+    "ctx": 108326
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p25 (108K; 64-128K bucket 17%), 2 decode requests"
+  },
+  {
+   "id": "r2_ctx426387",
+   "axes": {
+    "rows": 2,
+    "ctx": 426387
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p75 (426K; 256-512K bucket 26.9%), 2 decode requests"
+  },
+  {
+   "id": "r4_ctx51891",
+   "axes": {
+    "rows": 4,
+    "ctx": 51891
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p10 (52K), one MTP verify request (4 rows)"
+  },
+  {
+   "id": "r4_ctx219840",
+   "axes": {
+    "rows": 4,
+    "ctx": 219840
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p50 (220K; 128-256K bucket 25.9%), one MTP verify request"
+  },
+  {
+   "id": "r4_ctx631824",
+   "axes": {
+    "rows": 4,
+    "ctx": 631824
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p90 (632K; 512K-1M bucket 16.7%), one MTP verify request"
+  },
+  {
+   "id": "r4_ctx889977",
+   "axes": {
+    "rows": 4,
+    "ctx": 889977
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p99 (890K), one MTP verify request"
+  },
+  {
+   "id": "r8_ctx108326",
+   "axes": {
+    "rows": 8,
+    "ctx": 108326
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p25 (108K), two MTP verify requests (8 rows, the largest width)"
+  },
+  {
+   "id": "r8_ctx219840",
+   "axes": {
+    "rows": 8,
+    "ctx": 219840
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p50 (220K), two MTP verify requests"
+  },
+  {
+   "id": "r8_ctx631824",
+   "axes": {
+    "rows": 8,
+    "ctx": 631824
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "AgentX decode-weighted p90 (632K), two MTP verify requests"
+  },
+  {
+   "id": "r8_ctx1048000",
+   "axes": {
+    "rows": 8,
+    "ctx": 1048000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "GLM-5.3's context cap (1M positions; index_max_seq 2^20), two MTP verify requests"
+  }
+ ]
+}

@@ -1,0 +1,231 @@
+schema_version: 3
+description: >-
+  One DeepSeek-V4-Pro decoder layer of a CSA layer (compress ratio 4, lightning indexer, exact top-1024)
+  for `rows` decode rows, tensor-parallel over 8 GPUs, both TP all-reduces included. Per row (one request
+  at position p): mHC pre-mix of the 4 hidden streams (Sinkhorn, 20 iterations) -> input RMSNorm -> FP8
+  block-scaled q_a / KV projections (and BF16 compressor projections, stored in the request's compressor
+  state rings) -> KV RMSNorm, RoPE, NoPE FP8 round trip, written to the sliding-window ring of the
+  two-pool FP8 unified KV cache -> q_a RMSNorm -> q_b (16 local heads, per-head RMS, RoPE, NoPE FP8) and
+  the replicated indexer query (64 heads, RoPE, Hadamard, FP4) with its head weights -> indexer scores
+  sum_h relu(q_h . k_c) w_h over the FP4 keys of every live compressed entry and the exact top-1024
+  (all entries below 1025) -> attention over the 128-token window plus the selected compressed rows with
+  a per-head sink -> inverse RoPE -> grouped o_a -> o_b -> TP sum -> mHC post -> FFN-side mHC pre ->
+  RMSNorm -> sqrt-softplus router top-6 of 384 (+ bias) -> 1 shared FP8 expert + 6 routed MXFP4 experts
+  on MXFP8 activations with clamped SwiGLU -> TP sum -> mHC post. `out` is the next residual (4 streams),
+  identical on every rank; the KV ring row and the compressor state rows of the step are written in
+  place. Quantization and rounding points are those of reference.py; weights are the rank's TP shard
+  in the kernel's packed tile layouts (inputs.py). Decode steps only; no row ends a compressor window.
+operator:
+  name: deepseek_v4_pro_decoder_layer
+  category: other
+interface:
+  axes:
+    rows: {kind: var, min: 1, max: 8, description: 'Decode rows (one request each) of the step.'}
+    ctx:
+      kind: var
+      min: 1
+      max: 1048575
+      description: >-
+        Context of the longest request; row 0 decodes at position ctx (ctx - 1 if that would end a
+        compressor window), the others at positions drawn in [ctx / 2, ctx].
+    hidden: {kind: const, value: 7168}
+    hc_mult: {kind: const, value: 4, description: 'mHC residual streams.'}
+    q_lora: {kind: const, value: 1536}
+    head_dim: {kind: const, value: 512, description: 'Shared-KV (MQA) head width; RoPE in its last 64.'}
+    rope_dim: {kind: const, value: 64}
+    local_heads: {kind: const, value: 16, description: 'Attention heads of one rank (128 / 8).'}
+    local_o_groups: {kind: const, value: 2, description: 'o_a groups of one rank (16 / 8).'}
+    o_lora: {kind: const, value: 1024}
+    n_experts: {kind: const, value: 384}
+    local_inter: {kind: const, value: 384, description: 'Expert intermediates of one rank (3072 / 8).'}
+    index_heads: {kind: const, value: 64}
+    index_head_dim: {kind: const, value: 128}
+    window: {kind: const, value: 128}
+    n_keys: {kind: const, value: 1152, description: 'Attention index list (window + top-1024).'}
+    compress_ratio: {kind: const, value: 4}
+    c_ring: {kind: const, value: 8, description: 'Compressor state rows a request (2 x ratio).'}
+    swa_ring: {kind: const, value: 128, description: 'Sliding-window ring rows a request.'}
+    page_tokens: {kind: const, value: 256, description: 'SGLang page size (64 compressed entries).'}
+    kv_row_bytes: {kind: const, value: 512}
+  derived_axes:
+    pages: ceil_div(ctx + 1, page_tokens)
+    n_pages: rows * pages
+    kv_rows: rows * swa_ring + rows * pages * (page_tokens // compress_ratio)
+    rope_rows: ctx + 4096  # a cos / sin cache past the step's positions, as SGLang's precomputed one
+    rope_half: rope_dim // 2
+    qkv_a_rows: q_lora + head_dim
+    qkv_c_rows: 4 * (head_dim + index_head_dim)
+    q_b_rows: local_heads * head_dim
+    i_q_b_rows: index_heads * index_head_dim
+    o_a_rows: local_o_groups * o_lora
+    o_a_k: local_heads * head_dim // local_o_groups
+    o_b_k: local_o_groups * o_lora
+    hc_packed: 2 * 32 * hc_mult * hidden
+    hc_sb: 3 + (2 + hc_mult) * hc_mult
+    c_width: 4 * head_dim
+    i_width: 4 * index_head_dim
+    c_state_k: 2 * head_dim
+    i_state_k: 2 * index_head_dim
+    page_codes: 4 * (page_tokens // compress_ratio) * 16
+    page_scales: 4 * (page_tokens // compress_ratio)
+    dn_scales: ceil_div(local_inter // 32, 8) * 8
+  inputs:
+    hidden: {kind: tensor, shape: [rows, hc_mult, hidden], dtype: bfloat16, distribution: {kind: generator},
+             description: 'The 4 mHC residual streams of every row (replicated); carries planted router winners.'}
+    positions: {kind: tensor, shape: [rows], dtype: int32, role: index, distribution: {kind: generator}}
+    kv_cache:
+      kind: tensor
+      shape: [kv_rows, kv_row_bytes]
+      dtype: float8_e4m3fn
+      role: state
+      distribution: {kind: generator}
+      description: >-
+        NoPE plane of the unified FP8 KV pool: per row 448 e4m3 codes, 16 bytes of per-64-group e8m0
+        scales (dword k = group 2k twice, group 2k + 1 twice), 48 zero bytes; rows [0, rows * 128) are
+        the requests' window rings, then 64 compressed rows per page. Compared as e4m3 values.
+    kv_rope: {kind: tensor, shape: [kv_rows, rope_dim], dtype: bfloat16, role: state, distribution: {kind: generator},
+              description: 'RoPE plane of the unified KV pool.'}
+    dest_rows: {kind: tensor, shape: [2, rows], dtype: int32, role: index, distribution: {kind: generator},
+                description: 'Per row: the window-ring row it writes, and the base row of the compressed pages.'}
+    indices: {kind: tensor, shape: [rows, n_keys], dtype: int32, role: index, distribution: {kind: generator},
+              description: 'The window''s ring rows (oldest first, own token last, -1 before position 0); the tail is unused.'}
+    rope_cos: {kind: tensor, shape: [rope_rows, rope_half], dtype: float32, role: weight, distribution: {kind: generator}}
+    rope_sin: {kind: tensor, shape: [rope_rows, rope_half], dtype: float32, role: weight, distribution: {kind: generator}}
+    g_in: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: uniform, low: 0.8, high: 1.2}}
+    g_q: {kind: tensor, shape: [q_lora], dtype: bfloat16, role: weight, distribution: {kind: uniform, low: 0.8, high: 1.2}}
+    g_kv: {kind: tensor, shape: [head_dim], dtype: bfloat16, role: weight, distribution: {kind: uniform, low: 0.8, high: 1.2}}
+    g_post: {kind: tensor, shape: [hidden], dtype: bfloat16, role: weight, distribution: {kind: uniform, low: 0.8, high: 1.2}}
+    attn_sink: {kind: tensor, shape: [local_heads], dtype: float32, role: weight, distribution: {kind: generator},
+                description: 'This rank''s heads'' sinks (logical input - all 128).'}
+    ape: {kind: tensor, shape: [compress_ratio, c_state_k], dtype: float32, role: weight,
+          distribution: {kind: normal, mean: 0.0, std: 0.5}, description: 'Compressor position bias (pooling only).'}
+    g_ckv: {kind: tensor, shape: [head_dim], dtype: bfloat16, role: weight, distribution: {kind: uniform, low: 0.8, high: 1.2}}
+    c_state: {kind: tensor, shape: [rows, c_ring, c_width], dtype: float32, role: state, distribution: {kind: generator},
+              description: 'Compressor state ring of every request: rows [kv (2 x 512) | score (2 x 512)].'}
+    i_ape: {kind: tensor, shape: [compress_ratio, i_state_k], dtype: float32, role: weight,
+            distribution: {kind: normal, mean: 0.0, std: 0.5}}
+    g_ickv: {kind: tensor, shape: [index_head_dim], dtype: bfloat16, role: weight, distribution: {kind: uniform, low: 0.8, high: 1.2}}
+    i_state: {kind: tensor, shape: [rows, c_ring, i_width], dtype: float32, role: state, distribution: {kind: generator},
+              description: 'Indexer-compressor state ring: rows [kv (2 x 128) | score (2 x 128)].'}
+    i_cache:
+      kind: tensor
+      shape: [n_pages, page_codes]
+      dtype: uint8
+      role: state
+      distribution: {kind: generator}
+      description: >-
+        FP4 index keys a page: [4 channel groups][64 entries][16 bytes] e2m1, low nibble first. Every
+        row with more than 1024 live entries holds a planted top-1024 that leads every other entry's
+        indexer score by a clear margin (inputs.py).
+    hc_attn_fn: {kind: tensor, shape: [hc_packed], dtype: bfloat16, role: weight, distribution: {kind: generator},
+                 description: 'The attention-side mHC mixer (logical fp32 [24, 4 x 7168]) padded to 32 rows, bf16 hi then lo, tiled.'}
+    hc_attn_sb: {kind: tensor, shape: [hc_sb], dtype: float32, role: weight, distribution: {kind: generator},
+                 description: '[3 scales | 24 bases].'}
+    hc_ffn_fn: {kind: tensor, shape: [hc_packed], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    hc_ffn_sb: {kind: tensor, shape: [hc_sb], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_qkv_a: {kind: tensor, shape: ['qkv_a_rows * hidden'], dtype: uint8, role: weight, distribution: {kind: generator},
+              description: 'FP8 [q_a | kv] rows (replicated), tiled.'}
+    s_qkv_a: {kind: tensor, shape: ['qkv_a_rows // 128', 'hidden // 128'], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_qkv_c: {kind: tensor, shape: ['qkv_c_rows * hidden'], dtype: bfloat16, role: weight, distribution: {kind: generator},
+              description: 'BF16 compressor kv | gate and indexer-compressor kv | gate rows (replicated), tiled.'}
+    w_q_b: {kind: tensor, shape: ['q_b_rows * q_lora'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    s_q_b: {kind: tensor, shape: ['q_b_rows // 128', 'q_lora // 128'], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_i_q_b: {kind: tensor, shape: ['i_q_b_rows * q_lora'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    s_i_q_b: {kind: tensor, shape: ['i_q_b_rows // 128', 'q_lora // 128'], dtype: float32, role: weight, distribution: {kind: generator}}
+    i_w: {kind: tensor, shape: [index_heads, hidden], dtype: bfloat16, role: weight,
+          distribution: {kind: normal, mean: 0.0, std: 0.012}, description: 'Indexer head-weight projection.'}
+    w_o_a: {kind: tensor, shape: ['o_a_rows * o_a_k'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    s_o_a: {kind: tensor, shape: ['o_a_rows // 128', 'o_a_k // 128'], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_o_b: {kind: tensor, shape: ['hidden * o_b_k'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    s_o_b: {kind: tensor, shape: ['hidden // 128', 'o_b_k // 128'], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_r: {kind: tensor, shape: ['n_experts * hidden'], dtype: bfloat16, role: weight, distribution: {kind: generator}}
+    bias: {kind: tensor, shape: [n_experts], dtype: float32, role: weight, distribution: {kind: normal, mean: 0.0, std: 0.02}}
+    w_ug: {kind: tensor, shape: [n_experts, '2 * local_inter', 'hidden // 2'], dtype: uint8, role: weight,
+           distribution: {kind: generator}, description: 'MXFP4 gate | up of this rank, ATOM gfx950 layout.'}
+    s_ug: {kind: tensor, shape: [n_experts, '2 * local_inter', 'hidden // 32'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_dn: {kind: tensor, shape: [n_experts, hidden, 'local_inter // 2'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    s_dn: {kind: tensor, shape: [n_experts, hidden, dn_scales], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_sug: {kind: tensor, shape: ['2 * local_inter * hidden'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    s_sug: {kind: tensor, shape: ['2 * local_inter // 128', 'hidden // 128'], dtype: float32, role: weight, distribution: {kind: generator}}
+    w_sdn: {kind: tensor, shape: ['hidden * local_inter'], dtype: uint8, role: weight, distribution: {kind: generator}}
+    s_sdn: {kind: tensor, shape: ['hidden // 128', 'local_inter // 128'], dtype: float32, role: weight, distribution: {kind: generator}}
+    epoch: {kind: tensor, shape: [8], dtype: int32, role: metadata, distribution: {kind: generator},
+            description: 'Word 0 the step (the launch tag), words 1-2 the wait deadline in 100 MHz ticks, 3-5 error words.'}
+    state_slots: {kind: tensor, shape: [rows], dtype: int32, role: index, distribution: {kind: generator}}
+    block_tables: {kind: tensor, shape: [rows, pages], dtype: int32, role: index, distribution: {kind: generator}}
+    i_cache_s: {kind: tensor, shape: [n_pages, page_scales], dtype: uint8, role: state, distribution: {kind: generator},
+                description: 'e8m0 scales of the FP4 keys: [4 groups][byte (e % 16) * 4 + e // 16].'}
+  outputs:
+    out: {shape: [rows, hc_mult, hidden], dtype: bfloat16}
+  mutable: [kv_cache, kv_rope, c_state, i_state]
+  generator: {file: inputs.py, symbol: make_inputs}
+distributed:
+  world_size: 8
+  symmetric_bytes: "world_size * rows * 114688 + rows * 4243456 + 256"
+  shard: {file: inputs.py, symbol: shard_inputs}
+  expected: {file: inputs.py, symbol: rank_expected}
+  ranks_agree: [out]
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: flydsl
+  entry: baseline/kernel.py
+  provenance:
+    source: sgl-project/sgl-amd-mono (DeepSeek-V4 layer adapted from ROCm/ATOM#2559) with ROCm/aiter FlyDSL buffer helpers
+    revision: 52486703fbf27e77f05b573e4d931d4eec87118d
+    path:
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/layer.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/common.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/helpers.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/ops.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/stages/hc.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/stages/qkv.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/stages/indexer.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/stages/attention.py
+      - sgl_amd_mono/deepseek_v4/gfx950/kernels/stages/ffn.py
+      - sgl_amd_mono/deepseek_v4/gfx950/config.py
+      - sgl_amd_mono/deepseek_v4/gfx950/layout.py
+      - sgl_amd_mono/deepseek_v4/gfx950/runner.py
+      - sgl_amd_mono/deepseek_v4/gfx950/packing.py
+      - sgl_amd_mono/common/ops.py
+      - sgl_amd_mono/common/guard.py
+      - sgl_amd_mono/common/sync.py
+      - sgl_amd_mono/common/plan.py
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd, a FlyDSL 0.3.2-compatible copy;
+        652f2d4b's raw buffer load/store pass the cache
+        modifier as an i32 operand, which FlyDSL 0.3.2's rocdl ops reject)
+      - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter 652f2d4b768239aefd515c929e84817681ff598d)
+    license: >-
+      Apache-2.0 (sgl-amd-mono; aiter's FlyDSL buffer_ops / dpp_utils); the DeepSeek-V4 kernel files and
+      common/ helpers are adapted from ROCm/ATOM (MIT, Copyright (C) 2026 Advanced Micro Devices, Inc.),
+      whose notice is in baseline/LICENSE.
+    notes: >-
+      SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the kernel is vendored from
+      52486703. Upstream runs it on FlyDSL >= 0.3.4; the AgentKernelArena runtime ships FlyDSL 0.3.2.
+    modifications: >-
+      Files flattened into baseline/ (stages as stage_*.py, common/ as mono_*.py, the V4 kernel modules as
+      dsv4_*.py) with relative imports. FlyDSL 0.3.2 bridges, written on llvm-dialect ops as
+      muse_spark/gfx950/compat.py does instead of patching FlyDSL: guard.stop_launch stores through an
+      llvm pointer (no fx.generic_store), ops.global_ptr / global_load use llvm pointers and loads, and the
+      indexer's top-k histogram uses an llvm atomicrmw (lds_atomic_add_i32) for fx.atomic_add. Candidate
+      rules: the builder's and kernel's locals() context dicts and LaunchState's setattr binding are spelled
+      out name by name; plan.kernel_sources (reads source files) is replaced by a fixed tag plus a function
+      naming every helper so FlyDSL's JIT key still hashes them; the msgspec mailbox classes, KernArgs, the
+      environment fault injection, the scrub kernel and aiter buffer_ops' FLYDSL_GPU_ARCH read are removed.
+      run() replaces Dsv4MonoRunner.launch: the scratch lives in the framework's symmetric buffer after the
+      peer regions and guard flags (zeroed every call) and the epoch buffer is read-only. Weight packing
+      (packing.py) moved to inputs.py's shard. The indexer score stage clamps its entry index to the row's
+      last live entry instead of N_COMP - 1: SGLang's block-table rows span max_seq, block_tables here only
+      the case's pages, and the dead lanes of a row's last score tile read past it (r1_c4100: entries
+      17-23 of 17), giving stale page numbers and wild i_cache addresses; dead lanes stay masked. The JIT
+      source tag moved to aka-vendored-v2. No numeric change to the device code.
+compare:
+  # the baseline's own out is 24.9-29.5 dB from the float64 reference (README.md, Correctness bounds)
+  out: {bound: baseline_relative, k: 4, baseline_min_sqnr_db: 21}
+  kv_cache: {bound: baseline_relative, k: 4}
+  kv_rope: {bound: baseline_relative, k: 4}
+  c_state: {bound: baseline_relative}
+  i_state: {bound: baseline_relative}
+workloads: workloads.json
+timeout_s: 3600
+platform_support:
+  required_arch: [gfx950]
