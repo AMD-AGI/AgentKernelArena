@@ -23,6 +23,7 @@ A run configuration defines a single experiment. Start from a file under
 | `target_gpu_model` | string | Target GPU model, for example `MI300X`, `MI325X`, `MI300A`, `MI355X`, or `RDNA4`; `MI300` remains the generic `gfx942` fallback. Used to select the Docker image architecture, set `PYTORCH_ROCM_ARCH`, and name the workspace. |
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |
+| `agent_sandbox` | `none` or `landlock` | Default `none`. `landlock` confines each optimizing agent's process tree to its task workspace with Linux Landlock; see [Agent sandbox](../how-to/agents.md#agent-sandbox). Claude Code, Codex, Cursor and DeepSeek Harness only; other agents, or a kernel without Landlock ABI 3, fail when the run starts. |
 
 GEAK resolves GPU IDs within the process-visible namespace; a masked Docker
 worker uses logical device zero. Host allocations remain controlled by the
@@ -316,6 +317,7 @@ Each task produces a `task_result.yaml` in its workspace:
 | `valid_optimized_cases` | Number of optimized test cases with usable timing results |
 | `speedup_calculation_error_message` | Error text if speedup could not be calculated, else `null` |
 | `optimization_summary` | Framework-generated note identifying the optimizing agent and centralized evaluator |
+| `agent_sandbox` | Present when `agent_sandbox` is enabled: `mode`, `status` (`enforced`, `unattested` or `invalid`), `launches`, `abi`, `rules` and `policy_sha256`. Only `enforced` can be accepted. |
 | `score` | Computed score (see below) |
 
 `tool_evaluation` uses this high-level shape:

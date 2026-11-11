@@ -344,7 +344,12 @@ def _build_context(
         return None
     try:
         validate_run_budget_mode(agent.value, config["agent"])
-    except ValueError as error:
+        from src.agent_sandbox import check_agent_supported, require_landlock, sandbox_mode
+        if sandbox_mode(config) != "none" and need_agent_launcher:
+            check_agent_supported(sandbox_mode(config), agent.value)
+            if agent.value != "qa_auditor":
+                require_landlock()
+    except (ValueError, RuntimeError) as error:
         print(f"Error: {error}")
         return None
 

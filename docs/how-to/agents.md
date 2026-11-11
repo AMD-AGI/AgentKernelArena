@@ -136,6 +136,55 @@ stay in its `agents/<agent_name>/launch_agent.py`. Other agents reject
 `budget_mode: time` when the run starts; GEAK and Forge use their own budget
 settings.
 
+## Agent sandbox
+
+By default an agent runs with its CLI's own sandbox disabled, inside a
+container that mounts the whole checkout. It can read and change framework
+code, other task packages and other runs' workspaces, including earlier
+agents' solutions. Set `agent_sandbox: landlock` in the run configuration to
+confine each agent's process tree with Linux
+[Landlock](https://docs.kernel.org/userspace-api/landlock.html):
+
+```yaml
+agent:
+  template: codex
+agent_sandbox: landlock
+```
+
+| The agent can | The agent cannot |
+| --- | --- |
+| Read and write its task workspace, its HOME, `/tmp` and `/dev/shm` | Open, list or change anything else in the checkout: `src/`, `tasks/`, other workspaces, `logs/` and other runs |
+| Read the frozen baseline workspace and the framework's agent context files | Write the baseline workspace or the framework's task-session state |
+| Read and execute everything outside the checkout except `/dev` | Open device nodes other than the terminal, null/random and GPU devices |
+| Use the network | |
+
+The framework writes one policy per task launch into the task-session state
+directory. Each launcher starts its CLI through `src/agent_sandbox.py`, which
+restricts itself, checks that it can no longer read a framework file, records
+an attestation and then executes the CLI. Every tool and compiler the agent
+starts inherits the restriction. The framework, the final evaluation and the
+candidate verifier run outside the sandbox, so measurements are unchanged.
+`task_result.yaml` records the outcome under `agent_sandbox`. A candidate is
+accepted only when every launch of the task attested the policy (`status:
+enforced`).
+
+Requirements and limits:
+
+- Linux with Landlock ABI 3 or later (kernel 6.2+), not blocked by seccomp.
+  Docker's default seccomp profile allows it. The run fails at startup when it
+  is unavailable; it never falls back to running unconfined.
+- Claude Code, Codex, Cursor and DeepSeek Harness are supported. GEAK and
+  Forge fail at startup with the sandbox enabled; the QA auditor is part of the
+  framework and is not confined.
+- Kernel tasks only. A `tasks/e2e/` serving task fails before its workspace is
+  created.
+- HOME must not contain the checkout. The Docker runner gives each worker its
+  own HOME under `/tmp`.
+- The network is not restricted. Every GPU render node in the container stays
+  reachable; as without the sandbox, the GPU is selected through the
+  visible-device environment variables. With Landlock ABI 6 the agent also
+  cannot signal processes outside its sandbox.
+
 ## Agent cost records
 
 For every task whose agent was launched, `main.py` writes

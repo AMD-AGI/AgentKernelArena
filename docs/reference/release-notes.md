@@ -53,6 +53,15 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `Aiter-task-mi300`, `image_kernel`) are replaced by the new tasks; no compatibility layer is
   provided. The end-to-end serving tasks keep schema v2.
 
+### Agent sandbox
+
+- `agent_sandbox: landlock` confines each optimizing agent's process tree to its
+  task workspace with Linux Landlock. The agent can no longer read or change
+  framework code, task packages or other workspaces in the checkout. Every
+  launch is attested, and an unattested run is not accepted. Supported for
+  Claude Code, Codex, Cursor and DeepSeek Harness; the default stays `none`.
+  See [Agent sandbox](../how-to/agents.md#agent-sandbox).
+
 ## AgentKernelArena 0.4.0
 
 AgentKernelArena 0.4.0 makes Arena an RL-ready environment with bounded,
