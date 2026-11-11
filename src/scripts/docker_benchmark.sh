@@ -1178,6 +1178,14 @@ build_eval_tool_image() {
             dockerfile="$HOST_ROOT/docker/eval-tools/${tool//_/-}/Dockerfile"
             ;;
     esac
+    # Pull each pinned FROM image through the daemon first. BuildKit resolves a
+    # missing base itself and, on hosts whose registry TLS only the daemon
+    # trusts, fails; with --pull=false it uses the local copy instead.
+    local base
+    while IFS= read -r base; do
+        docker image inspect "$base" >/dev/null 2>&1 || docker pull -q "$base" >&2 \
+            || die "Cannot pull $base for evaluation-tool image $image"
+    done < <(sed -nE 's/^ARG (BASE_IMAGE|BUILDER_IMAGE)=(.+)$/\2/p' "$dockerfile")
     if [[ -n "$target" ]]; then
         docker build --pull=false --target "$target" -f "$dockerfile" -t "$image" "$HOST_ROOT"
     else

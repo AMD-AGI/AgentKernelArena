@@ -930,13 +930,20 @@ def _python() -> str:
     return shutil.which("python") or os.sys.executable
 
 
+def _probe_environment(work_dir: Path, **extra: str) -> dict[str, str]:
+    # A sidecar's UID need not exist in the image's passwd database; PyTorch's
+    # cache paths call getpass, which then needs USER/LOGNAME.
+    return {"PYTHONDONTWRITEBYTECODE": "1", "USER": "aka", "LOGNAME": "aka",
+            "TORCHINDUCTOR_CACHE_DIR": str(work_dir / "inductor"), **extra}
+
+
 def _page_fault_guard_positive(probe_root: Path, work_dir: Path, artifact_dir: Path) -> dict[str, Any]:
     steps = {}
     for name in ("safe", "far"):
         steps[name] = _run_probe_step(
             name, [_python(), str(probe_root / "page_fault_probe.py"), name], cwd=work_dir,
-            environment={**_NO_CACHING, "PYTHONDONTWRITEBYTECODE": "1",
-                         "TRITON_CACHE_DIR": str(work_dir / "triton-cache")},
+            environment=_probe_environment(work_dir, **_NO_CACHING,
+                                           TRITON_CACHE_DIR=str(work_dir / "triton-cache")),
             artifact_dir=artifact_dir,
         )
     safe, far = steps["safe"], steps["far"]
@@ -958,7 +965,7 @@ def _csan_positive(probe_root: Path, work_dir: Path, artifact_dir: Path) -> dict
     for name in ("safe", "race"):
         steps[name] = _run_probe_step(
             name, [_python(), str(probe_root / "csan_probe.py"), name], cwd=work_dir,
-            environment={"PYTHONDONTWRITEBYTECODE": "1"}, artifact_dir=artifact_dir,
+            environment=_probe_environment(work_dir), artifact_dir=artifact_dir,
         )
     safe, race = steps["safe"], steps["race"]
     safe_ok = safe["returncode"] == 0 and "CSAN_RUN_COMPLETED safe" in safe["_stdout"]
@@ -979,7 +986,7 @@ def _tilelens_positive(evidence: Mapping[str, Any], probe_root: Path, work_dir: 
     for name in ("safe", "oob"):
         steps[name] = _run_probe_step(
             name, [_python(), str(probe_root / "tilelens_probe.py"), name], cwd=work_dir,
-            environment={"PYTHONPATH": root, "PYTHONDONTWRITEBYTECODE": "1"}, artifact_dir=artifact_dir,
+            environment=_probe_environment(work_dir, PYTHONPATH=root), artifact_dir=artifact_dir,
         )
         for line in str(steps[name]["_stdout"]).splitlines():
             if line.startswith("TILELENS_RESULT "):

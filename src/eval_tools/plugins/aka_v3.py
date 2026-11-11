@@ -86,6 +86,9 @@ def lane_invocation(
         # the sidecar's own framework tree stays off its import path.
         "PYTHONPATH": "",
         "PYTHONDONTWRITEBYTECODE": "1",
+        # The sidecar UID need not exist in passwd; PyTorch's getpass needs these.
+        "USER": context.env.get("USER", "aka"),
+        "LOGNAME": context.env.get("LOGNAME", "aka"),
         "AKA_EVAL_TOOL": tool,
         **dict(env or {}),
     }
