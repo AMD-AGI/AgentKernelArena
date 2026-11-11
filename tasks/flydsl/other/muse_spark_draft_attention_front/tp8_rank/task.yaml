@@ -87,8 +87,8 @@ baseline:
       (D-pre, D-attn, D-post, then D-MLP) that muse_spark/draft.py runs for the draft model
       (RadixArk/Muse-Spark-Open-DFlash2: 5 layers, hidden 8192) at TP8; it exchanges nothing with the
       other ranks. The common helper files are those of tasks/flydsl/other/muse_spark_layer/tp8 (same
-      revision, same modifications) and buffer_ops.py / dpp_utils.py those of
-      tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1.
+      revision, same modifications) and buffer_ops.py / dpp_utils.py are ROCm/aiter dbd8bf5bd
+      aiter/ops/flydsl/kernels (each file's header lists its change).
     modifications: >-
       One flat package with package-relative imports. draft_attn_half.py keeps only D-pre (dp_scratch_layout,
       dp_lds, its stages, DPreBuild, _common, build_dpre) and draft_mlp.py only the shapes, GEMV helpers and

@@ -60,9 +60,8 @@ The float64 definition is `dsv41_math.py` (its docstring lists every rounding); 
 Vendored from sgl-project/sgl-amd-mono at 52486703fbf27e77f05b573e4d931d4eec87118d (SGLang ROCm images pin
 e52803f9, 11 commits older): `deepseek_v41/gfx950/{layer,token_par}.py`, `attention/{back,front,gemv,plan,device}.py`
 (as `back.py`, `front.py`, `attn_gemv.py`, `attn_plan.py`, `attn_device.py`), `stages/*`, `common/{ops,sync,guard,
-epoch,mx,plan,stamps}.py`, and aiter's FlyDSL `buffer_ops.py` / `dpp_utils.py` at dbd8bf5bd. `ops.py`, `guard.py`,
-`buffer_ops.py` and `dpp_utils.py` are the copies of `tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1`
-(QA PASS on MI355X), `ops.py` plus `global_atomic_add`. The FlyDSL 0.3.2 bridge of
+epoch,mx,plan,stamps}.py`, and aiter's FlyDSL `buffer_ops.py` / `dpp_utils.py` at dbd8bf5bd. `ops.py` and `guard.py`
+carry the FlyDSL 0.3.2 changes listed in their headers, and `ops.py` adds `global_atomic_add`. The FlyDSL 0.3.2 bridge of
 `muse_spark/gfx950/compat.py` is applied as plain functions (no module patching): generic stores / loads, the
 pointer type, the MoE's global atomics and its route-mask LDS atomic OR (`ops.lds_atomic_or`, upstream
 `fx.llvm.atomic_or`) are llvm-dialect ops. The index-source index query (`index_query.py`,

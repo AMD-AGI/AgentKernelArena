@@ -71,8 +71,8 @@ QA-passed Qwen3.8-Flash-Next task.
 FlyDSL 0.3.2: the kernel uses no API newer than the runtime's apart from `ops.global_load` (written on
 llvm-dialect ops in the vendored `ops.py`, the bridge of `muse_spark/gfx950/compat.py`) and
 `stamps.stamp_flush` (`fx.generic_store`, only traced in a timeline build, which the task never makes).
-`ops.py`, `buffer_ops.py` and `dpp_utils.py` are the files of the QA-passed
-`tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1` baseline. `sync.py` keeps only the
+`ops.py` is sgl-amd-mono's `common/ops.py` with this bridge; `buffer_ops.py` and `dpp_utils.py` are
+ROCm/aiter `dbd8bf5bd` `aiter/ops/flydsl/kernels`. `sync.py` keeps only the
 scratch-space mailbox and the unguarded wait (these launches open no guard scope). Every modification
 is listed in `task.yaml` and in each file's header. Licenses: `baseline/LICENSE` (sgl-amd-mono and
 aiter Apache-2.0; ROCm/ATOM MIT for `ops.py`, `plan.py`, `sync.py` and `stamps.py`).

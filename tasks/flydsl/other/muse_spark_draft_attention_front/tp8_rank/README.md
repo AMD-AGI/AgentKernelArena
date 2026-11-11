@@ -32,7 +32,7 @@ bridge `compat.py`, and `common/{guard,epoch,mx,ops,plan,sync}.py` in the flatte
 `tasks/flydsl/other/muse_spark_layer/tp8` (relative imports, frozen dataclasses / a slotted class instead
 of `msgspec`, the 0.3.2 bridge called directly instead of `compat.install()` patching modules,
 environment reads replaced by their defaults, no source-file digest); `buffer_ops.py` and `dpp_utils.py`
-are ROCm/aiter `dbd8bf5bd` (the copies of `tasks/flydsl/other/qwen38_flash_next_decoder`). SGLang's ROCm
+are ROCm/aiter `dbd8bf5bd` (`aiter/ops/flydsl/kernels`). SGLang's ROCm
 images pin sgl-amd-mono `e52803f9` (11 commits older); the baseline is vendored from `52486703`. No kernel
 or stage code is changed.
 

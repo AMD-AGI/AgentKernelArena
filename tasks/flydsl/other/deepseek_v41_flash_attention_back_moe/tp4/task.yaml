@@ -160,9 +160,9 @@ baseline:
       (spec.py _launch); this task is the build of a layer with a compressed cache that is not an index source
       (MonoBuild(kt=True, compressed=True, index=False)) on synthetic weights. The test-only FFN launch (kffn, which
       runs in no forward) is K2's FFN half: its golden model (test/kernels/deepseek_v41/check_ffn.py golden_partial)
-      is the MoE part of this task's reference. ops.py, guard.py, buffer_ops.py and dpp_utils.py are the copies
-      vendored in tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1 (QA PASS on MI355X), ops.py plus
-      global_atomic_add.
+      is the MoE part of this task's reference. ops.py and guard.py are sgl-amd-mono's common/ops.py and
+      common/guard.py with the FlyDSL 0.3.2 bridge (ops.py plus global_atomic_add), buffer_ops.py and dpp_utils.py
+      ROCm/aiter dbd8bf5bd aiter/ops/flydsl/kernels; each file's header lists its change.
     modifications: >-
       Imports made relative to one flat package: attention/plan.py, gemv.py and device.py became attn_plan.py,
       attn_gemv.py and attn_device.py; stages/* and common/* keep their names. msgspec Structs became frozen

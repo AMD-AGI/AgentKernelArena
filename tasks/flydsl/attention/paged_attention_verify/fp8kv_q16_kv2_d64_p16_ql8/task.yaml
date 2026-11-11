@@ -72,8 +72,8 @@ baseline:
       verify step when the layer is not merged into the whole-layer launch, and the attention stage of that
       merged launch; its semantics follow the ROCm model's swa_verify_splitkv / gqa_verify_splitkv_2kv
       kernels. The vendored helper files are those of tasks/flydsl/other/muse_spark_layer/tp8 (same
-      revision, same modifications) and buffer_ops.py / dpp_utils.py those of
-      tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1.
+      revision, same modifications) and buffer_ops.py / dpp_utils.py are ROCm/aiter dbd8bf5bd
+      aiter/ops/flydsl/kernels (each file's header lists its change).
     modifications: >-
       One flat package with package-relative imports. layer.py keeps only the K-attn build (KAttnBuild,
       kattn_context, build_kattn), its build key a frozen dataclass instead of a msgspec.Struct, the

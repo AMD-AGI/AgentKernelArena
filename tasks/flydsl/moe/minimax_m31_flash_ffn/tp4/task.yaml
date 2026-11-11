@@ -116,8 +116,8 @@ baseline:
       nothing MI350X-specific (no CU-count or clock constant: its 256-CTA persistent grid needs 256 co-resident
       CTAs, which MI350X and MI355X both provide), and this task is validated on MI355X. Serving it needs SGLang
       PRs #45925 and #45936 (MiniMax-M3.1-Flash support and its gfx950 path); the task does not depend on them.
-      ops.py, guard.py, buffer_ops.py and dpp_utils.py are the copies already vendored (with the same FlyDSL
-      0.3.2 changes) in tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1, sync.py the one in
+      ops.py and guard.py are sgl-amd-mono's common/ops.py and common/guard.py with the FlyDSL 0.3.2
+      changes in their headers, buffer_ops.py and dpp_utils.py ROCm/aiter dbd8bf5bd's, sync.py the one in
       tasks/flydsl/other/minimax_m3_sparse_layer/tp4.
     modifications: >-
       Imports made relative to the flat baseline package. FlyDSL 0.3.2 (the AgentKernelArena runtime) lacks

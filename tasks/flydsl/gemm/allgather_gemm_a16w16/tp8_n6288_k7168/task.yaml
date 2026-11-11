@@ -46,7 +46,7 @@ baseline:
       sgl_amd_mono/kimi_k3/gfx950/tag.py, sgl_amd_mono/common/{guard,ops,plan,sync}.py,
       sgl_amd_mono/muse_spark/gfx950/compat.py, test/kernels/kimi_k31/ag_gemm_bench.py (launch configurations
       and launch arguments); buffer_ops.py from ROCm/aiter dbd8bf5bd aiter/ops/flydsl/kernels/buffer_ops.py
-      (the copy of tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1)
+      (a FlyDSL 0.3.2-compatible copy; its header lists its change)
     license: Apache-2.0 AND MIT (common/ops.py, plan.py and sync.py adapted from ROCm/ATOM, see baseline/LICENSE)
     modifications: >-
       Flattened into one package (imports made relative; buffer_ops.py is the bundled copy). Only the

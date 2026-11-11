@@ -84,10 +84,9 @@ baseline:
       SGLang ROCm images pin sgl-amd-mono e52803f9 (11 commits older); the baseline is vendored from
       52486703. The kernel is the K1 launch SGLang runs once per KDA layer (69 of Kimi-K3's 93 layers)
       in every narrow verify step, built as k1.build builds it for the snapshot spec state; this task
-      is one such launch on synthetic weights. ops.py, buffer_ops.py and dpp_utils.py are the files
-      the QA-passed tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1 baseline bundles
-      (ops.py there carries the FlyDSL 0.3.2 bridge of muse_spark/gfx950/compat.py on llvm-dialect
-      ops).
+      is one such launch on synthetic weights. ops.py is sgl_amd_mono/common/ops.py
+      with the FlyDSL 0.3.2 bridge of muse_spark/gfx950/compat.py on llvm-dialect ops; buffer_ops.py and
+      dpp_utils.py are ROCm/aiter dbd8bf5bd aiter/ops/flydsl/kernels (each file's header lists its change).
     modifications: >-
       kda.py, seam.py, tag.py: imports are package-relative, otherwise unchanged. stamps.py: clock
       from ops (the timeline build, whose stamp_flush needs FlyDSL >= 0.3.4, is never built). plan.py

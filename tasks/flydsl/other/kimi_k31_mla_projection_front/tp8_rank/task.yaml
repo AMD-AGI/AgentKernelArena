@@ -96,10 +96,9 @@ baseline:
       52486703. The kernel is the MLA projection front SGLang runs once per DSA layer of Kimi-K3.1
       (23 of 93 layers) in every narrow verify step (kimi_k31/spec.py: one request, L = 6 or 8), built
       as spec._mla_build builds it for a non-block-write layer with the absorb on; this task is one
-      such launch on synthetic weights. ops.py, buffer_ops.py and dpp_utils.py are the files the
-      QA-passed tasks/flydsl/other/qwen38_flash_next_decoder/verify_gdn3_qsa1 baseline bundles
-      (ops.py there carries the FlyDSL 0.3.2 bridge of muse_spark/gfx950/compat.py on llvm-dialect
-      ops).
+      such launch on synthetic weights. ops.py is sgl_amd_mono/common/ops.py with
+      the FlyDSL 0.3.2 bridge of muse_spark/gfx950/compat.py on llvm-dialect ops; buffer_ops.py and
+      dpp_utils.py are ROCm/aiter dbd8bf5bd aiter/ops/flydsl/kernels (each file's header lists its change).
     modifications: >-
       mla_pre.py, gemv.py, seam.py, tag.py: imports are package-relative, otherwise unchanged.
       stamps.py: clock from ops (the timeline build, whose stamp_flush needs FlyDSL >= 0.3.4, is

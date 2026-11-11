@@ -73,8 +73,8 @@ compiled builds an implementation. Other changes are vendoring only (listed in `
 imports, the definitions this launch uses, the FlyDSL 0.3.2 forms of the launch stop and the arrival
 counter's atomic (`compat.py`; the runtime has no `fx.llvm`), and only the production-relevant "linbf"
 merge (no "part" f32 partials, ks = 1 store, timing-only phases or stress delays). The common modules
-are the `muse_spark_layer` task's FlyDSL 0.3.2 copies; `buffer_ops.py` is the copy of
-`qwen38_flash_next_decoder` (cache policy as an op attribute, no environment read). Licenses:
+are the `muse_spark_layer` task's FlyDSL 0.3.2 copies; `buffer_ops.py` is ROCm/aiter
+`dbd8bf5bd`'s (cache policy as an op attribute, no environment read). Licenses:
 `baseline/LICENSE` (sgl-amd-mono Apache-2.0 with its NOTICE and the ROCm/ATOM MIT notice, FlyDSL's
 `buffer_ops.py` Apache-2.0).
 

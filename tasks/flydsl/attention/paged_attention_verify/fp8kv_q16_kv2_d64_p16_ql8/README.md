@@ -42,8 +42,8 @@ and are not part of this task.
 `tasks/flydsl/other/muse_spark_layer/tp8` (that task's modifications: relative imports, frozen dataclasses /
 a slotted class instead of `msgspec`, the 0.3.2 bridge called directly instead of `compat.install()`
 patching modules, environment reads replaced by their defaults, no source-file digest). `buffer_ops.py` and
-`dpp_utils.py` are ROCm/aiter `dbd8bf5bd` (the copies of `tasks/flydsl/other/qwen38_flash_next_decoder`,
-whose descriptor flags do not read the environment). SGLang's ROCm images pin sgl-amd-mono `e52803f9` (11
+`dpp_utils.py` are ROCm/aiter `dbd8bf5bd` (`aiter/ops/flydsl/kernels`; the buffer descriptor flags do
+not read the environment). SGLang's ROCm images pin sgl-amd-mono `e52803f9` (11
 commits older); the baseline is vendored from `52486703`.
 
 **One kernel change: a fix of the causal mask.** `run_kattn`'s chunk loop applies the mask only on a

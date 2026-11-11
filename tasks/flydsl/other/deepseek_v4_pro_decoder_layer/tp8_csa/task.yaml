@@ -190,8 +190,8 @@ baseline:
       - sgl_amd_mono/common/guard.py
       - sgl_amd_mono/common/sync.py
       - sgl_amd_mono/common/plan.py
-      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd, the FlyDSL 0.3.2-compatible copy that the
-        qwen38_flash_next_decoder/verify_gdn3_qsa1 task vendors; 652f2d4b's raw buffer load/store pass the cache
+      - aiter/ops/flydsl/kernels/buffer_ops.py (ROCm/aiter dbd8bf5bd, a FlyDSL 0.3.2-compatible copy;
+        652f2d4b's raw buffer load/store pass the cache
         modifier as an i32 operand, which FlyDSL 0.3.2's rocdl ops reject)
       - aiter/ops/flydsl/kernels/dpp_utils.py (ROCm/aiter 652f2d4b768239aefd515c929e84817681ff598d)
     license: >-
