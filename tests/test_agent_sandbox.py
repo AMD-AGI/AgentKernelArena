@@ -187,6 +187,15 @@ def cpu_runtime(monkeypatch):
     monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
 
 
+@pytest.fixture
+def separate_home(tmp_path, monkeypatch):
+    # The sandbox refuses a HOME that contains the checkout, which is the layout of
+    # hosted CI runners; the Docker runner gives every worker its own HOME.
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+
 def test_unsupported_agent_fails_before_any_workspace_is_created(tmp_path, cpu_runtime):
     path = _fixture_task(tmp_path)
     with pytest.raises(ValueError, match="not supported"):
@@ -203,7 +212,7 @@ def test_serving_tasks_are_refused_before_any_workspace_is_created(tmp_path, mon
     assert not (tmp_path / "run").exists() or not any((tmp_path / "run").glob("*fixture*"))
 
 
-def test_unattested_launch_is_not_accepted(tmp_path, monkeypatch, cpu_runtime):
+def test_unattested_launch_is_not_accepted(tmp_path, monkeypatch, cpu_runtime, separate_home):
     monkeypatch.setattr("src.agent_sandbox.require_landlock", lambda minimum=3: 6)
     path = _fixture_task(tmp_path)
     seen = {}
@@ -221,7 +230,7 @@ def test_unattested_launch_is_not_accepted(tmp_path, monkeypatch, cpu_runtime):
     assert report["candidate_accepted"] is False
 
 
-def test_attested_launch_keeps_the_normal_outcome(tmp_path, monkeypatch, cpu_runtime):
+def test_attested_launch_keeps_the_normal_outcome(tmp_path, monkeypatch, cpu_runtime, separate_home):
     monkeypatch.setattr("src.agent_sandbox.require_landlock", lambda minimum=3: 6)
     path = _fixture_task(tmp_path)
 
@@ -312,4 +321,5 @@ def test_landlock_confines_the_agent_process_tree(tmp_path):
         "child_read_framework": "denied", "dev_null": "ok"}
     assert secret.read_text() == "protected"
     assert prepared.record()["status"] == "enforced"
-    assert stat.S_IMODE(next(state.glob("agent-sandbox-*-*.json")).stat().st_mode) == 0o600
+    attestations = list(state.glob(f"agent-sandbox-{prepared.policy['nonce']}-*.json"))
+    assert len(attestations) == 1 and stat.S_IMODE(attestations[0].stat().st_mode) == 0o600
