@@ -53,6 +53,33 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `Aiter-task-mi300`, `image_kernel`) are replaced by the new tasks; no compatibility layer is
   provided. The end-to-end serving tasks keep schema v2.
 
+### Default sanitizers for schema-v3 tasks
+
+- A run configuration without an `evaluation_tools` section now runs sanitizers
+  on every schema-v3 kernel task on MI355X (`gfx950`), for any target language
+  and with no task configuration. `src/eval_tools/defaults.py` defines the set:
+  - the new page-fault guard (correctness with the caching allocators off);
+  - PyTorch CSAN;
+  - TileLens (symbolic out-of-bounds checks of Triton and Gluon kernels);
+  - rocJITsu Waitcheck and the rocJITsu race detector, fed by an automatic
+    capture of the kernels each call dispatches;
+  - Triton FpSan.
+- The new `gated` policy gives each tool a role:
+  - A `gate` blocks performance only on a definite finding that the task's
+    baseline, rechecked with the same tool, does not share.
+  - A `signal` (FpSan) never blocks.
+  - Unverified results (unsupported, tool error, timeout, inconclusive) are
+    recorded and never count as clean.
+- GPU ASan supports HIP (including the torch-extension build), Triton and
+  Gluon. It needs a bare-metal host and stays opt-in: virtualized GPU hosts
+  cannot run its runtime.
+- Gluon candidates are supported by FpSan, GPU ASan, TileLens, Waitcheck and
+  rocJITsu through the v3 path.
+- The runner builds missing default sidecar images on first use, and the
+  Waitcheck sidecar now gets the worker's GPU for capture.
+- `evaluation_tools: false` disables the stage. See
+  [Check kernels with evaluation tools](../how-to/use-evaluation-tools.md#default-sanitizers-for-schema-v3-tasks).
+
 ## AgentKernelArena 0.4.0
 
 AgentKernelArena 0.4.0 makes Arena an RL-ready environment with bounded,

@@ -29,6 +29,9 @@ class ToolName(_StringEnum):
     ROCJITSU_WAITCHECK = "rocjitsu_waitcheck"
     ROCJITSU_CONSAN = "rocjitsu_consan"
     HIP_FPSAN = "hip_fpsan"
+    PAGE_FAULT_GUARD = "page_fault_guard"
+    CSAN = "csan"
+    TILELENS = "tilelens"
 
 
 class KernelLanguage(_StringEnum):
@@ -84,6 +87,14 @@ class FindingSeverity(_StringEnum):
 class EvaluationPolicy(_StringEnum):
     ADVISORY = "advisory"
     REQUIRED = "required"
+    # Per-tool roles decide: a ``gate`` tool blocks performance only on a
+    # definite finding the baseline does not share; a ``signal`` never blocks.
+    GATED = "gated"
+
+
+class ToolRole(_StringEnum):
+    GATE = "gate"
+    SIGNAL = "signal"
 
 
 def _tool_value(value: str | ToolName) -> str:
@@ -647,6 +658,7 @@ class ToolPlan:
     plugin_version: str = "unknown"
     timeout_s: int = 3600
     options: Mapping[str, Any] = field(default_factory=dict)
+    role: ToolRole = ToolRole.GATE
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tool", _tool_value(self.tool))
@@ -654,6 +666,7 @@ class ToolPlan:
             raise ValueError("tool timeout_s must be positive")
         object.__setattr__(self, "timeout_s", int(self.timeout_s))
         object.__setattr__(self, "options", dict(self.options or {}))
+        object.__setattr__(self, "role", _enum_value(ToolRole, self.role))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -662,6 +675,7 @@ class ToolPlan:
             "plugin_version": self.plugin_version,
             "timeout_s": self.timeout_s,
             "options": _plain(self.options),
+            "role": self.role.value,
         }
 
 
@@ -700,10 +714,13 @@ class PolicyDecision:
     allowed: bool
     policy_satisfied: bool
     reasons: tuple[str, ...] = ()
+    # Under the gated policy: the gate findings that stopped performance.
+    blocking: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy", _enum_value(EvaluationPolicy, self.policy))
         object.__setattr__(self, "reasons", _string_tuple(self.reasons))
+        object.__setattr__(self, "blocking", _string_tuple(self.blocking))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -711,6 +728,7 @@ class PolicyDecision:
             "allowed": self.allowed,
             "policy_satisfied": self.policy_satisfied,
             "reasons": list(self.reasons),
+            "blocking": list(self.blocking),
         }
 
 
@@ -827,6 +845,7 @@ __all__ = [
     "ToolName",
     "ToolPlan",
     "ToolPlugin",
+    "ToolRole",
     "ToolRunResult",
     "effective_capability",
 ]

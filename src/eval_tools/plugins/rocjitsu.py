@@ -109,11 +109,29 @@ def _race_report_path(context: ToolContext) -> Path:
     )
 
 
+from . import aka_v3, v3_tools
+
 class RocJitsuPlugin:
     name = ToolName.ROCJITSU.value
     version = "3"
+    baseline_check = True
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
+        if aka_v3.is_v3(context):
+            return v3_tools.capability(self, context, runtime, v3_tools.rocjitsu_engine(context))
+        return self._legacy_assess(context, runtime)
+
+    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+        if aka_v3.is_v3(context):
+            return v3_tools.rocjitsu_invocation(self, context)
+        return self._legacy_build_invocation(context)
+
+    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+        if aka_v3.is_v3(context):
+            return v3_tools.rocjitsu_parse(self, context, execution)
+        return self._legacy_parse(context, execution)
+
+    def _legacy_assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
         unsupported = unsupported_language_check(profile.language, "rocjitsu")
         if unsupported is not None:
@@ -187,7 +205,7 @@ class RocJitsuPlugin:
             )
         return ToolCapability(self.name, engine, adapter, runtime)
 
-    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+    def _legacy_build_invocation(self, context: ToolContext) -> ToolInvocation:
         binary = sidecar_path(context, "rocjitsu_binary", required=True)
         config = sidecar_path(context, "config_path", required=True)
         assert binary is not None and config is not None
@@ -261,7 +279,7 @@ class RocJitsuPlugin:
             metadata=metadata,
         )
 
-    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+    def _legacy_parse(self, context: ToolContext, execution) -> ToolRunResult:
         aot_adapter = _expected_aot_adapter(context)
         report_path = _race_report_path(context)
         report = report_path.read_text(encoding="utf-8", errors="replace") if report_path.is_file() else ""

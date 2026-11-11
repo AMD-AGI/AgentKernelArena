@@ -27,20 +27,43 @@ from .contracts import (
     ToolContext,
     ToolEvaluation,
     ToolInvocation,
+    ToolRole,
     ToolRunResult,
 )
 from .registry import ToolRegistry
 from .task_profile import resolve_task_profile
 
 
+BASELINE_ALSO_FOUND = "baseline_also_found"
+
+
 def evaluate_policy(
     policy: EvaluationPolicy,
     evaluations: tuple[ToolEvaluation, ...],
+    roles: Mapping[str, ToolRole] | None = None,
 ) -> PolicyDecision:
-    """Resolve whether performance may proceed under advisory/required policy."""
+    """Resolve whether performance may proceed.
+
+    ``advisory`` never blocks and ``required`` blocks on anything but a
+    completed clean result. ``gated`` blocks only on a ``gate`` tool's
+    definite finding that the task's own baseline does not share; an
+    unverified gate (unsupported path, tool error, timeout, inconclusive
+    output) and every ``signal`` tool are recorded without blocking.
+    """
 
     reasons: list[str] = []
+    blocking: list[str] = []
     for evaluation in evaluations:
+        result = evaluation.result
+        if (
+            policy == EvaluationPolicy.GATED
+            and (roles or {}).get(evaluation.capability.tool, ToolRole.GATE) == ToolRole.GATE
+            and evaluation.capability.ready
+            and result is not None
+            and result.finding == FindingStatus.FOUND
+            and not result.metadata.get(BASELINE_ALSO_FOUND)
+        ):
+            blocking.append(f"{evaluation.capability.tool}:finding:found")
         capability = evaluation.capability
         assert capability.effective is not None
         if capability.effective.state == CapabilityState.NOT_APPLICABLE:
@@ -60,12 +83,18 @@ def evaluate_policy(
             reasons.append(f"{capability.tool}:finding:{result.finding.value}")
 
     satisfied = not reasons
-    allowed = True if policy == EvaluationPolicy.ADVISORY else satisfied
+    if policy == EvaluationPolicy.ADVISORY:
+        allowed = True
+    elif policy == EvaluationPolicy.GATED:
+        allowed = not blocking
+    else:
+        allowed = satisfied
     return PolicyDecision(
         policy=policy,
         allowed=allowed,
         policy_satisfied=satisfied,
         reasons=tuple(reasons),
+        blocking=tuple(blocking),
     )
 
 
@@ -439,15 +468,73 @@ class EvalToolManager:
                     f"failed to parse tool output: {exc}",
                     execution_record=execution,
                 )
+            if (
+                plan.policy == EvaluationPolicy.GATED
+                and tool_plan.role == ToolRole.GATE
+                and result.finding == FindingStatus.FOUND
+                and getattr(plugin, "baseline_check", False)
+            ):
+                result = self._baseline_check(plugin, tool_plan, context, root, plan.fingerprint, result)
             evaluations.append(ToolEvaluation(capability=capability, result=result))
 
         frozen_evaluations = tuple(evaluations)
-        decision = evaluate_policy(plan.policy, frozen_evaluations)
+        decision = evaluate_policy(
+            plan.policy,
+            frozen_evaluations,
+            {item.tool: item.role for item in plan.tools},
+        )
         return EvaluationReport(
             plan=plan,
             evaluations=frozen_evaluations,
             decision=decision,
         )
+
+    def _baseline_check(
+        self,
+        plugin: Any,
+        tool_plan: Any,
+        context: ToolContext,
+        root: Path,
+        fingerprint: str,
+        result: ToolRunResult,
+    ) -> ToolRunResult:
+        """Rerun a gate tool on the task's baseline after a candidate finding.
+
+        A finding the baseline shares is a property of the task (its reference
+        implementation does the same), so it is recorded but does not block
+        the candidate. The baseline run is otherwise identical: same tool,
+        runtime, options and timeout, in a fresh artifact directory.
+        """
+
+        artifact_dir = root / tool_plan.tool / fingerprint / f"baseline-{uuid.uuid4().hex}"
+        artifact_dir.mkdir(parents=True, exist_ok=False)
+        baseline_context = replace(
+            context,
+            artifact_dir=str(artifact_dir),
+            options={**dict(context.options), "aka_role": "baseline"},
+        )
+        try:
+            invocation = replace(
+                plugin.build_invocation(baseline_context),
+                timeout_s=tool_plan.timeout_s,
+                artifact_dir=str(artifact_dir),
+            )
+            execution = self.runtime_client.execute(invocation, baseline_context)
+            baseline = plugin.parse(baseline_context, execution)
+            check = {
+                "execution": baseline.execution.value,
+                "finding": baseline.finding.value,
+                "findings_count": baseline.findings_count,
+                "summary": baseline.summary,
+                "artifact_dir": str(artifact_dir),
+            }
+        except Exception as exc:  # an unrunnable baseline check leaves the finding blocking
+            baseline = None
+            check = {"execution": "tool_error", "error": f"{type(exc).__name__}: {exc}"[:2000]}
+        metadata = {**dict(result.metadata), "baseline_check": check}
+        if baseline is not None and baseline.finding == FindingStatus.FOUND:
+            metadata[BASELINE_ALSO_FOUND] = True
+        return replace(result, metadata=metadata)
 
     # ``execute`` reads naturally at evaluator integration sites and remains an
     # alias rather than a second orchestration implementation.
@@ -457,4 +544,4 @@ class EvalToolManager:
 ToolManager = EvalToolManager
 
 
-__all__ = ["EvalToolManager", "ToolManager", "evaluate_policy"]
+__all__ = ["BASELINE_ALSO_FOUND", "EvalToolManager", "ToolManager", "evaluate_policy"]

@@ -1,16 +1,21 @@
 ---
 myst:
     html_meta:
-        "description": "Run Triton FpSan, ROCm GPU AddressSanitizer, rocJITsu Race Detector, Waitcheck, ConSan, and HIP-FpSan as isolated AgentKernelArena evaluation tools."
-        "keywords": "AgentKernelArena, sanitizer, Triton FpSan, GPU ASan, rocJITsu, Waitcheck, ConSan, HIP-FpSan, ROCm, gfx950"
+        "description": "Run the default schema-v3 sanitizers (page-fault guard, PyTorch CSAN, TileLens, Waitcheck, rocJITsu, Triton FpSan) and opt-in GPU AddressSanitizer, ConSan and HIP-FpSan as isolated AgentKernelArena evaluation tools."
+        "keywords": "AgentKernelArena, sanitizer, page-fault guard, CSAN, TileLens, Triton FpSan, GPU ASan, rocJITsu, Waitcheck, ConSan, HIP-FpSan, ROCm, gfx950"
 ---
 
 # Check kernels with evaluation tools
 
-AgentKernelArena can run optional kernel-analysis tools after ordinary
-compilation and correctness checks and before performance measurement. The
-initial tool set is:
+AgentKernelArena runs kernel-analysis tools after ordinary compilation and
+correctness checks and before performance measurement. Schema-v3 kernel tasks
+on MI355X run a default set with no configuration; see
+[Default sanitizers for schema-v3 tasks](#default-sanitizers-for-schema-v3-tasks).
+The tool set is:
 
+- A page-fault guard that reruns correctness with the caching allocators off.
+- PyTorch's CUDA Sanitizer (CSAN) for cross-stream races.
+- TileLens for symbolic out-of-bounds checks of Triton and Gluon kernels.
 - Triton FpSan for reference-versus-candidate floating-point semantic
   comparison.
 - ROCm GPU AddressSanitizer (GPU ASan) for invalid device-memory accesses.
@@ -21,22 +26,109 @@ initial tool set is:
   exact code object launched by a focused native harness.
 - HIP-FpSan for explicitly ported HIP/C++ floating-point comparisons.
 
-This feature is experimental and opt-in. Capability and evidence checks fail
-closed; whether an incomplete result blocks performance is controlled by the
-`advisory` or `required` policy. It is not a general sanitizer suite:
+Capability and evidence checks fail closed; whether a finding or an
+incomplete result blocks performance is controlled by the `advisory`,
+`required` or `gated` policy. It is not a general sanitizer suite:
 every result is qualified by the kernel language, generated
 artifact, adapter, tool image, GPU architecture, and evidence that the intended
 kernel was actually instrumented or dispatched.
 
 > **Current validation boundary:** sidecar build locks, integrated startup
-> controls, and end-to-end fixtures exist only for MI355X (`gfx950`). The ROCm 10
-> migration has passed five runtime startup controls; GPU ASan qualification is
-> blocked by failing safe probes on the tested hosts. See the
+> controls, and end-to-end fixtures exist only for MI355X (`gfx950`). GPU ASan
+> passes its safe and out-of-bounds probes on bare-metal MI355X hosts and fails
+> on virtualized hosts, whose GPUs cannot service recoverable page faults on
+> host memory (XNACK); it is therefore not a default. See the
 > [runtime compatibility guide](../reference/mi355x-runtime.md).
 > Candidate readiness still depends on language, artifact, adapter, and attestation.
 > `gfx942` is unverified, and the Docker runner currently rejects
 > evaluation-tool sidecars on that architecture. Do not interpret normal
 > MI300/MI325 task support as sanitizer support.
+
+## Default sanitizers for schema-v3 tasks
+
+A run configuration without an `evaluation_tools` section runs the tools below
+on every schema-v3 kernel task when the host is a `gfx950` MI355X. A task
+declares nothing: each tool runs the generated workspace runner's
+`python3 -m _aka_eval.evaluate ROLE sanitize LANE` action
+(`src/tools/arena_eval/sanitize.py`) in its own sidecar, on the task's own
+correctness cases, for whatever `target_language` the run selected.
+`src/eval_tools/defaults.py` is the single source of truth for the set, the
+roles and the policy; the Docker runner builds any missing default image on
+first use.
+
+| Tool | Default | Role | What it checks | Languages |
+| --- | --- | --- | --- | --- |
+| `page_fault_guard` | on | gate | Every correctness case with PyTorch's caching allocator and ROCr's fragment allocator off. An access past an allocation then reaches an unmapped page and the GPU faults instead of landing silently in a neighbouring tensor; an output that passed correctness but changes with the allocator is also a finding. | Triton, Gluon, HIP, FlyDSL |
+| `csan` | on | gate | Every correctness case under PyTorch's CUDA Sanitizer: unsynchronized access to a tensor from two streams by PyTorch-visible work, which includes a HIP candidate's custom op. Raw Triton, Gluon and FlyDSL launches are not visible to it. | all four |
+| `tilelens` | on | gate | The smallest case with every Triton or Gluon kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). Uses no GPU time. | Triton, Gluon |
+| `rocjitsu_waitcheck` | on | gate | Static missing or too-weak wait detection on every kernel the role dispatched. One call on the smallest case captures the final code objects (Triton/Gluon cache, the HIP extension's embedded bundle, FlyDSL's embedded HSACO). | all four |
+| `rocjitsu` | on | gate | rocJITsu's simulated LDS/register race detector. Each captured Triton or Gluon launch becomes a replay capsule (code object, lowered ABI, launch geometry, memory before and after) replayed once in the simulator. | Triton, Gluon |
+| `triton_fpsan` | on | signal | The smallest case through Triton FpSan for the candidate and the baseline. A different digest means a different floating-point expression, which a correct rewrite (online softmax, another reduction order or precision) also produces, so this never blocks. | Triton or Gluon candidate with a Triton or Gluon baseline |
+| `gpu_asan` | **off** | gate | Every correctness case with GPU AddressSanitizer instrumentation: HIP rebuilt with `-fsanitize=address -shared-libsan --offload-arch=gfx950:xnack+`, Triton and Gluon compiled with `TRITON_ENABLE_ASAN=1` and buffer ops off. | HIP, Triton, Gluon; bare-metal hosts only |
+
+Turn the stage off with `evaluation_tools: false` (or `enabled: []`). Any
+explicit `evaluation_tools` section is used exactly as written instead of the
+defaults. To add GPU ASan on a bare-metal host, list the defaults plus
+`gpu_asan`:
+
+```yaml
+evaluation_tools:
+  policy: gated
+  enabled: [page_fault_guard, csan, tilelens, triton_fpsan, rocjitsu_waitcheck, rocjitsu, gpu_asan]
+```
+
+### Gate and signal roles
+
+The default `gated` policy reads each tool's `role` (`gate` unless the tool is
+a semantic comparison; set `evaluation_tools.tools.<tool>.role` to override):
+
+- A `gate` blocks performance, and therefore the score, only on a definite
+  finding: a fault, a sanitizer report, a race or hazard record, or an output
+  that changes with the allocator.
+- After a candidate finding the manager reruns the same tool on the task's
+  baseline. A finding the baseline shares is recorded with
+  `baseline_also_found: true` and does not block: the reference
+  implementation does the same thing.
+- Anything that is not a definite finding — an unsupported construct, a
+  kernel TileLens cannot interpret, a tool error, a timeout, a capture that
+  recorded nothing — is recorded as unverified (`policy_satisfied: false`) and
+  does not block.
+- A `signal` never blocks.
+
+`decision.blocking` lists the findings that stopped performance; a gated
+report's `decision.reasons` still lists every unverified tool. Monitor the
+unverified rate per language: a candidate that a lane cannot analyze (for
+example inline assembly that TileLens approximates) shows up there, not as clean. The
+default per-tool deadline is 1200 seconds.
+
+### What each lane covers and misses
+
+- The page-fault guard catches an access only when it leaves the mapped
+  allocation; a small overrun inside an allocation's rounding slack is missed.
+  A buffer instruction whose descriptor carries the tensor's real size clamps
+  instead of faulting. The FlyDSL baselines tested build descriptors that do
+  not clamp at the tensor end, so their out-of-bounds stores fault under the
+  guard.
+- GPU ASan does not see Triton buffer operations (the lane turns them off,
+  so it checks a slightly different kernel than the one timed) or Gluon's
+  explicit `gl.amd.cdna4.buffer_load`/`buffer_store`, which the page-fault
+  guard covers instead. An ASan-built HIP extension loads only in a process
+  with the ASan runtime preloaded, so the lane is always a separate process.
+- TileLens approximates inline assembly and cannot run a Gluon kernel that
+  calls a `@triton.jit` helper; both are unverified, not clean.
+- rocJITsu replays only what the capture recorded: up to 16 launches and
+  256 MiB of reachable memory per call. Tensor-descriptor arguments and
+  non-zero global scratch cannot be lowered yet, and HIP and FlyDSL launches
+  expose no lowered ABI to capture, so those are unverified.
+- CSAN sees PyTorch dispatches only; AKA's static policy already forbids
+  candidates from switching streams.
+
+Not enabled for v3 candidates: ConSan (it needs a focused native loader and an
+independent oracle per code object; rocJITsu covers LDS races on the same
+captures), HIP-FpSan (each candidate must be hand-ported to `fpsan::Value`),
+and Triton's own `consan`/`gsan` instrumentation modes (`consan` is
+implemented only for `gfx1250` and is a silent no-op on `gfx950` even though
+the compile metadata records it; `gsan` is NVIDIA-only).
 
 ## Keep the scoring runtime unchanged
 
@@ -122,6 +214,9 @@ The pinned sidecar dependencies are recorded in
 | `rocjitsu_waitcheck` | rocJITsu Waitcheck C API and CLI from pinned `rocm-systems` commit `ed35c0b...`; zstd source is separately checksum-locked. |
 | `rocjitsu_consan` | rocJITsu ConSan HSA hook from the same pinned `ed35c0b...` source, forced to strict record/replay mode. |
 | `hip_fpsan` | HIP-FpSan headers/source from pinned commit `0ac9be8a...`. |
+| `page_fault_guard` | None: the scoring base unchanged (the lane only switches allocators off). |
+| `csan` | None: PyTorch's bundled `torch.cuda._sanitizer`. |
+| `tilelens` | TileLens `3.1.1` and the wheels its sanitizer imports, hash-locked in `docker/eval-tools/tilelens/requirements.lock` and installed with `--no-deps` into `/opt/tilelens/site-packages`, which only the TileLens lane imports. |
 
 ## Understand support levels
 
@@ -166,6 +261,11 @@ intentional while report provenance and the evaluator/agent isolation boundary
 remain experimental.
 
 ### Strict support matrix
+
+For schema-v3 tasks the framework supplies every adapter itself; see
+[Default sanitizers for schema-v3 tasks](#default-sanitizers-for-schema-v3-tasks),
+which supersedes the Gluon row and the "adapter required" entries below for
+those tasks. The matrix describes task-declared adapters.
 
 The following table describes the current end-to-end evaluator, not just a
 successful standalone experiment. “Ready with adapter” means the task must
@@ -242,7 +342,8 @@ Additional boundaries:
 Building requires Docker and network access to the pinned package and source
 locations. Runtime sidecars themselves start with networking disabled.
 
-Build all six local `gfx950` images from the repository root:
+Build all nine local `gfx950` images from the repository root (a run builds
+any missing default image on first use):
 
 ```bash
 src/scripts/docker_benchmark.sh build-eval-tool-images
@@ -257,6 +358,9 @@ agent-kernel-arena/eval-tool-rocjitsu:gfx950-rocm10
 agent-kernel-arena/eval-tool-rocjitsu-waitcheck:gfx950-rocm10
 agent-kernel-arena/eval-tool-rocjitsu-consan:gfx950-rocm10
 agent-kernel-arena/eval-tool-hip-fpsan:gfx950-rocm10
+agent-kernel-arena/eval-tool-page-fault-guard:gfx950-rocm10
+agent-kernel-arena/eval-tool-csan:gfx950-rocm10
+agent-kernel-arena/eval-tool-tilelens:gfx950-rocm10
 ```
 
 Check that the workers start and report their pinned assets:
@@ -292,6 +396,9 @@ worker:
 | `rocjitsu_waitcheck` | Compile unbundled `gfx950` code objects and run the production entrypoint, inventory, C API, and parser on the correct-wait and missing-wait fixtures; retain a direct CLI hazard check as an independent engine control. |
 | `rocjitsu_consan` | Compile raw safe/racy HSACOs plus an image-owned module launcher, run the production entrypoint with separate instrumented/oracle argv, require the oracle environment to be scrubbed, and make the production parser return clean/finding with exact FNV attribution. |
 | `hip_fpsan` | Require explicitly ported equivalent expressions to match and a known-wrong expression to produce a different digest. |
+| `page_fault_guard` | With the caching allocators off, a safe Triton copy must pass and a store 256 MiB past its output must fault. |
+| `csan` | A side-stream read followed by `wait_stream` must pass; without the wait CSAN must report a race. |
+| `tilelens` | Through the lane's programmatic API (a `Sanitizer` with `abort_on_error` off), an in-bounds Triton copy must record no violation and an off-by-one copy at least one. |
 
 `eval-tools-smoke` prints this evidence and exits nonzero if a worker reports
 `degraded`, including a failed nested positive control. Inspect and retain the
@@ -338,11 +445,12 @@ global milestone.
 | 6. Narrow required gates | Change only individually qualified task/tool pairs to `required`; leave unsupported and not-yet-qualified paths advisory or disabled. | Required gates block seeded findings and infrastructure failures without changing ordinary correctness semantics or the scoring performance baseline. |
 | 7. Add `gfx942` separately | Build architecture-specific images/configs and rerun every startup, adapter, security, and workload fixture on MI300X/MI325X. | Only mark `gfx942` supported after independent qualification; do not infer it from `gfx950`. |
 
-Phase 0, the six integrated startup controls, complete plan serialization, the
-narrower runner mounts, and the trusted AOT replay core exist. No bundled task
-has completed production qualification through phases 2–6. Automatic capsule
-capture, exact candidate/dispatch provenance, top-level resume freshness, and
-the same-phase agent/evaluator boundary remain blockers.
+This plan governs task-declared adapters. Schema-v3 tasks follow the default
+set instead: framework adapters replace phase 2, the v3 capture closes phase 3
+for Triton and Gluon launches (FlyDSL and HIP code objects are captured for
+Waitcheck, not replay), and the `gated` policy with baseline rechecks replaces
+the advisory/required choice of phases 5–6. Top-level resume freshness and the
+same-phase agent/evaluator boundary of phase 4 remain open for every path.
 
 ## Start from the disabled example
 
@@ -373,7 +481,7 @@ evaluation_tools:
       options: {}
 ```
 
-Do not enable all six tools merely because all six images exist. On a
+Do not enable every tool merely because every image exists. On a
 heterogeneous task set, irrelevant tools become `not_applicable`, unsupported
 paths remain visible as unsupported, and missing adapters remain
 `adapter_required`.
@@ -398,8 +506,10 @@ make docker-run CONFIG=my_sanitized_run.yaml RUN_ARGS='--run-suffix asan_advisor
 The override names are `AKA_EVAL_TOOL_IMAGE_TRITON_FPSAN`,
 `AKA_EVAL_TOOL_IMAGE_GPU_ASAN`, `AKA_EVAL_TOOL_IMAGE_ROCJITSU`,
 `AKA_EVAL_TOOL_IMAGE_ROCJITSU_WAITCHECK`,
-`AKA_EVAL_TOOL_IMAGE_ROCJITSU_CONSAN`, and
-`AKA_EVAL_TOOL_IMAGE_HIP_FPSAN`.
+`AKA_EVAL_TOOL_IMAGE_ROCJITSU_CONSAN`,
+`AKA_EVAL_TOOL_IMAGE_HIP_FPSAN`, `AKA_EVAL_TOOL_IMAGE_PAGE_FAULT_GUARD`,
+`AKA_EVAL_TOOL_IMAGE_CSAN`, and `AKA_EVAL_TOOL_IMAGE_TILELENS`. An overridden
+image must already exist; only the default tags are built on demand.
 
 After selecting a tool-image reference, the runner resolves its local immutable
 image ID with `docker image inspect`, launches the sidecar by that bare
@@ -432,14 +542,15 @@ capability limits.
 For a schema-v3 kernel task the candidate is the `solution/` tree (the only
 editable tree; its entry is the host function `run()`, so no GPU dispatch symbol
 is declared), and the protected set includes `_aka_eval/` and `task.yaml`. The
-language is the run's `target_language`: `triton`, `hip` and `flydsl` map to the
-tool lanes below, while `gluon` and any unknown language report `unsupported`,
-so a `required` tool cannot pass silently. The `task.yaml` schema has no
-`evaluation_profile` or `evaluation_tools` fields, and the execution config the
-framework generates contains none, so a v3 task cannot register task-level
-adapters; the `evaluation_profile` and task-level `evaluation_tools` examples in
-this section describe task kinds whose execution config carries them and are not
-verified against a v3 kernel task.
+language is the run's `target_language`. The `task.yaml` schema has no
+`evaluation_profile` or `evaluation_tools` fields and needs none: every tool
+uses the framework's own v3 adapter (the workspace runner's `sanitize` lanes
+and the image-owned `aka_v3_entrypoint` capture for Waitcheck and rocJITsu),
+described in
+[Default sanitizers for schema-v3 tasks](#default-sanitizers-for-schema-v3-tasks).
+A language a tool cannot handle reports `unsupported` or `not_applicable`
+there. The `evaluation_profile` and task-level `evaluation_tools` examples in
+this section describe task kinds whose execution config carries them.
 
 Run-level configuration chooses tools, policy, optional image-identity
 assertions, and maximum timeout. A task may register adapters for known tools,
@@ -663,6 +774,7 @@ rewrite `pass_correctness`.
 | --- | --- | --- |
 | `advisory` | Recorded; `policy_satisfied: false` | Continues (`allowed: true`) |
 | `required` | Recorded with a reason | Skipped (`allowed: false`) |
+| `gated` | Recorded; only a `gate` tool's definite finding that the baseline does not share is listed in `decision.blocking` | Skipped only when `decision.blocking` is non-empty |
 
 An explicitly `not_applicable` tool is ignored by the gate. Under `required`,
 every other selected tool must have effective capability `ready`, execution
@@ -1006,11 +1118,12 @@ the following:
 - Only `gfx950` has pinned sidecar locks, passing integrated startup controls,
   and end-to-end fixtures; `gfx942` is unverified and rejected by the host
   runner.
-- Every useful task still needs a reviewed adapter command. Tool installation
-  alone usually produces `adapter_required`.
-- Five startup controls pass for the ROCm 10 profile. GPU ASan remains
-  unqualified on the tested hosts. Passing controls qualify tool installation,
-  not candidate coverage.
+- Schema-v3 tasks need no adapter. Every other task kind still needs a
+  reviewed adapter command; tool installation alone usually produces
+  `adapter_required`.
+- GPU ASan's startup control passes only on bare-metal hosts; on virtualized
+  hosts the tool is `unavailable_runtime`. Passing controls qualify tool
+  installation, not candidate coverage.
 - Runtime-internal asset paths are injected from verified sidecar health and
   cannot be supplied by task configuration.
 - Build-attestation artifact paths must be relative to the attestation file;
@@ -1038,8 +1151,11 @@ the following:
   submission evidence or explicit digests.
   The report serializes the complete tool plan.
 - Triton/FlyDSL AOT replay is implemented for validated, single-dispatch
-  `gfx950` capsules and forbids arbitrary launchers. Automatic evaluator-owned
-  capsule extraction and correctness-run provenance are not implemented.
+  `gfx950` capsules and forbids arbitrary launchers. For schema-v3 Triton and
+  Gluon candidates the image-owned entry point captures each launch of one
+  call on the smallest case and builds its capsule; the capture runs in the
+  same process as the candidate, guarded by the evaluator's integrity
+  snapshot, so it is evaluator-recorded but not independent of the candidate.
 - FlyDSL GPU ASan and Triton FpSan instrumentation are unavailable.
 - Precompiled AITER, rocBLAS, RCCL, and other library kernels are not covered
   unless the exact source is rebuilt through a supported and attested path.

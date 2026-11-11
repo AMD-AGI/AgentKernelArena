@@ -344,6 +344,14 @@ python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
 - **Scoring.** The per-case speedup is baseline time over candidate time; the
   task's speedup is their geometric mean. Any failed correctness case scores 0.
   The final evaluation remeasures the baseline next to the candidate.
+- **Sanitizers.** On MI355X the final evaluation also runs the default
+  sanitizers between correctness and performance (see
+  [Default sanitizers for schema-v3 tasks](use-evaluation-tools.md#default-sanitizers-for-schema-v3-tasks)).
+  A gate's definite finding stops performance, so the candidate scores 0,
+  unless the baseline shares it. Keep the baseline clean in every lane: a
+  finding the baseline shares leaves that lane unable to protect the task.
+  The framework runs `python3 -m _aka_eval.evaluate {baseline|candidate}
+  sanitize LANE` itself.
 
 ## Run configuration
 

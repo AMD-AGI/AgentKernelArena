@@ -27,11 +27,32 @@ from .base import (
 from .parsers import parse_fpsan_comparison
 
 
+from . import aka_v3, v3_tools
+
 class TritonFpSanPlugin:
     name = ToolName.TRITON_FPSAN.value
     version = "2"
+    # A signal: never a blocking gate, so no baseline rerun.
+    baseline_check = False
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
+        if not aka_v3.is_v3(context):
+            return self._legacy_assess(context, runtime)
+        adapted = v3_tools._with_command(v3_tools._triton_profile(context), "comparison_command", "fpsan")
+        legacy = self._legacy_assess(adapted, runtime)
+        engine = v3_tools.fpsan_engine(context)
+        return ToolCapability(self.name, legacy.engine if engine.state == CapabilityState.READY else engine,
+                              legacy.adapter, legacy.runtime)
+
+    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+        if aka_v3.is_v3(context):
+            return v3_tools.fpsan_invocation(self, context)
+        return self._legacy_build_invocation(context)
+
+    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+        return self._legacy_parse(context, execution)
+
+    def _legacy_assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
         unsupported = unsupported_language_check(profile.language, "triton_fpsan")
         if unsupported is not None:
@@ -76,7 +97,7 @@ class TritonFpSanPlugin:
             )
         return ToolCapability(self.name, engine, adapter, runtime)
 
-    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+    def _legacy_build_invocation(self, context: ToolContext) -> ToolInvocation:
         command = command_from_context(context, "comparison_command", "command")
         artifact_dir = Path(context.artifact_dir)
         cache_dir = artifact_dir / "triton-fpsan-cache"
@@ -103,7 +124,7 @@ class TritonFpSanPlugin:
             metadata={"attestation_path": str(attestation_path)},
         )
 
-    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+    def _legacy_parse(self, context: ToolContext, execution) -> ToolRunResult:
         attestation_path = artifact_path(
             context, "attestation_path", "build_attestation.json"
         )

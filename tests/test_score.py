@@ -141,3 +141,13 @@ def test_task_result_scores_explicit_mean_speedup_and_preserves_measurements(tmp
 
     assert calculated == pytest.approx(0.3)
     assert yaml.safe_load(result_file.read_text()) == {**result, "score": calculated}
+
+
+def test_a_blocking_tool_gate_scores_zero_even_with_a_recorded_speedup(tmp_path):
+    result = {
+        "pass_compilation": True, "pass_correctness": True, "pass_tool_gate": False,
+        "base_execution_time": 50.5, "best_optimized_execution_time": 25.5,
+        "speedup_ratio": 1.5, "benchmark_method_consistent": True,
+    }
+    (tmp_path / "task_result.yaml").write_text(yaml.safe_dump(result))
+    assert task_result_scoring(str(tmp_path)) == 0.0

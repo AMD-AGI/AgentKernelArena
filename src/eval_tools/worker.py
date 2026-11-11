@@ -915,6 +915,89 @@ def _hip_fpsan_positive(
     )
 
 
+_NO_CACHING = {
+    "PYTORCH_NO_HIP_MEMORY_CACHING": "1",
+    "AMD_PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
+    "HSA_DISABLE_FRAGMENT_ALLOCATOR": "1",
+}
+_FAULT_RE = re.compile(
+    r"Memory access fault by GPU|HSA_STATUS_ERROR_MEMORY_FAULT|Memory Fault Error|illegal memory access",
+    re.I,
+)
+
+
+def _python() -> str:
+    return shutil.which("python") or os.sys.executable
+
+
+def _page_fault_guard_positive(probe_root: Path, work_dir: Path, artifact_dir: Path) -> dict[str, Any]:
+    steps = {}
+    for name in ("safe", "far"):
+        steps[name] = _run_probe_step(
+            name, [_python(), str(probe_root / "page_fault_probe.py"), name], cwd=work_dir,
+            environment={**_NO_CACHING, "PYTHONDONTWRITEBYTECODE": "1",
+                         "TRITON_CACHE_DIR": str(work_dir / "triton-cache")},
+            artifact_dir=artifact_dir,
+        )
+    safe, far = steps["safe"], steps["far"]
+    safe_ok = safe["returncode"] == 0 and "SAFE_RUN_COMPLETED" in safe["_stdout"]
+    far_ok = far["returncode"] not in (0, None) and not far["timed_out"] and bool(
+        _FAULT_RE.search(str(far["_stderr"]) + str(far["_stdout"])))
+    return _positive_result(
+        passed=safe_ok and far_ok,
+        kind="page_fault_guard_safe_and_far_store",
+        detail="a safe copy must pass and a store 256 MiB past its output must fault with the caching "
+               "allocators off",
+        artifact_dir=artifact_dir, steps=steps,
+        controls={"safe": {"passed": safe_ok}, "far_store": {"passed": far_ok}},
+    )
+
+
+def _csan_positive(probe_root: Path, work_dir: Path, artifact_dir: Path) -> dict[str, Any]:
+    steps = {}
+    for name in ("safe", "race"):
+        steps[name] = _run_probe_step(
+            name, [_python(), str(probe_root / "csan_probe.py"), name], cwd=work_dir,
+            environment={"PYTHONDONTWRITEBYTECODE": "1"}, artifact_dir=artifact_dir,
+        )
+    safe, race = steps["safe"], steps["race"]
+    safe_ok = safe["returncode"] == 0 and "CSAN_RUN_COMPLETED safe" in safe["_stdout"]
+    race_ok = race["returncode"] not in (0, None) and "CSAN detected a possible data race" in race["_stderr"]
+    return _positive_result(
+        passed=safe_ok and race_ok,
+        kind="csan_stream_wait_and_race",
+        detail="a side-stream read followed by wait_stream must pass; without the wait CSAN must report a race",
+        artifact_dir=artifact_dir, steps=steps,
+        controls={"safe": {"passed": safe_ok}, "race": {"passed": race_ok}},
+    )
+
+
+def _tilelens_positive(evidence: Mapping[str, Any], probe_root: Path, work_dir: Path,
+                       artifact_dir: Path) -> dict[str, Any]:
+    root = str(evidence.get("tilelens_root") or "")
+    steps, records = {}, {}
+    for name in ("safe", "oob"):
+        steps[name] = _run_probe_step(
+            name, [_python(), str(probe_root / "tilelens_probe.py"), name], cwd=work_dir,
+            environment={"PYTHONPATH": root, "PYTHONDONTWRITEBYTECODE": "1"}, artifact_dir=artifact_dir,
+        )
+        for line in str(steps[name]["_stdout"]).splitlines():
+            if line.startswith("TILELENS_RESULT "):
+                try:
+                    records[name] = int(json.loads(line[len("TILELENS_RESULT "):])["records"])
+                except (ValueError, KeyError, TypeError):
+                    pass
+    safe_ok = steps["safe"]["returncode"] == 0 and records.get("safe") == 0
+    oob_ok = steps["oob"]["returncode"] == 0 and (records.get("oob") or 0) > 0
+    return _positive_result(
+        passed=bool(root) and safe_ok and oob_ok,
+        kind="tilelens_safe_and_off_by_one",
+        detail="TileLens must record no violation for an in-bounds copy and at least one for an off-by-one copy",
+        artifact_dir=artifact_dir, steps=steps,
+        controls={"safe": {"passed": safe_ok}, "off_by_one": {"passed": oob_ok}},
+    )
+
+
 def positive_control_evidence(
     tool: str,
     evidence: Mapping[str, Any],
@@ -958,6 +1041,12 @@ def positive_control_evidence(
             return _consan_positive(evidence, probe_root, work_dir, artifact_dir)
         if tool == "hip_fpsan":
             return _hip_fpsan_positive(evidence, probe_root, work_dir, artifact_dir)
+        if tool == "page_fault_guard":
+            return _page_fault_guard_positive(probe_root, work_dir, artifact_dir)
+        if tool == "csan":
+            return _csan_positive(probe_root, work_dir, artifact_dir)
+        if tool == "tilelens":
+            return _tilelens_positive(evidence, probe_root, work_dir, artifact_dir)
     except Exception as error:
         return _positive_result(
             passed=False,
@@ -1110,6 +1199,16 @@ def runtime_evidence(
             "public_header": str(public_header) if public_header.is_file() else None,
             "hip_fpsan_headers": public_header.is_file(),
             "hip_fpsan_commit": os.environ.get("AKA_HIP_FPSAN_COMMIT"),
+        })
+    elif tool in ("page_fault_guard", "csan"):
+        evidence.update({"torch_version": _package_version("torch"), "triton_version": _package_version("triton")})
+        evidence.update(_gpu_evidence())
+    elif tool == "tilelens":
+        root = Path(os.environ.get("AKA_TILELENS_ROOT", "/opt/tilelens/site-packages"))
+        evidence.update({
+            "tilelens_root": str(root) if (root / "tilelens").is_dir() else None,
+            "tilelens_version": os.environ.get("AKA_TILELENS_VERSION"),
+            "triton_version": _package_version("triton"),
         })
     evidence["positive_control"] = positive_control_evidence(
         tool,

@@ -15,16 +15,19 @@ from .contracts import (
     TaskProfile,
     ToolName,
     ToolPlan,
+    ToolRole,
 )
+from .defaults import DEFAULT_POLICY, DEFAULT_TIMEOUT_S, default_role
 
 
-PLAN_SCHEMA_VERSION = 2
+# Version 3 added the per-tool role and the ``gated`` policy.
+PLAN_SCHEMA_VERSION = 3
 MAX_TOOL_TIMEOUT_SECONDS = 3600
 _RUN_SECTION_KEYS = frozenset(
     {"enabled", "policy", "runtime_profile", "positive_control", "timeout_s", "tools"}
 )
 _TOOL_CONFIG_KEYS = frozenset(
-    {"runtime_ref", "image_digest", "timeout_s", "options"}
+    {"runtime_ref", "image_digest", "timeout_s", "options", "role"}
 )
 
 # These values are discovered and attested by the selected sidecar image.  They
@@ -90,6 +93,10 @@ _ADAPTER_OPTION_KEYS = {
     "rocjitsu": frozenset({"command", "launcher", "capsule", "race_report", "expected_kernel"}),
     "rocjitsu_waitcheck": frozenset({"code_object", "expected_kernel", "kernel_entry"}),
     "rocjitsu_consan": frozenset({"code_object", "command", "oracle_command"}),
+    # Schema-v3 lanes take no task adapter: the framework builds their argv.
+    "page_fault_guard": frozenset(),
+    "csan": frozenset(),
+    "tilelens": frozenset({"num_sms"}),
 }
 _ARGV_OPTIONS = frozenset({"command", "comparison_command", "launcher", "oracle_command"})
 
@@ -129,9 +136,18 @@ def _canonical(value: Any) -> Any:
         return {str(key): _canonical(value[key]) for key in sorted(value, key=str)}
     if isinstance(value, (tuple, list)):
         return [_canonical(item) for item in value]
-    if isinstance(value, EvaluationPolicy):
+    if isinstance(value, (EvaluationPolicy, ToolRole)):
         return value.value
     return value
+
+
+def _role(value: Any, *, tool: str) -> ToolRole:
+    if value is None:
+        return ToolRole(default_role(tool))
+    try:
+        return ToolRole(str(value).strip().lower())
+    except ValueError as error:
+        raise ValueError(f"evaluation_tools.tools.{tool}.role must be gate or signal") from error
 
 
 @dataclass(frozen=True)
@@ -140,6 +156,7 @@ class ToolConfig:
     runtime_ref: str | None = None
     timeout_s: int = 3600
     options: Mapping[str, Any] = field(default_factory=dict)
+    role: ToolRole | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _tool_name(self.name))
@@ -149,6 +166,7 @@ class ToolConfig:
             _timeout(self.timeout_s, field=f"timeout_s for {self.name}"),
         )
         object.__setattr__(self, "options", dict(self.options or {}))
+        object.__setattr__(self, "role", _role(self.role, tool=self.name))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -156,6 +174,7 @@ class ToolConfig:
             "runtime_ref": self.runtime_ref,
             "timeout_s": self.timeout_s,
             "options": _canonical(self.options),
+            "role": self.role.value,
         }
 
 
@@ -198,10 +217,14 @@ class EvalToolsConfig:
         elif not config or _RUN_SECTION_KEYS.intersection(str(key) for key in config):
             section = config
         else:
-            # A full run configuration with no evaluation_tools section keeps
-            # this optional stage disabled. Unknown fields are rejected once a
-            # section is explicitly present, where typos can weaken policy.
-            return cls.disabled()
+            # A full run configuration with no evaluation_tools section runs
+            # the default sanitizers that the host runner started (and
+            # published in AKA_EVAL_TOOLS_SELECTED); without that runner the
+            # stage stays off. Unknown fields are rejected once a section is
+            # explicitly present, where typos can weaken policy.
+            if not os.environ.get("AKA_EVAL_TOOLS_SELECTED", "").strip():
+                return cls.disabled()
+            section = {"policy": DEFAULT_POLICY, "timeout_s": DEFAULT_TIMEOUT_S}
         if section in (None, False):
             return cls.disabled()
         if not isinstance(section, Mapping):
@@ -278,6 +301,7 @@ class EvalToolsConfig:
                 and raw_item["runtime_ref"] != raw_item["image_digest"]
             ):
                 raise ValueError(f"evaluation_tools.tools.{name} has conflicting runtime identities")
+            _role(raw_item.get("role"), tool=name)
             canonical_tool_config[name] = raw_item
         default_timeout = _timeout(
             section.get("timeout_s", MAX_TOOL_TIMEOUT_SECONDS),
@@ -344,6 +368,7 @@ class EvalToolsConfig:
                         maximum=default_timeout,
                     ),
                     options=merged_options,
+                    role=item.get("role"),
                 )
             )
 
@@ -412,6 +437,7 @@ def build_evaluation_plan(
             plugin_version=str(plugin_versions[item.name]),
             timeout_s=item.timeout_s,
             options=item.options,
+            role=item.role,
         )
         for item in config.tools
     )
@@ -488,6 +514,7 @@ def merge_task_tool_config(
                 runtime_ref=base.runtime_ref,
                 timeout_s=timeout,
                 options={**dict(base.options), **dict(override.get("options", {}))},
+                role=base.role,
             )
         )
     return EvalToolsConfig(
