@@ -99,11 +99,15 @@ class MonoBuild:
 def key_tuple(key) -> tuple:
     """Every build parameter of ``key`` as a (name, value) pair, nested dataclasses
     flattened: FlyDSL keys a kernel on the scalars it closes over."""
+    return _flat_items(dataclasses.asdict(key))
+
+
+def _flat_items(fields: dict, prefix: str = "") -> tuple:
+    # dataclasses.asdict renders a nested dataclass as a dict; no field is a dict itself.
     out = []
-    for f in dataclasses.fields(key):
-        value = getattr(key, f.name)
-        if dataclasses.is_dataclass(value):
-            out += [(f"{f.name}.{n}", v) for n, v in key_tuple(value)]
+    for name, value in fields.items():
+        if isinstance(value, dict):
+            out += _flat_items(value, f"{prefix}{name}.")
         else:
-            out.append((f.name, value))
+            out.append((f"{prefix}{name}", value))
     return tuple(out)
