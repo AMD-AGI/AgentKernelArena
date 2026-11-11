@@ -125,6 +125,18 @@ def _rooted_at_self(node: ast.AST) -> bool:
     return isinstance(node, ast.Name) and node.id == "self"
 
 
+# What candidates may use of the aka_asm facade; mirrors asm.API (asm imports torch, the audit must not).
+AKA_ASM_API = frozenset({"load", "u32", "i32", "u64", "i64", "f32", "AsmError"})
+
+
+def _check_aka_asm_path(where: str, qualified: str) -> None:
+    """``aka_asm`` exposes only its public API; every other attribute is evaluator-internal."""
+    parts = qualified.split(".")
+    if parts[0] == "aka_asm" and len(parts) > 1 and parts[1] not in AKA_ASM_API:
+        raise PolicyError(f"{where}: aka_asm.{parts[1]} is not part of the aka_asm API "
+                          f"({', '.join(sorted(AKA_ASM_API))})")
+
+
 def _check_getattr(where: str, node: ast.Call, names: dict[str, str]) -> None:
     """``getattr(obj, "name")`` follows the attribute rules; a computed name only works on ``self``."""
     if len(node.args) < 2 or node.keywords:
@@ -135,6 +147,8 @@ def _check_getattr(where: str, node: ast.Call, names: dict[str, str]) -> None:
         base = _qualified(obj, names)
         if base and f"{base}.{name.value}".startswith("torch."):
             _check_torch_path(where, f"{base}.{name.value}")
+        if base:
+            _check_aka_asm_path(where, f"{base}.{name.value}")
     elif not _rooted_at_self(obj):
         raise PolicyError(f"{where}: getattr with a computed name is allowed only on self (attribute "
                           "proxies); name the attribute directly")
@@ -220,6 +234,7 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                         raise PolicyError(f"{where}: star imports are not allowed")
                     full = f"{module}.{alias.name}"
                     _check_attribute_name(where, alias.name)
+                    _check_aka_asm_path(where, full)
                     if module == "torch" and any(full.startswith(p) for p in TORCH_FORBIDDEN_PREFIXES):
                         raise PolicyError(f"{where}: {full} is not a candidate implementation dependency")
                 backend_seen |= module.split(".")[0] in ("triton", "flydsl", "aka_asm")
@@ -228,6 +243,8 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                 qualified = _qualified(node, names)
                 if qualified and qualified.startswith("torch."):
                     _check_torch_path(where, qualified)
+                if qualified:
+                    _check_aka_asm_path(where, qualified)
             elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr":
                 _check_getattr(where, node, names)
             elif isinstance(node, ast.Name):
@@ -462,11 +479,11 @@ class LaunchObserver:
         elif self.language == "asm":
             from . import asm
 
-            start = len(asm.LAUNCHES)
+            start = asm.launch_count()
             try:
                 yield self
             finally:
-                self.launches.extend(asm.LAUNCHES[start:])
+                self.launches.extend(asm.launches_since(start))
         else:
             yield self
 

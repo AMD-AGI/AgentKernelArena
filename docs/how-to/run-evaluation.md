@@ -111,7 +111,10 @@ launches kernels from `.s` files beside it through the evaluator's `aka_asm`
 helper: `aka_asm.load("kernel.s", "symbol")` assembles a file with the image's
 ROCm `clang` and `ld.lld` for the current GPU and loads it, and
 `kernel.launch(grid=, block=, args=)` launches it on the current stream, where
-CUDA-graph timing captures it. The audit allows only `.py` and `.s` files and
+CUDA-graph timing captures it. `aka_asm` is a facade that exposes only `load`,
+the typed scalars and `AsmError`; the evaluator keeps its internals, launch
+records and build evidence private, and loads only audited `.s` text and the
+baseline's hash-pinned code objects. The audit allows only `.py` and `.s` files and
 rejects `.incbin`/`.include`; the runtime rules are those of the other Python
 languages, and every call must launch an assembly kernel. The agent-facing guide
 is `src/prompts/cheatsheet/asm_cheatsheet.md`. A language whose toolchain

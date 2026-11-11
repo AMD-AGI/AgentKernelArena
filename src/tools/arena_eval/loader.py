@@ -145,12 +145,13 @@ def _load_python(contract: Contract, implementation: Implementation) -> Loaded:
                              f"{path} is not allowed")
     code_objects = implementation_code_objects(contract, implementation)
     if implementation.language == "asm":
-        # Assembly packages launch their kernels through the evaluator's helper,
-        # which loads only the baseline's vendored code objects.
+        # Assembly packages import the aka_asm facade. Its helper loads only the
+        # baseline's vendored code objects and these audited .s texts.
         from . import asm
 
-        asm.ALLOWED_CODE_OBJECTS = frozenset(contract.code_objects)
-        sys.modules[asm.ALIAS] = asm
+        asm.allow_code_objects(contract.code_objects)
+        asm.register_sources((WORKSPACE / implementation.root).resolve(strict=True), sources)
+        sys.modules[asm.ALIAS] = asm.FACADE
     package = f"{PACKAGE_PREFIX}{implementation.role}_{_content_hash(sources, json.dumps(code_objects, sort_keys=True))}"
     root = (WORKSPACE / implementation.root).resolve(strict=True)
     if package not in sys.modules:

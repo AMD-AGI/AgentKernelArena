@@ -108,7 +108,7 @@ def _load(contract: Contract, role: str, *, audit: bool, integrity=None):
     if implementation.language == "asm":
         from . import asm
 
-        built = len(asm.BUILD_EVIDENCE["files"])
+        built = len(asm.build_evidence()["files"])
     if audit:
         entry = Path(implementation.entry_file).relative_to(implementation.root).as_posix()
         if implementation.language == "hip":
@@ -125,8 +125,8 @@ def _load(contract: Contract, role: str, *, audit: bool, integrity=None):
                                role=role, enforce=audit, integrity=integrity)
     evidence["package"] = loaded.package
     if implementation.language == "asm":
-        evidence["asm_build"] = {**{k: v for k, v in asm.BUILD_EVIDENCE.items() if k != "files"},
-                                 "files": asm.BUILD_EVIDENCE["files"][built:]}
+        build = asm.build_evidence()
+        evidence["asm_build"] = {**build, "files": build["files"][built:]}
     if loaded.hip_op:
         evidence["hip_op"] = loaded.hip_op
     return call, evidence

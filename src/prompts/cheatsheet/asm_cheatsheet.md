@@ -49,6 +49,9 @@ def run(*, a, b, out) -> None:
   - a bare Python `int`/`float` is rejected, so the width is always explicit.
 
   The `.args` list in the kernel's `.amdgpu_metadata` must describe exactly this layout.
+- `aka_asm` provides only `load`, `u32`, `i32`, `u64`, `i64`, `f32` and `AsmError`; the audit rejects
+  any other `aka_asm` attribute. A loaded kernel offers only `launch`. Only the `.s` sources the
+  evaluator audited (assembled from that exact text) and the baseline's vendored code objects load.
 
 Candidate rules (enforced by the evaluator, not a sandbox):
 

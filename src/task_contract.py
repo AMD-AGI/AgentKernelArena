@@ -780,6 +780,8 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
                       "`grid` counts workgroups. Arguments are packed in order at their natural alignment: "
                       "tensors as 64-bit device pointers, scalars only through `aka_asm.u32`, `i32`, `u64`, "
                       "`i64` and `f32`. Each kernel's `.amdgpu_metadata` must declare the same arguments. "
+                      "`aka_asm` provides only `load`, `u32`, `i32`, `u64`, `i64`, `f32` and `AsmError`; any "
+                      "other attribute is rejected, and a loaded kernel offers only `launch`. "
                       "`.incbin` and `.include` are not allowed; each kernel's whole source is in its `.s` "
                       "file."]
     lines += ["", "## Interface", "", "| Name | Kind | Shape | Dtype |", "|---|---|---|---|"]

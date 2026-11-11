@@ -114,7 +114,7 @@ def test_an_asm_candidate_passes_the_audit():
      "import triton is not allowed for asm"),
     ({"kernel.py": "import torch\n\n\ndef run(*, x, out) -> None:\n    pass\n", "fill.s": FILL_S},
      "imports no asm kernel language"),
-    ({"kernel.py": KERNEL_PY.replace("FILL.launch", "aka_asm.LAUNCHES = []\n    FILL.launch"), "fill.s": FILL_S},
+    ({"kernel.py": KERNEL_PY.replace("FILL.launch", "aka_asm.load = None\n    FILL.launch"), "fill.s": FILL_S},
      "cannot mutate an imported module"),
 ])
 def test_asm_candidate_audit_rejections(sources, message):
@@ -127,10 +127,10 @@ def test_other_python_languages_still_reject_non_python_files():
         audit_python_sources({"kernel.py": "import triton\n", "fill.s": FILL_S}, "triton")
 
 
-def test_the_launch_observer_requires_an_assembly_launch_per_call():
+def test_the_launch_observer_requires_an_assembly_launch_per_call(monkeypatch):
     observer = LaunchObserver("asm", "pkg")
     with observer.observe():
-        asm.LAUNCHES.append("fill")
+        asm._STATE.launches.append("fill")      # what a successful launch records
     observer.require("candidate")
     assert observer.launches == ["fill"]
     idle = LaunchObserver("asm", "pkg")
@@ -171,14 +171,14 @@ def test_a_source_assembles_into_a_cached_code_object(tmp_path, monkeypatch):
     except asm.AsmError:
         pytest.skip("ROCm assembler not in this environment")
     monkeypatch.setenv("AKA_KERNEL_CACHE_DIR", str(tmp_path / "cache"))
-    source = tmp_path / "fill.s"
-    source.write_text(FILL_S)
-    first = asm.assemble(source, "fill.s", "gfx950")
-    assert first.is_file() and first.read_bytes()[:4] == b"\x7fELF"
-    assert asm.assemble(source, "fill.s", "gfx950") == first
-    assert asm.BUILD_EVIDENCE["files"][-1]["source"] == "fill.s"
-    source.write_text(FILL_S.replace("v_add_u32 v2, s6, v0", "v_add_u32 v2, s6, s6"))
-    assert asm.assemble(source, "fill.s", "gfx950") != first
+    first = asm._assemble(FILL_S, "fill.s", "gfx950")
+    assert first[:4] == b"\x7fELF"
+    assert asm._assemble(FILL_S, "fill.s", "gfx950") == first
+    import hashlib
+
+    assert hashlib.sha256(first).hexdigest() in asm._STATE.assembled_code_objects
+    assert asm.build_evidence()["files"][-1]["source"] == "fill.s"
+    assert asm._assemble(FILL_S.replace("v_add_u32 v2, s6, v0", "v_add_u32 v2, s6, s6"), "fill.s", "gfx950") != first
 
 
 def test_a_broken_source_reports_the_assembler_error(tmp_path, monkeypatch):
@@ -187,10 +187,8 @@ def test_a_broken_source_reports_the_assembler_error(tmp_path, monkeypatch):
     except asm.AsmError:
         pytest.skip("ROCm assembler not in this environment")
     monkeypatch.setenv("AKA_KERNEL_CACHE_DIR", str(tmp_path / "cache"))
-    source = tmp_path / "bad.s"
-    source.write_text(FILL_S.replace("s_endpgm", "s_not_an_instruction"))
     with pytest.raises(asm.AsmError, match="clang failed"):
-        asm.assemble(source, "bad.s", "gfx950")
+        asm._assemble(FILL_S.replace("s_endpgm", "s_not_an_instruction"), "bad.s", "gfx950")
 
 
 # --- vendored code objects of asm baselines (baseline.provenance.code_objects) ---------------------
@@ -278,18 +276,21 @@ def test_aka_asm_loads_only_allowed_code_objects(tmp_path, monkeypatch):
     module = types.ModuleType("_aka_impl_test_pkg")
     module.__path__ = [str(package)]
     monkeypatch.setitem(sys.modules, "_aka_impl_test_pkg", module)
-    caller = {"__package__": "_aka_impl_test_pkg", "aka_asm": asm}
-    monkeypatch.setattr(asm, "ALLOWED_CODE_OBJECTS", frozenset())
-    with pytest.raises(asm.AsmError, match="not one of the baseline's vendored code objects"):
+    caller = {"__package__": "_aka_impl_test_pkg", "aka_asm": asm.FACADE}
+    asm.allow_code_objects(set())
+    with pytest.raises(asm.AsmError, match="neither a vendored code object"):
         exec("aka_asm.load('k.co', 'kernel')", caller)
     with pytest.raises(asm.AsmError, match="not a file in the implementation directory"):
         exec("aka_asm.load('../outside.co', 'kernel')", caller)
     digest = hashlib.sha256((package / "k.co").read_bytes()).hexdigest()
-    monkeypatch.setattr(asm, "ALLOWED_CODE_OBJECTS", frozenset({digest}))
-    # An allowed hash passes the policy; loading the fake bytes then fails in HIP or for lack of a GPU.
-    with pytest.raises(Exception) as raised:
-        exec("aka_asm.load('k.co', 'kernel')", caller)
-    assert "vendored code objects" not in str(raised.value)
+    asm.allow_code_objects({digest})
+    try:
+        # An allowed hash passes the policy; loading the fake bytes then fails in HIP or for lack of a GPU.
+        with pytest.raises(Exception) as raised:
+            exec("aka_asm.load('k.co', 'kernel')", caller)
+        assert "neither a vendored code object" not in str(raised.value)
+    finally:
+        asm.allow_code_objects(set())
 
 
 def test_qa_accepts_declared_code_objects_and_flags_others(tmp_path):
@@ -305,3 +306,94 @@ def test_qa_accepts_declared_code_objects_and_flags_others(tmp_path):
     (workspace / "baseline/fill.co").write_bytes(b"changed")
     check_package(workspace, findings)
     assert [f for f in findings if "is a binary" in str(f)]
+
+
+# --- the aka_asm facade: candidates reach only load, the typed scalars and AsmError ---------------
+
+def _one_file(body: str) -> dict:
+    return {"kernel.py": "import torch\nimport aka_asm\n\nFILL = aka_asm.load('fill.s', 'fill')\n\n\n"
+                         "def run(*, x, out) -> None:\n" + "".join(f"    {line}\n" for line in body.splitlines())
+                         + "    FILL.launch(grid=(1, 1, 1), block=(64, 1, 1), args=[out, aka_asm.u32(1)])\n",
+            "fill.s": FILL_S}
+
+
+@pytest.mark.parametrize("body", [
+    'k = aka_asm.Kernel(aka_asm.Path("lib.co"), "sym", "label")',        # unchecked code object load
+    'aka_asm.LAUNCHES.append("x")',                                      # fake a launch
+    'aka_asm.BUILD_EVIDENCE["files"].clear()',                           # edit build evidence
+    'aka_asm._run(["/bin/true"])',                                       # run a process
+    'h = aka_asm._hip()',                                                # the HIP runtime CDLL
+    'aka_asm.Path("x").write_text("y")',                                 # file I/O
+    'aka_asm.assemble(aka_asm.Path("/tmp/other.s"), "o.s", "gfx950")',  # unaudited source
+    'aka_asm.torch.matmul(x, x)',                                        # torch rules via the facade
+    'aka_asm._STATE.launches.append("x")',                               # private state
+    'aka_asm.allow_code_objects({"0" * 64})',                            # evaluator controls
+    'f = getattr(aka_asm, "_open")',                                     # getattr route
+])
+def test_every_non_api_aka_asm_attribute_is_rejected(body):
+    with pytest.raises(PolicyError, match="not part of the aka_asm API|not allowed|cannot mutate"):
+        audit_python_sources(_one_file(body), "asm")
+
+
+@pytest.mark.parametrize("statement", ["from aka_asm import Kernel", "from aka_asm import _hip",
+                                       "from aka_asm import torch", "import aka_asm as a\na._run([])"])
+def test_imports_of_non_api_names_are_rejected(statement):
+    sources = _one_file("pass")
+    sources["kernel.py"] = statement + "\n" + sources["kernel.py"]
+    with pytest.raises(PolicyError, match="not part of the aka_asm API"):
+        audit_python_sources(sources, "asm")
+
+
+def test_the_facade_exposes_exactly_the_api():
+    public = {name for name in vars(asm.FACADE) if not name.startswith("__")}
+    assert public == set(asm.API)
+    import sys
+
+    from src.tools.arena_eval.audit import AKA_ASM_API
+
+    assert AKA_ASM_API == asm.API
+    assert sys.modules["aka_asm"] is asm.FACADE
+
+
+def test_a_handle_exposes_only_launch_and_its_type_loads_nothing():
+    # load() returns a namespace with a launch closure; its type is SimpleNamespace,
+    # so type(handle)(...) builds an inert object and cannot load a code object.
+    import types
+
+    handle_type = types.SimpleNamespace
+    forged = handle_type(symbol="x", launch=lambda **kw: None)
+    assert asm.launch_count() == asm.launch_count()
+    start = asm.launch_count()
+    forged.launch(grid=(1, 1, 1), block=(1, 1, 1), args=[])
+    assert asm.launch_count() == start           # a forged handle records no launch
+
+
+def test_only_vendored_or_freshly_assembled_bytes_reach_hip():
+    asm.allow_code_objects(set())
+    with pytest.raises(asm.AsmError, match="neither a vendored code object"):
+        asm._open(b"\x7fELF arbitrary library kernel", "sym", "lib.co")
+
+
+def test_load_assembles_only_audited_source_text(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    package = tmp_path / "pkg"
+    package.mkdir()
+    (package / "fill.s").write_text(FILL_S)
+    module = types.ModuleType("_aka_impl_test_src")
+    module.__path__ = [str(package)]
+    monkeypatch.setitem(sys.modules, "_aka_impl_test_src", module)
+    caller = {"__package__": "_aka_impl_test_src", "aka_asm": asm.FACADE}
+    with pytest.raises(asm.AsmError, match="not an audited .s source"):
+        exec("aka_asm.load('fill.s', 'fill')", caller)
+
+
+def test_the_integrity_guard_covers_the_asm_helper_and_facade(monkeypatch):
+    from src.tools.arena_eval import integrity
+
+    assert "asm" in integrity.EVALUATOR_MODULES
+    check = integrity.snapshot("src.tools.arena_eval")
+    monkeypatch.setattr(asm.FACADE, "load", lambda *a: None)
+    with pytest.raises(integrity.TamperError, match="aka_asm.load was rebound"):
+        check("test")
