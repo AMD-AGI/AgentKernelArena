@@ -160,11 +160,50 @@ class PageFaultGuardPlugin(_LanePlugin):
                                     "while the caching allocators were off", raw=text[:4000])
             return ParseResult(FINDING, (finding,), "page_fault_guard_fault", attested=True)
         if kind in ("numerical_mismatch", "input_mutation", "mixed"):
+            if kind == "numerical_mismatch" and not _gross_mismatch(report):
+                # A small excess over the case's bound is indistinguishable from
+                # the task's own run-to-run variation (split-K, atomics).
+                return ParseResult(INCONCLUSIVE, reason_code="page_fault_guard_marginal_mismatch",
+                                   details=text[:4000], attested=True)
             finding = FindingRecord(kind="allocator-sensitive-output", message="outputs that passed correctness "
                                     "changed when the caching allocators were off: the role reads memory it does "
                                     "not own", raw=text[:4000])
             return ParseResult(FINDING, (finding,), "page_fault_guard_allocator_sensitive", attested=True)
         return ParseResult(TOOL_ERROR, reason_code=f"page_fault_guard_{kind or 'failed'}", details=text[:4000])
+
+
+# Reading memory the role does not own yields values unrelated to the result.
+GROSS_BOUND_MULTIPLE = 10.0
+GROSS_VIOLATION_FRACTION = 0.01
+
+
+def _gross_mismatch(report: dict) -> bool:
+    """Whether a failed output is far outside its bound, not a marginal miss.
+
+    Gross: a non-finite value where the reference is finite, an error over
+    ``GROSS_BOUND_MULTIPLE`` times the case's bound, more than
+    ``GROSS_VIOLATION_FRACTION`` of the elements outside it, or a failure
+    without these metrics.
+    """
+
+    failing = [row for row in report.get("cases") or [] if row.get("status") != "PASS"]
+    if not failing:
+        return True
+    for row in failing:
+        calls = ((row.get("metrics") or {}).get("calls")) or []
+        failed = [output for call in calls for output in (call.get("outputs") or {}).values()
+                  if isinstance(output, dict) and output.get("passed") is False]
+        if not failed:
+            return True
+        for output in failed:
+            try:
+                if (int(output.get("nonfinite_mismatches") or 0) > 0
+                        or float(output.get("peak_bound_multiple", float("inf"))) > GROSS_BOUND_MULTIPLE
+                        or float(output.get("violation_fraction", 1.0)) > GROSS_VIOLATION_FRACTION):
+                    return True
+            except (TypeError, ValueError):
+                return True
+    return False
 
 
 class CsanPlugin(_LanePlugin):

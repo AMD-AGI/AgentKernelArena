@@ -54,11 +54,14 @@ declares nothing: each tool runs the generated workspace runner's
 correctness cases, for whatever `target_language` the run selected.
 `src/eval_tools/defaults.py` is the single source of truth for the set, the
 roles and the policy; the Docker runner builds any missing default image on
-first use.
+first use. That build needs network access to the pinned package and source
+locations; if it fails the run stops before any task starts, rather than run
+without a default tool. Build the images ahead of time on hosts with limited
+network access (see below), or set `evaluation_tools: false`.
 
 | Tool | Default | Role | What it checks | Languages |
 | --- | --- | --- | --- | --- |
-| `page_fault_guard` | on | gate | Every correctness case with PyTorch's caching allocator and ROCr's fragment allocator off. An access past an allocation then reaches an unmapped page and the GPU faults instead of landing silently in a neighbouring tensor; an output that passed correctness but changes with the allocator is also a finding. | Triton, Gluon, HIP, FlyDSL |
+| `page_fault_guard` | on | gate | Every correctness case with PyTorch's caching allocator and ROCr's fragment allocator off. An access past an allocation then reaches an unmapped page and the GPU faults instead of landing silently in a neighbouring tensor; an output that passed correctness but then fails it far outside its bound (a non-finite value, more than 10 times the bound, or more than 1% of elements over it) is also a finding; a smaller excess is recorded as unverified, since split-K and atomic kernels vary that much from run to run. | Triton, Gluon, HIP, FlyDSL |
 | `csan` | on | gate | Every correctness case under PyTorch's CUDA Sanitizer: unsynchronized access to a tensor from two streams by PyTorch-visible work, which includes a HIP candidate's custom op. Raw Triton, Gluon and FlyDSL launches are not visible to it. | all four |
 | `tilelens` | on | gate | The smallest case with every Triton kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). Uses no GPU time. Gluon is reported unsupported. | Triton |
 | `rocjitsu_waitcheck` | on | gate | Static missing or too-weak wait detection on every kernel the role dispatched. One call on the smallest case captures the final code objects (Triton/Gluon cache, the HIP extension's embedded bundle, FlyDSL's embedded HSACO). | all four |
@@ -84,11 +87,14 @@ a semantic comparison; set `evaluation_tools.tools.<tool>.role` to override):
 
 - A `gate` blocks performance, and therefore the score, only on a definite
   finding: a fault, a sanitizer report, a race or hazard record, or an output
-  that changes with the allocator.
+  far outside its bound with the allocator changed.
 - After a candidate finding the manager reruns the same tool on the task's
-  baseline. A finding the baseline shares is recorded with
-  `baseline_also_found: true` and does not block: the reference
-  implementation does the same thing.
+  baseline. When the baseline reports every kind of finding the candidate
+  does, the finding is recorded with `baseline_also_found: true` and does not
+  block: the reference implementation does the same thing. A finding of a
+  kind the baseline does not report still blocks. On a task whose baseline
+  has a finding of some kind, that tool therefore cannot block a candidate
+  for that kind; the page-fault guard and the other gates still apply.
 - Anything that is not a definite finding — an unsupported construct, a
   kernel TileLens cannot interpret, a tool error, a timeout, a capture that
   recorded nothing — is recorded as unverified (`policy_satisfied: false`) and

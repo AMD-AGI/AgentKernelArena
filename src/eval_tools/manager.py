@@ -532,8 +532,14 @@ class EvalToolManager:
             baseline = None
             check = {"execution": "tool_error", "error": f"{type(exc).__name__}: {exc}"[:2000]}
         metadata = {**dict(result.metadata), "baseline_check": check}
+        # Shared means the baseline reports every kind of finding the candidate
+        # does; a candidate fault is not excused by an unrelated baseline report.
         if baseline is not None and baseline.finding == FindingStatus.FOUND:
-            metadata[BASELINE_ALSO_FOUND] = True
+            candidate_kinds = {item.kind for item in result.findings}
+            baseline_kinds = {item.kind for item in baseline.findings}
+            check["kinds"] = sorted(baseline_kinds)
+            if candidate_kinds <= baseline_kinds:
+                metadata[BASELINE_ALSO_FOUND] = True
         return replace(result, metadata=metadata)
 
     # ``execute`` reads naturally at evaluator integration sites and remains an

@@ -114,7 +114,8 @@ set of run-configuration fields.
 Sanitizer sidecars run after ordinary correctness and before performance. On
 MI355X (`gfx950`) a run configuration without an `evaluation_tools` section
 runs the default schema-v3 set; the runner builds any missing sidecar image on
-first use. Set `evaluation_tools: false` to turn it off. See [Check kernels
+first use, which needs network access, and stops the run if a build fails.
+Set `evaluation_tools: false` to turn it off. See [Check kernels
 with evaluation tools](use-evaluation-tools.md#default-sanitizers-for-schema-v3-tasks).
 
 ## Start a run

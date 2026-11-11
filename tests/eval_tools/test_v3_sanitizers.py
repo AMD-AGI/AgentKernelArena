@@ -154,6 +154,7 @@ class RolePlugin:
     """Finds a bug for each role in ``found_for``."""
 
     found_for: tuple = ("candidate",)
+    baseline_kind: str = "fault"
     name: str = "page_fault_guard"
     version: str = "1"
     baseline_check: bool = True
@@ -168,8 +169,9 @@ class RolePlugin:
     def parse(self, context, execution):
         role = execution.command[-1]
         if role in self.found_for:
+            kind = self.baseline_kind if role == "baseline" else "fault"
             return ToolRunResult(tool=self.name, execution=ExecutionStatus.COMPLETED, finding=FindingStatus.FOUND,
-                                 findings=(Finding(kind="fault", severity=FindingSeverity.ERROR, message=role),))
+                                 findings=(Finding(kind=kind, severity=FindingSeverity.ERROR, message=role),))
         return ToolRunResult(tool=self.name, execution=ExecutionStatus.COMPLETED, finding=FindingStatus.CLEAN)
 
 
@@ -185,14 +187,16 @@ class EchoRuntime:
         return ExecutionRecord(command=invocation.command, returncode=0)
 
 
-@pytest.mark.parametrize("found_for,allowed,shared", [
-    (("candidate",), False, False),
-    (("candidate", "baseline"), True, True),
-    ((), True, False),
+@pytest.mark.parametrize("found_for,baseline_kind,allowed,shared", [
+    (("candidate",), "fault", False, False),
+    (("candidate", "baseline"), "fault", True, True),
+    # A baseline finding of another kind does not excuse the candidate's.
+    (("candidate", "baseline"), "allocator-sensitive-output", False, False),
+    ((), "fault", True, False),
 ])
-def test_a_gate_finding_is_rechecked_on_the_baseline(tmp_path, found_for, allowed, shared):
+def test_a_gate_finding_is_rechecked_on_the_baseline(tmp_path, found_for, baseline_kind, allowed, shared):
     registry = ToolRegistry()
-    registry.register(RolePlugin(found_for=found_for))
+    registry.register(RolePlugin(found_for=found_for, baseline_kind=baseline_kind))
     runtime = EchoRuntime()
     config = EvalToolsConfig.from_mapping({"evaluation_tools": {"policy": "gated", "enabled": ["page_fault_guard"]}})
     report = EvalToolManager(registry, runtime).evaluate(
@@ -203,7 +207,7 @@ def test_a_gate_finding_is_rechecked_on_the_baseline(tmp_path, found_for, allowe
     if found_for:
         assert runtime.commands == [("lane", "candidate"), ("lane", "baseline")]
         assert bool(result.metadata.get(BASELINE_ALSO_FOUND)) is shared
-        assert result.metadata["baseline_check"]["finding"] == ("found" if shared else "clean")
+        assert result.metadata["baseline_check"]["finding"] == ("found" if "baseline" in found_for else "clean")
     else:
         assert runtime.commands == [("lane", "candidate")]
 
@@ -246,6 +250,26 @@ def test_lane_invocation_runs_the_workspace_runner_with_the_lane_environment(tmp
 
 def _parse(tool, tmp_path, record):
     return get_plugin(tool).parse(v3_context(tmp_path), record)
+
+
+def _mismatch_case(**output):
+    metrics = {"passed": False, "peak_bound_multiple": 1.14, "violation_fraction": 3e-05, "nonfinite_mismatches": 0}
+    metrics.update(output)
+    return {"test_case_id": "m512", "status": "FAIL", "failure_kind": "numerical_mismatch",
+            "metrics": {"calls": [{"outputs": {"out": {"passed": True}}}, {"outputs": {"out": metrics}}]}}
+
+
+@pytest.mark.parametrize("output,finding", [
+    ({}, FindingStatus.INCONCLUSIVE),  # one element 14% over a baseline-relative bound
+    ({"peak_bound_multiple": 50.0}, FindingStatus.FOUND),
+    ({"violation_fraction": 0.2}, FindingStatus.FOUND),
+    ({"nonfinite_mismatches": 3}, FindingStatus.FOUND),
+])
+def test_page_fault_guard_flags_only_gross_output_changes(tmp_path, output, finding):
+    result = _parse("page_fault_guard", tmp_path, execution(report(
+        "page_fault_guard", "FAIL", failure_kind="numerical_mismatch", reason="1 case failed",
+        cases=[_mismatch_case(**output)]), returncode=1))
+    assert result.finding == finding
 
 
 def test_page_fault_guard_verdicts(tmp_path):
