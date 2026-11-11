@@ -21,10 +21,22 @@ This topic summarizes the features available in each AgentKernelArena release. F
   task names no implementation language. The run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
   `{path, target_language}` overrides) selects it. See
   [Task definition, schema, and authoring](../how-to/add-task.md).
-- The suite has 379 kernel tasks covering 237 operators in 16 categories, with
+- The suite has 397 kernel tasks covering 253 operators in 16 categories, with
   production baselines vendored from vLLM, SGLang, AITER and FlyDSL (278
-  Triton, 55 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
+  Triton, 73 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
   framework-finalized QA `PASS` on MI355X for its exact package.
+- 18 tasks vendor the sgl-amd-mono SGLang plugin's persistent FlyDSL
+  monokernels (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi-K3, Kimi-K3.1,
+  MiniMax-M3, MiniMax-M3.1-Flash, Muse Spark, Qwen3.8-Flash-Next), with
+  workloads derived from the AgentX agentic-coding traces. 11 of them are
+  multi-GPU tasks: a `distributed` block in `task.yaml` runs one kernel call
+  per rank on 4 or 8 GPUs with framework-owned symmetric peer memory, checks
+  every rank against its part of the reference and times the slowest rank of
+  each synchronized cold-cache sample. See
+  [Multi-GPU tasks](../how-to/add-task.md#multi-gpu-tasks).
+- A model-specialized task whose observed production range spans less than
+  100× may use that range with recorded evidence
+  (`performance_span: {policy: production_range}`); the QA auditor reports it.
 - 53 tasks from production kernels add 28 operators and the first Gluon
   baselines. They cover convolution (conv2d, conv3d), attention backward,
   HSTU, sliding-window and sparse MLA attention, fused GEMM epilogues
