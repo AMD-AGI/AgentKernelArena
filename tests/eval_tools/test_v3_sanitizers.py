@@ -215,7 +215,8 @@ def test_a_gate_finding_is_rechecked_on_the_baseline(tmp_path, found_for, allowe
     ("page_fault_guard", "flydsl", CapabilityState.READY),
     ("page_fault_guard", "gluon", CapabilityState.READY),
     ("csan", "hip", CapabilityState.READY),
-    ("tilelens", "gluon", CapabilityState.READY),
+    ("tilelens", "triton", CapabilityState.READY),
+    ("tilelens", "gluon", CapabilityState.UNSUPPORTED),
     ("tilelens", "hip", CapabilityState.NOT_APPLICABLE),
     ("tilelens", "flydsl", CapabilityState.NOT_APPLICABLE),
     ("csan", "tilelang", CapabilityState.UNSUPPORTED),
@@ -367,17 +368,17 @@ def test_waitcheck_v3_runs_on_every_language_and_only_on_gfx950(tmp_path):
     assert other.effective.state == CapabilityState.UNSUPPORTED
 
 
-def _waitcheck_payload(sha: str, kernel: str, diagnostics=()):
+def _waitcheck_payload(sha: str, kernel: str, diagnostics=(), discovered=1):
     payload = {"schema_version": 1, "code_object_sha256": sha, "target": "gfx950", "expected_kernel": kernel,
                "kernel_entry": 64, "inventory_attested": True, "api_status": 0, "analysis_complete": True,
-               "diagnostics_truncated": False, "stopped_early": False, "kernels_discovered": 1,
+               "diagnostics_truncated": False, "stopped_early": False, "kernels_discovered": discovered,
                "kernels_analyzed": 1, "instructions_analyzed": 10, "memory_events_tracked": 2,
                "diagnostics_observed": len(diagnostics), "diagnostics_reported": len(diagnostics),
                "diagnostics": list(diagnostics), "passed": not diagnostics}
     return "AKA_WAITCHECK_RESULT " + json.dumps(payload)
 
 
-def _waitcheck_artifacts(tmp_path, entries, *, sha="a" * 64):
+def _waitcheck_artifacts(tmp_path, entries, *, sha="a" * 64, inventory_size=None):
     context = v3_context(tmp_path)
     output = Path(context.artifact_dir) / "v3-waitcheck"
     (output / "capture").mkdir(parents=True)
@@ -389,8 +390,11 @@ def _waitcheck_artifacts(tmp_path, entries, *, sha="a" * 64):
         log = output / "kernels" / f"{number}.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(text)
-        index["entries"].append({"code_object": "k.hsaco", "code_object_sha256": sha, "kernel_name": "k",
-                                 "kernel_entry": 64, "returncode": 0, "log": f"kernels/{number}.log"})
+        entry = {"code_object": "k.hsaco", "code_object_sha256": sha, "kernel_name": "k",
+                 "kernel_entry": 64, "returncode": 0, "log": f"kernels/{number}.log"}
+        if inventory_size is not None:
+            entry["kernels_in_code_object"] = inventory_size
+        index["entries"].append(entry)
     (output / "index.json").write_text(json.dumps(index))
     return context
 
@@ -408,6 +412,22 @@ def test_waitcheck_v3_aggregates_one_parse_per_kernel(tmp_path):
     assert found.finding == FindingStatus.FOUND and found.findings[0].kind == "wait-hazard-missing_wait"
     nothing = get_plugin("rocjitsu_waitcheck").parse(_waitcheck_artifacts(tmp_path / "none", []), execution())
     assert nothing.finding == FindingStatus.INCONCLUSIVE
+
+
+def test_waitcheck_v3_accepts_one_analyzed_kernel_of_a_multi_kernel_code_object(tmp_path):
+    # A HIP extension's code object holds every kernel of the source file; the
+    # bridge analyzes the selected one and counts them all as discovered.
+    sha = "a" * 64
+    two = [_waitcheck_payload(sha, "k", discovered=2)]
+    clean = get_plugin("rocjitsu_waitcheck").parse(_waitcheck_artifacts(tmp_path / "two", two, inventory_size=2),
+                                                   execution())
+    assert clean.finding == FindingStatus.CLEAN
+    # Without the entry point's inventory size, the count must be exactly one.
+    legacy = get_plugin("rocjitsu_waitcheck").parse(_waitcheck_artifacts(tmp_path / "legacy", two), execution())
+    assert legacy.finding == FindingStatus.INCONCLUSIVE
+    short = get_plugin("rocjitsu_waitcheck").parse(
+        _waitcheck_artifacts(tmp_path / "short", two, inventory_size=3), execution())
+    assert short.finding == FindingStatus.INCONCLUSIVE
 
 
 def test_waitcheck_v3_rejects_a_code_object_that_was_not_captured(tmp_path):
@@ -471,6 +491,47 @@ def test_a_changed_captured_hsaco_is_rejected(tmp_path):
     (directory / "copy_kernel.hsaco").write_bytes(_hsaco(abi_version=4))
     with pytest.raises(CapsuleValidationError, match="hash"):
         build_capsule(directory, manifest={}, task_id="t", image_digest="d", rocm_version="r", framework_version="f")
+
+
+_RACE_REPORT = "RACE type=LDS reg=508 wave=0 lane=0 wg=0,0,0 conflict=unknown\n  write ds_write_b32\nEND_RACE\n"
+
+
+def _rocjitsu_artifacts(tmp_path: Path, *, replay_passed: bool):
+    context = v3_context(tmp_path)
+    output = Path(context.artifact_dir) / "v3-rocjitsu"
+    capture = output / "capture"
+    capture.mkdir(parents=True)
+    directory = _launch_dir(capture)
+    capsule = build_capsule(directory, manifest={"case": "t1", "seed": 7, "role": "candidate"}, task_id="t",
+                            image_digest="sha256:image", rocm_version="10.0.0", framework_version="3.8.0")
+    loaded = ReplayCapsule.load(capsule, verify_files=True)
+    capsule_sha = hashlib.sha256(capsule.read_bytes()).hexdigest()
+    (capture / "capture.json").write_text(json.dumps({
+        "schema_version": 1, "code_objects": [],
+        "launches": [{"directory": "launch-00", "kernel_name": "copy_kernel",
+                      "hsaco_sha256": loaded.code_object.sha256}], "skipped": []}))
+    log_lines = ['[rocjitsu] Kernel dispatch: "copy_kernel"',
+                 f"AKA_REPLAY_CAPSULE sha256={capsule_sha} code_sha256={loaded.code_object.sha256} "
+                 "adapter=triton_aot arch=gfx950 kernel=copy_kernel",
+                 "AKA_REPLAY_RESULT pass" if replay_passed
+                 else "AKA_REPLAY_RESULT fail: output allocation a2 mismatched golden blob"]
+    (output / "replay.log").write_text("\n".join(log_lines) + "\n")
+    (output / "race.log").write_text(_RACE_REPORT)
+    (output / "index.json").write_text(json.dumps({"schema_version": 1, "skipped": [], "entries": [{
+        "directory": "launch-00", "kernel_name": "copy_kernel", "capsule": capsule.relative_to(output).as_posix(),
+        "capsule_sha256": capsule_sha, "returncode": 1, "log": "replay.log", "race_log": "race.log"}]}))
+    return context
+
+
+def test_rocjitsu_v3_reports_a_race_only_from_a_replay_that_reproduced_the_gpu_output(tmp_path):
+    faithful = get_plugin("rocjitsu").parse(_rocjitsu_artifacts(tmp_path / "pass", replay_passed=True), execution())
+    assert faithful.finding == FindingStatus.FOUND and faithful.findings[0].kind == "lds-race"
+    # A replay whose outputs differ from the captured GPU outputs is not the
+    # launch the GPU ran: its race report is recorded as inconclusive.
+    unfaithful = get_plugin("rocjitsu").parse(_rocjitsu_artifacts(tmp_path / "fail", replay_passed=False),
+                                              execution())
+    assert unfaithful.finding == FindingStatus.INCONCLUSIVE
+    assert "rocjitsu_v3_race_on_unattested_replay" in unfaithful.summary
 
 
 def test_code_object_target_reads_the_elf_header():

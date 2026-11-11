@@ -106,6 +106,7 @@ def _waitcheck(args, output: Path, manifest: dict) -> list[dict]:
             log.write_text(completed.stdout + ("\n" + completed.stderr if completed.stderr else ""), encoding="utf-8")
             entries.append({"code_object": item["code_object"], "code_object_sha256": item["sha256"],
                             "kernel_name": record["kernel_name"], "kernel_entry": record["kernel_entry"],
+                            "kernels_in_code_object": len(inventory),
                             "returncode": completed.returncode, "log": log.relative_to(output).as_posix()})
     return entries
 

@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import math
 import os
 import shutil
@@ -319,7 +320,13 @@ def _launch_names():
 
 
 def _cache_kernels(cache: Path) -> dict:
-    """Compiled kernels in a Triton cache: name -> (metadata, hsaco path)."""
+    """Compiled kernels in a Triton cache: name -> (metadata, hsaco path).
+
+    Triton names a cache entry's files after the Python function, truncated to
+    150 characters, while ``metadata["name"]`` is the kernel symbol, which a
+    ``@triton.jit(repr=...)`` kernel extends with its constants. The code
+    object is therefore the metadata file's sibling, not ``<name>.hsaco``.
+    """
     kernels = {}
     for metadata_path in sorted(cache.rglob("*.json")):
         try:
@@ -327,8 +334,8 @@ def _cache_kernels(cache: Path) -> dict:
         except (OSError, ValueError):
             continue
         name = metadata.get("name") if isinstance(metadata, dict) else None
-        hsaco = metadata_path.with_name(f"{name}.hsaco") if name else None
-        if name and hsaco is not None and hsaco.is_file():
+        hsaco = metadata_path.with_suffix(".hsaco")
+        if name and hsaco.is_file():
             kernels.setdefault(name, []).append((metadata, hsaco))
     return kernels
 
@@ -653,28 +660,69 @@ class _Capture:
         return original
 
 
-def _flydsl_code_objects(observed: list, output: Path) -> list[dict]:
-    """Embedded HSACO of each FlyDSL compiled artifact observed during the call."""
-    import re
+_MLIR_STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"', re.S)
 
-    objects, seen = [], set()
-    for index, artifact in enumerate(observed):
-        text = getattr(artifact, "_ir_text", None) or getattr(artifact, "_source_ir", None)
-        if not isinstance(text, str):
-            continue
-        for match in re.finditer(r'bin\s*=\s*"((?:[^"\\]|\\.)*)"', text):
-            raw = re.sub(r"\\([0-9A-Fa-f]{2})", lambda m: chr(int(m.group(1), 16)), match.group(1))
-            data = raw.encode("latin-1", errors="ignore")
-            if data[:4] != b"\x7fELF":
+
+def _mlir_bytes(body: str) -> bytes:
+    """Decode the body of an MLIR string literal: ``\\XX`` hex escapes, ``\\\\`` and ``\\"``."""
+    out, position = bytearray(), 0
+    while position < len(body):
+        char = body[position]
+        if char == "\\" and position + 1 < len(body):
+            pair = body[position + 1:position + 3]
+            if len(pair) == 2 and all(c in "0123456789abcdefABCDEF" for c in pair):
+                out.append(int(pair, 16))
+                position += 3
                 continue
+            out.extend(body[position + 1].encode("utf-8"))
+            position += 2
+            continue
+        out.extend(char.encode("utf-8"))
+        position += 1
+    return bytes(out)
+
+
+def _flydsl_code_objects(observed: list, output: Path) -> list[dict]:
+    """The HSACO embedded in each FlyDSL compiled artifact's ``gpu.binary`` op."""
+    objects, seen = [], set()
+    for artifact in observed:
+        text = vars(artifact).get("_ir_text")
+        if not isinstance(text, str) or "gpu.binary" not in text:
+            continue
+        for match in _MLIR_STRING_RE.finditer(text):
+            if match.group(1)[:6].upper() != "\\7FELF":
+                continue
+            data = _mlir_bytes(match.group(1))
             digest = hashlib.sha256(data).hexdigest()
             if digest in seen:
                 continue
             seen.add(digest)
-            path = output / f"flydsl-{index:02d}.hsaco"
+            path = output / f"flydsl-{len(objects):02d}.hsaco"
             path.write_bytes(data)
             objects.append({"code_object": path.name, "sha256": digest, "kernels": None})
     return objects
+
+
+def _flydsl_observer(observed: list):
+    """A profile hook that records each FlyDSL compiled artifact the call uses.
+
+    FlyDSL's ``CompiledArtifact`` holds the lowered module (with its embedded
+    code object) in ``_ir_text``; a launch reaches it through its executor
+    methods (``_get_func_exe``, ``_ensure_engine``), not ``__call__``. Only
+    FlyDSL compiler frames are inspected, through the instance dictionary, so
+    no property or ``__getattr__`` of the role's objects runs.
+    """
+
+    def profile(frame, event, arg):
+        if event != "call" or not (frame.f_globals.get("__name__") or "").startswith("flydsl.compiler"):
+            return
+        owner = frame.f_locals.get("self")
+        state = getattr(owner, "__dict__", None) if owner is not None else None
+        if isinstance(state, dict) and isinstance(state.get("_ir_text"), str):
+            if all(owner is not item for item in observed):
+                observed.append(owner)
+
+    return profile
 
 
 def capture(contract, role: str) -> dict:
@@ -698,15 +746,7 @@ def capture(contract, role: str) -> dict:
         original = recorder.install()
     elif language == "flydsl":
         previous_profile = sys.getprofile()
-
-        def profile(frame, event, arg):
-            if event == "call" and frame.f_code.co_name == "__call__":
-                owner = frame.f_locals.get("self")
-                if owner is not None and (getattr(owner, "_ir_text", None) or getattr(owner, "_source_ir", None)):
-                    if all(owner is not item for item in observed):
-                        observed.append(owner)
-
-        sys.setprofile(profile)
+        sys.setprofile(_flydsl_observer(observed))
     try:
         # FlyDSL's launch audit would replace this lane's profile hook; the
         # call keeps its integrity check and ran audited in correctness.

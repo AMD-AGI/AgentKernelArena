@@ -304,9 +304,15 @@ def parse_waitcheck(
     expected_target: str,
     expected_kernel: str,
     expected_entry: int,
+    expected_discovered: int = 1,
     timed_out: bool = False,
 ) -> ParseResult:
-    """Parse the single JSON record emitted by the image-owned C API bridge."""
+    """Parse the single JSON record emitted by the image-owned C API bridge.
+
+    ``expected_discovered`` is the number of kernels in the code object's
+    inventory: the bridge analyzes one selected kernel of a multi-kernel code
+    object, so ``kernels_discovered`` counts them all.
+    """
 
     combined = "\n".join(part for part in (stdout, stderr) if part)
     if timed_out:
@@ -373,7 +379,7 @@ def parse_waitcheck(
         payload.get("analysis_complete") is not True
         or payload.get("diagnostics_truncated") is not False
         or payload.get("stopped_early") is not False
-        or payload.get("kernels_discovered") != 1
+        or payload.get("kernels_discovered") != expected_discovered
         or payload.get("kernels_analyzed") != 1
     ):
         return ParseResult(

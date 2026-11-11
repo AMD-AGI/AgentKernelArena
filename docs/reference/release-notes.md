@@ -60,7 +60,7 @@ This topic summarizes the features available in each AgentKernelArena release. F
   and with no task configuration. `src/eval_tools/defaults.py` defines the set:
   - the new page-fault guard (correctness with the caching allocators off);
   - PyTorch CSAN;
-  - TileLens (symbolic out-of-bounds checks of Triton and Gluon kernels);
+  - TileLens (symbolic out-of-bounds checks of Triton kernels);
   - rocJITsu Waitcheck and the rocJITsu race detector, fed by an automatic
     capture of the kernels each call dispatches;
   - Triton FpSan.
@@ -73,8 +73,8 @@ This topic summarizes the features available in each AgentKernelArena release. F
 - GPU ASan supports HIP (including the torch-extension build), Triton and
   Gluon. It needs a bare-metal host and stays opt-in: virtualized GPU hosts
   cannot run its runtime.
-- Gluon candidates are supported by FpSan, GPU ASan, TileLens, Waitcheck and
-  rocJITsu through the v3 path.
+- Gluon candidates are supported by FpSan, GPU ASan, Waitcheck and rocJITsu
+  through the v3 path; TileLens 3.1.1 reports Gluon unsupported.
 - The runner builds missing default sidecar images on first use, and the
   Waitcheck sidecar now gets the worker's GPU for capture.
 - `evaluation_tools: false` disables the stage. See

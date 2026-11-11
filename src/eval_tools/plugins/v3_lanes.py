@@ -10,6 +10,7 @@ environment evidence matches what this plugin set.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Mapping
 
 from ..contracts import (
     CapabilityCheck,
@@ -34,7 +35,9 @@ from .base import (
 )
 
 
-def _v3_engine(context: ToolContext, tool: str, languages: frozenset[str]) -> CapabilityCheck:
+def _v3_engine(context: ToolContext, tool: str, languages: frozenset[str],
+               unsupported: Mapping[str, str] | None = None) -> CapabilityCheck:
+    unsupported = unsupported or {}
     if not aka_v3.is_v3(context):
         return blocked_check(
             CapabilityState.NOT_APPLICABLE,
@@ -48,6 +51,8 @@ def _v3_engine(context: ToolContext, tool: str, languages: frozenset[str]) -> Ca
             f"{tool}_language_unsupported",
             f"{tool} supports triton, gluon, hip and flydsl, not {language!r}.",
         )
+    if language in unsupported:
+        return blocked_check(CapabilityState.UNSUPPORTED, f"{tool}_{language}_unsupported", unsupported[language])
     if language not in languages:
         return blocked_check(
             CapabilityState.NOT_APPLICABLE,
@@ -87,12 +92,14 @@ def _failure_text(report: dict) -> str:
 class _LanePlugin:
     lane = ""
     languages: frozenset[str] = aka_v3.V3_LANGUAGES
+    # Languages the tool applies to but cannot check yet, with the reason.
+    unsupported_languages: Mapping[str, str] = {}
     timeout_s = 1800
     # The manager may rerun this gate on the baseline after a finding.
     baseline_check = True
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
-        engine = _v3_engine(context, self.name, self.languages)
+        engine = _v3_engine(context, self.name, self.languages, self.unsupported_languages)
         adapter = ready_check(adapter=aka_v3.ADAPTER) if engine.state == CapabilityState.READY else ready_check()
         return ToolCapability(self.name, engine, adapter, _runtime(runtime))
 
@@ -190,17 +197,24 @@ class CsanPlugin(_LanePlugin):
 
 
 class TileLensPlugin(_LanePlugin):
-    """TileLens's symbolic out-of-bounds check of each Triton/Gluon kernel.
+    """TileLens's symbolic out-of-bounds check of each Triton kernel.
 
     The smallest correctness case runs in Triton's CPU interpreter, where
     every load and store address is checked against its tensor (z3 over the
     symbolic program id, mask and loop bounds). No GPU time is used.
+
+    Gluon is reported unsupported: TileLens 3.1.1's interpreter failed on
+    every Gluon task kernel tried (symbolic program ids, tuple values and
+    ``@triton.jit`` helpers called from Gluon).
     """
 
     name = ToolName.TILELENS.value
     version = "1"
     lane = "tilelens"
-    languages = frozenset({"triton", "gluon"})
+    languages = frozenset({"triton"})
+    unsupported_languages = {
+        "gluon": "TileLens 3.1.1's interpreter cannot run schema-v3 Gluon kernels; Gluon is unchecked by TileLens.",
+    }
     timeout_s = 3600
     TILELENS_ROOT = "/opt/tilelens/site-packages"
 

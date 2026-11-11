@@ -120,3 +120,59 @@ def test_tilelens_records_are_reduced_to_plain_fields():
     reduced = sanitize._tilelens_record(Record())
     assert reduced == {"op": "Load", "tensor": "x", "address": "16",
                        "location": ["kernel.py:18 in copy", "b", "c"]}
+
+
+def test_cache_kernels_finds_a_repr_named_kernel_by_its_metadata_file(tmp_path):
+    # Triton names the files after the Python function; a repr kernel's symbol
+    # carries its constants, so ``<symbol>.hsaco`` does not exist.
+    entry = tmp_path / "ABC"
+    entry.mkdir()
+    symbol = "_gemm_kernel_BLOCK_SIZE_M_64_BLOCK_SIZE_N_128"
+    (entry / "_gemm_kernel.json").write_text('{"name": "%s", "instrumentation_mode": "fpsan"}' % symbol)
+    (entry / "_gemm_kernel.hsaco").write_bytes(b"\x7fELF")
+    (entry / "__grp___gemm_kernel.json").write_text('{"child_paths": {}}')
+    kernels = sanitize._cache_kernels(tmp_path)
+    assert list(kernels) == [symbol]
+    assert kernels[symbol][0][1] == entry / "_gemm_kernel.hsaco"
+
+
+def _escaped(data: bytes) -> str:
+    # MLIR prints printable ASCII as is and every other byte as \XX.
+    return "".join(chr(b) if 32 <= b < 127 and chr(b) not in '"\\' else f"\\{b:02X}" for b in data)
+
+
+class _Artifact:
+    def __init__(self, text):
+        self._ir_text = text
+
+
+def test_flydsl_capture_extracts_the_code_object_from_the_lowered_module(tmp_path):
+    elf = b"\x7fELF\x02\x01\x01" + bytes(range(256)) + b'"\\tail'
+    text = ('module attributes {gpu.container_module} {\n  gpu.binary @kernels  [#gpu.object<#rocdl.target<'
+            'chip = "gfx950">, kernels = <[#gpu.kernel_metadata<"k", !llvm.func<void ()>>]>, bin = "'
+            + _escaped(elf) + '">]\n}')
+    objects = sanitize._flydsl_code_objects([_Artifact(text), _Artifact(text)], tmp_path)
+    assert len(objects) == 1 and objects[0]["kernels"] is None
+    assert (tmp_path / objects[0]["code_object"]).read_bytes() == elf
+    # A module that holds no binary yields nothing rather than a wrong object.
+    assert sanitize._flydsl_code_objects([_Artifact('gpu.binary @k [#gpu.object<#rocdl.target, "abc">]')],
+                                         tmp_path / "x") == []
+
+
+def test_flydsl_observer_records_artifacts_reached_through_executor_methods():
+    import sys
+    import types
+
+    observed = []
+    module = types.ModuleType("flydsl.compiler.jit_executor")
+    exec("class CompiledArtifact:\n    def __init__(self, text):\n        self._ir_text = text\n"
+         "    def _get_func_exe(self):\n        return 1\n", module.__dict__)
+    artifact = module.CompiledArtifact("gpu.binary")
+    previous = sys.getprofile()
+    sys.setprofile(sanitize._flydsl_observer(observed))
+    try:
+        artifact._get_func_exe()
+        artifact._get_func_exe()
+    finally:
+        sys.setprofile(previous)
+    assert observed == [artifact]

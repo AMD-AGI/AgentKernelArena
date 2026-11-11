@@ -223,7 +223,8 @@ def waitcheck_parse(plugin, context: ToolContext, execution):
         log = (output / entry["log"]).read_text(encoding="utf-8", errors="replace")
         parsed.append(parse_waitcheck(log, "", entry["returncode"], expected_sha256=entry["code_object_sha256"],
                                       expected_target=SUPPORTED_ARCH, expected_kernel=entry["kernel_name"],
-                                      expected_entry=int(entry["kernel_entry"])))
+                                      expected_entry=int(entry["kernel_entry"]),
+                                      expected_discovered=int(entry.get("kernels_in_code_object", 1))))
     return parsed_to_run_result(plugin.name, aggregate("waitcheck", parsed, unverified), execution,
                                 metadata=_metadata(index, parsed))
 
@@ -258,6 +259,13 @@ def rocjitsu_parse(plugin, context: ToolContext, execution):
         attested = (kernel in rocjitsu_dispatch_kernels(combined) and "AKA_REPLAY_RESULT pass" in combined
                     and f"AKA_REPLAY_CAPSULE sha256={entry['capsule_sha256']} code_sha256={capsule.code_object.sha256} "
                         f"adapter=triton_aot arch={SUPPORTED_ARCH} kernel={kernel}" in combined)
-        parsed.append(parse_rocjitsu(log, "", entry["returncode"], attested=attested, report_text=report))
+        result = parse_rocjitsu(log, "", entry["returncode"], attested=attested, report_text=report)
+        if result.status == FINDING and not attested:
+            # A replay that did not reproduce the GPU's output (or whose dispatch
+            # and capsule were not attested) is not the launch the GPU ran, so
+            # its race reports say nothing definite about the role's kernel.
+            result = ParseResult(INCONCLUSIVE, reason_code="rocjitsu_v3_race_on_unattested_replay",
+                                 details="; ".join(f"{item.kind} {item.location}" for item in result.findings)[:4000])
+        parsed.append(result)
     return parsed_to_run_result(plugin.name, aggregate("rocjitsu", parsed, unverified), execution,
                                 metadata=_metadata(index, parsed))

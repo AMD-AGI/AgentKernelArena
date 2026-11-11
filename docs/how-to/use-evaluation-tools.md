@@ -15,7 +15,7 @@ The tool set is:
 
 - A page-fault guard that reruns correctness with the caching allocators off.
 - PyTorch's CUDA Sanitizer (CSAN) for cross-stream races.
-- TileLens for symbolic out-of-bounds checks of Triton and Gluon kernels.
+- TileLens for symbolic out-of-bounds checks of Triton kernels.
 - Triton FpSan for reference-versus-candidate floating-point semantic
   comparison.
 - ROCm GPU AddressSanitizer (GPU ASan) for invalid device-memory accesses.
@@ -60,7 +60,7 @@ first use.
 | --- | --- | --- | --- | --- |
 | `page_fault_guard` | on | gate | Every correctness case with PyTorch's caching allocator and ROCr's fragment allocator off. An access past an allocation then reaches an unmapped page and the GPU faults instead of landing silently in a neighbouring tensor; an output that passed correctness but changes with the allocator is also a finding. | Triton, Gluon, HIP, FlyDSL |
 | `csan` | on | gate | Every correctness case under PyTorch's CUDA Sanitizer: unsynchronized access to a tensor from two streams by PyTorch-visible work, which includes a HIP candidate's custom op. Raw Triton, Gluon and FlyDSL launches are not visible to it. | all four |
-| `tilelens` | on | gate | The smallest case with every Triton or Gluon kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). Uses no GPU time. | Triton, Gluon |
+| `tilelens` | on | gate | The smallest case with every Triton kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). Uses no GPU time. Gluon is reported unsupported. | Triton |
 | `rocjitsu_waitcheck` | on | gate | Static missing or too-weak wait detection on every kernel the role dispatched. One call on the smallest case captures the final code objects (Triton/Gluon cache, the HIP extension's embedded bundle, FlyDSL's embedded HSACO). | all four |
 | `rocjitsu` | on | gate | rocJITsu's simulated LDS/register race detector. Each captured Triton or Gluon launch becomes a replay capsule (code object, lowered ABI, launch geometry, memory before and after) replayed once in the simulator. | Triton, Gluon |
 | `triton_fpsan` | on | signal | The smallest case through Triton FpSan for the candidate and the baseline. A different digest means a different floating-point expression, which a correct rewrite (online softmax, another reduction order or precision) also produces, so this never blocks. | Triton or Gluon candidate with a Triton or Gluon baseline |
@@ -114,10 +114,15 @@ default per-tool deadline is 1200 seconds.
   explicit `gl.amd.cdna4.buffer_load`/`buffer_store`, which the page-fault
   guard covers instead. An ASan-built HIP extension loads only in a process
   with the ASan runtime preloaded, so the lane is always a separate process.
-- TileLens approximates inline assembly and cannot run a Gluon kernel that
-  calls a `@triton.jit` helper; both are unverified, not clean.
+- TileLens approximates inline assembly, which is unverified, not clean.
+  Its interpreter failed on every schema-v3 Gluon kernel tried (symbolic
+  program ids, tuple values, `@triton.jit` helpers called from Gluon), so a
+  Gluon role is reported `unsupported` rather than run.
 - rocJITsu replays only what the capture recorded: up to 16 launches and
-  256 MiB of reachable memory per call. Tensor-descriptor arguments and
+  256 MiB of reachable memory per call. A replay counts only when the
+  simulator reproduced the outputs the GPU wrote; a race reported by a replay
+  that did not (for example where emulated MFMA or FP8 arithmetic differs) is
+  recorded as inconclusive, not as a finding. Tensor-descriptor arguments and
   non-zero global scratch cannot be lowered yet, and HIP and FlyDSL launches
   expose no lowered ABI to capture, so those are unverified.
 - CSAN sees PyTorch dispatches only; AKA's static policy already forbids
