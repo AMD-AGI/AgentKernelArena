@@ -973,7 +973,7 @@ def _csan_positive(probe_root: Path, work_dir: Path, artifact_dir: Path) -> dict
     return _positive_result(
         passed=safe_ok and race_ok,
         kind="csan_stream_wait_and_race",
-        detail="a side-stream read followed by wait_stream must pass; without the wait CSAN must report a race",
+        detail="a side-stream read ordered by wait_stream in both directions must pass; without the waits CSAN must report a race",
         artifact_dir=artifact_dir, steps=steps,
         controls={"safe": {"passed": safe_ok}, "race": {"passed": race_ok}},
     )

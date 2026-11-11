@@ -402,7 +402,7 @@ worker:
 | `rocjitsu_consan` | Compile raw safe/racy HSACOs plus an image-owned module launcher, run the production entrypoint with separate instrumented/oracle argv, require the oracle environment to be scrubbed, and make the production parser return clean/finding with exact FNV attribution. |
 | `hip_fpsan` | Require explicitly ported equivalent expressions to match and a known-wrong expression to produce a different digest. |
 | `page_fault_guard` | With the caching allocators off, a safe Triton copy must pass and a store 256 MiB past its output must fault. |
-| `csan` | A side-stream read followed by `wait_stream` must pass; without the wait CSAN must report a race. |
+| `csan` | A side-stream read ordered with `wait_stream` in both directions (after the write, before the next default-stream use) must pass; without the waits CSAN must report a race. |
 | `tilelens` | Through the lane's programmatic API (a `Sanitizer` with `abort_on_error` off), an in-bounds Triton copy must record no violation and an off-by-one copy at least one. |
 
 `eval-tools-smoke` prints this evidence and exits nonzero if a worker reports

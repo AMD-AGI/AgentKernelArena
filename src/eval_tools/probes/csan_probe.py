@@ -1,6 +1,8 @@
-"""PyTorch CUDA Sanitizer control: a side-stream read, with or without a stream wait.
+"""PyTorch CUDA Sanitizer control: a side-stream read, with or without stream waits.
 
-Usage: csan_probe.py [safe|race]
+``safe`` orders the side stream after the write that produced the tensor and
+the default stream after the side-stream read; ``race`` omits both waits, so
+the read races the write. Usage: csan_probe.py [safe|race]
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ def main() -> int:
     cuda_sanitizer.enable_cuda_sanitizer()
     a = torch.ones(1 << 16, device="cuda")
     side = torch.cuda.Stream()
+    if not race:
+        side.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(side):
         total = a.sum()
     if not race:
