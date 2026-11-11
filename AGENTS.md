@@ -190,9 +190,12 @@ prompt/post-processing routing, configuration, docs, and tests. A
 `src/module_registration.py` as the registry source of truth.
 
 Evaluation tools belong to the trusted evaluator control plane, not to agent
-skills or prompts. Keep them opt-in, isolated, capability-checked, attested, and
-fail-closed as described in `docs/how-to/use-evaluation-tools.md`. Do not claim
-that a candidate was analyzed merely because a tool exists or its sidecar ran.
+skills or prompts. Keep them isolated, capability-checked, attested, and
+fail-closed as described in `docs/how-to/use-evaluation-tools.md`. Schema-v3
+runs enable the default set in `src/eval_tools/defaults.py`; a tool joins it
+only after its positive controls and a baseline campaign pass on hardware, and
+anything else stays opt-in. Do not claim that a candidate was analyzed merely
+because a tool exists or its sidecar ran.
 
 ## Verification guide
 

@@ -55,11 +55,33 @@ def hip_asan_build_flags(target_arch: str) -> tuple[str, ...]:
     return ("-fsanitize=address", "-shared-libsan", f"--offload-arch={arch}:xnack+")
 
 
+from . import aka_v3, v3_tools
+
 class GpuAsanPlugin:
     name = ToolName.GPU_ASAN.value
     version = "2"
+    baseline_check = True
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
+        if not aka_v3.is_v3(context):
+            return self._legacy_assess(context, runtime)
+        engine = v3_tools.asan_engine(context)
+        if engine.state != CapabilityState.READY:
+            return ToolCapability(self.name, engine, ready_check(adapter=aka_v3.ADAPTER), runtime)
+        adapted = v3_tools._with_command(v3_tools._triton_profile(context), "command", "gpu_asan")
+        return self._legacy_assess(adapted, runtime)
+
+    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+        if aka_v3.is_v3(context):
+            return v3_tools.asan_invocation(self, context)
+        return self._legacy_build_invocation(context)
+
+    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+        if aka_v3.is_v3(context):
+            return v3_tools.asan_parse(self, context, execution)
+        return self._legacy_parse(context, execution)
+
+    def _legacy_assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
         is_hip = profile.language == KernelLanguage.HIP
@@ -137,7 +159,7 @@ class GpuAsanPlugin:
             )
         return ToolCapability(self.name, engine, adapter, runtime)
 
-    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+    def _legacy_build_invocation(self, context: ToolContext) -> ToolInvocation:
         command = command_from_context(context, "command")
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
@@ -201,7 +223,7 @@ class GpuAsanPlugin:
             },
         )
 
-    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+    def _legacy_parse(self, context: ToolContext, execution) -> ToolRunResult:
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
         attestation_path = artifact_path(

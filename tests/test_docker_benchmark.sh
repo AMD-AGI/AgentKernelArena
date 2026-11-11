@@ -368,6 +368,8 @@ DEEPSEEK_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f020
 DEEPSEEK_CONFIG="$TEST_HOME/deepseek-config-image.yaml"
 cp "$ROOT/example_configs/quickstart_deepseek_harness_mi355x.yaml" "$DEEPSEEK_CONFIG"
 printf '\ndocker_image: %s\n' "$DEEPSEEK_IMAGE" >> "$DEEPSEEK_CONFIG"
+# Image selection only: keep the default sanitizer sidecars out of this argv.
+printf 'evaluation_tools: false\n' >> "$DEEPSEEK_CONFIG"
 IMAGE_TEST_HOME="$TEST_HOME/image-home"
 IMAGE_TEST_PREFIX="$TEST_HOME/image-node"
 mkdir -p "$IMAGE_TEST_HOME/.claude" "$IMAGE_TEST_PREFIX/bin"
@@ -1283,7 +1285,7 @@ fi
 # the scoring container: no network, no credentials, no privileged mode, and
 # only immutable input plus explicit scratch/artifact/socket writes.
 EVAL_FRAMEWORK_ROOT="/opt/aka-eval-tools"
-for eval_image in triton-fpsan gpu-asan rocjitsu hip-fpsan; do
+for eval_image in triton-fpsan gpu-asan rocjitsu hip-fpsan page-fault-guard csan tilelens; do
     eval_dockerfile="$ROOT/docker/eval-tools/$eval_image/Dockerfile"
     grep -Fq "COPY src/eval_tools $EVAL_FRAMEWORK_ROOT/src/eval_tools" "$eval_dockerfile" \
         || fail "$eval_dockerfile does not bake the evaluation framework"
@@ -1292,6 +1294,22 @@ for eval_image in triton-fpsan gpu-asan rocjitsu hip-fpsan; do
     grep -Fq "PYTHONPATH=$EVAL_FRAMEWORK_ROOT" "$eval_dockerfile" \
         || fail "$eval_dockerfile does not default imports to its baked framework"
 done
+# A config without an evaluation_tools section starts the default sanitizers on
+# gfx950 only; false or an explicit list keeps full control.
+EVAL_DEFAULT_CONFIG="$TEST_HOME/eval-defaults.yaml"
+printf 'tasks: []\n' > "$EVAL_DEFAULT_CONFIG"
+defaults_gfx950="$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950 | tr '\n' ' ')"
+[[ "$defaults_gfx950" == "page_fault_guard csan tilelens triton_fpsan rocjitsu_waitcheck rocjitsu " ]] \
+    || fail "default evaluation tools on gfx950 were: $defaults_gfx950"
+[[ -z "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx942)" ]] \
+    || fail "default evaluation tools must stay off on gfx942"
+printf 'tasks: []\nevaluation_tools: false\n' > "$EVAL_DEFAULT_CONFIG"
+[[ -z "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950)" ]] \
+    || fail "evaluation_tools: false must disable the default sanitizers"
+printf 'tasks: []\nevaluation_tools:\n  enabled: [gpu_asan, csan]\n' > "$EVAL_DEFAULT_CONFIG"
+[[ "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950 | tr '\n' ' ')" == "gpu_asan csan " ]] \
+    || fail "an explicit evaluation_tools.enabled list must be used as given"
+
 framework_record="$(
     env -u AKA_EVAL_TOOL_FRAMEWORK_ROOT PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
 from pathlib import Path

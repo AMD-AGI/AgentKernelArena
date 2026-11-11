@@ -27,6 +27,7 @@ import importlib
 import inspect
 import json
 import os
+import re
 import sys
 import types
 from dataclasses import dataclass
@@ -41,6 +42,14 @@ PACKAGE_PREFIX = "_aka_impl_"
 HIP_SOURCE_SUFFIXES = (".hip",)
 HIP_HEADER_SUFFIXES = (".h", ".hpp", ".cuh", ".inc")
 _FLAGS = ("-O3",)
+# A sanitizer lane (see sanitize.py) rebuilds HIP with instrumentation. Only
+# this allowlist crosses from the environment into the compiler command, and
+# both values enter the build hash so an instrumented build never reuses, or
+# is reused as, an ordinary one.
+SANITIZER_CFLAGS_ENV = "AKA_HIP_SANITIZER_CFLAGS"
+SANITIZER_ARCH_ENV = "AKA_HIP_OFFLOAD_ARCH"
+_SANITIZER_FLAGS = frozenset({"-fsanitize=address", "-shared-libsan"})
+_OFFLOAD_ARCH = re.compile(r"gfx[0-9a-f]+(:(sramecc|xnack)[+-])*")
 
 
 class BuildError(RuntimeError):
@@ -54,6 +63,7 @@ class Loaded:
     package: str
     sources: dict[str, str]
     hip_op: str | None = None
+    library: str | None = None
 
 
 def implementation_sources(implementation: Implementation) -> dict[str, str]:
@@ -151,13 +161,32 @@ def _cache_root() -> Path:
     return root
 
 
+def hip_build_flags() -> tuple[str, ...]:
+    """The HIP compiler flags: ``-O3`` plus any allowlisted sanitizer flags."""
+    extra = tuple(os.environ.get(SANITIZER_CFLAGS_ENV, "").split())
+    unknown = sorted(set(extra) - _SANITIZER_FLAGS)
+    if unknown:
+        raise BuildError(f"{SANITIZER_CFLAGS_ENV} accepts only {sorted(_SANITIZER_FLAGS)}, not {unknown}")
+    return _FLAGS + extra
+
+
+def hip_build_arch() -> str:
+    """The offload architecture: the device's, or a sanitizer lane's feature-qualified override."""
+    override = os.environ.get(SANITIZER_ARCH_ENV, "").strip()
+    if not override:
+        return current_arch()
+    if not _OFFLOAD_ARCH.fullmatch(override) or override.split(":")[0] != current_arch():
+        raise BuildError(f"{SANITIZER_ARCH_ENV}={override!r} is not a feature-qualified {current_arch()}")
+    return override
+
+
 def _toolchain() -> str:
     from torch.utils import cpp_extension
 
     version = Path(cpp_extension.ROCM_HOME or "", ".info", "version")
     return json.dumps({"torch": torch.__version__,
                        "rocm": version.read_text().strip() if version.is_file() else None,
-                       "flags": _FLAGS})
+                       "flags": hip_build_flags()})
 
 
 def current_arch() -> str:
@@ -189,7 +218,7 @@ def _load_hip(contract: Contract, implementation: Implementation) -> Loaded:
     for path in sources:
         if not path.endswith(HIP_SOURCE_SUFFIXES + HIP_HEADER_SUFFIXES):
             raise BuildError(f"HIP implementation file {path} is neither a .hip source nor a header")
-    arch = current_arch()
+    arch = hip_build_arch() if current_arch() else ""
     if not arch:
         raise BuildError("No GPU architecture to build HIP for")
     package = f"aka_hip_{implementation.role}_{_content_hash(sources, _toolchain() + arch)}"
@@ -211,7 +240,7 @@ def _load_hip(contract: Contract, implementation: Implementation) -> Loaded:
         try:
             cpp_extension.load(name=package,
                                sources=[str(source_dir / p) for p in sorted(sources) if p.endswith(".hip")],
-                               extra_include_paths=[str(source_dir)], extra_cuda_cflags=list(_FLAGS),
+                               extra_include_paths=[str(source_dir)], extra_cuda_cflags=list(hip_build_flags()),
                                build_directory=str(build), is_python_module=False, verbose=False)
         except Exception as exc:
             raise BuildError(f"HIP build failed: {type(exc).__name__}: {exc}") from exc
@@ -227,7 +256,8 @@ def _load_hip(contract: Contract, implementation: Implementation) -> Loaded:
         raise BuildError(f"{implementation.entry_file} registers no op {implementation.symbol} in "
                          "TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, m)") from exc
     _check_op_schema(f"{implementation.entry_file}::{implementation.symbol}", op._schema, contract)
-    return Loaded(implementation, lambda **call: op(**call), package, sources, f"{package}::{implementation.symbol}")
+    return Loaded(implementation, lambda **call: op(**call), package, sources, f"{package}::{implementation.symbol}",
+                  str(library))
 
 
 def load_implementation(contract: Contract, role: str) -> Loaded:

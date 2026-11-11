@@ -1,8 +1,11 @@
-# Experimental evaluation-tool template for MI355X (gfx950).
+# Evaluation-tool template for MI355X (gfx950) with task-declared adapters.
 #
-# This example is intentionally disabled. With host AKA_EVAL_TOOLS unset, it can
-# be copied and run without building or starting any sanitizer sidecars. Before
-# opting in:
+# A run configuration WITHOUT an evaluation_tools section runs the default
+# schema-v3 sanitizers (src/eval_tools/defaults.py); see
+# docs/how-to/use-evaluation-tools.md. This example sets the section explicitly
+# and disables it, so with host AKA_EVAL_TOOLS unset it can be copied and run
+# without building or starting any sanitizer sidecars. Before opting in to the
+# task-adapter path:
 #   1. build and validate the pinned sidecar images;
 #   2. configure task-specific argv adapters and attestations;
 #   3. enable only applicable tools; and
@@ -29,7 +32,7 @@ workspace_directory_prefix: workspace
 
 evaluation_tools:
   # Replace false with a list such as [gpu_asan, rocjitsu] only after the
-  # selected tasks define matching adapters. `true` enables all six tools and
+  # selected tasks define matching adapters. `true` enables every built-in tool and
   # is rarely appropriate for a heterogeneous run. Host AKA_EVAL_TOOLS, when
   # set, authoritatively replaces this subset for both sidecar startup and plan.
   enabled: false

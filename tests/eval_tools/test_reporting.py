@@ -96,6 +96,7 @@ def test_summary_serialization_omits_raw_output_by_default(tmp_path):
         "plugin_version": "1.0",
         "timeout_s": 3600,
         "options": {},
+        "role": "gate",
     }
 
     verbose = serialize_report(report, include_output=True)

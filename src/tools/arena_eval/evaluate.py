@@ -5,6 +5,10 @@ Run from the task workspace:
 
     python3 -m _aka_eval.evaluate validate-task
     python3 -m _aka_eval.evaluate {baseline|candidate} {compile|correctness|performance}
+    python3 -m _aka_eval.evaluate {baseline|candidate} sanitize LANE
+
+``sanitize`` is run by an evaluation-tool sidecar, never by the agent loop;
+see sanitize.py for its lanes.
 
 Every action prints exactly one ``ARENA_EVAL_RESULT=`` arena-eval-v1 line and
 exits nonzero on failure. The framework, not this script, decides acceptance,
@@ -122,6 +126,8 @@ def _load(contract: Contract, role: str, *, audit: bool, integrity=None):
     evidence["package"] = loaded.package
     if loaded.hip_op:
         evidence["hip_op"] = loaded.hip_op
+    if loaded.library:
+        evidence["library"] = loaded.library
     return call, evidence
 
 
@@ -260,11 +266,11 @@ def _role_calls(contract: Contract, role: str):
     return call, baseline_call, need_baseline, check
 
 
-def correctness_action(contract: Contract, role: str) -> dict:
-    device = _device()
-    call, baseline_call, need_baseline, check = _role_calls(contract, role)
+def check_cases(contract: Contract, role: str, call, baseline_call, need_baseline: bool, device,
+                cases=None) -> tuple[list, list, set]:
+    """Run and check each case; a crash in one case is that case's failure."""
     rows, failures, kinds = [], [], set()
-    for case in contract.cases:
+    for case in contract.cases if cases is None else cases:
         row = case.identity()
         try:
             data = _CaseData(contract, case, device, baseline_call, need_baseline)
@@ -284,6 +290,13 @@ def correctness_action(contract: Contract, role: str) -> dict:
             failures.append(row["test_case_id"])
             kinds.add(row["failure_kind"])
         rows.append(row)
+    return rows, failures, kinds
+
+
+def correctness_action(contract: Contract, role: str) -> dict:
+    device = _device()
+    call, baseline_call, need_baseline, check = _role_calls(contract, role)
+    rows, failures, kinds = check_cases(contract, role, call, baseline_call, need_baseline, device)
     if failures:
         kind = kinds.pop() if len(kinds) == 1 else "mixed"
         if kind == "mixed":
@@ -374,16 +387,23 @@ def performance_action(contract: Contract, role: str) -> dict:
 
 
 def run(argv: list[str]) -> tuple[dict, int]:
+    from . import sanitize
+
+    lane = None
     if argv == ["validate-task"]:
         role, action = "task", "validate-task"
     elif len(argv) == 2 and argv[0] in ("baseline", "candidate") and argv[1] in ("compile", "correctness", "performance"):
         role, action = argv
+    elif len(argv) == 3 and argv[0] in ("baseline", "candidate") and argv[1] == "sanitize" and argv[2] in sanitize.LANES:
+        role, action, lane = argv
     else:
         return _report("task", "validate-task", "FAIL", [], f"Unknown action {argv}", "usage"), 2
     try:
         contract = load_contract()
         if action == "validate-task":
             report = validate_task(contract)
+        elif action == "sanitize":
+            report = sanitize.run_lane(contract, role, lane)
         elif action == "compile":
             report = compile_action(contract, role)
         elif action == "correctness":

@@ -47,11 +47,29 @@ def _expected_kernel(context: ToolContext) -> str:
     return value
 
 
+from . import aka_v3, v3_tools
+
 class WaitcheckPlugin:
     name = ToolName.ROCJITSU_WAITCHECK.value
     version = "1"
+    baseline_check = True
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
+        if aka_v3.is_v3(context):
+            return v3_tools.capability(self, context, runtime, v3_tools.waitcheck_engine(context))
+        return self._legacy_assess(context, runtime)
+
+    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+        if aka_v3.is_v3(context):
+            return v3_tools.waitcheck_invocation(self, context)
+        return self._legacy_build_invocation(context)
+
+    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+        if aka_v3.is_v3(context):
+            return v3_tools.waitcheck_parse(self, context, execution)
+        return self._legacy_parse(context, execution)
+
+    def _legacy_assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
         unsupported = unsupported_language_check(profile.language, "waitcheck")
         if unsupported is not None:
@@ -97,7 +115,7 @@ class WaitcheckPlugin:
             )
         return ToolCapability(self.name, engine, adapter, runtime)
 
-    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+    def _legacy_build_invocation(self, context: ToolContext) -> ToolInvocation:
         code_object = resolve_workspace_file(context, "code_object")
         code_sha256 = sha256_file(code_object)
         expected_kernel = _expected_kernel(context)
@@ -140,7 +158,7 @@ class WaitcheckPlugin:
             },
         )
 
-    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+    def _legacy_parse(self, context: ToolContext, execution) -> ToolRunResult:
         code_object = resolve_workspace_file(context, "code_object")
         code_sha256 = sha256_file(code_object)
         expected_kernel = _expected_kernel(context)

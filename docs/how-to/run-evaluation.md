@@ -26,7 +26,7 @@ ships quickstarts and specialized examples, including:
 | `example_configs/quickstart_claude_mi300a.yaml` | Claude Code RMSNorm task with the MI300A hardware profile (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | One Claude Code RMSNorm task on MI355X (`gfx950`). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Cursor Agent over a whole task category on MI355X; use only after installing and authenticating Cursor Agent. |
-| `example_configs/evaluation_tools_advisory_mi355x.yaml` | Default-disabled template for experimental `gfx950` evaluation-tool sidecars. It still requires task-specific adapters before opt-in. |
+| `example_configs/evaluation_tools_advisory_mi355x.yaml` | Template with an explicit, disabled `evaluation_tools` section for task-declared adapters on `gfx950`. Schema-v3 runs need no section: the default sanitizers run without one. |
 | `example_configs/qa_audit_all_mi355x.yaml` | [QA audit](qa-auditor.md) of every task on MI355X. |
 | `example_configs/e2e_*_qa_mi355x.yaml` | QA audit of an end-to-end serving task. |
 
@@ -111,10 +111,12 @@ is missing fails the run before it starts. See the
 See [Configuration and API reference](../reference/api-reference.md) for the full
 set of run-configuration fields.
 
-Optional sanitizer and analysis sidecars run after ordinary correctness and
-before performance. They are disabled by default, verified only on `gfx950`,
-and require language/task-specific adapters. See [Check kernels with evaluation
-tools](use-evaluation-tools.md) before enabling them.
+Sanitizer sidecars run after ordinary correctness and before performance. On
+MI355X (`gfx950`) a run configuration without an `evaluation_tools` section
+runs the default schema-v3 set; the runner builds any missing sidecar image on
+first use, which needs network access, and stops the run if a build fails.
+Set `evaluation_tools: false` to turn it off. See [Check kernels
+with evaluation tools](use-evaluation-tools.md#default-sanitizers-for-schema-v3-tasks).
 
 ## Start a run
 

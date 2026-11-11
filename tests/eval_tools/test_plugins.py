@@ -122,11 +122,14 @@ def replay_capsule(tmp_path: Path, adapter: str, *, arch: str = "gfx950") -> Pat
 
 def test_registry_uses_core_plugin_contracts(tmp_path):
     assert plugin_ids() == (
+        "csan",
         "gpu_asan",
         "hip_fpsan",
+        "page_fault_guard",
         "rocjitsu",
         "rocjitsu_consan",
         "rocjitsu_waitcheck",
+        "tilelens",
         "triton_fpsan",
     )
     plugin = get_plugin("triton-fpsan")
@@ -143,11 +146,14 @@ def test_builtins_register_in_core_registry():
     registry = register_builtin_plugins(requested)
     assert registry is requested
     assert tuple(registry) == (
+        "csan",
         "gpu_asan",
         "hip_fpsan",
+        "page_fault_guard",
         "rocjitsu",
         "rocjitsu_consan",
         "rocjitsu_waitcheck",
+        "tilelens",
         "triton_fpsan",
     )
 
