@@ -21,14 +21,14 @@ This topic summarizes the features available in each AgentKernelArena release. F
   task names no implementation language. The run's `target_language` (`triton`, `gluon`, `hip` or `flydsl`, with per-task
   `{path, target_language}` overrides) selects it. See
   [Task definition, schema, and authoring](../how-to/add-task.md).
-- The suite has 397 kernel tasks covering 253 operators in 16 categories, with
+- The suite has 400 kernel tasks covering 256 operators in 16 categories, with
   production baselines vendored from vLLM, SGLang, AITER and FlyDSL (278
-  Triton, 73 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
+  Triton, 76 FlyDSL, 38 HIP, 7 Gluon and one TileLang). Every task has a
   framework-finalized QA `PASS` on MI355X for its exact package.
-- 18 tasks vendor the sgl-amd-mono SGLang plugin's persistent FlyDSL
-  monokernels (DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi-K3, Kimi-K3.1,
+- 21 tasks vendor the sgl-amd-mono SGLang plugin's persistent FlyDSL
+  monokernels (DeepSeek-V4-Pro, DeepSeek-V4.1-Flash, GLM-5.3, GLM-5.3-Flash, Kimi-K3, Kimi-K3.1,
   MiniMax-M3, MiniMax-M3.1-Flash, Muse Spark, Qwen3.8-Flash-Next), with
-  workloads derived from the AgentX agentic-coding traces. 11 of them are
+  workloads derived from the AgentX agentic-coding traces. 14 of them are
   multi-GPU tasks: a `distributed` block in `task.yaml` runs one kernel call
   per rank on 4 or 8 GPUs with framework-owned symmetric peer memory, checks
   every rank against its part of the reference and times the slowest rank of
