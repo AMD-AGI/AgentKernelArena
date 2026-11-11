@@ -39,12 +39,31 @@ def _digest(spec, root: Path):
 
 
 #: Run target languages Forge accepts. Each also needs a backend in the installed engine.
-TARGET_LANGUAGES = ("flydsl", "gluon", "hip", "triton")
+TARGET_LANGUAGES = ("asm", "flydsl", "gluon", "hip", "triton")
+#: KernelForge's name for a run target language, where it differs.
+ENGINE_BACKENDS = {"asm": "assembly"}
 #: Targets KernelForge's correctness-only implementer initializes before forge-loop.
 #: A FlyDSL target is initialized by the engine's native PORT (forge-rewrite-by-flydsl).
 INITIALIZATION_LANGUAGES = ("gluon", "hip", "triton")
 #: The engine-owned Arena workflows, in the order a run can select them.
 WORKFLOWS = ("optimize", "initialize", "rewrite")
+
+
+def engine_backend(language: str) -> str:
+    """The KernelForge kernel backend that serves ``language``."""
+    return ENGINE_BACKENDS.get(language, language)
+
+
+def require_editable_assembly(context: TaskContext) -> None:
+    """KernelForge's assembly backend edits existing ``.s`` sources and nothing else.
+
+    It has no assembly initializer, and a candidate that only loads the
+    baseline's vendored code objects has no assembly source to edit.
+    """
+    solution = Path(context.workspace) / "solution"
+    if not any(path.suffix == ".s" for path in solution.rglob("*") if path.is_file()):
+        raise ForgeRunError("KernelForge's assembly backend optimizes existing .s sources; this asm candidate "
+                            "has none (it is a template or loads only vendored code objects)")
 
 
 def require_target_language(context: TaskContext) -> str:
@@ -85,6 +104,9 @@ def choose_workflow(context: TaskContext, *, target_verified: bool, requested: s
     language = require_target_language(context)
     if target_verified:
         workflow = "optimize"
+    elif language == "asm":
+        raise ForgeRunError("KernelForge cannot initialize an asm candidate: its assembly backend optimizes "
+                            "verified assembly and has no initializer")
     elif language == "flydsl":
         rewrite_source_language(context, capabilities)
         workflow = "rewrite"
@@ -159,10 +181,14 @@ def source_framework(context: TaskContext) -> str:
 
 
 def require_supported_backend(spec, capabilities: dict) -> str:
-    """Preserve the run's target language; an unrelated backend is not a substitute."""
+    """Preserve the run's target language; an unrelated backend is not a substitute.
+
+    A language may have another name in the engine (``asm`` is KernelForge's
+    ``assembly``); that is a name, not a substitute backend.
+    """
     language = spec.candidate.language
-    if language not in capabilities["backends"]:
-        raise ForgeRunError(f"KernelForge has no {language} backend")
+    if engine_backend(language) not in capabilities["backends"]:
+        raise ForgeRunError(f"KernelForge has no {engine_backend(language)} backend for {language}")
     return language
 
 
@@ -301,7 +327,7 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
     if plan["workflow"] != "rewrite":
         files = candidate_files(context.spec, root)
         command += ["--kernel", str(root / plan["anchor"]),
-                    "--kernel-backend", context.target_language,
+                    "--kernel-backend", engine_backend(context.target_language),
                     "--source-files", ",".join(map(str, files.values())),
                     "--target-functions", ",".join(symbols), "--operator-name", context.operator,
                     "--framework", framework,
@@ -432,6 +458,8 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
                 status["candidate_requires_repair"] = True
         plan["workflow"] = choose_workflow(context, target_verified=target_verified,
                                            requested=config["workflow"], capabilities=capabilities)
+        if context.target_language == "asm":
+            require_editable_assembly(context)
         status["workflow"] = plan["workflow"]
         if plan["workflow"] == "initialize":
             from agents.forge.initialization import materialize_targets

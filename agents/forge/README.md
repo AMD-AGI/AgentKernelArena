@@ -23,6 +23,8 @@ baseline's, and otherwise as an unimplemented template.
 | Unimplemented, target HIP, Triton or Gluon | Forge correctness-only implementer, then `forge-loop` (initialize) |
 | Unimplemented, target FlyDSL, baseline Triton or HIP | `forge-rewrite-by-flydsl` with `--source-language <baseline>`: PORT, then its nested loop (rewrite) |
 | Unimplemented, target FlyDSL, any other baseline language | Fails closed before the engine starts: the PORT reads only the source languages the engine reports |
+| Target asm, implemented and verified, with `.s` sources | `forge-loop` (optimize) on KernelForge's `assembly` backend, which edits the `.s` files |
+| Target asm, unimplemented, or only vendored `.co` code objects | Fails closed: the `assembly` backend has no initializer and edits only `.s` sources |
 | Any other target language | Fails closed before any engine work |
 
 `workflow: auto` is the default; `optimize`, `initialize` and `rewrite` must
@@ -35,7 +37,8 @@ implementer; it is never treated as an accepted implementation. Missing failure
 classifications, build failures, runtime errors, incomplete case evidence and
 unchanged broken task seeds still abort, as does a FlyDSL repair whose baseline
 the PORT cannot read. The backend is the run's target language, checked against
-the installed KernelForge registry. There is no task-name dispatch, suffix
+the installed KernelForge registry under the engine's name for it (`asm` is
+KernelForge's `assembly`). There is no task-name dispatch, suffix
 inference, or silent substitution of an unsupported backend with FlyDSL.
 
 The FlyDSL CLI still owns its PORT and nested OPTIMIZE; it translates the

@@ -115,7 +115,7 @@ READMEs. It is the canonical task guide; inspect nearby tasks as well. Kernel
 tasks use schema v3: `tasks/<baseline_language>/<category>/<operator>/<scenario>/`
 holds the interface, a PyTorch reference, a vendored baseline and production workloads,
 and names no implementation language; the run configuration's `target_language`
-(`triton`, `gluon`, `hip` or `flydsl`) selects it. The serving tasks under
+(`triton`, `gluon`, `hip`, `flydsl` or `asm`) selects it. The serving tasks under
 `tasks/e2e/` keep their schema-v2 contract
 ([e2e kernel tasks](docs/how-to/e2e-kernel-tasks.md)). Adding a field to YAML
 alone does not implement the associated behavior.

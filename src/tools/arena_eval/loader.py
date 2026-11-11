@@ -69,11 +69,39 @@ def implementation_sources(implementation: Implementation) -> dict[str, str]:
         if path.is_symlink():
             raise BuildError(f"{implementation.role} source {relative} is a symlink")
         if path.is_file():
+            if path.suffix == CODE_OBJECT_SUFFIX:
+                continue    # binary; see implementation_code_objects
             try:
                 sources[relative.as_posix()] = path.read_text(encoding="utf-8")
             except UnicodeError as exc:
                 raise BuildError(f"{implementation.role} source {relative} is not UTF-8 text") from exc
     return sources
+
+
+CODE_OBJECT_SUFFIX = ".co"
+
+
+def implementation_code_objects(contract: Contract, implementation: Implementation) -> dict[str, str]:
+    """Relative path -> SHA256 of every code object under the implementation root.
+
+    Only asm implementations may hold code objects, and each must be one the
+    baseline vendors (``baseline.provenance.code_objects``), byte for byte.
+    """
+    root = (WORKSPACE / implementation.root).resolve(strict=True)
+    found = {}
+    for path in sorted(root.rglob(f"*{CODE_OBJECT_SUFFIX}")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            raise BuildError(f"{implementation.role} code object {relative} is a symlink")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if implementation.language != "asm":
+            raise BuildError(f"{implementation.role} holds the binary {relative}; only asm implementations may "
+                             "load a code object")
+        if digest not in contract.code_objects:
+            raise BuildError(f"{implementation.role} code object {relative} is not one of the baseline's vendored "
+                             "code objects (by SHA256); write new kernels as .s source")
+        found[relative] = digest
+    return found
 
 
 def _is_documentation(path: str) -> bool:
@@ -115,7 +143,16 @@ def _load_python(contract: Contract, implementation: Implementation) -> Loaded:
         if path.endswith(".py") and ("/" in path or path == "__init__.py"):
             raise BuildError(f"{implementation.role} Python sources are one flat package; "
                              f"{path} is not allowed")
-    package = f"{PACKAGE_PREFIX}{implementation.role}_{_content_hash(sources)}"
+    code_objects = implementation_code_objects(contract, implementation)
+    if implementation.language == "asm":
+        # Assembly packages import the aka_asm facade. Its helper loads only the
+        # baseline's vendored code objects and these audited .s texts.
+        from . import asm
+
+        asm.allow_code_objects(contract.code_objects)
+        asm.register_sources((WORKSPACE / implementation.root).resolve(strict=True), sources)
+        sys.modules[asm.ALIAS] = asm.FACADE
+    package = f"{PACKAGE_PREFIX}{implementation.role}_{_content_hash(sources, json.dumps(code_objects, sort_keys=True))}"
     root = (WORKSPACE / implementation.root).resolve(strict=True)
     if package not in sys.modules:
         module = types.ModuleType(package)
@@ -245,6 +282,10 @@ def language_available(language: str) -> tuple[bool, str]:
                "tilelang": "tilelang"}
     if language == "hip":
         return (True, "") if hip_available() else (False, "hipcc/ninja/ROCm PyTorch not found")
+    if language == "asm":
+        from .asm import available
+
+        return available()
     if language not in modules:
         return False, f"unknown language {language!r}"
     try:

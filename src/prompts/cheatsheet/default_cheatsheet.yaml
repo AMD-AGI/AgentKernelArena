@@ -55,3 +55,4 @@ knowledge:
   gluon:    src/prompts/cheatsheet/gluon_cheatsheet.md
   flydsl:   src/prompts/cheatsheet/flydsl_cheatsheet.md
   tilelang: src/prompts/cheatsheet/tilelang_cheatsheet.md
+  asm:      src/prompts/cheatsheet/asm_cheatsheet.md
