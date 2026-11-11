@@ -175,6 +175,9 @@ class PageFaultGuardPlugin(_LanePlugin):
 # Reading memory the role does not own yields values unrelated to the result.
 GROSS_BOUND_MULTIPLE = 10.0
 GROSS_VIOLATION_FRACTION = 0.01
+# The fraction counts only with enough elements: one marginal miss in a
+# one-element output (a per-row mean of one row) is a 100% fraction.
+GROSS_MIN_ELEMENTS = 8
 
 
 def _gross_mismatch(report: dict) -> bool:
@@ -182,8 +185,8 @@ def _gross_mismatch(report: dict) -> bool:
 
     Gross: a non-finite value where the reference is finite, an error over
     ``GROSS_BOUND_MULTIPLE`` times the case's bound, more than
-    ``GROSS_VIOLATION_FRACTION`` of the elements outside it, or a failure
-    without these metrics.
+    ``GROSS_VIOLATION_FRACTION`` of the elements (and at least
+    ``GROSS_MIN_ELEMENTS``) outside it, or a failure without these metrics.
     """
 
     failing = [row for row in report.get("cases") or [] if row.get("status") != "PASS"]
@@ -197,9 +200,11 @@ def _gross_mismatch(report: dict) -> bool:
             return True
         for output in failed:
             try:
+                mismatched = output.get("mismatched_elements")
+                many = mismatched is None or int(mismatched) >= GROSS_MIN_ELEMENTS
                 if (int(output.get("nonfinite_mismatches") or 0) > 0
                         or float(output.get("peak_bound_multiple", float("inf"))) > GROSS_BOUND_MULTIPLE
-                        or float(output.get("violation_fraction", 1.0)) > GROSS_VIOLATION_FRACTION):
+                        or (many and float(output.get("violation_fraction", 1.0)) > GROSS_VIOLATION_FRACTION)):
                     return True
             except (TypeError, ValueError):
                 return True

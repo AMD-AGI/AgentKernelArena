@@ -263,6 +263,9 @@ def _mismatch_case(**output):
     ({}, FindingStatus.INCONCLUSIVE),  # one element 14% over a baseline-relative bound
     ({"peak_bound_multiple": 50.0}, FindingStatus.FOUND),
     ({"violation_fraction": 0.2}, FindingStatus.FOUND),
+    ({"violation_fraction": 0.2, "mismatched_elements": 100}, FindingStatus.FOUND),
+    # A one-row mean 11% over its bound: one element is a 100% fraction, not gross.
+    ({"violation_fraction": 1.0, "mismatched_elements": 1, "peak_bound_multiple": 1.11}, FindingStatus.INCONCLUSIVE),
     ({"nonfinite_mismatches": 3}, FindingStatus.FOUND),
 ])
 def test_page_fault_guard_flags_only_gross_output_changes(tmp_path, output, finding):
