@@ -17,6 +17,7 @@ import yaml
 
 from agents import register_agent
 from agents.run_budget import append_run_budget
+from src.agent_sandbox import wrap_command
 from src.module_registration import AgentType, load_prompt_builder
 from src.process_control import stop_process_group as _stop_process_group
 from src.prompts.agent_budget import time_budget_guidance
@@ -170,7 +171,7 @@ def _run(
     # File-backed stdin avoids argv length limits and blocking writes of large prompts.
     with (state / "prompt.txt").open(encoding="utf-8") as prompt:
         process = subprocess.Popen(
-            command, cwd=workspace, env=env, stdin=prompt,
+            wrap_command(command, env), cwd=workspace, env=env, stdin=prompt,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
             start_new_session=True,

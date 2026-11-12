@@ -344,7 +344,14 @@ def _build_context(
         return None
     try:
         validate_run_budget_mode(agent.value, config["agent"])
-    except ValueError as error:
+        from src.agent_sandbox import resolve as resolve_sandbox, sandbox_mode
+        mode = sandbox_mode(config)
+        if need_agent_launcher:
+            # Task-independent checks; serving tasks are decided per task.
+            _, unconfined_reason = resolve_sandbox(mode, agent.value)
+            if unconfined_reason:
+                print(f"Note: agent_sandbox {mode}: agents run unconfined in this run: {unconfined_reason}")
+    except (ValueError, RuntimeError) as error:
         print(f"Error: {error}")
         return None
 

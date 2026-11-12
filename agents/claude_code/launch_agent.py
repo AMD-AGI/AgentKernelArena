@@ -19,6 +19,7 @@ from agents.run_budget import append_run_budget
 from src.module_registration import AgentType, load_prompt_builder
 from src.process_control import stop_process_group as _stop_process
 from src.prompts.agent_budget import iteration_budget_guidance, time_budget_guidance
+from src.agent_sandbox import wrap_command
 from src.runtime_env import PYTHON_ENV_VAR, build_subprocess_env
 from src.tools.agent_cost import report_agent_usage
 from src.tools.agent_time_budget import (
@@ -202,7 +203,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
             logger.info("Resuming command: %s <stdin prompt>", shlex.join(run_cmd))
         with prompt_input(prompt_text) as stream:
             process = subprocess.Popen(
-                run_cmd, stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                wrap_command(run_cmd, process_env), stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, cwd=workspace, bufsize=1, env=process_env, start_new_session=True,
             )
         failed_result = threading.Event()
