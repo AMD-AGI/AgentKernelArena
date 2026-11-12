@@ -55,12 +55,16 @@ This topic summarizes the features available in each AgentKernelArena release. F
 
 ### Agent sandbox
 
-- `agent_sandbox: landlock` confines each optimizing agent's process tree to its
-  task workspace with Linux Landlock. The agent can no longer read or change
-  framework code, task packages or other workspaces in the checkout. Every
-  launch is attested, and an unattested run is not accepted. Supported for
-  Claude Code, Codex, Cursor and DeepSeek Harness; the default stays `none`.
-  See [Agent sandbox](../how-to/agents.md#agent-sandbox).
+- Optimizing agents now run confined to their task workspace with Linux
+  Landlock by default (`agent_sandbox: auto`). A confined agent can no longer
+  read or change framework code, task packages or other workspaces in the
+  checkout. Every confined launch is attested, and an unattested one is not
+  accepted. The sandbox covers Claude Code, Codex, Cursor and DeepSeek Harness on
+  single-GPU kernel tasks. Other agents, serving tasks, multi-GPU tasks and
+  kernels without Landlock ABI 3 run unconfined, and `task_result.yaml` records
+  why. `agent_sandbox: landlock` instead refuses what it cannot confine, and
+  `none` turns the sandbox off. See
+  [Agent sandbox](../how-to/agents.md#agent-sandbox).
 
 ## AgentKernelArena 0.4.0
 

@@ -240,15 +240,16 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         if target_language is None:
             raise ValueError(f"Task {task_name} needs a target_language from the run config")
     eval_config["_target_language"] = target_language
-    from .agent_sandbox import check_agent_supported, require_landlock, sandbox_mode
-    if sandbox_mode(eval_config) != "none" and agent.value != "qa_auditor":
-        # Refuse before any workspace, baseline or model work is spent.
-        check_agent_supported(sandbox_mode(eval_config), agent.value)
-        require_landlock()
     spec = load_task_spec(Path(task_config_dir), task_id=task_name, target_language=target_language)
-    if (sandbox_mode(eval_config) != "none" and agent.value != "qa_auditor"
-            and measurement_kind(spec.to_mapping()) == "serving"):
-        raise ValueError("agent_sandbox is supported for kernel tasks only; serving tasks need the full checkout")
+    from .agent_sandbox import resolve as resolve_sandbox, sandbox_mode
+    # Decided, and for agent_sandbox: landlock refused, before any workspace,
+    # baseline or model work is spent.
+    mode = sandbox_mode(eval_config)
+    confine, unconfined_reason = resolve_sandbox(mode, agent.value, measurement=measurement_kind(spec.to_mapping()),
+                                                 world_size=_world_size(spec))
+    if unconfined_reason:
+        logger.info("Agent sandbox not applied to %s: %s", task_name, unconfined_reason)
+    sandbox_plan = {"mode": mode, "confine": confine, "reason": unconfined_reason}
     policy = budget_policy(eval_config)
     if policy and "final_evaluation_pairs" in policy and measurement_kind(spec.to_mapping()) != "serving":
         raise ValueError("final_evaluation_pairs applies only to serving tasks")
@@ -262,11 +263,17 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     record = open_budget(_budget_path(run_directory, task_name), policy)
     arguments = dict(eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
                      task_name=task_name, task_config_dir=task_config_dir, run_directory=run_directory,
-                     timestamp=timestamp, logger=logger, spec=spec, budget_record=record)
+                     timestamp=timestamp, logger=logger, spec=spec, budget_record=record,
+                     sandbox_plan=sandbox_plan)
     if record is None:
         return _run_task_v2(**arguments)
     with _agent_environment({"ARENA_TASK_DEADLINE": str(record["deadline_epoch"])}):
         return _run_task_v2(**arguments)
+
+
+def _world_size(spec: TaskSpec) -> int:
+    """GPUs one evaluation of the task uses; multi-GPU tasks record it in their contract."""
+    return (spec.to_mapping().get("contract") or {}).get("world_size", 1)
 
 
 def _sweep_before_final_evaluation(config: dict, state: Path, logger: logging.Logger) -> dict:
@@ -297,7 +304,8 @@ def _sweep_before_final_evaluation(config: dict, state: Path, logger: logging.Lo
 
 def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
                 task_config_dir: str, run_directory: Path, timestamp: str,
-                logger: logging.Logger, spec: TaskSpec, budget_record: dict | None) -> tuple[bool, Path]:
+                logger: logging.Logger, spec: TaskSpec, budget_record: dict | None,
+                sandbox_plan: dict) -> tuple[bool, Path]:
     """Preserve agent failures and score the delivered files independently."""
     config = spec.to_mapping()
     from .measurement import measurement_kind, serving_pair_count
@@ -354,10 +362,10 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     sandbox = None
     if initial.accepted:
         source_before = session.candidate_source_evidence()
-        from .agent_sandbox import prepare as prepare_sandbox, sandbox_mode
-        sandbox = prepare_sandbox(sandbox_mode(eval_config), workspace=workspace, state_directory=state,
-                                  baseline_workspace=session.baseline_workspace)
-        if sandbox is not None:
+        if sandbox_plan["confine"]:
+            from .agent_sandbox import prepare as prepare_sandbox
+            sandbox = prepare_sandbox(sandbox_plan["mode"], workspace=workspace, state_directory=state,
+                                      baseline_workspace=session.baseline_workspace)
             environment.update(sandbox.environment)
         started = time.monotonic()
         try:
@@ -378,6 +386,9 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
             agent_result["candidate_changed"] = source_before["sources"] != source_after["sources"]
         if sandbox is not None:
             agent_result["sandbox"] = sandbox.record()
+        elif sandbox_plan["reason"]:
+            from .agent_sandbox import not_applied_record
+            agent_result["sandbox"] = not_applied_record(sandbox_plan["mode"], sandbox_plan["reason"])
     _json_file(state / f"agent-{uuid.uuid4().hex}.json", agent_result)
     sweep = _sweep_before_final_evaluation(config, state, logger)
     result = evaluate_task_session(
@@ -388,8 +399,9 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     accepted = accepted and result.get("pass_verification", True) is True
     accepted = accepted and result.get("best_optimized_execution_time", 0) > 0
     if "sandbox" in agent_result:
-        # Fail closed: a requested sandbox that no agent launch attested taints the run.
         result["agent_sandbox"] = agent_result["sandbox"]
+    if sandbox is not None:
+        # Fail closed: an applied sandbox that no agent launch attested taints the run.
         accepted = accepted and agent_result["sandbox"]["status"] == "enforced"
     # Leftover processes taint any measurement; serving tasks additionally need
     # a container the framework could sweep at all.

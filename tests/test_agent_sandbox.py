@@ -22,23 +22,84 @@ from src import agent_sandbox as sandbox
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_mode_defaults_to_none_and_rejects_unknown_values():
-    assert sandbox.sandbox_mode({}) == "none"
-    assert sandbox.sandbox_mode({"agent_sandbox": None}) == "none"
-    assert sandbox.sandbox_mode({"agent_sandbox": "landlock"}) == "landlock"
+@pytest.fixture(autouse=True)
+def default_agent_sandbox_mode():
+    """Overrides tests/conftest.py: this module tests the real default mode."""
+
+
+def test_mode_defaults_to_auto_and_rejects_unknown_values():
+    assert sandbox.sandbox_mode({}) == "auto"
+    assert sandbox.sandbox_mode({"agent_sandbox": None}) == "auto"
+    for mode in ("none", "auto", "landlock"):
+        assert sandbox.sandbox_mode({"agent_sandbox": mode}) == mode
     for value in ("Landlock", "bubblewrap", True, 1):
         with pytest.raises(ValueError, match="agent_sandbox"):
             sandbox.sandbox_mode({"agent_sandbox": value})
 
 
-def test_unsupported_agents_are_refused_and_control_plane_agents_exempt():
+@pytest.fixture
+def landlock_host(tmp_path, monkeypatch):
+    """A Landlock ABI 6 host whose HOME is outside the checkout."""
+    monkeypatch.setattr(sandbox, "landlock_abi", lambda: 6)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+
+def test_auto_confines_supported_kernel_launches_and_skips_the_rest(landlock_host, monkeypatch):
     for agent in sorted(sandbox.SUPPORTED_AGENTS):
-        sandbox.check_agent_supported("landlock", agent)
-    sandbox.check_agent_supported("landlock", "qa_auditor")
-    sandbox.check_agent_supported("none", "geak")
-    for agent in ("geak", "forge"):
-        with pytest.raises(ValueError, match="not supported"):
-            sandbox.check_agent_supported("landlock", agent)
+        assert sandbox.resolve("auto", agent) == (True, None)
+        assert sandbox.resolve("landlock", agent) == (True, None)
+    for mode in ("none", "auto", "landlock"):
+        assert sandbox.resolve(mode, "qa_auditor") == (False, None)
+    assert sandbox.resolve("none", "geak", measurement="serving") == (False, None)
+    unsupported = [
+        (dict(agent_name="geak"), "not supported"),
+        (dict(agent_name="forge"), "not supported"),
+        (dict(agent_name="codex", measurement="serving"), "single-GPU kernel tasks only"),
+        (dict(agent_name="codex", world_size=2), "uses 2 GPUs"),
+        (dict(agent_name="codex", environ={"HOME": "/"}), "contains the repository"),
+    ]
+    for kwargs, reason in unsupported:
+        confine, why = sandbox.resolve("auto", **kwargs)
+        assert confine is False and reason in why
+        with pytest.raises(ValueError, match=reason):
+            sandbox.resolve("landlock", **kwargs)
+    monkeypatch.setattr(sandbox, "landlock_abi", lambda: 2)
+    confine, why = sandbox.resolve("auto", "codex")
+    assert confine is False and "ABI 2" in why
+    with pytest.raises(ValueError, match="ABI 2"):
+        sandbox.resolve("landlock", "codex")
+
+
+def _start_run(agent, **settings):
+    """Run-start validation of main.py; ``started`` once it passes every check."""
+    import argparse
+    from contextlib import redirect_stdout
+    import io
+    from unittest.mock import patch
+
+    from main import _build_context
+    config = {"tasks": [], "agent": {"template": agent}, "workspace_directory_prefix": "workspace",
+              "target_gpu_model": "MI355X", **settings}
+    output = io.StringIO()
+    with patch("main._load_config", return_value=config), \
+            patch("main._resolve_run", side_effect=AssertionError("started")), redirect_stdout(output):
+        try:
+            context = _build_context(argparse.Namespace(run_suffix=None, config_name="unused.yaml"),
+                                     need_agent_launcher=True)
+        except AssertionError:
+            context = "started"
+    return context, output.getvalue()
+
+
+def test_run_start_notes_unconfined_auto_runs_and_refuses_strict_ones(landlock_host):
+    assert _start_run("codex") == ("started", "")
+    context, output = _start_run("geak")
+    assert context == "started" and "agents run unconfined" in output and "not supported" in output
+    context, output = _start_run("geak", agent_sandbox="landlock")
+    assert context is None and "not supported" in output
+    assert _start_run("geak", agent_sandbox="none") == ("started", "")
 
 
 def test_complement_excludes_subtree_and_symlinks_into_it(tmp_path):
@@ -187,15 +248,6 @@ def cpu_runtime(monkeypatch):
     monkeypatch.setenv("AGENT_KERNEL_ARENA_PYTHON", sys.executable)
 
 
-@pytest.fixture
-def separate_home(tmp_path, monkeypatch):
-    # The sandbox refuses a HOME that contains the checkout, which is the layout of
-    # hosted CI runners; the Docker runner gives every worker its own HOME.
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-
-
 def test_unsupported_agent_fails_before_any_workspace_is_created(tmp_path, cpu_runtime):
     path = _fixture_task(tmp_path)
     with pytest.raises(ValueError, match="not supported"):
@@ -203,8 +255,8 @@ def test_unsupported_agent_fails_before_any_workspace_is_created(tmp_path, cpu_r
     assert not (tmp_path / "run").exists() or not any((tmp_path / "run").glob("*fixture*"))
 
 
-def test_serving_tasks_are_refused_before_any_workspace_is_created(tmp_path, monkeypatch, cpu_runtime):
-    monkeypatch.setattr("src.agent_sandbox.require_landlock", lambda minimum=3: 6)
+def test_serving_tasks_are_refused_before_any_workspace_is_created(tmp_path, monkeypatch, cpu_runtime,
+                                                                   landlock_host):
     monkeypatch.setattr("src.measurement.measurement_kind", lambda config: "serving")
     path = _fixture_task(tmp_path)
     with pytest.raises(ValueError, match="kernel tasks only"):
@@ -212,8 +264,8 @@ def test_serving_tasks_are_refused_before_any_workspace_is_created(tmp_path, mon
     assert not (tmp_path / "run").exists() or not any((tmp_path / "run").glob("*fixture*"))
 
 
-def test_unattested_launch_is_not_accepted(tmp_path, monkeypatch, cpu_runtime, separate_home):
-    monkeypatch.setattr("src.agent_sandbox.require_landlock", lambda minimum=3: 6)
+@pytest.mark.parametrize("mode", ["auto", "landlock"])
+def test_unattested_launch_is_not_accepted(tmp_path, cpu_runtime, landlock_host, mode):
     path = _fixture_task(tmp_path)
     seen = {}
 
@@ -221,17 +273,17 @@ def test_unattested_launch_is_not_accepted(tmp_path, monkeypatch, cpu_runtime, s
         seen["policy"] = os.environ.get(sandbox.POLICY_ENV)
         (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
 
-    _, workspace = _run(tmp_path, path, launcher)
+    _, workspace = _run(tmp_path, path, launcher, mode=mode)
     report = yaml.safe_load((workspace / "task_result.yaml").read_text())
     assert seen["policy"] and Path(seen["policy"]).is_file()
     assert not sandbox._within(os.path.realpath(seen["policy"]), os.path.realpath(workspace))
     assert report["agent_sandbox"]["status"] == "unattested"
     assert report["agent_execution"]["sandbox"]["status"] == "unattested"
+    assert report["agent_sandbox"]["mode"] == mode
     assert report["candidate_accepted"] is False
 
 
-def test_attested_launch_keeps_the_normal_outcome(tmp_path, monkeypatch, cpu_runtime, separate_home):
-    monkeypatch.setattr("src.agent_sandbox.require_landlock", lambda minimum=3: 6)
+def test_attested_launch_keeps_the_normal_outcome(tmp_path, cpu_runtime, landlock_host):
     path = _fixture_task(tmp_path)
 
     def launcher(**kwargs):
@@ -240,9 +292,29 @@ def test_attested_launch_keeps_the_normal_outcome(tmp_path, monkeypatch, cpu_run
             "nonce": policy["nonce"], "policy_sha256": policy["policy_sha256"], "self_test": "denied", "abi": 6}))
         (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
 
-    _, workspace = _run(tmp_path, path, launcher)
+    _, workspace = _run(tmp_path, path, launcher, mode="auto")
     report = yaml.safe_load((workspace / "task_result.yaml").read_text())
     assert report["agent_sandbox"]["status"] == "enforced"
+    assert report["candidate_accepted"] is True
+
+
+@pytest.mark.parametrize("agent,world_size,reason", [("geak", 1, "not supported"), ("codex", 4, "uses 4 GPUs")])
+def test_auto_runs_unsupported_launches_unconfined_and_records_why(tmp_path, monkeypatch, cpu_runtime,
+                                                                   landlock_host, agent, world_size, reason):
+    monkeypatch.setattr("src.task_run._world_size", lambda spec: world_size)
+    path = _fixture_task(tmp_path)
+    seen = {}
+
+    def launcher(**kwargs):
+        seen["policy"] = os.environ.get(sandbox.POLICY_ENV)
+        (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
+
+    _, workspace = _run(tmp_path, path, launcher, agent=agent, mode="auto")
+    report = yaml.safe_load((workspace / "task_result.yaml").read_text())
+    assert seen["policy"] is None
+    assert report["agent_sandbox"]["status"] == "not_applied"
+    assert reason in report["agent_sandbox"]["reason"]
+    assert report["agent_execution"]["sandbox"] == report["agent_sandbox"]
     assert report["candidate_accepted"] is True
 
 

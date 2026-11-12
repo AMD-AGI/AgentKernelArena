@@ -18,6 +18,10 @@ Inside the sandbox the agent can:
 It cannot open, list or change anything else in the repository checkout:
 framework sources, task packages, other workspaces, logs or other runs. The
 network is not restricted. The script part uses only the standard library.
+
+Modes: ``auto`` (the default) confines every launch the sandbox supports and
+records why any other launch ran unconfined; ``landlock`` refuses a run it
+cannot confine; ``none`` turns the sandbox off.
 """
 from __future__ import annotations
 
@@ -34,7 +38,11 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-MODES = ("none", "landlock")
+MODES = ("none", "auto", "landlock")
+DEFAULT_MODE = "auto"
+MECHANISM = "landlock"
+# Result status of an ``auto`` launch the sandbox does not support.
+NOT_APPLIED = "not_applied"
 CONFIG_KEY = "agent_sandbox"
 POLICY_ENV = "ARENA_AGENT_SANDBOX_POLICY"
 # Launchers that pass their agent command through wrap_command().
@@ -77,22 +85,57 @@ def repository_root() -> Path:
 
 
 def sandbox_mode(eval_config: Mapping[str, Any] | None) -> str:
-    """Return the validated sandbox mode of a run configuration (default ``none``)."""
-    value = (eval_config or {}).get(CONFIG_KEY, "none")
+    """Return the validated sandbox mode of a run configuration (default ``auto``)."""
+    value = (eval_config or {}).get(CONFIG_KEY)
     if value is None:
-        return "none"
+        return DEFAULT_MODE
     if not isinstance(value, str) or value not in MODES:
         raise ValueError(f"{CONFIG_KEY} must be one of {list(MODES)}, got {value!r}")
     return value
 
 
-def check_agent_supported(mode: str, agent_name: str) -> None:
-    """Refuse, before any work is spent, an agent whose launcher cannot be sandboxed."""
-    if mode == "none" or agent_name in EXEMPT_AGENTS:
-        return
+def unsupported_reason(agent_name: str, *, measurement: str = "kernel", world_size: int = 1,
+                       environ: Mapping[str, str] | None = None, repo_root: Path | None = None) -> str | None:
+    """Why the sandbox cannot confine this agent launch, or ``None`` when it can."""
     if agent_name not in SUPPORTED_AGENTS:
-        raise ValueError(f"{CONFIG_KEY}: {mode} is not supported for agent {agent_name!r}; "
-                         f"supported agents: {sorted(SUPPORTED_AGENTS)}")
+        return f"agent {agent_name!r} is not supported; supported agents: {sorted(SUPPORTED_AGENTS)}"
+    if measurement == "serving":
+        return "the sandbox supports single-GPU kernel tasks only; serving tasks need the full checkout"
+    if world_size != 1:
+        return f"the sandbox supports single-GPU kernel tasks only; this task uses {world_size} GPUs"
+    abi = landlock_abi()
+    if abi < MIN_ABI:
+        return (f"Landlock ABI {abi} is available; the agent sandbox needs ABI {MIN_ABI} or later "
+                "(Linux 6.2+ with Landlock enabled and not blocked by seccomp)")
+    home = (os.environ if environ is None else environ).get("HOME")
+    repo = os.path.realpath(repository_root() if repo_root is None else repo_root)
+    if home and _within(repo, os.path.realpath(home)):
+        return f"HOME {home} contains the repository {repo}; run agents with a separate HOME (the Docker runner does)"
+    return None
+
+
+def resolve(mode: str, agent_name: str, *, measurement: str = "kernel", world_size: int = 1,
+            environ: Mapping[str, str] | None = None, repo_root: Path | None = None) -> tuple[bool, str | None]:
+    """Decide, before any work is spent, whether to confine this agent launch.
+
+    Returns ``(True, None)`` to confine it and ``(False, None)`` when the sandbox is
+    off or the agent belongs to the control plane. In ``auto`` mode a launch the
+    sandbox does not support returns ``(False, reason)`` and runs unconfined;
+    ``landlock`` mode raises ``ValueError`` for it instead.
+    """
+    if mode == "none" or agent_name in EXEMPT_AGENTS:
+        return False, None
+    reason = unsupported_reason(agent_name, measurement=measurement, world_size=world_size,
+                                environ=environ, repo_root=repo_root)
+    if reason is None:
+        return True, None
+    if mode == "landlock":
+        raise ValueError(f"{CONFIG_KEY}: landlock: {reason}")
+    return False, reason
+
+
+def not_applied_record(mode: str, reason: str) -> dict:
+    return {"mode": mode, "status": NOT_APPLIED, "reason": reason}
 
 
 # -- Landlock system calls ---------------------------------------------------------------------
@@ -295,7 +338,7 @@ def prepare(mode: str, *, workspace: Path, state_directory: Path, baseline_works
                   if environ.get(name)]
     rules = build_rules(workspace=workspace, repo_root=repo_root, home=environ.get("HOME"),
                         read_only=read_only, read_write=read_write)
-    body = {"version": POLICY_VERSION, "mode": mode, "min_abi": MIN_ABI, "rules": rules,
+    body = {"version": POLICY_VERSION, "mode": MECHANISM, "min_abi": MIN_ABI, "rules": rules,
             # The wrapper must fail to open this framework file after restricting itself.
             "self_test_path": str(self_test_path)}
     digest = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
@@ -320,7 +363,7 @@ def wrap_command(cmd: Sequence[str], env: Mapping[str, str] | None = None) -> li
 def _exec(policy_path: str, command: list[str]) -> None:
     with open(policy_path) as handle:
         policy = json.load(handle)
-    if policy.get("version") != POLICY_VERSION or policy.get("mode") != "landlock":
+    if policy.get("version") != POLICY_VERSION or policy.get("mode") != MECHANISM:
         raise SandboxError("Unsupported agent sandbox policy")
     body = {key: policy[key] for key in ("version", "mode", "min_abi", "rules", "self_test_path")}
     if hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest() != policy["policy_sha256"]:

@@ -138,20 +138,41 @@ settings.
 
 ## Agent sandbox
 
-By default an agent runs with its CLI's own sandbox disabled, inside a
-container that mounts the whole checkout. It can read and change framework
-code, other task packages and other runs' workspaces, including earlier
-agents' solutions. Set `agent_sandbox: landlock` in the run configuration to
-confine each agent's process tree with Linux
-[Landlock](https://docs.kernel.org/userspace-api/landlock.html):
+An agent runs with its CLI's own sandbox disabled, inside a container that
+mounts the whole checkout. Unconfined, it can read and change framework code,
+other task packages and other runs' workspaces, including earlier agents'
+solutions. The framework therefore confines each agent's process tree with
+Linux [Landlock](https://docs.kernel.org/userspace-api/landlock.html) wherever
+it can. The run configuration selects the mode:
 
 ```yaml
 agent:
   template: codex
-agent_sandbox: landlock
+agent_sandbox: auto   # the default; or landlock, or none
 ```
 
-| The agent can | The agent cannot |
+| Mode | Behavior |
+| --- | --- |
+| `auto` (default) | Confine every launch the sandbox supports. Any other launch runs unconfined, and `task_result.yaml` records why. |
+| `landlock` | Confine every launch. A run or task the sandbox does not support fails before its workspace is created. |
+| `none` | No sandbox. |
+
+The sandbox supports a launch when all of these hold:
+
+- the agent is Claude Code, Codex, Cursor or DeepSeek Harness. GEAK and Forge
+  are not supported; the QA auditor is part of the framework and is never
+  confined;
+- the task is a single-GPU kernel task. Serving tasks under `tasks/e2e/` need
+  the full checkout, and multi-GPU tasks (`distributed.world_size` of 2 or more)
+  are not supported;
+- the kernel offers Landlock ABI 3 or later (Linux 6.2+) and seccomp does not
+  block it. Docker's default seccomp profile allows it;
+- HOME does not contain the checkout. The Docker runner gives each worker its
+  own HOME under `/tmp`.
+
+A confined agent:
+
+| Can | Cannot |
 | --- | --- |
 | Read and write its task workspace, its HOME, `/tmp` and `/dev/shm` | Open, list or change anything else in the checkout: `src/`, `tasks/`, other workspaces, `logs/` and other runs |
 | Read the frozen baseline workspace and the framework's agent context files | Write the baseline workspace or the framework's task-session state |
@@ -164,26 +185,22 @@ restricts itself, checks that it can no longer read a framework file, records
 an attestation and then executes the CLI. Every tool and compiler the agent
 starts inherits the restriction. The framework, the final evaluation and the
 candidate verifier run outside the sandbox, so measurements are unchanged.
-`task_result.yaml` records the outcome under `agent_sandbox`. A candidate is
-accepted only when every launch of the task attested the policy (`status:
-enforced`).
 
-Requirements and limits:
+`task_result.yaml` records the outcome under `agent_sandbox`:
 
-- Linux with Landlock ABI 3 or later (kernel 6.2+), not blocked by seccomp.
-  Docker's default seccomp profile allows it. The run fails at startup when it
-  is unavailable; it never falls back to running unconfined.
-- Claude Code, Codex, Cursor and DeepSeek Harness are supported. GEAK and
-  Forge fail at startup with the sandbox enabled; the QA auditor is part of the
-  framework and is not confined.
-- Kernel tasks only. A `tasks/e2e/` serving task fails before its workspace is
-  created.
-- HOME must not contain the checkout. The Docker runner gives each worker its
-  own HOME under `/tmp`.
-- The network is not restricted. Every GPU render node in the container stays
-  reachable; as without the sandbox, the GPU is selected through the
-  visible-device environment variables. With Landlock ABI 6 the agent also
-  cannot signal processes outside its sandbox.
+- `status: enforced` when every launch of the task attested the policy;
+- `unattested` or `invalid` when a confined launch did not attest it, and the
+  candidate is then not accepted;
+- `not_applied` with a `reason` when `auto` ran the agent unconfined. The
+  candidate is judged as without the sandbox.
+
+When a whole `auto` run cannot be confined, for example on a kernel without
+Landlock, `main.py` also prints a note when it starts.
+
+Limits: the network is not restricted. Every GPU render node in the container
+stays reachable; as without the sandbox, the GPU is selected through the
+visible-device environment variables. With Landlock ABI 6 the agent also
+cannot signal processes outside its sandbox.
 
 ## Agent cost records
 
