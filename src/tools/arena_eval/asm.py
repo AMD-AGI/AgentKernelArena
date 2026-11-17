@@ -43,6 +43,7 @@ import re
 import struct
 import subprocess
 import sys
+import tempfile
 import types
 from pathlib import Path
 from typing import Any
@@ -56,7 +57,20 @@ SOURCE_SUFFIX = ".s"
 CODE_OBJECT_SUFFIX = ".co"
 # .incbin and .include pull other files or raw bytes into the code object; a
 # kernel's whole source must be in the .s file the evaluator reads and audits.
-FORBIDDEN_DIRECTIVE = re.compile(r"^[ \t]*\.(?:incbin|include)\b", re.IGNORECASE | re.MULTILINE)
+# The assembler expands macros before it reads a directive, so the text rules
+# also cover what a macro could expand to: neither name may appear anywhere
+# (comments included), .altmacro (substitution without a backslash) is not
+# allowed, and no statement may start with a macro argument or build a
+# directive name from one (``\name``, ``.\name``, ``.inc\()bin``).
+FORBIDDEN_DIRECTIVE = re.compile(r"\.(?:incbin|include)\b", re.IGNORECASE)
+FORBIDDEN_ALTMACRO = re.compile(r"\.altmacro\b", re.IGNORECASE)
+# A statement ends at any character the assembler might take as an end of
+# statement (newline, carriage return, form feed, vertical tab, ';'). Its labels,
+# computed ones included, come before the token that names the instruction or
+# directive.
+STATEMENT = re.compile(r"[^\n\r\f\v;]*")
+LABEL = re.compile(r"[ \t]*[^\s:;]+:")
+COMPUTED_HEAD = re.compile(r"[ \t]*(?:\\|\.[A-Za-z0-9_.$]*\\)")
 SYMBOL = re.compile(r"^[A-Za-z_.$][A-Za-z0-9_.$]*$")
 MAX_THREADS_PER_BLOCK = 1024
 MAX_SHARED_BYTES = 160 * 1024          # LDS per workgroup on gfx950
@@ -208,58 +222,64 @@ def current_arch() -> str:
     return (getattr(properties, "gcnArchName", "") or "").split(":")[0]
 
 
-def _run(argv: list[str]) -> str:
-    done = subprocess.run(argv, capture_output=True, text=True, timeout=300)
+def _run(argv: list[str], cwd: str | None = None) -> str:
+    done = subprocess.run(argv, capture_output=True, text=True, timeout=300, cwd=cwd)
     if done.returncode != 0:
         raise AsmError(f"{Path(argv[0]).name} failed with exit code {done.returncode}: "
                        f"{(done.stderr or done.stdout)[-4000:]}")
     return done.stdout
 
 
-def _cache_dir() -> Path:
-    configured = os.environ.get("AKA_KERNEL_CACHE_DIR")
-    root = Path(configured) if configured else Path(os.environ.get("TMPDIR", "/tmp")) / "aka-kernel-cache"
-    path = root.resolve() / "asm"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+def _computed_statement(text: str) -> int | None:
+    """The offset of the first statement whose instruction or directive name comes from a macro argument."""
+    for statement in STATEMENT.finditer(text):
+        position = statement.start()
+        while label := LABEL.match(text, position, statement.end()):
+            position = label.end()
+        if COMPUTED_HEAD.match(text, position, statement.end()):
+            return statement.start()
+    return None
 
 
 def check_source(path: str, text: str) -> None:
     """The static rules for one ``.s`` file."""
     if not path.endswith(SOURCE_SUFFIX):
         raise AsmError(f"{path}: assembly sources end in {SOURCE_SUFFIX}")
-    found = FORBIDDEN_DIRECTIVE.search(text)
-    if found:
-        line = text.count("\n", 0, found.start()) + 1
-        raise AsmError(f"{path}:{line}: .incbin and .include are not allowed; keep a kernel's whole "
-                       "source in its .s file")
+    findings = []
+    for pattern, message in ((FORBIDDEN_DIRECTIVE, ".incbin and .include are not allowed, also in comments"),
+                             (FORBIDDEN_ALTMACRO, ".altmacro is not allowed")):
+        found = pattern.search(text)
+        if found:
+            findings.append((found.start(), message))
+    computed = _computed_statement(text)
+    if computed is not None:
+        findings.append((computed, "a statement may not start with a macro argument or build a directive "
+                                   "name from one"))
+    if findings:
+        offset, message = min(findings)
+        line = text.count("\n", 0, offset) + 1
+        raise AsmError(f"{path}:{line}: {message}; keep a kernel's whole source in its .s file")
 
 
 def _assemble(text: str, label: str, arch: str) -> bytes:
     """Assemble and link ``text`` (an audited source) for ``arch``; return the code object bytes.
 
     The assembler reads a private copy of exactly this text, never the candidate's
-    file, so what runs is what the audit read.
+    file, so what runs is what the audit read. Every call builds in a new private
+    directory: a code object found on disk proves nothing about where it came
+    from (the agent shares the temporary directory and can compute any cache key).
     """
     check_source(label, text)
     clang, lld = _toolchain()
     version = _run([str(clang), "--version"]).splitlines()[0]
-    key = hashlib.sha256("\0".join([text, arch, version]).encode()).hexdigest()[:24]
-    cache = _cache_dir()
-    code_object = cache / f"{key}.co"
-    if not code_object.is_file():
-        stem = cache / f"{key}.{os.getpid()}"
-        source, obj, work = stem.with_suffix(".s"), stem.with_suffix(".o"), stem.with_suffix(".tmp")
-        try:
-            source.write_text(text, encoding="utf-8")
-            _run([str(clang), "-x", "assembler", "-target", "amdgcn-amd-amdhsa", f"-mcpu={arch}",
-                  "-c", str(source), "-o", str(obj)])
-            _run([str(lld), "-shared", str(obj), "-o", str(work)])
-            os.replace(work, code_object)
-        finally:
-            for leftover in (source, obj, work):
-                leftover.unlink(missing_ok=True)
-    image = code_object.read_bytes()
+    with tempfile.TemporaryDirectory(prefix="aka-asm-") as build:
+        # Relative names: the object records the source's name, so the bytes
+        # do not depend on the random directory.
+        Path(build, "kernel.s").write_text(text, encoding="utf-8")
+        _run([str(clang), "-x", "assembler", "-target", "amdgcn-amd-amdhsa", f"-mcpu={arch}",
+              "-c", "kernel.s", "-o", "kernel.o"], cwd=build)
+        _run([str(lld), "-shared", "kernel.o", "-o", "kernel.co"], cwd=build)
+        image = Path(build, "kernel.co").read_bytes()
     digest = hashlib.sha256(image).hexdigest()
     _STATE.assembled_code_objects.add(digest)
     _STATE.evidence.update(assembler=str(clang), linker=str(lld), assembler_version=version, arch=arch)

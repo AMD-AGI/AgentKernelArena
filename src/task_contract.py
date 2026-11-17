@@ -782,8 +782,9 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
                       "`i64` and `f32`. Each kernel's `.amdgpu_metadata` must declare the same arguments. "
                       "`aka_asm` provides only `load`, `u32`, `i32`, `u64`, `i64`, `f32` and `AsmError`; any "
                       "other attribute is rejected, and a loaded kernel offers only `launch`. "
-                      "`.incbin` and `.include` are not allowed; each kernel's whole source is in its `.s` "
-                      "file."]
+                      "`.incbin` and `.include` are not allowed, not even in a comment, and neither is "
+                      "`.altmacro`; no statement may start with a macro argument or build a directive name "
+                      "from one. Each kernel's whole source is in its `.s` file."]
     lines += ["", "## Interface", "", "| Name | Kind | Shape | Dtype |", "|---|---|---|---|"]
     for name, declaration in interface["inputs"].items():
         kind = "mutable input" if name in interface.get("mutable", []) else declaration["kind"] + " input"

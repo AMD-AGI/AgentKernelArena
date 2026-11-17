@@ -114,10 +114,14 @@ ROCm `clang` and `ld.lld` for the current GPU and loads it, and
 CUDA-graph timing captures it. `aka_asm` is a facade that exposes only `load`,
 the typed scalars and `AsmError`; the evaluator keeps its internals, launch
 records and build evidence private, and loads only audited `.s` text and the
-baseline's hash-pinned code objects. The audit allows only `.py` and `.s` files and
-rejects `.incbin`/`.include`; the runtime rules are those of the other Python
-languages, and every call must launch an assembly kernel. The agent-facing guide
-is `src/prompts/cheatsheet/asm_cheatsheet.md`. A language whose toolchain
+baseline's hash-pinned code objects. Each load assembles in a new private
+directory; a code object found on disk is never reused. The audit allows only
+`.py` and `.s` files and rejects `.incbin`/`.include` anywhere in a source,
+`.altmacro`, and statements that start with a macro argument or build a directive
+name from one, so no macro expansion can produce those directives. The runtime
+rules are those of the other Python languages, and every call must launch an
+assembly kernel. The agent-facing guide is
+`src/prompts/cheatsheet/asm_cheatsheet.md`. A language whose toolchain
 is missing fails the run before it starts. See the
 [task contract](add-task.md#run-configuration).
 

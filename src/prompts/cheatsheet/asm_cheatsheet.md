@@ -60,8 +60,11 @@ Candidate rules (enforced by the evaluator, not a sandbox):
 - All computation runs in your assembly kernels. Host code may only allocate, take views, make
   same-dtype copies and launch. PyTorch arithmetic, reductions, dtype conversions and library
   operators raise at run time. Every call must launch at least one of your kernels.
-- `solution/` holds only `.py` and `.s` files. `.incbin` and `.include` are rejected: each kernel's
-  whole source is in its `.s` file. No prebuilt code objects.
+- `solution/` holds only `.py` and `.s` files. `.incbin` and `.include` are rejected, even in a
+  comment, and so are `.altmacro` and any statement that starts with a macro argument or builds a
+  directive name from one (`\name ...`, `.\name`, `.inc\()bin`). Macros, `.rept`, `.irp`, computed
+  labels and arguments inside instructions (`v_\op\()_u32 \dst, ...`) are fine. Each kernel's whole
+  source is in its `.s` file. No prebuilt code objects.
 - Python code follows the same rules as other Python-family candidates: only `torch`, `aka_asm` and a
   few standard modules (`math`, `functools`, `itertools`, `typing`, `dataclasses`, ...) import. No
   `eval`/`exec`, reflection, module mutation, I/O, printing, synchronization, host round trips

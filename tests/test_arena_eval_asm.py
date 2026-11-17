@@ -98,8 +98,38 @@ def test_sources_cannot_pull_in_other_files(text):
         asm.check_source("k.s", FILL_S + text)
 
 
-def test_a_directive_named_in_a_comment_is_not_a_directive():
-    asm.check_source("k.s", FILL_S + "  // .incbin is not used here\n")
+def test_the_file_directives_may_not_appear_even_in_a_comment():
+    # The audit does not model the assembler's comment syntax, so it never relies on it.
+    with pytest.raises(asm.AsmError, match="also in comments"):
+        asm.check_source("k.s", FILL_S + "  // .incbin is not used here\n")
+
+
+# Each of these assembles with ROCm clang and puts the file's bytes into .text
+# (checked on gfx950), so the rules must reject what macros could expand to.
+@pytest.mark.parametrize("text, message", [
+    ('x: .incbin "/etc/passwd"\n', ".incbin and .include are not allowed"),
+    ('.macro emit name, file\n  .\\name "\\file"\n.endm\nemit incbin, "/etc/passwd"\n', "macro argument"),
+    ('.macro m\n  .inc\\()bin "/etc/passwd"\n.endm\nm\n', "macro argument"),
+    ('.macro m a, b\n  \\a\\()\\b "/etc/passwd"\n.endm\nm .inc, bin\n', "macro argument"),
+    ('.macro m a, b\n  x_\\@: \\a\\()\\b "/etc/passwd"\n.endm\nm .inc, bin\n', "macro argument"),
+    ('.macro m a, b\n  s_nop 0\r\\a\\()\\b "/etc/passwd"\n.endm\nm .inc, bin\n', "macro argument"),
+    ('.altmacro\n.macro m a\n  a\n.endm\n', ".altmacro is not allowed"),
+])
+def test_macros_cannot_build_the_file_directives(text, message):
+    with pytest.raises(asm.AsmError, match=message):
+        asm.check_source("k.s", FILL_S + text)
+
+
+def test_ordinary_macros_repetition_and_computed_labels_are_allowed():
+    asm.check_source("k.s", FILL_S + (
+        ".macro add_twice dst, src, op=add\n"
+        "  v_\\op\\()_u32 \\dst, \\src, \\src\n"
+        "loop_\\@:\n"
+        "\\dst\\()_done: s_nop 0\n"
+        ".endm\n"
+        ".irp r, 1, 2\n  v_mov_b32 v\\r, 0\n.endr\n"
+        ".rept 2\n  s_nop 0 ; padding\n.endr\n"
+        "add_twice v1, v2\n"))
 
 
 def test_an_asm_candidate_passes_the_audit():
@@ -165,15 +195,14 @@ def test_the_asm_cheatsheet_is_configured():
     assert path.is_file() and "aka_asm.load" in path.read_text()
 
 
-def test_a_source_assembles_into_a_cached_code_object(tmp_path, monkeypatch):
+def test_a_source_assembles_into_a_code_object():
     try:
         asm._toolchain()
     except asm.AsmError:
         pytest.skip("ROCm assembler not in this environment")
-    monkeypatch.setenv("AKA_KERNEL_CACHE_DIR", str(tmp_path / "cache"))
     first = asm._assemble(FILL_S, "fill.s", "gfx950")
     assert first[:4] == b"\x7fELF"
-    assert asm._assemble(FILL_S, "fill.s", "gfx950") == first
+    assert asm._assemble(FILL_S, "fill.s", "gfx950") == first     # reproducible, built twice
     import hashlib
 
     assert hashlib.sha256(first).hexdigest() in asm._STATE.assembled_code_objects
@@ -181,12 +210,43 @@ def test_a_source_assembles_into_a_cached_code_object(tmp_path, monkeypatch):
     assert asm._assemble(FILL_S.replace("v_add_u32 v2, s6, v0", "v_add_u32 v2, s6, s6"), "fill.s", "gfx950") != first
 
 
-def test_a_broken_source_reports_the_assembler_error(tmp_path, monkeypatch):
+def test_a_code_object_found_on_disk_is_never_used(tmp_path, monkeypatch):
+    """The agent shares the temporary directory and can compute any cache key, so every load builds."""
+    import hashlib
+    import tempfile
+
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("AKA_KERNEL_CACHE_DIR", str(tmp_path / "aka-kernel-cache"))
+    version = "AMD clang version 0.0 (stub)"
+    planted = b"\x7fELF planted library kernel"
+    key = hashlib.sha256("\0".join([FILL_S, "gfx950", version]).encode()).hexdigest()[:24]
+    for directory in (tmp_path / "aka-kernel-cache" / "asm", tmp_path):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / f"{key}.co").write_bytes(planted)
+
+    def assembler(argv, cwd=None):
+        if argv[1:] == ["--version"]:
+            return version + "\n"
+        here = Path(cwd or ".")
+        out = here / argv[argv.index("-o") + 1]
+        out.write_bytes(b"\x7fELF fresh from " + (here / argv[-3]).read_bytes()[:8] if "-c" in argv else
+                        b"\x7fELF linked " + (here / argv[2]).read_bytes())
+        return ""
+
+    monkeypatch.setattr(asm, "_toolchain", lambda: (Path("clang"), Path("ld.lld")))
+    monkeypatch.setattr(asm, "_run", assembler)
+    image = asm._assemble(FILL_S, "fill.s", "gfx950")
+    assert image != planted and image.startswith(b"\x7fELF linked \x7fELF fresh from ")
+    assert hashlib.sha256(planted).hexdigest() not in asm._STATE.assembled_code_objects
+    assert not any(tmp_path.glob("aka-asm-*"))       # the private build directory is removed
+
+
+def test_a_broken_source_reports_the_assembler_error():
     try:
         asm._toolchain()
     except asm.AsmError:
         pytest.skip("ROCm assembler not in this environment")
-    monkeypatch.setenv("AKA_KERNEL_CACHE_DIR", str(tmp_path / "cache"))
     with pytest.raises(asm.AsmError, match="clang failed"):
         asm._assemble(FILL_S.replace("s_endpgm", "s_not_an_instruction"), "bad.s", "gfx950")
 
