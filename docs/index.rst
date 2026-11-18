@@ -36,6 +36,7 @@ repository.
       * :doc:`Generate tasks from SIKL data <how-to/sikl-task-builder>`
       * :doc:`Repair tasks automatically <how-to/quality-loop>`
       * :doc:`Evaluate on held-out inputs <how-to/held-out-evaluation>`
+      * :doc:`Estimate roofline floors <how-to/roofline-floors>`
 
    .. grid-item-card:: Examples
 

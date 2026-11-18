@@ -26,6 +26,11 @@ def _runtime_identity() -> dict:
     return identity
 
 
+def runtime_identity() -> dict:
+    """The scoring runtime's identity, as a task session records it in ``runtime_identity.json``."""
+    return _runtime_identity()
+
+
 def bind_session_runtime(session) -> dict:
     runtime = _runtime_identity()
     required_arch = required_gpu_arches(session.spec.to_mapping().get("platform_support"))
