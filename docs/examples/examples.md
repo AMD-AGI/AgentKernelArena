@@ -72,7 +72,7 @@ one operator. Save this configuration as `config_triton.yaml`:
 agent:
   template: claude_code
 
-target_language: triton   # triton | gluon | hip | flydsl
+target_language: triton   # triton | gluon | hip | flydsl | asm
 
 tasks:
   - triton/normalization

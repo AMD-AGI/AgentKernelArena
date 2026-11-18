@@ -19,7 +19,7 @@ A run configuration defines a single experiment. Start from a file under
 | --- | --- | --- |
 | `agent.template` | string | Agent to run. One of the [supported agents](../how-to/agents.md#supported-agents). |
 | `tasks` | list of strings or mappings | Task selectors relative to `tasks/`. Use `all` for every task, a path prefix for a group, or a full path for a single task. A `{path, target_language}` mapping selects the same tasks with a per-task language. A task cannot be selected twice with different languages. |
-| `target_language` | `triton`, `gluon`, `hip` or `flydsl` | Implementation language for schema-v3 kernel tasks, which name none. Required for every kernel task unless the task has a per-task override; not needed by `qa_auditor` or the schema-v2 `tasks/e2e/` serving tasks. Verified on MI355X (`gfx950`) for all four languages; other architectures are implemented but unverified. |
+| `target_language` | `triton`, `gluon`, `hip`, `flydsl` or `asm` | Implementation language for schema-v3 kernel tasks, which name none. Required for every kernel task unless the task has a per-task override; not needed by `qa_auditor` or the schema-v2 `tasks/e2e/` serving tasks. Verified on MI355X (`gfx950`) for all five languages; other architectures are implemented but unverified. |
 | `target_gpu_model` | string | Target GPU model, for example `MI300X`, `MI325X`, `MI300A`, `MI355X`, or `RDNA4`; `MI300` remains the generic `gfx942` fallback. Used to select the Docker image architecture, set `PYTORCH_ROCM_ARCH`, and name the workspace. |
 | `log_directory` | string | Directory for run logs. |
 | `workspace_directory_prefix` | string | Prefix for the workspace directory. The full name is `<prefix>_<gpu>_<agent>`. |

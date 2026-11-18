@@ -1,0 +1,290 @@
+{
+  "description": "Token counts through DeepSeek-R1's N=7168, K=4608 MXFP4 projection at the 15 M values of AITER's tuned gfx950 a4w4 table (M 1..16384, every row an asm kernel); every one takes the baseline at least 14 us cold-cache, so all are performance cases. Correctness cases add unaligned and between-row M that reach every kernel through padded-M lookup.",
+  "cases": [
+    {
+      "id": "m3",
+      "axes": {
+        "m": 3
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "odd decode batch, not a power of two; padded to the M=16 row (32x128)"
+    },
+    {
+      "id": "m17",
+      "axes": {
+        "m": 17
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "not a multiple of 16; padded to the M=32 row (64x128)"
+    },
+    {
+      "id": "m33",
+      "axes": {
+        "m": 33
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "decode batch between rows; next power of two 64 (32x128)"
+    },
+    {
+      "id": "m100",
+      "axes": {
+        "m": 100
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned decode batch; next power of two 128 (32x128)"
+    },
+    {
+      "id": "m129",
+      "axes": {
+        "m": 129
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "one row past the M=128 row; next power of two 256 (64x128)"
+    },
+    {
+      "id": "m300",
+      "axes": {
+        "m": 300
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned chunk; next power of two 512 (128x128)"
+    },
+    {
+      "id": "m777",
+      "axes": {
+        "m": 777
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned chunk; next power of two 1024 (256x128)"
+    },
+    {
+      "id": "m1500",
+      "axes": {
+        "m": 1500
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk; next power of two 2048 (256x256)"
+    },
+    {
+      "id": "m3000",
+      "axes": {
+        "m": 3000
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk; next power of two 4096 (256x256)"
+    },
+    {
+      "id": "m5133",
+      "axes": {
+        "m": 5133
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "unaligned prefill chunk; next power of two 8192 (128x512)"
+    },
+    {
+      "id": "m12345",
+      "axes": {
+        "m": 12345
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "prefill chunk above 8192; coarse padding caps at the M=8192 row (128x512)"
+    },
+    {
+      "id": "m16300",
+      "axes": {
+        "m": 16300
+      },
+      "checks": [
+        "correctness"
+      ],
+      "source": "fine padding reaches the M=16384 row (256x256)"
+    },
+    {
+      "id": "m1",
+      "axes": {
+        "m": 1
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "axis minimum; single-token decode (tuned row M=1: 32x128)"
+    },
+    {
+      "id": "m2",
+      "axes": {
+        "m": 2
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 2 (tuned row: 32x128)"
+    },
+    {
+      "id": "m4",
+      "axes": {
+        "m": 4
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 4 (tuned row: 32x128)"
+    },
+    {
+      "id": "m8",
+      "axes": {
+        "m": 8
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 8 (tuned row: 32x128)"
+    },
+    {
+      "id": "m16",
+      "axes": {
+        "m": 16
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 16 (tuned row: 32x128)"
+    },
+    {
+      "id": "m32",
+      "axes": {
+        "m": 32
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 32 (tuned row: 64x128)"
+    },
+    {
+      "id": "m64",
+      "axes": {
+        "m": 64
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 64 (tuned row: 32x128)"
+    },
+    {
+      "id": "m128",
+      "axes": {
+        "m": 128
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 128 (tuned row: 32x128)"
+    },
+    {
+      "id": "m256",
+      "axes": {
+        "m": 256
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "decode batch 256 (tuned row: 64x128)"
+    },
+    {
+      "id": "m512",
+      "axes": {
+        "m": 512
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk 512 (tuned row: 128x128)"
+    },
+    {
+      "id": "m1024",
+      "axes": {
+        "m": 1024
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk 1024 (tuned row: 256x128)"
+    },
+    {
+      "id": "m2048",
+      "axes": {
+        "m": 2048
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk 2048 (tuned row: 256x256)"
+    },
+    {
+      "id": "m4096",
+      "axes": {
+        "m": 4096
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk 4096 (tuned row: 256x256)"
+    },
+    {
+      "id": "m8192",
+      "axes": {
+        "m": 8192
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "prefill chunk 8192 (tuned row: 128x512)"
+    },
+    {
+      "id": "m16384",
+      "axes": {
+        "m": 16384
+      },
+      "checks": [
+        "correctness",
+        "performance"
+      ],
+      "source": "axis maximum; prefill chunk 16384 (tuned row: 256x256)"
+    }
+  ]
+}

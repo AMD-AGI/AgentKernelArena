@@ -1,0 +1,51 @@
+schema_version: 3
+description: >-
+  Top-k softmax MoE routing of bfloat16 router logits over 128 experts (Qwen3-235B-A22B). The softmax of
+  each token's logits is taken over all 128 experts; the 8 experts with the largest probabilities are
+  chosen (on equal probabilities the lower expert id wins), and their probabilities are renormalized to
+  sum to 1. Weights are float32 and expert ids int32; the order of the 8 entries within a row is
+  unspecified.
+operator:
+  name: topk_softmax
+  category: moe
+element_order: any_in_full_rows
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 1048576, description: Tokens routed in the batch.}
+    n_experts: {kind: const, value: 128, description: Routed experts.}
+    topk: {kind: const, value: 8, description: Experts selected per token.}
+  inputs:
+    gating_output:
+      kind: tensor
+      shape: [n_tokens, n_experts]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.5}
+  outputs:
+    topk_weights: {shape: [n_tokens, topk], dtype: float32}
+    topk_ids: {shape: [n_tokens, topk], dtype: int32}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: asm
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 4ad99832
+    path: >-
+      csrc/py_itfs_cu/asm_topksoftmax.cu (topk_softmax_asm launcher), hsa/gfx950/topksoftmax/topksoftmax.csv,
+      hsa/gfx950/topksoftmax/topksoftmax_4x128x8_bf16.co, hsa/gfx950/topksoftmax/topksoftmax_12x128x8_bf16.co,
+      aiter/fused_moe.py (fused_topk)
+    license: MIT
+    modifications: >-
+      The C++ launcher is translated to Python over aka_asm: the kernel heuristic (largest subm not above
+      4 below 10000 tokens, else 12) for the bf16 / 128-expert / top-8 csv rows, the packed 128-byte
+      KernelArgs (pointers padded by p2, u32 fields by p3), renormalize fixed to 1, out_stride in bytes and
+      the grid of ceil(n_tokens / subm) workgroups of 256 threads. The code objects are unmodified.
+    code_objects:
+      baseline/topksoftmax_4x128x8_bf16.co: 00e0d2530ce2993a390eb1ba7901c5dc3cf429b0671d199764f2dcd002a0efca
+      baseline/topksoftmax_12x128x8_bf16.co: 70a5639a04e432b94a90130bf7304578aed2d72674a37e5f4f8734da1a9a3143
+compare:
+  topk_weights: {bound: sqnr, min_db: 124}
+  topk_ids: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

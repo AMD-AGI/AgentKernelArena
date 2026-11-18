@@ -64,7 +64,7 @@ agent:
   budget_mode: time
   timeout_seconds: 3600
 
-target_language: triton   # triton | gluon | hip | flydsl
+target_language: triton   # triton | gluon | hip | flydsl | asm
 
 tasks:
   - triton/normalization/rms_norm/bf16_h8192

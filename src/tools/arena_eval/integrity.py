@@ -44,7 +44,7 @@ from typing import Any, Callable
 
 # Evaluator modules imported before the snapshot, so lazily imported ones are covered.
 EVALUATOR_MODULES = ("audit", "compare", "contract", "controls", "evaluate", "loader", "values",
-                     "integrity", "_aka_benchmark")
+                     "integrity", "asm", "_aka_benchmark")
 # Module globals the evaluator itself updates: name -> (module, class) the value
 # must be an exact instance of, or None.
 MUTABLE_GLOBALS = {"evaluate": {"_FLUSH": ("_aka_benchmark", "ReadOnlyCacheFlush")}}
@@ -105,6 +105,11 @@ class HarnessIntegrity:
         if package_module is not None:
             self._modules[package] = id(package_module)
             self._track(package, vars(package_module), _bindings(vars(package_module), everything=False))
+        # The aka_asm facade candidates import: its bindings and its sys.modules entry.
+        facade = getattr(modules.get("asm"), "FACADE", None)
+        if isinstance(facade, types.ModuleType):
+            self._modules[facade.__name__] = id(facade)
+            self._track(facade.__name__, vars(facade), _bindings(vars(facade), everything=True))
         for module in STDLIB_MODULES:
             self._track(module.__name__, vars(module), _bindings(vars(module), everything=False))
         self._track("sys", vars(sys), {name: id(getattr(sys, name)) for name in SYS_FUNCTIONS})

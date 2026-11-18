@@ -1,0 +1,18 @@
+{
+  "description": "NEXTN verify steps of Qwen3.8-Flash-Next on one MI355X: 1 or 8 requests of 4 verify tokens over contexts of 16k to 262k tokens. The contexts come from AgentX corpus statistics (semianalysisai/cc-traces-weka-062126 rev 23f152f6, contexts weighted by decode steps: p10 52k, p25 108k, p50 220k, p75 426k; decode steps by context: up to 4k 4.4 %, 4k to 64k 9.2 %, 64k to 128k 17 %, 128k to 256k 25.9 %, above 256k 43.6 %) and from the serving setup (up to 8 requests, max_position_embeddings 262144). A live capture did not confirm them. Contexts stop at the model limit (262140 tokens and 4 verify tokens); AgentX steps above the limit cannot use this model. The kernel compiles once for each request count, so the cases use two request counts: 1 (one interactive request, 4 rows) and 8 (the largest CUDA-graph batch, 32 rows). Correctness-only cases cover the minimum context, the top-512 boundary, the boundary between one and two index segments, an unaligned context and short ragged contexts.",
+  "cases": [
+    {"id": "r1_c16", "axes": {"requests": 1, "ctx": 16}, "checks": ["correctness"], "source": "minimum: one request just past its prompt"},
+    {"id": "r1_c2049", "axes": {"requests": 1, "ctx": 2049}, "checks": ["correctness"], "source": "top-512 boundary: rows with 512 and 513 complete blocks"},
+    {"id": "r1_c32769", "axes": {"requests": 1, "ctx": 32769}, "checks": ["correctness"], "source": "index segment boundary: rows with 8192 blocks (one segment) and 8193 blocks (two segments and the merge)"},
+    {"id": "r1_c70001", "axes": {"requests": 1, "ctx": 70001}, "checks": ["correctness"], "source": "unaligned context (AgentX 64k to 128k, 17 % of decode steps)"},
+    {"id": "r8_c3000", "axes": {"requests": 8, "ctx": 3000}, "checks": ["correctness"], "source": "short ragged contexts (AgentX up to 4k, 4.4 % of decode steps): some requests attend to every block, the others select 512"},
+    {"id": "r1_c16384", "axes": {"requests": 1, "ctx": 16384}, "checks": ["correctness", "performance"], "source": "AgentX low end (4k to 64k, 9.2 % of decode steps), 1 request"},
+    {"id": "r1_c65536", "axes": {"requests": 1, "ctx": 65536}, "checks": ["correctness", "performance"], "source": "AgentX p10 to p25 (64k to 128k, 17 % of decode steps), 1 request"},
+    {"id": "r1_c131072", "axes": {"requests": 1, "ctx": 131072}, "checks": ["correctness", "performance"], "source": "AgentX p25 to p50 (128k to 256k, 25.9 % of decode steps), 1 request"},
+    {"id": "r1_c225280", "axes": {"requests": 1, "ctx": 225280}, "checks": ["correctness", "performance"], "source": "AgentX p50 (220k), 1 request"},
+    {"id": "r1_c262140", "axes": {"requests": 1, "ctx": 262140}, "checks": ["correctness", "performance"], "source": "model limit (43.6 % of AgentX decode steps are above it), 1 request"},
+    {"id": "r8_c65536", "axes": {"requests": 8, "ctx": 65536}, "checks": ["correctness", "performance"], "source": "AgentX 64k to 128k (17 % of decode steps), 8 ragged requests (32 rows)"},
+    {"id": "r8_c131072", "axes": {"requests": 8, "ctx": 131072}, "checks": ["correctness", "performance"], "source": "AgentX 128k to 256k (25.9 % of decode steps), 8 ragged requests"},
+    {"id": "r8_c262140", "axes": {"requests": 8, "ctx": 262140}, "checks": ["correctness", "performance"], "source": "model limit, 8 ragged requests (the largest CUDA-graph batch)"}
+  ]
+}
