@@ -1,0 +1,59 @@
+schema_version: 3
+description: >-
+  Dense bfloat16 GEMM without bias, out = a @ b.T, where a is [m, k] and b is the row-major [n, k] weight
+  (the nn.Linear layout), accumulated in float32 and rounded to bfloat16.
+operator:
+  name: gemm_a16w16
+  category: gemm
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 32768, description: Rows of a (tokens in the batch).}
+    n: {kind: const, value: 5120, description: Output features (hidden size).}
+    k: {kind: const, value: 3200, description: Reduction width (MLP intermediate size per TP rank).}
+  inputs:
+    a:
+      kind: tensor
+      shape: [m, k]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    b:
+      kind: tensor
+      shape: [n, k]
+      dtype: bfloat16
+      role: weight
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: asm
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 4ad99832823dde2315b361cbd3b54b1c5c12acd5
+    path: >-
+      csrc/py_itfs_cu/asm_gemm_a16w16.cu (KernelArgs, get_heuristic_kernel, grid, semaphore), aiter/ops/gemm_op_a16w16.py
+      (semaphore workspace), aiter/tuned_gemm.py get_GEMM_A16W16_config and csrc/py_itfs_cu/gemm_common.cu getPaddedM
+      (per-M lookup), rows of aiter/configs/model_configs/qwen32B_bf16_tuned_gemm.csv for gfx950, cu_num 256, N=5120,
+      K=3200; code objects hsa/gfx950/bf16gemm/*.co with hsa/gfx950/bf16gemm/bf16gemm_fp32bf16.csv
+    license: MIT
+    modifications: >-
+      The C++ launcher of gemm_a16w16_asm and the tuned-table lookup of tuned_gemm are translated to Python in
+      baseline/kernel.py: the same KernelArgs bytes (22 fields of 16 bytes), grid, 256-thread workgroups and
+      zero-initialized 16x64 uint32 split-K semaphore (allocated once per device instead of once per stream).
+      M is looked up in the tuned rows of this N and K exactly, then padded with getPaddedM granularity 0 and 1;
+      an asm row fixes the kernel and splitK. The rows for M=512 and M=1024 name torch/hipBLASLt, which cannot be
+      vendored; M values that resolve to them use AITER's asm heuristic (get_heuristic_kernel, kernel candidates
+      in the libstdc++ iteration order of AITER's config map), which is what gemm_a16w16_asm selects without a
+      kernel name. The five code objects are copied byte for byte.
+    code_objects:
+      baseline/bf16gemm_fp32bf16_tn_32x64_splitk_clean.co: e78e2f6d8ede4c7a708754856eac2fa29bf6a337bd90b3eb80b23563e495426e
+      baseline/bf16gemm_fp32bf16_tn_64x64_splitk_clean.co: f5533fb6996b3bda1b6dc8274460fcdcb0487ce1e242d824d7431d1e0af04915
+      baseline/bf16gemm_fp32bf16_tn_48x64_pf3_splitk.co: c08ab6ddc381ae66dfa4fdaca3650ad2e8eb57341a12c4a6da4da945aa96cbc3
+      baseline/bf16gemm_fp32bf16_tn_96x64_pf3_splitk.co: abed678058747db42f8e0aa5092223af80aeba6d782f2873d5cfc96fe1fd43d5
+      baseline/bf16gemm_bf16_tn_256x256.co: 5a700d82272ba857306c773fc44c78c868195a07f7ed3cd3a1d49e676fe31c02
+compare:
+  out: {bound: baseline_relative, k: 8}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

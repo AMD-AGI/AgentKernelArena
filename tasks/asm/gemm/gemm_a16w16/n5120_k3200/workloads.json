@@ -1,0 +1,278 @@
+{
+ "description": "Token counts through the Qwen3-32B MLP down projection at tensor parallelism 8 (25600/8 = 3200 to 5120): the 13 M values of AITER's tuned table for this shape (decode batches 1 to 64 through batched prefill of 32768 tokens) are performance cases; unaligned and between-row token counts are correctness-only.",
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "m": 1
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, batch 1 (tuned row)"
+  },
+  {
+   "id": "m2",
+   "axes": {
+    "m": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 2"
+  },
+  {
+   "id": "m8",
+   "axes": {
+    "m": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 8"
+  },
+  {
+   "id": "m16",
+   "axes": {
+    "m": 16
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, batch 16 (tuned row)"
+  },
+  {
+   "id": "m17",
+   "axes": {
+    "m": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, unaligned batch"
+  },
+  {
+   "id": "m32",
+   "axes": {
+    "m": 32
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, batch 32 (tuned row)"
+  },
+  {
+   "id": "m33",
+   "axes": {
+    "m": 33
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, unaligned batch"
+  },
+  {
+   "id": "m64",
+   "axes": {
+    "m": 64
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode, batch 64 (tuned row)"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "m": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batch between tuned rows"
+  },
+  {
+   "id": "m128",
+   "axes": {
+    "m": 128
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "decode batch / small prefill, 128 tokens (tuned row)"
+  },
+  {
+   "id": "m200",
+   "axes": {
+    "m": 200
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned small prefill"
+  },
+  {
+   "id": "m256",
+   "axes": {
+    "m": 256
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "small prefill chunk, 256 tokens (tuned row)"
+  },
+  {
+   "id": "m257",
+   "axes": {
+    "m": 257
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill, just above the 256 row"
+  },
+  {
+   "id": "m300",
+   "axes": {
+    "m": 300
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill between tuned rows"
+  },
+  {
+   "id": "m512",
+   "axes": {
+    "m": 512
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk, 512 tokens (tuned row)"
+  },
+  {
+   "id": "m700",
+   "axes": {
+    "m": 700
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "m": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "ragged prefill chunk"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "m": 1024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk, 1024 tokens (tuned row)"
+  },
+  {
+   "id": "m1500",
+   "axes": {
+    "m": 1500
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk between tuned rows"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "m": 2048
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk, 2048 tokens (tuned row)"
+  },
+  {
+   "id": "m3000",
+   "axes": {
+    "m": 3000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "m": 4096
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk, 4096 tokens (tuned row)"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "m": 8192
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "prefill chunk, 8192 tokens (tuned row)"
+  },
+  {
+   "id": "m10000",
+   "axes": {
+    "m": 10000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned batched prefill above the 8192 row"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "m": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill, 16384 tokens (tuned row)"
+  },
+  {
+   "id": "m32768",
+   "axes": {
+    "m": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "source": "batched prefill, 32768 tokens (tuned row)"
+  }
+ ]
+}

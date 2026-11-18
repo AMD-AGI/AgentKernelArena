@@ -3,7 +3,7 @@ agent:
   template: claude_code
 
 # The target language is selected by the run, not by the task.
-target_language: triton   # triton | gluon | hip | flydsl
+target_language: triton   # triton | gluon | hip | flydsl | asm
 
 tasks:
   - triton/normalization/rms_norm/bf16_h8192
