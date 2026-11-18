@@ -42,13 +42,49 @@ def test_join_computes_fractions_from_the_fastest_measurement():
     assert violations == []
 
 
-def test_a_measurement_faster_than_the_floor_downgrades_every_floor_of_its_model():
+def measured_row(role, us, case_id="c1", runtime=None):
+    return {"task_id": "t/a", "case_id": case_id, "role": role, "us": us, "method": COLD_CACHE, "file": "f",
+            "runtime": runtime}
+
+
+def test_a_baseline_faster_than_the_floor_downgrades_every_floor_of_its_model():
     floors = [floor(case_id="c1"), floor(case_id="c2"), floor(case_id="c3", model="other@v1")]
-    measured = [{"task_id": "t/a", "case_id": "c1", "role": "candidate", "us": 9.4, "method": COLD_CACHE,
-                 "file": "f"}]
-    joined, violations = join(floors, measured)
-    assert [v["case_id"] for v in violations] == ["c1"]
+    joined, violations = join(floors, [measured_row("baseline", 9.4)])
+    assert [(v["case_id"], v["role"]) for v in violations] == [("c1", "baseline")]
     assert [r["tier"] for r in joined] == ["none", "none", "estimated"]
+
+
+def test_a_candidate_faster_than_the_floor_is_suspect_and_the_floor_stays():
+    # The floor is what flags the candidate, so the candidate cannot remove it.
+    floors = [floor(case_id="c1"), floor(case_id="c2")]
+    joined, violations = join(floors, [measured_row("baseline", 20.0), measured_row("candidate", 9.4)])
+    assert [(v["case_id"], v["role"]) for v in violations] == [("c1", "candidate")]
+    assert [r["tier"] for r in joined] == ["estimated", "estimated"]
+    (row,) = report_rows(joined)
+    assert (row["violations"], row["candidate_violations"]) == ([], ["c1"])
+
+
+def test_a_generated_floor_is_flagged_when_the_measurement_ran_in_another_runtime():
+    generation = {"torch": "2.11.0+rocm7.2", "hip": "7.2", "gpu_name": "AMD Instinct MI355X", "gpu_arch": "gfx950",
+                  "package_sha256": "0" * 64}
+    same = {key: generation[key] for key in ("torch", "hip", "gpu_name", "gpu_arch")}
+    other = {**same, "torch": "2.11.0+rocm10.0.0", "hip": "10.0"}
+    generated = {**floor(case_id="c1"), "generation": generation}
+    joined, violations = join([generated, {**generated, "case_id": "c2"}],
+                              [measured_row("baseline", 20.0, "c1", same), measured_row("baseline", 9.0, "c2", other)])
+    assert "generation_mismatch_baseline" not in joined[0]
+    assert joined[1]["generation_mismatch_baseline"] == {"torch": ["2.11.0+rocm7.2", "2.11.0+rocm10.0.0"],
+                                                         "hip": ["7.2", "10.0"]}
+    assert "generated_inputs_runtime_differs_from_baseline: hip, torch" in joined[1]["notes"]
+    assert violations[0]["generation_mismatch"] == joined[1]["generation_mismatch_baseline"]
+
+
+def test_measurements_read_the_session_runtime(tmp_path):
+    write_session(tmp_path / "s1", "t/a", [case("c1", 0.02)])
+    (tmp_path / "s1" / "runtime_identity.json").write_text(json.dumps({"torch": "t", "gpu_arch": "gfx950"}))
+    write_session(tmp_path / "s2", "t/b", [case("c1", 0.02)])
+    rows, _ = measurements(tmp_path)
+    assert [r["runtime"] for r in rows] == [{"torch": "t", "gpu_arch": "gfx950"}, None]
 
 
 def test_within_the_noise_margin_is_not_a_violation():

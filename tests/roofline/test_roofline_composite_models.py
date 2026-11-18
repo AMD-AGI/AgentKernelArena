@@ -29,7 +29,7 @@ def test_mingpt_block():
     # each. Total 56653824. Bytes (G1): x and out 4*768*4 each, every weight and bias: 4 * (2*3072 +
     # 4*768 + 3*768^2 + 3*768 + 768^2 + 768 + 4*768^2 + 4*768 + 4*768^2 + 768) = 28376064.
     f = floor("triton/other/mingpt_block/f32_e768_h8", batch=1, seq_len=4)
-    assert f["flops_matrix_by_precision"] == {"matrix_fp32": 56653824}  # float32 task
+    assert f["flops_matrix_by_precision"] == {"matrix_bf16": 56653824}  # float32 task, no probe: one bf16 product
     assert (f["bytes_rule"], f["bytes_min"]) == ("G1", 28376064)
 
 
@@ -37,7 +37,7 @@ def test_causal_self_attention():
     # Same QKV (14155776), scores + PV (30720) and output projection (4718592) as mingpt: 18905088.
     # Bytes: 4 * (2*4*768 + 3*768^2 + 3*768 + 768^2 + 768) = 9474048.
     f = floor("triton/attention/causal_self_attention/f32_e768_h8", batch=1, seq_len=4)
-    assert f["flops_matrix_by_precision"] == {"matrix_fp32": 18905088}  # float32 task
+    assert f["flops_matrix_by_precision"] == {"matrix_bf16": 18905088}  # float32 task, no probe: one bf16 product
     assert (f["bytes_rule"], f["bytes_min"]) == ("G1", 9474048)
 
 
@@ -46,17 +46,30 @@ def test_vision_attention_block():
     # out-proj 2*4*128*128 = 131072; 532480. Bytes: 4 * (2*128*4 + 3*128^2 + 3*128 + 128^2 + 128 + 2*128)
     # = 269312.
     f = floor("triton/attention/vision_attention_block/f32_e128_h4", batch=1, hw=4)
-    assert f["flops_matrix_by_precision"] == {"matrix_fp32": 532480}  # float32 task
+    assert f["flops_matrix_by_precision"] == {"matrix_bf16": 532480}  # float32 task, no probe: one bf16 product
     assert f["bytes_min"] == 269312
 
 
 def test_nonlocal_attention_dot():
-    # B = 1, N = hw = 4, C = 64, qk = 16, in the reference's order. Projections: q and k (4*N*C*qk =
-    # 16384), v and the output map (4*N*C^2 = 65536). Energy qᵀk: 2*N^2*qk = 512. v E: 2*N^2*C = 2048.
-    # Total 84480. Bytes: 4 * (2*C*N + 2*qk*C + 2*qk + 2*C^2 + 2*C) = 43648.
+    # B = 1, N = hw = 4, C = 64, qk = 16: the reference's order is the cheaper one here. Projections: q and
+    # k (4*N*C*qk = 16384), v and the output map (4*N*C^2 = 65536). Energy qᵀk: 2*N^2*qk = 512. v E:
+    # 2*N^2*C = 2048. Total 84480. The merged forms cost more at this size: W_qᵀ W_k is 2*C^2*qk =
+    # 131072 to form, W_g W_v 2*C^3 = 524288. Bytes: 4 * (2*C*N + 2*qk*C + 2*qk + 2*C^2 + 2*C) = 43648.
     f = floor("hip/attention/nonlocal_attention_dot/f32_c64", batch=1, hw=4)
-    assert f["flops_matrix_by_precision"] == {"matrix_fp32": 84480}  # float32 task
+    assert f["flops_matrix_by_precision"] == {"matrix_bf16": 84480}  # float32 task, no probe: one bf16 product
     assert f["bytes_min"] == 43648
+    assert not any(note.startswith("merged_") for note in f["notes"])
+
+
+def test_nonlocal_attention_merges_the_value_and_output_maps_when_that_is_cheaper():
+    # B = 8, N = 1024, C = 64, qk = 16. Energy from projected q, k: 4*B*N*C*qk + 2*B*N^2*qk = 301989888,
+    # cheaper than the merged xᵀ(W_qᵀW_k)x (2*C^2*qk + 2*B*N*C^2 + 2*B*N^2*C = 1141030912). v E:
+    # 2*B*N^2*C = 1073741824. Value and output maps: separately 4*B*N*C^2 = 134217728, merged
+    # 2*C^3 + 2*B*N*C^2 = 67633152.
+    f = floor("hip/attention/nonlocal_attention_dot/f32_c64", batch=8, hw=1024)
+    assert f["flops_matrix"] == 301989888 + 1073741824 + 67633152
+    assert "merged_value_output_maps_counted" in f["notes"]
+    assert "merged_energy_weight_counted" not in f["notes"]
 
 
 @pytest.mark.parametrize("task_id, qk_key", [("triton/attention/sage_attention_fwd/int8qk_fp8v_h8_d128", "matrix_int8"),

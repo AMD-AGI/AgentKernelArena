@@ -31,10 +31,11 @@ def test_emulated_keys_divide_the_16_bit_peak_by_the_product_count():
                                                    "matrix_bf16x6", "matrix_bf16x9", "matrix_fp32"]
 
 
-def test_without_a_probe_float32_products_are_charged_at_the_float32_peak():
+def test_without_a_probe_float32_products_are_charged_at_one_bf16_product():
+    # Nothing has ruled out the fastest arithmetic for an unprobed case, so the floor stays a lower bound.
     charged, notes = charge_fp32_products("synthetic/none", "case", {"matrix_fp32": GEMM, "matrix_fp8": 10})
-    assert charged == {"matrix_fp32": GEMM, "matrix_fp8": 10}
-    assert notes == ["fp32_arithmetic:fp32 (no probe result; float32 matrix peak)"]
+    assert charged == {"matrix_bf16": GEMM, "matrix_fp8": 10}
+    assert notes == ["fp32_arithmetic:bf16 (no probe result; fastest arithmetic, a loose lower bound)"]
 
 
 def test_products_without_float32_operands_are_untouched():
@@ -58,10 +59,10 @@ def probed(tmp_path):
     return task_dir, probe
 
 
-def test_a_task_the_probe_did_not_cover_stays_at_the_float32_peak(probed):
+def test_a_task_the_probe_did_not_cover_keeps_the_unprobed_charge(probed):
     charged, notes = charge_fp32_products("synthetic/none", "case", {"matrix_fp32": GEMM}, probe=probed[1])
-    assert charged == {"matrix_fp32": GEMM}
-    assert notes == ["fp32_arithmetic:fp32 (no probe result; float32 matrix peak)"]
+    assert charged == {"matrix_bf16": GEMM}
+    assert notes == ["fp32_arithmetic:bf16 (no probe result; fastest arithmetic, a loose lower bound)"]
 
 
 def test_bf16_flops_merge_with_charged_float32_flops(probed):
@@ -79,19 +80,19 @@ def test_every_probed_case_is_charged_at_the_arithmetic_the_probe_saw_pass(probe
         assert notes[0].endswith("; synthetic probe)")
 
 
-def test_a_changed_package_falls_back_to_the_float32_peak(probed):
+def test_a_changed_package_falls_back_to_the_unprobed_charge(probed):
     task_dir, probe = probed
     (task_dir / "reference.py").write_text("# edited\n")
     package_sha256.cache_clear()
     arithmetic, note = fp32_arithmetic("synthetic/t", "small", task_dir, probe)
-    assert arithmetic == "fp32"
-    assert note.startswith("fp32_arithmetic:fp32 (task package changed since the probe, which saw bf16x6 pass;")
+    assert arithmetic == "bf16"
+    assert note.startswith("fp32_arithmetic:bf16 (task package changed since the probe, which saw bf16x6 pass;")
 
 
-def test_a_missing_package_falls_back_to_the_float32_peak(probed):
+def test_a_missing_package_falls_back_to_the_unprobed_charge(probed):
     task_dir, probe = probed
     shutil.rmtree(task_dir)
-    assert fp32_arithmetic("synthetic/t", "small", task_dir, probe)[0] == "fp32"
+    assert fp32_arithmetic("synthetic/t", "small", task_dir, probe)[0] == "bf16"
 
 
 def test_a_probe_file_with_an_unknown_arithmetic_is_rejected(tmp_path):
@@ -105,10 +106,10 @@ def _gemm_f32_floor(case_id, probe=None):
     return case_floor(task, case, PEAKS, probe=probe)
 
 
-def test_gemm_f32_floor_is_charged_at_the_float32_peak_without_a_probe():
+def test_gemm_f32_floor_is_charged_at_one_bf16_product_without_a_probe():
     floor = _gemm_f32_floor("m4096")
-    assert floor["flops_matrix_by_precision"] == {"matrix_fp32": GEMM}
-    assert floor["t_compute_matrix_us"] == pytest.approx(873.7377843102353)  # 2 * 4096^3 / 157.3 TFLOPS
+    assert floor["flops_matrix_by_precision"] == {"matrix_bf16": GEMM}
+    assert floor["t_compute_matrix_us"] == pytest.approx(54.61295139156005)  # 2 * 4096^3 / 2516.6 TFLOPS
     assert "precision_substitution_sensitive" in floor["notes"]
 
 
@@ -138,9 +139,9 @@ def test_floors_command_reads_the_probe_file(tmp_path):
         assert cli.main(["floors", "--out", str(tmp_path / name), "--tasks", GEMM_F32, *extra]) == 0
         rows = [json.loads(line) for line in (tmp_path / name / "floors.jsonl").read_text().splitlines()]
         keys[name] = {row["precision_key"] for row in rows}
-    assert keys == {"plain": {"matrix_fp32"}, "probed": {"matrix_bf16x3"}}
+    assert keys == {"plain": {"matrix_bf16"}, "probed": {"matrix_bf16x3"}}
 
 
-def test_the_unprobed_default_is_the_float32_peak_the_slowest_rate():
+def test_the_unprobed_default_is_the_fastest_arithmetic():
     rates = {a: PEAKS.matrix_flops_per_s(charge_key(a)) for a in ARITHMETIC}
-    assert min(rates, key=rates.get) == "fp32" == precision_policy.UNPROBED
+    assert max(rates, key=rates.get) == "bf16" == precision_policy.UNPROBED

@@ -12,17 +12,26 @@ Geometry:
 - A weight layout that is not in the table keeps the old bound of one tap per output, which holds
   for any geometry, and says so in its notes.
 
-One algebraic shortcut is counted, where the task itself proves it: a weight passed in the Winograd
-F(4x4, 3x3) domain makes the operator 36 products per 4x4 output tile (6 per 4 outputs on each
-axis), which is what the task's baseline computes. No other Winograd variant is assumed: with the
-products in float32, F(4x4, 3x3) and F(6x6, 3x3) reach about 121 dB and 115 dB SQNR, below the
-124-130 dB the float32 convolution tasks require.
+Winograd. A weight passed in the Winograd F(4x4, 3x3) domain makes the operator 36 products per
+4x4 output tile (6 per 4 outputs on each axis), which is what the task's baseline computes. For
+float32 tasks no other Winograd variant is assumed: with the products in float32, F(4x4, 3x3) and
+F(6x6, 3x3) reach about 121 dB and 115 dB SQNR, below the 124-130 dB those tasks require.
+
+16-bit tasks are checked against their baseline's error (``baseline_relative``), not a fixed SQNR,
+so that argument does not carry over, and each 3-tap, stride-1 axis is counted at F(4, 3)'s 6
+multiplies per 4 outputs: 2.25 products per output in 2-D instead of 9. That is below every
+Winograd variant that could pass. One 16-bit product per transformed element costs about 96 dB
+of SQNR against float32 products (F(4x4, 3x3) would reach about 25 dB, far below a bf16 direct
+convolution), and larger tiles are worse, so a passing variant needs three part products:
+3 * (1 + 2/m)^2 products per output for tile size m, more than 3 for every m (in 3-D,
+3 * (1 + 2/m)^3 against 3.375, for every tile under 50).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
 
+from ..dtypes import operand_bits
 from ..interface import CaseShapes
 from . import Estimate, OperatorModel, register
 from .gemm import add_product, mm
@@ -107,13 +116,19 @@ def conv_flops(shapes: CaseShapes, spec: Conv) -> tuple[int, list[str]]:
                 elements *= extent
             return (2 * cin * elements, ["kernel_geometry_undeclared_one_tap_counted"])
         kernel, winograd_domain = layout
-    work = Fraction(1)
+    sixteen_bit = all(operand_bits(shapes.tensor(name).dtype) == 16 for name in (spec.x, spec.weight))
+    work, winograd_counted = Fraction(1), False
     for extent, out, (stride, padding) in zip(extents, outs, geometry):
+        taps = in_bounds_taps(extent, out, kernel, stride, padding)
         if winograd_domain:
             work *= out * WINOGRAD_F43_MULTIPLIES_PER_OUTPUT
+        elif sixteen_bit and kernel == 3 and stride == 1 and out * WINOGRAD_F43_MULTIPLIES_PER_OUTPUT < taps:
+            work *= out * WINOGRAD_F43_MULTIPLIES_PER_OUTPUT
+            winograd_counted = True
         else:
-            work *= in_bounds_taps(extent, out, kernel, stride, padding)
-    notes = ["winograd_f4x3_domain_weights"] if winograd_domain else []
+            work *= taps
+    notes = (["winograd_f4x3_domain_weights"] if winograd_domain
+             else ["winograd_f4x3_counted: 16-bit 3x3 stride-1"] if winograd_counted else [])
     return int(2 * batch * cout * cin * work), notes
 
 

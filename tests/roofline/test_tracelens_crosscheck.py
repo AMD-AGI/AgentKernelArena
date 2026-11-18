@@ -265,10 +265,9 @@ CHECKS = [
           _conv_k3, same, same, "equal"),
     Check("conv, 3x3 same padding (NHWC)", "triton/convolution/conv2d/bf16_nhwc_cin256_cout256_k3",
           "CONV.flops_func / bytes_func", _conv_nhwc_k3,
-          lambda s, f: f * (3 * s["height"] - 2) * (3 * s["width"] - 2) // (9 * s["height"] * s["width"]),
-          lambda s, b: b + 4 * s["out_channels"],
-          "FLOPs: ours leaves out the taps that fall in the zero padding; "
-          "bytes: ours adds the fp32 bias that TraceLens's single dtype leaves out"),
+          lambda s, f: f / 4, lambda s, b: b + 4 * s["out_channels"],
+          "FLOPs: a 16-bit 3x3 stride-1 conv is counted at Winograd F(4x4, 3x3)'s 2.25 multiplies per output, "
+          "a quarter of the direct 9; bytes: ours adds the fp32 bias that TraceLens's single dtype leaves out"),
     Check("flash attention forward", "flydsl/attention/flash_attention_fwd/bf16_causal_mha_h32_d128",
           "SDPA.flops_func / bytes_func (causal)",
           lambda s, _: (sdpa(s["batch"], s["seq_len"], s["n_heads"], s["head_dim"], True),
@@ -298,7 +297,9 @@ CHECKS = [
     Check("vision attention block", "triton/attention/vision_attention_block/f32_e128_h4", "GEMM + SDPA + GEMM",
           _vision, same, None, "FLOPs equal (unmasked); bytes: unfused sum, not comparable"),
     Check("non-local attention", "hip/attention/nonlocal_attention_dot/f32_c64", "GEMM x 4 + bmm x 2",
-          _nonlocal, same, None, "FLOPs equal (the reference's order); bytes: unfused sum"),
+          _nonlocal, lambda s, f: f - 2 * s["batch"] * s["hw"] * s["channels"] ** 2 + 2 * s["channels"] ** 3, None,
+          "FLOPs: ours merges the value and output maps into W_g W_v (2*C^3 to form, then one C x C map instead "
+          "of two); bytes: unfused sum"),
     Check("minGPT block", "triton/other/mingpt_block/f32_e768_h8", "GEMM x 4 + SDPA", _mingpt,
           lambda s, f: f + 2 * s["n_embd"] * s["batch"] * s["seq_len"], None,
           "FLOPs: causal diagonal; bytes: unfused sum"),

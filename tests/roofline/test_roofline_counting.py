@@ -166,14 +166,15 @@ def test_b2b_gemm_counts_the_cheaper_association():
     assert flops == 2 * 4096 * 64 * 64 + 4 * 4096 * 64 * 64 < 4 * 4096 * 4096 * 64
 
 
-def test_avgpool_after_linear_counts_the_full_linear_map():
-    # Pooled weights (2 * 16 * 512 * 8192) are equal in real arithmetic but do not pass the evaluator in
-    # every case, so the reference's full product is counted.
+def test_avgpool_after_linear_counts_pooled_weights():
+    # Pooling 16 outputs of a linear map is a linear map with pooled weights: 2 * 16 * 512 * 8192 FLOPs
+    # instead of 2 * 16 * 8192 * 8192. A kernel can choose the order per case, so it is counted everywhere.
     symbols = {"batch": 16, "in_features": 8192, "out_features": 8192, "pool_size": 16, "pooled_features": 512}
     case = shapes("matmul_avgpool_gelu_scale_max", symbols,
                   [tensor("x", (16, 8192), dtype="float32"), tensor("weight", (8192, 8192), dtype="float32")])
     estimate = model_for("matmul_avgpool_gelu_scale_max").estimate(case)
-    assert estimate.flops_matrix == {"matrix_fp32": 2 * 16 * 8192 * 8192}
+    assert estimate.flops_matrix == {"matrix_fp32": 2 * 16 * 512 * 8192}
+    assert "pooled_weight_shortcut_counted" in estimate.notes
 
 
 def test_causal_and_window_pair_counts_match_brute_force():
@@ -219,9 +220,10 @@ def test_conv_counts_exactly_the_taps_inside_the_input():
             assert chosen == (stride, padding)
         symbols = {"batch": 2, "in_channels": 3, "out_channels": 4, "height": extent, "width": extent}
         case = shapes("conv2d", symbols, [
-            tensor("x", (2, extent, extent, 3), expressions=("batch", "height", "width", "in_channels")),
-            tensor("weight", (4, 9, 3), expressions=("out_channels", 9, "in_channels")),
-            tensor("out", (2, out, out, 4), direction="output",
+            tensor("x", (2, extent, extent, 3), dtype="float32",
+                   expressions=("batch", "height", "width", "in_channels")),
+            tensor("weight", (4, 9, 3), dtype="float32", expressions=("out_channels", 9, "in_channels")),
+            tensor("out", (2, out, out, 4), dtype="float32", direction="output",
                    expressions=("batch", "out_height", "out_width", "out_channels"))])
         flops, notes = conv_flops(case, Conv("batch", "in_channels", "out_channels", "x", "weight", "out",
                                              ("height", "width")))
@@ -252,6 +254,28 @@ def test_valid_conv_with_declared_kernel_counts_every_tap():
                                          ("height", "width")))
     assert flops == 2 * 1 * 16 * 8 * (32 * 32) * 9
     assert notes == []
+
+
+@pytest.mark.parametrize("dtype", ["bfloat16", "float16"])
+def test_16_bit_3x3_stride_1_conv_counts_winograd_f4x3_multiplies(dtype):
+    # Same padding, 32 x 64 outputs: F(4, 3) needs 6 multiplies per 4 outputs on each axis, 48 x 96 in all
+    # per (out, in) channel pair, against (3*32 - 2) x (3*64 - 2) in-bounds direct taps.
+    symbols = {"batch": 2, "in_channels": 8, "out_channels": 16, "height": 32, "width": 64}
+    def conv(dtype, stride_two=False):
+        out_h, out_w = (16, 32) if stride_two else (32, 64)
+        case = shapes("conv2d", symbols, [
+            tensor("x", (2, 32, 64, 8), dtype=dtype, expressions=("batch", "height", "width", "in_channels")),
+            tensor("weight", (16, 9, 8), dtype=dtype, expressions=("out_channels", 9, "in_channels")),
+            tensor("out", (2, out_h, out_w, 16), dtype=dtype, direction="output",
+                   expressions=("batch", "out_height", "out_width", "out_channels"))])
+        return conv_flops(case, Conv("batch", "in_channels", "out_channels", "x", "weight", "out",
+                                     ("height", "width")))
+    flops, notes = conv(dtype)
+    assert flops == 2 * 2 * 16 * 8 * 48 * 96 < 2 * 2 * 16 * 8 * (3 * 32 - 2) * (3 * 64 - 2)
+    assert notes == ["winograd_f4x3_counted: 16-bit 3x3 stride-1"]
+    # float32 operands and stride-2 axes keep the direct count.
+    assert conv("float32") == (2 * 2 * 16 * 8 * (3 * 32 - 2) * (3 * 64 - 2), [])
+    assert conv(dtype, stride_two=True)[1] == []
 
 
 def test_winograd_domain_weights_count_36_products_per_4x4_tile():

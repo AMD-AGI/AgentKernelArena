@@ -5,9 +5,16 @@ whose session directory holds ``session.json`` with the task ID. Only cases time
 ``cuda_graph_cold_cache`` are joined: that method evicts the caches before every call, so every
 byte comes from HBM and the HBM bandwidth applies. Other methods are skipped with a reason.
 
-A measurement more than ``VIOLATION_MARGIN`` faster than its floor means the operator model is
-wrong (or the kernel is): every floor of that model is downgraded to tier ``none`` and the model
-goes on the to-investigate list.
+A measurement more than ``VIOLATION_MARGIN`` faster than its floor is a violation, and its role
+decides what it means. A baseline is a reviewed reference implementation, so a baseline violation
+means the operator model is wrong: every floor of that model is downgraded to tier ``none`` and the
+model goes on the to-investigate list. A candidate violation means the candidate is suspect (a
+broken timing, skipped work, or a model to recheck): it is listed with ``role: candidate`` and the
+floor that flagged it stays.
+
+A floor counted from generated inputs (``floors --generate``) records the runtime it ran in. When a
+measurement's session records a different torch build or GPU (``runtime_identity.json``), the
+generated inputs need not be the timed ones; the joined record and any violation say so.
 
 Measured (practical) peaks, for example the TraceLens microbench result kept outside the
 repository, only add a second column: ``t_practical_us`` is the same FLOP and byte counts at the
@@ -24,6 +31,7 @@ import statistics
 from typing import Any, Iterable
 
 from .arch import Peaks
+from .generated import GENERATION_KEYS
 
 COLD_CACHE = "cuda_graph_cold_cache"
 VIOLATION_MARGIN = 0.95
@@ -44,6 +52,8 @@ def measurements(evidence_root: Path) -> tuple[list[dict], list[dict]]:
             skipped.append({"file": str(path), "reason": "no session.json beside the action record"})
             continue
         task_id = json.loads(session.read_text(encoding="utf-8"))["task_id"]
+        runtime_file = path.parent / "runtime_identity.json"
+        runtime = json.loads(runtime_file.read_text(encoding="utf-8")) if runtime_file.is_file() else None
         record = json.loads(path.read_text(encoding="utf-8"))
         result = record.get("result") or {}
         if result.get("status") != "PASS":
@@ -56,7 +66,8 @@ def measurements(evidence_root: Path) -> tuple[list[dict], list[dict]]:
                                 "reason": f"benchmark_method {method!r} is not {COLD_CACHE}"})
                 continue
             rows.append({"task_id": task_id, "case_id": case["test_case_id"], "role": match["role"],
-                         "us": float(case["execution_time_ms"]) * 1e3, "method": method, "file": str(path)})
+                         "us": float(case["execution_time_ms"]) * 1e3, "method": method, "file": str(path),
+                         "runtime": runtime})
     return rows, skipped
 
 
@@ -88,10 +99,21 @@ def practical_time_us(floor: dict, peaks: Peaks) -> float | None:
     return max(sum(matrix), parts[-2], parts[-1]) * 1e6
 
 
+def generation_mismatch(floor: dict, runtime: dict | None) -> dict[str, list] | None:
+    """The runtime fields in which a generated floor's inputs and a measurement differ, or None."""
+    generation = floor.get("generation")
+    if not generation or not runtime:
+        return None
+    differ = {key: [generation.get(key), runtime.get(key)] for key in GENERATION_KEYS
+              if generation.get(key) != runtime.get(key)}
+    return differ or None
+
+
 def join(floors: Iterable[dict], measured: Iterable[dict],
          practical: Peaks | None = None) -> tuple[list[dict], list[dict]]:
-    """(joined, violations). A case's fastest measurement per role is used. With ``practical``
-    peaks each record also gets ``t_practical_us`` and, when measured, ``practical_fraction_baseline``."""
+    """(joined, violations). A case's fastest measurement per role is used; only baseline violations
+    downgrade a model. With ``practical`` peaks each record also gets ``t_practical_us`` and, when
+    measured, ``practical_fraction_baseline``."""
     best: dict[tuple[str, str, str], dict] = {}
     for row in measured:
         key = (row["task_id"], row["case_id"], row["role"])
@@ -112,16 +134,24 @@ def join(floors: Iterable[dict], measured: Iterable[dict],
                 continue
             record[f"{role}_us"], record[f"{role}_method"] = hit["us"], hit["method"]
             record[f"floor_fraction_{role}"] = floor["t_floor_us"] / hit["us"]
+            mismatch = generation_mismatch(floor, hit.get("runtime"))
+            if mismatch:
+                record[f"generation_mismatch_{role}"] = mismatch
+                record["notes"] = [*record["notes"], f"generated_inputs_runtime_differs_from_{role}: "
+                                   + ", ".join(sorted(mismatch))]
             if hit["us"] < VIOLATION_MARGIN * floor["t_floor_us"]:
-                violations.append({"task_id": floor["task_id"], "case_id": floor["case_id"], "role": role,
-                                   "model": floor["model"], "measured_us": hit["us"],
-                                   "t_floor_us": floor["t_floor_us"], "file": hit["file"]})
+                violation = {"task_id": floor["task_id"], "case_id": floor["case_id"], "role": role,
+                             "model": floor["model"], "measured_us": hit["us"],
+                             "t_floor_us": floor["t_floor_us"], "file": hit["file"]}
+                if mismatch:
+                    violation["generation_mismatch"] = mismatch
+                violations.append(violation)
         joined.append(record)
-    broken = {v["model"] for v in violations}
+    broken = {v["model"] for v in violations if v["role"] == "baseline"}
     for record in joined:
         if record["model"] in broken and record["tier"] != "none":
             record["tier"] = "none"
-            record["notes"] = [*record["notes"], "downgraded: a measurement beat a floor of this model"]
+            record["notes"] = [*record["notes"], "downgraded: a baseline measurement beat a floor of this model"]
     return joined, violations
 
 
@@ -143,5 +173,7 @@ def report_rows(joined: Iterable[dict]) -> list[dict[str, Any]]:
             "median_practical_fraction": statistics.median(practical) if practical else None,
             "max_practical_fraction": max(practical) if practical else None,
             "violations": [r["case_id"] for r in records if r.get("floor_fraction_baseline", 0) > 1 / VIOLATION_MARGIN],
+            "candidate_violations": [r["case_id"] for r in records
+                                     if r.get("floor_fraction_candidate", 0) > 1 / VIOLATION_MARGIN],
         })
     return rows

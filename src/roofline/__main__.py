@@ -87,13 +87,15 @@ def join_command(args: argparse.Namespace) -> int:
     _write_jsonl(out / "violations.jsonl", violations)
     _write_jsonl(out / "skipped_measurements.jsonl", skipped)
     matched = sum(1 for r in joined if "baseline_us" in r or "candidate_us" in r)
-    print(f"{len(measured)} measurements, {matched} floors matched, {len(violations)} violations, "
-          f"{len(skipped)} skipped -> {out}")
+    suspects = sum(1 for v in violations if v["role"] == "candidate")
+    print(f"{len(measured)} measurements, {matched} floors matched, {len(violations) - suspects} baseline "
+          f"violations, {suspects} suspect candidates, {len(skipped)} skipped -> {out}")
     return 0
 
 
 REPORT_FIELDS = ("task_id", "operator", "tier", "bound", "cases", "measured_cases", "median_fraction",
-                 "max_fraction", "median_practical_fraction", "max_practical_fraction", "violations")
+                 "max_fraction", "median_practical_fraction", "max_practical_fraction", "violations",
+                 "candidate_violations")
 
 
 def report_command(args: argparse.Namespace) -> int:
@@ -105,7 +107,8 @@ def report_command(args: argparse.Namespace) -> int:
         writer = csv.DictWriter(handle, REPORT_FIELDS)
         writer.writeheader()
         for row in rows:
-            writer.writerow({**row, "violations": " ".join(row["violations"])})
+            writer.writerow({**row, "violations": " ".join(row["violations"]),
+                             "candidate_violations": " ".join(row["candidate_violations"])})
 
     def fraction(value):
         return "" if value is None else f"{value:.0%}"
@@ -117,13 +120,15 @@ def report_command(args: argparse.Namespace) -> int:
              "baseline is to what existing libraries reach; a good kernel can exceed 100%.", "",
              f"Datasheet peaks: {', '.join(datasheet_sources) or 'n/a'}. "
              f"Practical peaks: {', '.join(practical_sources) or 'none given (join --practical-arch)'}.", "",
+             "Violations are baseline cases faster than their floor (the model is downgraded); suspect "
+             "candidates are candidate cases faster than their floor (the floor stays).", "",
              "| task | tier | bound | measured/cases | datasheet median | datasheet max | practical median "
-             "| practical max | violations |", "|---|---|---|---|---|---|---|---|---|"]
+             "| practical max | violations | suspect candidates |", "|---|---|---|---|---|---|---|---|---|---|"]
     for row in rows:
         lines.append(f"| {row['task_id']} | {row['tier']} | {row['bound']} | {row['measured_cases']}/{row['cases']} "
                      f"| {fraction(row['median_fraction'])} | {fraction(row['max_fraction'])} "
                      f"| {fraction(row['median_practical_fraction'])} | {fraction(row['max_practical_fraction'])} "
-                     f"| {' '.join(row['violations'])} |")
+                     f"| {' '.join(row['violations'])} | {' '.join(row['candidate_violations'])} |")
     (out / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"{len(rows)} tasks -> {out}/report.md, report.csv")
     return 0
@@ -149,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
                               help="device for --generate; only the GPU reproduces the evaluator's inputs")
     floor_parser.add_argument("--precision-probe", help="precision-probe results (kept outside the repository): "
                               "float32 products are charged at the cheapest arithmetic that passed for the case; "
-                              "without it, at the float32 matrix peak")
+                              "without a result, at one bf16 product (the fastest arithmetic)")
     floor_parser.add_argument("--tasks-dir", default=str(TASKS_DIR), help=argparse.SUPPRESS)
     floor_parser.set_defaults(handler=floors)
     join_parser = commands.add_parser("join", help="join floors with measured performance evidence")

@@ -4,8 +4,8 @@ A product of an (M x K) and a (K x N) matrix needs 2*M*N*K FLOPs with the classi
 algorithm; every model below counts only those products. Epilogues (bias, activation,
 scaling, normalization, softmax) are ignored, which can only lower the floor. Where the
 reference admits an algebraic shortcut a correct kernel may take, the model counts the
-shortcut (``b2b_gemm`` may
-reassociate, an ungated feed-forward block without an activation may merge its weights).
+shortcut (``matmul_avgpool_gelu_scale_max`` pools the weights, ``b2b_gemm`` may reassociate, an
+ungated feed-forward block without an activation may merge its weights).
 
 Each product is charged at the matrix peak of its lowest-precision operand: a bfloat16 activation
 against fp8 or fp4 weights is charged at the fp8 or fp4 peak. That is the faster peak, so the floor
@@ -14,8 +14,8 @@ quantizes an operand before the product (a16wfp4 quantizes its activations to MX
 gives that operand's bits after quantization. Operands of different widths are marked
 ``precision_substitution_sensitive``: the measured time may sit well above such a floor, and a
 kernel that quantized further and still passed the tolerance could beat it. Float32 products are
-marked too; ``floor.py`` charges them at the float32 peak, or with a precision-probe file at the
-bf16 or fp16 part products the probe saw pass (``precision_policy``), and the note stays because a
+marked too; ``floor.py`` charges them at the bf16 or fp16 part products a precision probe saw pass,
+or at one bf16 product without a probe result (``precision_policy``), and the note stays because a
 kernel may find a cheaper arithmetic.
 """
 from __future__ import annotations
@@ -100,10 +100,14 @@ def _b2b(shapes: CaseShapes) -> Estimate:
 
 
 def _avgpool_linear(shapes: CaseShapes) -> Estimate:
-    """The full linear map, then pooling. A linear map with pooled weights is equal in real
-    arithmetic, but run through the evaluator it does not pass every case, so it is not counted."""
-    result = Estimate()
-    add_product(shapes, result, mm("batch", "out_features", "in_features", "x", "weight"))
+    """Average pooling of a linear map's outputs is a linear map with pooled weights: summing each
+    window of weight rows is vector work, and the product shrinks by the pool size.
+
+    A kernel that takes this shortcut may fail the tolerance on some cases, but it can choose per
+    case, and no per-case result is recorded, so the shortcut is counted on every case; the floor
+    errs low. A recorded per-case check that the shortcut fails could raise it."""
+    result = Estimate(notes=["pooled_weight_shortcut_counted"])
+    add_product(shapes, result, mm("batch", "out_features // pool_size", "in_features", "x", "weight"))
     return result
 
 

@@ -1,9 +1,9 @@
 """The arithmetic a float32 matrix product is charged at.
 
-Operator models charge a product of float32 operands at the ``matrix_fp32`` peak, as TraceLens does.
-A kernel does not have to multiply in float32: it can split each float32 operand into 16-bit parts
-and multiply those on the bf16/fp16 matrix cores with float32 accumulation, and it is correct
-whenever the result still passes the task's tolerance. Each kept part product runs at the 16-bit
+Operator models give a product of float32 operands the ``matrix_fp32`` key, as TraceLens does, and
+this module decides the rate it is charged at. A kernel does not have to multiply in float32: it can
+split each float32 operand into 16-bit parts and multiply those on the bf16/fp16 matrix cores with
+float32 accumulation, and it is correct whenever the result still passes the task's tolerance. Each kept part product runs at the 16-bit
 rate, so ``N`` products are charged at the 16-bit peak divided by ``N`` (key ``matrix_bf16xN`` or
 ``matrix_fp16xN``):
 
@@ -26,10 +26,13 @@ the repository, like measured peaks. ``floors --precision-probe <file>`` reads t
                              "arithmetic": "<cheapest passing arithmetic of most cases>",
                              "cases": {"<case_id>": "<arithmetic, where it differs>"}}}}
 
-Charging. Without a probe file every float32 product is charged at the float32 matrix peak. With
-one, a case is charged at the cheapest arithmetic the probe saw pass for it. A task the probe did
-not cover, or whose package (``task_package_sha256``, as task materialization computes it) changed
-since the probe, stays at the float32 peak, and its note says so. Every float32 product keeps the
+Charging. A floor must not exceed what a correct kernel can reach, so a case with no measurement is
+charged at the fastest arithmetic in the table (``bf16``, one 16-bit product): nothing has ruled it
+out for that case. This is a loose bound for most float32 tasks (single bf16 products rarely pass a
+float32 tolerance), and the probe tightens it: with a probe file, a case is charged at the cheapest
+arithmetic the probe saw pass for it. A task the probe did not cover, or whose package
+(``task_package_sha256``, as task materialization computes it) changed since the probe, keeps the
+unprobed charge, and its note says so. Every float32 product keeps the
 ``precision_substitution_sensitive`` note: a kernel may find a cheaper arithmetic than the floor
 charges, which a measurement beating the floor would reveal.
 """
@@ -45,7 +48,8 @@ PRODUCTS = {"bf16": ("matrix_bf16", 1), "bf16x3": ("matrix_bf16", 3), "fp16x3": 
             "bf16x6": ("matrix_bf16", 6), "bf16x9": ("matrix_bf16", 9)}
 FP32 = "fp32"
 ARITHMETIC = (*PRODUCTS, FP32)
-UNPROBED = FP32
+# The fastest arithmetic in the table: the charge of a case without a probe result.
+UNPROBED = "bf16"
 
 
 def load_probe(path: str | Path) -> dict:
@@ -63,9 +67,9 @@ def load_probe(path: str | Path) -> dict:
 @lru_cache(maxsize=None)
 def package_sha256(task_dir: Path) -> str:
     """The digest task materialization records as ``task_package_sha256``."""
-    from ..task_materialization import _STALE_OUTPUTS, _Deadline, _tree_manifest, package_digest
+    from ..task_materialization import task_package_sha256
 
-    return package_digest(_tree_manifest(Path(task_dir), _Deadline(600), excludes=tuple(_STALE_OUTPUTS)))
+    return task_package_sha256(Path(task_dir))
 
 
 def probed_arithmetic(probe: dict | None, task_id: str, case_id: str) -> str | None:
@@ -81,11 +85,11 @@ def fp32_arithmetic(task_id: str, case_id: str, task_dir: Path | None = None,
     """The arithmetic one case's float32 products are charged at, and the note that explains it."""
     probed = probed_arithmetic(probe, task_id, case_id)
     if probed is None:
-        return UNPROBED, f"fp32_arithmetic:{UNPROBED} (no probe result; float32 matrix peak)"
+        return UNPROBED, f"fp32_arithmetic:{UNPROBED} (no probe result; fastest arithmetic, a loose lower bound)"
     task_dir = Path(task_dir) if task_dir is not None else TASKS_DIR / task_id
     if not task_dir.is_dir() or package_sha256(task_dir) != probe["tasks"][task_id]["package_sha256"]:
         return UNPROBED, (f"fp32_arithmetic:{UNPROBED} (task package changed since the probe, which saw "
-                          f"{probed} pass; float32 matrix peak until it is probed again)")
+                          f"{probed} pass; fastest arithmetic until it is probed again)")
     return probed, (f"fp32_arithmetic:{probed} (cheapest arithmetic that passed the evaluator's check on both "
                     f"seeds; {probe['source']})")
 

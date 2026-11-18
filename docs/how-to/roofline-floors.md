@@ -39,8 +39,11 @@ left when there is.
   ignored, and algebraic shortcuts that a kernel may take are counted instead of
   the direct product (pooled weights, reassociation, merged linear maps).
   Convolutions use the direct count with the task's kernel geometry, less the
-  taps that fall in zero padding. Causality is not
-  part of the task contract, so attention models count causal pairs. MoE models
+  taps that fall in zero padding; a 16-bit 3x3 stride-1 convolution is counted
+  at the Winograd F(4x4, 3x3) multiply count (see `operators/conv.py`).
+  Causality is not part of the task contract: attention models count causal
+  pairs unless the task description says "non-causal" (a test pins which tasks
+  match). MoE models
   rely only on the routed pair count `n_tokens * top_k` and on at least `top_k`
   distinct experts being used.
 - **Peaks.** Each product is charged at the datasheet peak of its
@@ -48,15 +51,17 @@ left when there is.
   charged at the fp8 peak. That is the faster peak, so the floor stays a lower
   bound whichever format a kernel computes the product in. `uint8` operands are treated as packed fp4. The
   bundled peaks are in `src/roofline/arch/mi355x_datasheet.yaml`, with their
-  source. Products of float32 operands are charged at the float32 matrix peak
-  and marked `precision_substitution_sensitive`: a kernel can split each
-  operand into bf16 or fp16 parts and multiply those on the 16-bit matrix
-  cores, and it is correct when the result still passes the task's tolerance.
-  Which split passes is a measurement, so it stays outside the repository:
-  `floors --precision-probe <file>` reads the results of a precision probe and
-  charges each covered case at the cheapest arithmetic that passed for it (for
-  example key `matrix_bf16x3`, three 16-bit products). The file format is in
-  `src/roofline/precision_policy.py`.
+  source. Products of float32 operands are marked
+  `precision_substitution_sensitive`: a kernel can split each operand into bf16
+  or fp16 parts and multiply those on the 16-bit matrix cores, and it is correct
+  when the result still passes the task's tolerance. Which split passes is a
+  measurement, so it stays outside the repository: `floors --precision-probe
+  <file>` reads the results of a precision probe and charges each covered case
+  at the cheapest arithmetic that passed for it (for example key
+  `matrix_bf16x3`, three 16-bit products). A case without a probe result is
+  charged at one bf16 product, the fastest arithmetic, because nothing has ruled
+  it out; for most float32 tasks that floor is loose, and a probe tightens it.
+  The file format is in `src/roofline/precision_policy.py`.
 - **Timing.** Only measurements made with `cuda_graph_cold_cache` are joined:
   that method evicts the caches before every call, so every byte comes from HBM.
 
@@ -71,8 +76,10 @@ left when there is.
 Operators listed as memory-bound in `src/roofline/operators/tiers.py` use the
 generic byte rules; any other operator without a model gets `none`, because a
 bytes-only floor of a compute-bound operator would suggest headroom that does
-not exist. A measurement more than 5% faster than its floor downgrades every
-floor of that model to `none` and records it in `violations.jsonl`. Floors
+not exist. A baseline measurement more than 5% faster than its floor means the
+model is wrong: every floor of that model is downgraded to `none` and the case
+is recorded in `violations.jsonl`. A candidate that fast is recorded there with
+`role: candidate` as a suspect result, and the floor that flagged it stays. Floors
 marked `precision_substitution_sensitive` can be beaten by a kernel that
 computes in a lower precision and still passes the tolerance; review those by
 hand instead of treating them as invalid.
@@ -108,11 +115,17 @@ python3 -m src.roofline report --joined <OUT>/joined.jsonl --out <OUT>
   or tier `none` when there is none, with the note
   `data_model_requires_gpu_generation`. Of a case's two seeds the smaller floor is kept. When
   generation fails the case falls back the same way (its shape-only floor, or tier
-  `none`), and the error is recorded in its notes.
+  `none`), and the error is recorded in its notes. Each generated floor records its
+  `generation` provenance: the runtime identity a task session records (torch, HIP,
+  GPU, library versions and scoring-image references) and the digest of the task
+  package.
 - `join` searches `<EVIDENCE_DIR>` for task-session action records
   (`action-NNNN-baseline-performance.json`, `action-NNNN-candidate-performance.json`)
   beside a `session.json`, and writes `joined.jsonl`, `violations.jsonl` and
-  `skipped_measurements.jsonl`. `--practical-arch` takes a measured-peak file in
+  `skipped_measurements.jsonl`. When the session's `runtime_identity.json` names a
+  different torch build or GPU than a generated floor's `generation`, the joined
+  record (and any violation) carries `generation_mismatch_<role>`: those inputs
+  need not be the ones that were timed. `--practical-arch` takes a measured-peak file in
   the TraceLens arch JSON layout (the output of TraceLens's
   `PerfModel.benchmarking.microbench`, kept outside the repository) and adds
   `t_practical_us`, the same counts at the measured peaks, and
@@ -123,7 +136,7 @@ python3 -m src.roofline report --joined <OUT>/joined.jsonl --out <OUT>
 - `report` writes `report.md` and `report.csv`: one row per task with its tier,
   bound, and the median and maximum of `floor / measured baseline` (datasheet)
   and, after `--practical-arch`, of `t_practical / measured baseline` side by
-  side.
+  side, with the baseline violations and the suspect candidates of each task.
 
 Keep generated floors, joined measurements and measured peaks out of the
 repository, as with [held-out evaluation](held-out-evaluation.md) data.

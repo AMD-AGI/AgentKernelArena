@@ -7,7 +7,7 @@ from typing import Any
 from ..task_contract import TaskContract
 from .arch import Peaks
 from .bytes_model import generic_bytes
-from .generated import DATA_MODELS, generated_inputs
+from .generated import DATA_MODELS, generated_inputs, generation_provenance
 from .interface import case_shapes, performance_cases
 from .operators import model_for
 from .operators.tiers import AUDIT_G1, MEMORY_BOUND
@@ -25,9 +25,9 @@ def case_floor(contract: TaskContract, case: dict, peaks: Peaks, inputs: dict | 
                task_dir: Path | None = None, probe: dict | None = None) -> dict[str, Any]:
     """The floor of one case; ``inputs`` (generated tensors) enable the operator's data model, if any.
 
-    ``probe`` is a loaded precision-probe file (``precision_policy.load_probe``); without one, float32
-    products are charged at the float32 peak. ``task_dir`` is the package whose digest is compared with
-    the probe's (default: tasks/<id>).
+    ``probe`` is a loaded precision-probe file (``precision_policy.load_probe``); without a result for the
+    case, float32 products are charged at one bf16 product (``precision_policy.UNPROBED``). ``task_dir``
+    is the package whose digest is compared with the probe's (default: tasks/<id>).
     """
     shapes = case_shapes(contract, case)
     counted = generic_bytes(shapes)
@@ -103,10 +103,12 @@ def task_floors(contract: TaskContract, peaks: Peaks, task_dir: Path | None = No
     sample, and for high-variance routing or lengths it can exceed the timed work by tens of percent
     (the minimum over two seeds does not bound that), so on the CPU no data-model floor is emitted:
     the case keeps its shape-only floor, or tier ``none`` when the operator has no shape-only model.
-    A case whose generation fails falls back the same way, with the error in its notes.
+    A case whose generation fails falls back the same way, with the error in its notes. A generated
+    floor carries ``generation``: the runtime and task package the inputs came from.
     """
     records = []
     use_data = generate and contract.raw["operator"]["name"] in DATA_MODELS and task_dir is not None
+    provenance = None
     for case in performance_cases(contract):
         if not use_data:
             records.append(case_floor(contract, case, peaks, task_dir=task_dir, probe=probe))
@@ -120,7 +122,10 @@ def task_floors(contract: TaskContract, peaks: Peaks, task_dir: Path | None = No
                                      probe)
                           for seed in (0, 1)]
             record = min(candidates, key=lambda candidate: candidate["t_floor_us"])
+            if provenance is None:
+                provenance = generation_provenance(task_dir)
             record["generated_on"] = device
+            record["generation"] = provenance
             records.append(record)
         except Exception as exc:  # a generator that needs a GPU, or a missing length tensor
             records.append(_shape_only(contract, case, peaks, task_dir,

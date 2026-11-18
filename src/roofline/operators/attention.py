@@ -121,17 +121,28 @@ def vision_attention_block(shapes: CaseShapes) -> Estimate:
 def nonlocal_attention_dot(shapes: CaseShapes) -> Estimate:
     """Non-local block: E = elu(qᵀk)/n, y = v E, out = W_g y + b_g.
 
-    The products are counted in the reference's order: the query, key and value projections, the
-    energy qᵀk, the aggregation v E and the output projection. Merging the value and output maps
-    into one C x C map is equal in real arithmetic, but run through the evaluator the merged order
-    was not shown to pass in every case, so it is not counted.
+    Each pair of linear maps can be formed in either order, and the cheaper one is counted, with the
+    cost of forming a merged weight included:
+    - the energy from projected q and k, or as xᵀ (W_qᵀ W_k) x;
+    - the value and output maps applied one after the other, or merged into one C x C map W_g W_v.
+    The biases add only matrix-vector work, which is not counted. A merged order may fail the
+    tolerance on some cases, but a kernel can choose per case and no per-case result is recorded, so
+    the floor counts the cheaper order everywhere and errs low.
     """
     batch, channels, positions, qk = (shapes.symbols[n] for n in ("batch", "channels", "hw", "qk_channels"))
-    projections = 2 * 2 * batch * positions * channels * qk + 2 * 2 * batch * positions * channels * channels
-    energy = 2 * batch * positions * positions * qk
+    projected = 2 * 2 * batch * positions * channels * qk + 2 * batch * positions * positions * qk
+    merged_energy = (2 * channels * channels * qk + 2 * batch * positions * channels * channels
+                     + 2 * batch * positions * positions * channels)
     aggregate = 2 * batch * positions * positions * channels
+    separate = 2 * 2 * batch * positions * channels * channels
+    merged_maps = 2 * channels ** 3 + 2 * batch * positions * channels * channels
     estimate = Estimate()
-    _charge(shapes, estimate, projections + energy + aggregate, "x", "query_weight")
+    if merged_energy < projected:
+        estimate.notes.append("merged_energy_weight_counted")
+    if merged_maps < separate:
+        estimate.notes.append("merged_value_output_maps_counted")
+    _charge(shapes, estimate, min(projected, merged_energy) + aggregate + min(separate, merged_maps),
+            "x", "query_weight")
     return estimate
 
 

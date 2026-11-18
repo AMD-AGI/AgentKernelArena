@@ -246,6 +246,36 @@ def test_failed_generation_falls_back_like_a_cpu_run(monkeypatch):
             assert "data_model_failed: RuntimeError: no length tensor" in record["notes"]
 
 
+def test_generated_floors_record_the_runtime_and_package_they_came_from(monkeypatch):
+    from pathlib import Path
+    from src.roofline import floor as floor_module
+    from src.roofline import generated
+    from src.roofline.arch import load_peaks
+    from src.roofline.precision_policy import package_sha256
+    from src.task_contract import TASK_FILE, load_task_contract
+    import src.task_runtime
+
+    identity = {"torch": "2.11.0+rocm10.0.0", "hip": "10.0", "gpu_name": "AMD Instinct MI355X", "gpu_arch": "gfx950",
+                "AKA_SCORING_IMAGE_REFERENCE": "image@sha256:" + "1" * 64}
+    monkeypatch.setattr(src.task_runtime, "runtime_identity", lambda: dict(identity))
+    root = Path(__file__).resolve().parents[2] / "tasks"
+    task_id = "triton/moe/fused_moe/bf16_e8_top2_h4096_i14336"
+    provenance = generated.generation_provenance(root / task_id)
+    assert provenance == {**identity, "package_sha256": package_sha256(root / task_id)}
+
+    seeds = []
+    def fake_case_floor(contract, case, peaks, inputs=None, task_dir=None, probe=None):
+        seeds.append(inputs["seed"])
+        return {"t_floor_us": 1.0 + inputs["seed"], "seed": inputs["seed"], "notes": []}
+    monkeypatch.setattr(floor_module, "generated_inputs", lambda *args: {"seed": args[3]})
+    monkeypatch.setattr(floor_module, "case_floor", fake_case_floor)
+    contract = load_task_contract(root / task_id / TASK_FILE, task_id=task_id)
+    records = floor_module.task_floors(contract, load_peaks("mi355x_datasheet"), root / task_id, generate=True,
+                                       device="cuda")
+    assert records and {r["seed"] for r in records} == {0}  # the smaller of the two seeds' floors
+    assert all(r["generated_on"] == "cuda" and r["generation"] == provenance for r in records)
+
+
 def test_sorting_and_counting_read_every_routing_entry():
     ids = tensor("topk_ids", (4, 2), dtype="int32", role="index")
     case = shapes("count_expert_tokens", {}, [ids, tensor("expert_num_tokens", (8,), dtype="int32",

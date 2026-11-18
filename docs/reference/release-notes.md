@@ -66,8 +66,8 @@ This topic summarizes the features available in each AgentKernelArena release. F
   tier (`verified`, `estimated` or `none`); no model is reviewed yet, so no
   floor is `verified`.
 - `join` and `report` compare floors with task-session performance records,
-  downgrade any model that a measurement beats, and report how close each
-  baseline and candidate is to its floor. See
+  downgrade any model that a baseline beats, list candidates that beat a floor
+  as suspect, and report how close each baseline and candidate is to its floor. See
   [Estimate roofline floors](../how-to/roofline-floors.md).
 
 ## AgentKernelArena 0.4.0

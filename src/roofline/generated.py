@@ -5,7 +5,9 @@ built-in distributions drawn in declaration order from the evaluator's own helpe
 ``generator``. The evaluator draws on the GPU, and torch's CPU and GPU generators produce different
 streams from the same seed, so only a GPU run with the scoring image's torch reproduces the timed
 inputs; a CPU run gives only a statistically similar sample, so it emits no data-model floor
-(``floor.task_floors`` keeps the shape-only floor or tier ``none``). The evaluator times both seeds of a case, so the smaller work is used.
+(``floor.task_floors`` keeps the shape-only floor or tier ``none``). Each generated floor records its
+``generation`` provenance, which ``join`` checks against the measurement's runtime. The evaluator
+times both seeds of a case, so the smaller work is used.
 
 Data models only read tensors through ``.tolist()`` and ``.shape``, so they are unit-tested with
 plain stand-ins.
@@ -73,6 +75,25 @@ def _load_task_module(name: str, path: Path, root: Path):
 def default_device() -> str:
     import torch
     return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+# Runtime fields that decide the generated streams: torch's generator differs by torch build and GPU.
+GENERATION_KEYS = ("torch", "hip", "gpu_name", "gpu_arch")
+
+
+def generation_provenance(task_dir: Path) -> dict[str, Any]:
+    """Where inputs were generated: the runtime identity a task session records in
+    ``runtime_identity.json`` (torch, HIP, GPU, library versions and scoring-image references), and the
+    digest of the task package whose generator ran. ``join`` compares it with each measurement's runtime."""
+    from ..task_runtime import runtime_identity
+    from .precision_policy import package_sha256
+
+    try:
+        identity = runtime_identity()
+    except RuntimeError as exc:  # not a ROCm GPU: these inputs cannot match the evaluator's
+        import torch
+        identity = {"torch": str(torch.__version__), "hip": torch.version.hip, "error": str(exc)}
+    return {**identity, "package_sha256": package_sha256(Path(task_dir))}
 
 
 def generated_inputs(task_dir: Path, contract: TaskContract, case_id: str, seed_index: int,

@@ -82,7 +82,7 @@ def test_gaussian_non_local_block_counts_the_dot_product_blocks_products():
     task_id = "hip/attention/nonlocal_attention_gaussian/f32_c64"
     contract = load_task_contract(ROOT / "tasks" / task_id / TASK_FILE, task_id=task_id)
     floor = case_floor(contract, {"id": "hand", "axes": {"batch": 1, "hw": 4}, "checks": ["performance"]}, PEAKS)
-    assert floor["flops_matrix_by_precision"] == {"matrix_fp32": 84480}  # float32 task with no probe result
+    assert floor["flops_matrix_by_precision"] == {"matrix_bf16": 84480}  # float32 task, no probe: one bf16 product
     assert floor["tier"] == "estimated"
 
 
