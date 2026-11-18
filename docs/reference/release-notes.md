@@ -58,6 +58,18 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `Aiter-task-mi300`, `image_kernel`) are replaced by the new tasks; no compatibility layer is
   provided. The end-to-end serving tasks keep schema v2.
 
+### Roofline floors
+
+- `python3 -m src.roofline` computes a theoretical lower bound (floor) on the
+  time of every schema-v3 performance case: the largest of matrix FLOPs,
+  vector FLOPs and bytes, each over its MI355X datasheet peak. Each floor has a
+  tier (`verified`, `estimated` or `none`); no model is reviewed yet, so no
+  floor is `verified`.
+- `join` and `report` compare floors with task-session performance records,
+  downgrade any model that a baseline beats, list candidates that beat a floor
+  as suspect, and report how close each baseline and candidate is to its floor. See
+  [Estimate roofline floors](../how-to/roofline-floors.md).
+
 ## AgentKernelArena 0.4.0
 
 AgentKernelArena 0.4.0 makes Arena an RL-ready environment with bounded,

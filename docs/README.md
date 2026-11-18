@@ -39,6 +39,7 @@ python -m sphinx -T -b html docs docs/_build/html
 | `how-to/qa-auditor.md` | How-to | Run the QA auditor, the blocking/warning check table, the counterexample rule, `qa_report.yaml` and `qa_summary.json`. |
 | `how-to/quality-loop.md` | How-to | Bounded task repairs, repair-only maintenance, optional optimization, independent review, and single-draft-PR publication. |
 | `how-to/held-out-evaluation.md` | How-to | Generate private shapes and evaluate completed runs for generalization. |
+| `how-to/roofline-floors.md` | How-to | Compute lower-bound times of performance cases and compare them with measured baselines and candidates. |
 | `how-to/visualization.md` | How-to | Build dashboard data and serve the comparison dashboard. |
 | `examples/examples.md` | Examples | Step-by-step walkthroughs with expected output. |
 | `about/license.md` | License | Apache 2.0 notice and link to the full repository `LICENSE`. |

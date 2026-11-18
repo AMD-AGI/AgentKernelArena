@@ -163,6 +163,20 @@ def _evaluate(expression: Any, symbols: dict[str, int]) -> int:
     return value
 
 
+def evaluate_dimension(expression: Any, symbols: Mapping[str, int]) -> int:
+    """Evaluate one declared shape entry (an int or an axis expression) over resolved axis values."""
+    return _evaluate(expression, dict(symbols))
+
+
+def case_symbols(interface: Mapping[str, Any], case_axes: Mapping[str, int]) -> dict[str, int]:
+    """The value of every const, var and derived axis for one workload case."""
+    symbols = {name: (axis["value"] if axis["kind"] == "const" else case_axes[name])
+               for name, axis in interface["axes"].items()}
+    for name, expression in interface.get("derived_axes", {}).items():
+        symbols[name] = _evaluate(expression, symbols)
+    return symbols
+
+
 def _is_power_of_two(value: int) -> bool:
     return value > 0 and value & (value - 1) == 0
 
@@ -571,10 +585,7 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
         _int(obj["timeout_s"], "timeout_s", 60)
     _validate_workloads(workloads, axes, var, interface["inputs"])
     for case in workloads["cases"]:
-        symbols_values = {name: (axis["value"] if axis["kind"] == "const" else case["axes"][name])
-                          for name, axis in axes.items()}
-        for name, expression in interface.get("derived_axes", {}).items():
-            symbols_values[name] = _evaluate(expression, symbols_values)
+        symbols_values = case_symbols(interface, case["axes"])
         for name, declaration in [*interface["inputs"].items(), *interface["outputs"].items()]:
             for entry in declaration.get("shape", []):
                 _evaluate(entry, symbols_values)
