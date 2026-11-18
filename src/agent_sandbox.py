@@ -7,6 +7,10 @@ active, the command starts under this file run as a standalone script, which
 applies the Landlock ruleset to itself, records an attestation and executes the
 agent. Every child of the agent inherits the restriction and cannot lift it.
 
+The task's run directory (its workspace, the frozen baseline and the framework's
+state) must be inside the checkout; elsewhere the sandbox could not keep the
+agent out of other runs and the evaluator's state, so it is not applied.
+
 Inside the sandbox the agent can:
 
 - read and write its own workspace, its HOME, ``/tmp`` and ``/dev/shm``;
@@ -22,6 +26,10 @@ network is not restricted. The script part uses only the standard library.
 Modes: ``auto`` (the default) confines every launch the sandbox supports and
 records why any other launch ran unconfined; ``landlock`` refuses a run it
 cannot confine; ``none`` turns the sandbox off.
+
+A task can be resumed, so its result combines the evidence of every invocation
+that launched its agent (``combine``); one invocation alone does not describe the
+candidate the task delivers.
 """
 from __future__ import annotations
 
@@ -43,8 +51,22 @@ DEFAULT_MODE = "auto"
 MECHANISM = "landlock"
 # Result status of an ``auto`` launch the sandbox does not support.
 NOT_APPLIED = "not_applied"
+ENFORCED = "enforced"
+# An invocation that launched its agent without the sandbox (mode ``none``).
+OFF = "off"
+# An invocation that did not launch its agent, e.g. a resume whose budget was spent.
+NOT_LAUNCHED = "not_launched"
+# A task whose agent ran confined in some invocations and unconfined in others.
+MIXED = "mixed"
+# A confined launch without valid attestation evidence; never accepted.
+FAILED_STATUSES = ("unattested", "invalid")
+# Written before a confined launch; an invocation that is interrupted leaves it,
+# and ``settle`` later judges that launch from its attestations.
+LAUNCHED = "launched"
 CONFIG_KEY = "agent_sandbox"
 POLICY_ENV = "ARENA_AGENT_SANDBOX_POLICY"
+# Set by the Docker runner when each worker has its own HOME (parallel runs).
+ISOLATED_HOME_ENV = "AGENT_KERNEL_ARENA_ISOLATED_HOME"
 # Launchers that pass their agent command through wrap_command().
 SUPPORTED_AGENTS = frozenset({"claude_code", "codex", "cursor", "deepseek_harness"})
 # Agents that are part of the framework's control plane rather than optimizers.
@@ -95,8 +117,12 @@ def sandbox_mode(eval_config: Mapping[str, Any] | None) -> str:
 
 
 def unsupported_reason(agent_name: str, *, measurement: str = "kernel", world_size: int = 1,
-                       environ: Mapping[str, str] | None = None, repo_root: Path | None = None) -> str | None:
-    """Why the sandbox cannot confine this agent launch, or ``None`` when it can."""
+                       environ: Mapping[str, str] | None = None, repo_root: Path | None = None,
+                       run_directory: Path | None = None) -> str | None:
+    """Why the sandbox cannot confine this agent launch, or ``None`` when it can.
+
+    ``run_directory`` holds the task's workspace and state; it is checked when given.
+    """
     if agent_name not in SUPPORTED_AGENTS:
         return f"agent {agent_name!r} is not supported; supported agents: {sorted(SUPPORTED_AGENTS)}"
     if measurement == "serving":
@@ -111,11 +137,15 @@ def unsupported_reason(agent_name: str, *, measurement: str = "kernel", world_si
     repo = os.path.realpath(repository_root() if repo_root is None else repo_root)
     if home and _within(repo, os.path.realpath(home)):
         return f"HOME {home} contains the repository {repo}; run agents with a separate HOME (the Docker runner does)"
+    if run_directory is not None and not _within(os.path.realpath(run_directory), repo):
+        return (f"the run directory {run_directory} is outside the repository {repo}; the sandbox protects other "
+                "runs and the evaluator's state only inside the checkout (use a relative workspace_directory_prefix)")
     return None
 
 
 def resolve(mode: str, agent_name: str, *, measurement: str = "kernel", world_size: int = 1,
-            environ: Mapping[str, str] | None = None, repo_root: Path | None = None) -> tuple[bool, str | None]:
+            environ: Mapping[str, str] | None = None, repo_root: Path | None = None,
+            run_directory: Path | None = None) -> tuple[bool, str | None]:
     """Decide, before any work is spent, whether to confine this agent launch.
 
     Returns ``(True, None)`` to confine it and ``(False, None)`` when the sandbox is
@@ -126,7 +156,7 @@ def resolve(mode: str, agent_name: str, *, measurement: str = "kernel", world_si
     if mode == "none" or agent_name in EXEMPT_AGENTS:
         return False, None
     reason = unsupported_reason(agent_name, measurement=measurement, world_size=world_size,
-                                environ=environ, repo_root=repo_root)
+                                environ=environ, repo_root=repo_root, run_directory=run_directory)
     if reason is None:
         return True, None
     if mode == "landlock":
@@ -136,6 +166,86 @@ def resolve(mode: str, agent_name: str, *, measurement: str = "kernel", world_si
 
 def not_applied_record(mode: str, reason: str) -> dict:
     return {"mode": mode, "status": NOT_APPLIED, "reason": reason}
+
+
+def off_record(mode: str) -> dict:
+    return {"mode": mode, "status": OFF}
+
+
+def not_launched_record(mode: str) -> dict:
+    return {"mode": mode, "status": NOT_LAUNCHED}
+
+
+def launch_record(prepared: "Prepared") -> dict:
+    """The record of a confined launch before it runs; see ``settle``."""
+    return {"mode": prepared.mode, "status": LAUNCHED, "policy": str(prepared.policy_path)}
+
+
+def settle(record: Mapping[str, Any]) -> dict:
+    """The final record of a launch, judging an interrupted confined one by its attestations."""
+    if record.get("status") != LAUNCHED:
+        return dict(record)
+    try:
+        path = Path(record["policy"])
+        prepared = Prepared(record.get("mode", "unknown"), path, json.loads(path.read_text()))
+    except (KeyError, TypeError, OSError, ValueError):
+        return {"mode": record.get("mode"), "status": "invalid", "reason": "unreadable policy of an interrupted launch"}
+    return prepared.record()
+
+
+def home_isolated(environ: Mapping[str, str] | None = None) -> bool:
+    """Whether this agent's HOME belongs to its worker alone.
+
+    The sandbox grants HOME read-write; a HOME shared with other tasks (the host's,
+    in ``docker_benchmark.sh run``) lets an agent leave settings or hooks that
+    agents of later tasks pick up.
+    """
+    return (os.environ if environ is None else environ).get(ISOLATED_HOME_ENV) == "1"
+
+
+def combine(mode: str, records: Sequence[Mapping[str, Any]]) -> dict:
+    """One task's sandbox evidence over the records of all of its invocations.
+
+    Invocations that did not launch the agent do not count. The task is
+    ``enforced`` only when every launch was confined and attested, ``mixed`` when
+    its agent also ran unconfined, and fails (``unattested``/``invalid``) when any
+    confined launch lacks valid evidence.
+    """
+    launched = [row for row in map(settle, records) if row.get("status") != NOT_LAUNCHED]
+    statuses = {row.get("status") for row in launched}
+    if not launched:
+        status = NOT_LAUNCHED
+    elif statuses - {ENFORCED, OFF, NOT_APPLIED}:
+        status = "invalid" if statuses - {ENFORCED, OFF, NOT_APPLIED, "unattested"} else "unattested"
+    elif statuses == {ENFORCED}:
+        status = ENFORCED
+    elif ENFORCED in statuses:
+        status = MIXED
+    else:
+        status = NOT_APPLIED if NOT_APPLIED in statuses else OFF
+    result = {"mode": mode, "status": status, "invocations": len(launched),
+              "launches": sum(int(row.get("launches", 0)) for row in launched if row.get("status") == ENFORCED)}
+    reasons = sorted({row["reason"] for row in launched if row.get("reason")})
+    if reasons:
+        result["reason"] = "; ".join(reasons)
+    abis = sorted({abi for row in launched for abi in row.get("abi", [])})
+    if abis:
+        result["abi"] = abis
+    if any(row.get("home_isolated") is False for row in launched):
+        result["home_isolated"] = False
+    return result
+
+
+def accepts(mode: str, combined: Mapping[str, Any]) -> bool:
+    """Whether a task's combined sandbox evidence allows accepting its candidate.
+
+    ``landlock`` accepts only a task whose every launch was confined; ``auto`` and
+    ``none`` accept unconfined launches, which the result records.
+    """
+    status = combined.get("status")
+    if status in FAILED_STATUSES or status not in (ENFORCED, OFF, NOT_APPLIED, MIXED, NOT_LAUNCHED):
+        return False
+    return status in (ENFORCED, NOT_LAUNCHED) if mode == "landlock" else True
 
 
 # -- Landlock system calls ---------------------------------------------------------------------
@@ -206,7 +316,9 @@ def _restrict(rules: Sequence[Mapping[str, str]], abi: int) -> dict:
         for rule in rules:
             try:
                 fd = os.open(rule["path"], os.O_PATH | os.O_CLOEXEC)
-            except FileNotFoundError:
+            except (FileNotFoundError, PermissionError):
+                # Gone since the policy was built, or not reachable by this user
+                # (EACCES on a parent): granting nothing there only restricts more.
                 missing.append(rule["path"])
                 continue
             try:
@@ -250,8 +362,12 @@ def _complement(root: str, excluded: Sequence[str], seen: set[str] | None = None
         return [real]
     if not os.path.isdir(real):
         return []
+    try:
+        entries = sorted(os.listdir(real))
+    except PermissionError:
+        return []  # nothing beneath it is granted
     paths: list[str] = []
-    for entry in sorted(os.listdir(real)):
+    for entry in entries:
         paths.extend(_complement(os.path.join(real, entry), excluded, seen))
     return paths
 
@@ -261,6 +377,9 @@ def build_rules(*, workspace: Path, repo_root: Path, home: str | None = None,
     """Landlock rules for an agent working in ``workspace`` below ``repo_root``."""
     repo = os.path.realpath(repo_root)
     workspace_real = os.path.realpath(workspace)
+    if not _within(workspace_real, repo):
+        # Outside the checkout the agent could reach other runs and the evaluator's state.
+        raise SandboxError(f"The workspace {workspace} is outside the repository {repo}")
     if home and _within(repo, os.path.realpath(home)):
         # A HOME above the checkout could only be granted entry by entry, and agent
         # CLIs create new files there. The Docker runner gives each worker its own HOME.
@@ -312,7 +431,7 @@ class Prepared:
         return {"mode": self.mode, "status": status, "launches": len(attestations),
                 "policy_sha256": self.policy["policy_sha256"],
                 "abi": sorted({row.get("abi") for row in valid if row.get("abi") is not None}),
-                "rules": len(self.policy["rules"])}
+                "rules": len(self.policy["rules"]), "home_isolated": self.policy.get("home_isolated")}
 
 
 def prepare(mode: str, *, workspace: Path, state_directory: Path, baseline_workspace: Path,
@@ -321,13 +440,15 @@ def prepare(mode: str, *, workspace: Path, state_directory: Path, baseline_works
     """Write the policy for one agent launch; ``None`` when the sandbox is off.
 
     ``self_test_path`` is a protected repository file the wrapper must fail to
-    open once restricted (default: this module).
+    open once restricted (default: this module in ``repo_root``).
     """
     if mode == "none":
         return None
     environ = os.environ if environ is None else environ
     repo_root = repository_root() if repo_root is None else repo_root
-    self_test_path = Path(__file__).resolve() if self_test_path is None else Path(self_test_path).resolve()
+    if self_test_path is None:
+        self_test_path = Path(repo_root, "src", Path(__file__).name)
+    self_test_path = Path(self_test_path).resolve()
     if not _within(str(self_test_path), os.path.realpath(repo_root)):
         raise SandboxError("The sandbox self-test path must be inside the protected repository")
     abi = require_landlock()
@@ -341,9 +462,14 @@ def prepare(mode: str, *, workspace: Path, state_directory: Path, baseline_works
     body = {"version": POLICY_VERSION, "mode": MECHANISM, "min_abi": MIN_ABI, "rules": rules,
             # The wrapper must fail to open this framework file after restricting itself.
             "self_test_path": str(self_test_path)}
+    # The digest is stored beside the policy it covers, so it detects an accidental
+    # edit, not tampering. Protection comes from the location: the state directory
+    # is outside every path granted to the agent, so it can neither read the policy
+    # nor write an attestation.
     digest = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
     policy = {**body, "policy_sha256": digest, "nonce": secrets.token_hex(8), "host_abi": abi,
-              "attestation_directory": str(Path(state_directory).resolve())}
+              "attestation_directory": str(Path(state_directory).resolve()),
+              "home_isolated": home_isolated(environ)}
     path = Path(state_directory) / f"agent-sandbox-policy-{policy['nonce']}.json"
     path.write_text(json.dumps(policy, indent=1, sort_keys=True) + "\n")
     return Prepared(mode, path, policy)

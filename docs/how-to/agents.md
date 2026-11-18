@@ -163,12 +163,21 @@ The sandbox supports a launch when all of these hold:
   are not supported; the QA auditor is part of the framework and is never
   confined;
 - the task is a single-GPU kernel task. Serving tasks under `tasks/e2e/` need
-  the full checkout, and multi-GPU tasks (`distributed.world_size` of 2 or more)
-  are not supported;
+  the full checkout, and multi-GPU tasks (a `task.yaml` whose `distributed`
+  block sets `world_size` to 2 or more) are not supported;
+- the run directory is inside the checkout, as it is with a relative
+  `workspace_directory_prefix` (the default). Outside it, the agent could reach
+  other runs' workspaces and the task-session state;
 - the kernel offers Landlock ABI 3 or later (Linux 6.2+) and seccomp does not
   block it. Docker's default seccomp profile allows it;
 - HOME does not contain the checkout. The Docker runner gives each worker its
   own HOME under `/tmp`.
+
+The sandbox grants HOME read-write. `make docker-parallel-run` gives each worker
+its own HOME, but `make docker-run` uses the host's HOME with the agents'
+configuration mounted, so an agent could leave settings or hooks there that the
+agents of later tasks read. In that case the framework logs a warning and the
+result records `home_isolated: false`.
 
 A confined agent:
 
@@ -186,13 +195,36 @@ an attestation and then executes the CLI. Every tool and compiler the agent
 starts inherits the restriction. The framework, the final evaluation and the
 candidate verifier run outside the sandbox, so measurements are unchanged.
 
-`task_result.yaml` records the outcome under `agent_sandbox`:
+The agent can write `/tmp` and HOME, where the runner keeps the build caches.
+A cache key can be computed from the candidate's source, so a compiled artifact
+planted under it would be loaded in place of that source. The final evaluation
+therefore compiles into new, private cache directories in the task-session
+state: Triton, PyTorch extensions, TorchInductor, the Arena HIP kernel cache,
+the MIOpen kernel caches, `XDG_CACHE_HOME`, the AITER JIT directory and the
+FlyDSL runtime and autotune caches (unset, the AITER and FlyDSL caches default
+to HOME), plus `AITER_ROOT_DIR` where the runner sets it. This holds with or
+without the sandbox. The cost is that the final evaluation compiles as a fresh
+container does: the candidate, and any AITER module it imports, is built again,
+outside the timed region.
 
-- `status: enforced` when every launch of the task attested the policy;
-- `unattested` or `invalid` when a confined launch did not attest it, and the
+`task_result.yaml` records the outcome under `agent_sandbox`. A resumed task
+keeps the candidate of its earlier invocations, so the outcome combines every
+invocation that launched the agent, including one that was interrupted (its
+launch is recorded before the agent starts). One that launched nothing, because
+the budget was already spent, does not count. The `status` is:
+
+- `enforced` when every launch of the task was confined and attested the policy;
+- `unattested` or `invalid` when a confined launch did not attest it. The
   candidate is then not accepted;
-- `not_applied` with a `reason` when `auto` ran the agent unconfined. The
-  candidate is judged as without the sandbox.
+- `mixed` when the agent ran confined in some invocations and unconfined in
+  others, for example a run resumed with a different `agent_sandbox` mode;
+- `not_applied` with a `reason` when `auto` ran the agent unconfined, and `off`
+  when the sandbox was off;
+- `not_launched` when no invocation launched the agent.
+
+`landlock` accepts only `enforced` (or `not_launched`); `auto` and `none` judge
+an unconfined or `mixed` candidate as without the sandbox. Run summaries and
+the CSV report show the status of each task.
 
 When a whole `auto` run cannot be confined, for example on a kernel without
 Landlock, `main.py` also prints a note when it starts.

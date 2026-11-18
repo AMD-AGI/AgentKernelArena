@@ -265,6 +265,39 @@ def test_resume_retains_original_baseline_and_performs_new_candidate_checks(tmp_
     assert before == after
 
 
+@pytest.mark.parametrize("root_configured", [False, True])
+def test_final_evaluation_compiles_into_new_private_caches(tmp_path, monkeypatch, root_configured):
+    import os
+    import src.task_run as task_run
+    shared = tmp_path / "shared-cache"  # stands in for the runner's /tmp caches
+    configured = ["TRITON_CACHE_DIR", "TORCH_EXTENSIONS_DIR", "AITER_JIT_DIR"] + ["AITER_ROOT_DIR"] * root_configured
+    for name in configured:
+        monkeypatch.setenv(name, str(shared / name.lower()))
+    # Unset, the FlyDSL caches default to HOME.
+    for name in {"FLYDSL_RUNTIME_CACHE_DIR", "FLYDSL_AUTOTUNE_CACHE_DIR", "AITER_ROOT_DIR"} - set(configured):
+        monkeypatch.delenv(name, raising=False)
+    names = (*task_run.BUILD_CACHE_VARIABLES, *task_run.CONFIGURED_BUILD_CACHE_VARIABLES)
+    seen = {}
+    real = task_run.evaluate_task_session
+
+    def evaluate(session, **kwargs):
+        seen.update(state=session.state_directory, values={name: os.environ.get(name) for name in names})
+        assert all(Path(value).is_dir() for value in seen["values"].values() if value)
+        return real(session, **kwargs)
+
+    monkeypatch.setattr(task_run, "evaluate_task_session", evaluate)
+    complete, _ = run(tmp_path, package(tmp_path), lambda **_: None)
+    assert complete
+    values = seen["values"]
+    assert {"AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR", "FLYDSL_AUTOTUNE_CACHE_DIR"} <= set(task_run.BUILD_CACHE_VARIABLES)
+    replaced = {*task_run.BUILD_CACHE_VARIABLES, *(["AITER_ROOT_DIR"] if root_configured else [])}
+    assert set(name for name, value in values.items() if value) == replaced  # AITER_ROOT_DIR only when set
+    root, = {Path(value).parent for value in values.values() if value}
+    assert root.parent == seen["state"] and root.name.startswith("final-evaluation-caches-")
+    assert not root.exists()
+    assert os.environ["TRITON_CACHE_DIR"] == str(shared / "triton_cache_dir")
+
+
 @pytest.mark.parametrize('remaining', [60, -1])
 def test_resume_in_final_reserve_keeps_candidate_and_writes_result(tmp_path, remaining):
     import time

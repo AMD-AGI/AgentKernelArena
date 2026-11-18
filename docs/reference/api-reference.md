@@ -317,7 +317,7 @@ Each task produces a `task_result.yaml` in its workspace:
 | `valid_optimized_cases` | Number of optimized test cases with usable timing results |
 | `speedup_calculation_error_message` | Error text if speedup could not be calculated, else `null` |
 | `optimization_summary` | Framework-generated note identifying the optimizing agent and centralized evaluator |
-| `agent_sandbox` | Present unless the sandbox is off or the agent is the QA auditor. A confined launch records `mode`, `status` (`enforced`, `unattested` or `invalid`), `launches`, `abi`, `rules` and `policy_sha256`, and only `enforced` can be accepted. An unconfined `auto` launch records `mode`, `status: not_applied` and `reason`. |
+| `agent_sandbox` | Present unless the agent is the QA auditor. Combines every invocation of the task that launched its agent: `mode` (of this invocation), `status` (`enforced`, `unattested`, `invalid`, `mixed`, `not_applied`, `off` or `not_launched`), `invocations`, `launches`, and when they apply `abi`, `reason` and `home_isolated: false`. `unattested` and `invalid` are never accepted, and `landlock` accepts only `enforced`. Each invocation's own record is under `agent_execution.sandbox`. See [Agent sandbox](../how-to/agents.md#agent-sandbox). |
 | `score` | Computed score (see below) |
 
 `tool_evaluation` uses this high-level shape:

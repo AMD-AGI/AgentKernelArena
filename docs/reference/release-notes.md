@@ -70,6 +70,16 @@ This topic summarizes the features available in each AgentKernelArena release. F
   why. `agent_sandbox: landlock` instead refuses what it cannot confine, and
   `none` turns the sandbox off. See
   [Agent sandbox](../how-to/agents.md#agent-sandbox).
+- The sandbox applies only when the run directory is inside the checkout. A
+  resumed task's `agent_sandbox` status combines all of its invocations, so a
+  resume that no longer launches the agent keeps the earlier evidence, and a
+  task confined only in part reports `mixed`. Run summaries and the CSV report
+  show the status.
+- The final evaluation compiles into new private build caches (Triton, PyTorch
+  extensions, TorchInductor, the HIP kernel cache, MIOpen, `XDG_CACHE_HOME`, the
+  AITER JIT directory, and the FlyDSL runtime and autotune caches), so an
+  artifact an agent planted in a shared cache is never loaded. This also
+  applies without the sandbox.
 
 ## AgentKernelArena 0.4.0
 

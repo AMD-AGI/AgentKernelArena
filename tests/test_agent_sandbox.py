@@ -46,6 +46,13 @@ def landlock_host(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
 
 
+@pytest.fixture
+def checkout(tmp_path, monkeypatch):
+    """Treat tmp_path as the repository checkout, so fixture runs are inside it."""
+    monkeypatch.setattr(sandbox, "repository_root", lambda: tmp_path)
+    return tmp_path
+
+
 def test_auto_confines_supported_kernel_launches_and_skips_the_rest(landlock_host, monkeypatch):
     for agent in sorted(sandbox.SUPPORTED_AGENTS):
         assert sandbox.resolve("auto", agent) == (True, None)
@@ -59,6 +66,7 @@ def test_auto_confines_supported_kernel_launches_and_skips_the_rest(landlock_hos
         (dict(agent_name="codex", measurement="serving"), "single-GPU kernel tasks only"),
         (dict(agent_name="codex", world_size=2), "uses 2 GPUs"),
         (dict(agent_name="codex", environ={"HOME": "/"}), "contains the repository"),
+        (dict(agent_name="codex", run_directory=Path("/tmp/aka-elsewhere/run")), "outside the repository"),
     ]
     for kwargs, reason in unsupported:
         confine, why = sandbox.resolve("auto", **kwargs)
@@ -139,6 +147,48 @@ def test_rules_grant_only_the_workspace_and_declared_files_inside_the_repository
         or sandbox._within(real_repo, os.path.realpath("/tmp"))
     with pytest.raises(sandbox.SandboxError, match="HOME"):
         sandbox.build_rules(workspace=workspace, repo_root=repo, home=str(tmp_path))
+    outside = tmp_path / "elsewhere" / "task_ws"
+    outside.mkdir(parents=True)
+    with pytest.raises(sandbox.SandboxError, match="outside the repository"):
+        sandbox.build_rules(workspace=outside, repo_root=repo, home=str(tmp_path / "home"))
+
+
+class _ModuleOs:
+    """The sandbox module's view of ``os`` with some functions replaced (``os`` itself stays intact)."""
+
+    def __init__(self, **overrides):
+        self.__dict__.update(overrides)
+
+    def __getattr__(self, name):
+        return getattr(os, name)
+
+
+def test_unreadable_paths_grant_nothing_instead_of_failing(tmp_path, monkeypatch):
+    locked = tmp_path / "locked"
+    (locked / "protected").mkdir(parents=True)
+
+    def listdir(path):
+        if os.path.realpath(path) == os.path.realpath(locked):
+            raise PermissionError(13, "denied by test")
+        return os.listdir(path)
+
+    monkeypatch.setattr(sandbox, "os", _ModuleOs(listdir=listdir))
+    assert sandbox._complement(str(locked), [os.path.realpath(locked / "protected")]) == []
+
+    def guarded_open(path, flags, *args):
+        if path == "/unreadable/link":
+            raise PermissionError(13, "denied by test")  # EACCES on a parent of the path
+        if path == "/gone":
+            raise FileNotFoundError(2, "gone")
+        return 7
+
+    fake = SimpleNamespace(syscall=lambda *args: 0, prctl=lambda *args: 0)
+    monkeypatch.setattr(sandbox, "_libc", lambda: fake)
+    monkeypatch.setattr(sandbox, "os", _ModuleOs(open=guarded_open, close=lambda fd: None, O_PATH=0,
+                                                 fstat=lambda fd: SimpleNamespace(st_mode=stat.S_IFDIR)))
+    applied = sandbox._restrict([{"path": "/unreadable/link", "access": "ro"}, {"path": "/gone", "access": "ro"},
+                                 {"path": "/usr", "access": "ro"}], abi=4)
+    assert applied["rules_applied"] == 1 and applied["rules_missing"] == ["/unreadable/link", "/gone"]
 
 
 def test_wrap_command_is_identity_without_a_policy():
@@ -175,6 +225,7 @@ def test_record_is_enforced_only_when_every_launch_attested_the_policy(tmp_path,
     assert policy["policy_sha256"] == prepared.policy["policy_sha256"]
     assert prepared.environment == {sandbox.POLICY_ENV: str(prepared.policy_path)}
     assert prepared.record()["status"] == "unattested"
+    assert prepared.record()["home_isolated"] is False and policy["home_isolated"] is False
     directory = Path(policy["attestation_directory"])
     good = {"nonce": policy["nonce"], "policy_sha256": policy["policy_sha256"], "self_test": "denied", "abi": 6}
     (directory / f"agent-sandbox-{policy['nonce']}-1.json").write_text(json.dumps(good))
@@ -265,7 +316,7 @@ def test_serving_tasks_are_refused_before_any_workspace_is_created(tmp_path, mon
 
 
 @pytest.mark.parametrize("mode", ["auto", "landlock"])
-def test_unattested_launch_is_not_accepted(tmp_path, cpu_runtime, landlock_host, mode):
+def test_unattested_launch_is_not_accepted(tmp_path, cpu_runtime, landlock_host, checkout, mode):
     path = _fixture_task(tmp_path)
     seen = {}
 
@@ -283,24 +334,159 @@ def test_unattested_launch_is_not_accepted(tmp_path, cpu_runtime, landlock_host,
     assert report["candidate_accepted"] is False
 
 
-def test_attested_launch_keeps_the_normal_outcome(tmp_path, cpu_runtime, landlock_host):
+def _attest(**kwargs):
+    """A fixture launcher: attest the active policy as the wrapper would, then deliver."""
+    policy = json.loads(Path(os.environ[sandbox.POLICY_ENV]).read_text())
+    Path(policy["attestation_directory"], f"agent-sandbox-{policy['nonce']}-1.json").write_text(json.dumps({
+        "nonce": policy["nonce"], "policy_sha256": policy["policy_sha256"], "self_test": "denied", "abi": 6}))
+    (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
+
+
+def test_attested_launch_keeps_the_normal_outcome(tmp_path, cpu_runtime, landlock_host, checkout):
     path = _fixture_task(tmp_path)
-
-    def launcher(**kwargs):
-        policy = json.loads(Path(os.environ[sandbox.POLICY_ENV]).read_text())
-        Path(policy["attestation_directory"], f"agent-sandbox-{policy['nonce']}-1.json").write_text(json.dumps({
-            "nonce": policy["nonce"], "policy_sha256": policy["policy_sha256"], "self_test": "denied", "abi": 6}))
-        (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
-
-    _, workspace = _run(tmp_path, path, launcher, mode="auto")
+    _, workspace = _run(tmp_path, path, _attest, mode="auto")
     report = yaml.safe_load((workspace / "task_result.yaml").read_text())
     assert report["agent_sandbox"]["status"] == "enforced"
+    assert report["agent_sandbox"]["invocations"] == 1 and report["agent_sandbox"]["launches"] == 1
     assert report["candidate_accepted"] is True
+
+
+@pytest.mark.parametrize("mode", ["auto", "landlock"])
+def test_a_run_directory_outside_the_checkout_is_not_confined(tmp_path, cpu_runtime, landlock_host, mode):
+    # Without the checkout fixture tmp_path/run is outside the repository.
+    path = _fixture_task(tmp_path)
+    if mode == "landlock":
+        with pytest.raises(ValueError, match="outside the repository"):
+            _run(tmp_path, path, lambda **_: pytest.fail("must not launch"), mode=mode)
+        assert not (tmp_path / "run").exists() or not any((tmp_path / "run").glob("*fixture*"))
+        return
+    seen = {}
+
+    def launcher(**kwargs):
+        seen["policy"] = os.environ.get(sandbox.POLICY_ENV)
+        (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
+
+    _, workspace = _run(tmp_path, path, launcher, mode=mode)
+    report = yaml.safe_load((workspace / "task_result.yaml").read_text())
+    assert seen["policy"] is None
+    assert report["agent_sandbox"]["status"] == "not_applied"
+    assert "outside the repository" in report["agent_sandbox"]["reason"]
+    assert report["candidate_accepted"] is True
+
+
+def _resume_with_spent_budget(tmp_path, mode, first, then=None, budget=True):
+    """Run a task, then resume it; the resume's search budget is spent unless ``then`` launches."""
+    import time
+    from src.task_run import _budget_path, run_task_v2
+    path = _fixture_task(tmp_path)
+    args = dict(agent=SimpleNamespace(value="codex"), task_name="suite/protocol_fixture",
+                task_config_dir=str(path), run_directory=tmp_path / "run", timestamp="fixture",
+                logger=logging.getLogger("test_agent_sandbox"))
+    limits = {"budget": {"task_wall_time_s": 3600, "final_evaluation_reserve_s": 300}}
+    try:
+        _, workspace = run_task_v2(eval_config={"agent": {"template": "codex"}, "agent_sandbox": first[0],
+                                                **limits}, agent_launcher=first[1], **args)
+        (workspace / "task_result.yaml").unlink()
+    except KeyboardInterrupt:
+        pass  # the first invocation was interrupted while its agent ran
+    if then is None:
+        budget_path = _budget_path(args["run_directory"], args["task_name"])
+        record = json.loads(budget_path.read_text())
+        record["deadline_epoch"] = time.time() + 60  # inside the final-evaluation reserve
+        budget_path.write_text(json.dumps(record))
+        then = (mode, lambda **_: pytest.fail("a spent budget must not launch the agent"))
+    _, workspace = run_task_v2(eval_config={"agent": {"template": "codex"}, "agent_sandbox": then[0], **limits},
+                               agent_launcher=then[1], **args)
+    return yaml.safe_load((workspace / "task_result.yaml").read_text())
+
+
+def _interrupted(launcher):
+    def run(**kwargs):
+        launcher(**kwargs)
+        raise KeyboardInterrupt  # the run is stopped while the agent works
+    return run
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+@pytest.mark.parametrize("mode", ["auto", "landlock"])
+def test_a_resume_that_launches_nothing_keeps_the_earlier_evidence(tmp_path, cpu_runtime, landlock_host,
+                                                                   checkout, mode, interrupted):
+    report = _resume_with_spent_budget(tmp_path, mode, first=(mode, _interrupted(_attest) if interrupted
+                                                              else _attest))
+    assert report["agent_execution"]["status"] == "BUDGET_EXHAUSTED"
+    assert report["agent_execution"]["sandbox"]["status"] == "not_launched"
+    assert report["agent_sandbox"]["status"] == "enforced" and report["agent_sandbox"]["invocations"] == 1
+    assert report["candidate_accepted"] is True
+
+
+def test_an_unattested_earlier_launch_stays_rejected_after_a_resume(tmp_path, cpu_runtime, landlock_host,
+                                                                    checkout):
+    def unattested(**kwargs):
+        (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
+
+    report = _resume_with_spent_budget(tmp_path, "auto", first=("auto", unattested))
+    assert report["agent_sandbox"]["status"] == "unattested"
+    assert report["candidate_accepted"] is False
+    interrupted = tmp_path / "interrupted"
+    interrupted.mkdir()
+    report = _resume_with_spent_budget(interrupted, "auto", first=("auto", _interrupted(unattested)))
+    assert report["agent_sandbox"]["status"] == "unattested"
+    assert report["candidate_accepted"] is False
+
+
+@pytest.mark.parametrize("mode,accepted", [("auto", True), ("landlock", False)])
+def test_a_task_confined_only_after_a_resume_is_mixed(tmp_path, cpu_runtime, landlock_host, checkout,
+                                                      mode, accepted):
+    def unconfined(**kwargs):
+        assert sandbox.POLICY_ENV not in os.environ
+        (Path(kwargs["workspace"]) / "kernel.py").write_text("def compute(): return 1 + 2\n")
+
+    # The unconfined invocation is interrupted, so only its launch record shows that it ran.
+    report = _resume_with_spent_budget(tmp_path, mode, first=("none", _interrupted(unconfined)), then=(mode, _attest))
+    assert report["agent_execution"]["sandbox"]["status"] == "enforced"
+    assert report["agent_sandbox"]["status"] == "mixed" and report["agent_sandbox"]["invocations"] == 2
+    assert report["candidate_accepted"] is accepted
+
+
+@pytest.mark.parametrize("statuses,combined", [
+    ([], "not_launched"),
+    (["not_launched"], "not_launched"),
+    (["enforced", "not_launched", "enforced"], "enforced"),
+    (["enforced", "off"], "mixed"),
+    (["not_applied", "enforced"], "mixed"),
+    (["off", "not_applied"], "not_applied"),
+    (["off"], "off"),
+    (["enforced", "unattested", "off"], "unattested"),
+    (["unattested", "invalid"], "invalid"),
+    (["enforced", "something new"], "invalid"),
+])
+def test_combined_evidence_over_invocations(statuses, combined):
+    records = [{"status": status, "launches": 1, **({"reason": "why"} if status == "not_applied" else {})}
+               for status in statuses]
+    result = sandbox.combine("auto", records)
+    assert result["status"] == combined
+    assert result["invocations"] == sum(status != "not_launched" for status in statuses)
+    accepted = {"auto": combined not in ("unattested", "invalid"),
+                "none": combined not in ("unattested", "invalid"),
+                "landlock": combined in ("enforced", "not_launched")}
+    for mode, expected in accepted.items():
+        assert sandbox.accepts(mode, result) is expected, (mode, combined)
+    if "not_applied" in statuses:
+        assert result["reason"] == "why"
+
+
+def test_home_isolation_is_recorded(tmp_path, monkeypatch):
+    assert sandbox.home_isolated({}) is False
+    assert sandbox.home_isolated({sandbox.ISOLATED_HOME_ENV: "1"}) is True
+    combined = sandbox.combine("auto", [{"status": "enforced", "home_isolated": False}])
+    assert combined["home_isolated"] is False
+    assert "home_isolated" not in sandbox.combine("auto", [{"status": "enforced", "home_isolated": True}])
 
 
 @pytest.mark.parametrize("agent,world_size,reason", [("geak", 1, "not supported"), ("codex", 4, "uses 4 GPUs")])
 def test_auto_runs_unsupported_launches_unconfined_and_records_why(tmp_path, monkeypatch, cpu_runtime,
-                                                                   landlock_host, agent, world_size, reason):
+                                                                   landlock_host, checkout, agent, world_size,
+                                                                   reason):
     monkeypatch.setattr("src.task_run._world_size", lambda spec: world_size)
     path = _fixture_task(tmp_path)
     seen = {}
@@ -314,15 +500,24 @@ def test_auto_runs_unsupported_launches_unconfined_and_records_why(tmp_path, mon
     assert seen["policy"] is None
     assert report["agent_sandbox"]["status"] == "not_applied"
     assert reason in report["agent_sandbox"]["reason"]
-    assert report["agent_execution"]["sandbox"] == report["agent_sandbox"]
+    assert report["agent_execution"]["sandbox"] == {"mode": "auto", "status": "not_applied",
+                                                    "reason": report["agent_sandbox"]["reason"]}
     assert report["candidate_accepted"] is True
 
 
-def test_sandbox_off_leaves_results_unchanged(tmp_path, cpu_runtime):
+def test_the_world_size_comes_from_the_resolved_contract():
+    from src.task_run import _world_size
+    assert _world_size(SimpleNamespace(world_size=4)) == 4
+    assert _world_size(SimpleNamespace(to_mapping=lambda: {"contract": {"world_size": 2}})) == 2
+    assert _world_size(SimpleNamespace(to_mapping=lambda: {})) == 1
+
+
+def test_sandbox_off_records_unconfined_launches(tmp_path, cpu_runtime):
     path = _fixture_task(tmp_path)
     _, workspace = _run(tmp_path, path, lambda **_: None, mode="none")
     report = yaml.safe_load((workspace / "task_result.yaml").read_text())
-    assert "agent_sandbox" not in report and "sandbox" not in report["agent_execution"]
+    assert report["agent_execution"]["sandbox"] == {"mode": "none", "status": "off"}
+    assert report["agent_sandbox"] == {"mode": "none", "status": "off", "invocations": 1, "launches": 0}
     assert report["candidate_accepted"] is True
 
 
