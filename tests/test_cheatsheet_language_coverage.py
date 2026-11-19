@@ -100,6 +100,22 @@ def test_reference_collection_keeps_defaults_and_architecture_overrides():
     }
 
 
+def test_w7900_entry_uses_distinct_rdna3_guides():
+    entry = _config()["architecture"]["W7900"]
+    rdna4 = _config()["architecture"]["RDNA4"]
+    assert entry["gfx_arch"] == "gfx1100"
+    assert entry["marketing_names"] == ["AMD Radeon Pro W7900", "AMD Radeon Pro W7900 Dual Slot"]
+    assert set(entry["knowledge_override"]) == {"hip", "triton"}
+    guides = [entry["file"], *entry["knowledge_override"].values()]
+    rdna4_guides = [rdna4["file"], *rdna4["knowledge_override"].values()]
+    rdna4_text = {(PROJECT_ROOT / rel).read_text(encoding="utf-8") for rel in rdna4_guides}
+    for rel in guides:
+        body = (PROJECT_ROOT / rel).read_text(encoding="utf-8")
+        assert rel not in rdna4_guides and body not in rdna4_text, rel
+        assert "gfx1100" in body, f"{rel} does not name the W7900 ISA"
+        assert "gfx1201" not in body, f"{rel} gives the RDNA4 ISA to a W7900 agent"
+
+
 def test_tilelang_baselines_have_a_substantial_cheatsheet():
     """TileLang is a baseline language: an agent reading such a baseline needs its guide."""
     knowledge = _config().get("knowledge", {})

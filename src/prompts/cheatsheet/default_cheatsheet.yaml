@@ -46,6 +46,18 @@ architecture:
     knowledge_override:
       hip:    src/prompts/cheatsheet/hip_rdna_cheatsheet.md
       triton: src/prompts/cheatsheet/triton_rdna_cheatsheet.md
+  W7900:
+    gfx_arch: gfx1100
+    # Radeon PRO W7900 (PCI 1002:7448) and W7900 Dual Slot (1002:744A).
+    # Runs refuse unless every visible GPU reports gfx1100 and one of these
+    # rocminfo marketing names (case-insensitive exact match).
+    marketing_names:
+      - AMD Radeon Pro W7900
+      - AMD Radeon Pro W7900 Dual Slot
+    file: src/prompts/cheatsheet/RDNA3_architecture.md
+    knowledge_override:
+      hip:    src/prompts/cheatsheet/hip_rdna3_cheatsheet.md
+      triton: src/prompts/cheatsheet/triton_rdna3_cheatsheet.md
 
 knowledge:
   gpu:      src/prompts/cheatsheet/gpu_cheatsheet.md

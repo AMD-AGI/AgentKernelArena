@@ -472,6 +472,43 @@ mapfile -t args < <(AKA_DOCKER_IMAGE_GFX1201=example.invalid/rdna:build \
     bash "$RUNNER" build-rdna4-image)
 assert_has "example.invalid/rdna:build" "${args[@]}"
 
+# Radeon PRO W7900 (gfx1100) selects its own derived image with the same
+# container-local AITER paths as RDNA4, a container-local FlyDSL kernel cache
+# (the host-home path is not writable), and no gfx950 tmpfs mount.
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1100)
+assert_has "agent-kernel-arena:rdna3-rocm10-v1" "${args[@]}"
+assert_not_has "agent-kernel-arena:rdna4-rocm10-v1" "${args[@]}"
+assert_has "AGENT_KERNEL_ARENA_GPU_ARCH=gfx1100" "${args[@]}"
+assert_has "PYTORCH_ROCM_ARCH=gfx1100" "${args[@]}"
+assert_has "AITER_ROOT_DIR=/tmp/aiter-root" "${args[@]}"
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit" "${args[@]}"
+assert_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache" "${args[@]}"
+assert_not_has "/tmp/aiter_configs:rw,uid=$(id -u),gid=$(id -g),mode=1777" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1100 AKA_CACHE_SUFFIX=worker-0)
+assert_has "AITER_JIT_DIR=/tmp/aiter-jit-worker-0" "${args[@]}"
+assert_has "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache-worker-0" "${args[@]}"
+mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx1100 \
+    AKA_DOCKER_IMAGE_GFX1100=example.invalid/w7900:custom)
+assert_has "example.invalid/w7900:custom" "${args[@]}"
+mapfile -t args < <(bash "$RUNNER" build-rdna3-image)
+assert_has "build" "${args[@]}"
+assert_has "--pull=false" "${args[@]}"
+assert_has "$ROOT/docker/rdna3/Dockerfile" "${args[@]}"
+assert_has "$ROOT/docker/rdna3" "${args[@]}"
+assert_has "agent-kernel-arena:rdna3-rocm10-v1" "${args[@]}"
+assert_not_has "$ROOT" "${args[@]}"
+assert_not_has "$ROOT/docker/rdna4" "${args[@]}"
+mapfile -t args < <(AKA_DOCKER_IMAGE_GFX1100=example.invalid/w7900:build \
+    bash "$RUNNER" build-rdna3-image)
+assert_has "example.invalid/w7900:build" "${args[@]}"
+# Other gfx11 parts have no image and are refused rather than given the W7900 one.
+if env HOME="$TEST_HOME" AKA_AGENTS=test-noop-agent AKA_GPU_ARCH=gfx1101 \
+    bash "$RUNNER" shell > "$TEST_HOME/gfx1101.out" 2> "$TEST_HOME/gfx1101.err"; then
+    fail "gfx1101 unexpectedly has a Docker image mapping"
+fi
+grep -q "No Docker image mapping for GPU arch 'gfx1101'" "$TEST_HOME/gfx1101.err" \
+    || fail "gfx1101 refusal does not name the unmapped architecture"
+
 # Image equality alone is insufficient: the selected architecture must be gfx950.
 mapfile -t args < <(run_shell_args AKA_GPU_ARCH=gfx942 AKA_DOCKER_IMAGE="$PINNED_GFX950_IMAGE")
 assert_cache_args_absent "${args[@]}"
@@ -1020,6 +1057,61 @@ for override in \
     mapfile -t events < "$RUNTIME_DIR/events"
     [[ "${events[*]}" == run ]] || fail "override attempted automatic image setup: $override"
 done
+
+# The W7900 quickstart resolves to gfx1100 through its target_gpu_model and
+# builds only the RDNA3 recipe on first use; host-selected modes do the same.
+for runtime_mode in shell smoke check-agents preflight run parallel-run; do
+    RUNTIME_DIR="$TEST_HOME/w7900-runtime-$runtime_mode"
+    mkdir -p "$RUNTIME_DIR"
+    RUNTIME_TEST_CONFIG=example_configs/quickstart_claude_w7900.yaml \
+        run_runtime_command "$runtime_mode" AKA_GPU_ARCH=gfx1100 || {
+        cat "$RUNTIME_DIR/stderr" >&2
+        fail "W7900 $runtime_mode failed on first use"
+    }
+    grep -q "Docker runtime: arch=gfx1100 image=agent-kernel-arena:rdna3-rocm10-v1" \
+        "$RUNTIME_DIR/stderr" || fail "W7900 $runtime_mode did not select the RDNA3 runtime"
+    [[ "$(awk '$0 == "build" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 1 ]] \
+        || fail "W7900 $runtime_mode built more than once"
+    mapfile -t args < "$RUNTIME_DIR/build-args"
+    assert_has "$ROOT/docker/rdna3/Dockerfile" "${args[@]}"
+    assert_has "$ROOT/docker/rdna3" "${args[@]}"
+    assert_has "agent-kernel-arena:rdna3-rocm10-v1" "${args[@]}"
+    assert_not_has "$ROOT/docker/rdna4" "${args[@]}"
+done
+# A config without target_gpu_model must not pick the W7900 image from the host default.
+RUNTIME_DIR="$TEST_HOME/w7900-runtime-preflight-rdna4"
+mkdir -p "$RUNTIME_DIR"
+run_runtime_command preflight AKA_GPU_ARCH=gfx1100 || fail "RDNA4 preflight failed"
+grep -q "Docker runtime: arch=gfx1201 image=agent-kernel-arena:rdna4-rocm10-v1" \
+    "$RUNTIME_DIR/stderr" || fail "RDNA4 config did not keep the RDNA4 runtime"
+RUNTIME_DIR="$TEST_HOME/w7900-runtime-build-failure"
+mkdir -p "$RUNTIME_DIR"
+if RUNTIME_TEST_CONFIG=example_configs/quickstart_claude_w7900.yaml \
+    run_runtime_command run FAKE_DOCKER_BUILD_STATUS=42; then
+    fail "failed RDNA3 build launched a run"
+fi
+grep -q "RDNA3 runtime build failed" "$RUNTIME_DIR/stderr" \
+    && grep -q "make docker-build-rdna3" "$RUNTIME_DIR/stderr" \
+    || fail "RDNA3 build failure does not name the RDNA3 make target"
+
+# Evaluation-tool sidecars remain gfx950-only: the W7900 runtime refuses them
+# after the preflight and before any sidecar or experiment container starts.
+if bash "$RUNNER" _verify_eval_tool_scoring_image gfx1100 agent-kernel-arena:rdna3-rocm10-v1 \
+    > "$TEST_HOME/w7900-sidecar.out" 2> "$TEST_HOME/w7900-sidecar.err"; then
+    fail "gfx1100 accepted evaluation-tool sidecars"
+fi
+grep -q "Evaluation-tool sidecars are verified only for gfx950" "$TEST_HOME/w7900-sidecar.err" \
+    || fail "gfx1100 sidecar refusal does not explain the gfx950 restriction"
+RUNTIME_DIR="$TEST_HOME/w7900-eval-tools"
+mkdir -p "$RUNTIME_DIR"
+if RUNTIME_TEST_CONFIG=example_configs/quickstart_claude_w7900.yaml \
+    run_runtime_command run AKA_EVAL_TOOLS=gpu_asan; then
+    fail "W7900 run started with evaluation tools"
+fi
+grep -q "verified only for gfx950" "$RUNTIME_DIR/stderr" \
+    || fail "W7900 evaluation-tool run was not refused for the gfx950 restriction"
+[[ "$(awk '$0 == "run" {n++} END {print n+0}' "$RUNTIME_DIR/events")" == 1 ]] \
+    || fail "W7900 evaluation-tool run launched more than the preflight container"
 
 # AGENTS=all is an explicit override and expands to all three first-class CLIs.
 ALL_HOME="$TEST_HOME/all-home"

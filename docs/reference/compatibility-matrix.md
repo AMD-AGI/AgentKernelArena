@@ -19,6 +19,7 @@ The following hardware configurations are supported and tested.
 | MI325X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI325X` |
 | MI355X | 10.0 (Bundled in the selected SGLang image.) | `target_gpu_model: MI355X` |
 | RDNA4 (`gfx1201`, 16 GB tested) | Pinned in the [RDNA4 recipe](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/Dockerfile) | `target_gpu_model: RDNA4`; HIP/Triton task runtime checks, with limits in the [recipe guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md). |
+| Radeon PRO W7900 and W7900 Dual Slot (`gfx1100`, 48 GB) | Pinned in the [RDNA3 recipe](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna3/Dockerfile) | `target_gpu_model: W7900`; every visible GPU must report `gfx1100` and one of the two W7900 marketing names. Other `gfx1100` boards (W7800, RX 7900 series) and `gfx1101`/`gfx1102` are refused. See the [recipe guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna3/README.md). |
 
 Model-specific prompt profiles and Claude quickstarts are also available for
 MI300A (`gfx942`). This is configuration coverage; this change does not establish
@@ -53,6 +54,7 @@ The following software versions are required or verified.
 | Docker | Current stable release | Required; serial experiments run through `make docker-run`; multi-GPU experiments run through `make docker-parallel-run`. |
 | SGLang runtime image | `lmsysorg/sglang:v0.5.12-rocm720-mi30x` for `gfx942`; SGLang 0.5.20 / ROCm 10 for `gfx950` | The MI355X default is `lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f02056dd10e7b43e4f16c79df69`. Override with `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_GFX942`, or `AKA_DOCKER_IMAGE_GFX950`. Task-specific runtime requirements still apply. |
 | RDNA4 runtime image | [Digest-pinned base and layout adapter](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/Dockerfile) | Default image builds on first use if missing; `make docker-build-rdna4` prebuilds or rebuilds it. Image overrides disable automatic builds; see the [runtime guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md). |
+| RDNA3 runtime image | [Same digest-pinned base and layout adapter](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna3/Dockerfile) | Radeon PRO W7900 (`gfx1100`) only. Default image `agent-kernel-arena:rdna3-rocm10-v1` builds on first use if missing; `make docker-build-rdna3` prebuilds or rebuilds it, and `AKA_DOCKER_IMAGE_GFX1100` overrides it. See the [runtime guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna3/README.md). |
 | Python for GPU experiments | Provided by the qualified task runtime image | Task-specific qualification applies; older images do not support every retained task. |
 | Python for the full repository CPU/source audit | CPython 3.12 | The complete source set requires 3.12 syntax, and migration AST fingerprints are pinned to this minor version. Use full Git history; see [contributor verification](https://github.com/AMD-AGI/AgentKernelArena/blob/main/CONTRIBUTING.md#testing-and-verification). |
 | Node.js and npm | Node.js 22+ for Claude Code's npm installation; Node.js 24 for DeepSeek Harness | Required on the host for npm-installed agent CLIs; DeepSeek uses a dedicated prefix. |
@@ -73,6 +75,7 @@ install packages into the scoring image or change its dependency versions.
 | `gfx950` (MI355X) | Migration qualification incomplete, candidate-dependent | Five ROCm 10 runtime startup controls pass; GPU ASan safe probes fail on the tested hosts and remain unqualified. See the [runtime guide](mi355x-runtime.md). End-to-end readiness still depends on language, artifact, adapter, and candidate attestation. Waitcheck and ConSan are qualified only for explicitly configured advisory pilots. Trusted single-dispatch Triton/FlyDSL rocJITsu capsule replay is implemented, but automatic evaluator-owned capsule capture and binding to the correctness run remain advisory-only gaps. |
 | `gfx942` (MI300X/MI325X) | Unverified | No equivalent image/adapter/positive-control qualification has completed; the host runner currently rejects evaluation-tool sidecars. |
 | `gfx1201` (RDNA4) | Unverified | Runtime task checks do not qualify evaluation-tool sidecars; the host runner rejects them. |
+| `gfx1100` (Radeon PRO W7900) | Unsupported | The integrations are qualified only for `gfx950`. The host runner rejects the sidecars, and `main.py` refuses a W7900 run config that enables `evaluation_tools` before creating a run directory. |
 
 The runtime base digest and per-tool package/source locks are recorded in
 `docker/eval-tools/images.lock.yaml`. See [Check kernels with evaluation
