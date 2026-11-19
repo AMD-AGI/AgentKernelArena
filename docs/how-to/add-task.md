@@ -5,7 +5,7 @@ myst:
         "keywords": "AgentKernelArena, task schema, task definition, task authoring, baseline, candidate, sanitizer"
 ---
 
-# Task definition, schema, and authoring
+# AgentKernelArena task definition, schema, and authoring
 
 Read this document before adding or modifying a task, its configuration,
 reference, input generator, harness, or benchmark. It is the canonical task

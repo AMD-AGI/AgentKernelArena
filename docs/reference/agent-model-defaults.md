@@ -1,4 +1,4 @@
-# CLI agent defaults and verification
+# AgentKernelArena CLI agent model defaults
 
 Verified on **2026-09-15**, using the installed Linux x86-64 CLIs and the
 authenticated accounts available to the maintainer. This is a dated verification

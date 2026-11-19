@@ -5,7 +5,7 @@ myst:
         "keywords": "AgentKernelArena, compatibility matrix, Docker, SGLang, ROCm, AMD Instinct, Python, PyTorch, GPU, agents, model providers"
 ---
 
-# AgentKernelArena compatibility matrix
+# AgentKernelArena hardware and software compatibility
 
 Supported and tested hardware, Docker images, software versions, agent CLIs, and model providers for AgentKernelArena.
 
@@ -81,13 +81,14 @@ The following templates are selectable in the current `AgentType` registry. See
 | `cursor` | Cursor Agent CLI and host login state. |
 | `claude_code` | Native/local or npm-installed Claude Code CLI and host login state. |
 | `codex` | Codex CLI and host login state. |
-| `deepseek_harness` | Dedicated Node.js 24 prefix with the `dsh` version pinned in [agent_config.yaml](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/agent_config.yaml), plus `DEEPSEEK_API_KEY`; see [setup](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md). |
-| `forge` | Pinned KernelForge engine and selected backend/provider; see the [Forge guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md). |
-| `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK; see the [GEAK guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md). |
+| `deepseek_harness` | Dedicated Node.js 24 prefix with the `dsh` version pinned in [`agent_config.yaml`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/agent_config.yaml), and `DEEPSEEK_API_KEY` (see [DeepSeek Harness agent](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md)). |
+| `forge` | Pinned KernelForge engine and selected backend/provider (see the [Forge guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/forge/README.md)). |
+| `geak` | Pinned GEAK checkout, Claude Code Workflow support and SDK (see the [GEAK guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/geak/README.md)). |
 | `geak_v4` | Registry alias for `geak`; uses the same v2 launcher, configuration and Workflow runtime. |
 | `forge_operator2flydsl` | Compatibility name for `forge`, using the same launcher and configuration. |
 | `task_validator` | Claude Code or Codex backend, with defaults in `agents/task_validator/agent_config.yaml` and run-level `agent` overrides. |
 
+::: {note}
 Selectable names are defined in [the registry](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/module_registration.py).
 This dependency list does not assert that every agent/model/task combination
 has completed qualification.
@@ -99,6 +100,7 @@ Slurm and Docker. Results apply to the recorded task, candidate, and runtime;
 earlier HIP GELU and Triton RMSNorm observations predate the schema-v2 rebase.
 Its MI300 example, RDNA4 execution, and multi-GPU scheduling have not yet been
 validated on hardware.
+:::
 
 ## Model providers
 

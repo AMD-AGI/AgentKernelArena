@@ -36,7 +36,9 @@ subtrees:
     - file: how-to/add-task
       title: Add a task
     - file: how-to/e2e-kernel-tasks
-      title: Optimize kernels through serving throughput
+      title: Run end-to-end serving tasks
+    - file: how-to/e2e-magpie-qualification
+      title: Qualify a Magpie serving task
     - file: how-to/sikl-task-builder
       title: Generate tasks from SIKL data
     - file: how-to/task-validator
@@ -44,7 +46,7 @@ subtrees:
     - file: how-to/quality-loop
       title: Audit and harden tasks
     - file: how-to/held-out-evaluation
-      title: Evaluate on held-out shapes
+      title: Evaluate kernels on held-out shapes
     - file: how-to/visualization
       title: Visualize and compare runs
 
@@ -63,17 +65,10 @@ subtrees:
       title: Performance measurement methodology
     - file: reference/mi355x-runtime
       title: MI355X runtime and compatibility
+    - file: reference/e2e-reference
+      title: End-to-end serving task reference
     - url: https://rocm.docs.amd.com/projects/hyperloom/en/latest/index.html
       title: Hyperloom
-
-- caption: Historical verification
-  entries:
-    - file: reference/verification-2026-09-15
-      title: Task and agent verification record
-    - file: reference/runtime-upgrade-qualification
-      title: Earlier runtime qualification
-    - file: reference/pr107-main-integration
-      title: Task-schema integration record
 
 - caption: About
   entries:

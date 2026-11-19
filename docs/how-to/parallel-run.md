@@ -5,7 +5,7 @@ myst:
         "keywords": "AgentKernelArena, multi-GPU, parallel run, Docker worker, GPU isolation, task_validator, ROCm"
 ---
 
-# Run tasks in parallel across multiple GPUs in AgentKernelArena
+# Parallel runs across multiple GPUs in AgentKernelArena
 
 Use `make docker-parallel-run` when one machine has multiple GPUs and you want
 AgentKernelArena to keep all of them busy. The parallel runner starts one

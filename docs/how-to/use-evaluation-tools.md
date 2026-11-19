@@ -4,8 +4,8 @@ myst:
         "description": "Run Triton FpSan, ROCm GPU AddressSanitizer, rocJITsu Race Detector, Waitcheck, ConSan, and HIP-FpSan as isolated AgentKernelArena evaluation tools."
         "keywords": "AgentKernelArena, sanitizer, Triton FpSan, GPU ASan, rocJITsu, Waitcheck, ConSan, HIP-FpSan, ROCm, gfx950"
 ---
-
-# Check kernels with evaluation tools
+<!-- if these features are experimental, should we be promoting these in our front-facing docs?-->
+# Check kernels with AgentKernelArena evaluation tools
 
 AgentKernelArena can run optional kernel-analysis tools after ordinary
 compilation and correctness checks and before performance measurement. The
