@@ -43,6 +43,7 @@ Choose a quickstart matching your physical GPU:
 | MI300X | [quickstart_claude_mi300x.yaml](example_configs/quickstart_claude_mi300x.yaml) |
 | MI325X | [quickstart_claude_mi325x.yaml](example_configs/quickstart_claude_mi325x.yaml) |
 | RDNA4 (`gfx1201`) | [quickstart_claude_rdna4.yaml](example_configs/quickstart_claude_rdna4.yaml) |
+| Radeon PRO W7900 (`gfx1100`) | [quickstart_claude_w7900.yaml](example_configs/quickstart_claude_w7900.yaml) |
 
 Triton, Gluon, HIP and FlyDSL are verified on MI355X (`gfx950`). Other architectures are implemented but unverified, and the shipped task declares `gfx950`; select a task whose `platform_support` includes your GPU. Check the [compatibility matrix](docs/reference/compatibility-matrix.md) for runtime requirements, additional hardware profiles and task-specific limits. GPU experiments run through Docker; Slurm/Spur launches that same workflow on an allocated compute node.
 
