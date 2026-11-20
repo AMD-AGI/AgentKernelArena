@@ -31,6 +31,8 @@ from .parsers import parse_fpsan_comparison
 class HipFpSanPlugin:
     name = ToolName.HIP_FPSAN.value
     version = "2"
+    # A signal: never a blocking gate, so no baseline rerun.
+    baseline_check = False
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile

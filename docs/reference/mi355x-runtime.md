@@ -3,12 +3,17 @@
 The MI355X default is the immutable SGLang 0.5.20 / ROCm 10 manifest
 selected in [`docker_benchmark.sh`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh).
 The `gfx942` and `gfx1201` defaults are unchanged. Explicit image overrides and
-task-specific runtime requirements still apply. GPU ASan is **unqualified** on
-the tested hosts and remains unavailable when its required controls fail. The
-scoring-runtime migration does not qualify this optional analysis tool. Earlier
-image qualifications do not qualify a changed source/image combination.
+task-specific runtime requirements still apply. GPU ASan passes its safe and
+out-of-bounds HIP, HIP-extension, Triton and Gluon probes with this image on
+bare-metal MI355X hosts, under ordinary and hardened container flags. It fails
+on virtualized MI355X hosts: there the GPU reports `xnack+` and pageable
+memory access with `HSA_XNACK=1`, yet a kernel touching `malloc()` memory
+faults, and so does the ASan runtime's heap-initialization kernel. GPU ASan is
+therefore opt-in, for bare-metal hosts, and stays unavailable wherever its
+startup controls fail. Earlier image qualifications do not qualify a changed
+source/image combination.
 
-All six optional tool runtimes use the same scoring base and distinct
+All nine evaluation-tool runtimes use the same scoring base and distinct
 `gfx950-rocm10` tags. The scoring-image verifier rejects mismatched images and
 freezes accepted aliases to their local image IDs. See the maintained
 [tool capability matrix](../how-to/use-evaluation-tools.md) for startup and

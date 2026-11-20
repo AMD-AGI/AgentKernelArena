@@ -65,8 +65,13 @@ def test_builtin_matrix_reports_unsupported_not_not_applicable(language):
         assert capability.engine.reason_code.endswith("_GLUON_UNSUPPORTED" if language == "gluon" else "_LANGUAGE_UNSUPPORTED")
 
 
+# page_fault_guard, csan and tilelens exist only through the schema-v3 runner;
+# test_v3_sanitizers covers their language handling.
+V3_ONLY_TOOLS = {"page_fault_guard", "csan", "tilelens"}
+
+
 @pytest.mark.parametrize("language", [KernelLanguage.GLUON, KernelLanguage.UNKNOWN])
-@pytest.mark.parametrize("tool", sorted(plugin_ids()))
+@pytest.mark.parametrize("tool", sorted(set(plugin_ids()) - V3_ONLY_TOOLS))
 def test_plugins_fail_closed_for_gluon_and_unknown(tmp_path, tool, language):
     # Even a profile that claims framework=triton cannot revive a Gluon candidate.
     capability = get_plugin(tool).assess(

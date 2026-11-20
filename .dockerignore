@@ -9,5 +9,9 @@
 !src/
 !src/eval_tools/
 !src/eval_tools/**
+# The TileLens image's startup control runs the lane's concrete bounds check.
+!src/tools/
+!src/tools/arena_eval/
+!src/tools/arena_eval/sanitize.py
 **/__pycache__/
 **/*.py[cod]

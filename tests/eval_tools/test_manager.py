@@ -24,6 +24,7 @@ from src.eval_tools.task_profile import resolve_builtin_capability
 
 @dataclass
 class FakePlugin:
+    baseline_check = False
     name: str = "gpu_asan"
     version: str = "1.0"
     parse_mode: str = "clean"

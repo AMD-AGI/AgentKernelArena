@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..adapters.hip_source import GPU_ASAN_ENV, hip_asan_build_flags
 from ..contracts import (
     ArtifactKind,
     CapabilityCheck,
@@ -16,6 +17,7 @@ from ..contracts import (
     ToolName,
     ToolRunResult,
 )
+from . import aka_v3, v3_tools
 from .attestation import BuildAttestation
 from .base import (
     artifact_path,
@@ -29,16 +31,6 @@ from .base import (
 from .parsers import parse_gpu_asan
 
 
-GPU_ASAN_ENV = {
-    "HSA_XNACK": "1",
-    "HSA_DISABLE_FRAGMENT_ALLOCATOR": "1",
-    "AMD_PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
-    "PYTORCH_NO_HIP_MEMORY_CACHING": "1",
-    "AMDGCN_USE_BUFFER_OPS": "0",
-    "ASAN_OPTIONS": "detect_leaks=0,alloc_dealloc_mismatch=0",
-}
-
-
 def _prepend_paths(*values: str | None, inherited: str = "") -> str:
     paths: list[str] = []
     for value in (*values, inherited):
@@ -48,18 +40,31 @@ def _prepend_paths(*values: str | None, inherited: str = "") -> str:
     return ":".join(paths)
 
 
-def hip_asan_build_flags(target_arch: str) -> tuple[str, ...]:
-    arch = target_arch.split(":", 1)[0].strip()
-    if not arch.startswith("gfx"):
-        raise ValueError(f"invalid AMD GPU architecture: {target_arch!r}")
-    return ("-fsanitize=address", "-shared-libsan", f"--offload-arch={arch}:xnack+")
-
-
 class GpuAsanPlugin:
     name = ToolName.GPU_ASAN.value
     version = "2"
+    baseline_check = True
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
+        if not aka_v3.is_v3(context):
+            return self._legacy_assess(context, runtime)
+        engine = v3_tools.asan_engine(context)
+        if engine.state != CapabilityState.READY:
+            return ToolCapability(self.name, engine, ready_check(adapter=aka_v3.ADAPTER), runtime)
+        adapted = v3_tools._with_command(v3_tools._triton_profile(context), "command", "gpu_asan")
+        return self._legacy_assess(adapted, runtime)
+
+    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+        if aka_v3.is_v3(context):
+            return v3_tools.asan_invocation(self, context)
+        return self._legacy_build_invocation(context)
+
+    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+        if aka_v3.is_v3(context):
+            return v3_tools.asan_parse(self, context, execution)
+        return self._legacy_parse(context, execution)
+
+    def _legacy_assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
         is_hip = profile.language == KernelLanguage.HIP
@@ -137,7 +142,7 @@ class GpuAsanPlugin:
             )
         return ToolCapability(self.name, engine, adapter, runtime)
 
-    def build_invocation(self, context: ToolContext) -> ToolInvocation:
+    def _legacy_build_invocation(self, context: ToolContext) -> ToolInvocation:
         command = command_from_context(context, "command")
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
@@ -201,7 +206,7 @@ class GpuAsanPlugin:
             },
         )
 
-    def parse(self, context: ToolContext, execution) -> ToolRunResult:
+    def _legacy_parse(self, context: ToolContext, execution) -> ToolRunResult:
         profile = context.profile
         is_triton = profile.language == KernelLanguage.TRITON or profile.framework == "triton"
         attestation_path = artifact_path(

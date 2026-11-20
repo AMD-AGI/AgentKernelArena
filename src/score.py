@@ -141,6 +141,10 @@ def task_result_scoring(workspace_path: str) -> float:
 
     if result_data.get('pass_verification') is False:
         speedup_ratio = 0.0
+    # A blocking sanitizer finding skips performance; never let a stale or
+    # partial measurement score it.
+    if result_data.get('pass_tool_gate') is False:
+        speedup_ratio = 0.0
     # Calculate score
     calculated_score = score(
         pass_compilation=pass_compilation,

@@ -79,6 +79,10 @@ docker() {
             image) [[ -f "$FAKE_RUNTIME_DIR/image-present" ]] || return 1 ;;
         esac
     fi
+    if [[ "${1:-}" == "image" && "${2:-}" == "inspect" && " $* " == *".Config.Labels"* ]]; then
+        printf '%s\n' "${FAKE_EVAL_TOOL_LABEL:-}"
+        return 0
+    fi
     if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
@@ -368,6 +372,8 @@ DEEPSEEK_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0dc73931aaa6f020
 DEEPSEEK_CONFIG="$TEST_HOME/deepseek-config-image.yaml"
 cp "$ROOT/example_configs/quickstart_deepseek_harness_mi355x.yaml" "$DEEPSEEK_CONFIG"
 printf '\ndocker_image: %s\n' "$DEEPSEEK_IMAGE" >> "$DEEPSEEK_CONFIG"
+# Image selection only: keep the default sanitizer sidecars out of this argv.
+printf 'evaluation_tools: false\n' >> "$DEEPSEEK_CONFIG"
 IMAGE_TEST_HOME="$TEST_HOME/image-home"
 IMAGE_TEST_PREFIX="$TEST_HOME/image-node"
 mkdir -p "$IMAGE_TEST_HOME/.claude" "$IMAGE_TEST_PREFIX/bin"
@@ -1283,7 +1289,7 @@ fi
 # the scoring container: no network, no credentials, no privileged mode, and
 # only immutable input plus explicit scratch/artifact/socket writes.
 EVAL_FRAMEWORK_ROOT="/opt/aka-eval-tools"
-for eval_image in triton-fpsan gpu-asan rocjitsu hip-fpsan; do
+for eval_image in triton-fpsan gpu-asan rocjitsu hip-fpsan page-fault-guard csan tilelens; do
     eval_dockerfile="$ROOT/docker/eval-tools/$eval_image/Dockerfile"
     grep -Fq "COPY src/eval_tools $EVAL_FRAMEWORK_ROOT/src/eval_tools" "$eval_dockerfile" \
         || fail "$eval_dockerfile does not bake the evaluation framework"
@@ -1292,6 +1298,53 @@ for eval_image in triton-fpsan gpu-asan rocjitsu hip-fpsan; do
     grep -Fq "PYTHONPATH=$EVAL_FRAMEWORK_ROOT" "$eval_dockerfile" \
         || fail "$eval_dockerfile does not default imports to its baked framework"
 done
+# A config without an evaluation_tools section starts the default sanitizers on
+# gfx950 only; false or an explicit list keeps full control.
+EVAL_DEFAULT_CONFIG="$TEST_HOME/eval-defaults.yaml"
+printf 'tasks: []\n' > "$EVAL_DEFAULT_CONFIG"
+defaults_gfx950="$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950 | tr '\n' ' ')"
+[[ "$defaults_gfx950" == "page_fault_guard csan tilelens triton_fpsan rocjitsu_waitcheck rocjitsu " ]] \
+    || fail "default evaluation tools on gfx950 were: $defaults_gfx950"
+[[ -z "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx942)" ]] \
+    || fail "default evaluation tools must stay off on gfx942"
+printf 'tasks: []\nevaluation_tools: false\n' > "$EVAL_DEFAULT_CONFIG"
+[[ -z "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950)" ]] \
+    || fail "evaluation_tools: false must disable the default sanitizers"
+printf 'tasks: []\nevaluation_tools:\n  enabled: [gpu_asan, csan]\n' > "$EVAL_DEFAULT_CONFIG"
+[[ "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950 | tr '\n' ' ')" == "gpu_asan csan " ]] \
+    || fail "an explicit evaluation_tools.enabled list must be used as given"
+printf 'tasks: []\nagent:\n  template: qa_auditor\n' > "$EVAL_DEFAULT_CONFIG"
+[[ -z "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950)" ]] \
+    || fail "a QA-auditor run must not start the default sanitizers"
+
+# Each image runs its own copy of the tool sources: a default image whose
+# source label differs from this checkout is rebuilt, and an overridden one is
+# used as given with a warning.
+eval_digest="$(bash "$RUNNER" _eval_tool_source_digest page_fault_guard)"
+[[ "$eval_digest" =~ ^[0-9a-f]{64}$ ]] || fail "evaluation-tool source digest was: $eval_digest"
+[[ "$eval_digest" != "$(bash "$RUNNER" _eval_tool_source_digest tilelens)" ]] \
+    || fail "images with different Dockerfiles must have different source digests"
+EVAL_IMAGE_DIR="$TEST_HOME/eval-image"
+mkdir -p "$EVAL_IMAGE_DIR"
+touch "$EVAL_IMAGE_DIR/image-present"
+FAKE_RUNTIME_DIR="$EVAL_IMAGE_DIR" FAKE_EVAL_TOOL_LABEL="$eval_digest" \
+    bash "$RUNNER" _ensure_eval_tool_image page_fault_guard example.invalid/pfg:test >/dev/null 2>&1 \
+    || fail "a current evaluation-tool image was rejected"
+[[ ! -e "$EVAL_IMAGE_DIR/build-args" ]] || fail "a current evaluation-tool image was rebuilt"
+FAKE_RUNTIME_DIR="$EVAL_IMAGE_DIR" FAKE_EVAL_TOOL_LABEL="0000" \
+    bash "$RUNNER" _ensure_eval_tool_image page_fault_guard example.invalid/pfg:test >/dev/null 2>&1 \
+    || fail "a stale evaluation-tool image was not rebuilt"
+grep -Fxq "com.amd.agent-kernel-arena.eval-tool-source=$eval_digest" "$EVAL_IMAGE_DIR/build-args" \
+    || fail "a rebuilt evaluation-tool image does not carry its source label"
+rm -f "$EVAL_IMAGE_DIR/build-args"
+stale_warning="$(FAKE_RUNTIME_DIR="$EVAL_IMAGE_DIR" FAKE_EVAL_TOOL_LABEL="0000" \
+    AKA_EVAL_TOOL_IMAGE_PAGE_FAULT_GUARD=example.invalid/pfg:mine \
+    bash "$RUNNER" _ensure_eval_tool_image page_fault_guard example.invalid/pfg:mine 2>&1 >/dev/null)" \
+    || fail "an overridden evaluation-tool image was rejected"
+[[ ! -e "$EVAL_IMAGE_DIR/build-args" ]] || fail "an overridden evaluation-tool image was rebuilt"
+[[ "$stale_warning" == *"not built from this checkout's tool sources"* ]] \
+    || fail "a stale overridden evaluation-tool image gave no warning: $stale_warning"
+
 framework_record="$(
     env -u AKA_EVAL_TOOL_FRAMEWORK_ROOT PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'
 from pathlib import Path

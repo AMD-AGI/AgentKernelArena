@@ -9,6 +9,7 @@ from .hip_fpsan import HipFpSanPlugin
 from .consan import ConSanPlugin
 from .rocjitsu import RocJitsuPlugin
 from .triton_fpsan import TritonFpSanPlugin
+from .v3_lanes import CsanPlugin, PageFaultGuardPlugin, TileLensPlugin
 from .waitcheck import WaitcheckPlugin
 
 
@@ -21,6 +22,9 @@ _PLUGINS = {
         WaitcheckPlugin(),
         ConSanPlugin(),
         HipFpSanPlugin(),
+        PageFaultGuardPlugin(),
+        CsanPlugin(),
+        TileLensPlugin(),
     )
 }
 

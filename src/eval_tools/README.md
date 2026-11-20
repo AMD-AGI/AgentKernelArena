@@ -5,9 +5,12 @@ analysis tools. Operator configuration, the capability matrix, and the full
 isolation model are documented in
 [`docs/how-to/use-evaluation-tools.md`](../../docs/how-to/use-evaluation-tools.md).
 
-The built-in registry currently contains Triton FpSan, ROCm GPU
-AddressSanitizer, the rocJITsu race detector, rocJITsu Waitcheck, rocJITsu
-ConSan, and HIP-FpSan. Waitcheck and ConSan require explicit final-code-object
+The built-in registry currently contains the page-fault guard, PyTorch's CUDA
+Sanitizer (CSAN), TileLens, Triton FpSan, ROCm GPU AddressSanitizer, the
+rocJITsu race detector, rocJITsu Waitcheck, rocJITsu ConSan, and HIP-FpSan.
+Schema-v3 tasks run the default set in `defaults.py` through framework-owned
+adapters (`plugins/aka_v3.py`, `plugins/v3_lanes.py`, `plugins/v3_tools.py`,
+`adapters/aka_v3_entrypoint.py`) with no task configuration. Waitcheck and ConSan require explicit final-code-object
 adapters and are currently qualified only for advisory use; enabling them does
 not automatically inspect every optimized kernel. A tool name being listed in a
 roadmap is not evidence that an optimized kernel was analyzed. A supported tool

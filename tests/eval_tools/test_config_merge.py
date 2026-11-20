@@ -135,7 +135,7 @@ def test_native_sanitizer_runtime_assets_are_reserved(tool, key) -> None:
         )
 
 
-def test_enabled_true_expands_to_all_six_builtin_tools() -> None:
+def test_enabled_true_expands_to_every_builtin_tool() -> None:
     parsed = EvalToolsConfig.from_mapping(
         {"evaluation_tools": {"enabled": True}}
     )
@@ -146,6 +146,9 @@ def test_enabled_true_expands_to_all_six_builtin_tools() -> None:
         "rocjitsu_waitcheck",
         "rocjitsu_consan",
         "hip_fpsan",
+        "page_fault_guard",
+        "csan",
+        "tilelens",
     )
 
 

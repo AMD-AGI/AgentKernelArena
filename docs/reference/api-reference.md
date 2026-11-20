@@ -63,17 +63,23 @@ workspace_directory_prefix: workspace
 
 ## Evaluation tools
 
-`evaluation_tools` configures optional, isolated kernel-analysis sidecars. The
-section is disabled when it is absent, `null`, or `false`. A configured mapping
-with no enabled tools is also disabled unless the host runner supplies
+`evaluation_tools` configures isolated kernel-analysis sidecars. When the
+section is absent, the Docker runner starts the default set from
+`src/eval_tools/defaults.py` on `gfx950` (`page_fault_guard`, `csan`,
+`tilelens`, `triton_fpsan`, `rocjitsu_waitcheck`, `rocjitsu`) and the scoring
+process plans it under the `gated` policy with a 1200-second per-tool deadline;
+elsewhere, or without the runner, an absent section is disabled. `null`,
+`false` and an empty `enabled` list disable the stage. A configured mapping with
+no enabled tools is also disabled unless the host runner supplies
 `AKA_EVAL_TOOLS`; for a mapping, that host subset replaces its `enabled` value.
 The built-in IDs are `triton_fpsan`, `gpu_asan`, `rocjitsu`,
-`rocjitsu_waitcheck`, `rocjitsu_consan`, and `hip_fpsan`.
+`rocjitsu_waitcheck`, `rocjitsu_consan`, `hip_fpsan`, `page_fault_guard`,
+`csan`, and `tilelens`.
 
 Sidecar build locks, integrated positive controls, and end-to-end fixtures
-currently exist only for `gfx950`. The ROCm 10 migration has five passing
-startup controls; GPU ASan remains unqualified, as recorded in the
-[runtime compatibility guide](mi355x-runtime.md). Each applicable candidate still needs a task-specific
+currently exist only for `gfx950`. GPU ASan's controls pass only on bare-metal
+hosts, as recorded in the [runtime compatibility guide](mi355x-runtime.md).
+Schema-v3 tasks use framework adapters; other task kinds need a task-specific
 adapter and attestation, and enabling an image alone does not imply that a
 kernel was analyzed. See [Check kernels with evaluation
 tools](../how-to/use-evaluation-tools.md) for the support matrix and operational
@@ -91,14 +97,15 @@ submount remains writable when the quality-loop repository root is read-only.
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
-| `evaluation_tools.enabled` | boolean, string, or list of strings | empty | Tool IDs to plan. `true` expands to all six built-ins; `false` disables the feature. A single string is accepted. Hyphens are normalized to underscores. When the host sets `AKA_EVAL_TOOLS`, its normalized subset is authoritative for both started sidecars and the in-container plan. |
-| `evaluation_tools.policy` | `advisory` or `required` | `advisory` | `advisory` always permits performance but records an unsatisfied policy. `required` permits performance only when every applicable selected tool is ready, completes, and reports `clean`. |
+| `evaluation_tools.enabled` | boolean, string, or list of strings | empty | Tool IDs to plan. `true` expands to all nine built-ins; `false` disables the feature. A single string is accepted. Hyphens are normalized to underscores. When the host sets `AKA_EVAL_TOOLS`, its normalized subset is authoritative for both started sidecars and the in-container plan. |
+| `evaluation_tools.policy` | `advisory`, `required` or `gated` | `advisory` for an explicit section; `gated` for the default set | `advisory` always permits performance but records an unsatisfied policy. `required` permits performance only when every applicable selected tool is ready, completes, and reports `clean`. `gated` blocks only on a `gate` tool's definite finding that the task's baseline, rechecked with the same tool, does not share. |
 | `evaluation_tools.positive_control` | `required`, `optional`, `disabled`, or boolean | `required` | Requires the applicable synthetic known-bug startup control to pass before runtime capability is ready. `optional`, `disabled`, and `false` normalize to not required; the worker still runs and reports its control. |
 | `evaluation_tools.timeout_s` | exact integer from 1 through 3600 | `3600` | Default maximum execution time for each selected tool. Booleans, floats, and numeric strings are rejected. |
 | `evaluation_tools.runtime_profile` | string or `null` | `null` | Fallback runtime-identity assertion for plans whose tool has no `runtime_ref`. It does not select an image and must exactly match worker health when set. |
 | `evaluation_tools.tools` | mapping | `{}` | Per-tool configuration keyed by normalized tool ID. Entries do not enable tools. |
 | `evaluation_tools.tools.<id>.runtime_ref` | string or `null` | automatic host image ID | Exact bare local Docker image ID (`sha256:...`) asserted by the plan and compared with worker health. The `image_digest` key is an alias. This field does not select an image; omit it when using automatic host injection. |
 | `evaluation_tools.tools.<id>.timeout_s` | exact integer from 1 through 3600 | top-level timeout | Per-tool timeout; it cannot exceed the top-level timeout. |
+| `evaluation_tools.tools.<id>.role` | `gate` or `signal` | `signal` for `triton_fpsan` and `hip_fpsan`, otherwise `gate` | How the `gated` policy treats the tool's findings. Part of the plan and its fingerprint. |
 | `evaluation_tools.tools.<id>.options` | mapping | `{}` | Adapter options, including argv lists and candidate-evidence paths. Reserved framework keys are rejected at run and task level: `positive_control_required`; GPU ASan runtime/preload/library keys; rocJITsu binary/config keys; Waitcheck CLI/C API keys; ConSan hook keys; and HIP-FpSan include/header keys. |
 
 The exact reserved option keys are `positive_control_required` for every tool;
@@ -232,11 +239,11 @@ ignored, so use only the documented keys.
 
 ### Task-level tool adapters
 
-Schema-v3 kernel tasks cannot declare `evaluation_profile` or `evaluation_tools`: the
-`task.yaml` contract has no such fields, the candidate is the `solution/` tree and
-the language is the run's `target_language` (not verified against a v3 task). The
-rest of this section applies to task kinds whose execution config carries these
-sections.
+Schema-v3 kernel tasks declare neither `evaluation_profile` nor `evaluation_tools`:
+the `task.yaml` contract has no such fields, and every tool uses the framework's
+own v3 adapter. The candidate is the `solution/` tree and the language is the
+run's `target_language`. The rest of this section applies to task kinds whose
+execution config carries these sections.
 
 A task can register adapters for known tools, including tools the current run
 does not enable. Disabled adapters are validated and remain dormant. The only
@@ -325,11 +332,11 @@ Each task produces a `task_result.yaml` in its workspace:
 | `schema_version` | Evaluation-tool result schema version. |
 | `plan_fingerprint` | SHA-256 over normalized configuration, resolved task profile, plugin versions, captured original/candidate evidence for declared paths, verified scoring-image reference/ID, and the content digest of a configured replay capsule. |
 | `plan` | Complete immutable plan: schema, policy, profile, ordered tool records (runtime reference, plugin version, timeout, and options), fingerprint, and source evidence. |
-| `policy` | `advisory` or `required`. |
+| `policy` | `advisory`, `required` or `gated`. |
 | `overall_status` | `clean`, `finding`, `incomplete`, or `not_applicable`. |
 | `resolved_task_profile` | Inferred profile plus auditable explicit overrides. |
 | `source_evidence` | Captured-original and candidate fingerprints plus manifest metadata, including `metadata.scoring_runtime.image_id` and `.reference` when tools run. |
-| `decision` | `allowed`, `policy_satisfied`, and machine-readable reason strings. |
+| `decision` | `allowed`, `policy_satisfied`, machine-readable reason strings, and under `gated` the `blocking` findings that stopped performance. |
 | `tools.<id>.capability` | Separate `engine`, `adapter`, `runtime`, and resolved `effective` checks. |
 | `tools.<id>.result.execution` | `not_run`, `completed`, `tool_error`, or `timeout`. |
 | `tools.<id>.result.finding` | `not_evaluated`, `clean`, `found`, or `inconclusive`. |

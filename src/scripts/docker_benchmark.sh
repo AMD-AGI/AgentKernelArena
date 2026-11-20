@@ -53,6 +53,8 @@ EVAL_TOOL_ARTIFACT_HOST_ROOT=""
 EVAL_TOOL_ARTIFACT_SCORING_ROOT=""
 EVAL_TOOL_SELECTED=""
 eval_tool_docker_args=()
+# Every built-in evaluation tool (src/eval_tools/defaults.py ALL_TOOLS).
+EVAL_TOOL_ALL="triton_fpsan gpu_asan rocjitsu rocjitsu_waitcheck rocjitsu_consan hip_fpsan page_fault_guard csan tilelens"
 eval_tool_container_names=()
 eval_tool_ids=()
 
@@ -830,7 +832,7 @@ normalize_eval_tool_id() {
     local tool="${1//-/_}"
     tool="$(printf '%s' "$tool" | tr '[:upper:]' '[:lower:]')"
     case "$tool" in
-        triton_fpsan|gpu_asan|rocjitsu|rocjitsu_waitcheck|rocjitsu_consan|hip_fpsan) printf '%s\n' "$tool" ;;
+        triton_fpsan|gpu_asan|rocjitsu|rocjitsu_waitcheck|rocjitsu_consan|hip_fpsan|page_fault_guard|csan|tilelens) printf '%s\n' "$tool" ;;
         *) die "Unsupported evaluation tool '$1'" ;;
     esac
 }
@@ -841,28 +843,10 @@ resolve_eval_tools() {
     if [[ -n "${AKA_EVAL_TOOLS:-}" ]]; then
         raw="${AKA_EVAL_TOOLS//,/ }"
     elif [[ -n "$config" && -f "$config" ]]; then
-        raw="$(python3 - "$config" <<'PY'
-import sys
-import yaml
-
-value = (yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}).get("evaluation_tools")
-if not value:
-    raise SystemExit(0)
-enabled = value.get("enabled", ()) if isinstance(value, dict) else ()
-if enabled is True:
-    enabled = (
-        "triton_fpsan",
-        "gpu_asan",
-        "rocjitsu",
-        "rocjitsu_waitcheck",
-        "rocjitsu_consan",
-        "hip_fpsan",
-    )
-elif isinstance(enabled, str):
-    enabled = (enabled,)
-print(" ".join(str(item) for item in enabled or ()))
-PY
-)"
+        # A config without an evaluation_tools section runs the default
+        # sanitizers on a default architecture (src/eval_tools/defaults.py).
+        raw="$(python3 "$HOST_ROOT/src/eval_tools/defaults.py" select "$config" "${SELECTED_GPU_ARCH:-}")" \
+            || die "Cannot resolve evaluation tools from $config"
     fi
 
     local seen=" " tool normalized
@@ -1042,23 +1026,23 @@ build_eval_tool_docker_args() {
         )
     fi
 
-    if [[ "$tool" != "rocjitsu_waitcheck" ]]; then
-        local gpu_grp gpu_gid
-        for gpu_grp in render video; do
-            gpu_gid="$(getent group "$gpu_grp" 2>/dev/null | cut -d: -f3 || true)"
-            [[ -z "$gpu_gid" ]] || eval_tool_docker_args+=(--group-add "$gpu_gid")
-        done
-        [[ ! -e /dev/kfd ]] || eval_tool_docker_args+=(--device=/dev/kfd)
-        [[ ! -e /dev/dri ]] || eval_tool_docker_args+=(--device=/dev/dri)
+    # Every sidecar, Waitcheck included, gets the worker's GPU: schema-v3 tasks
+    # capture the dispatched kernels on the device before analysing them.
+    local gpu_grp gpu_gid
+    for gpu_grp in render video; do
+        gpu_gid="$(getent group "$gpu_grp" 2>/dev/null | cut -d: -f3 || true)"
+        [[ -z "$gpu_gid" ]] || eval_tool_docker_args+=(--group-add "$gpu_gid")
+    done
+    [[ ! -e /dev/kfd ]] || eval_tool_docker_args+=(--device=/dev/kfd)
+    [[ ! -e /dev/dri ]] || eval_tool_docker_args+=(--device=/dev/dri)
 
-        if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
-            eval_tool_docker_args+=(
-                -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
-                -e "HIP_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
-                -e "CUDA_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
-                -e "GPU_DEVICE_ORDINAL=${AKA_LOGICAL_GPU:-0}"
-            )
-        fi
+    if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
+        eval_tool_docker_args+=(
+            -e "ROCR_VISIBLE_DEVICES=${AKA_VISIBLE_GPU}"
+            -e "HIP_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
+            -e "CUDA_VISIBLE_DEVICES=${AKA_LOGICAL_GPU:-0}"
+            -e "GPU_DEVICE_ORDINAL=${AKA_LOGICAL_GPU:-0}"
+        )
     fi
 
     eval_tool_docker_args+=(
@@ -1107,6 +1091,7 @@ start_eval_tool_sidecars() {
     local tool image name scratch socket socket_host_dir attempt runtime_ref runtime_env passwd_host_file
     for tool in "${eval_tool_ids[@]}"; do
         image="$(eval_tool_image "$tool")"
+        ensure_eval_tool_image "$tool" "$image"
         runtime_ref="$(docker image inspect --format '{{.Id}}' "$image")"
         [[ "$runtime_ref" == sha256:* ]] \
             || die "Could not resolve immutable image ID for $tool image $image"
@@ -1163,7 +1148,7 @@ stop_eval_tool_sidecars() {
     unset AKA_SCORING_IMAGE_RUNTIME_REF
     unset AKA_SCORING_IMAGE_REFERENCE
     local tool runtime_env
-    for tool in triton_fpsan gpu_asan rocjitsu rocjitsu_waitcheck rocjitsu_consan hip_fpsan; do
+    for tool in $EVAL_TOOL_ALL; do
         runtime_env="AKA_EVAL_TOOL_RUNTIME_REF_$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')"
         unset "$runtime_env"
     done
@@ -1180,28 +1165,92 @@ stop_eval_tool_sidecars() {
     EVAL_TOOL_SELECTED=""
 }
 
+# The label that records which checkout files an evaluation-tool image was
+# built from (see eval_tool_source_digest).
+EVAL_TOOL_SOURCE_LABEL="com.amd.agent-kernel-arena.eval-tool-source"
+
+eval_tool_dockerfile() {
+    case "$1" in
+        rocjitsu_waitcheck|rocjitsu_consan)
+            printf '%s\n' "$HOST_ROOT/docker/eval-tools/rocjitsu-sanitizers/Dockerfile"
+            ;;
+        *)
+            printf '%s\n' "$HOST_ROOT/docker/eval-tools/${1//_/-}/Dockerfile"
+            ;;
+    esac
+}
+
+eval_tool_source_digest() {
+    # SHA-256 over the Dockerfile and every checkout path it COPYs. Each image
+    # runs its own copy of src/eval_tools, so an image built from other sources
+    # would run old tool code.
+    local dockerfile="$1" line word
+    local -a words sources=()
+    while IFS= read -r line; do
+        read -r -a words <<<"$line"
+        for word in "${words[@]:1:${#words[@]}-2}"; do
+            [[ "$word" == --* ]] || sources+=("$word")
+        done
+    done < <(grep -E '^COPY[[:space:]]' "$dockerfile" | grep -v -- '--from=')
+    (
+        cd "$HOST_ROOT" || exit 1
+        find "${dockerfile#"$HOST_ROOT"/}" "${sources[@]}" -type f \
+            ! -name '*.py[cod]' ! -path '*/__pycache__/*' -print0 \
+            | LC_ALL=C sort -z | xargs -0 sha256sum
+    ) | sha256sum | cut -d' ' -f1
+}
+
+build_eval_tool_image() {
+    local tool="$1" image="$2" dockerfile target="" source_digest
+    dockerfile="$(eval_tool_dockerfile "$tool")"
+    case "$tool" in
+        rocjitsu_waitcheck|rocjitsu_consan) target="${tool//_/-}-runtime" ;;
+    esac
+    source_digest="$(eval_tool_source_digest "$dockerfile")"
+    # Pull each pinned FROM image through the daemon first. BuildKit resolves a
+    # missing base itself and, on hosts whose registry TLS only the daemon
+    # trusts, fails; with --pull=false it uses the local copy instead.
+    local base
+    while IFS= read -r base; do
+        docker image inspect "$base" >/dev/null 2>&1 || docker pull -q "$base" >&2 \
+            || die "Cannot pull $base for evaluation-tool image $image"
+    done < <(sed -nE 's/^ARG (BASE_IMAGE|BUILDER_IMAGE)=(.+)$/\2/p' "$dockerfile")
+    local -a build_args=(build --pull=false --label "$EVAL_TOOL_SOURCE_LABEL=$source_digest" -f "$dockerfile" -t "$image")
+    [[ -z "$target" ]] || build_args+=(--target "$target")
+    docker "${build_args[@]}" "$HOST_ROOT"
+}
+
+ensure_eval_tool_image() {
+    # Default tools run without a separate build step: a missing default image
+    # is built once per host, and one built from other tool sources is rebuilt.
+    # An overridden image must already exist and is used as given.
+    local tool="$1" image="$2" tool_upper expected actual
+    tool_upper="$(printf '%s' "$tool" | tr '[:lower:]' '[:upper:]')"
+    local env_name="AKA_EVAL_TOOL_IMAGE_${tool_upper}"
+    if docker image inspect "$image" >/dev/null 2>&1; then
+        expected="$(eval_tool_source_digest "$(eval_tool_dockerfile "$tool")")"
+        actual="$(docker image inspect --format "{{ index .Config.Labels \"$EVAL_TOOL_SOURCE_LABEL\" }}" "$image" \
+            2>/dev/null || true)"
+        [[ "$actual" != "$expected" ]] || return 0
+        if [[ -n "${!env_name:-}" ]]; then
+            warn "Evaluation-tool image $image ($env_name) was not built from this checkout's tool sources"
+            return 0
+        fi
+        echo "Rebuilding evaluation-tool image $image: it was built from other tool sources" >&2
+    else
+        [[ -z "${!env_name:-}" ]] || die "Evaluation-tool image $image ($env_name) is not present on this host"
+        echo "Building missing evaluation-tool image $image" >&2
+    fi
+    build_eval_tool_image "$tool" "$image" >&2 || die "Failed to build evaluation-tool image $image"
+}
+
 build_eval_tool_images() {
     select_runtime_for_host
     [[ "$SELECTED_GPU_ARCH" == "gfx950" ]] \
         || die "Tool images currently have verified build locks only for gfx950"
-    local tool image dockerfile target
-    for tool in triton_fpsan gpu_asan rocjitsu rocjitsu_waitcheck rocjitsu_consan hip_fpsan; do
-        image="$(eval_tool_image "$tool")"
-        target=""
-        case "$tool" in
-            rocjitsu_waitcheck|rocjitsu_consan)
-                dockerfile="$HOST_ROOT/docker/eval-tools/rocjitsu-sanitizers/Dockerfile"
-                target="${tool//_/-}-runtime"
-                ;;
-            *)
-                dockerfile="$HOST_ROOT/docker/eval-tools/${tool//_/-}/Dockerfile"
-                ;;
-        esac
-        if [[ -n "$target" ]]; then
-            docker build --pull=false --target "$target" -f "$dockerfile" -t "$image" "$HOST_ROOT"
-        else
-            docker build --pull=false -f "$dockerfile" -t "$image" "$HOST_ROOT"
-        fi
+    local tool
+    for tool in $EVAL_TOOL_ALL; do
+        build_eval_tool_image "$tool" "$(eval_tool_image "$tool")"
     done
 }
 
@@ -1502,7 +1551,7 @@ build_docker_args() {
             docker_args+=(-e "AKA_EVAL_TOOLS_SELECTED=${AKA_EVAL_TOOLS_SELECTED}")
         fi
         local eval_tool runtime_env
-        for eval_tool in triton_fpsan gpu_asan rocjitsu rocjitsu_waitcheck rocjitsu_consan hip_fpsan; do
+        for eval_tool in $EVAL_TOOL_ALL; do
             runtime_env="AKA_EVAL_TOOL_RUNTIME_REF_$(printf '%s' "$eval_tool" | tr '[:lower:]' '[:upper:]')"
             if [[ -n "${!runtime_env:-}" ]]; then
                 docker_args+=(-e "$runtime_env=${!runtime_env}")
@@ -2370,7 +2419,7 @@ case "${1:-}" in
         ;;
     eval-tools-smoke)
         select_runtime_for_host
-        export AKA_EVAL_TOOLS="${AKA_EVAL_TOOLS:-triton_fpsan,gpu_asan,rocjitsu,rocjitsu_waitcheck,rocjitsu_consan,hip_fpsan}"
+        export AKA_EVAL_TOOLS="${AKA_EVAL_TOOLS:-${EVAL_TOOL_ALL// /,}}"
         trap stop_eval_tool_sidecars EXIT
         start_eval_tool_sidecars "" "smoke-${BASHPID}"
         for eval_tool in "${eval_tool_ids[@]}"; do
@@ -2437,6 +2486,12 @@ case "${1:-}" in
         build_eval_tool_docker_args "$@"
         printf '%s\n' "${eval_tool_docker_args[@]}"
         ;;
+    _resolve_eval_tools)
+        shift
+        [[ "$#" -eq 2 ]] || die "_resolve_eval_tools expects CONFIG ARCH"
+        SELECTED_GPU_ARCH="$2"
+        resolve_eval_tools "$1"
+        ;;
     _verify_eval_tool_scoring_image)
         shift
         [[ "$#" -eq 2 ]] \
@@ -2445,6 +2500,16 @@ case "${1:-}" in
         SELECTED_IMAGE="$2"
         verify_eval_tool_scoring_image
         printf '%s\n' "$SELECTED_IMAGE" "$AKA_SCORING_IMAGE_RUNTIME_REF" "$AKA_SCORING_IMAGE_REFERENCE"
+        ;;
+    _ensure_eval_tool_image)
+        shift
+        [[ "$#" -eq 2 ]] || die "_ensure_eval_tool_image expects TOOL IMAGE"
+        ensure_eval_tool_image "$1" "$2"
+        ;;
+    _eval_tool_source_digest)
+        shift
+        [[ "$#" -eq 1 ]] || die "_eval_tool_source_digest expects TOOL"
+        eval_tool_source_digest "$(eval_tool_dockerfile "$1")"
         ;;
     _prepare_eval_tool_artifact_dir)
         shift
