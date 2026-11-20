@@ -518,3 +518,32 @@ def test_audit_cannot_change_sources_or_evidence_or_skip_its_report(tmp_path, ta
         # The auditor's own findings survive next to the framework's blocking finding.
         assert report["checks"]["QA-README"] == "WARN"
     assert report["task_package_sha256"] and report["task_package_sha256"] != "fixture"
+
+
+def test_final_evaluation_ignores_bytecode_planted_in_the_workspace(tmp_path):
+    """A .pyc beside a workspace module, with the source's mtime and size, is not loaded."""
+    import importlib.util
+    import py_compile
+    import struct
+    import subprocess
+    import sys
+    import src.task_run as task_run
+    workspace, state = tmp_path / "workspace", tmp_path / "state"
+    workspace.mkdir(), state.mkdir()
+    source = workspace / "kernel.py"
+    source.write_text("VALUE = 1\n")
+    planted = tmp_path / "planted.py"
+    planted.write_text("VALUE = 100\n")
+    code = bytearray(Path(py_compile.compile(str(planted), cfile=str(tmp_path / "planted.pyc"))).read_bytes())
+    stat = source.stat()
+    code[8:16] = struct.pack("<II", int(stat.st_mtime) & 0xFFFFFFFF, stat.st_size & 0xFFFFFFFF)
+    target = Path(importlib.util.cache_from_source(str(source)))
+    target.parent.mkdir()
+    target.write_bytes(bytes(code))
+    command = [sys.executable, "-c", "import kernel; print(kernel.VALUE)"]
+    environment = {key: value for key, value in os.environ.items() if key != "PYTHONPYCACHEPREFIX"}
+    unprotected = subprocess.run(command, cwd=workspace, env=environment, capture_output=True, text=True, check=True)
+    assert unprotected.stdout.strip() == "100"  # the attack works without the private prefix
+    with task_run._private_build_caches(state):
+        protected = subprocess.run(command, cwd=workspace, capture_output=True, text=True, check=True)
+    assert protected.stdout.strip() == "1"

@@ -74,9 +74,13 @@ def task_run_is_complete(workspace: Path, expected_task_name: str, agent_name: s
 # of the audited source. The final evaluation builds in new private ones.
 # Unset, the AITER and FlyDSL caches default to directories under HOME, which
 # the agent can write as well, so they are replaced whether or not they are set.
+# Python loads a __pycache__/*.pyc beside a source whose recorded mtime and size
+# match, and the candidate and the _aka_eval harness are imported from the
+# agent's workspace; PYTHONPYCACHEPREFIX makes Python use only its own tree.
 BUILD_CACHE_VARIABLES = ("TRITON_CACHE_DIR", "TORCH_EXTENSIONS_DIR", "TORCHINDUCTOR_CACHE_DIR",
                          "AKA_KERNEL_CACHE_DIR", "XDG_CACHE_HOME", "MIOPEN_CACHE_DIR", "MIOPEN_CUSTOM_CACHE_DIR",
-                         "AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR", "FLYDSL_AUTOTUNE_CACHE_DIR")
+                         "AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR", "FLYDSL_AUTOTUNE_CACHE_DIR",
+                         "PYTHONPYCACHEPREFIX")
 # Replaced only where the runner sets it: there it is a build directory that
 # starts empty in each container, while elsewhere it may name AITER's own tree.
 CONFIGURED_BUILD_CACHE_VARIABLES = ("AITER_ROOT_DIR",)

@@ -202,10 +202,12 @@ therefore compiles into new, private cache directories in the task-session
 state: Triton, PyTorch extensions, TorchInductor, the Arena HIP kernel cache,
 the MIOpen kernel caches, `XDG_CACHE_HOME`, the AITER JIT directory and the
 FlyDSL runtime and autotune caches (unset, the AITER and FlyDSL caches default
-to HOME), plus `AITER_ROOT_DIR` where the runner sets it. This holds with or
-without the sandbox. The cost is that the final evaluation compiles as a fresh
-container does: the candidate, and any AITER module it imports, is built again,
-outside the timed region.
+to HOME), plus `AITER_ROOT_DIR` where the runner sets it. It also sets
+`PYTHONPYCACHEPREFIX`, so Python ignores any `__pycache__` bytecode in the
+workspace, where the candidate and the evaluation harness are imported from.
+This holds with or without the sandbox. The cost is that the final evaluation
+compiles as a fresh container does: the candidate, and any AITER module it
+imports, is built again, outside the timed region.
 
 `task_result.yaml` records the outcome under `agent_sandbox`. A resumed task
 keeps the candidate of its earlier invocations, so the outcome combines every

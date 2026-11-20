@@ -77,9 +77,10 @@ This topic summarizes the features available in each AgentKernelArena release. F
   show the status.
 - The final evaluation compiles into new private build caches (Triton, PyTorch
   extensions, TorchInductor, the HIP kernel cache, MIOpen, `XDG_CACHE_HOME`, the
-  AITER JIT directory, and the FlyDSL runtime and autotune caches), so an
-  artifact an agent planted in a shared cache is never loaded. This also
-  applies without the sandbox.
+  AITER JIT directory, the FlyDSL runtime and autotune caches, and Python
+  bytecode through `PYTHONPYCACHEPREFIX`), so an artifact an agent planted in a
+  shared cache or a workspace `__pycache__` is never loaded. This also applies
+  without the sandbox.
 
 ### Roofline floors
 
