@@ -94,6 +94,7 @@ class _State:
         self.assembled_code_objects: set[str] = set()    # produced by _assemble in this process
         self.audited_sources: dict[tuple[str, str], str] = {}   # (package root, relative .s) -> text
         self.launches: list[str] = []                    # one symbol per successful launch
+        self.opened: dict[str, dict[str, Any]] = {}      # SHA256 -> image and symbols of each loaded code object
         self.evidence: dict[str, Any] = {"files": []}
         self.hip = None
 
@@ -123,6 +124,11 @@ def launch_count() -> int:
 
 def launches_since(start: int) -> list[str]:
     return list(_STATE.launches[start:])
+
+
+def opened_code_objects() -> list[tuple[str, bytes, list[str]]]:
+    """Every code object loaded in this process: its SHA256, its bytes and the kernel symbols taken from it."""
+    return [(digest, entry["image"], list(entry["symbols"])) for digest, entry in _STATE.opened.items()]
 
 
 def build_evidence() -> dict[str, Any]:
@@ -335,6 +341,10 @@ def _open(image: bytes, symbol: str, label: str) -> types.SimpleNamespace:
            f"hipModuleLoadData({label})")
     _check(hip.hipModuleGetFunction(ctypes.byref(function), module, symbol.encode()),
            f"hipModuleGetFunction({label}: {symbol})")
+    # A sanitizer lane's capture analyses exactly the bytes HIP loaded.
+    opened = _STATE.opened.setdefault(digest, {"image": image, "symbols": []})
+    if symbol not in opened["symbols"]:
+        opened["symbols"].append(symbol)
 
     def launch(*, grid, block, args: list, shared_bytes: int = 0) -> None:
         grid_ = _triple(grid, "grid", MAX_GRID)

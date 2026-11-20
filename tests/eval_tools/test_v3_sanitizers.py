@@ -221,6 +221,41 @@ def test_a_gate_finding_is_rechecked_on_the_baseline(tmp_path, found_for, baseli
         assert runtime.commands == [("lane", "candidate")]
 
 
+def _located(kind="wait-hazard-vmcnt", kernel="k", location=".text+0x40"):
+    return Finding(kind=kind, severity=FindingSeverity.ERROR, message="x",
+                   locations=(location,) if location else (), metadata={"kernel": kernel} if kernel else {})
+
+
+@pytest.mark.parametrize("candidate,baseline,shared", [
+    ((_located(),), (_located(),), True),
+    # The same kind elsewhere, or in another kernel, is a new finding.
+    ((_located(),), (_located(location=".text+0x80"),), False),
+    ((_located(),), (_located(kernel="other"),), False),
+    ((_located(), _located(location=".text+0x80")), (_located(),), False),
+    # An unlocated finding (a fault) matches the same kind.
+    ((_located("gpu-memory-fault", None, None),), (_located("gpu-memory-fault", None, None),), True),
+    ((_located("gpu-memory-fault", None, None),), (_located("allocator-sensitive-output", None, None),), False),
+])
+def test_a_baseline_shares_a_finding_only_in_the_same_kernel_and_location(candidate, baseline, shared):
+    from src.eval_tools.manager import _baseline_reports_every
+
+    assert _baseline_reports_every(candidate, baseline) is shared
+
+
+def test_bounds_locations_are_relative_to_the_role_directory():
+    from src.tools.arena_eval import sanitize
+
+    def hook(root):  # stands for the interpreter hook that records a violation
+        return sanitize._bounds_location(root)
+
+    found = {}
+    for root in ("solution", "baseline"):
+        namespace = {"hook": hook, "root": root}
+        exec(compile("def probe():\n    return hook(root)\n", f"/w/{root}/kernel.py", "exec"), namespace)
+        found[root] = namespace["probe"]()
+    assert found["solution"] == found["baseline"] == ["kernel.py:2 probe: "]
+
+
 # ----------------------------------------------------------- v3 lane plugins
 
 
@@ -258,8 +293,22 @@ def test_every_v3_tool_reports_a_multi_gpu_task_unsupported(tmp_path, tool):
 @pytest.mark.parametrize("tool", ["page_fault_guard", "csan", "tilelens", "rocjitsu_waitcheck", "rocjitsu",
                                   "gpu_asan"])
 def test_an_unqualified_target_language_is_unsupported_not_skipped(tmp_path, tool):
-    capability = get_plugin(tool).assess(v3_context(tmp_path, target="asm"), CapabilityCheck.ready())
+    capability = get_plugin(tool).assess(v3_context(tmp_path, target="tilelang"), CapabilityCheck.ready())
     assert capability.effective.state == CapabilityState.UNSUPPORTED
+
+
+@pytest.mark.parametrize("tool,state", [
+    ("page_fault_guard", CapabilityState.READY),
+    ("csan", CapabilityState.READY),
+    ("rocjitsu_waitcheck", CapabilityState.READY),
+    ("rocjitsu", CapabilityState.UNSUPPORTED),
+    ("gpu_asan", CapabilityState.UNSUPPORTED),
+    ("tilelens", CapabilityState.NOT_APPLICABLE),
+    ("triton_fpsan", CapabilityState.NOT_APPLICABLE),
+])
+def test_asm_candidates_get_the_language_independent_lanes(tmp_path, tool, state):
+    capability = get_plugin(tool).assess(v3_context(tmp_path, target="asm", baseline="asm"), CapabilityCheck.ready())
+    assert capability.effective.state == state
 
 
 def test_a_multi_gpu_task_is_unverified_but_not_blocked_by_the_gated_policy(tmp_path):

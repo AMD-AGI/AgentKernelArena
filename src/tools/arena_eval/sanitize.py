@@ -325,12 +325,18 @@ class _BoundsStop(Exception):
     """An access the interpreter cannot mask (atomic CAS) left every buffer; stop the run."""
 
 
-def _bounds_location() -> list:
+def _bounds_location(root: str) -> list:
+    """The role's innermost frames, with paths relative to its directory.
+
+    Relative paths make a candidate that copies the baseline report the same
+    location as the baseline, which the baseline recheck compares.
+    """
     import traceback
 
-    frames = [frame for frame in traceback.extract_stack()[:-2] if "/solution/" in frame.filename.replace("\\", "/")]
-    return [f"{frame.filename}:{frame.lineno} {frame.name}: {(frame.line or '').strip()}"[:300]
-            for frame in frames[-3:]]
+    marker = f"/{root}/"
+    frames = [frame for frame in traceback.extract_stack()[:-2] if marker in frame.filename.replace("\\", "/")]
+    return [f"{frame.filename.replace(chr(92), '/').rsplit(marker, 1)[1]}:{frame.lineno} {frame.name}: "
+            f"{(frame.line or '').strip()}"[:300] for frame in frames[-3:]]
 
 
 def _bounds_patch(state: dict):
@@ -339,13 +345,16 @@ def _bounds_patch(state: dict):
     The interpreter copies each argument's whole storage to the host and the
     kernel addresses those copies, so an access is in bounds when it lies in
     one of them. An access outside every buffer is recorded and masked off
-    (never performed). Returns a function that removes the patch.
+    (never performed). ``state["root"]`` names the role's directory, which
+    locations are relative to. Returns a function that removes the patch.
     """
     import inspect
 
     import numpy as np
     import triton.language as tl
     import triton.runtime.interpreter as interpreter
+
+    root = state["root"]  # read now: a missing root fails here, not inside the interpreter
 
     restore = []
     unwrap = getattr(interpreter, "_unwrap_tensor", lambda value: value)
@@ -408,7 +417,7 @@ def _bounds_patch(state: dict):
                        if below >= 0 else None)
             state["violations"].append({"op": op, "kernel": state["kernel"], "address": hex(address),
                                         "bytes": int(size), "lanes": int(stray.sum()), "nearest_buffer": nearest,
-                                        "location": _bounds_location()})
+                                        "location": _bounds_location(root)})
         return np.ascontiguousarray(active & inside)
 
     builder = type(interpreter.interpreter_builder)
@@ -447,7 +456,8 @@ def bounds(contract, role: str) -> dict:
         raise evaluate.ActionFailure(f"The bounds lane checks Triton, not {implementation.language}", "unsupported")
     _require_env({"TRITON_INTERPRET": "1"})
     device = evaluate._device()
-    state = {"violations": [], "violation_count": 0, "launches": 0, "kernel": None, "starts": None, "ends": None}
+    state = {"violations": [], "violation_count": 0, "launches": 0, "kernel": None, "starts": None, "ends": None,
+             "root": implementation.root}
     unpatch = _bounds_patch(state)
     # Kernels execute in the CPU interpreter, which the GPU launch audit cannot
     # observe; the call keeps its integrity check and ran audited in correctness.
@@ -936,13 +946,26 @@ def _flydsl_observer(observed: list):
     return profile
 
 
+def _asm_code_objects(output: Path) -> list[dict]:
+    """Every code object ``aka_asm`` loaded for the role (vendored or assembled), as HIP received it."""
+    from . import asm
+
+    objects = []
+    for index, (digest, image, _symbols) in enumerate(asm.opened_code_objects()):
+        path = output / f"asm-{index:02d}.co"
+        path.write_bytes(image)
+        # Like HIP's unbundled objects: every kernel in the object is analysed.
+        objects.append({"code_object": path.name, "sha256": digest, "kernels": None})
+    return objects
+
+
 def capture(contract, role: str) -> dict:
     evaluate = _evaluate()
     output = Path(os.environ.get(OUTPUT_ENV, ""))
     if not output.is_dir():
         raise evaluate.ActionFailure(f"{OUTPUT_ENV} must name an existing directory", "environment")
     language = contract.implementation(role).language
-    if language not in ("triton", "gluon", "hip", "flydsl"):
+    if language not in ("triton", "gluon", "hip", "flydsl", "asm"):
         raise evaluate.ActionFailure(f"Capture does not support {language}", "unsupported")
     device = evaluate._device()
     case = smallest_case(contract)
@@ -980,6 +1003,11 @@ def capture(contract, role: str) -> dict:
                                          "kernels": None} for item in objects]
             if not objects:
                 manifest["skipped"].append("no device code object could be unbundled from the HIP extension")
+        elif language == "asm":
+            _run_once(contract, call, case, device)
+            manifest["code_objects"] = _asm_code_objects(output)
+            if not manifest["code_objects"]:
+                manifest["skipped"].append("no assembly code object was loaded")
         else:
             _run_once(contract, call, case, device)
             manifest["code_objects"] = _flydsl_code_objects(observed, output)

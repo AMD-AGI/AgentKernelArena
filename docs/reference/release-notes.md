@@ -85,7 +85,11 @@ This topic summarizes the features available in each AgentKernelArena release. F
   one whose recorded tool sources differ from the checkout. The Waitcheck
   sidecar now gets the worker's GPU for capture.
 - The defaults do not start for a `qa_auditor` run, and every default tool
-  records a multi-GPU task or an `asm` candidate as `unsupported`.
+  records a multi-GPU task as `unsupported`.
+- `asm` candidates get the page-fault guard, CSAN and Waitcheck (on every code
+  object `aka_asm` loaded); rocJITsu and GPU ASan report them unsupported.
+- A baseline recheck excuses a finding only when the baseline reports it in
+  the same kernel at the same location (unlocated findings: the same kind).
 - `evaluation_tools: false` disables the stage. See
   [Check kernels with evaluation tools](../how-to/use-evaluation-tools.md#default-sanitizers-for-schema-v3-tasks).
 

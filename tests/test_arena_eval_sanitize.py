@@ -5,6 +5,7 @@ import json
 import struct
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -223,6 +224,28 @@ def _fake_interpreter(monkeypatch, calls):
     return interpreter, pointer
 
 
+def test_bounds_patch_needs_the_role_directory_before_it_patches(monkeypatch):
+    # The TileLens startup control builds its own state; a missing root must
+    # fail at patch time, not as an interpreter error inside the control.
+    calls = []
+    interpreter, _ = _fake_interpreter(monkeypatch, calls)
+    original_load = type(interpreter.interpreter_builder).create_masked_load
+    with pytest.raises(KeyError):
+        sanitize._bounds_patch({"violations": [], "violation_count": 0, "launches": 0, "kernel": None,
+                                "starts": None, "ends": None})
+    assert type(interpreter.interpreter_builder).create_masked_load is original_load
+
+
+def test_the_tilelens_startup_control_names_the_role_directory():
+    import ast
+
+    probe = Path(__file__).resolve().parents[1] / "src/eval_tools/probes/tilelens_probe.py"
+    calls = [node for node in ast.walk(ast.parse(probe.read_text())) if isinstance(node, ast.Dict)
+             and any(isinstance(key, ast.Constant) and key.value == "violation_count" for key in node.keys)]
+    assert calls and all(any(isinstance(key, ast.Constant) and key.value == "root" for key in node.keys)
+                         for node in calls)
+
+
 def test_bounds_checks_active_accesses_against_the_launch_buffers(monkeypatch):
     import numpy as np
     import torch
@@ -231,7 +254,8 @@ def test_bounds_checks_active_accesses_against_the_launch_buffers(monkeypatch):
     interpreter, pointer = _fake_interpreter(monkeypatch, calls)
     builder_type = type(interpreter.interpreter_builder)
     original_load = builder_type.create_masked_load
-    state = {"violations": [], "violation_count": 0, "launches": 0, "kernel": None, "starts": None, "ends": None}
+    state = {"violations": [], "violation_count": 0, "launches": 0, "kernel": None, "starts": None, "ends": None,
+             "root": "solution"}
     unpatch = sanitize._bounds_patch(state)
     try:
         buffer = torch.zeros(4, dtype=torch.float32)  # 16 bytes: the only argument buffer

@@ -23,7 +23,7 @@ SIDECAR_PYTHON = "/opt/venv/bin/python"
 ADAPTER = "aka_v3"
 REPORT_PREFIX = "ARENA_EVAL_RESULT="
 ROLES = ("candidate", "baseline")
-V3_LANGUAGES = frozenset({"triton", "gluon", "hip", "flydsl"})
+V3_LANGUAGES = frozenset({"triton", "gluon", "hip", "flydsl", "asm"})
 NO_CACHING = {
     "PYTORCH_NO_HIP_MEMORY_CACHING": "1",
     "AMD_PYTORCH_NO_CUDA_MEMORY_CACHING": "1",

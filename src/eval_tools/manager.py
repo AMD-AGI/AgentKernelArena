@@ -39,6 +39,30 @@ BASELINE_ALSO_FOUND = "baseline_also_found"
 _LISTED_FINDINGS = 16
 
 
+def _finding_signature(finding: Any) -> tuple[str, str | None, tuple[str, ...]]:
+    kernel = (finding.metadata or {}).get("kernel")
+    return finding.kind, str(kernel) if kernel else None, tuple(finding.locations)
+
+
+def _baseline_reports_every(candidate: tuple, baseline: tuple) -> bool:
+    """Whether every candidate finding is also one of the baseline's.
+
+    A finding with a kernel or a location must match a baseline finding in
+    kind, kernel and location. One with neither (a page fault, a CSAN race)
+    matches a baseline finding of the same kind.
+    """
+    signatures = {_finding_signature(item) for item in baseline}
+    kinds = {item.kind for item in baseline}
+    for item in candidate:
+        kind, kernel, locations = _finding_signature(item)
+        if kernel is None and not locations:
+            if kind not in kinds:
+                return False
+        elif (kind, kernel, locations) not in signatures:
+            return False
+    return True
+
+
 def _finding_identity(finding: Any) -> dict[str, Any]:
     """A finding's kind, kernel and locations, as recorded in a baseline check."""
     identity: dict[str, Any] = {"kind": finding.kind}
@@ -513,9 +537,9 @@ class EvalToolManager:
     ) -> ToolRunResult:
         """Rerun a gate tool on the task's baseline after a candidate finding.
 
-        A finding the baseline shares is a property of the task (its reference
-        implementation does the same), so it is recorded but does not block
-        the candidate. The baseline run is otherwise identical: same tool,
+        A finding the baseline shares (same kind, kernel and location) is a
+        property of the task: its reference implementation does the same. It
+        is recorded but does not block the candidate. The baseline run is otherwise identical: same tool,
         runtime, options and timeout, in a fresh artifact directory.
         """
 
@@ -545,14 +569,13 @@ class EvalToolManager:
             baseline = None
             check = {"execution": "tool_error", "error": f"{type(exc).__name__}: {exc}"[:2000]}
         metadata = {**dict(result.metadata), "baseline_check": check}
-        # Shared means the baseline reports every kind of finding the candidate
-        # does; a candidate fault is not excused by an unrelated baseline report.
+        # Shared means the baseline reports every candidate finding, in the same
+        # kernel at the same location where the tool locates it; a new race or
+        # out-of-bounds access elsewhere is not excused by an older one.
         if baseline is not None and baseline.finding == FindingStatus.FOUND:
-            candidate_kinds = {item.kind for item in result.findings}
-            baseline_kinds = {item.kind for item in baseline.findings}
-            check["kinds"] = sorted(baseline_kinds)
+            check["kinds"] = sorted({item.kind for item in baseline.findings})
             check["findings"] = [_finding_identity(item) for item in baseline.findings[:_LISTED_FINDINGS]]
-            if candidate_kinds <= baseline_kinds:
+            if _baseline_reports_every(result.findings, baseline.findings):
                 metadata[BASELINE_ALSO_FOUND] = True
                 # The candidate findings this excuses, so a report shows them.
                 check["excused"] = [_finding_identity(item) for item in result.findings[:_LISTED_FINDINGS]]

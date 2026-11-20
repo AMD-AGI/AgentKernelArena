@@ -40,7 +40,7 @@ def main() -> int:
         from src.tools.arena_eval.sanitize import _bounds_patch
 
         state = {"violations": [], "violation_count": 0, "launches": 0, "kernel": None, "starts": None,
-                 "ends": None}
+                 "ends": None, "root": "solution"}
         unpatch = _bounds_patch(state)
         try:
             copy_kernel[(1,)](source, destination, shift, BLOCK=1024)

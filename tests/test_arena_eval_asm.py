@@ -457,3 +457,16 @@ def test_the_integrity_guard_covers_the_asm_helper_and_facade(monkeypatch):
     monkeypatch.setattr(asm.FACADE, "load", lambda *a: None)
     with pytest.raises(integrity.TamperError, match="aka_asm.load was rebound"):
         check("test")
+
+
+def test_capture_writes_every_loaded_code_object(tmp_path, monkeypatch):
+    """Waitcheck analyses exactly the bytes aka_asm handed to HIP, vendored or assembled."""
+    from src.tools.arena_eval import sanitize
+
+    monkeypatch.setattr(asm._STATE, "opened", {"ab" * 32: {"image": b"\x7fELF-one", "symbols": ["k1"]},
+                                               "cd" * 32: {"image": b"\x7fELF-two", "symbols": ["k2", "k3"]}})
+    objects = sanitize._asm_code_objects(tmp_path)
+    assert objects == [{"code_object": "asm-00.co", "sha256": "ab" * 32, "kernels": None},
+                       {"code_object": "asm-01.co", "sha256": "cd" * 32, "kernels": None}]
+    assert (tmp_path / "asm-01.co").read_bytes() == b"\x7fELF-two"
+    assert asm.opened_code_objects()[1] == ("cd" * 32, b"\x7fELF-two", ["k2", "k3"])

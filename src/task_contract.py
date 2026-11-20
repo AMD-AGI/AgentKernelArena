@@ -828,7 +828,9 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         "- On a single-GPU task, the final evaluation also runs sanitizers on the correctness cases: "
         "PyTorch's caching allocator off (an access past a tensor faults), PyTorch's CUDA Sanitizer, a "
         "symbolic bounds check of Triton/Gluon kernels, and static wait-hazard and simulated race checks "
-        "of the kernels you launch. A definite finding the baseline does not share stops performance scoring.",
+        "of the kernels you launch. A definite finding the baseline does not share stops performance scoring. "
+        "The bounds check reads the Triton source: an out-of-bounds address blocks even on a load whose "
+        "value is unused or that the compiler removes.",
         "", "## Commands", "", "```sh",
         f"python3 -m {EVAL_DIR}.evaluate candidate compile",
         f"python3 -m {EVAL_DIR}.evaluate candidate correctness",

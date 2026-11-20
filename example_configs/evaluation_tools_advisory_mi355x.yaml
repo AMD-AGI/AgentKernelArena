@@ -14,10 +14,13 @@
 # The runner already uses one writable socket directory per tool and a narrow
 # repository-root `.eval-tool-artifacts/<label>` mount, explicitly RW-mounted
 # into scoring even when the broad repository mount is read-only. It still
-# starts sidecars in the same agent/scoring phase, so this is diagnostic rather
-# than a tamper-resistant reward boundary. Production gating requires a separate
-# post-agent evaluator phase, evaluator-only/authenticated RPC, and trusted
-# candidate/capsule provenance.
+# starts sidecars in the same agent/scoring phase, so tool results are
+# diagnostic evidence rather than a tamper-resistant reward boundary. The
+# default gated policy uses them only as a scoring gate: a finding can withhold
+# a score but never raise one, so evading a tool gains a candidate nothing.
+# Treating tool results as evidence about adversarial candidates requires a
+# separate post-agent evaluator phase, evaluator-only/authenticated RPC, and
+# trusted candidate/capsule provenance.
 agent:
   template: claude_code
 

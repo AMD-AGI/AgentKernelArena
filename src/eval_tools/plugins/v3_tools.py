@@ -58,10 +58,10 @@ def _engine(context: ToolContext, tool: str, ready_languages: set[str], reasons:
     if language in reasons:
         return blocked_check(CapabilityState.UNSUPPORTED, f"{tool}_{language}_unsupported", reasons[language])
     if language not in aka_v3.V3_LANGUAGES:
-        # A target language no v3 tool is qualified on (asm) is unverified,
-        # not skipped as not applicable.
+        # A target language no v3 tool is qualified on is unverified, not
+        # skipped as not applicable.
         return blocked_check(CapabilityState.UNSUPPORTED, f"{tool}_language_unsupported",
-                             f"{tool} supports triton, gluon, hip and flydsl, not {language!r}.")
+                             f"{tool} supports {', '.join(sorted(aka_v3.V3_LANGUAGES))}, not {language!r}.")
     return blocked_check(CapabilityState.NOT_APPLICABLE, f"{tool}_language_not_applicable",
                          f"{tool} does not apply to {language} kernels.")
 
@@ -111,7 +111,8 @@ def fpsan_invocation(plugin, context: ToolContext) -> ToolInvocation:
 
 def asan_engine(context: ToolContext) -> CapabilityCheck:
     return _engine(context, "gpu_asan", {"hip", "triton", "gluon"},
-                   {"flydsl": "No FlyDSL release inserts AMD GPU ASan instrumentation."})
+                   {"flydsl": "No FlyDSL release inserts AMD GPU ASan instrumentation.",
+                    "asm": "Hand-written assembly carries no AddressSanitizer instrumentation."})
 
 
 def asan_invocation(plugin, context: ToolContext) -> ToolInvocation:
@@ -135,13 +136,14 @@ def asan_parse(plugin, context: ToolContext, execution):
 
 
 def waitcheck_engine(context: ToolContext) -> CapabilityCheck:
-    return _engine(context, "rocjitsu_waitcheck", {"triton", "gluon", "hip", "flydsl"}, {})
+    return _engine(context, "rocjitsu_waitcheck", {"triton", "gluon", "hip", "flydsl", "asm"}, {})
 
 
 def rocjitsu_engine(context: ToolContext) -> CapabilityCheck:
     return _engine(context, "rocjitsu", {"triton", "gluon"}, {
         "hip": "HIP candidates have no automatic replay capture: a launch needs its lowered ABI and memory.",
         "flydsl": "FlyDSL launches expose no lowered ABI to capture, so no replay capsule can be built.",
+        "asm": "Assembly launches are not captured as replay capsules yet.",
     })
 
 

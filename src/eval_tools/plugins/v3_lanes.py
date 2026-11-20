@@ -52,7 +52,7 @@ def _v3_engine(context: ToolContext, tool: str, languages: frozenset[str],
         return blocked_check(
             CapabilityState.UNSUPPORTED,
             f"{tool}_language_unsupported",
-            f"{tool} supports triton, gluon, hip and flydsl, not {language!r}.",
+            f"{tool} supports {', '.join(sorted(aka_v3.V3_LANGUAGES))}, not {language!r}.",
         )
     if language in unsupported:
         return blocked_check(CapabilityState.UNSUPPORTED, f"{tool}_{language}_unsupported", unsupported[language])
@@ -298,6 +298,7 @@ class TileLensPlugin(_LanePlugin):
                               message=f"{item.get('op')} of {item.get('bytes')} byte(s) at {item.get('address')} "
                                       f"({item.get('lanes')} lane(s)) outside every argument buffer of "
                                       f"{item.get('kernel')}",
+                              kernel=str(item.get("kernel")) if item.get("kernel") else None,
                               location="; ".join(item.get("location") or [])[:600] or None)
                 for item in (confirmation.get("violations") or [])[:16]
             ) or (FindingRecord(kind="out-of-bounds", message="An interpreter run accessed outside every buffer"),)

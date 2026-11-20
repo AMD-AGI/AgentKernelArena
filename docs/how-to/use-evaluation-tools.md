@@ -61,22 +61,21 @@ network access (see below), or set `evaluation_tools: false`.
 
 | Tool | Default | Role | What it checks | Languages |
 | --- | --- | --- | --- | --- |
-| `page_fault_guard` | on | gate | Every correctness case with PyTorch's caching allocator and ROCr's fragment allocator off. An access past an allocation then reaches an unmapped page and the GPU faults instead of landing silently in a neighbouring tensor; an output that passed correctness but then fails it far outside its bound (a non-finite value, more than 10 times the bound, or more than 1% of elements, and at least 8, over it) is also a finding; a smaller excess is recorded as unverified, since split-K and atomic kernels vary that much from run to run. | Triton, Gluon, HIP, FlyDSL |
-| `csan` | on | gate | Every correctness case under PyTorch's CUDA Sanitizer: unsynchronized access to a tensor from two streams by PyTorch-visible work, which includes a HIP candidate's custom op. Raw Triton, Gluon and FlyDSL launches are not visible to it. | all four |
-| `tilelens` | on | gate | The smallest case with every Triton kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). A reported access is a finding only when a concrete rerun of the same case in the interpreter, with every active load, store and atomic address checked against the launch's argument buffers, reproduces an out-of-bounds access; otherwise it is unverified. Uses no GPU time. Gluon is reported unsupported. | Triton |
-| `rocjitsu_waitcheck` | on | gate | Static missing or too-weak wait detection on every kernel the role dispatched. One call on the smallest case captures the final code objects (Triton/Gluon cache, the HIP extension's embedded bundle, FlyDSL's embedded HSACO). | all four |
-| `rocjitsu` | on | gate | rocJITsu's simulated LDS/register race detector. Each captured Triton or Gluon launch becomes a replay capsule (code object, lowered ABI, launch geometry, memory before and after) replayed once in the simulator. | Triton, Gluon |
+| `page_fault_guard` | on | gate | Every correctness case with PyTorch's caching allocator and ROCr's fragment allocator off. An access past an allocation then reaches an unmapped page and the GPU faults instead of landing silently in a neighbouring tensor; an output that passed correctness but then fails it far outside its bound (a non-finite value, more than 10 times the bound, or more than 1% of elements, and at least 8, over it) is also a finding; a smaller excess is recorded as unverified, since split-K and atomic kernels vary that much from run to run. | Triton, Gluon, HIP, FlyDSL, asm |
+| `csan` | on | gate | Every correctness case under PyTorch's CUDA Sanitizer: unsynchronized access to a tensor from two streams by PyTorch-visible work, which includes a HIP candidate's custom op. Raw Triton, Gluon, FlyDSL and asm launches are not visible to it. | all five |
+| `tilelens` | on | gate | The smallest case with every Triton kernel run by TileLens 3.1.1 in Triton's CPU interpreter; each load and store address is checked against its tensor symbolically (z3 over program id, mask and loop bounds). A reported access is a finding only when a concrete rerun of the same case in the interpreter, with every active load, store and atomic address checked against the launch's argument buffers, reproduces an out-of-bounds access; otherwise it is unverified. Uses no GPU time. The check reads the source, so an out-of-bounds address blocks even on a load whose value is unused or that the compiler removes; `CANDIDATE.md` says so. Gluon is reported unsupported. | Triton |
+| `rocjitsu_waitcheck` | on | gate | Static missing or too-weak wait detection on every kernel the role dispatched. One call on the smallest case captures the final code objects (Triton/Gluon cache, the HIP extension's embedded bundle, FlyDSL's embedded HSACO, every code object `aka_asm` loaded). | all five |
+| `rocjitsu` | on | gate | rocJITsu's simulated LDS/register race detector. Each captured Triton or Gluon launch becomes a replay capsule (code object, lowered ABI, launch geometry, memory before and after) replayed once in the simulator. Assembly launches are not captured as capsules yet, so `asm` is unsupported. | Triton, Gluon |
 | `triton_fpsan` | on | signal | The smallest case through Triton FpSan for the candidate and the baseline. A different digest means a different floating-point expression, which a correct rewrite (online softmax, another reduction order or precision) also produces, so this never blocks. | Triton or Gluon candidate with a Triton or Gluon baseline |
-| `gpu_asan` | **off** | gate | Every correctness case with GPU AddressSanitizer instrumentation: HIP rebuilt with `-fsanitize=address -shared-libsan --offload-arch=gfx950:xnack+`, Triton and Gluon compiled with `TRITON_ENABLE_ASAN=1` and buffer ops off. | HIP, Triton, Gluon; bare-metal hosts only |
+| `gpu_asan` | **off** | gate | Every correctness case with GPU AddressSanitizer instrumentation: HIP rebuilt with `-fsanitize=address -shared-libsan --offload-arch=gfx950:xnack+`, Triton and Gluon compiled with `TRITON_ENABLE_ASAN=1` and buffer ops off. | HIP, Triton, Gluon; bare-metal hosts only (hand-written `asm` carries no instrumentation) |
 
 Turn the stage off with `evaluation_tools: false` (or `enabled: []`). Any
 explicit `evaluation_tools` section is used exactly as written instead of the
 defaults. A `qa_auditor` run starts no default tools, because it never
 evaluates a candidate. The default tools do not run on a multi-GPU task (a
 contract with `world_size` above 1): each lane calls the operator in one
-process on one GPU, so every tool records the task as `unsupported`. No tool
-is qualified on `asm` candidates yet; each records them as `unsupported`. To
-add GPU ASan on a bare-metal host, list the defaults plus `gpu_asan`:
+process on one GPU, so every tool records the task as `unsupported`. To add
+GPU ASan on a bare-metal host, list the defaults plus `gpu_asan`:
 
 ```yaml
 evaluation_tools:
@@ -93,20 +92,34 @@ a semantic comparison; set `evaluation_tools.tools.<tool>.role` to override):
   finding: a fault, a sanitizer report, a race or hazard record, or an output
   far outside its bound with the allocator changed.
 - After a candidate finding the manager reruns the same tool on the task's
-  baseline. When the baseline reports every kind of finding the candidate
-  does, the finding is recorded with `baseline_also_found: true` and does not
-  block: the reference implementation does the same thing. The record's
-  `baseline_check` lists the baseline's findings (`findings`) and the
-  candidate findings this excused (`excused`), each with its kind, kernel and
-  locations, and the run log names the excused kinds. A finding of a kind the
-  baseline does not report still blocks. On a task whose baseline
-  has a finding of some kind, that tool therefore cannot block a candidate
-  for that kind; the page-fault guard and the other gates still apply.
+  baseline. When the baseline reports every candidate finding, the finding is
+  recorded with `baseline_also_found: true` and does not block: the reference
+  implementation does the same thing. A finding that names a kernel or a
+  location (Waitcheck, rocJITsu, TileLens) must match a baseline finding in
+  kind, kernel and location; one with neither (a page fault, an
+  allocator-sensitive output, a CSAN race) matches by kind. TileLens locations
+  are relative to the role's directory, so a candidate that copies the
+  baseline reports the same location. The record's `baseline_check` lists the
+  baseline's findings (`findings`) and the candidate findings this excused
+  (`excused`), each with its kind, kernel and locations, and the run log names
+  the excused kinds. Any other finding blocks, including a new race or
+  out-of-bounds access in a kernel whose baseline already has one elsewhere.
+  On a task whose baseline has an unlocated finding (it faults with the
+  caching allocators off), that tool cannot block a candidate's finding of
+  the same kind; the other gates still apply.
 - Anything that is not a definite finding — an unsupported construct, a
   kernel TileLens cannot interpret, a tool error, a timeout, a capture that
   recorded nothing — is recorded as unverified (`policy_satisfied: false`) and
   does not block.
 - A `signal` never blocks.
+
+The `gated` default is a scoring gate, not a security boundary. A gate can
+only withhold performance scoring: a candidate that evades or interferes
+with a tool scores no higher than it would with the stage off, and what it
+can hide is a finding. That makes the stage safe to run by default even
+though, as described under the phase boundary below, its sidecars run in the
+same phase as the agent and its results are not tamper-resistant evidence
+about an adversarial candidate.
 
 `decision.blocking` lists the findings that stopped performance; a gated
 report's `decision.reasons` still lists every unverified tool. Monitor the
@@ -1117,7 +1130,8 @@ generate attestations and AOT capsules there. Per-tool socket directories and a
 narrow per-worker artifact mount are already implemented, but the current
 single-container runner does not automate this phase boundary, so its tool
 results should be treated as diagnostic evidence rather than tamper-resistant
-rewards.
+rewards. The default `gated` policy fits within that limit: it uses a finding
+only to withhold a score, never to raise one.
 
 ### Held-out integrity
 
