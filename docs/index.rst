@@ -29,11 +29,15 @@ repository.
       * :doc:`Run an experiment <how-to/run-evaluation>`
       * :doc:`Check kernels with evaluation tools <how-to/use-evaluation-tools>`
       * :doc:`Run tasks in parallel across multiple GPUs <how-to/parallel-run>`
+      * :doc:`Run tasks on a Slurm cluster <how-to/slurm-run>`
       * :doc:`Configure agents and models <how-to/agents>`
       * :doc:`Task definition, schema, and authoring <how-to/add-task>`
+      * :doc:`Build tasks from a SIKL bundle <how-to/sikl-task-builder>`
       * :doc:`Optimize kernels through serving throughput <how-to/e2e-kernel-tasks>`
       * :doc:`Validate tasks <how-to/task-validator>`
       * :doc:`Audit and repair tasks <how-to/quality-loop>`
+      * :doc:`Run held-out evaluation <how-to/held-out-evaluation>`
+      * :doc:`Visualize results <how-to/visualization>`
 
    .. grid-item-card:: Examples
 

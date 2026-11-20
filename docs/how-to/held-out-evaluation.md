@@ -5,7 +5,7 @@ myst:
         "keywords": "AgentKernelArena, held-out evaluation, generalization, GPU kernel, private tests, unseen shapes"
 ---
 
-# Evaluate kernels on held-out shapes
+# Evaluate kernels on held-out shapes in AgentKernelArena
 
 The optional `src.held_out` module evaluates whether an optimized kernel
 generalizes to input shapes that were not visible during the original run.

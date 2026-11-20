@@ -15,122 +15,120 @@ variables.
 
 ## Prerequisites
 
-The following prerequisites are required before running AgentKernelArena.
+Verify that you have the following before continuing.
 
-- **Linux host with a supported AMDGPU kernel driver:** `/dev/kfd` and
-  `/dev/dri` must be present. The runner also mounts `/dev/mem` when present.
-- **Docker Engine:** the current user must be able to access the Docker daemon
-  without `sudo`.
-- **Runtime image:** `gfx942` uses
-  `lmsysorg/sglang:v0.5.12-rocm720-mi30x`; `gfx950` uses
-  the digest-pinned SGLang 0.5.20 / ROCm 10 image declared in
-  [`docker_benchmark.sh`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh). The runner selects from
-  `target_gpu_model` for experiment runs and from the visible host GPU for shell
-  and smoke commands.
-  For `gfx1201`, the runner automatically builds the default
-  [RDNA4 runtime](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md) on first use if it is missing.
-- **Git**
-- **Node.js 22+ and npm**, when using the alternative npm installation of Claude
-  Code or another npm-installed agent CLI. DeepSeek Harness uses a dedicated
-  Node.js 24 prefix; see [its setup guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md).
-- The selected agent CLI installed and authenticated on the host. The Docker
-  runner provisions only the configured agent for a normal run. Codex, Claude
-  Code, Cursor Agent, and DeepSeek Harness have host-CLI checks. See
-  [Configure agents and models](../how-to/agents.md).
+- **A Linux host with an AMD GPU and the ROCm kernel driver installed:**
+  The runner passes the GPU into the container through `/dev/kfd` and
+  `/dev/dri`; both device files must exist on your host. If they are missing,
+  install the driver from the
+  [ROCm installation guide](https://rocm.docs.amd.com/en/latest/deploy/linux/index.html).
 
-## Docker runner
+- **Docker Engine, accessible without `sudo`:**
+  Every experiment runs inside a container. The Makefile targets call Docker
+  directly, so your user must be able to reach the Docker daemon without
+  elevated privileges. Follow the
+  [Docker post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/)
+  to add your user to the `docker` group if needed.
 
-From the repository root, use the Docker-first Makefile targets. The runner does
-not copy credentials into an image; it mounts the selected integration's host
-login state or forwards its provider environment variables.
+- You need **Git** to clone the repository. Install it from
+  [git-scm.com](https://git-scm.com/downloads) or your distribution's package
+  manager.
 
-An optional top-level `docker_image` string in a run YAML selects the image for
-that run. Prefer an immutable `repository@sha256:...` reference. Image selection
-uses this priority: `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_<ARCH>`, the config's
-`docker_image`, then the architecture default. Experiment GPU architecture still
-comes from `target_gpu_model` or `AKA_GPU_ARCH`; agent checks use the host GPU or
-`AKA_GPU_ARCH`. Selecting an image does not change the architecture.
-The setting applies to preflight, agent checks, serial runs, parallel workers,
-and quality-loop runs. Shell and smoke commands use environment overrides and
-architecture defaults because they do not select a run config. Config image
-overrides also disable automatic RDNA4 builds. Invalid explicit values fail
-before a container is launched.
+- **An installed and authenticated agent CLI:**
+  The runner provisions only the agent selected by your run configuration; it
+  cannot install or authenticate the CLI for you. Install and authenticate
+  before running an agent check or experiment. See
+  [Install agent CLIs](#install-agent-clis) below, then
+  [Configure agents and models](../how-to/agents.md) for model and
+  provider setup.
 
-The [DeepSeek draft validator config](https://github.com/AMD-AGI/AgentKernelArena/blob/main/example_configs/task_validator_deepseek_drafts_mi355x.yaml)
-pins its MI355X run to the tested ROCm 10 image. The runner supplies writable
-AITER/FlyDSL caches and AITER configuration storage for that image, which is also
-the MI355X default. Other GPU architecture defaults are unchanged.
+- **Node.js 22+ and npm** *(required only for npm-installed agent CLIs):*
+  Claude Code supports npm as an alternative to its native installer. DeepSeek
+  Harness requires a dedicated Node.js 24 prefix with both `bin/node` and
+  `bin/dsh`. If you plan to use either, install Node.js from
+  [nodejs.org](https://nodejs.org/). See the
+  [DeepSeek Harness README](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agents/deepseek_harness/README.md)
+  for its specific Node.js prefix setup.
 
-Start a separate run after changing images. Ordinary runs record the selected
-image reference in materialization and baseline state, and resume rejects a
-different runtime. Older workspaces without that image identity also require a
-fresh run; their runtime cannot be verified retrospectively. Pin custom images
-by digest when comparing experiments.
-An image upgrade changes the compiler and runtime libraries as well as ROCm;
-measure baseline and candidate in the same runtime and keep older results
-associated with their original image.
+## Set up the Docker runner
 
-To roll back, select `GFX950_V0514_IMMUTABLE_IMAGE` from the
-[runner image definitions](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh) with
-`docker_image` or `AKA_DOCKER_IMAGE`, and start a fresh run. Evaluation tools
-also need the matching repository revision and sidecar set; the ROCm 10 tool
-profile deliberately rejects the old scoring image.
+Clone the repository and verify the container runtime and GPU:
 
-The MI355X runner selects the SDK core libraries for workloads and routes
-`rocprofv3` to that same installation used by PyTorch.
-The image's original console entrypoint chooses a separate developer tree;
-loading both trees in a Python workload can abort with duplicate LLVM option
-registration. The wrapper preserves profiler arguments and GPU selection.
-`rocprof-compute` is an optional package and is not bundled in this image; see
-the [runtime guide](../reference/mi355x-runtime.md#sdk-and-profiling) for
-SDK library selection and profiler availability boundaries.
+```bash
+git clone https://github.com/AMD-AGI/AgentKernelArena.git
+cd AgentKernelArena
 
-Some image-backed tasks require a dedicated runtime, including tasks that
-materialize vLLM source directories. Select their documented image explicitly
-through the run config's `docker_image` field; the MI355X default does not supply
-every task's external dependencies. Optional evaluation tools have their own
-[scoring-image compatibility requirements](../how-to/use-evaluation-tools.md).
+make docker-smoke
+```
 
-To reproduce a run on the previous MI355X runtime, explicitly select its digest:
+The runner mounts the selected integration's host login state or forwards its
+provider environment variables — it does not copy credentials into an image.
+
+Before starting an experiment, install and authenticate the agent selected by
+your configuration. The next section covers the supported host CLIs.
+
+**Optional:** Open an interactive shell in the same environment:
+
+```bash
+make docker-shell
+```
+
+On a Slurm or Spur cluster where the login node has no GPU or Docker daemon, use
+the scheduler wrapper instead. See [Run on Slurm or Spur GPU nodes](../how-to/slurm-run.md).
+
+### Select an image
+
+The runner selects a default image based on the GPU architecture. To use a
+different image, set `docker_image` in your run YAML, or set `AKA_DOCKER_IMAGE`
+or `AKA_DOCKER_IMAGE_<ARCH>` in the environment. Use an immutable
+`repository@sha256:...` reference when pinning an image for reproducibility.
+
+Image selection priority: `AKA_DOCKER_IMAGE`, `AKA_DOCKER_IMAGE_<ARCH>`, the
+config's `docker_image`, then the architecture default. Selecting an image does
+not change the GPU architecture; that still comes from `target_gpu_model` or
+`AKA_GPU_ARCH`. Config image overrides also disable automatic RDNA4 builds.
+Invalid values fail before a container is launched.
+
+Always start a fresh run after changing images. Runs record the selected image
+in materialization and baseline state, and resume rejects a changed runtime.
+Measure baseline and candidate in the same runtime.
+
+Some tasks require a dedicated runtime — for example, tasks that materialize vLLM
+source directories. Set their documented image explicitly through `docker_image`;
+the MI355X default does not supply every task's external dependencies. Optional
+evaluation tools have their own [scoring-image compatibility requirements](../how-to/use-evaluation-tools.md).
+
+:::{note}
+The MI355X runner routes `rocprofv3` to the same SDK installation used by
+PyTorch workloads. `rocprof-compute` is not bundled in this image. See the
+[runtime guide](../reference/mi355x-runtime.md#sdk-and-profiling) for SDK
+library selection and profiler availability.
+:::
+
+**Optional — roll back to the previous MI355X runtime:** Set
+`AKA_DOCKER_IMAGE_GFX950` to the old digest and start a fresh run:
 
 ```bash
 AKA_DOCKER_IMAGE_GFX950=lmsysorg/sglang-rocm@sha256:b435b508b5aa696abb25c909341ce73e41574c4271cf716bed72418dcea86b78 \
   make docker-run CONFIG=example_configs/quickstart_claude_mi355x.yaml
 ```
 
-```bash
-git clone https://github.com/AMD-AGI/AgentKernelArena.git
-cd AgentKernelArena
+Alternatively, select `GFX950_V0514_IMMUTABLE_IMAGE` from the
+[runner image definitions](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh)
+via `docker_image` or `AKA_DOCKER_IMAGE`. Evaluation tools also need the
+matching repository revision and sidecar set; the ROCm 10 tool profile
+deliberately rejects the old scoring image.
 
-# Verify the container runtime and GPU.
-make docker-smoke
-```
+### Set up RDNA4 (`gfx1201`)
 
-Start an interactive shell in the same environment:
-
-```bash
-make docker-shell
-```
-
-On a Slurm/Spur cluster where the login node has no GPU or Docker daemon, use
-the scheduler wrapper instead. It allocates the GPU node before invoking this
-same Docker runtime. See [Run on Slurm/Spur GPU nodes](../how-to/slurm-run.md).
-
-Install and authenticate the agent selected by your configuration before
-starting an experiment; the next section covers the first-class host CLIs.
-
-### RDNA4 (`gfx1201`)
-
-The RDNA4 image normalizes the upstream Python and ROCm SDK paths so the same
-runner can execute as the host user. On the GPU host, the first command builds
-the default image if it is missing, then checks the runtime:
+The runner automatically builds the default RDNA4 image on first use if it is
+missing. Run the smoke check on the GPU host:
 
 ```bash
 make docker-smoke
 ```
 
-You can also start a task directly; its preflight prepares the same image.
-After installing and authenticating Claude Code, use:
+After installing and authenticating Claude Code, verify the agent and run a task:
 
 ```bash
 CONFIG_PATH=example_configs/quickstart_claude_rdna4.yaml
@@ -138,15 +136,17 @@ make docker-check-agents CONFIG="$CONFIG_PATH"
 make docker-run CONFIG="$CONFIG_PATH"
 ```
 
-Existing images are reused. `make docker-build-rdna4` remains available for
-prebuilding or rebuilding after recipe changes. Explicit image overrides disable
-automatic builds; see the runtime guide for custom image handling.
+**Optional:** To prebuild or rebuild the image before running:
 
-The smoke check requires `rocprofv3` on `gfx1201`; the CDNA profiler requirement
-is unchanged. See the [image recipe and limitations](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md)
-for its pinned base, non-root runtime layout, and task coverage. A successful
-smoke establishes runtime availability, not support for every task or profiler
-analysis of an optimized candidate.
+```bash
+make docker-build-rdna4
+```
+
+Explicit image overrides disable automatic builds. The smoke check requires
+`rocprofv3` on `gfx1201`. A successful smoke establishes runtime availability,
+not support for every task or profiler analysis of an optimized candidate. See
+the [image recipe and limitations](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md)
+for the pinned base, non-root runtime layout, and task coverage.
 
 ## Install agent CLIs
 
@@ -235,7 +235,7 @@ than changing a shared example in place:
 cp "$CONFIG_PATH" my_experiment.yaml
 ```
 
-## FlyDSL tasks (optional)
+## Install FlyDSL (optional)
 
 `flydsl2flydsl`, `torch2flydsl`, `triton2flydsl`, and `operator2flydsl` tasks
 need the `flydsl` package inside the container. The selected image may already

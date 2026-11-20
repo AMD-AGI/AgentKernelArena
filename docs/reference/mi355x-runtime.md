@@ -1,4 +1,11 @@
-# MI355X runtime and compatibility
+---
+myst:
+    html_meta:
+        "description": "MI355X runtime configuration for AgentKernelArena, covering the SGLang 0.5.20 / ROCm 10 image manifest, gfx950 compatibility, and optional evaluation tool runtimes."
+        "keywords": "MI355X, runtime, ROCm 10, SGLang, gfx950, evaluation tools, AgentKernelArena, Docker"
+---
+
+# MI355X runtime and compatibility for AgentKernelArena
 
 The MI355X default is the immutable SGLang 0.5.20 / ROCm 10 manifest
 selected in [`docker_benchmark.sh`](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/scripts/docker_benchmark.sh).

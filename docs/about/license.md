@@ -5,7 +5,7 @@ myst:
         "keywords": "AgentKernelArena, license, Apache 2.0, open source, AMD"
 ---
 
-# License
+# AgentKernelArena license
 
 AgentKernelArena is released under the Apache License, Version 2.0. The full
 license text is in the
