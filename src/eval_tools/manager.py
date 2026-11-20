@@ -35,6 +35,19 @@ from .task_profile import resolve_task_profile
 
 
 BASELINE_ALSO_FOUND = "baseline_also_found"
+# Findings listed per side in a baseline check record.
+_LISTED_FINDINGS = 16
+
+
+def _finding_identity(finding: Any) -> dict[str, Any]:
+    """A finding's kind, kernel and locations, as recorded in a baseline check."""
+    identity: dict[str, Any] = {"kind": finding.kind}
+    kernel = (finding.metadata or {}).get("kernel")
+    if kernel:
+        identity["kernel"] = str(kernel)
+    if finding.locations:
+        identity["locations"] = list(finding.locations)
+    return identity
 
 
 def evaluate_policy(
@@ -472,7 +485,7 @@ class EvalToolManager:
                 plan.policy == EvaluationPolicy.GATED
                 and tool_plan.role == ToolRole.GATE
                 and result.finding == FindingStatus.FOUND
-                and getattr(plugin, "baseline_check", False)
+                and plugin.baseline_check
             ):
                 result = self._baseline_check(plugin, tool_plan, context, root, plan.fingerprint, result)
             evaluations.append(ToolEvaluation(capability=capability, result=result))
@@ -538,8 +551,11 @@ class EvalToolManager:
             candidate_kinds = {item.kind for item in result.findings}
             baseline_kinds = {item.kind for item in baseline.findings}
             check["kinds"] = sorted(baseline_kinds)
+            check["findings"] = [_finding_identity(item) for item in baseline.findings[:_LISTED_FINDINGS]]
             if candidate_kinds <= baseline_kinds:
                 metadata[BASELINE_ALSO_FOUND] = True
+                # The candidate findings this excuses, so a report shows them.
+                check["excused"] = [_finding_identity(item) for item in result.findings[:_LISTED_FINDINGS]]
         return replace(result, metadata=metadata)
 
     # ``execute`` reads naturally at evaluator integration sites and remains an

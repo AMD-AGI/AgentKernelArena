@@ -28,6 +28,7 @@ from .execution import (
     execute_command,
 )
 from .config import MAX_TOOL_TIMEOUT_SECONDS
+from .plugins import aka_v3
 from .plugins.base import FINDING, PASS
 from .plugins.parsers import parse_consan, parse_waitcheck
 
@@ -915,17 +916,6 @@ def _hip_fpsan_positive(
     )
 
 
-_NO_CACHING = {
-    "PYTORCH_NO_HIP_MEMORY_CACHING": "1",
-    "AMD_PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
-    "HSA_DISABLE_FRAGMENT_ALLOCATOR": "1",
-}
-_FAULT_RE = re.compile(
-    r"Memory access fault by GPU|HSA_STATUS_ERROR_MEMORY_FAULT|Memory Fault Error|illegal memory access",
-    re.I,
-)
-
-
 def _python() -> str:
     return shutil.which("python") or os.sys.executable
 
@@ -942,14 +932,14 @@ def _page_fault_guard_positive(probe_root: Path, work_dir: Path, artifact_dir: P
     for name in ("safe", "far"):
         steps[name] = _run_probe_step(
             name, [_python(), str(probe_root / "page_fault_probe.py"), name], cwd=work_dir,
-            environment=_probe_environment(work_dir, **_NO_CACHING,
+            environment=_probe_environment(work_dir, **aka_v3.NO_CACHING,
                                            TRITON_CACHE_DIR=str(work_dir / "triton-cache")),
             artifact_dir=artifact_dir,
         )
     safe, far = steps["safe"], steps["far"]
     safe_ok = safe["returncode"] == 0 and "SAFE_RUN_COMPLETED" in safe["_stdout"]
     far_ok = far["returncode"] not in (0, None) and not far["timed_out"] and bool(
-        _FAULT_RE.search(str(far["_stderr"]) + str(far["_stdout"])))
+        aka_v3.FAULT_RE.search(str(far["_stderr"]) + str(far["_stdout"])))
     return _positive_result(
         passed=safe_ok and far_ok,
         kind="page_fault_guard_safe_and_far_store",

@@ -71,8 +71,12 @@ network access (see below), or set `evaluation_tools: false`.
 
 Turn the stage off with `evaluation_tools: false` (or `enabled: []`). Any
 explicit `evaluation_tools` section is used exactly as written instead of the
-defaults. To add GPU ASan on a bare-metal host, list the defaults plus
-`gpu_asan`:
+defaults. A `qa_auditor` run starts no default tools, because it never
+evaluates a candidate. The default tools do not run on a multi-GPU task (a
+contract with `world_size` above 1): each lane calls the operator in one
+process on one GPU, so every tool records the task as `unsupported`. No tool
+is qualified on `asm` candidates yet; each records them as `unsupported`. To
+add GPU ASan on a bare-metal host, list the defaults plus `gpu_asan`:
 
 ```yaml
 evaluation_tools:
@@ -91,8 +95,11 @@ a semantic comparison; set `evaluation_tools.tools.<tool>.role` to override):
 - After a candidate finding the manager reruns the same tool on the task's
   baseline. When the baseline reports every kind of finding the candidate
   does, the finding is recorded with `baseline_also_found: true` and does not
-  block: the reference implementation does the same thing. A finding of a
-  kind the baseline does not report still blocks. On a task whose baseline
+  block: the reference implementation does the same thing. The record's
+  `baseline_check` lists the baseline's findings (`findings`) and the
+  candidate findings this excused (`excused`), each with its kind, kernel and
+  locations, and the run log names the excused kinds. A finding of a kind the
+  baseline does not report still blocks. On a task whose baseline
   has a finding of some kind, that tool therefore cannot block a candidate
   for that kind; the page-fault guard and the other gates still apply.
 - Anything that is not a definite finding — an unsupported construct, a
@@ -364,6 +371,14 @@ any missing default image on first use):
 ```bash
 src/scripts/docker_benchmark.sh build-eval-tool-images
 ```
+
+Each image runs its own copy of `src/eval_tools`. A build labels the image
+with a SHA-256 of its Dockerfile and every checkout file the Dockerfile copies
+(`com.amd.agent-kernel-arena.eval-tool-source`). Before it starts a sidecar,
+the runner compares that label with the current checkout and rebuilds a
+default image built from other sources. An image named by
+`AKA_EVAL_TOOL_IMAGE_<TOOL>` is used as given, with a warning when its label
+differs.
 
 The default local tags are:
 

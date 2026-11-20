@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-from ..contracts import KernelLanguage, ToolContext, ToolInvocation
+from ..contracts import CapabilityCheck, CapabilityState, KernelLanguage, ToolContext, ToolInvocation
 from ..task_declarations import is_v3_task
 
 SIDECAR_PYTHON = "/opt/venv/bin/python"
@@ -62,6 +62,28 @@ def baseline_language(context: ToolContext) -> str:
 
 def role_language(context: ToolContext) -> str:
     return baseline_language(context) if role(context) == "baseline" else target_language(context)
+
+
+def world_size(context: ToolContext) -> int:
+    """The number of GPUs (ranks) the task's operator runs on; 1 for a single-GPU task."""
+    return int(_contract(context).get("world_size") or 1)
+
+
+def multi_gpu_check(context: ToolContext, tool: str) -> Optional[CapabilityCheck]:
+    """``unsupported`` for a multi-GPU task, else None.
+
+    Every v3 lane calls the operator once in one process without a rank, so
+    it cannot run an operator that spans several ranks.
+    """
+
+    ranks = world_size(context)
+    if ranks <= 1:
+        return None
+    return CapabilityCheck.blocked(
+        CapabilityState.UNSUPPORTED, f"{tool}_multi_gpu_unsupported",
+        f"{tool} runs the operator in one process on one GPU; this task's operator runs on {ranks} ranks.",
+        world_size=ranks,
+    )
 
 
 def language_enum(value: str) -> KernelLanguage:

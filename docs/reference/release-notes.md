@@ -81,8 +81,11 @@ This topic summarizes the features available in each AgentKernelArena release. F
   cannot run its runtime.
 - Gluon candidates are supported by FpSan, GPU ASan, Waitcheck and rocJITsu
   through the v3 path; TileLens 3.1.1 reports Gluon unsupported.
-- The runner builds missing default sidecar images on first use, and the
-  Waitcheck sidecar now gets the worker's GPU for capture.
+- The runner builds missing default sidecar images on first use and rebuilds
+  one whose recorded tool sources differ from the checkout. The Waitcheck
+  sidecar now gets the worker's GPU for capture.
+- The defaults do not start for a `qa_auditor` run, and every default tool
+  records a multi-GPU task or an `asm` candidate as `unsupported`.
 - `evaluation_tools: false` disables the stage. See
   [Check kernels with evaluation tools](../how-to/use-evaluation-tools.md#default-sanitizers-for-schema-v3-tasks).
 

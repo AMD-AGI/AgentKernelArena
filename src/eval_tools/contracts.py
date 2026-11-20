@@ -806,6 +806,9 @@ class RuntimeClient(Protocol):
 class ToolPlugin(Protocol):
     name: str
     version: str
+    # Whether the manager reruns this tool on the task's baseline after a
+    # candidate finding under the ``gated`` policy.
+    baseline_check: bool
 
     def assess(
         self, context: ToolContext, runtime: CapabilityCheck

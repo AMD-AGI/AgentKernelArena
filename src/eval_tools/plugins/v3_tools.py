@@ -45,6 +45,9 @@ SUPPORTED_ARCH = "gfx950"
 
 
 def _engine(context: ToolContext, tool: str, ready_languages: set[str], reasons: dict[str, str]) -> CapabilityCheck:
+    multi_gpu = aka_v3.multi_gpu_check(context, tool)
+    if multi_gpu is not None:
+        return multi_gpu
     language = aka_v3.role_language(context)
     if language in ready_languages:
         if context.gpu_arch and context.gpu_arch != SUPPORTED_ARCH:
@@ -54,6 +57,11 @@ def _engine(context: ToolContext, tool: str, ready_languages: set[str], reasons:
         return ready_check(adapter=aka_v3.ADAPTER, language=language)
     if language in reasons:
         return blocked_check(CapabilityState.UNSUPPORTED, f"{tool}_{language}_unsupported", reasons[language])
+    if language not in aka_v3.V3_LANGUAGES:
+        # A target language no v3 tool is qualified on (asm) is unverified,
+        # not skipped as not applicable.
+        return blocked_check(CapabilityState.UNSUPPORTED, f"{tool}_language_unsupported",
+                             f"{tool} supports triton, gluon, hip and flydsl, not {language!r}.")
     return blocked_check(CapabilityState.NOT_APPLICABLE, f"{tool}_language_not_applicable",
                          f"{tool} does not apply to {language} kernels.")
 
@@ -79,6 +87,9 @@ def _triton_profile(context: ToolContext) -> ToolContext:
 
 
 def fpsan_engine(context: ToolContext) -> CapabilityCheck:
+    multi_gpu = aka_v3.multi_gpu_check(context, "triton_fpsan")
+    if multi_gpu is not None:
+        return multi_gpu
     languages = {aka_v3.target_language(context), aka_v3.baseline_language(context)}
     if not languages <= {"triton", "gluon"}:
         return blocked_check(CapabilityState.NOT_APPLICABLE, "triton_fpsan_needs_triton_pair",

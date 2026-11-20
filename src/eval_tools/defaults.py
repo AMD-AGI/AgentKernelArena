@@ -5,7 +5,8 @@ sanitizers. The Docker runner starts ``DEFAULT_ENABLED`` on a default
 architecture and publishes the started set as ``AKA_EVAL_TOOLS_SELECTED``;
 the scoring process then plans that set under ``DEFAULT_POLICY`` with each
 tool's default role. ``evaluation_tools: false`` (or ``enabled: []``) turns
-the stage off, and an explicit section keeps full control.
+the stage off, and an explicit section keeps full control. A QA-auditor run
+starts no defaults: it never evaluates a candidate.
 
 GPU AddressSanitizer is supported but not a default: its runtime needs XNACK
 host-memory access, which virtualized GPU hosts do not provide. Enable it on
@@ -48,6 +49,9 @@ DEFAULT_POLICY = "gated"
 # Per-tool deadline on the default path; a timeout is recorded as unverified.
 DEFAULT_TIMEOUT_S = 1200
 DEFAULT_ARCHITECTURES = frozenset({"gfx950"})
+# Agents whose tasks never reach the final candidate evaluation, where the
+# tools run; the defaults would only start idle sidecars for them.
+NO_CANDIDATE_EVALUATION_AGENTS = frozenset({"qa_auditor"})
 
 
 def default_role(tool: str) -> str:
@@ -57,6 +61,9 @@ def default_role(tool: str) -> str:
 def runner_selection(config: object, gpu_arch: str) -> tuple[str, ...]:
     """The tools the runner starts for a parsed run configuration."""
     if not isinstance(config, dict) or "evaluation_tools" not in config:
+        agent = config.get("agent") if isinstance(config, dict) else None
+        if isinstance(agent, dict) and agent.get("template") in NO_CANDIDATE_EVALUATION_AGENTS:
+            return ()
         return DEFAULT_ENABLED if gpu_arch in DEFAULT_ARCHITECTURES else ()
     section = config["evaluation_tools"]
     if section in (None, False):

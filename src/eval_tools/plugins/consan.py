@@ -50,6 +50,9 @@ def _commands(context: ToolContext) -> tuple[tuple[str, ...], tuple[str, ...]]:
 class ConSanPlugin:
     name = ToolName.ROCJITSU_CONSAN.value
     version = "1"
+    # The task-declared adapter names only the candidate's code object, so
+    # there is no baseline to rerun.
+    baseline_check = False
 
     def assess(self, context: ToolContext, runtime: CapabilityCheck) -> ToolCapability:
         profile = context.profile

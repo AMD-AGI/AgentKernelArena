@@ -5,7 +5,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..plugins.gpu_asan import GPU_ASAN_ENV, hip_asan_build_flags
+
+# GPU ASan's runtime environment and HIP build flags, shared by the gpu_asan
+# plugin and its HIP rebuild recipe.
+GPU_ASAN_ENV = {
+    "HSA_XNACK": "1",
+    "HSA_DISABLE_FRAGMENT_ALLOCATOR": "1",
+    "AMD_PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
+    "PYTORCH_NO_HIP_MEMORY_CACHING": "1",
+    "AMDGCN_USE_BUFFER_OPS": "0",
+    "ASAN_OPTIONS": "detect_leaks=0,alloc_dealloc_mismatch=0",
+}
+
+
+def hip_asan_build_flags(target_arch: str) -> tuple[str, ...]:
+    arch = target_arch.split(":", 1)[0].strip()
+    if not arch.startswith("gfx"):
+        raise ValueError(f"invalid AMD GPU architecture: {target_arch!r}")
+    return ("-fsanitize=address", "-shared-libsan", f"--offload-arch={arch}:xnack+")
 
 
 @dataclass(frozen=True)

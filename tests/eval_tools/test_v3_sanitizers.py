@@ -80,6 +80,10 @@ def test_runner_starts_defaults_only_without_a_section_on_a_default_architecture
     assert defaults.runner_selection({"evaluation_tools": {"enabled": ["gpu_asan"]}}, "gfx950") == ("gpu_asan",)
     assert defaults.runner_selection({"evaluation_tools": {"enabled": True}}, "gfx950") == defaults.ALL_TOOLS
     assert "gpu_asan" not in defaults.DEFAULT_ENABLED
+    # A QA audit never evaluates a candidate; an explicit section still applies.
+    qa = {"agent": {"template": "qa_auditor"}}
+    assert defaults.runner_selection(qa, "gfx950") == ()
+    assert defaults.runner_selection({**qa, "evaluation_tools": {"enabled": ["csan"]}}, "gfx950") == ("csan",)
 
 
 def test_defaults_name_every_registered_tool():
@@ -207,7 +211,12 @@ def test_a_gate_finding_is_rechecked_on_the_baseline(tmp_path, found_for, baseli
     if found_for:
         assert runtime.commands == [("lane", "candidate"), ("lane", "baseline")]
         assert bool(result.metadata.get(BASELINE_ALSO_FOUND)) is shared
-        assert result.metadata["baseline_check"]["finding"] == ("found" if "baseline" in found_for else "clean")
+        check = result.metadata["baseline_check"]
+        assert check["finding"] == ("found" if "baseline" in found_for else "clean")
+        if "baseline" in found_for:
+            assert check["findings"] == [{"kind": baseline_kind}]
+        # The excused candidate findings are listed only when they are excused.
+        assert check.get("excused") == ([{"kind": "fault"}] if shared else None)
     else:
         assert runtime.commands == [("lane", "candidate")]
 
@@ -228,6 +237,37 @@ def test_a_gate_finding_is_rechecked_on_the_baseline(tmp_path, found_for, baseli
 def test_v3_lane_capability_by_language(tmp_path, tool, language, state):
     capability = get_plugin(tool).assess(v3_context(tmp_path, target=language), CapabilityCheck.ready())
     assert capability.effective.state == state
+
+
+def _multi_gpu_context(tmp_path, target="triton"):
+    context = v3_context(tmp_path, target=target)
+    config = {**context.task_config, "contract": {**context.task_config["contract"], "world_size": 4}}
+    return replace(context, task_config=config)
+
+
+@pytest.mark.parametrize("tool", [*defaults.DEFAULT_ENABLED, "gpu_asan"])
+def test_every_v3_tool_reports_a_multi_gpu_task_unsupported(tmp_path, tool):
+    # Each lane calls the operator in one process without a rank.
+    capability = get_plugin(tool).assess(_multi_gpu_context(tmp_path), CapabilityCheck.ready())
+    assert capability.effective.state == CapabilityState.UNSUPPORTED
+    assert capability.effective.reason_code == f"{tool}_multi_gpu_unsupported"
+    assert get_plugin(tool).assess(v3_context(tmp_path), CapabilityCheck.ready()).effective.state \
+        == CapabilityState.READY
+
+
+@pytest.mark.parametrize("tool", ["page_fault_guard", "csan", "tilelens", "rocjitsu_waitcheck", "rocjitsu",
+                                  "gpu_asan"])
+def test_an_unqualified_target_language_is_unsupported_not_skipped(tmp_path, tool):
+    capability = get_plugin(tool).assess(v3_context(tmp_path, target="asm"), CapabilityCheck.ready())
+    assert capability.effective.state == CapabilityState.UNSUPPORTED
+
+
+def test_a_multi_gpu_task_is_unverified_but_not_blocked_by_the_gated_policy(tmp_path):
+    capability = get_plugin("page_fault_guard").assess(_multi_gpu_context(tmp_path), CapabilityCheck.ready())
+    decision = evaluate_policy(EvaluationPolicy.GATED, (ToolEvaluation(capability=capability),),
+                               {"page_fault_guard": ToolRole.GATE})
+    assert decision.allowed and not decision.policy_satisfied
+    assert decision.reasons == ("page_fault_guard:capability:unsupported",)
 
 
 def test_v3_lanes_do_not_apply_without_the_v3_runner(tmp_path):
@@ -293,6 +333,24 @@ def test_page_fault_guard_verdicts(tmp_path):
         cases=[{"metadata": {"error": "AcceleratorError: CUDA error: an illegal memory access was encountered"}}]),
         returncode=1))
     assert crashed.finding == FindingStatus.FOUND
+
+
+def test_page_fault_guard_judges_a_mixed_report_by_its_cases(tmp_path):
+    crash = {"test_case_id": "m1", "status": "FAIL", "failure_kind": "execution_error",
+             "metadata": {"error": "RuntimeError: launch failed"}}
+
+    def judge(*cases):
+        return _parse("page_fault_guard", tmp_path, execution(report(
+            "page_fault_guard", "FAIL", failure_kind="mixed", reason=f"{len(cases)} cases failed",
+            cases=list(cases)), returncode=1))
+
+    # A marginal mismatch and an error without a fault are each unverified, so together too.
+    assert judge(_mismatch_case(), crash).finding == FindingStatus.INCONCLUSIVE
+    assert judge(_mismatch_case(peak_bound_multiple=50.0), crash).finding == FindingStatus.FOUND
+    mutated = {"test_case_id": "m2", "status": "FAIL", "failure_kind": "input_mutation"}
+    assert judge(mutated, crash).finding == FindingStatus.FOUND
+    errors = judge(crash, {**crash, "failure_kind": "policy_violation"})
+    assert errors.finding == FindingStatus.INCONCLUSIVE and errors.execution == ExecutionStatus.TOOL_ERROR
 
 
 @pytest.mark.parametrize("stdout", [

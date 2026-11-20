@@ -79,6 +79,10 @@ docker() {
             image) [[ -f "$FAKE_RUNTIME_DIR/image-present" ]] || return 1 ;;
         esac
     fi
+    if [[ "${1:-}" == "image" && "${2:-}" == "inspect" && " $* " == *".Config.Labels"* ]]; then
+        printf '%s\n' "${FAKE_EVAL_TOOL_LABEL:-}"
+        return 0
+    fi
     if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
         local reference="${!#}"
         if [[ "$reference" == "$PINNED_GFX950_IMMUTABLE_IMAGE" ]]; then
@@ -1309,6 +1313,37 @@ printf 'tasks: []\nevaluation_tools: false\n' > "$EVAL_DEFAULT_CONFIG"
 printf 'tasks: []\nevaluation_tools:\n  enabled: [gpu_asan, csan]\n' > "$EVAL_DEFAULT_CONFIG"
 [[ "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950 | tr '\n' ' ')" == "gpu_asan csan " ]] \
     || fail "an explicit evaluation_tools.enabled list must be used as given"
+printf 'tasks: []\nagent:\n  template: qa_auditor\n' > "$EVAL_DEFAULT_CONFIG"
+[[ -z "$(bash "$RUNNER" _resolve_eval_tools "$EVAL_DEFAULT_CONFIG" gfx950)" ]] \
+    || fail "a QA-auditor run must not start the default sanitizers"
+
+# Each image runs its own copy of the tool sources: a default image whose
+# source label differs from this checkout is rebuilt, and an overridden one is
+# used as given with a warning.
+eval_digest="$(bash "$RUNNER" _eval_tool_source_digest page_fault_guard)"
+[[ "$eval_digest" =~ ^[0-9a-f]{64}$ ]] || fail "evaluation-tool source digest was: $eval_digest"
+[[ "$eval_digest" != "$(bash "$RUNNER" _eval_tool_source_digest tilelens)" ]] \
+    || fail "images with different Dockerfiles must have different source digests"
+EVAL_IMAGE_DIR="$TEST_HOME/eval-image"
+mkdir -p "$EVAL_IMAGE_DIR"
+touch "$EVAL_IMAGE_DIR/image-present"
+FAKE_RUNTIME_DIR="$EVAL_IMAGE_DIR" FAKE_EVAL_TOOL_LABEL="$eval_digest" \
+    bash "$RUNNER" _ensure_eval_tool_image page_fault_guard example.invalid/pfg:test >/dev/null 2>&1 \
+    || fail "a current evaluation-tool image was rejected"
+[[ ! -e "$EVAL_IMAGE_DIR/build-args" ]] || fail "a current evaluation-tool image was rebuilt"
+FAKE_RUNTIME_DIR="$EVAL_IMAGE_DIR" FAKE_EVAL_TOOL_LABEL="0000" \
+    bash "$RUNNER" _ensure_eval_tool_image page_fault_guard example.invalid/pfg:test >/dev/null 2>&1 \
+    || fail "a stale evaluation-tool image was not rebuilt"
+grep -Fxq "com.amd.agent-kernel-arena.eval-tool-source=$eval_digest" "$EVAL_IMAGE_DIR/build-args" \
+    || fail "a rebuilt evaluation-tool image does not carry its source label"
+rm -f "$EVAL_IMAGE_DIR/build-args"
+stale_warning="$(FAKE_RUNTIME_DIR="$EVAL_IMAGE_DIR" FAKE_EVAL_TOOL_LABEL="0000" \
+    AKA_EVAL_TOOL_IMAGE_PAGE_FAULT_GUARD=example.invalid/pfg:mine \
+    bash "$RUNNER" _ensure_eval_tool_image page_fault_guard example.invalid/pfg:mine 2>&1 >/dev/null)" \
+    || fail "an overridden evaluation-tool image was rejected"
+[[ ! -e "$EVAL_IMAGE_DIR/build-args" ]] || fail "an overridden evaluation-tool image was rebuilt"
+[[ "$stale_warning" == *"not built from this checkout's tool sources"* ]] \
+    || fail "a stale overridden evaluation-tool image gave no warning: $stale_warning"
 
 framework_record="$(
     env -u AKA_EVAL_TOOL_FRAMEWORK_ROOT PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'

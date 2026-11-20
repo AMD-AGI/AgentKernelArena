@@ -134,6 +134,7 @@ def evaluate_kernel(
     # The policy decides only whether performance may proceed.
     if eval_tools_config is not None:
         from .eval_tools.config import EvalToolsConfig, merge_task_tool_config
+        from .eval_tools.manager import BASELINE_ALSO_FOUND
 
         parsed_tool_config = (
             eval_tools_config
@@ -158,12 +159,23 @@ def evaluate_kernel(
                 original_evidence=tool_source_evidence,
             )
             results['tool_evaluation'] = report.to_dict()
+            for evaluation in report.evaluations:
+                tool_result = evaluation.result
+                if tool_result is not None and tool_result.metadata.get(BASELINE_ALSO_FOUND):
+                    log.warning(
+                        "Evaluation tool %s: %d finding(s) not blocking because the baseline reports "
+                        "the same kind: %s",
+                        tool_result.tool, tool_result.findings_count,
+                        ", ".join(sorted({item.kind for item in tool_result.findings})),
+                    )
             results['pass_tool_gate'] = report.decision.allowed
             results['tool_policy_satisfied'] = report.decision.policy_satisfied
             if not report.decision.allowed:
                 log.warning(
-                    "Evaluation-tool required policy rejected performance: %s",
-                    ", ".join(report.decision.reasons) or "unspecified tool failure",
+                    "Evaluation-tool %s policy blocked performance: %s",
+                    report.decision.policy.value,
+                    ", ".join(report.decision.blocking or report.decision.reasons)
+                    or "unspecified tool failure",
                 )
                 return results
 

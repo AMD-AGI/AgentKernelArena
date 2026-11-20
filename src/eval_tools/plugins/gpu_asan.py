@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..adapters.hip_source import GPU_ASAN_ENV, hip_asan_build_flags
 from ..contracts import (
     ArtifactKind,
     CapabilityCheck,
@@ -16,6 +17,7 @@ from ..contracts import (
     ToolName,
     ToolRunResult,
 )
+from . import aka_v3, v3_tools
 from .attestation import BuildAttestation
 from .base import (
     artifact_path,
@@ -29,16 +31,6 @@ from .base import (
 from .parsers import parse_gpu_asan
 
 
-GPU_ASAN_ENV = {
-    "HSA_XNACK": "1",
-    "HSA_DISABLE_FRAGMENT_ALLOCATOR": "1",
-    "AMD_PYTORCH_NO_CUDA_MEMORY_CACHING": "1",
-    "PYTORCH_NO_HIP_MEMORY_CACHING": "1",
-    "AMDGCN_USE_BUFFER_OPS": "0",
-    "ASAN_OPTIONS": "detect_leaks=0,alloc_dealloc_mismatch=0",
-}
-
-
 def _prepend_paths(*values: str | None, inherited: str = "") -> str:
     paths: list[str] = []
     for value in (*values, inherited):
@@ -47,15 +39,6 @@ def _prepend_paths(*values: str | None, inherited: str = "") -> str:
                 paths.append(item)
     return ":".join(paths)
 
-
-def hip_asan_build_flags(target_arch: str) -> tuple[str, ...]:
-    arch = target_arch.split(":", 1)[0].strip()
-    if not arch.startswith("gfx"):
-        raise ValueError(f"invalid AMD GPU architecture: {target_arch!r}")
-    return ("-fsanitize=address", "-shared-libsan", f"--offload-arch={arch}:xnack+")
-
-
-from . import aka_v3, v3_tools
 
 class GpuAsanPlugin:
     name = ToolName.GPU_ASAN.value

@@ -15,6 +15,7 @@ from ..contracts import (
     ToolName,
     ToolRunResult,
 )
+from . import aka_v3, v3_tools
 from .attestation import BuildAttestation
 from .base import (
     artifact_path,
@@ -26,8 +27,6 @@ from .base import (
 )
 from .parsers import parse_fpsan_comparison
 
-
-from . import aka_v3, v3_tools
 
 class TritonFpSanPlugin:
     name = ToolName.TRITON_FPSAN.value

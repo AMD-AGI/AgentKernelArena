@@ -13,6 +13,7 @@ from ..contracts import (
     ToolName,
     ToolRunResult,
 )
+from . import aka_v3, v3_tools
 from .base import (
     blocked_check,
     unsupported_language_check,
@@ -46,8 +47,6 @@ def _expected_kernel(context: ToolContext) -> str:
         raise ValueError("expected_kernel must be a non-empty NUL-free string")
     return value
 
-
-from . import aka_v3, v3_tools
 
 class WaitcheckPlugin:
     name = ToolName.ROCJITSU_WAITCHECK.value

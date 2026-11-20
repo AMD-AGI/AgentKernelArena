@@ -21,6 +21,7 @@ from ..contracts import (
     ToolName,
     ToolRunResult,
 )
+from . import aka_v3, v3_tools
 from .base import (
     INCONCLUSIVE,
     ParseResult,
@@ -108,8 +109,6 @@ def _race_report_path(context: ToolContext) -> Path:
         Path("rocjitsu-report") / "race.log",
     )
 
-
-from . import aka_v3, v3_tools
 
 class RocJitsuPlugin:
     name = ToolName.ROCJITSU.value

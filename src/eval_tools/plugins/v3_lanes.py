@@ -44,6 +44,9 @@ def _v3_engine(context: ToolContext, tool: str, languages: frozenset[str],
             f"{tool}_requires_v3_runner",
             f"{tool} runs the generated schema-v3 workspace runner; this task has none.",
         )
+    multi_gpu = aka_v3.multi_gpu_check(context, tool)
+    if multi_gpu is not None:
+        return multi_gpu
     language = aka_v3.role_language(context)
     if language not in aka_v3.V3_LANGUAGES:
         return blocked_check(
@@ -159,16 +162,18 @@ class PageFaultGuardPlugin(_LanePlugin):
             finding = FindingRecord(kind="gpu-memory-fault", message="an illegal device memory access was reported "
                                     "while the caching allocators were off", raw=text[:4000])
             return ParseResult(FINDING, (finding,), "page_fault_guard_fault", attested=True)
-        if kind in ("numerical_mismatch", "input_mutation", "mixed"):
-            if kind == "numerical_mismatch" and not _gross_mismatch(report):
-                # A small excess over the case's bound is indistinguishable from
-                # the task's own run-to-run variation (split-K, atomics).
-                return ParseResult(INCONCLUSIVE, reason_code="page_fault_guard_marginal_mismatch",
-                                   details=text[:4000], attested=True)
+        # A ``mixed`` report is judged by the kinds of its failed cases.
+        kinds = _failed_kinds(report) if kind == "mixed" else {kind}
+        if "input_mutation" in kinds or ("numerical_mismatch" in kinds and _gross_mismatch(report)):
             finding = FindingRecord(kind="allocator-sensitive-output", message="outputs that passed correctness "
                                     "changed when the caching allocators were off: the role reads memory it does "
                                     "not own", raw=text[:4000])
             return ParseResult(FINDING, (finding,), "page_fault_guard_allocator_sensitive", attested=True)
+        if "numerical_mismatch" in kinds:
+            # A small excess over the case's bound is indistinguishable from
+            # the task's own run-to-run variation (split-K, atomics).
+            return ParseResult(INCONCLUSIVE, reason_code="page_fault_guard_marginal_mismatch",
+                               details=text[:4000], attested=True)
         return ParseResult(TOOL_ERROR, reason_code=f"page_fault_guard_{kind or 'failed'}", details=text[:4000])
 
 
@@ -180,16 +185,22 @@ GROSS_VIOLATION_FRACTION = 0.01
 GROSS_MIN_ELEMENTS = 8
 
 
+def _failed_kinds(report: dict) -> set:
+    return {row.get("failure_kind") for row in report.get("cases") or [] if row.get("status") != "PASS"}
+
+
 def _gross_mismatch(report: dict) -> bool:
-    """Whether a failed output is far outside its bound, not a marginal miss.
+    """Whether a numerically failed output is far outside its bound, not a marginal miss.
 
     Gross: a non-finite value where the reference is finite, an error over
     ``GROSS_BOUND_MULTIPLE`` times the case's bound, more than
     ``GROSS_VIOLATION_FRACTION`` of the elements (and at least
     ``GROSS_MIN_ELEMENTS``) outside it, or a failure without these metrics.
+    Cases that failed another way (an execution error) are not judged here.
     """
 
-    failing = [row for row in report.get("cases") or [] if row.get("status") != "PASS"]
+    failing = [row for row in report.get("cases") or [] if row.get("status") != "PASS"
+               and row.get("failure_kind", "numerical_mismatch") == "numerical_mismatch"]
     if not failing:
         return True
     for row in failing:
