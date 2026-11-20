@@ -1,0 +1,65 @@
+schema_version: 3
+description: >-
+  out = dequant(a) @ dequant(w)^T with MXFP4 activations a [m, 4608] and weights w [7168, 4608], both stored as two
+  e2m1 codes per byte (a: [m, 2304], w: [7168, 2304]; the even K index is the low nibble) with e8m0 scales per 32
+  values of K (uint8, value 2^(s - 127)), accumulated in float32 and rounded to bfloat16. Kernel-facing layout of
+  AITER's asm GEMM: a row-major; a_scales [ceil(m / 256) * 256, 144] in AITER's e8m0_shuffle layout with zero padding
+  rows, as the activation quantizer writes them; w 16x16-preshuffled (shuffle_weight) and w_scales [7168, 144]
+  e8m0_shuffled (see README.md).
+operator: {name: gemm_afp4wfp4, category: gemm}
+interface:
+  axes:
+    m: {kind: var, min: 1, max: 16384, description: Rows (tokens) of the activation matrix.}
+    n: {kind: const, value: 7168, description: Output channels (DeepSeek-R1 hidden size).}
+    k: {kind: const, value: 4608, description: Contracted dimension (unpacked fp4 values).}
+  inputs:
+    a: {kind: tensor, shape: [m, k // 2], dtype: uint8, distribution: {kind: generator}}
+    a_scales: {kind: tensor, shape: [(m + 255) // 256 * 256, k // 32], dtype: uint8, distribution: {kind: generator}}
+    w: {kind: tensor, shape: [n, k // 2], dtype: uint8, role: weight, distribution: {kind: generator}}
+    w_scales: {kind: tensor, shape: [n, k // 32], dtype: uint8, role: weight, distribution: {kind: generator}}
+  outputs:
+    out: {shape: [m, n], dtype: bfloat16}
+  generator: {file: inputs.py, symbol: make_inputs}
+  layout: {file: inputs.py, symbol: to_kernel_layout}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: asm
+  entry: baseline/kernel.py
+  provenance:
+    source: ROCm/aiter
+    revision: 4ad99832823dde2315b361cbd3b54b1c5c12acd5
+    path:
+      - csrc/py_itfs_cu/asm_gemm_a4w4.cu
+      - csrc/py_itfs_cu/gemm_common.cu
+      - aiter/ops/gemm_op_a4w4.py
+      - aiter/ops/shuffle.py
+      - aiter/utility/fp4_utils.py
+      - aiter/configs/model_configs/dsv3_a4w4_blockscale_tuned_gemm.csv
+      - hsa/gfx950/f4gemm/f4gemm_bf16_per1x32Fp4.csv
+      - hsa/gfx950/f4gemm/f4gemm_bf16_per1x32Fp4_BpreShuffle_{32x128,64x128,128x128,256x128,256x256,128x512}.co
+    license: MIT
+    modifications: >-
+      Code objects vendored byte for byte. The host side is translated to Python in baseline/kernel.py: the tuned
+      lookup of gemm_a4w4 (get_GEMM_config with exact M, then getPaddedM granularity 0 and 1) over the gfx950 / 256-CU
+      rows of the DeepSeek-V3 a4w4 table for N=7168, K=4608 (15 rows, M 1..16384, every one an asm kernel with
+      splitK 0), inlined as a dict; and the gfx950 launcher gemm_a4w4_asm of asm_gemm_a4w4.cu: the packed KernelArgs
+      (16-byte fields, alpha 1, beta 0, no bias, stride_C0 in output elements, A/B strides in fp4 elements, scale
+      strides in bytes, log2_k_split 0, the fields the launcher leaves unset written as 0 and the struct padded to the
+      code objects' 384-byte kernarg segment) and grid (ceil(N / tile_n), ceil(M / tile_m), 1) x 256 threads. With
+      splitK 0 the launcher's split-K memset never runs. gemm_a4w4 allocates its output with M rounded up to 32 rows
+      and returns the first M; the kernels store only rows below M (verified), so the baseline writes the task's [m, n]
+      output directly. The gfx1250-only f4gemm path (asm_f4gemm.cu) does not apply. AITER's shuffle_weight(layout=(16,
+      16)) and e8m0_shuffle of the weight scales are the task's layout function, and the activation-scale layout of
+      dynamic_mxfp4_quant(shuffle=True) is generated directly by the task's generator (inputs.py).
+    code_objects:
+      baseline/f4gemm_bf16_per1x32Fp4_BpreShuffle_32x128.co: c8eb89ab72a40ffb37e266bcf027dc9437c8b71f5e4751cab13180156e3fc432
+      baseline/f4gemm_bf16_per1x32Fp4_BpreShuffle_64x128.co: 3bf26600cc3cf293bd079bd966ed1de4dbcfa13691f2d73e0e9eb3c723861c31
+      baseline/f4gemm_bf16_per1x32Fp4_BpreShuffle_128x128.co: e643a602b21635595dc660e8c77e3d3059829df39f0397d44437f4f466e69967
+      baseline/f4gemm_bf16_per1x32Fp4_BpreShuffle_256x128.co: 5ca8871eed85d086db3304c75a29f4cec58a5aa5a936de9beae0a973aff65e4a
+      baseline/f4gemm_bf16_per1x32Fp4_BpreShuffle_256x256.co: ff0d6bb10a211068997cbb2d846734092270324cafcaf32281ce5fb50946ffa1
+      baseline/f4gemm_bf16_per1x32Fp4_BpreShuffle_128x512.co: c32d5356e5d92b77202ef90cfad4318cc990a3f3e1c305fabd808e441a8d1b85
+compare:
+  out: {bound: baseline_relative}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]

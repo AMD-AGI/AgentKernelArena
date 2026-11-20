@@ -24,6 +24,7 @@ LANGUAGE_IMPORTS = {
     "triton": ("triton", "triton.language"),
     "gluon": ("triton", "triton.language", "triton.experimental", "triton.experimental.gluon"),
     "flydsl": ("flydsl",),
+    "asm": ("aka_asm",),
 }
 # Triton subpackages that are other kernel languages or library kernels.
 TRITON_EXCLUDED = ("triton.experimental", "triton.tools", "triton.ops", "triton.testing",
@@ -124,6 +125,18 @@ def _rooted_at_self(node: ast.AST) -> bool:
     return isinstance(node, ast.Name) and node.id == "self"
 
 
+# What candidates may use of the aka_asm facade; mirrors asm.API (asm imports torch, the audit must not).
+AKA_ASM_API = frozenset({"load", "u32", "i32", "u64", "i64", "f32", "AsmError"})
+
+
+def _check_aka_asm_path(where: str, qualified: str) -> None:
+    """``aka_asm`` exposes only its public API; every other attribute is evaluator-internal."""
+    parts = qualified.split(".")
+    if parts[0] == "aka_asm" and len(parts) > 1 and parts[1] not in AKA_ASM_API:
+        raise PolicyError(f"{where}: aka_asm.{parts[1]} is not part of the aka_asm API "
+                          f"({', '.join(sorted(AKA_ASM_API))})")
+
+
 def _check_getattr(where: str, node: ast.Call, names: dict[str, str]) -> None:
     """``getattr(obj, "name")`` follows the attribute rules; a computed name only works on ``self``."""
     if len(node.args) < 2 or node.keywords:
@@ -134,6 +147,8 @@ def _check_getattr(where: str, node: ast.Call, names: dict[str, str]) -> None:
         base = _qualified(obj, names)
         if base and f"{base}.{name.value}".startswith("torch."):
             _check_torch_path(where, f"{base}.{name.value}")
+        if base:
+            _check_aka_asm_path(where, f"{base}.{name.value}")
     elif not _rooted_at_self(obj):
         raise PolicyError(f"{where}: getattr with a computed name is allowed only on self (attribute "
                           "proxies); name the attribute directly")
@@ -161,6 +176,8 @@ def _allowed_import(module: str, language: str) -> bool:
         return True
     if language == "flydsl" and top == "flydsl":
         return True
+    if language == "asm" and module == "aka_asm":
+        return True
     return False
 
 
@@ -169,8 +186,18 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
     if language not in LANGUAGE_IMPORTS:
         raise PolicyError(f"{language} is not a Python target language")
     python = {path: text for path, text in sources.items() if path.endswith(".py")}
-    if set(sources) - set(python):
-        others = sorted(set(sources) - set(python))
+    others = sorted(set(sources) - set(python))
+    if language == "asm":
+        from .asm import SOURCE_SUFFIX, AsmError, check_source
+
+        for path in others:
+            if not path.endswith(SOURCE_SUFFIX):
+                raise PolicyError(f"An asm candidate contains only .py and {SOURCE_SUFFIX} sources; found {path}")
+            try:
+                check_source(path, sources[path])
+            except AsmError as exc:
+                raise PolicyError(str(exc)) from exc
+    elif others:
         raise PolicyError(f"A {language} candidate contains only .py sources; found {others[:4]}")
     local = {path.removesuffix(".py") for path in python}
     backend_seen = False
@@ -189,7 +216,7 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                 for alias in node.names:
                     if not _allowed_import(alias.name, language):
                         raise PolicyError(f"{where}: import {alias.name} is not allowed for {language}")
-                    backend_seen |= alias.name.split(".")[0] in ("triton", "flydsl")
+                    backend_seen |= alias.name.split(".")[0] in ("triton", "flydsl", "aka_asm")
             elif isinstance(node, ast.ImportFrom):
                 if node.level:
                     if node.level != 1:
@@ -207,14 +234,17 @@ def audit_python_sources(sources: dict[str, str], language: str) -> dict:
                         raise PolicyError(f"{where}: star imports are not allowed")
                     full = f"{module}.{alias.name}"
                     _check_attribute_name(where, alias.name)
+                    _check_aka_asm_path(where, full)
                     if module == "torch" and any(full.startswith(p) for p in TORCH_FORBIDDEN_PREFIXES):
                         raise PolicyError(f"{where}: {full} is not a candidate implementation dependency")
-                backend_seen |= module.split(".")[0] in ("triton", "flydsl")
+                backend_seen |= module.split(".")[0] in ("triton", "flydsl", "aka_asm")
             elif isinstance(node, ast.Attribute):
                 _check_attribute_name(where, node.attr)
                 qualified = _qualified(node, names)
                 if qualified and qualified.startswith("torch."):
                     _check_torch_path(where, qualified)
+                if qualified:
+                    _check_aka_asm_path(where, qualified)
             elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr":
                 _check_getattr(where, node, names)
             elif isinstance(node, ast.Name):
@@ -446,6 +476,14 @@ class LaunchObserver:
                 yield self
             finally:
                 sys.setprofile(previous)
+        elif self.language == "asm":
+            from . import asm
+
+            start = asm.launch_count()
+            try:
+                yield self
+            finally:
+                self.launches.extend(asm.launches_since(start))
         else:
             yield self
 
@@ -453,7 +491,7 @@ class LaunchObserver:
         if self.foreign:
             raise RuntimeError(f"{role} launched kernels that are not its own {self.language} kernels: "
                                f"{sorted(set(self.foreign))[:4]}")
-        if self.language in ("triton", "gluon", "flydsl") and not self.launches:
+        if self.language in ("triton", "gluon", "flydsl", "asm") and not self.launches:
             raise RuntimeError(f"No {self.language} kernel launch was observed in the {role} call")
 
 

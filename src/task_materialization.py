@@ -64,6 +64,11 @@ def _digest(value: object) -> str:
                                      allow_nan=False).encode()).hexdigest()
 
 
+def task_package_sha256(task_root: Path, timeout_s: float = 600) -> str:
+    """The ``task_package_sha256`` materialization records for the task package at ``task_root``."""
+    return package_digest(_tree_manifest(Path(task_root), _Deadline(timeout_s), excludes=tuple(_STALE_OUTPUTS)))
+
+
 def package_digest(manifest: dict[str, dict]) -> str:
     """Content identity of a task package: paths, kinds, file contents and the executable bit.
 

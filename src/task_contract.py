@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 from typing import Any, Mapping
 
@@ -25,9 +26,9 @@ from .task_spec import TaskConfigError, relative_path, required_gpu_arches
 
 TASK_FILE = "task.yaml"
 SCHEMA_VERSION = 3
-TARGET_LANGUAGES = ("triton", "gluon", "hip", "flydsl")
+TARGET_LANGUAGES = ("triton", "gluon", "hip", "flydsl", "asm")
 BASELINE_LANGUAGES = TARGET_LANGUAGES + ("tilelang",)
-PYTHON_LANGUAGES = ("triton", "gluon", "flydsl", "tilelang")
+PYTHON_LANGUAGES = ("triton", "gluon", "flydsl", "tilelang", "asm")
 CATEGORIES = (
     "activation", "attention", "convolution", "elementwise", "embedding", "gemm", "kv_cache",
     "moe", "normalization", "positional", "quantization", "reduction", "sampling", "sorting",
@@ -162,6 +163,20 @@ def _evaluate(expression: Any, symbols: dict[str, int]) -> int:
     return value
 
 
+def evaluate_dimension(expression: Any, symbols: Mapping[str, int]) -> int:
+    """Evaluate one declared shape entry (an int or an axis expression) over resolved axis values."""
+    return _evaluate(expression, dict(symbols))
+
+
+def case_symbols(interface: Mapping[str, Any], case_axes: Mapping[str, int]) -> dict[str, int]:
+    """The value of every const, var and derived axis for one workload case."""
+    symbols = {name: (axis["value"] if axis["kind"] == "const" else case_axes[name])
+               for name, axis in interface["axes"].items()}
+    for name, expression in interface.get("derived_axes", {}).items():
+        symbols[name] = _evaluate(expression, symbols)
+    return symbols
+
+
 def _is_power_of_two(value: int) -> bool:
     return value > 0 and value & (value - 1) == 0
 
@@ -216,6 +231,11 @@ class TaskContract:
     def checked_tensors(self) -> list[str]:
         return list(self.interface["outputs"]) + list(self.interface.get("mutable", []))
 
+    @property
+    def code_objects(self) -> dict[str, str]:
+        """Vendored code objects of an asm baseline: baseline path -> SHA256."""
+        return dict(self.raw["baseline"]["provenance"].get("code_objects", {}))
+
     def resolved_contract(self, target_language: str) -> dict:
         interface = self.interface
         cases = []
@@ -245,6 +265,8 @@ class TaskContract:
             "layout": deepcopy(interface.get("layout")),
             "baseline": {"language": self.baseline_language, "root": BASELINE_DIR,
                          "entry_file": baseline_entry, "symbol": "run"},
+            # SHA256 -> baseline path of every vendored code object; only these load.
+            "code_objects": {digest: path for path, digest in self.code_objects.items()},
             "candidate": {"language": target_language, "root": SOLUTION_DIR,
                           "entry_file": self.candidate_entry(target_language), "symbol": "run"},
             "cases": cases,
@@ -532,8 +554,10 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
     if baseline["entry"] != expected:
         raise TaskConfigError(f"baseline.entry must be {expected}")
     provenance = _mapping(baseline["provenance"], "baseline.provenance",
-                          {"source", "revision", "path", "license", "notes", "modifications"},
+                          {"source", "revision", "path", "license", "notes", "modifications", "code_objects"},
                           {"source", "revision", "path", "license"})
+    if "code_objects" in provenance:
+        _validate_code_objects(provenance["code_objects"], baseline["language"])
     for key in ("source", "revision", "license"):
         _text(provenance[key], f"baseline.provenance.{key}")
     paths = provenance["path"] if isinstance(provenance["path"], list) else [provenance["path"]]
@@ -561,10 +585,7 @@ def validate_task_contract(raw: Any, workloads: Any, *, task_id: str) -> TaskCon
         _int(obj["timeout_s"], "timeout_s", 60)
     _validate_workloads(workloads, axes, var, interface["inputs"])
     for case in workloads["cases"]:
-        symbols_values = {name: (axis["value"] if axis["kind"] == "const" else case["axes"][name])
-                          for name, axis in axes.items()}
-        for name, expression in interface.get("derived_axes", {}).items():
-            symbols_values[name] = _evaluate(expression, symbols_values)
+        symbols_values = case_symbols(interface, case["axes"])
         for name, declaration in [*interface["inputs"].items(), *interface["outputs"].items()]:
             for entry in declaration.get("shape", []):
                 _evaluate(entry, symbols_values)
@@ -598,6 +619,39 @@ def _unique_json(pairs):
     return result
 
 
+CODE_OBJECT_SUFFIX = ".co"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _validate_code_objects(declared, language: str) -> None:
+    """``baseline.provenance.code_objects``: vendored AMDGPU code objects, by path and SHA256."""
+    if language != "asm":
+        raise TaskConfigError("baseline.provenance.code_objects is only for asm baselines")
+    if not isinstance(declared, dict) or not declared:
+        raise TaskConfigError("baseline.provenance.code_objects maps baseline/<file>.co paths to SHA256 hashes")
+    for path, digest in declared.items():
+        if (not isinstance(path, str) or not path.startswith(BASELINE_DIR + "/") or not path.endswith(CODE_OBJECT_SUFFIX)
+                or ".." in Path(path).parts):
+            raise TaskConfigError(f"code object {path!r} must be a {CODE_OBJECT_SUFFIX} file under {BASELINE_DIR}/")
+        if not isinstance(digest, str) or not _SHA256.match(digest):
+            raise TaskConfigError(f"code object {path} needs a lowercase hex SHA256")
+
+
+def verify_code_objects(contract: "TaskContract", root: Path) -> None:
+    """Every vendored code object is declared, present and matches its SHA256."""
+    declared = contract.code_objects
+    present = {p.relative_to(root).as_posix() for p in (Path(root) / BASELINE_DIR).rglob(f"*{CODE_OBJECT_SUFFIX}")}
+    if present - set(declared):
+        raise TaskConfigError(f"undeclared code objects in {BASELINE_DIR}/: {sorted(present - set(declared))[:4]}; "
+                              "declare each in baseline.provenance.code_objects")
+    for path, digest in declared.items():
+        file = Path(root) / path
+        if not file.is_file() or file.is_symlink():
+            raise TaskConfigError(f"declared code object {path} is missing")
+        if hashlib.sha256(file.read_bytes()).hexdigest() != digest:
+            raise TaskConfigError(f"code object {path} does not match its declared SHA256")
+
+
 def load_task_contract(task_file: Path, *, task_id: str) -> TaskContract:
     task_file = Path(task_file)
     root = task_file.parent
@@ -613,7 +667,9 @@ def load_task_contract(task_file: Path, *, task_id: str) -> TaskContract:
                                    TaskConfigError(f"Invalid JSON constant {value}")))
     except (OSError, ValueError) as exc:
         raise TaskConfigError(f"Cannot read workloads: {exc}") from exc
-    return validate_task_contract(raw, workloads, task_id=task_id)
+    contract = validate_task_contract(raw, workloads, task_id=task_id)
+    verify_code_objects(contract, root)
+    return contract
 
 
 def package_files(root: Path) -> list[str]:
@@ -687,7 +743,10 @@ def _template(contract: TaskContract, language: str) -> str:
     imports = {"triton": "import torch\nimport triton\nimport triton.language as tl\n",
                "gluon": "import torch\nimport triton\nfrom triton.experimental import gluon\n"
                         "from triton.experimental.gluon import language as gl\n",
-               "flydsl": "import torch\nimport flydsl\n"}[language]
+               "flydsl": "import torch\nimport flydsl\n",
+               "asm": "import torch\nimport aka_asm\n\n"
+                      "# Load kernels from .s files in this directory at import time, for example\n"
+                      "# KERNEL = aka_asm.load(\"kernel.s\", \"my_kernel\"), and launch them from run().\n"}[language]
     return (f'"""{language} implementation of {operator}. {TEMPLATE_MARKER}\n\n'
             "Replace this template with kernels written in the target language and launch them\n"
             "from run(). See _aka_eval/CANDIDATE.md for the interface and rules.\n"
@@ -722,6 +781,21 @@ def _candidate_document(contract: TaskContract, language: str) -> str:
         lines += [f"`{SOLUTION_DIR}/kernel.py` defines:", "", "```python", _signature(contract), "```", "",
                   "Other `.py` files in the directory form one flat package; import them relatively "
                   "(`from .helpers import ...`)."]
+        if language == "asm":
+            lines += ["", "Kernels are AMDGPU assembly in `.s` files in the same directory, assembled for "
+                      "the current GPU with ROCm `clang` and `ld.lld`. `run` may only allocate, take views "
+                      "and launch them through `aka_asm`:", "", "```python", "import aka_asm",
+                      'KERNEL = aka_asm.load("kernel.s", "my_kernel")          # at import time',
+                      "KERNEL.launch(grid=(gx, gy, gz), block=(256, 1, 1),     # in run()",
+                      "              args=[a, out, aka_asm.u32(n)], shared_bytes=0)", "```", "",
+                      "`grid` counts workgroups. Arguments are packed in order at their natural alignment: "
+                      "tensors as 64-bit device pointers, scalars only through `aka_asm.u32`, `i32`, `u64`, "
+                      "`i64` and `f32`. Each kernel's `.amdgpu_metadata` must declare the same arguments. "
+                      "`aka_asm` provides only `load`, `u32`, `i32`, `u64`, `i64`, `f32` and `AsmError`; any "
+                      "other attribute is rejected, and a loaded kernel offers only `launch`. "
+                      "`.incbin` and `.include` are not allowed, not even in a comment, and neither is "
+                      "`.altmacro`; no statement may start with a macro argument or build a directive name "
+                      "from one. Each kernel's whole source is in its `.s` file."]
     lines += ["", "## Interface", "", "| Name | Kind | Shape | Dtype |", "|---|---|---|---|"]
     for name, declaration in interface["inputs"].items():
         kind = "mutable input" if name in interface.get("mutable", []) else declaration["kind"] + " input"

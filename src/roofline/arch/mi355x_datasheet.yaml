@@ -1,0 +1,34 @@
+# AMD Instinct MI355X datasheet peaks, dense (no structured sparsity), per GPU.
+# Keys follow the TraceLens arch JSON layout so a measured-peak file can replace this one.
+# These are datasheet values: the floor and the anti-cheating check use them because a
+# correct kernel cannot exceed them. Measured peaks stay outside the repository.
+name: mi355x_datasheet
+gpu: AMD Instinct MI355X (gfx950)
+source:
+  url: https://www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/product-briefs/amd-instinct-mi355x-gpu-brochure.pdf
+  accessed: 2026-11-12
+  also: https://rocm.docs.amd.com/en/latest/reference/gpu-arch/mi350.html (accessed 2026-11-12)
+  note: >-
+    Every throughput is the datasheet's dense column (LE-92703-00-A): FP64 vector and matrix 78.6
+    TFLOPS, FP32 vector and matrix 157.3 TFLOPS, FP16 vector 157.3 TFLOPS, FP16 and BF16 matrix
+    2.5166 PFLOPS, OCP-FP8 and MXFP8 5.0332 PFLOPS, INT8 matrix 5.0332 POPS, MXFP6 and MXFP4
+    10.0663 PFLOPS. The datasheet states no BF16 vector rate; the FP16 vector rate is used, and the
+    floor charges vector FLOPs at the fastest vector rate anyway. The datasheet rounds memory
+    bandwidth to 8 TB/s; its 8192-bit memory interface at the 8 Gbps HBM3E pin rate given in the
+    ROCm MI350 architecture page is 8192 GB/s, which is used because a higher bandwidth keeps the
+    floor a lower bound.
+unconfirmed: []
+mem_bw_gbps: 8192
+max_achievable_tflops:
+  matrix_fp64: 78.6
+  matrix_fp32: 157.3
+  matrix_fp16: 2516.6
+  matrix_bf16: 2516.6
+  matrix_fp8: 5033.2
+  matrix_int8: 5033.2
+  matrix_fp6: 10066.3
+  matrix_fp4: 10066.3
+  vector_fp64: 78.6
+  vector_fp32: 157.3
+  vector_fp16: 157.3
+  vector_bf16: 157.3
