@@ -127,8 +127,9 @@ the saved snapshots, skips completed terminal tasks, and continues interrupted
 work with the original attempt count and per-task deadline. Time spent paused
 counts against that deadline.
 
-Start a new campaign (omit `--run-id`) after changing the input bundle, policy,
-implementation, or environment, or to retry a terminal failure.
+Start a new campaign (run the builder without `SIKL_BUILDER_ARGS`) after
+changing the input bundle, policy, implementation, or environment, or to retry
+a terminal failure.
 
 ---
 

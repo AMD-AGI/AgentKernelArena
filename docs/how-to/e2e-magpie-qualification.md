@@ -14,7 +14,7 @@ prepare immutable assets, and confirm that the unmodified baseline passes all
 correctness and calibration gates before any optimization agent runs.
 
 Use this workflow when the two maintained tasks
-(`e2e/qwen3_0.6b_sglang`, `e2e/qwen3_next_80b_sglang`) don't cover the model or
+(`e2e/qwen3_0_6b_sglang`, `e2e/qwen3_next_80b_sglang`) don't cover the model or
 workload you need. See [Run end-to-end serving tasks](e2e-kernel-tasks.md) for
 running those maintained tasks without additional setup.
 
@@ -25,8 +25,8 @@ by any optimization run that specifies the same GPU architecture.
 ## Prerequisites
 
 - Clean, pinned checkouts of
-  [Magpie](https://github.com/sgl-project/magpie) and
-  [InferenceX](https://github.com/AMD-AGI/InferenceX) at the revisions your
+  [Magpie](https://github.com/AMD-AGI/Magpie) and
+  [InferenceX](https://github.com/SemiAnalysisAI/InferenceX) at the revisions your
   runtime profile will reference. Moving branches and tags are rejected — use
   full commit identifiers.
 - A GPU host running the AgentKernelArena Docker runtime on the target
@@ -77,11 +77,10 @@ file (outside the repository) that declares:
   HTTPS URL or `source: provided`. Pass `--asset-file client-python.tar.gz=PATH`
   to `src.prepare_serving_runtime` for offline-supplied files.
 - **`server_seed`**: a fixed seed for SGLang. If the upstream recipe has an
-  explicit seed, it is preserved; otherwise, declare `1729` before either
-  role starts.
+  explicit seed, it is preserved; otherwise, task materialization freezes
+  `1729` before either role starts. A conflicting explicit seed is rejected.
 - Optional fields: `limits` (see [runtime limits](../reference/e2e-reference.md#runtime-limits)),
-  `measurement_num_prompts`, `max_p99_tpot_ms`,
-  `final_evaluation_pairs`, `server_topology`, `runner_type`.
+  `measurement_num_prompts`, `server_topology`, `runner_type`.
 
 ### Correctness policies
 
@@ -124,7 +123,7 @@ python3 -m src.magpie_catalog bind \
   --output ../runtime-bindings/<recipe-id>.json
 ```
 
-Binding paths in the output file are relative to the run-config file, not the
+Binding paths in a run config are relative to the run-config file, not the
 task directory. Keep private bindings outside the checkout. For a run config
 under `example_configs/`:
 

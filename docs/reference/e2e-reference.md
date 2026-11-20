@@ -24,9 +24,9 @@ agent timeout can shorten it; the agent template's default does not override
 the run budget. Each task action also retains its own timeout, capped by the
 remaining wall time.
 
-`final_evaluation_reserve_s` is a floor for the reserve. Two additional floors
-are computed automatically: 1.5× (compile + correctness + all final A/B
-performance actions), and the independent verifier timeout. The runtime lock
+`final_evaluation_reserve_s` is a floor for the reserve. Initial baseline action
+durations provide a second floor: 1.5× (compile + correctness + all final A/B
+performance actions), plus the independent verifier timeout. The runtime lock
 can specify a further minimum. Search does not begin if the reserve cannot fit.
 Resume still evaluates retained candidate files within the original deadline
 and writes a result even if evaluation exhausts it. A timeout or incomplete

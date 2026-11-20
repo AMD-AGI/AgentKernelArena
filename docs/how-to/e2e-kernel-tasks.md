@@ -15,14 +15,16 @@ workload runs faster.
 
 Two maintained tasks are ready to run without additional setup:
 
-- `e2e/qwen3_0.6b_sglang` — Qwen3-0.6B on SGLang; runs on a single MI355X.
+- `e2e/qwen3_0_6b_sglang` — Qwen3-0.6B on SGLang; runs on a single MI355X.
 - `e2e/qwen3_next_80b_sglang` — Qwen3-Next-80B FP8 on SGLang; requires four
   MI355X devices.
 
 **When this workflow is complete:** `task_result.yaml` reports paired throughput
-ratios for every measurement pair. A candidate with median speedup above 1.05×
-across at least three fresh pairs is accepted and scored. Identical kernel hashes
-cap the scored ratio at 1.0.
+ratios for every measurement pair. Final evaluation uses at least three fresh
+baseline and candidate pairs. A candidate earns optimization credit only when
+its median paired speedup exceeds 1.05×; a smaller gain is kept as a raw
+measurement and scored as 1.0. Identical kernel hashes cap the scored ratio at
+1.0.
 
 ## Prerequisites
 
@@ -68,8 +70,9 @@ before starting the optimization run; do not skip this step.
 make docker-run CONFIG=example_configs/e2e_qwen3_codex_mi355x.yaml
 ```
 
-The agent receives a wall-time budget (24 or 48 hours for serving tasks) and
-runs in the standard worker container. Final evaluation alternates baseline and
+The agent works within the wall-time budget set by `budget.task_wall_time_s`
+(24 hours in this example configuration) and runs in the standard worker
+container. Final evaluation alternates baseline and
 candidate runs for at least three fresh pairs.
 
 For Slurm, use `make slurm-run` and request enough scheduler wall time for the

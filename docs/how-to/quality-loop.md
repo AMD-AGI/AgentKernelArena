@@ -184,7 +184,8 @@ See the [agent guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/agen
 for the complete contract, role receipts, and external reviewer evidence index.
 
 
-<!-- This kind of content does not belong in our user-facing docs >
+<!-- This kind of content does not belong in our user-facing docs -->
+
 ## Recorded GPU smoke (2026-09-15)
 
 Job `141055`, run `20260915_200935`, completed the ordinary Docker workflow with
