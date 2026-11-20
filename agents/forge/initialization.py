@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import inspect
 import json
 import os
 from pathlib import Path
 import stat
 import subprocess
 import time
+from types import SimpleNamespace
 
 from agents.forge import bridge
 from agents.forge.bundles import candidate_files, protected_paths
@@ -84,40 +84,46 @@ def _new_path_patterns(spec, root: Path) -> list[str]:
     return patterns
 
 
-def _make_initialization_agent(config, *, new_path_patterns=(), **options):
-    """Bind either published implementer API without dropping gate settings."""
-    from kernelforge.orchestrator import agent
+def engine_library() -> SimpleNamespace:
+    """The engine names this phase is built from, in one place so the probe checks the same ones.
 
-    if "setup" not in inspect.signature(agent.make_agent_fn).parameters:
-        return agent.make_agent_fn(config=config, **options)
-    from kernelforge.loop.gate_settings import GateMeasurement
+    ``forge_loop.api`` is the interface the engine publishes for callers outside
+    its loop. The usage ledger a session reports into has no published home, so
+    it is named by its module.
+    """
+    from kernelforge.agent_backends import usage
+    from kernelforge.config import Config
+    from kernelforge.workflows.forge_loop import api
 
-    task_keys = ("program_md", "kernel_backend_name", "profiling_enabled", "task_type",
-                 "source_files", "target_functions", "extra_protected_paths")
-    session_keys = ("session_timeout_sec", "permission_mode", "insession_gate")
-    task = agent.ImplementerTask(**{key: options.pop(key) for key in task_keys},
-                                 commit_new_paths=list(new_path_patterns))
-    session = agent.SessionOptions(**{key: options.pop(key) for key in session_keys})
-    timeout = options.pop("validation_timeout_sec")
-    measurement = GateMeasurement(
-        driver_script=options.pop("driver_script"),
-        interposed_driver_path=options.pop("interposed_driver_path"),
-        correctness_only=options.pop("correctness_only"),
-        stage_timeout_sec=timeout, bench_timeout_sec=timeout,
+    return SimpleNamespace(api=api, Config=Config, usage=usage)
+
+
+def _implementer_setup(api, plan: dict, spec, root: Path, *, timeout: int, protected):
+    """The engine's implementer on this task, held to correctness alone by its in-session gate."""
+    from agents.forge.program import program_text
+
+    driver = str(root / "arena_forge_driver.py")
+    task = api.ImplementerTask(
+        program_md=program_text(plan, initialize=True),
+        kernel_backend_name=spec.candidate.language,
+        profiling_enabled=False,
+        task_type="repository",
+        source_files=list(map(str, candidate_files(spec, root).values())),
+        target_functions=[entry.symbol for entry in spec.candidate.entrypoints if entry.symbol],
+        extra_protected_paths=[str(root / name) for name in protected],
+        commit_new_paths=_new_path_patterns(spec, root),
     )
-    usage = options.pop("usage")
-    if options:
-        raise ValueError(f"Unmapped Forge implementer settings: {sorted(options)}")
-    return agent.make_agent_fn(config=config,
-                              setup=agent.ImplementerSetup(task=task, measurement=measurement, session=session),
-                              usage=usage)
+    # The gate runs the task's complete validation, so both of its limits are the session's.
+    measurement = api.GateMeasurement(driver_script=driver, interposed_driver_path=driver, correctness_only=True,
+                                      stage_timeout_sec=timeout, bench_timeout_sec=timeout)
+    session = api.SessionOptions(session_timeout_sec=timeout, insession_gate=True,
+                                 permission_mode=plan["agent_config"]["permission_mode"])
+    return api.ImplementerSetup(task=task, measurement=measurement, session=session)
 
 
 async def initialize(plan: dict) -> dict:
     # Caller checks the pinned upstream before entering this phase.
-    from kernelforge.config import Config
-    from kernelforge.tracker.usage import UsageAccumulator
-    from agents.forge.program import program_text
+    library = engine_library()
 
     context = TaskContext.load(plan["context"])
     spec, root = context.spec, Path(plan["engine_root"])
@@ -128,13 +134,13 @@ async def initialize(plan: dict) -> dict:
                          + ", ".join(INITIALIZATION_LANGUAGES))
     settings = plan["agent_config"]
     report = {"status": "RUNNING", "target_language": spec.candidate.language,
-              "mechanism": "kernelforge.orchestrator.agent.make_agent_fn",
+              "mechanism": "kernelforge.workflows.forge_loop.api.make_agent_fn",
               "attempts": [], "arena_verdict": "pending"}
     report_path = plan["initialization_result"]
     def checkpoint(totals=None):
         report["llm_usage"] = totals if totals is not None else usage.totals()
         _save(report_path, report)
-    usage = UsageAccumulator(on_update=checkpoint)
+    usage = library.usage.UsageAccumulator(on_update=checkpoint)
     checkpoint()
     remaining = plan["deadline_unix"] - time.time()
     phase_deadline = time.time() + remaining * settings["initialization_budget_fraction"]
@@ -155,19 +161,9 @@ async def initialize(plan: dict) -> dict:
                           agent_backend=settings["agent_backend"], agent_timeout_sec=timeout)
             if settings.get("model"):
                 kwargs["agent_model"] = settings["model"]
-            config = Config.from_env(**kwargs)
-            files = candidate_files(spec, root)
-            agent = _make_initialization_agent(config=config, new_path_patterns=_new_path_patterns(spec, root),
-                program_md=program_text(plan, initialize=True),
-                kernel_backend_name=spec.candidate.language, usage=usage,
-                insession_gate=True, correctness_only=True,
-                driver_script=str(root / "arena_forge_driver.py"),
-                interposed_driver_path=str(root / "arena_forge_driver.py"),
-                session_timeout_sec=timeout, validation_timeout_sec=timeout,
-                permission_mode=settings["permission_mode"], profiling_enabled=False,
-                task_type="repository", source_files=list(map(str, files.values())),
-                target_functions=[entry.symbol for entry in spec.candidate.entrypoints if entry.symbol],
-                extra_protected_paths=[str(root / name) for name in protected])
+            config = library.Config.from_env(**kwargs)
+            setup = _implementer_setup(library.api, plan, spec, root, timeout=timeout, protected=protected)
+            agent = library.api.make_agent_fn(config=config, setup=setup, usage=usage)
             row = {"attempt": attempt, "status": "RUNNING", "backend": agent.backend_name,
                    "model": agent.backend_model, "requested_backend": agent.requested_backend}
             report["attempts"].append(row)
