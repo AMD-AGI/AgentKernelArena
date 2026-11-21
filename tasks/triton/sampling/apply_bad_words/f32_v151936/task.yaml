@@ -1,0 +1,111 @@
+schema_version: 3
+description: >-
+  In-place bad-words masking of float32 logits. Row i belongs to request slot expanded_idx_mapping[i]
+  at speculative position expanded_local_pos[i]. The request's effective token sequence is its generated
+  tokens all_token_ids[slot, prompt_len:total_len] followed by the speculative input tokens of the
+  request up to that row. For every bad word [w0 .. wk] of the slot (the first num_bad_words[slot]
+  entries of the flattened table), the logit of wk is set to -inf when the last k effective tokens equal
+  [w0 .. w(k-1)]; single-token words are always masked. No other logit changes.
+operator:
+  name: apply_bad_words
+  category: sampling
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 12800, description: Logit rows (requests times 1 + three speculative tokens).}
+    vocab_size: {kind: const, value: 151936, description: Vocabulary size (Qwen family).}
+    bad_word_token_width: {kind: const, value: 1024, description: Flattened bad-word token capacity per request slot.}
+    offsets_width: {kind: const, value: 129, description: Bad-word offsets per request slot (128 words plus one).}
+    max_model_len: {kind: const, value: 4096, description: Token-history width per request slot.}
+  derived_axes:
+    n_reqs: ceil_div(n_tokens, 4)
+  inputs:
+    logits:
+      kind: tensor
+      shape: [n_tokens, vocab_size]
+      dtype: float32
+      distribution: {kind: normal, mean: 0.0, std: 2.0}
+      description: Logits, masked in place.
+    expanded_idx_mapping:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Request slot of each logit row.
+    bad_word_token_ids:
+      kind: tensor
+      shape: [n_reqs, bad_word_token_width]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Flattened bad-word tokens per slot.
+    bad_word_offsets:
+      kind: tensor
+      shape: [n_reqs, offsets_width]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Cumulative word boundaries into bad_word_token_ids per slot.
+    num_bad_words:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Bad words per slot.
+    all_token_ids:
+      kind: tensor
+      shape: [n_reqs, max_model_len]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prompt and generated tokens per slot.
+    prompt_len:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prompt length per slot.
+    total_len:
+      kind: tensor
+      shape: [n_reqs]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Prompt plus generated length per slot.
+    input_ids:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Input token of each logit row (the speculative tokens).
+    expanded_local_pos:
+      kind: tensor
+      shape: [n_tokens]
+      dtype: int32
+      role: index
+      distribution: {kind: generator}
+      description: Position of each row within its request (0 is the verified token).
+    max_num_bad_words: {kind: scalar, dtype: int32, default: 16, description: Largest num_bad_words in the batch (launch width).}
+  outputs: {}
+  mutable: [logits]
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/v1/worker/gpu/sample/bad_words.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel copied unchanged; the Python state class and launcher are reduced to run(), which launches
+      the kernel on the preallocated tables with the batch's maximum bad-word count as the launch width.
+compare:
+  logits: {bound: exact}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
