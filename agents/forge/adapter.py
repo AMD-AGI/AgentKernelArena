@@ -19,7 +19,8 @@ import yaml
 from agents.forge import bridge
 from agents.forge.common import _read_forge_result, _resolve_gpu_arch, _resolve_gpu_type, run_forge_subprocess
 from agents.forge.task_context import TaskContext
-from agents.forge.bundles import allow_candidate_paths, candidate_files, committed_candidate, copy_workspace, install_candidate
+from agents.forge.bundles import (allow_candidate_paths, candidate_files, committed_candidate, copy_workspace,
+                                  install_candidate, new_path_patterns)
 from src.task_contract import BASELINE_DIR
 from src.task_spec import resolve_task_path
 from src.tools.agent_cost import report_agent_usage
@@ -341,6 +342,12 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
                     "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]
+        # The task lets a candidate add files to its solution tree, and the
+        # engine commits a created file only where it was told one may appear.
+        # Without this a session that splits the kernel into a new module has
+        # its whole change rolled back.
+        for pattern in new_path_patterns(context.spec, root):
+            command += ["--commit-new-path", pattern]
     else:
         command += ["--source-kernel", plan["source"], "--flydsl-kernel-name", plan["anchor"],
                     "--logical-op-name", context.operator, "--no-prepare-driver",

@@ -13,8 +13,8 @@ import pytest
 
 from test_forge_v2 import ROOT, fixture_task, mock_engine
 from agents.forge import adapter, bridge
-from agents.forge.bundles import allow_candidate_paths, candidate_files
-from agents.forge.initialization import materialize_targets, _implementer_setup, _new_path_patterns, prepare_loop
+from agents.forge.bundles import allow_candidate_paths, candidate_files, new_path_patterns
+from agents.forge.initialization import materialize_targets, _implementer_setup, prepare_loop
 from agents.forge.program import program_text
 
 
@@ -107,7 +107,7 @@ def test_new_file_patterns_stay_inside_declared_tree_directories(tmp_path):
     root = Path(plan["engine_root"])
     (root / "solution/nested").mkdir()
     (root / "unrelated").mkdir()
-    assert _new_path_patterns(context.spec, root) == ["solution/*", "solution/nested/*"]
+    assert new_path_patterns(context.spec, root) == ["solution/*", "solution/nested/*"]
 
 
 @pytest.mark.parametrize("absolute,existing", [(False, False), (True, False), (True, True)])

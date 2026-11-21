@@ -16,7 +16,7 @@ import time
 from types import SimpleNamespace
 
 from agents.forge import bridge
-from agents.forge.bundles import candidate_files, protected_paths
+from agents.forge.bundles import candidate_files, new_path_patterns, protected_paths
 from agents.forge.task_context import TaskContext
 from src.task_spec import resolve_task_path
 
@@ -70,20 +70,6 @@ def _save(path, value):
     temporary.replace(path)
 
 
-def _new_path_patterns(spec, root: Path) -> list[str]:
-    """Authorize new files only in declared trees and existing directories."""
-    patterns = []
-    for scope in spec.candidate.editable:
-        if scope.scope != "tree":
-            continue
-        tree = resolve_task_path(root, scope.path, must_exist=True)
-        for directory in [tree, *sorted(path for path in tree.rglob("*") if path.is_dir())]:
-            relative = directory.relative_to(root).as_posix()
-            resolve_task_path(root, relative, must_exist=True)
-            patterns.append(relative + "/*")
-    return patterns
-
-
 def engine_library() -> SimpleNamespace:
     """The engine names this phase is built from, in one place so the probe checks the same ones.
 
@@ -111,7 +97,7 @@ def _implementer_setup(api, plan: dict, spec, root: Path, *, timeout: int, prote
         source_files=list(map(str, candidate_files(spec, root).values())),
         target_functions=[entry.symbol for entry in spec.candidate.entrypoints if entry.symbol],
         extra_protected_paths=[str(root / name) for name in protected],
-        commit_new_paths=_new_path_patterns(spec, root),
+        commit_new_paths=new_path_patterns(spec, root),
     )
     # The gate runs the task's complete validation, so both of its limits are the session's.
     measurement = api.GateMeasurement(driver_script=driver, interposed_driver_path=driver, correctness_only=True,

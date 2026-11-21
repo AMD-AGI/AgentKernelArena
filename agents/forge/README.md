@@ -112,7 +112,10 @@ entering the ordinary performance search:
    New helper files are allowed inside declared trees in directories present at
    session startup. The engine's nonrecursive new-file allowlist rejects helpers
    in newly created directories; Arena does not widen the allowlist outside the
-   task's declared trees.
+   task's declared trees. The loop that follows, and the loop of an
+   optimize-only run, are handed the same allowlist as `--commit-new-path`, so a
+   session that adds a module to a declared tree has it committed with its KEEP
+   rather than having the whole change rolled back.
    After initialization, the loop receives the remaining campaign budget and,
    when supported by its CLI, the same absolute deadline.
 3. After each session, independently run candidate compile and complete

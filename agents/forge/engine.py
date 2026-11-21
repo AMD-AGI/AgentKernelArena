@@ -52,7 +52,7 @@ def probe() -> dict:
         version = "source-checkout"
     required = {
         "forge-loop": {"kernel", "driver", "workspace_dir", "max_hours",
-                       "source_files", "target_functions", "baseline_json"},
+                       "source_files", "target_functions", "baseline_json", "commit_new_paths"},
         "forge-rewrite-by-flydsl": {"source_kernel", "driver", "workspace_dir", "max_hours",
                                     "prepare_driver", "flydsl_kernel_name"},
     }
