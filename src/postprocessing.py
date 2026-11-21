@@ -18,6 +18,10 @@ except ModuleNotFoundError:
     from src.score import resolve_speedup_ratio, task_result_scoring
 
 
+# agent_sandbox.status values; see src/agent_sandbox.py.
+SANDBOX_STATUSES = ("enforced", "mixed", "not_applied", "off", "not_launched", "unattested", "invalid")
+
+
 def _outcome_fields(result: Dict[str, Any]) -> Dict[str, Any]:
     """Keep absent legacy outcomes unknown; never infer acceptance from timing."""
     accepted = result.get("candidate_accepted")
@@ -26,11 +30,14 @@ def _outcome_fields(result: Dict[str, Any]) -> Dict[str, Any]:
     execution = execution if isinstance(execution, dict) else {}
     status = execution.get("status", result.get("agent_execution_status"))
     changed = execution.get("candidate_changed", result.get("candidate_changed"))
+    sandbox = result.get("agent_sandbox")
+    sandbox_status = sandbox.get("status") if isinstance(sandbox, dict) else result.get("agent_sandbox_status")
     return {
         "candidate_accepted": accepted if type(accepted) is bool else None,
         "delivery_status": delivery if delivery in ("COMPLETE", "INCOMPLETE", "NOT_ACCEPTED") else None,
         "agent_execution_status": status if status in ("COMPLETED", "FAILED", "NOT_RUN") else None,
         "candidate_changed": changed if type(changed) is bool else None,
+        "agent_sandbox_status": sandbox_status if sandbox_status in SANDBOX_STATUSES else None,
         "optimization_outcome": result.get('optimization_outcome') if result.get('optimization_outcome') in
             {'unchanged', 'unchanged_computation', 'accepted_change', 'rejected_change', 'not_accepted', 'incomplete'} else None,
     }
@@ -53,6 +60,9 @@ def _outcome_counts(tasks: List[Dict[str, Any]]) -> Dict[str, int]:
         "candidate_changed_count": sum(row["candidate_changed"] is True for row in outcomes),
         "candidate_unchanged_count": sum(row["candidate_changed"] is False for row in outcomes),
         "candidate_change_unknown_count": sum(row["candidate_changed"] is None for row in outcomes),
+        **{f"agent_sandbox_{status}_count": sum(row["agent_sandbox_status"] == status for row in outcomes)
+           for status in SANDBOX_STATUSES},
+        "agent_sandbox_unknown_count": sum(row["agent_sandbox_status"] is None for row in outcomes),
     }
 
 
@@ -142,8 +152,12 @@ def _build_general_report_lines(
         f"  Changed:              {outcomes['candidate_changed_count']}",
         f"  Unchanged:            {outcomes['candidate_unchanged_count']}",
         f"  Not established:      {outcomes['candidate_change_unknown_count']}",
+        "Agent sandbox (whether each task's agent ran confined):",
+        *(f"  {status + ':':<22}{outcomes[f'agent_sandbox_{status}_count']}" for status in SANDBOX_STATUSES
+          if outcomes[f"agent_sandbox_{status}_count"]),
+        f"  Not reported / N/A:   {outcomes['agent_sandbox_unknown_count']}",
     ])
-    
+
     # Add task type breakdowns if available
     if task_type_breakdown:
         lines.append("")
@@ -216,6 +230,7 @@ def _build_general_report_lines(
             f"         Agent: {outcome['agent_execution_status'] or 'N/A'}"
             f"  Source changed: {_acceptance_label(outcome['candidate_changed'])}"
             f"  Optimization: {outcome['optimization_outcome'] or 'N/A'}"
+            f"  Sandbox: {outcome['agent_sandbox_status'] or 'N/A'}"
         )
         if task["error"]:
             lines.append(f"         Error: {task['error']}")
@@ -815,6 +830,7 @@ def export_task_results_csv(
             "Candidate Accepted": _acceptance_label(outcome["candidate_accepted"]),
             "Delivery Status": outcome["delivery_status"] or "N/A",
             "Agent Execution": outcome["agent_execution_status"] or "N/A",
+            "Agent Sandbox": outcome["agent_sandbox_status"] or "N/A",
             "Candidate Changed": _acceptance_label(outcome["candidate_changed"]),
             "Optimization Outcome": outcome['optimization_outcome'] or 'N/A',
             "Optimization_summary": optimization_summary.strip(),
@@ -824,7 +840,7 @@ def export_task_results_csv(
         writer = csv.DictWriter(
             f,
             fieldnames=["Task Name", "Task Type", "Target Language", "Operator", "Measurement", "Score", "Speedup", "Status",
-                        "Candidate Accepted", "Delivery Status", "Agent Execution",
+                        "Candidate Accepted", "Delivery Status", "Agent Execution", "Agent Sandbox",
                         "Candidate Changed", "Optimization Outcome", "Optimization_summary"]
         )
         writer.writeheader()
