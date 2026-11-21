@@ -28,3 +28,17 @@ def test_the_loop_may_commit_a_new_file_wherever_the_task_lets_a_candidate_add_o
     command = _loop_command(tmp_path, workflow=workflow)
 
     assert _values(command, "--commit-new-path") == ["solution/*", "solution/nested/*"]
+
+
+def test_the_lane_count_is_the_engines_unless_the_run_names_one(tmp_path):
+    assert "--lanes" not in _loop_command(tmp_path)
+
+
+def test_a_run_may_ask_for_a_lane_count(tmp_path):
+    assert _values(_loop_command(tmp_path, {"lanes": 1}), "--lanes") == ["1"]
+
+
+@pytest.mark.parametrize("lanes", [0, -1, "3", 1.0, True])
+def test_a_lane_count_that_is_not_a_positive_integer_is_refused(lanes):
+    with pytest.raises(ValueError, match="Forge lanes must be a positive integer"):
+        adapter._config({"agent": {"lanes": lanes}})

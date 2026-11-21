@@ -129,7 +129,7 @@ def _config(eval_config: dict) -> dict:
         raise ValueError("agent run configuration must be a mapping")
     allowed = {"workflow", "model", "timeout_seconds", "permission_mode", "agent_backend",
                "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds",
-               "initialization_max_attempts", "initialization_budget_fraction"}
+               "initialization_max_attempts", "initialization_budget_fraction", "lanes"}
     config.update({key: value for key, value in overrides.items() if key in allowed})
     if overrides.get("agent_backend") not in (None, "claude") and "model" not in overrides:
         # A Claude default is not a model ID for another provider. Let upstream
@@ -141,6 +141,9 @@ def _config(eval_config: dict) -> dict:
     for field in ("max_port_attempts", "session_timeout_seconds", "initialization_max_attempts"):
         if type(config[field]) is not int or config[field] < 1:
             raise ValueError(f"Forge {field} must be a positive integer")
+    # Empty leaves the lane count to the engine, which also owns its upper bound.
+    if config.get("lanes") is not None and (type(config["lanes"]) is not int or config["lanes"] < 1):
+        raise ValueError("Forge lanes must be a positive integer")
     fraction = config["initialization_budget_fraction"]
     if type(fraction) not in (int, float) or not 0 < fraction < 1:
         raise ValueError("Forge initialization_budget_fraction must be between zero and one")
@@ -348,6 +351,8 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
         # its whole change rolled back.
         for pattern in new_path_patterns(context.spec, root):
             command += ["--commit-new-path", pattern]
+        if config.get("lanes") is not None:
+            command += ["--lanes", str(config["lanes"])]
     else:
         command += ["--source-kernel", plan["source"], "--flydsl-kernel-name", plan["anchor"],
                     "--logical-op-name", context.operator, "--no-prepare-driver",

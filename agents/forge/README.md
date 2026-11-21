@@ -410,10 +410,14 @@ Search defaults live in [agent_config.yaml](agent_config.yaml); the run may
 override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
-`supervisor_backend`, and `python`. An empty supervisor follows the selected
-backend. Lane count, task preparation, profiling, planning probes and knowledge
-warm starts follow the engine defaults. Arena publishes the task and leaves the
-search policy to Forge. Two consequences are load bearing. The public task
+`supervisor_backend`, `lanes`, and `python`. An empty supervisor follows the
+selected backend. `lanes` is how many implementer sessions the loop runs per
+round: empty follows the engine default, and the value is passed to
+`forge-loop` as `--lanes`, so what a given count means (an engine may run a
+single lane without its planning stage) is the engine's to say. A rewrite's
+nested loop is not given it. Task preparation, profiling, planning probes and
+knowledge warm starts follow the engine defaults. Arena publishes the task and
+leaves the rest of the search policy to Forge. Two consequences are load bearing. The public task
 protocol exposes no profiler invocation, so the bridge answers `--profile-run`
 with an explicit unsupported capability. A single-file upstream recipe cannot
 describe a multi-file candidate, so a `solution/` tree with helper files may
