@@ -416,7 +416,12 @@ round: empty follows the engine default, and the value is passed to
 `forge-loop` as `--lanes`, so what a given count means (an engine may run a
 single lane without its planning stage) is the engine's to say. A rewrite's
 nested loop is not given it. Task preparation, profiling, planning probes and
-knowledge warm starts follow the engine defaults. Arena publishes the task and
+knowledge warm starts follow the engine defaults. One thing about scoring is
+not left to the engine: Arena's speedup is the geometric mean of per-case
+speedups, so an engine whose `forge-loop` accepts `--case-aggregate` is told
+`geometric` and judges its own KEEPs by the mean that grades its result. An
+engine without the option still runs and searches by its own aggregate; the
+probe reports which under `case_aggregate`. Arena publishes the task and
 leaves the rest of the search policy to Forge. Two consequences are load bearing. The public task
 protocol exposes no profiler invocation, so the bridge answers `--profile-run`
 with an explicit unsupported capability. A single-file upstream recipe cannot

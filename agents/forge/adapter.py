@@ -290,6 +290,10 @@ def recover_timeout_candidate(plan: dict, engine: Path, result, fallback: str = 
     return "", ""
 
 
+#: How src.testcases.calculate_average_speedup combines per-case speedups, in the
+#: engine's vocabulary.
+ARENA_CASE_AGGREGATE = "geometric"
+
 #: The engine dates its own budget from the moment its process is up, which
 #: trails the moment this argv is built by interpreter start, the capability
 #: probe and the engine import. Measured at 42s on MI355X; keep room to spare.
@@ -353,6 +357,11 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
             command += ["--commit-new-path", pattern]
         if config.get("lanes") is not None:
             command += ["--lanes", str(config["lanes"])]
+        if plan.get("case_aggregate"):
+            # Arena's speedup is the geometric mean of per-case speedups. An
+            # engine searching by another mean keeps candidates Arena scores
+            # lower, so it is told which one grades its result.
+            command += ["--case-aggregate", ARENA_CASE_AGGREGATE]
     else:
         command += ["--source-kernel", plan["source"], "--flydsl-kernel-name", plan["anchor"],
                     "--logical-op-name", context.operator, "--no-prepare-driver",
@@ -446,6 +455,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         capabilities = json.loads(probe.stdout)
         status["engine"] = capabilities
         plan["applyback_optional"] = bool(capabilities.get("applyback_optional"))
+        plan["case_aggregate"] = bool(capabilities.get("case_aggregate"))
         require_supported_backend(context.spec, capabilities)
         candidate = context.spec.candidate
         initially_target = candidate.initial_state == "implemented" and candidate.initial_language == candidate.language

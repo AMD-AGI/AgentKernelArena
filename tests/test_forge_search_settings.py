@@ -42,3 +42,15 @@ def test_a_run_may_ask_for_a_lane_count(tmp_path):
 def test_a_lane_count_that_is_not_a_positive_integer_is_refused(lanes):
     with pytest.raises(ValueError, match="Forge lanes must be a positive integer"):
         adapter._config({"agent": {"lanes": lanes}})
+
+
+def test_an_engine_that_accepts_it_is_told_arena_scores_by_the_geometric_mean(tmp_path):
+    """An engine searching by another mean keeps candidates Arena scores lower."""
+    command = _loop_command(tmp_path, capabilities={"case_aggregate": True})
+
+    assert _values(command, "--case-aggregate") == ["geometric"]
+
+
+def test_an_engine_that_cannot_be_told_the_aggregate_still_runs(tmp_path):
+    assert "--case-aggregate" not in _loop_command(tmp_path)
+    assert "--case-aggregate" not in _loop_command(tmp_path / "declined", capabilities={"case_aggregate": False})

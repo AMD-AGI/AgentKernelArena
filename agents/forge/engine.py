@@ -67,6 +67,10 @@ def probe() -> dict:
     # adapter asks for the standalone kernel only where the engine accepts that.
     rewrite = cli.main.commands["forge-rewrite-by-flydsl"]
     applyback_optional = "applyback" in {parameter.name for parameter in rewrite.params}
+    # Optional as well: an engine that cannot be told how Arena aggregates
+    # per-case speedups still runs, scoring its search by its own aggregate.
+    loop = cli.main.commands["forge-loop"]
+    case_aggregate = "case_aggregate" in {parameter.name for parameter in loop.params}
     # The PORT states which source languages it ingests. An engine that does
     # not publish them cannot be told the baseline's language, so the adapter
     # refuses a FlyDSL rewrite there instead of letting the engine guess.
@@ -77,7 +81,7 @@ def probe() -> dict:
             "initialization_targets": sorted([*INITIALIZATION_LANGUAGES, "flydsl"]),
             "backends": sorted(KERNEL_BACKENDS), "rewrite_target": "flydsl",
             "rewrite_source_languages": rewrite_sources,
-            "applyback_optional": applyback_optional}
+            "applyback_optional": applyback_optional, "case_aggregate": case_aggregate}
 
 
 def main(argv=None):
