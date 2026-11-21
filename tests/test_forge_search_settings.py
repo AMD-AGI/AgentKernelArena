@@ -51,6 +51,6 @@ def test_an_engine_that_accepts_it_is_told_arena_scores_by_the_geometric_mean(tm
     assert _values(command, "--case-aggregate") == ["geometric"]
 
 
-def test_an_engine_that_cannot_be_told_the_aggregate_still_runs(tmp_path):
-    assert "--case-aggregate" not in _loop_command(tmp_path)
-    assert "--case-aggregate" not in _loop_command(tmp_path / "declined", capabilities={"case_aggregate": False})
+@pytest.mark.parametrize("capabilities", [None, {"case_aggregate": False}], ids=["unreported", "declined"])
+def test_an_engine_that_cannot_be_told_the_aggregate_still_runs(tmp_path, capabilities):
+    assert "--case-aggregate" not in _loop_command(tmp_path, capabilities=capabilities)
