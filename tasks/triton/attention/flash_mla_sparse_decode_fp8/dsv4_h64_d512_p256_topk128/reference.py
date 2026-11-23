@@ -13,6 +13,7 @@ TILE = 64
 PAYLOAD = 576
 RECORD = 584
 ROW_CHUNK = 256
+SM_SCALE = 512 ** -0.5  # DeepSeek-V4's softmax scale, head_dim ** -0.5
 
 
 def _decode(kv_cache, slots):
@@ -30,7 +31,7 @@ def _decode(kv_cache, slots):
     return torch.cat((codes * scales, rope), dim=1)
 
 
-def reference(*, q, kv_cache, sparse_indices, sparse_lens, sm_scale, sinks):
+def reference(*, q, kv_cache, sparse_indices, sparse_lens, sinks):
     rows, query_length, heads, head_dim = q.shape
     topk = sparse_indices.shape[-1]
     out = torch.zeros(q.shape, dtype=torch.float64, device=q.device)
@@ -43,7 +44,7 @@ def reference(*, q, kv_cache, sparse_indices, sparse_lens, sm_scale, sinks):
         index = sparse_indices[first:last, 0].long()
         valid = (position < sparse_lens[first:last, None].long()) & (index >= 0)
         kv = _decode(kv_cache, index.clamp_min(0).reshape(-1)).view(count, topk, head_dim)
-        logits = torch.einsum("chd,ctd->cht", q[first:last, 0].double(), kv) * sm_scale
+        logits = torch.einsum("chd,ctd->cht", q[first:last, 0].double(), kv) * SM_SCALE
         logits = logits.masked_fill(~valid[:, None, :], float("-inf"))
         row_lse = torch.logsumexp(logits, dim=-1)                     # -inf for an empty row
         top = torch.maximum(row_lse, sink)

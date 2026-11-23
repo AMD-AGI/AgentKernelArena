@@ -490,6 +490,8 @@ def _decode_num_splits(
 
 _NOPE_HEAD_DIM = 448
 _ROPE_HEAD_DIM = 64
+# task: DeepSeek-V4's softmax scale (head_dim ** -0.5), fixed by the scenario instead of an argument.
+SM_SCALE = 512 ** -0.5
 
 
 def run(
@@ -501,7 +503,6 @@ def run(
     extra_kv_cache,
     extra_sparse_indices,
     extra_sparse_lens,
-    sm_scale,
     sinks,
     output,
     lse,
@@ -572,7 +573,7 @@ def run(
         extra_kv_cache.shape[1],
         main_indices.shape[1],
         extra_indices.shape[1],
-        sm_scale,
+        SM_SCALE,
         num_heads,
         HAS_EXTRA=True,
         NOPE_DIM=nope_head_dim,

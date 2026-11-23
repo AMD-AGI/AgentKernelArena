@@ -7,6 +7,7 @@ NOPE_DIM, ROPE_DIM, GROUP = 448, 64, 64
 NUM_GROUPS = NOPE_DIM // GROUP
 PAYLOAD_BYTES, SCALE_BYTES = 576, 8
 TOKEN_BUDGET = 1 << 17  # rows * selected entries decoded at once
+SM_SCALE = 512 ** -0.5  # DeepSeek-V4's softmax scale, head_dim ** -0.5
 
 
 def _selected(table, lengths):
@@ -42,7 +43,7 @@ def _decode(pool, slots):
 
 
 def reference(*, q, kv_cache, sparse_indices, sparse_lens, extra_kv_cache, extra_sparse_indices,
-              extra_sparse_lens, sm_scale, sinks):
+              extra_sparse_lens, sinks):
     batch, _, heads, dim = q.shape
     output = torch.zeros((batch, 1, heads, dim), dtype=torch.float64, device=q.device)
     lse = torch.full((batch, 1, heads), math.inf, dtype=torch.float64, device=q.device)
@@ -57,7 +58,7 @@ def reference(*, q, kv_cache, sparse_indices, sparse_lens, extra_kv_cache, extra
         rows = slice(start, min(batch, start + step))
         kv = torch.cat((_decode(kv_cache, main_slots[rows]), _decode(extra_kv_cache, extra_slots[rows])), dim=1)
         keep = torch.cat((main_keep[rows], extra_keep[rows]), dim=1)
-        logits = torch.einsum("bhd,btd->bht", q[rows, 0].to(torch.float64), kv) * sm_scale
+        logits = torch.einsum("bhd,btd->bht", q[rows, 0].to(torch.float64), kv) * SM_SCALE
         logits = logits.masked_fill(~keep[:, None, :], -math.inf)
         peak = logits.amax(dim=-1)
         present = keep.any(dim=-1)[:, None]

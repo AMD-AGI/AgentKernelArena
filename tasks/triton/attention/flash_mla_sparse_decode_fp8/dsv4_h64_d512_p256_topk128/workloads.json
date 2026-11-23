@@ -1,5 +1,55 @@
 {
- "description": "DSv4 sliding-window sparse attention rows over a fixed 2019-page pool: decode batches (one row per request, uniform legal slots) up to 4096 and prefill chunks (one row per prompt token, overlapping windows) of 8k-16k tokens. Decode batches of about 100 rows or fewer move under 27 MB and are correctness-only.",
+ "description": "flash_mla_sparse_decode_fp8 shapes of the AgentX agentic serving corpus replayed on deepseek-ai/DeepSeek-V4-Flash-DSpark (TP 4); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "deepseek-v4-flash-tp4-dp4-mi355x-v1",
+  "model": "deepseek-ai/DeepSeek-V4-Flash-DSpark",
+  "coverage": 0.993,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher flash_mla_sparse_decode_fp8; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 4,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": true,
+   "page_size": 256,
+   "kv_cache_dtype": "fp8_e4m3",
+   "chunked_prefill_size": 4096,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.7,
+   "context_length": 1048576,
+   "attention_backend": "dsv4",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": "DSPARK",
+   "speculative_num_steps": 1,
+   "speculative_num_draft_tokens": 6,
+   "speculative_eagle_topk": 1,
+   "speculative_draft_model_path": "deepseek-ai/DeepSeek-V4-Flash-DSpark@62af8fffb2f7030cac4de2f0169f5b8d1101b646",
+   "max_running_requests": 256,
+   "max_total_num_tokens": 20165632,
+   "disable_cuda_graph": false,
+   "server_env": "SGLANG_USE_AITER=1 SGLANG_USE_ROCM700A=0 TRITON_HIP_USE_ASYNC_COPY=0 ROCM_QUICK_REDUCE_QUANTIZATION=INT8 SGLANG_OPT_HIP_OPUS_SPARSE_PREFILL=true SGLANG_OPT_HIP_FLYDSL_MXFP8=1 SGLANG_HIP_FP4_INDEXER_ROWGROUP=1 TORCH_BLAS_PREFER_HIPBLASLT=1 HSA_NO_SCRATCH_RECLAIM=0 GPU_MAX_HW_QUEUES=2 AITER_BF16_FP8_MOE_BOUND=0",
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 1048576,
+   "trajectories": 393,
+   "trajectories_unreachable": 0,
+   "requests": 98827,
+   "requests_dropped": 0,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 0,
+   "dropped_share": 0.0,
+   "input_tokens_dropped_share": 0.0
+  }
+ },
  "cases": [
   {
    "id": "c_b1",
@@ -32,6 +82,75 @@
    "source": "small decode batch: the eight boundary rows and one drawn row"
   },
   {
+   "id": "b30",
+   "axes": {
+    "batch": 30
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 2.705,
+   "observed": {
+    "phases": [
+     "draft"
+    ],
+    "time_share": 0.0651,
+    "members": [
+     {
+      "batch": 30
+     }
+    ]
+   },
+   "source": "AgentX draft: 1 recorded shape(s) {'batch': 30}, 6.5% of the operator's GPU time"
+  },
+  {
+   "id": "b35",
+   "axes": {
+    "batch": 35
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 11.42,
+   "observed": {
+    "phases": [
+     "draft"
+    ],
+    "time_share": 0.2489,
+    "members": [
+     {
+      "batch": 35
+     }
+    ]
+   },
+   "source": "AgentX draft: 1 recorded shape(s) {'batch': 35}, 24.9% of the operator's GPU time"
+  },
+  {
+   "id": "b36",
+   "axes": {
+    "batch": 36
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 1.803,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0441,
+    "members": [
+     {
+      "batch": 36
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 36}, 4.4% of the operator's GPU time"
+  },
+  {
    "id": "c_b37",
    "axes": {
     "batch": 37
@@ -40,6 +159,121 @@
     "correctness"
    ],
    "source": "unaligned decode batch"
+  },
+  {
+   "id": "b40",
+   "axes": {
+    "batch": 40
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 10.82,
+   "observed": {
+    "phases": [
+     "draft"
+    ],
+    "time_share": 0.2461,
+    "members": [
+     {
+      "batch": 40
+     }
+    ]
+   },
+   "source": "AgentX draft: 1 recorded shape(s) {'batch': 40}, 24.6% of the operator's GPU time"
+  },
+  {
+   "id": "b42",
+   "axes": {
+    "batch": 42
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 7.614,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1722,
+    "members": [
+     {
+      "batch": 42
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 42}, 17.2% of the operator's GPU time"
+  },
+  {
+   "id": "b45",
+   "axes": {
+    "batch": 45
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 1.303,
+   "observed": {
+    "phases": [
+     "draft"
+    ],
+    "time_share": 0.03,
+    "members": [
+     {
+      "batch": 45
+     }
+    ]
+   },
+   "source": "AgentX draft: 1 recorded shape(s) {'batch': 45}, 3.0% of the operator's GPU time"
+  },
+  {
+   "id": "b48",
+   "axes": {
+    "batch": 48
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 7.214,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1668,
+    "members": [
+     {
+      "batch": 48
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 48}, 16.7% of the operator's GPU time"
+  },
+  {
+   "id": "b54",
+   "axes": {
+    "batch": 54
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 0.8683,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0202,
+    "members": [
+     {
+      "batch": 54
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 54}, 2.0% of the operator's GPU time"
   },
   {
    "id": "c_b100",
@@ -52,6 +286,56 @@
    "source": "decode batch 100"
   },
   {
+   "id": "p_b160",
+   "axes": {
+    "batch": 160
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch 160 (a captured CUDA-graph batch size)"
+  },
+  {
+   "id": "b192",
+   "axes": {
+    "batch": 192
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.32% of the operator's GPU time)"
+  },
+  {
+   "id": "p_b256",
+   "axes": {
+    "batch": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch 256"
+  },
+  {
+   "id": "p_b512",
+   "axes": {
+    "batch": 512
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch 512"
+  },
+  {
+   "id": "b704",
+   "axes": {
+    "batch": 704
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.36% of the operator's GPU time)"
+  },
+  {
    "id": "c_b1000",
    "axes": {
     "batch": 1000
@@ -62,46 +346,12 @@
    "source": "unaligned large decode batch"
   },
   {
-   "id": "p_b160",
-   "axes": {
-    "batch": 160
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "decode batch 160 (a captured CUDA-graph batch size)"
-  },
-  {
-   "id": "p_b256",
-   "axes": {
-    "batch": 256
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "decode batch 256"
-  },
-  {
-   "id": "p_b512",
-   "axes": {
-    "batch": 512
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "decode batch 512"
-  },
-  {
    "id": "p_b1024",
    "axes": {
     "batch": 1024
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "decode batch 1024"
   },
@@ -111,8 +361,7 @@
     "batch": 2048
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "decode batch 2048"
   },
@@ -122,8 +371,7 @@
     "batch": 4096
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "decode batch 4096, the largest batch of the source workload"
   },
@@ -133,8 +381,7 @@
     "batch": 8192
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "8192-token prefill chunk, one sliding-window row per token"
   },
@@ -144,8 +391,7 @@
     "batch": 16384
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "16384-token prefill chunk, one sliding-window row per token"
   }

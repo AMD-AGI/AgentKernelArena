@@ -588,7 +588,11 @@ def fused_gather_attn_decode_dsv4(
     )
 
 
-def run(*, q, kv_cache, sparse_indices, sparse_lens, sm_scale, sinks, output, lse):
+# task: DeepSeek-V4's softmax scale (head_dim ** -0.5), fixed by the scenario instead of an argument.
+SM_SCALE = 512 ** -0.5
+
+
+def run(*, q, kv_cache, sparse_indices, sparse_lens, sinks, output, lse):
     # triton_sparse_attn_decode, single-scope branch: flatten (batch, s_q).
     b, s_q, h_q, d_qk = q.shape
     total_tokens = b * s_q
@@ -603,7 +607,7 @@ def run(*, q, kv_cache, sparse_indices, sparse_lens, sm_scale, sinks, output, ls
         kv_cache,
         indices_main,
         block_size_main,
-        sm_scale,
+        SM_SCALE,
         output.view(total_tokens, h_q, DSV4_D_V),
         lse.view(total_tokens, h_q),
         topk_length=sparse_lens,
