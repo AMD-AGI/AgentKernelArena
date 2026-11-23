@@ -51,6 +51,24 @@ def test_repair_policy_accepts_only_additional_correctness_cases(tmp_path):
             policy.verify(package(tmp_path, name, cases=cases))
 
 
+def test_repair_cannot_change_case_weights_or_their_provenance(tmp_path):
+    def weighted(task, weights=(4, 3, 2, 1), coverage=0.9):
+        workloads = json.loads((task / "workloads.json").read_text())
+        performance = [case for case in workloads["cases"] if "performance" in case["checks"]]
+        for case, weight in zip(performance, weights):
+            case["weight"] = weight
+        workloads["weight_provenance"] = {"kind": "fixture", "source": "s@1", "capture": "c", "coverage": coverage}
+        (task / "workloads.json").write_text(json.dumps(workloads))
+        return task
+
+    policy = RepairPolicy.capture(weighted(package(tmp_path)), TASK_ID)
+    policy.verify(weighted(package(tmp_path, "extra", cases=CASES + [EXTRA])))
+    for name, changed in (("weight", lambda t: weighted(t, weights=(1, 3, 2, 4))),
+                          ("coverage", lambda t: weighted(t, coverage=0.95))):
+        with pytest.raises(RepairRejected):
+            policy.verify(changed(package(tmp_path, name)))
+
+
 @pytest.mark.parametrize("change", [
     lambda raw: raw["interface"]["inputs"]["x"].update(dtype="float16"),
     lambda raw: raw["interface"]["inputs"]["x"]["distribution"].update(std=0.5),

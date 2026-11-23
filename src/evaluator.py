@@ -175,6 +175,8 @@ def evaluate_kernel(
         return results
     log.info("Step 4: Measuring performance...")
     from .task_protocol import performance_cases
+    # Declared case weights of a weighted schema-v3 task; None weights every case equally.
+    case_weights = None
 
     try:
         from .measurement import measurement_kind, paired_throughput
@@ -214,6 +216,7 @@ def evaluate_kernel(
                 if any(value > limit for value in latencies):
                     raise ValueError("Serving latency limit exceeded")
         elif task_session.spec.contract is not None:
+            case_weights = task_session.spec.case_weights
             # Schema-v3: remeasure the baseline next to the candidate in
             # alternating fresh processes (B, C, B, C) and average each
             # arm per case, so device drift cannot favor either side.
@@ -243,7 +246,7 @@ def evaluate_kernel(
     
     if optimized_cases:
         # Save optimized results
-        save_performance_results(optimized_cases, workspace, "optimized_perf.yaml", logger)
+        save_performance_results(optimized_cases, workspace, "optimized_perf.yaml", logger, weights=case_weights)
         # Record the timing method(s) used for the optimized measurement so the final
         # task_result can flag mixed-method (baseline vs optimized) comparisons.
         results['optimized_benchmark_methods'] = collect_benchmark_methods(optimized_cases)
@@ -344,7 +347,7 @@ def evaluate_kernel(
                     else:
                         avg_speedup = calculate_average_speedup(
                             valid_baseline_cases, valid_optimized_cases, logger,
-                            require_complete_match=True,
+                            require_complete_match=True, weights=case_weights,
                         )
                     if avg_speedup > 0:
                         results['average_speedup'] = avg_speedup
@@ -432,7 +435,8 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
     baseline = session.results.get(("task_validation", "baseline", "performance"))
     baseline_cases = performance_cases(baseline.result) if baseline and baseline.result.passed else []
     if baseline_cases:
-        save_performance_results(baseline_cases, session.workspace, "baseline_perf.yaml", log)
+        save_performance_results(baseline_cases, session.workspace, "baseline_perf.yaml", log,
+                                 weights=session.spec.case_weights)
     result = {"pass_compilation": False, "pass_correctness": False,
               "pass_tool_gate": not tools.enabled, "tool_policy_satisfied": not tools.enabled,
               "average_speedup": 0.0, "best_optimized_execution_time": 0.0}
@@ -482,6 +486,9 @@ def evaluate_task_session(session: "TaskSession", *, eval_config: dict,
     from .measurement import measurement_kind
     result.update(measurement_kind=measurement_kind(config), task_schema_version=2, runtime_identity=runtime,
                   initial_task_validation=asdict(initial) if initial is not None else None)
+    if session.spec.case_weights is not None:
+        # The speedup_ratio of a weighted task is sum(w*t_baseline)/sum(w*t_candidate) over these cases.
+        result["case_weights"] = session.spec.case_weights
     source_evidence = session.candidate_source_evidence()
     result["evaluated_candidate_sources"] = source_evidence["sources"]
     if source_evidence["error"]:
@@ -605,7 +612,7 @@ def write_task_result(
         'task_schema_version', 'runtime_identity', 'initial_task_validation',
         'baseline_correctness', 'agent_execution', 'framework_error',
         'evaluated_candidate_sources', 'candidate_source_error', 'serving_measurement', 'measurement_kind',
-        'process_sweep', 'candidate_verification', 'pass_verification',
+        'process_sweep', 'candidate_verification', 'pass_verification', 'case_weights',
     ):
         if field in evaluation_results:
             task_result[field] = evaluation_results[field]

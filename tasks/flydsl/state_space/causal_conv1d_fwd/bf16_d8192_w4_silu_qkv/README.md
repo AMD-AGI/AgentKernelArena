@@ -73,12 +73,38 @@ accumulation on 1.7% (peak 3.4x to 5x).
 
 ## Workloads
 
-`n_tokens` 1280 to 131072 (102x span) are performance cases: chunked-prefill batches of about 256 tokens per
-sequence. Each token moves 16 KiB in (`x`) and 16 KiB out, so 1280 tokens are 42 MB (9.3 us at 4.5 TB/s plus the
-4 us fixed cost, about 13 us) and 131072 tokens are 4.3 GB (about 0.96 ms). Smaller batches run under 10 us and are
-correctness-only, together with the boundary cases 1 (axis minimum), 2, 3 (shorter than and equal to the conv
-state), 48 and 300 (not a power of two), 1000 (not a multiple of 16). The upper end is bounded by the 8.6 GB
-float64 reference at 8192 channels and by the kernel's 32-bit byte offsets: `x` of 131072 tokens is 2^31 bytes.
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`Qwen/Qwen3-Next-80B-A3B-Instruct-FP8` on SGLang 0.5.23 and MI355X (capture `qwen3-next-80b-tp1-mi355x-v1`):
+TP 1, no DP attention, MTP speculative decoding with the checkpoint's own MTP layer (NEXTN, 3 steps, 4 tokens
+verified per sequence) and replay-SSM state updates, chunked prefill 16384, and a 262144-token context
+(requests that do not fit are skipped: 30% of the corpus requests, 67% of its input tokens). Each case's
+`weight` is how often its shapes ran (calls per second of the steady state, TP rank 0), and the task scores
+the serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in the
+operator before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in
+`workloads.json` records the capture, the effective serving settings and the share of the corpus the context
+window dropped. The 4 weighted cases cover 98.2% of the operator's recorded GPU time:
+
+| `n_tokens` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 5888 | prefill | 0.5% | 0.4193 |
+| 8448 | prefill | 0.5% | 0.2396 |
+| 10752 | prefill | 1.5% | 0.5389 |
+| 16384 | prefill | 95.8% | 23.29 |
+
+`n_tokens` is the packed token count of a prefill batch; the 16384-token chunk takes 96% of the time. Decode
+and verify steps update the conv state through the decode kernel, which is another operator. The task splits
+`n_tokens` into `ceil(n_tokens / 256)` sequences (64 at 16384 tokens); the capture records the batch's token
+count, not its sequence layout, and this deployment runs at most 48 requests at a time. Each token moves 16
+KiB in (`x`) and 16 KiB out; in the MI355X QA audit the baseline took 71 us (5888 tokens) to 0.17 ms (16384
+tokens).
+
+The earlier performance cases (`n_tokens` 1280 to 131072; 16384 is now weighted) are correctness-only,
+together with the boundary cases 1 (axis minimum), 2, 3 (shorter than and equal to the conv state), 48 and 300
+(not a power of two), 1000 (not a multiple of 16), 1001 and 4099 (not multiples of 4, so the rows of the
+channel-major `x` have an odd stride) and the other recorded shapes (56 cases in total). The upper end is
+bounded by the 8.6 GB float64 reference at 8192 channels and by the kernel's 32-bit byte offsets: `x` of
+131072 tokens is 2^31 bytes.
 
 ## Kernel notes
 

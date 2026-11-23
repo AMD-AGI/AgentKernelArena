@@ -16,7 +16,7 @@ operator:
 interface:
   axes:
     num_seqs: {kind: var, min: 1, max: 512, description: Sequences decoded in the step (one query token each).}
-    max_seq_len: {kind: var, min: 1, max: 131072, description: 'Longest context in the batch; the others are between half of it and all of it.'}
+    max_seq_len: {kind: var, min: 1, max: 262144, description: 'Longest context in the batch; the others are between half of it and all of it.'}
     num_query_heads: {kind: const, value: 8, description: Query heads per tensor-parallel rank.}
     num_kv_heads: {kind: const, value: 1, description: KV heads per tensor-parallel rank (group size 8).}
     head_size: {kind: const, value: 128, description: Head dimension of queries and the KV cache.}

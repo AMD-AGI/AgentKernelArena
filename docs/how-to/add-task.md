@@ -265,7 +265,8 @@ it. The framework enforces, when it loads the task:
 
 - **4 to 16 performance cases**, whose var-axis size (the product of the var
   axes) spans at least **100×**. One or two shapes let an agent tune for them
-  alone; too many lengthen every timing round.
+  alone; too many lengthen every timing round. A weighted task replaces the
+  span rule with a coverage rule (below).
 - **Boundary correctness cases**, three distinct ones: a var axis at its
   declared minimum, a var axis that is not a power of two, and a var axis that
   is not a multiple of 16 (in units of its `multiple_of`) and larger than 16.
@@ -277,6 +278,63 @@ The QA auditor additionally requires every performance case to take the
 baseline **at least 10 µs**: below that, launch overhead dominates the
 measurement. Real shapes that run faster (decode with M=1) stay correctness-only.
 A task whose production shapes are all below 10 µs is not a kernel task.
+
+### Case weights
+
+By default every performance case counts equally in the task's speedup. When a
+recorded production workload shows which shapes the operator runs and how
+often, give each performance case a `weight` (how often its shapes run, for
+example calls per second) and declare where the weights come from in
+`weight_provenance`. The task's speedup is then the ratio of total times,
+`Σ wᵢ·t_baselineᵢ / Σ wᵢ·t_candidateᵢ`: the time the workload spends in the
+operator before and after.
+
+```json
+{
+  "description": "GEMM shapes of an agentic serving trace, weighted by their GPU time.",
+  "weight_provenance": {
+    "kind": "agentx",
+    "source": "<corpus id>@<revision>",
+    "capture": "<capture id or path>",
+    "model": "<served model>",
+    "coverage": 0.85,
+    "weight_unit": "calls per second of the steady state, TP rank 0",
+    "deployment": {"image": "<image>", "tp_size": 8, "chunked_prefill_size": 16384, "page_size": 16},
+    "corpus": {"context_cap_tokens": 262144, "dropped_share": 0.12},
+    "description": "Per-kernel GPU time of the trace replayed on SGLang."
+  },
+  "cases": [
+    {"id": "m1", "axes": {"m": 1}, "checks": ["correctness"], "source": "decode, batch 1"},
+    {"id": "m32", "axes": {"m": 32}, "checks": ["correctness", "performance"], "weight": 5400,
+     "observed": {"phases": ["decode"], "time_share": 0.40, "members": [{"m": 24}, {"m": 32}]}, "source": "decode"},
+    {"id": "m16384", "axes": {"m": 16384}, "checks": ["correctness", "performance"], "weight": 12.5,
+     "observed": {"phases": ["prefill"], "time_share": 0.25, "members": [{"m": 16384}]}, "source": "prefill"}
+  ]
+}
+```
+
+The example is abbreviated; a task still needs 4 to 16 performance cases.
+
+- Give a weight to **every** performance case or to none. Correctness-only
+  cases have no weight. A weight is a positive number; only the ratios between
+  weights matter.
+- A weighted performance case may carry `observed`: its `phases`, its
+  `time_share` of the operator's recorded GPU time and the recorded shapes it
+  stands for (`members`). It documents the case and is not scored.
+- `weight_provenance` is required when the cases have weights and is not
+  allowed otherwise. `kind`, `source`, `capture` and `coverage` are required;
+  `model`, `description`, `weight_unit`, `deployment` (the serving settings)
+  and `corpus` (what the recording's context window dropped) are optional;
+  `deployment` and `corpus` are flat mappings of strings, numbers, booleans or
+  null.
+- `coverage` is the share of the operator's recorded GPU time that the
+  performance cases represent, from 0 to 1. It must be at least **0.8**
+  (`MIN_WEIGHT_COVERAGE` in `src/task_contract.py`). This rule replaces the 100×
+  span rule for a weighted task. The 4 to 16 case count and the 10 µs floor
+  still apply.
+- Use weights only with a recorded workload. Do not choose weights by hand.
+  [Derive task workloads from AgentX traces](agentx-workloads.md) produces
+  them from a serving capture.
 
 ## The candidate interface
 
@@ -357,8 +415,11 @@ python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
   alternating the two input draws between samples and checking every timed
   sample's outputs.
 - **Scoring.** The per-case speedup is baseline time over candidate time; the
-  task's speedup is their geometric mean. Any failed correctness case scores 0.
-  The final evaluation remeasures the baseline next to the candidate.
+  task's speedup is their geometric mean. For a weighted task it is the
+  serving-weighted speedup, `Σ wᵢ·t_baselineᵢ / Σ wᵢ·t_candidateᵢ`; `baseline_perf.yaml` and
+  `optimized_perf.yaml` record each case's `weight`, and `task_result.yaml`
+  records `case_weights`. Any failed correctness case scores 0. The final
+  evaluation remeasures the baseline next to the candidate.
 
 ## Run configuration
 

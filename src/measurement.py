@@ -191,6 +191,19 @@ def trace_manifest_identity(turns: list[dict]) -> dict:
         trace_turn_count=len(turns))
 
 
+def geometric_mean(values: list[float], weights: list[float] | None = None) -> float:
+    """Geometric mean of positive ratios; with weights, ``exp(sum(w * log(v)) / sum(w))``.
+
+    Without weights every value counts equally. Weights need not sum to one.
+    """
+    if weights is None:
+        return math.exp(sum(math.log(v) for v in values) / len(values))
+    if len(weights) != len(values) or any(
+            type(w) not in (int, float) or not math.isfinite(w) or w <= 0 for w in weights):
+        raise ValueError("Weights must be positive and finite, one per value")
+    return math.exp(sum(w * math.log(v) for v, w in zip(values, weights)) / sum(weights))
+
+
 def paired_throughput(pairs: list[tuple[list, list]], *, minimum_speedup_ratio: float = 1.0) -> dict:
     """Median of paired ratios per case, geometric mean across fixed cases."""
     if (type(minimum_speedup_ratio) not in (int, float)
@@ -236,8 +249,8 @@ def paired_throughput(pairs: list[tuple[list, list]], *, minimum_speedup_ratio: 
     # runtime noise. Preserve every raw measurement, including regressions.
     gain = {k: changed[k] and value > 1 and value >= minimum_speedup_ratio for k, value in medians.items()}
     scored = {k: value if gain[k] else min(value, 1.0) for k, value in medians.items()}
-    return {"speedup_ratio": math.exp(sum(math.log(v) for v in scored.values()) / len(scored)),
-            "raw_speedup_ratio": math.exp(sum(math.log(v) for v in medians.values()) / len(medians)),
+    return {"speedup_ratio": geometric_mean(list(scored.values())),
+            "raw_speedup_ratio": geometric_mean(list(medians.values())),
             "scored_case_ratios": scored, "kernel_changed": changed,
             "minimum_speedup_ratio": minimum_speedup_ratio, "gain_threshold_met": gain,
             "significance": "not_assessed",

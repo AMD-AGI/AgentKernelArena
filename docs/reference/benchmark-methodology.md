@@ -26,7 +26,10 @@ baseline that cannot be captured on the current stream fails the QA audit
 (`QA-TIMING-METHOD`), and each performance case must take the baseline at least
 10 us (`QA-TIMING-FLOOR`). The final evaluation remeasures the baseline
 interleaved with the candidate, and the task's speedup is the geometric mean of
-the per-case speedups (baseline time over candidate time). The remaining
+the per-case speedups (baseline time over candidate time). A task with
+[case weights](../how-to/add-task.md#case-weights) uses the serving-weighted
+speedup, the ratio of total times `Σ wᵢ·t_baselineᵢ / Σ wᵢ·t_candidateᵢ`, where a
+case's weight is how often it runs in the recorded workload. The remaining
 sections of this page describe the shared helper and the older fallback and
 cold-weight policies, which apply to the end-to-end and legacy helper paths.
 

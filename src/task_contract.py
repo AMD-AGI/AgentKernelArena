@@ -56,6 +56,14 @@ BOUNDS = {
 MIN_PERFORMANCE_CASES = 4
 MAX_PERFORMANCE_CASES = 16
 MIN_SIZE_SPAN = 100
+# A weighted task's performance cases must cover at least this share of the
+# operator's GPU time in the recorded workload (``weight_provenance.coverage``).
+MIN_WEIGHT_COVERAGE = 0.8
+WEIGHT_PROVENANCE_FIELDS = {"kind", "source", "capture", "coverage", "model", "description", "weight_unit",
+                            "deployment", "corpus"}
+# What a weighted performance case observed in the recorded workload (informational; not scored).
+OBSERVED_FIELDS = {"phases", "time_share", "members"}
+WEIGHT_PROVENANCE_REQUIRED = {"kind", "source", "capture", "coverage"}
 UNALIGNED_BLOCK = 16
 TIMING = {"warmup": 10, "repetition": 100, "cache_flush_bytes": 1 << 30}
 EVAL_DIR = "_aka_eval"
@@ -232,6 +240,12 @@ class TaskContract:
         return list(self.interface["outputs"]) + list(self.interface.get("mutable", []))
 
     @property
+    def case_weights(self) -> dict[str, float] | None:
+        """Performance case ID -> declared weight, or None for an unweighted task."""
+        weights = {case["id"]: float(case["weight"]) for case in self.workloads["cases"] if "weight" in case}
+        return weights or None
+
+    @property
     def code_objects(self) -> dict[str, str]:
         """Vendored code objects of an asm baseline: baseline path -> SHA256."""
         return dict(self.raw["baseline"]["provenance"].get("code_objects", {}))
@@ -308,6 +322,9 @@ class TaskContract:
                          "target_language": target_language, "baseline_language": self.baseline_language,
                          "operator": dict(self.raw["operator"])},
         }
+        if self.case_weights is not None:
+            # Only weighted tasks carry the key, so unweighted configs and their digests are unchanged.
+            config["contract"]["case_weights"] = self.case_weights
         if "platform_support" in self.raw:
             config["platform_support"] = deepcopy(self.raw["platform_support"])
         return config
@@ -455,16 +472,17 @@ def _validate_compare(raw: dict, checked: list[str], outputs: dict, inputs: dict
 
 
 def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict) -> None:
-    obj = _mapping(workloads, "workloads", {"cases", "description"}, {"cases"})
+    obj = _mapping(workloads, "workloads", {"cases", "description", "weight_provenance"}, {"cases"})
     cases = obj["cases"]
     if not isinstance(cases, list) or not cases:
         raise TaskConfigError("workloads.cases must be a nonempty list")
     ids, performance, boundaries = set(), [], {"minimum": set(), "non_power_of_two": set(), "unaligned": set()}
     scalar_names = {n for n, d in inputs.items() if d.get("kind") == "scalar"}
     seen_identities = set()
+    weighted = 0
     for case in cases:
-        case = _mapping(case, "workload case", {"id", "axes", "scalars", "checks", "source", "description"},
-                        {"id", "axes", "checks"})
+        case = _mapping(case, "workload case", {"id", "axes", "scalars", "checks", "source", "description",
+                                                "weight", "observed"}, {"id", "axes", "checks"})
         case_id = _text(case["id"], "case id")
         if not all(c.isalnum() or c in "_-." for c in case_id) or case_id in ids:
             raise TaskConfigError(f"Case ids must be unique [A-Za-z0-9_.-]: {case_id!r}")
@@ -487,6 +505,16 @@ def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict
         seen_identities.add(identity)
         if "performance" in checks:
             performance.append(math.prod(values.values()))
+            if "weight" in case:
+                weighted += 1
+                if _number(case["weight"], f"case {case_id}.weight") <= 0:
+                    raise TaskConfigError(f"case {case_id}.weight must be positive")
+                if "observed" in case:
+                    _validate_observed(case["observed"], case_id, var)
+            elif "observed" in case:
+                raise TaskConfigError(f"case {case_id}: only weighted performance cases carry observed")
+        elif "weight" in case or "observed" in case:
+            raise TaskConfigError(f"case {case_id}: only performance cases carry a weight or observed")
         for name, value in values.items():
             step = axes[name].get("multiple_of", 1)
             units = value // step
@@ -499,7 +527,14 @@ def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict
     if not MIN_PERFORMANCE_CASES <= len(performance) <= MAX_PERFORMANCE_CASES:
         raise TaskConfigError(f"A task needs {MIN_PERFORMANCE_CASES}-{MAX_PERFORMANCE_CASES} performance "
                               f"cases; found {len(performance)}")
-    if max(performance) < MIN_SIZE_SPAN * min(performance):
+    if weighted:
+        if weighted != len(performance):
+            raise TaskConfigError(f"Either every performance case has a weight or none does; "
+                                  f"{weighted} of {len(performance)} have one")
+        _validate_weight_provenance(obj.get("weight_provenance"))
+    elif "weight_provenance" in obj:
+        raise TaskConfigError("workloads.weight_provenance is only for weighted performance cases")
+    elif max(performance) < MIN_SIZE_SPAN * min(performance):
         raise TaskConfigError(f"Performance cases must span at least {MIN_SIZE_SPAN}x in var-axis size; "
                               f"found {min(performance)}..{max(performance)}")
     missing = [kind for kind, found in boundaries.items() if not found]
@@ -511,6 +546,60 @@ def _validate_workloads(workloads: Any, axes: dict, var: list[str], inputs: dict
         raise TaskConfigError("The minimum, non-power-of-two and unaligned boundary shapes must be three "
                               "distinct cases")
 
+
+def _validate_weight_provenance(value: Any) -> None:
+    """Where a weighted task's case weights come from and how much of the operator's GPU time they cover."""
+    if value is None:
+        raise TaskConfigError("Weighted performance cases need workloads.weight_provenance")
+    provenance = _mapping(value, "workloads.weight_provenance", WEIGHT_PROVENANCE_FIELDS,
+                          WEIGHT_PROVENANCE_REQUIRED)
+    for key in sorted(WEIGHT_PROVENANCE_FIELDS - {"coverage", "deployment", "corpus"}):
+        if key in provenance:
+            _text(provenance[key], f"workloads.weight_provenance.{key}")
+    for key in ("deployment", "corpus"):
+        if key in provenance:
+            _scalar_record(provenance[key], f"workloads.weight_provenance.{key}")
+    coverage = _number(provenance["coverage"], "workloads.weight_provenance.coverage")
+    if not MIN_WEIGHT_COVERAGE <= coverage <= 1:
+        raise TaskConfigError(f"workloads.weight_provenance.coverage must be between {MIN_WEIGHT_COVERAGE} "
+                              f"and 1: the performance cases must cover at least {MIN_WEIGHT_COVERAGE:.0%} of "
+                              f"the operator's recorded GPU time; found {coverage}")
+
+
+
+def _scalar_record(value: Any, where: str) -> None:
+    """A flat record of settings or counts: string keys, JSON scalar values."""
+    if not isinstance(value, dict) or not value or any(not isinstance(k, str) or not k for k in value):
+        raise TaskConfigError(f"{where} must be a nonempty mapping with string keys")
+    for key, item in value.items():
+        if item is not None and type(item) not in (str, int, float, bool):
+            raise TaskConfigError(f"{where}.{key} must be a string, number, boolean or null")
+        if type(item) is float and not math.isfinite(item):
+            raise TaskConfigError(f"{where}.{key} must be finite")
+
+
+def _validate_observed(value: Any, case_id: str, var: list[str]) -> None:
+    """What a weighted case stands for in the recorded workload: its phases, share of the time, merged shapes."""
+    where = f"case {case_id}.observed"
+    observed = _mapping(value, where, OBSERVED_FIELDS)
+    if "phases" in observed:
+        phases = observed["phases"]
+        if not isinstance(phases, list) or not phases:
+            raise TaskConfigError(f"{where}.phases must be a nonempty list")
+        for phase in phases:
+            _text(phase, f"{where}.phases[]")
+    if "time_share" in observed:
+        share = _number(observed["time_share"], f"{where}.time_share")
+        if not 0 < share <= 1:
+            raise TaskConfigError(f"{where}.time_share must be in (0, 1]")
+    if "members" in observed:
+        members = observed["members"]
+        if not isinstance(members, list) or not members:
+            raise TaskConfigError(f"{where}.members must be a nonempty list of var-axis shapes")
+        for member in members:
+            member = _mapping(member, f"{where}.members[]", set(var), set(var))
+            for name, size in member.items():
+                _int(size, f"{where}.members[].{name}", 0)
 
 def _distinct_representatives(groups: dict[str, set[str]]) -> dict | None:
     names = list(groups)

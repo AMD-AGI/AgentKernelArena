@@ -87,7 +87,7 @@ For each task, Arena preserves the baseline, runs the agent in a task workspace,
 
 The correctness reference defines valid output. The performance baseline supplies the timing comparison. They can be different implementations.
 
-For kernel tasks, each performance case is timed as a cold-cache CUDA graph (1 GiB cache flush before every replay). The final evaluation remeasures the baseline interleaved with the candidate, and the task's speedup is the geometric mean of the per-case speedups. A failed correctness case scores zero.
+For kernel tasks, each performance case is timed as a cold-cache CUDA graph (1 GiB cache flush before every replay). The final evaluation remeasures the baseline interleaved with the candidate, and the task's speedup is the geometric mean of the per-case speedups (for a task with case weights, the serving-weighted speedup `Σ wᵢ·t_baselineᵢ / Σ wᵢ·t_candidateᵢ`). A failed correctness case scores zero.
 
 ```text
 workspace_<gpu>_<agent>/run_<timestamp>/

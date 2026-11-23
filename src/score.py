@@ -19,8 +19,9 @@ def resolve_speedup_ratio(
     Resolve the speedup ratio to use for scoring/reporting.
 
     Prefer an explicit speedup_ratio written by the evaluator. This preserves the
-    intended aggregation logic for multi-testcase tasks where each testcase should
-    contribute equally. An explicit zero is authoritative: current evaluators use
+    intended aggregation logic for multi-testcase tasks: each testcase contributes
+    equally (geometric mean), or, for a task with case weights, by how often it runs in the
+    recorded workload (serving-weighted total-time ratio). An explicit zero is authoritative: current evaluators use
     it when a comparison is invalid, so reconstructing from average times would
     bypass their fairness checks.
 
@@ -67,8 +68,9 @@ def score(
         base_execution_time: Retained for caller compatibility; not used to
             reconstruct missing or invalid speedup ratios.
         best_optimized_execution_time: Retained for caller compatibility.
-        speedup_ratio: Explicit speedup ratio from evaluator output. Preferred for
-            multi-testcase tasks where each testcase should have equal weight.
+        speedup_ratio: Explicit speedup ratio from evaluator output: the geometric
+            mean over a multi-testcase task's cases, or the serving-weighted speedup
+            of a task with case weights.
         benchmark_method_consistent: Whether matched baseline/optimized cases used
             comparable timing methods. Only explicit ``True`` enables performance
             points.

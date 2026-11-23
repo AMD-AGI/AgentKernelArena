@@ -47,6 +47,8 @@ subtrees:
       title: Evaluate on held-out shapes
     - file: how-to/roofline-floors
       title: Estimate roofline floors
+    - file: how-to/agentx-workloads
+      title: Derive task workloads from AgentX traces
     - file: how-to/visualization
       title: Visualize and compare runs
 

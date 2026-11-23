@@ -10,7 +10,7 @@ import math
 import logging
 import yaml
 from pathlib import Path
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple, Dict, Any, Mapping
 from dataclasses import dataclass
 
 
@@ -58,18 +58,26 @@ def calculate_average_speedup(
     optimized_cases: List[TestCaseResult],
     logger: Optional[logging.Logger] = None,
     require_complete_match: bool = True,
+    weights: Optional[Mapping[str, float]] = None,
 ) -> float:
     """
-    Calculate average speedup across all matched test cases.
+    Calculate the task speedup: the geometric mean of the matched cases' speedups,
+    or the serving-weighted speedup of a weighted task.
     
     Args:
         baseline_cases: Baseline test case results
         optimized_cases: Optimized test case results
         logger: Optional logger
         require_complete_match: Require every baseline and optimized case to match
+        weights: Case ID -> weight of a weighted task (``contract.case_weights``):
+            how often the case's shape runs in the recorded workload (calls per
+            second). The weights must name exactly the matched cases; the result
+            is then the serving-weighted speedup, the ratio of total times
+            ``sum(w * t_baseline) / sum(w * t_candidate)``. None weights every
+            case equally (geometric mean).
         
     Returns:
-        Average speedup ratio (baseline_time / optimized_time), or 0.0 if no valid matches
+        Speedup ratio (baseline_time / optimized_time), or 0.0 if no valid matches
     """
     log = logger or logging.getLogger(__name__)
     matched = match_test_cases(baseline_cases, optimized_cases, logger)
@@ -110,6 +118,7 @@ def calculate_average_speedup(
         return 0.0
 
     speedups = []
+    times = {}
     for base_case, opt_case in matched:
         if (
             math.isfinite(base_case.execution_time_ms)
@@ -119,6 +128,7 @@ def calculate_average_speedup(
         ):
             speedup = base_case.execution_time_ms / opt_case.execution_time_ms
             speedups.append(speedup)
+            times[base_case.test_case_id] = (base_case.execution_time_ms, opt_case.execution_time_ms)
             log.debug(f"Test case {base_case.test_case_id}: {base_case.execution_time_ms:.4f} ms -> {opt_case.execution_time_ms:.4f} ms (speedup: {speedup:.2f}x)")
         else:
             log.warning(f"Invalid execution times for test case {base_case.test_case_id}: baseline={base_case.execution_time_ms}, optimized={opt_case.execution_time_ms}")
@@ -129,13 +139,51 @@ def calculate_average_speedup(
     if not speedups:
         log.warning("No valid speedups calculated")
         return 0.0
-    
-    # Geometric mean: each case contributes its speedup ratio equally, so a
-    # large shape cannot outweigh a small one and a 2x win cancels a 2x loss.
-    avg_speedup = math.exp(sum(math.log(value) for value in speedups) / len(speedups))
-    log.info(f"Geometric-mean speedup across {len(speedups)} test case(s): {avg_speedup:.2f}x")
+
+    from .measurement import geometric_mean
+    if weights is None:
+        # Geometric mean: each case contributes its speedup ratio equally, so a
+        # large shape cannot outweigh a small one and a 2x win cancels a 2x loss.
+        avg_speedup = geometric_mean(speedups)
+        log.info(f"Geometric-mean speedup across {len(speedups)} test case(s): {avg_speedup:.2f}x")
+        return avg_speedup
+    # A weighted task: the cases stand for the recorded workload, each run as
+    # often as its weight says, so the task value is the ratio of total times
+    # (Amdahl): a 2x win on a rare case cannot hide a 2x loss on a frequent one.
+    # Every scored case needs exactly one declared weight.
+    scored_ids = [base_case.test_case_id for base_case, _ in matched]
+    if len(speedups) != len(matched) or set(scored_ids) != set(weights):
+        log.warning(
+            "Case weights do not name exactly the scored cases, refusing to calculate speedup: "
+            f"scored={sorted(scored_ids)}, weighted={sorted(weights)}"
+        )
+        return 0.0
+    try:
+        avg_speedup = serving_weighted_speedup(
+            [times[case_id] for case_id in scored_ids], [weights[case_id] for case_id in scored_ids])
+    except ValueError as exc:
+        log.warning(f"Invalid case weights, refusing to calculate speedup: {exc}")
+        return 0.0
+    log.info(f"Serving-weighted speedup across {len(speedups)} test case(s): {avg_speedup:.2f}x")
     return avg_speedup
 
+
+
+def serving_weighted_speedup(times_ms: List[tuple], weights: List[float]) -> float:
+    """``sum(w * baseline) / sum(w * candidate)`` over (baseline ms, candidate ms) pairs.
+
+    The weights are call rates of the cases in a recorded workload, so the two
+    sums are the time the workload spends in the operator before and after.
+    Weights must be positive and finite; their scale does not matter.
+    """
+    if len(times_ms) != len(weights) or not weights:
+        raise ValueError("one weight per case is required")
+    if any(isinstance(w, bool) or not isinstance(w, (int, float)) or not math.isfinite(w) or w <= 0
+           for w in weights):
+        raise ValueError(f"weights must be positive finite numbers: {weights}")
+    base = math.fsum(w * b for w, (b, _) in zip(weights, times_ms))
+    cand = math.fsum(w * c for w, (_, c) in zip(weights, times_ms))
+    return base / cand
 
 def _benchmark_method_mismatches(
     matched_cases: List[Tuple[TestCaseResult, TestCaseResult]],
@@ -282,7 +330,8 @@ def save_performance_results(
     test_cases: List[TestCaseResult],
     workspace: Path,
     filename: str,
-    logger: Optional[logging.Logger] = None
+    logger: Optional[logging.Logger] = None,
+    weights: Optional[Mapping[str, float]] = None,
 ) -> None:
     """
     Save test case results to YAML file.
@@ -295,6 +344,8 @@ def save_performance_results(
         workspace: Workspace directory
         filename: Filename (e.g., 'baseline_perf.yaml')
         logger: Optional logger
+        weights: Case ID -> weight of a weighted task; each case's ``weight`` is
+            written beside its timing so the task speedup can be reproduced.
     """
     log = logger or logging.getLogger(__name__)
     
@@ -309,6 +360,8 @@ def save_performance_results(
         }
         if case.shape is not None:
             case_dict['shape'] = case.shape
+        if weights is not None and case.test_case_id in weights:
+            case_dict['weight'] = weights[case.test_case_id]
         # Preserve workload identity as well as the timing diagnostics below.
         if case.metadata:
             for key in ('params', 'dtype'):

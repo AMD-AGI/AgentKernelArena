@@ -13,8 +13,9 @@ over the first `context_lengths[s]` cached tokens; the eight query heads share t
 dequantizes the codes exactly and is otherwise exact attention.
 
 This is the per-tensor sibling of `paged_attention_decode/fp8kv_q8_kv1_d128_p1024` (per-token
-scales). The kernel, worklist and workloads are the same; only the scale layout and the
-baseline's probability quantization differ.
+scales). The kernel and worklist are the same; the scale layout, the baseline's probability
+quantization and the workloads differ (this scenario's are weighted by a recorded serving workload
+and allow contexts up to 256k).
 
 ## Production origin
 
@@ -55,13 +56,49 @@ per-rank attention of GQA 8:1 models such as Llama-3.1-70B at TP 8 or Qwen3-30B-
 
 ## Workloads
 
-The workloads match the per-token sibling: batch sizes 1-512 and contexts up to 128k. They take the
-AITER PS test's batches (64, 128 = CUs / 2, 158) and contexts (to 10240) and extend them to
-long-context decode. The largest case is 256 sequences of up to 64k tokens, about 12.6M cached
-tokens and 3.2 GB of FP8 KV per layer. `s3_l1027` and `s81_l1027` are the batches of the upstream
-FlyDSL test. Batches whose whole cache is a few hundred pages finish in a few microseconds and are
-correctness-only. The smallest timed case is one 128k request. It splits the sequence across 128
-compute units, and its 512 partials make the reduce stage a large part of its time.
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`Qwen/Qwen3-235B-A22B-Instruct-2507-FP8` on SGLang 0.5.23 and MI355X (capture
+`qwen3-235b-a22b-tp8-mi355x-v1`): TP 8, no DP attention, no speculative decoding, chunked prefill 16384, FP8
+KV cache (one scale per tensor) in 16-token pages, aiter attention, and a 262144-token context (requests that
+do not fit are skipped: 30% of the corpus requests, 67% of its input tokens). Each case's `weight` is how
+often its shapes ran (calls per second of the steady state, TP rank 0), and the task scores the
+serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in the operator
+before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in `workloads.json`
+records the capture, the effective serving settings and the share of the corpus the context window dropped.
+The 12 weighted cases cover 98.9% of the operator's recorded GPU time:
+
+| `num_seqs` | `max_seq_len` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | ---: | --- | ---: | ---: |
+| 24 | 123904 | decode | 0.6% | 38.63 |
+| 24 | 126464 | decode | 9.0% | 556.9 |
+| 24 | 129536 | decode | 0.7% | 41.35 |
+| 24 | 133120 | decode | 0.9% | 55.96 |
+| 24 | 134656 | decode | 0.5% | 35.02 |
+| 24 | 135680 | decode | 0.5% | 35.9 |
+| 32 | 129024 | decode | 0.5% | 28.24 |
+| 32 | 133632 | decode | 0.8% | 39.15 |
+| 32 | 136704 | decode | 2.5% | 116.4 |
+| 32 | 139264 | decode | 2.6% | 131.5 |
+| 32 | 140288 | decode | 0.8% | 33.79 |
+| 32 | 147968 | decode | 79.4% | 3537 |
+
+Qwen3-235B-A22B has 64 query heads and 4 KV heads of size 128, so a TP-8 rank runs 8 query heads over one
+(replicated) KV head, this task's shape. Every case is a decode step: `num_seqs` is the running batch padded
+to its CUDA-graph batch size (24 and 32 at this load), and `max_seq_len` is the step's mean KV length per
+sequence from the scheduler log, in 512-token buckets (the task draws the other sequences between half of it
+and all of it, so a case reads somewhat less KV than the recorded step). Agentic sessions keep long contexts:
+recorded KV lengths reach about 161k tokens, so the `max_seq_len` axis allows 262144 (the deployment's
+context); with the earlier 131072 limit 89% of the operator's time fell above the axis. The served attention
+uses 16-token pages; the task keeps the PS kernel's 1024-token pages, which change the page arithmetic, not
+the work. In the MI355X QA audit the baseline took 0.13-0.19 ms per case; the largest weighted case (32
+sequences of up to 148k tokens) holds about 0.6 GB of FP8 KV per cache.
+
+The earlier performance cases (batch sizes 1-256 with contexts of 8k to 128k, extended from AITER's PS test)
+are correctness-only, together with the earlier boundary cases (`s3_l1027` and `s81_l1027`, the batches of the
+upstream FlyDSL test, single-page and page-crossing contexts), the other recorded shapes one case with a
+non-default `softmax_scale`, and 160 sequences at the axis maximum of 262144 tokens, whose 5 GiB caches put KV
+addresses above 4 GiB (37 cases in total).
 
 ## Baseline
 
@@ -104,7 +141,7 @@ rounded to FP8 (2.0-2.5 times the bound at the default `k`), which the QA contro
 
 ## Not verified here
 
-The kernels need FlyDSL and gfx950. The worklist port and the reference were checked on the CPU,
-and the baseline's per-tensor numerics against an emulation of the PS kernel and the reduce. The
-reduce kernel and the vendored launch have not been compiled or timed. The timing of the smallest
-case (one 128k request) is an estimate that the MI355X audit must confirm.
+The kernels need FlyDSL and gfx950. The worklist port and the reference were checked on the CPU, and the
+baseline's per-tensor numerics against an emulation of the PS kernel and the reduce. Contexts above 131072
+tokens (the earlier axis limit) are exercised by the weighted cases (up to 148k) and by the correctness case
+at the axis maximum.

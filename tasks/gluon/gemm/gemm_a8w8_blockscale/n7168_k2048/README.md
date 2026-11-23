@@ -15,17 +15,54 @@ N = 7168 and K = 2048 are the shared expert's `down_proj` of DeepSeek-V3 (and R1
 (the 1x128 activation groups and 128x128 weight blocks). This shape has its own tuned file in AITER's Gluon config
 directory (`gfx950-GEMM-A8W8_BLOCKSCALE-N=7168-K=2048.json`).
 
-`m` is the token count of the call. Decode-sized batches (1 to 256, plus the tile-table boundaries 129 and 2049 and
-the unaligned 100 and 1000) are correctness-only: at this shape the 15 MB weight read is about 3.3 us, below the
-10 us floor. Performance cases run from 512 to 65536 tokens (128x; prefill chunks and long prefills), 7 cases.
-Boundary correctness cases: `m = 1` (axis minimum), `m = 3, 5` (not powers of two) and `m = 17, 100, 129, 1000, 2049`
-(not multiples of 16 and above 16).
+`m` is the token count of the call; the timed cases are weighted by a recorded serving workload (see Workloads below).
 
 **Inputs.** `inputs.py` plays the role of the quantizing producers. Activations are normal values with a per-(row,
 128-column group) magnitude drawn over a 16x range, quantized to e4m3fn with scale `amax / 448`; weights are the same
 per 128x128 block. The Gluon baseline consumes the plain layouts (row-major `a_scale`, natural-order `b`), so the task
 has no layout transform; the Triton siblings of this operator use the AITER preshuffled weight and a column-major
 `a_scale` payload because their baselines read those layouts.
+
+## Workloads
+
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`deepseek-ai/DeepSeek-V3` (FP8 checkpoint) on SGLang 0.5.23 and MI355X (capture `deepseek-v3-tp8-mi355x-v3`):
+TP 8, no DP attention, MTP speculative decoding with the checkpoint's own MTP layer (EAGLE, 3 steps, 4 tokens
+verified per sequence), chunked prefill 16384, FP8 KV cache, aiter attention, and the model's 163840-token
+context (requests that do not fit are skipped: 45% of the corpus requests, 81% of its input tokens). Each
+case's `weight` is how often its shapes ran (calls per second of the steady state, TP rank 0), and the task
+scores the serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in
+the operator before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in
+`workloads.json` records the capture, the effective serving settings and the share of the corpus the context
+window dropped. The 10 weighted cases cover 98.3% of the operator's recorded GPU time:
+
+| `m` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 80 | draft, draft_prefill, prefill, verify | 2.7% | 47.11 |
+| 120 | draft, draft_prefill, prefill, verify | 17.5% | 302.3 |
+| 160 | draft, draft_prefill, prefill, verify | 5.1% | 80.6 |
+| 1601 | draft_prefill, prefill | 1.2% | 5.531 |
+| 2241 | draft_prefill, prefill | 1.3% | 4.62 |
+| 2944 | draft_prefill, prefill | 3.5% | 8.51 |
+| 5057 | draft_prefill, prefill | 2.1% | 3.1 |
+| 6081 | draft_prefill, prefill | 1.6% | 2.127 |
+| 10753 | draft_prefill, prefill | 3.6% | 3.161 |
+| 16384 | draft_prefill, prefill | 59.7% | 34.1 |
+
+With MTP the target model's decode is a verify step of 4 tokens per sequence, so the decode GEMM runs at `m` =
+4 x the padded batch (80 to 160 at this load); the MTP draft layer runs the same GEMM (phases `draft` and
+`draft_prefill`). At TP 8 this per-rank shape is the attention output projection (`o_proj`: 128 heads x 128
+value dimensions / 8 = 2048 inputs, 7168 outputs); the shared expert's `down_proj` named above is 7168 x 256
+per rank at TP 8, so the weights describe `o_proj` calls of the same GEMM shape. Prefill takes about 79% of
+the time, 60% in full 16384-token chunks. In the MI355X QA audit the baseline took 24-25 us for the
+verify-sized cases (the 15 MB weight read alone would take about 3.3 us) and 50 us to 0.42 ms for the prefill
+cases.
+
+The earlier performance cases (`m` = 512 to 65536, except 16384, which is now weighted) are correctness-only,
+as are the earlier decode-sized and boundary cases (`m` = 1 (axis minimum), 3 and 5 (not powers of two), 17,
+100, 129, 1000 and 2049 (not multiples of 16 and above 16)), the other recorded shapes and `m` = 65537 (row
+indices past 16 bits) and 131072 (axis maximum) (63 cases in total).
 
 ## Baseline
 

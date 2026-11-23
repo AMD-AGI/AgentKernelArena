@@ -73,13 +73,39 @@ and 53.7-58.9 dB on the final state, from 1 to 16384 tokens.
 
 ## Workloads
 
-512 to 65536 tokens (128x span) are performance cases. The kernel walks the chunks sequentially in 256
-programs, so its time grows with the chunk count: AITER's table measures 69 us for 2500 tokens (40 chunks) and
-2025 us for 60000 tokens (938 chunks) on gfx950 for this shape, about 2.2 us per chunk, so the smallest case
-(8 chunks) is estimated at about 20 us (an extrapolation, not a measurement; the table's rows do not store the
-final state) and the largest at about 2.2 ms. Shorter prompts are correctness-only: 1 token (axis minimum), 100
-and 200 (partial last chunk), 1000 (unaligned). 2500 tokens, the shape of the tuned table, is a performance
-case. The largest case needs about 4.3 GB for the float64 `h` reference plus the comparison temporaries.
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`Qwen/Qwen3-Next-80B-A3B-Instruct-FP8` on SGLang 0.5.23 and MI355X (capture `qwen3-next-80b-tp1-mi355x-v1`):
+TP 1, no DP attention, MTP speculative decoding with the checkpoint's own MTP layer (NEXTN, 3 steps, 4 tokens
+verified per sequence) and replay-SSM state updates, chunked prefill 16384, and a 262144-token context
+(requests that do not fit are skipped: 30% of the corpus requests, 67% of its input tokens). Each case's
+`weight` is how often its shapes ran (calls per second of the steady state, TP rank 0), and the task scores
+the serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in the
+operator before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in
+`workloads.json` records the capture, the effective serving settings and the share of the corpus the context
+window dropped. The 6 weighted cases cover 98.6% of the operator's recorded GPU time:
+
+| `n_tokens` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 1600 | prefill | 2.5% | 0.5989 |
+| 1920 | prefill | 2.1% | 0.5988 |
+| 6016 | prefill | 0.5% | 0.4193 |
+| 8640 | prefill | 0.5% | 0.2396 |
+| 10752 | prefill | 1.5% | 0.539 |
+| 16384 | prefill | 91.5% | 23.29 |
+
+`n_tokens` is the packed token count of a prefill batch (production runs the state pass over all sequences of
+the batch); the 16384-token chunk takes 91% of the time. The capture recorded the state pass inside SGLang's
+chunked gated-delta-rule op, whose time is counted at the state-pass kernel's share. The task runs one
+sequence of `n_tokens` tokens, so a case stands in for a packed batch of the same total length; the capture
+records the batch's token count, not its sequence layout. In the MI355X QA audit the baseline took 67 us (1600
+tokens) to 0.57 ms (16384 tokens).
+
+The earlier performance cases (512 to 65536 tokens, including 2500, the shape of AITER's tuned table) are
+correctness-only, together with the boundary cases 1 (axis minimum), 100 and 200 (partial last chunk), 1000
+(unaligned), 2, 3, 63, 65 and 127 (not multiples of 4, next to chunk boundaries) and the other recorded shapes
+(45 cases in total). The 65536-token case needs about 4.3 GB for the float64 `h` reference plus the comparison
+temporaries.
 
 ## Comparison (overrides of the default bound)
 

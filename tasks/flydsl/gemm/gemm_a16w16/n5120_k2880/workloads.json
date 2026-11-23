@@ -1,5 +1,54 @@
 {
- "description": "Token counts M of a bf16 5120x2880 projection: decode and small batches run below the 10 us timing floor and are correctness-only; chunks and batched prefill from 128 to 65536 tokens are performance cases.",
+ "description": "gemm_a16w16 shapes of the AgentX agentic serving corpus replayed on openai/gpt-oss-120b (TP 1); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "gpt-oss-120b-tp1-mi355x-v1",
+  "model": "openai/gpt-oss-120b",
+  "coverage": 0.989,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; GEMM time = scheduler-log forwards (prefill M = new tokens per batch, decode M = running batch padded to the CUDA-graph size; speculative verify/draft M = r x padded batch, r and calls per round measured) x calls per forward x per-call cost interpolated in log M from the profiler windows; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher gemm; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 1,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": false,
+   "page_size": 1,
+   "kv_cache_dtype": "auto",
+   "chunked_prefill_size": 16384,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.68,
+   "context_length": 131072,
+   "attention_backend": "aiter",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": null,
+   "speculative_num_steps": null,
+   "speculative_num_draft_tokens": null,
+   "speculative_eagle_topk": null,
+   "speculative_draft_model_path": null,
+   "max_running_requests": null,
+   "max_total_num_tokens": 2040630,
+   "disable_cuda_graph": false,
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 131072,
+   "trajectories": 393,
+   "trajectories_unreachable": 1,
+   "requests": 98827,
+   "requests_dropped": 52682,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 18789409344,
+   "dropped_share": 0.5331,
+   "input_tokens_dropped_share": 0.8685
+  }
+ },
  "cases": [
   {
    "id": "m1",
@@ -52,14 +101,76 @@
    "source": "decode / small batch"
   },
   {
+   "id": "m1001",
+   "axes": {
+    "m": 1001
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "m not a multiple of 4 (single-pass tiles)"
+  },
+  {
+   "id": "m4099",
+   "axes": {
+    "m": 4099
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "m not a multiple of 4 (single-pass tiles)"
+  },
+  {
+   "id": "m24",
+   "axes": {
+    "m": 24
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 19.02,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0094,
+    "members": [
+     {
+      "m": 24
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'m': 24}, 0.9% of the operator's GPU time"
+  },
+  {
    "id": "m32",
    "axes": {
     "m": 32
    },
    "checks": [
-    "correctness"
+    "correctness",
+    "performance"
    ],
-   "source": "decode / small batch"
+   "weight": 384.7,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.1951,
+    "members": [
+     {
+      "m": 32
+     },
+     {
+      "m": 40
+     },
+     {
+      "m": 48
+     }
+    ]
+   },
+   "source": "AgentX decode: 3 recorded shape(s) {'m': 32} .. {'m': 48}, 19.5% of the operator's GPU time"
   },
   {
    "id": "m33",
@@ -107,8 +218,7 @@
     "m": 128
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "prefill chunk"
   },
@@ -128,8 +238,7 @@
     "m": 256
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "prefill chunk"
   },
@@ -144,15 +253,84 @@
    "source": "unaligned batch"
   },
   {
+   "id": "m320",
+   "axes": {
+    "m": 320
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.00% of the operator's GPU time)"
+  },
+  {
+   "id": "m384",
+   "axes": {
+    "m": 384
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.00% of the operator's GPU time)"
+  },
+  {
    "id": "m512",
    "axes": {
     "m": 512
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "prefill chunk"
+  },
+  {
+   "id": "m640",
+   "axes": {
+    "m": 640
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m704",
+   "axes": {
+    "m": 704
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m768",
+   "axes": {
+    "m": 768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m896",
+   "axes": {
+    "m": 896
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m960",
+   "axes": {
+    "m": 960
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
   },
   {
    "id": "m1000",
@@ -170,10 +348,99 @@
     "m": 1024
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "prefill chunk"
+  },
+  {
+   "id": "m1088",
+   "axes": {
+    "m": 1088
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1216",
+   "axes": {
+    "m": 1216
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1280",
+   "axes": {
+    "m": 1280
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1472",
+   "axes": {
+    "m": 1472
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m1536",
+   "axes": {
+    "m": 1536
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m1792",
+   "axes": {
+    "m": 1792
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1856",
+   "axes": {
+    "m": 1856
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1920",
+   "axes": {
+    "m": 1920
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1984",
+   "axes": {
+    "m": 1984
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
   },
   {
    "id": "m2048",
@@ -181,10 +448,249 @@
     "m": 2048
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "prefill chunk"
+  },
+  {
+   "id": "m2112",
+   "axes": {
+    "m": 2112
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m2176",
+   "axes": {
+    "m": 2176
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2240",
+   "axes": {
+    "m": 2240
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2304",
+   "axes": {
+    "m": 2304
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2368",
+   "axes": {
+    "m": 2368
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2432",
+   "axes": {
+    "m": 2432
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2496",
+   "axes": {
+    "m": 2496
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2560",
+   "axes": {
+    "m": 2560
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2688",
+   "axes": {
+    "m": 2688
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m2752",
+   "axes": {
+    "m": 2752
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m2816",
+   "axes": {
+    "m": 2816
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m2880",
+   "axes": {
+    "m": 2880
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m2944",
+   "axes": {
+    "m": 2944
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "m3136",
+   "axes": {
+    "m": 3136
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m3200",
+   "axes": {
+    "m": 3200
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m3264",
+   "axes": {
+    "m": 3264
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m3392",
+   "axes": {
+    "m": 3392
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m3456",
+   "axes": {
+    "m": 3456
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m3520",
+   "axes": {
+    "m": 3520
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m3584",
+   "axes": {
+    "m": 3584
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m3648",
+   "axes": {
+    "m": 3648
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m3904",
+   "axes": {
+    "m": 3904
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m3968",
+   "axes": {
+    "m": 3968
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m4032",
+   "axes": {
+    "m": 4032
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
   },
   {
    "id": "m4096",
@@ -192,10 +698,178 @@
     "m": 4096
    },
    "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m4224",
+   "axes": {
+    "m": 4224
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m4416",
+   "axes": {
+    "m": 4416
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.04% of the operator's GPU time)"
+  },
+  {
+   "id": "m4480",
+   "axes": {
+    "m": 4480
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "m4544",
+   "axes": {
+    "m": 4544
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m4608",
+   "axes": {
+    "m": 4608
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.04% of the operator's GPU time)"
+  },
+  {
+   "id": "m4672",
+   "axes": {
+    "m": 4672
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.02% of the operator's GPU time)"
+  },
+  {
+   "id": "m4736",
+   "axes": {
+    "m": 4736
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.04% of the operator's GPU time)"
+  },
+  {
+   "id": "m4800",
+   "axes": {
+    "m": 4800
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.06% of the operator's GPU time)"
+  },
+  {
+   "id": "m6720",
+   "axes": {
+    "m": 6720
+   },
+   "checks": [
     "correctness",
     "performance"
    ],
-   "source": "prefill chunk"
+   "weight": 1.024,
+   "observed": {
+    "phases": [
+     "prefill"
+    ],
+    "time_share": 0.0067,
+    "members": [
+     {
+      "m": 5056
+     },
+     {
+      "m": 5120
+     },
+     {
+      "m": 5184
+     },
+     {
+      "m": 5248
+     },
+     {
+      "m": 5312
+     },
+     {
+      "m": 5440
+     },
+     {
+      "m": 5504
+     },
+     {
+      "m": 5568
+     },
+     {
+      "m": 5632
+     },
+     {
+      "m": 5696
+     },
+     {
+      "m": 5760
+     },
+     {
+      "m": 5952
+     },
+     {
+      "m": 6080
+     },
+     {
+      "m": 6144
+     },
+     {
+      "m": 6272
+     },
+     {
+      "m": 6336
+     },
+     {
+      "m": 6528
+     },
+     {
+      "m": 6592
+     },
+     {
+      "m": 6656
+     },
+     {
+      "m": 6720
+     },
+     {
+      "m": 6784
+     },
+     {
+      "m": 6976
+     },
+     {
+      "m": 7040
+     }
+    ]
+   },
+   "source": "AgentX prefill: 23 recorded shape(s) {'m': 5056} .. {'m': 7040}, 0.7% of the operator's GPU time"
   },
   {
    "id": "m8192",
@@ -203,10 +877,205 @@
     "m": 8192
    },
    "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m9024",
+   "axes": {
+    "m": 9024
+   },
+   "checks": [
     "correctness",
     "performance"
    ],
-   "source": "prefill chunk"
+   "weight": 1.447,
+   "observed": {
+    "phases": [
+     "prefill"
+    ],
+    "time_share": 0.013,
+    "members": [
+     {
+      "m": 7296
+     },
+     {
+      "m": 7360
+     },
+     {
+      "m": 7488
+     },
+     {
+      "m": 7552
+     },
+     {
+      "m": 7808
+     },
+     {
+      "m": 7936
+     },
+     {
+      "m": 8064
+     },
+     {
+      "m": 8192
+     },
+     {
+      "m": 8320
+     },
+     {
+      "m": 8448
+     },
+     {
+      "m": 8512
+     },
+     {
+      "m": 8576
+     },
+     {
+      "m": 8640
+     },
+     {
+      "m": 8704
+     },
+     {
+      "m": 8832
+     },
+     {
+      "m": 8896
+     },
+     {
+      "m": 9024
+     },
+     {
+      "m": 9088
+     },
+     {
+      "m": 9280
+     },
+     {
+      "m": 9344
+     },
+     {
+      "m": 9408
+     },
+     {
+      "m": 9472
+     }
+    ]
+   },
+   "source": "AgentX prefill: 22 recorded shape(s) {'m': 7296} .. {'m': 9472}, 1.3% of the operator's GPU time"
+  },
+  {
+   "id": "m10560",
+   "axes": {
+    "m": 10560
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 1.8,
+   "observed": {
+    "phases": [
+     "prefill"
+    ],
+    "time_share": 0.0207,
+    "members": [
+     {
+      "m": 9792
+     },
+     {
+      "m": 9856
+     },
+     {
+      "m": 9984
+     },
+     {
+      "m": 10176
+     },
+     {
+      "m": 10240
+     },
+     {
+      "m": 10304
+     },
+     {
+      "m": 10432
+     },
+     {
+      "m": 10496
+     },
+     {
+      "m": 10560
+     },
+     {
+      "m": 10624
+     },
+     {
+      "m": 10688
+     },
+     {
+      "m": 10752
+     },
+     {
+      "m": 10880
+     },
+     {
+      "m": 10944
+     },
+     {
+      "m": 11136
+     },
+     {
+      "m": 11200
+     },
+     {
+      "m": 11264
+     },
+     {
+      "m": 11456
+     },
+     {
+      "m": 11520
+     },
+     {
+      "m": 11584
+     },
+     {
+      "m": 11776
+     },
+     {
+      "m": 11840
+     },
+     {
+      "m": 11904
+     },
+     {
+      "m": 11968
+     },
+     {
+      "m": 12032
+     },
+     {
+      "m": 12096
+     },
+     {
+      "m": 12160
+     },
+     {
+      "m": 12288
+     },
+     {
+      "m": 12352
+     },
+     {
+      "m": 12480
+     }
+    ]
+   },
+   "source": "AgentX prefill: 30 recorded shape(s) {'m': 9792} .. {'m': 12480}, 2.1% of the operator's GPU time"
   },
   {
    "id": "m16384",
@@ -217,7 +1086,130 @@
     "correctness",
     "performance"
    ],
-   "source": "batched prefill"
+   "weight": 51.07,
+   "observed": {
+    "phases": [
+     "prefill"
+    ],
+    "time_share": 0.7446,
+    "members": [
+     {
+      "m": 12800
+     },
+     {
+      "m": 12864
+     },
+     {
+      "m": 12928
+     },
+     {
+      "m": 12992
+     },
+     {
+      "m": 13056
+     },
+     {
+      "m": 13312
+     },
+     {
+      "m": 13376
+     },
+     {
+      "m": 13504
+     },
+     {
+      "m": 13568
+     },
+     {
+      "m": 13632
+     },
+     {
+      "m": 13824
+     },
+     {
+      "m": 13952
+     },
+     {
+      "m": 14080
+     },
+     {
+      "m": 14144
+     },
+     {
+      "m": 14272
+     },
+     {
+      "m": 14400
+     },
+     {
+      "m": 14464
+     },
+     {
+      "m": 14528
+     },
+     {
+      "m": 14592
+     },
+     {
+      "m": 14656
+     },
+     {
+      "m": 14720
+     },
+     {
+      "m": 14912
+     },
+     {
+      "m": 15040
+     },
+     {
+      "m": 15104
+     },
+     {
+      "m": 15232
+     },
+     {
+      "m": 15296
+     },
+     {
+      "m": 15360
+     },
+     {
+      "m": 15424
+     },
+     {
+      "m": 15616
+     },
+     {
+      "m": 15744
+     },
+     {
+      "m": 15872
+     },
+     {
+      "m": 15936
+     },
+     {
+      "m": 16000
+     },
+     {
+      "m": 16128
+     },
+     {
+      "m": 16192
+     },
+     {
+      "m": 16256
+     },
+     {
+      "m": 16320
+     },
+     {
+      "m": 16384
+     }
+    ]
+   },
+   "source": "AgentX prefill: 38 recorded shape(s) {'m': 12800} .. {'m': 16384}, 74.5% of the operator's GPU time"
   },
   {
    "id": "m32768",
@@ -225,8 +1217,7 @@
     "m": 32768
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "batched prefill"
   },
@@ -236,8 +1227,7 @@
     "m": 65536
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "batched prefill"
   }

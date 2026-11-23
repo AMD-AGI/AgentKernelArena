@@ -36,7 +36,9 @@ Per task workspace of a completed run:
    ``candidate_improvement`` (only the candidate is correct) or ``both_fail``;
    ``evaluation_error`` marks missing evidence or a violated protocol. Only
    ``both_pass`` with consistent timing methods and workloads receives a
-   held-out speedup (geometric mean) and score, by the normal scoring rules.
+   held-out speedup (geometric mean, weighted for a weighted task) and score,
+   by the normal scoring rules. A weighted task accepts only correctness-only
+   extra cases.
 
 Run it inside the scoring runtime of the original run (``make docker-shell``):
 
@@ -241,6 +243,12 @@ def evaluate_task(workspace: Path, output: Path, *, salt: str, cases_file: Path 
         original = json.loads(contract_path.read_text())
         contract = heldout_contract(original, salt=salt, extra_cases=_load_extra_cases(cases_file))
         result["extra_case_ids"] = [case["id"] for case in contract["cases"][len(original["cases"]):]]
+        weights = spec.case_weights
+        if weights is not None:
+            # Weights come from the recorded workload; an extra case has no share of it.
+            if any("performance" in case["checks"] for case in contract["cases"][len(original["cases"]):]):
+                raise ValueError("A weighted task accepts only correctness-only held-out cases")
+            result["case_weights"] = weights
         contract_path.write_text(json.dumps(contract, indent=2) + "\n")
 
         guard = snapshot_workspace_harness(heldout, task_spec=spec)
@@ -309,7 +317,8 @@ def evaluate_task(workspace: Path, output: Path, *, salt: str, cases_file: Path 
                 result.update(benchmark_method_consistent=consistent, benchmark_method_mismatches=mismatches,
                               workload_consistent=workloads)
                 if consistent and workloads:
-                    result["speedup_ratio"] = calculate_average_speedup(baseline_cases, candidate_cases, log)
+                    result["speedup_ratio"] = calculate_average_speedup(baseline_cases, candidate_cases, log,
+                                                                        weights=weights)
         result["error"] = "; ".join(failures) or None
         result["score"] = score(
             result["candidate_pass_compilation"], candidate_ok, result["baseline_execution_time"],

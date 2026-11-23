@@ -47,12 +47,35 @@ the router is the old task's: normal logits over the 257 experts, the top 9 of t
 probabilities not renormalized). It does not pin the fused shared expert into every token's last slot as
 production routing does.
 
-**Workloads.** Token counts from AITER's tuned list: 1, 4, 16, 64, 256, 1024, 4096 and 8192 tokens are timed
-(8192x); 3, 77 and 1000 tokens are correctness-only boundary cases. The weights are 1.29 GB (5.0 MB per
-expert), so a single token (9 experts, 45 MB) is estimated at about 14 us by the 4.5 TB/s + 4 us rule; from
-about 256 tokens every expert is read. The layer does 170 MFLOP per token; at 8192 tokens the float64
-reference does 1.4 TFLOP and the baseline's per-slot buffer is 0.9 GB, so larger prefill chunks are left out to
-keep evaluation time reasonable.
+**Workloads.** The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`amd/GLM-5.2-MXFP4` on SGLang 0.5.23 and MI355X (capture `glm-5.2-tp4-mi355x-v1`): TP 4 without expert
+parallelism, no DP attention, EAGLE MTP speculative decoding (5 steps, 6 tokens verified per sequence),
+chunked prefill 32768, FP8 KV cache, and a 262144-token context (requests that do not fit are skipped: 30% of
+the corpus requests, 67% of its input tokens). Each case's `weight` is how often its shapes ran (calls per
+second of the steady state, TP rank 0), and the task scores the serving-weighted speedup
+`sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in the operator before and after (see
+Case weights in `docs/how-to/add-task.md`). `weight_provenance` in `workloads.json` records the capture, the
+effective serving settings and the share of the corpus the context window dropped. The 4 weighted cases cover
+98.4% of the operator's recorded GPU time:
+
+| `num_tokens` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 120 | verify | 17.7% | 64.41 |
+| 19904 | prefill | 0.5% | 0.2503 |
+| 30720 | prefill | 10.2% | 4.006 |
+| 32768 | prefill | 70.1% | 22.32 |
+
+`num_tokens` is the layer input's token count. With EAGLE the decode is a verify step of 6 tokens per sequence
+(120 = 6 x 20); prefill runs chunks of up to 32768 tokens and takes about 81% of the time. The census does not
+show the activation format of the served MoE (A4, A8 or A16), so the weights assume the task's a4w4 semantics.
+The weights are 1.29 GB (5.0 MB per expert); from about 256 tokens every expert is read. In the MI355X QA
+audit the baseline took 0.38 ms (120 tokens) to 6.2 ms (32768 tokens). The layer does 170 MFLOP per token, so
+the 32768-token case needs 5.6 TFLOP in the float64 reference and a 3.6 GB per-slot buffer in the baseline.
+
+The earlier performance cases (AITER's tuned token counts 1, 4, 16, 64, 256, 1024, 4096 and 8192) are
+correctness-only, together with the boundary cases 3, 77 and 1000 and the other recorded shapes (32 cases in
+total).
 
 **Baseline.** AITER's `fused_moe` serves this shape with FlyDSL MoE kernels on AITER's preshuffled layouts
 (the tuned entries name `flydsl_moe1_afp4_wfp4_bf16_*` and `flydsl_moe2_layout_afp4_wfp4_bf16_*`) and a HIP

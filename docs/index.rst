@@ -37,6 +37,7 @@ repository.
       * :doc:`Repair tasks automatically <how-to/quality-loop>`
       * :doc:`Evaluate on held-out inputs <how-to/held-out-evaluation>`
       * :doc:`Estimate roofline floors <how-to/roofline-floors>`
+      * :doc:`Derive task workloads from AgentX traces <how-to/agentx-workloads>`
 
    .. grid-item-card:: Examples
 
