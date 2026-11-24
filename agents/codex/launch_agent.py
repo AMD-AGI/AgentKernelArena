@@ -15,6 +15,7 @@ from agents import register_agent
 from agents.prompt_input import prompt_input
 from agents.run_budget import append_run_budget
 from agents.stream_log import StreamLog
+from src.agent_sandbox import wrap_command
 from src.module_registration import AgentType, load_prompt_builder
 from src.process_control import stop_process_group as _stop_process
 from src.prompts.agent_budget import iteration_budget_guidance, time_budget_guidance
@@ -279,7 +280,7 @@ def launch_agent(eval_config: dict[str, Any], task_config_dir: str, workspace: s
         event_logs.append(event_log)
         with prompt_input(prompt_text) as stream:
             process = subprocess.Popen(
-                run_cmd, stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                wrap_command(run_cmd, process_env), stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, cwd=workspace, bufsize=1, env=process_env, start_new_session=True,
             )
 
