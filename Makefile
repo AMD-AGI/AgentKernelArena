@@ -6,7 +6,7 @@
 
 SHELL := /bin/bash
 
-.PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-build-rdna3 docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak docker-setup-forge \
+.PHONY: help docker-shell docker-check-agents docker-smoke docker-build-rdna4 docker-run docker-parallel-run docker-quality-loop docker-sikl-task-builder docker-setup-flydsl docker-setup-geak docker-setup-forge \
         slurm-shell slurm-smoke slurm-parallel-smoke slurm-check-agents slurm-run slurm-parallel-run slurm-submit slurm-parallel-submit \
         check-docker-runner check-slurm-runner check-evaluator check-gpu-architecture check-held-out check-visualization \
         visualization-build visualization-serve visualization-run \
@@ -21,13 +21,12 @@ help:
 	@echo "                         Use CONFIG=... for another config; AGENTS=... overrides it"
 	@echo "                         AGENTS=all checks Cursor, Claude Code, and Codex; DeepSeek is opt-in"
 	@echo "make docker-smoke        - Verify Docker Python, ROCm tools, imports, and GPU access"
-	@echo "make docker-build-rdna4  - Prebuild/rebuild gfx1201 runtime (also builds on first use)"
-	@echo "make docker-build-rdna3  - Prebuild/rebuild gfx1100 (Radeon PRO W7900) runtime (also builds on first use)"
+	@echo "make docker-build-rdna4  - Prebuild/rebuild the gfx1201 and gfx1100 (Radeon PRO W7900) runtime (also builds on first use)"
 	@echo "make docker-run CONFIG=example_configs/quickstart_claude_mi300.yaml RUN_ARGS=\"--run-suffix test\" - Run an experiment in Docker"
 	@echo "make docker-parallel-run CONFIG=example_configs/benchmark_cursor_mi355x.yaml GPU_IDS=0,1 - Run an experiment across one worker container per GPU"
 	@echo "                         Default CONFIG is the generic MI300-series Claude quickstart"
 	@echo "                         On other GPUs, pass a matching CONFIG explicitly"
-	@echo "                         Images: gfx942->mi30x, gfx950->mi35x, gfx1201->local RDNA4 build, gfx1100->local RDNA3 build (W7900 only)"
+	@echo "                         Images: gfx942->mi30x, gfx950->mi35x, gfx1201 and gfx1100 (W7900 only)->local RDNA4 build"
 	@echo "make docker-quality-loop CONFIG=example_configs/quality_loop_mi300.yaml - Audit and harden config-selected tasks, then open at most one draft PR"
 	@echo "                         Default quality-loop CONFIG is agents/quality_loop/agent_config.yaml"
 	@echo "make docker-sikl-task-builder INPUT=/path/to/bundle - Generate, repair and validate SIKL tasks"
@@ -115,9 +114,6 @@ docker-smoke:
 
 docker-build-rdna4:
 	@$(DOCKER_RUNNER) build-rdna4-image
-
-docker-build-rdna3:
-	@$(DOCKER_RUNNER) build-rdna3-image
 
 docker-run:
 	@$(DOCKER_RUNNER) run --config_name $(CONFIG) $(RUN_ARGS)

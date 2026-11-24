@@ -101,10 +101,12 @@ This topic summarizes the features available in each AgentKernelArena release. F
   must report `gfx1100` and one of the two W7900 rocminfo marketing names.
   Any other board, an empty name or a missing `rocminfo` is refused before a run
   directory is created. Accepted runs write `gpu_identity/<role>.json`.
-- The runner builds the RDNA3 image, `agent-kernel-arena:rdna3-rocm10-v1`, on
-  first use, from the same pinned base and locked wheels as the RDNA4 image
-  (`make docker-build-rdna3`; `AKA_DOCKER_IMAGE_GFX1100` overrides it). See the
-  [RDNA3 runtime guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna3/README.md).
+- The W7900 runs the RDNA4 image, `agent-kernel-arena:rdna4-rocm10-v1`, which
+  the runner builds on first use (`make docker-build-rdna4`;
+  `AKA_DOCKER_IMAGE_GFX1100` overrides it). The recipe now names its base by
+  the versioned `rocm/vllm` tag and checks for `rocminfo`; existing images are
+  reused. See the
+  [runtime guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md).
 - W7900 prompts use RDNA3 architecture, HIP and Triton guides.
 - Evaluation-tool sidecars are refused on `gfx1100`. Every shipped kernel task
   declares `gfx950`, so a W7900 run skips it, as on the other non-MI355X GPUs.

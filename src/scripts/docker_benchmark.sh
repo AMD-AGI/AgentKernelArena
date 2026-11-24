@@ -12,9 +12,10 @@ GFX950_V0520_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0d
 GFX950_SGLANG_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:7a3087bc8b17b246a807215c37e2260e2b83c052423a92cb73966eea5d8b2d7f"
 # Pin the MI355X runtime; retain the older manifest for explicit rollback.
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0520_IMMUTABLE_IMAGE}"
-# Built on first use when absent; their Dockerfiles pin the base.
+# Built on first use when absent; its Dockerfile names the base. The W7900
+# (gfx1100) runs the same image.
 DEFAULT_DOCKER_IMAGE_GFX1201="${AKA_DOCKER_IMAGE_GFX1201:-agent-kernel-arena:rdna4-rocm10-v1}"
-DEFAULT_DOCKER_IMAGE_GFX1100="${AKA_DOCKER_IMAGE_GFX1100:-agent-kernel-arena:rdna3-rocm10-v1}"
+DEFAULT_DOCKER_IMAGE_GFX1100="${AKA_DOCKER_IMAGE_GFX1100:-agent-kernel-arena:rdna4-rocm10-v1}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOST_HOME="${HOME:?HOME must be set}"
@@ -76,7 +77,6 @@ Usage:
   src/scripts/docker_benchmark.sh sikl-task-builder [--config <config.yaml>] <inspect|run|resume> [args...]
   src/scripts/docker_benchmark.sh smoke
   src/scripts/docker_benchmark.sh build-rdna4-image
-  src/scripts/docker_benchmark.sh build-rdna3-image
   src/scripts/docker_benchmark.sh eval-tools-smoke
   src/scripts/docker_benchmark.sh build-eval-tool-images
 
@@ -99,7 +99,7 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
-  AKA_DOCKER_IMAGE_GFX1100 Radeon PRO W7900 image (also the build-rdna3-image output tag).
+  AKA_DOCKER_IMAGE_GFX1100 Radeon PRO W7900 image (default: the RDNA4 image).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_CODEX_AUTH_DIR      Host Codex auth/config source directory (default: ~/.codex).
                          Isolated workers copy it from a read-only mount into their HOME.
@@ -421,25 +421,13 @@ build_rdna4_image() {
     # Send only the recipe, normalizer, and package lock as build context.
     docker build --pull=false \
         --file "$HOST_ROOT/docker/rdna4/Dockerfile" \
-        --tag "$DEFAULT_DOCKER_IMAGE_GFX1201" \
+        --tag "${1:-$DEFAULT_DOCKER_IMAGE_GFX1201}" \
         "$HOST_ROOT/docker/rdna4"
 }
 
-build_rdna3_image() {
-    # Send only the recipe, normalizer, and package lock as build context.
-    docker build --pull=false \
-        --file "$HOST_ROOT/docker/rdna3/Dockerfile" \
-        --tag "$DEFAULT_DOCKER_IMAGE_GFX1100" \
-        "$HOST_ROOT/docker/rdna3"
-}
-
 ensure_runtime_image() {
-    local label build_image make_target arch_override
-    case "$SELECTED_GPU_ARCH" in
-        gfx1201) label="RDNA4"; build_image=build_rdna4_image; make_target=docker-build-rdna4 ;;
-        gfx1100) label="RDNA3"; build_image=build_rdna3_image; make_target=docker-build-rdna3 ;;
-        *) return 0 ;;
-    esac
+    local arch_override
+    [[ "$SELECTED_GPU_ARCH" == "gfx1201" || "$SELECTED_GPU_ARCH" == "gfx1100" ]] || return 0
     arch_override="AKA_DOCKER_IMAGE_$(printf '%s' "$SELECTED_GPU_ARCH" | tr '[:lower:]' '[:upper:]')"
     # Custom images retain Docker's normal pull/run behavior, even if an
     # override happens to equal our default tag. Never build over an override.
@@ -451,10 +439,10 @@ ensure_runtime_image() {
     fi
     # An unavailable daemon is not evidence that the image is missing.
     docker info >/dev/null \
-        || die "Cannot access Docker; check daemon access before building the $label runtime."
-    echo "$label image '$SELECTED_IMAGE' is missing; building the pinned runtime before launch. The first build may download the base image and locked packages." >&2
-    "$build_image" >&2 \
-        || die "$label runtime build failed; no experiment was started. Retry the command or run make $make_target."
+        || die "Cannot access Docker; check daemon access before building the RDNA4 runtime."
+    echo "RDNA4 image '$SELECTED_IMAGE' is missing; building the pinned runtime before launch. The first build may download the base image and locked packages." >&2
+    build_rdna4_image "$SELECTED_IMAGE" >&2 \
+        || die "RDNA4 runtime build failed; no experiment was started. Retry the command or run make docker-build-rdna4."
 }
 
 detect_node_prefix() {
@@ -2387,9 +2375,6 @@ case "${1:-}" in
         ;;
     build-rdna4-image)
         build_rdna4_image
-        ;;
-    build-rdna3-image)
-        build_rdna3_image
         ;;
     smoke)
         select_runtime_for_host

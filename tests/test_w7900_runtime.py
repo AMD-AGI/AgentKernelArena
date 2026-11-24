@@ -11,27 +11,19 @@ import unittest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-RDNA3 = ROOT / "docker/rdna3"
 RDNA4 = ROOT / "docker/rdna4"
 NAVI31_ROCMINFO = ROOT / "tests/fixtures/rocminfo_navi31_4x_w7900_dual_slot.txt"
 
 
 class RecipeTests(unittest.TestCase):
-    def test_shared_recipe_inputs_are_byte_identical_copies(self):
-        # Diverging copies would silently give W7900 a different ROCm or Python stack.
-        for name in ("prepare_runtime.py", "requirements.lock", ".dockerignore"):
-            with self.subTest(name=name):
-                self.assertEqual((RDNA3 / name).read_bytes(), (RDNA4 / name).read_bytes())
-
-    def test_base_image_is_the_same_digest_pin(self):
-        def base(recipe):
-            return re.findall(r"(?m)^FROM\s+(\S+)", (recipe / "Dockerfile").read_text())
-
-        self.assertEqual(base(RDNA3), base(RDNA4))
-        self.assertRegex(base(RDNA3)[0], r"@sha256:[0-9a-f]{64}$")
+    def test_base_image_is_a_versioned_rocm_vllm_tag(self):
+        # The W7900 shares this recipe; a floating tag would change both stacks silently.
+        bases = re.findall(r"(?m)^FROM\s+(\S+)", (RDNA4 / "Dockerfile").read_text())
+        self.assertEqual(len(bases), 1)
+        self.assertRegex(bases[0], r"^rocm/vllm:rocm\d+\.\d+\.\d+_\S+$")
 
     def test_image_ships_rocminfo_for_the_identity_check(self):
-        self.assertIn("rocminfo missing", (RDNA3 / "Dockerfile").read_text())
+        self.assertIn("rocminfo missing", (RDNA4 / "Dockerfile").read_text())
 
 
 class SmokeIdentityTests(unittest.TestCase):

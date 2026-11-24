@@ -30,7 +30,7 @@ Choose pipeline depth from generated code and measurements, not a CDNA preset.
 
 On gfx1100, `tl.dot` with FP16 or BF16 inputs lowers to gfx11 WMMA
 (`v_wmma_f32_16x16x16_f16` and the `bf16` form). The hardware has **no FP8,
-FP4 or sparse WMMA**, and no MFMA. In AKA's RDNA3 runtime (Triton 3.8.0), an
+FP4 or sparse WMMA**, and no MFMA. In AKA's W7900 runtime (Triton 3.8.0), an
 FP8 `tl.dot` (e4m3fn, e4m3fnuz or e5m2) compiles by upcasting both operands to
 FP16 and issuing `v_wmma_f32_16x16x16_f16`, so it runs at the FP16 rate and
 saves only load bandwidth. Block-scaled `tl.dot_scaled` and MXFP4 paths are
