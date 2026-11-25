@@ -1,0 +1,74 @@
+schema_version: 3
+description: >-
+  Mamba2 (SSD) chunk state, the state-accumulation stage of chunked selective-state-space prefill. Tokens
+  are split into chunks of 256 (the last may be partial). For chunk c, head h and group g = h // 16 (16 heads
+  share one group), with dA = dA_cumsum[h, c]: states[c, h, p, n] = sum_k x[k, h, p] * B[k, g, n]
+  * exp(dA[255] - dA[k]) * dt[h, c, k] over the tokens k of the chunk. x and B are bfloat16, the sum
+  accumulates in float32 or higher, and the states are float32. dA[255] is the chunk's final cumulative
+  decay (the padding of a partial chunk repeats the last value).
+operator:
+  name: ssd_chunk_state
+  category: state_space
+interface:
+  axes:
+    n_tokens: {kind: var, min: 1, max: 131072, description: Tokens of one packed sequence batch.}
+    num_heads: {kind: const, value: 128, description: SSM heads.}
+    head_dim: {kind: const, value: 64, description: Channels per head.}
+    num_groups: {kind: const, value: 8, description: B groups (16 heads per group).}
+    state_dim: {kind: const, value: 128, description: SSM state size.}
+    chunk_size: {kind: const, value: 256, description: Tokens per chunk.}
+  derived_axes:
+    n_chunks: ceil_div(n_tokens, chunk_size)
+  inputs:
+    x:
+      kind: tensor
+      shape: [n_tokens, num_heads, head_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    B:
+      kind: tensor
+      shape: [n_tokens, num_groups, state_dim]
+      dtype: bfloat16
+      distribution: {kind: normal, mean: 0.0, std: 1.0}
+    dt:
+      kind: tensor
+      shape: [num_heads, n_chunks, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: >-
+        Discretization step of every token, U(0, 0.1). The padding slots of a partial chunk are not part of the
+        sum; they keep their draw (the chunk cumsum pass writes zeros there).
+    dA_cumsum:
+      kind: tensor
+      shape: [num_heads, n_chunks, chunk_size]
+      dtype: float32
+      distribution: {kind: generator}
+      description: Chunk-local cumulative sum of dt * A with a negative per-head A (constant in padding).
+    cu_chunk_seqlens:
+      kind: tensor
+      shape: [n_chunks + 1]
+      dtype: int32
+      role: metadata
+      distribution: {kind: generator}
+      description: Token offset of every chunk boundary (consecutive chunks of 256, the last clipped to n_tokens).
+  outputs:
+    states: {shape: [n_chunks, num_heads, head_dim, state_dim], dtype: float32}
+  generator: {file: inputs.py, symbol: make_inputs}
+reference: {file: reference.py, symbol: reference}
+baseline:
+  language: triton
+  entry: baseline/kernel.py
+  provenance:
+    source: vllm-project/vllm
+    revision: edbc4969a76b25c531f7b9bb16b79984e65ef023
+    path: vllm/model_executor/layers/mamba/ops/ssd_chunk_state.py
+    license: Apache-2.0
+    modifications: >-
+      Kernel copied unchanged except that fast_exp is inlined; the autotune is replaced by a fixed tile
+      configuration (64 x 64 x 32, 4 warps, 2 stages) and the launch wrapper is specialised to the scenario
+      and wrapped in the run() interface.
+compare:
+  states: {bound: baseline_relative, k: 2, max_violation_fraction: 4.0e-5}
+workloads: workloads.json
+platform_support:
+  required_arch: [gfx950]
