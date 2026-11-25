@@ -1,252 +1,1484 @@
 {
-  "description": "Token counts through the 7168x2048 block-scaled FP8 down projection (DeepSeek-V3 hidden size 7168, expert intermediate size 2048). Decode batches and chunks below 512 tokens run below the 10 us floor and are correctness-only; m=2049 is the first count past the baseline's 2048-row tile-table boundary.",
-  "cases": [
-    {
-      "id": "m1",
-      "axes": {
-        "m": 1
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "axis minimum, single-token decode"
-    },
-    {
-      "id": "m2",
-      "axes": {
-        "m": 2
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "decode batch"
-    },
-    {
-      "id": "m3",
-      "axes": {
-        "m": 3
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "odd decode batch"
-    },
-    {
-      "id": "m4",
-      "axes": {
-        "m": 4
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "tile-bucket boundary"
-    },
-    {
-      "id": "m5",
-      "axes": {
-        "m": 5
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "odd decode batch"
-    },
-    {
-      "id": "m8",
-      "axes": {
-        "m": 8
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "tile-bucket boundary"
-    },
-    {
-      "id": "m16",
-      "axes": {
-        "m": 16
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "decode batch (decode batch)"
-    },
-    {
-      "id": "m17",
-      "axes": {
-        "m": 17
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "just above one 16-row tile"
-    },
-    {
-      "id": "m32",
-      "axes": {
-        "m": 32
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "tile-bucket boundary"
-    },
-    {
-      "id": "m64",
-      "axes": {
-        "m": 64
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "decode batch (decode batch)"
-    },
-    {
-      "id": "m96",
-      "axes": {
-        "m": 96
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "decode batch (decode batch)"
-    },
-    {
-      "id": "m100",
-      "axes": {
-        "m": 100
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "below one 128-row tile"
-    },
-    {
-      "id": "m128",
-      "axes": {
-        "m": 128
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "decode batch (DeepSeek-V3 decode batch)"
-    },
-    {
-      "id": "m256",
-      "axes": {
-        "m": 256
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "tile-bucket boundary"
-    },
-    {
-      "id": "m1000",
-      "axes": {
-        "m": 1000
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "unaligned prefill chunk"
-    },
-    {
-      "id": "m129",
-      "axes": {
-        "m": 129
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "one row above a 128-row tile"
-    },
-    {
-      "id": "m2049",
-      "axes": {
-        "m": 2049
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "first count of the 128x256 tile bucket"
-    },
-    {
-      "id": "m512",
-      "axes": {
-        "m": 512
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "prefill chunk"
-    },
-    {
-      "id": "m1024",
-      "axes": {
-        "m": 1024
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "prefill chunk"
-    },
-    {
-      "id": "m2048",
-      "axes": {
-        "m": 2048
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "prefill chunk; largest count of the 128x128 tile bucket"
-    },
-    {
-      "id": "m4096",
-      "axes": {
-        "m": 4096
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "prefill chunk"
-    },
-    {
-      "id": "m8192",
-      "axes": {
-        "m": 8192
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "prefill chunk"
-    },
-    {
-      "id": "m16384",
-      "axes": {
-        "m": 16384
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "long prefill"
-    },
-    {
-      "id": "m65536",
-      "axes": {
-        "m": 65536
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "very long prefill"
-    }
-  ]
+ "description": "gemm_a8w8_blockscale shapes of the AgentX agentic serving corpus replayed on deepseek-ai/DeepSeek-V3 (TP 8); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "deepseek-v3-tp8-mi355x-v3",
+  "model": "deepseek-ai/DeepSeek-V3",
+  "coverage": 0.983,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; GEMM time = scheduler-log forwards (prefill M = new tokens per batch, decode M = running batch padded to the CUDA-graph size; speculative verify/draft M = r x padded batch, r and calls per round measured) x calls per forward x per-call cost interpolated in log M from the profiler windows; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher gemm; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 8,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": false,
+   "page_size": 1,
+   "kv_cache_dtype": "fp8_e4m3",
+   "chunked_prefill_size": 16384,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.68,
+   "context_length": 163840,
+   "attention_backend": "aiter",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": "EAGLE",
+   "speculative_num_steps": 3,
+   "speculative_num_draft_tokens": 4,
+   "speculative_eagle_topk": 1,
+   "speculative_draft_model_path": "deepseek-ai/DeepSeek-V3@e815299b0bcbac849fa540c768ef21845365c9eb",
+   "max_running_requests": 48,
+   "max_total_num_tokens": 3288610,
+   "disable_cuda_graph": false,
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 163840,
+   "trajectories": 393,
+   "trajectories_unreachable": 1,
+   "requests": 98827,
+   "requests_dropped": 44439,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 17588762432,
+   "dropped_share": 0.4497,
+   "input_tokens_dropped_share": 0.813
+  }
+ },
+ "cases": [
+  {
+   "id": "m1",
+   "axes": {
+    "m": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis minimum, single-token decode"
+  },
+  {
+   "id": "m2",
+   "axes": {
+    "m": 2
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "m3",
+   "axes": {
+    "m": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd decode batch"
+  },
+  {
+   "id": "m4",
+   "axes": {
+    "m": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tile-bucket boundary"
+  },
+  {
+   "id": "m5",
+   "axes": {
+    "m": 5
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "odd decode batch"
+  },
+  {
+   "id": "m8",
+   "axes": {
+    "m": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tile-bucket boundary"
+  },
+  {
+   "id": "m16",
+   "axes": {
+    "m": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch (decode batch)"
+  },
+  {
+   "id": "m17",
+   "axes": {
+    "m": 17
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "just above one 16-row tile"
+  },
+  {
+   "id": "m18",
+   "axes": {
+    "m": 18
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m20",
+   "axes": {
+    "m": 20
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m22",
+   "axes": {
+    "m": 22
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m24",
+   "axes": {
+    "m": 24
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m26",
+   "axes": {
+    "m": 26
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m28",
+   "axes": {
+    "m": 28
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "m30",
+   "axes": {
+    "m": 30
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.11% of the operator's GPU time)"
+  },
+  {
+   "id": "m32",
+   "axes": {
+    "m": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tile-bucket boundary"
+  },
+  {
+   "id": "m40",
+   "axes": {
+    "m": 40
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.12% of the operator's GPU time)"
+  },
+  {
+   "id": "m64",
+   "axes": {
+    "m": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch (decode batch)"
+  },
+  {
+   "id": "m65537",
+   "axes": {
+    "m": 65537
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "first row past 16-bit row indices"
+  },
+  {
+   "id": "m131072",
+   "axes": {
+    "m": 131072
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis maximum"
+  },
+  {
+   "id": "m80",
+   "axes": {
+    "m": 80
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 47.11,
+   "observed": {
+    "phases": [
+     "draft",
+     "draft_prefill",
+     "prefill",
+     "verify"
+    ],
+    "time_share": 0.0266,
+    "members": [
+     {
+      "m": 64
+     },
+     {
+      "m": 65
+     },
+     {
+      "m": 72
+     },
+     {
+      "m": 80
+     }
+    ]
+   },
+   "source": "AgentX draft/draft_prefill/prefill/verify: 4 recorded shape(s) {'m': 64} .. {'m': 80}, 2.7% of the operator's GPU time"
+  },
+  {
+   "id": "m96",
+   "axes": {
+    "m": 96
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch (decode batch)"
+  },
+  {
+   "id": "m100",
+   "axes": {
+    "m": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "below one 128-row tile"
+  },
+  {
+   "id": "m120",
+   "axes": {
+    "m": 120
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 302.3,
+   "observed": {
+    "phases": [
+     "draft",
+     "draft_prefill",
+     "prefill",
+     "verify"
+    ],
+    "time_share": 0.1755,
+    "members": [
+     {
+      "m": 88
+     },
+     {
+      "m": 96
+     },
+     {
+      "m": 104
+     },
+     {
+      "m": 112
+     },
+     {
+      "m": 120
+     },
+     {
+      "m": 128
+     },
+     {
+      "m": 129
+     }
+    ]
+   },
+   "source": "AgentX draft/draft_prefill/prefill/verify: 7 recorded shape(s) {'m': 88} .. {'m': 129}, 17.6% of the operator's GPU time"
+  },
+  {
+   "id": "m128",
+   "axes": {
+    "m": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch (DeepSeek-V3 decode batch)"
+  },
+  {
+   "id": "m129",
+   "axes": {
+    "m": 129
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one row above a 128-row tile"
+  },
+  {
+   "id": "m160",
+   "axes": {
+    "m": 160
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 80.6,
+   "observed": {
+    "phases": [
+     "draft",
+     "draft_prefill",
+     "prefill",
+     "verify"
+    ],
+    "time_share": 0.0507,
+    "members": [
+     {
+      "m": 160
+     },
+     {
+      "m": 193
+     },
+     {
+      "m": 194
+     }
+    ]
+   },
+   "source": "AgentX draft/draft_prefill/prefill/verify: 3 recorded shape(s) {'m': 160} .. {'m': 194}, 5.1% of the operator's GPU time"
+  },
+  {
+   "id": "m256",
+   "axes": {
+    "m": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "tile-bucket boundary"
+  },
+  {
+   "id": "m257",
+   "axes": {
+    "m": 257
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m321",
+   "axes": {
+    "m": 321
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.12% of the operator's GPU time)"
+  },
+  {
+   "id": "m385",
+   "axes": {
+    "m": 385
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m449",
+   "axes": {
+    "m": 449
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m451",
+   "axes": {
+    "m": 451
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m512",
+   "axes": {
+    "m": 512
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m513",
+   "axes": {
+    "m": 513
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m577",
+   "axes": {
+    "m": 577
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.09% of the operator's GPU time)"
+  },
+  {
+   "id": "m640",
+   "axes": {
+    "m": 640
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m641",
+   "axes": {
+    "m": 641
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.11% of the operator's GPU time)"
+  },
+  {
+   "id": "m705",
+   "axes": {
+    "m": 705
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.09% of the operator's GPU time)"
+  },
+  {
+   "id": "m769",
+   "axes": {
+    "m": 769
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "m833",
+   "axes": {
+    "m": 833
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m835",
+   "axes": {
+    "m": 835
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m897",
+   "axes": {
+    "m": 897
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.05% of the operator's GPU time)"
+  },
+  {
+   "id": "m960",
+   "axes": {
+    "m": 960
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m961",
+   "axes": {
+    "m": 961
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.11% of the operator's GPU time)"
+  },
+  {
+   "id": "m962",
+   "axes": {
+    "m": 962
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1000",
+   "axes": {
+    "m": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill chunk"
+  },
+  {
+   "id": "m1024",
+   "axes": {
+    "m": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m1025",
+   "axes": {
+    "m": 1025
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.09% of the operator's GPU time)"
+  },
+  {
+   "id": "m1089",
+   "axes": {
+    "m": 1089
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "m1090",
+   "axes": {
+    "m": 1090
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft_prefill/prefill, not a performance case (0.01% of the operator's GPU time)"
+  },
+  {
+   "id": "m1601",
+   "axes": {
+    "m": 1601
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 5.531,
+   "observed": {
+    "phases": [
+     "draft_prefill",
+     "prefill"
+    ],
+    "time_share": 0.0123,
+    "members": [
+     {
+      "m": 1153
+     },
+     {
+      "m": 1154
+     },
+     {
+      "m": 1217
+     },
+     {
+      "m": 1280
+     },
+     {
+      "m": 1281
+     },
+     {
+      "m": 1282
+     },
+     {
+      "m": 1345
+     },
+     {
+      "m": 1346
+     },
+     {
+      "m": 1409
+     },
+     {
+      "m": 1473
+     },
+     {
+      "m": 1537
+     },
+     {
+      "m": 1540
+     },
+     {
+      "m": 1601
+     },
+     {
+      "m": 1664
+     },
+     {
+      "m": 1665
+     }
+    ]
+   },
+   "source": "AgentX draft_prefill/prefill: 15 recorded shape(s) {'m': 1153} .. {'m': 1665}, 1.2% of the operator's GPU time"
+  },
+  {
+   "id": "m2048",
+   "axes": {
+    "m": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk; largest count of the 128x128 tile bucket"
+  },
+  {
+   "id": "m2049",
+   "axes": {
+    "m": 2049
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "first count of the 128x256 tile bucket"
+  },
+  {
+   "id": "m2241",
+   "axes": {
+    "m": 2241
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 4.62,
+   "observed": {
+    "phases": [
+     "draft_prefill",
+     "prefill"
+    ],
+    "time_share": 0.0129,
+    "members": [
+     {
+      "m": 1729
+     },
+     {
+      "m": 1793
+     },
+     {
+      "m": 1857
+     },
+     {
+      "m": 1921
+     },
+     {
+      "m": 1922
+     },
+     {
+      "m": 1985
+     },
+     {
+      "m": 2048
+     },
+     {
+      "m": 2049
+     },
+     {
+      "m": 2113
+     },
+     {
+      "m": 2177
+     },
+     {
+      "m": 2178
+     },
+     {
+      "m": 2241
+     },
+     {
+      "m": 2305
+     },
+     {
+      "m": 2306
+     },
+     {
+      "m": 2369
+     },
+     {
+      "m": 2370
+     },
+     {
+      "m": 2432
+     },
+     {
+      "m": 2433
+     },
+     {
+      "m": 2434
+     },
+     {
+      "m": 2497
+     }
+    ]
+   },
+   "source": "AgentX draft_prefill/prefill: 20 recorded shape(s) {'m': 1729} .. {'m': 2497}, 1.3% of the operator's GPU time"
+  },
+  {
+   "id": "m2944",
+   "axes": {
+    "m": 2944
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 8.51,
+   "observed": {
+    "phases": [
+     "draft_prefill",
+     "prefill"
+    ],
+    "time_share": 0.0353,
+    "members": [
+     {
+      "m": 2561
+     },
+     {
+      "m": 2624
+     },
+     {
+      "m": 2625
+     },
+     {
+      "m": 2689
+     },
+     {
+      "m": 2753
+     },
+     {
+      "m": 2817
+     },
+     {
+      "m": 2818
+     },
+     {
+      "m": 2821
+     },
+     {
+      "m": 2881
+     },
+     {
+      "m": 2944
+     },
+     {
+      "m": 2945
+     },
+     {
+      "m": 3008
+     },
+     {
+      "m": 3009
+     },
+     {
+      "m": 3010
+     },
+     {
+      "m": 3073
+     },
+     {
+      "m": 3074
+     },
+     {
+      "m": 3137
+     },
+     {
+      "m": 3138
+     },
+     {
+      "m": 3200
+     },
+     {
+      "m": 3201
+     },
+     {
+      "m": 3265
+     },
+     {
+      "m": 3266
+     },
+     {
+      "m": 3328
+     },
+     {
+      "m": 3329
+     },
+     {
+      "m": 3393
+     },
+     {
+      "m": 3395
+     },
+     {
+      "m": 3457
+     },
+     {
+      "m": 3520
+     },
+     {
+      "m": 3521
+     },
+     {
+      "m": 3585
+     },
+     {
+      "m": 3649
+     },
+     {
+      "m": 3713
+     },
+     {
+      "m": 3777
+     },
+     {
+      "m": 3841
+     }
+    ]
+   },
+   "source": "AgentX draft_prefill/prefill: 34 recorded shape(s) {'m': 2561} .. {'m': 3841}, 3.5% of the operator's GPU time"
+  },
+  {
+   "id": "m4096",
+   "axes": {
+    "m": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m5057",
+   "axes": {
+    "m": 5057
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 3.1,
+   "observed": {
+    "phases": [
+     "draft_prefill",
+     "prefill"
+    ],
+    "time_share": 0.0214,
+    "members": [
+     {
+      "m": 4033
+     },
+     {
+      "m": 4097
+     },
+     {
+      "m": 4161
+     },
+     {
+      "m": 4163
+     },
+     {
+      "m": 4226
+     },
+     {
+      "m": 4288
+     },
+     {
+      "m": 4289
+     },
+     {
+      "m": 4353
+     },
+     {
+      "m": 4417
+     },
+     {
+      "m": 4481
+     },
+     {
+      "m": 4544
+     },
+     {
+      "m": 4608
+     },
+     {
+      "m": 4609
+     },
+     {
+      "m": 4612
+     },
+     {
+      "m": 4737
+     },
+     {
+      "m": 4801
+     },
+     {
+      "m": 4928
+     },
+     {
+      "m": 4993
+     },
+     {
+      "m": 4994
+     },
+     {
+      "m": 5057
+     },
+     {
+      "m": 5121
+     },
+     {
+      "m": 5186
+     },
+     {
+      "m": 5187
+     },
+     {
+      "m": 5249
+     },
+     {
+      "m": 5377
+     },
+     {
+      "m": 5440
+     },
+     {
+      "m": 5441
+     },
+     {
+      "m": 5443
+     },
+     {
+      "m": 5505
+     },
+     {
+      "m": 5506
+     },
+     {
+      "m": 5633
+     }
+    ]
+   },
+   "source": "AgentX draft_prefill/prefill: 31 recorded shape(s) {'m': 4033} .. {'m': 5633}, 2.1% of the operator's GPU time"
+  },
+  {
+   "id": "m6081",
+   "axes": {
+    "m": 6081
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 2.127,
+   "observed": {
+    "phases": [
+     "draft_prefill",
+     "prefill"
+    ],
+    "time_share": 0.0164,
+    "members": [
+     {
+      "m": 5825
+     },
+     {
+      "m": 5888
+     },
+     {
+      "m": 5889
+     },
+     {
+      "m": 5890
+     },
+     {
+      "m": 5891
+     },
+     {
+      "m": 6018
+     },
+     {
+      "m": 6020
+     },
+     {
+      "m": 6081
+     },
+     {
+      "m": 6209
+     },
+     {
+      "m": 6273
+     },
+     {
+      "m": 6274
+     },
+     {
+      "m": 6400
+     },
+     {
+      "m": 6402
+     },
+     {
+      "m": 6465
+     },
+     {
+      "m": 6657
+     },
+     {
+      "m": 6721
+     },
+     {
+      "m": 6786
+     },
+     {
+      "m": 6787
+     },
+     {
+      "m": 6850
+     },
+     {
+      "m": 6977
+     },
+     {
+      "m": 7041
+     },
+     {
+      "m": 7106
+     },
+     {
+      "m": 7168
+     },
+     {
+      "m": 7297
+     },
+     {
+      "m": 7361
+     },
+     {
+      "m": 7425
+     }
+    ]
+   },
+   "source": "AgentX draft_prefill/prefill: 26 recorded shape(s) {'m': 5825} .. {'m': 7425}, 1.6% of the operator's GPU time"
+  },
+  {
+   "id": "m8192",
+   "axes": {
+    "m": 8192
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "m10753",
+   "axes": {
+    "m": 10753
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 3.161,
+   "observed": {
+    "phases": [
+     "draft_prefill",
+     "prefill"
+    ],
+    "time_share": 0.0358,
+    "members": [
+     {
+      "m": 7617
+     },
+     {
+      "m": 7618
+     },
+     {
+      "m": 7744
+     },
+     {
+      "m": 7747
+     },
+     {
+      "m": 7809
+     },
+     {
+      "m": 7873
+     },
+     {
+      "m": 7937
+     },
+     {
+      "m": 8065
+     },
+     {
+      "m": 8129
+     },
+     {
+      "m": 8130
+     },
+     {
+      "m": 8257
+     },
+     {
+      "m": 8384
+     },
+     {
+      "m": 8385
+     },
+     {
+      "m": 8577
+     },
+     {
+      "m": 8641
+     },
+     {
+      "m": 8644
+     },
+     {
+      "m": 8704
+     },
+     {
+      "m": 8727
+     },
+     {
+      "m": 8770
+     },
+     {
+      "m": 8771
+     },
+     {
+      "m": 8834
+     },
+     {
+      "m": 8897
+     },
+     {
+      "m": 8962
+     },
+     {
+      "m": 9153
+     },
+     {
+      "m": 9217
+     },
+     {
+      "m": 9218
+     },
+     {
+      "m": 9408
+     },
+     {
+      "m": 9473
+     },
+     {
+      "m": 9537
+     },
+     {
+      "m": 9604
+     },
+     {
+      "m": 9665
+     },
+     {
+      "m": 9666
+     },
+     {
+      "m": 9794
+     },
+     {
+      "m": 9984
+     },
+     {
+      "m": 9985
+     },
+     {
+      "m": 10176
+     },
+     {
+      "m": 10177
+     },
+     {
+      "m": 10240
+     },
+     {
+      "m": 10562
+     },
+     {
+      "m": 10625
+     },
+     {
+      "m": 10753
+     },
+     {
+      "m": 10756
+     },
+     {
+      "m": 10880
+     },
+     {
+      "m": 10944
+     }
+    ]
+   },
+   "source": "AgentX draft_prefill/prefill: 44 recorded shape(s) {'m': 7617} .. {'m': 10944}, 3.6% of the operator's GPU time"
+  },
+  {
+   "id": "m16384",
+   "axes": {
+    "m": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 34.1,
+   "observed": {
+    "phases": [
+     "draft_prefill",
+     "prefill"
+    ],
+    "time_share": 0.5965,
+    "members": [
+     {
+      "m": 11457
+     },
+     {
+      "m": 11521
+     },
+     {
+      "m": 11777
+     },
+     {
+      "m": 11778
+     },
+     {
+      "m": 11841
+     },
+     {
+      "m": 12097
+     },
+     {
+      "m": 12163
+     },
+     {
+      "m": 12544
+     },
+     {
+      "m": 12545
+     },
+     {
+      "m": 12609
+     },
+     {
+      "m": 12673
+     },
+     {
+      "m": 12737
+     },
+     {
+      "m": 12805
+     },
+     {
+      "m": 13057
+     },
+     {
+      "m": 13256
+     },
+     {
+      "m": 13312
+     },
+     {
+      "m": 13377
+     },
+     {
+      "m": 13378
+     },
+     {
+      "m": 13440
+     },
+     {
+      "m": 13442
+     },
+     {
+      "m": 13633
+     },
+     {
+      "m": 13768
+     },
+     {
+      "m": 13825
+     },
+     {
+      "m": 14017
+     },
+     {
+      "m": 14208
+     },
+     {
+      "m": 14337
+     },
+     {
+      "m": 14400
+     },
+     {
+      "m": 14658
+     },
+     {
+      "m": 15041
+     },
+     {
+      "m": 15105
+     },
+     {
+      "m": 15106
+     },
+     {
+      "m": 15233
+     },
+     {
+      "m": 15234
+     },
+     {
+      "m": 15361
+     },
+     {
+      "m": 15424
+     },
+     {
+      "m": 15425
+     },
+     {
+      "m": 15553
+     },
+     {
+      "m": 15619
+     },
+     {
+      "m": 15681
+     },
+     {
+      "m": 15810
+     },
+     {
+      "m": 15811
+     },
+     {
+      "m": 16259
+     },
+     {
+      "m": 16321
+     },
+     {
+      "m": 16384
+     }
+    ]
+   },
+   "source": "AgentX draft_prefill/prefill: 44 recorded shape(s) {'m': 11457} .. {'m': 16384}, 59.6% of the operator's GPU time"
+  },
+  {
+   "id": "m65536",
+   "axes": {
+    "m": 65536
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "very long prefill"
+  }
+ ]
 }

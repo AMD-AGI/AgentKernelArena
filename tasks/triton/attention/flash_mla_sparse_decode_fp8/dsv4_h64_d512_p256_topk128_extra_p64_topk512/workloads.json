@@ -1,5 +1,55 @@
 {
- "description": "DeepSeek-V4 C4A-layer decode batches: request contexts between ctx/2 and ctx set a sliding window of min(c, 128) tokens and an indexer top-k of min(512, c // 4) compressed entries per request; rows 1-10 carry the index-contract edge cases. Small batches read too little KV for the 10 us timing floor (a long context does not help: the top-k caps the compressed entries at 512) and are correctness-only.",
+ "description": "flash_mla_sparse_decode_fp8 shapes of the AgentX agentic serving corpus replayed on deepseek-ai/DeepSeek-V4-Flash-DSpark (TP 4); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "deepseek-v4-flash-tp4-dp4-mi355x-v1",
+  "model": "deepseek-ai/DeepSeek-V4-Flash-DSpark",
+  "coverage": 1.0,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher flash_mla_sparse_decode_fp8; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 4,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": true,
+   "page_size": 256,
+   "kv_cache_dtype": "fp8_e4m3",
+   "chunked_prefill_size": 4096,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.7,
+   "context_length": 1048576,
+   "attention_backend": "dsv4",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": "DSPARK",
+   "speculative_num_steps": 1,
+   "speculative_num_draft_tokens": 6,
+   "speculative_eagle_topk": 1,
+   "speculative_draft_model_path": "deepseek-ai/DeepSeek-V4-Flash-DSpark@62af8fffb2f7030cac4de2f0169f5b8d1101b646",
+   "max_running_requests": 256,
+   "max_total_num_tokens": 20165632,
+   "disable_cuda_graph": false,
+   "server_env": "SGLANG_USE_AITER=1 SGLANG_USE_ROCM700A=0 TRITON_HIP_USE_ASYNC_COPY=0 ROCM_QUICK_REDUCE_QUANTIZATION=INT8 SGLANG_OPT_HIP_OPUS_SPARSE_PREFILL=true SGLANG_OPT_HIP_FLYDSL_MXFP8=1 SGLANG_HIP_FP4_INDEXER_ROWGROUP=1 TORCH_BLAS_PREFER_HIPBLASLT=1 HSA_NO_SCRATCH_RECLAIM=0 GPU_MAX_HW_QUEUES=2 AITER_BF16_FP8_MOE_BOUND=0",
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 1048576,
+   "trajectories": 393,
+   "trajectories_unreachable": 0,
+   "requests": 98827,
+   "requests_dropped": 0,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 0,
+   "dropped_share": 0.0,
+   "input_tokens_dropped_share": 0.0
+  }
+ },
  "cases": [
   {
    "id": "b1_c1",
@@ -13,6 +63,17 @@
    "source": "minimum: one request with a single token, no compressed entry"
   },
   {
+   "id": "b1_c8",
+   "axes": {
+    "batch": 1,
+    "ctx": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "exactly 2 compressed entries"
+  },
+  {
    "id": "b3_c4",
    "axes": {
     "batch": 3,
@@ -24,6 +85,17 @@
    "source": "odd batch, at most one compressed entry"
   },
   {
+   "id": "b24_c28",
+   "axes": {
+    "batch": 24,
+    "ctx": 28
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "3..7 compressed entries (contexts 14..28)"
+  },
+  {
    "id": "b7_c127",
    "axes": {
     "batch": 7,
@@ -33,6 +105,17 @@
     "correctness"
    ],
    "source": "all edge rows; windows up to 127 tokens, 16..31 compressed entries"
+  },
+  {
+   "id": "b24_c60",
+   "axes": {
+    "batch": 24,
+    "ctx": 60
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "7..15 compressed entries (contexts 30..60)"
   },
   {
    "id": "b17_c129",
@@ -90,6 +173,561 @@
    "source": "many rows of a 1k-context batch (125..250 compressed entries)"
   },
   {
+   "id": "b1024_c256",
+   "axes": {
+    "batch": 1024,
+    "ctx": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "short-context high-concurrency decode"
+  },
+  {
+   "id": "b512_c1024",
+   "axes": {
+    "batch": 512,
+    "ctx": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "1k-context serving batch (128..256 compressed entries)"
+  },
+  {
+   "id": "b256_c8192",
+   "axes": {
+    "batch": 256,
+    "ctx": 8192
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "8k-context serving batch (full top-512)"
+  },
+  {
+   "id": "batch36_ctx114688",
+   "axes": {
+    "batch": 36,
+    "ctx": 114688
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 2.672,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0139,
+    "members": [
+     {
+      "batch": 36,
+      "ctx": 114688
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 36, 'ctx': 114688}, 1.4% of the operator's GPU time"
+  },
+  {
+   "id": "b2048_c2048",
+   "axes": {
+    "batch": 2048,
+    "ctx": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "max-concurrency decode, 2k contexts"
+  },
+  {
+   "id": "batch36_ctx120832",
+   "axes": {
+    "batch": 36,
+    "ctx": 120832
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 9.518,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0501,
+    "members": [
+     {
+      "batch": 36,
+      "ctx": 120832
+     },
+     {
+      "batch": 36,
+      "ctx": 121344
+     },
+     {
+      "batch": 36,
+      "ctx": 121856
+     }
+    ]
+   },
+   "source": "AgentX verify: 3 recorded shape(s) {'batch': 36, 'ctx': 120832} .. {'batch': 36, 'ctx': 121856}, 5.0% of the operator's GPU time"
+  },
+  {
+   "id": "batch36_ctx137728",
+   "axes": {
+    "batch": 36,
+    "ctx": 137728
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 6.312,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.033,
+    "members": [
+     {
+      "batch": 36,
+      "ctx": 137728
+     },
+     {
+      "batch": 42,
+      "ctx": 120832
+     }
+    ]
+   },
+   "source": "AgentX verify: 2 recorded shape(s) {'batch': 36, 'ctx': 137728} .. {'batch': 42, 'ctx': 120832}, 3.3% of the operator's GPU time"
+  },
+  {
+   "id": "batch36_ctx145920",
+   "axes": {
+    "batch": 36,
+    "ctx": 145920
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 1.135,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0058,
+    "members": [
+     {
+      "batch": 36,
+      "ctx": 145920
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 36, 'ctx': 145920}, 0.6% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx112640",
+   "axes": {
+    "batch": 48,
+    "ctx": 112640
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 2.805,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.016,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 112640
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 48, 'ctx': 112640}, 1.6% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx120832",
+   "axes": {
+    "batch": 48,
+    "ctx": 120832
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 3.306,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0183,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 120832
+     },
+     {
+      "batch": 42,
+      "ctx": 141312
+     }
+    ]
+   },
+   "source": "AgentX verify: 2 recorded shape(s) {'batch': 48, 'ctx': 120832} .. {'batch': 42, 'ctx': 141312}, 1.8% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx131072",
+   "axes": {
+    "batch": 48,
+    "ctx": 131072
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 10.52,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0572,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 131072
+     },
+     {
+      "batch": 42,
+      "ctx": 151040
+     },
+     {
+      "batch": 42,
+      "ctx": 154112
+     },
+     {
+      "batch": 42,
+      "ctx": 155136
+     }
+    ]
+   },
+   "source": "AgentX verify: 4 recorded shape(s) {'batch': 48, 'ctx': 131072} .. {'batch': 42, 'ctx': 155136}, 5.7% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx141312",
+   "axes": {
+    "batch": 48,
+    "ctx": 141312
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 7.013,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0402,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 140800
+     },
+     {
+      "batch": 48,
+      "ctx": 141312
+     }
+    ]
+   },
+   "source": "AgentX verify: 2 recorded shape(s) {'batch': 48, 'ctx': 140800} .. {'batch': 48, 'ctx': 141312}, 4.0% of the operator's GPU time"
+  },
+  {
+   "id": "batch42_ctx166912",
+   "axes": {
+    "batch": 42,
+    "ctx": 166912
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 12.89,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0669,
+    "members": [
+     {
+      "batch": 42,
+      "ctx": 166912
+     },
+     {
+      "batch": 42,
+      "ctx": 167424
+     }
+    ]
+   },
+   "source": "AgentX verify: 2 recorded shape(s) {'batch': 42, 'ctx': 166912} .. {'batch': 42, 'ctx': 167424}, 6.7% of the operator's GPU time"
+  },
+  {
+   "id": "batch42_ctx189952",
+   "axes": {
+    "batch": 42,
+    "ctx": 189952
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 39.01,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.2024,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 164864
+     },
+     {
+      "batch": 42,
+      "ctx": 189952
+     },
+     {
+      "batch": 42,
+      "ctx": 190464
+     },
+     {
+      "batch": 48,
+      "ctx": 166912
+     }
+    ]
+   },
+   "source": "AgentX verify: 4 recorded shape(s) {'batch': 48, 'ctx': 164864} .. {'batch': 48, 'ctx': 166912}, 20.2% of the operator's GPU time"
+  },
+  {
+   "id": "batch42_ctx198656",
+   "axes": {
+    "batch": 42,
+    "ctx": 198656
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 19.87,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1055,
+    "members": [
+     {
+      "batch": 42,
+      "ctx": 198656
+     },
+     {
+      "batch": 48,
+      "ctx": 174080
+     },
+     {
+      "batch": 42,
+      "ctx": 202752
+     },
+     {
+      "batch": 48,
+      "ctx": 179712
+     },
+     {
+      "batch": 54,
+      "ctx": 160768
+     }
+    ]
+   },
+   "source": "AgentX verify: 5 recorded shape(s) {'batch': 42, 'ctx': 198656} .. {'batch': 54, 'ctx': 160768}, 10.6% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx202240",
+   "axes": {
+    "batch": 48,
+    "ctx": 202240
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 21.88,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1237,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 185856
+     },
+     {
+      "batch": 54,
+      "ctx": 166912
+     },
+     {
+      "batch": 42,
+      "ctx": 219648
+     },
+     {
+      "batch": 42,
+      "ctx": 221696
+     },
+     {
+      "batch": 48,
+      "ctx": 198656
+     },
+     {
+      "batch": 48,
+      "ctx": 202240
+     }
+    ]
+   },
+   "source": "AgentX verify: 6 recorded shape(s) {'batch': 48, 'ctx': 185856} .. {'batch': 48, 'ctx': 202240}, 12.4% of the operator's GPU time"
+  },
+  {
+   "id": "batch42_ctx239616",
+   "axes": {
+    "batch": 42,
+    "ctx": 239616
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 7.548,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0417,
+    "members": [
+     {
+      "batch": 42,
+      "ctx": 239616
+     },
+     {
+      "batch": 48,
+      "ctx": 210944
+     }
+    ]
+   },
+   "source": "AgentX verify: 2 recorded shape(s) {'batch': 42, 'ctx': 239616} .. {'batch': 48, 'ctx': 210944}, 4.2% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx219648",
+   "axes": {
+    "batch": 48,
+    "ctx": 219648
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 25.95,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1492,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 217088
+     },
+     {
+      "batch": 54,
+      "ctx": 193024
+     },
+     {
+      "batch": 48,
+      "ctx": 219648
+     },
+     {
+      "batch": 48,
+      "ctx": 223232
+     }
+    ]
+   },
+   "source": "AgentX verify: 4 recorded shape(s) {'batch': 48, 'ctx': 217088} .. {'batch': 48, 'ctx': 223232}, 14.9% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx239616",
+   "axes": {
+    "batch": 48,
+    "ctx": 239616
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 11.22,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0639,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 239616
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 48, 'ctx': 239616}, 6.4% of the operator's GPU time"
+  },
+  {
+   "id": "batch48_ctx271872",
+   "axes": {
+    "batch": 48,
+    "ctx": 271872
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 2.104,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0122,
+    "members": [
+     {
+      "batch": 48,
+      "ctx": 271872
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 48, 'ctx': 271872}, 1.2% of the operator's GPU time"
+  },
+  {
+   "id": "b1024_c16384",
+   "axes": {
+    "batch": 1024,
+    "ctx": 16384
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "16k contexts filling a 17M-token KV pool"
+  },
+  {
    "id": "b16_c1048576",
    "axes": {
     "batch": 16,
@@ -101,74 +739,13 @@
    "source": "1M context: top-512 of up to 262144 compressed entries"
   },
   {
-   "id": "b1024_c256",
-   "axes": {
-    "batch": 1024,
-    "ctx": 256
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "short-context high-concurrency decode"
-  },
-  {
-   "id": "b512_c1024",
-   "axes": {
-    "batch": 512,
-    "ctx": 1024
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "1k-context serving batch (128..256 compressed entries)"
-  },
-  {
-   "id": "b256_c8192",
-   "axes": {
-    "batch": 256,
-    "ctx": 8192
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "8k-context serving batch (full top-512)"
-  },
-  {
-   "id": "b2048_c2048",
-   "axes": {
-    "batch": 2048,
-    "ctx": 2048
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "max-concurrency decode, 2k contexts"
-  },
-  {
-   "id": "b1024_c16384",
-   "axes": {
-    "batch": 1024,
-    "ctx": 16384
-   },
-   "checks": [
-    "correctness",
-    "performance"
-   ],
-   "source": "16k contexts filling a 17M-token KV pool"
-  },
-  {
    "id": "b128_c262144",
    "axes": {
     "batch": 128,
     "ctx": 262144
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "256k long-context batch filling a 34M-token KV pool"
   }

@@ -102,7 +102,10 @@ held-out inputs:
 Missing evidence, a violated protocol or an execution error is reported as
 `evaluation_error`, separately from these correctness outcomes. Only `both_pass`
 with consistent timing methods and workloads receives a held-out speedup
-(geometric mean over cases) and score, by the normal scoring rules.
+(geometric mean over cases) and score, by the normal scoring rules. A task with
+[case weights](add-task.md#case-weights) uses the serving-weighted speedup and
+records `case_weights`; its extra cases must be correctness-only, because they
+have no share of the recorded workload.
 
 ## Outputs
 

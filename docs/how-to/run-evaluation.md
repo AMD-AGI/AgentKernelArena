@@ -236,7 +236,9 @@ aggregates a `qa_summary.json`. See [Audit tasks with the QA auditor](qa-auditor
 
 For kernel tasks the final evaluation remeasures the baseline interleaved with
 the candidate under cold-cache CUDA-graph timing, and the task's speedup is the
-geometric mean of its performance cases' speedups.
+geometric mean of its performance cases' speedups (a task with
+[case weights](add-task.md#case-weights) uses the serving-weighted speedup,
+the ratio of total weighted times).
 
 Candidate code runs in the evaluator's process, so the static audit cannot rule
 out every reflective change to the code that times and judges it. The evaluator

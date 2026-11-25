@@ -307,7 +307,8 @@ Each task produces a `task_result.yaml` in its workspace:
 | `tool_evaluation` | Versioned complete plan, plan fingerprint, profile, capability, execution, finding, evidence, and decision data. Omitted when no tool is enabled. |
 | `base_execution_time` | Baseline runtime in ms |
 | `best_optimized_execution_time` | Best optimized runtime in ms |
-| `speedup_ratio` | Speedup over baseline |
+| `speedup_ratio` | Speedup over baseline: the geometric mean of the per-case speedups, or with `case_weights` the serving-weighted speedup `Σ wᵢ·t_baselineᵢ / Σ wᵢ·t_candidateᵢ` |
+| `case_weights` | Present only for a task with [case weights](../how-to/add-task.md#case-weights): performance case ID to weight |
 | `baseline_benchmark_methods` | Timing methods observed while measuring the baseline |
 | `optimized_benchmark_methods` | Timing methods observed while measuring the optimized kernel |
 | `benchmark_method_consistent` | Whether baseline and optimized timing methods matched |

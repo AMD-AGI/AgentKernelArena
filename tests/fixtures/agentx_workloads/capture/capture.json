@@ -1,0 +1,61 @@
+{
+ "capture_id": "fixture-capture",
+ "model": "Example/Dense-32B",
+ "image": "example/sglang:tag",
+ "tp": 8,
+ "corpus": {
+  "id": "example/agentx-traces",
+  "revision": "0123abcd",
+  "traces": "traces.jsonl"
+ },
+ "legs": {
+  "eager": {
+   "leg": "eager",
+   "cuda_graph": false,
+   "dir": "eager",
+   "windows": [
+    {
+     "dir": "traces/w1",
+     "status": "ok"
+    }
+   ],
+   "replay_start": "2026-11-21T01:55:00Z",
+   "server_crashed": false,
+   "steady_state": {
+    "start": "2026-11-21T01:59:30Z",
+    "end": "2026-11-21T02:10:00Z"
+   },
+   "cuda_graph_bs": [],
+   "server_log": "server.log"
+  },
+  "graph": {
+   "leg": "graph",
+   "cuda_graph": true,
+   "dir": "graph",
+   "windows": [
+    {
+     "dir": "traces/w1",
+     "status": "ok"
+    }
+   ],
+   "replay_start": "2026-11-21T01:55:00Z",
+   "server_crashed": false,
+   "steady_state": {
+    "start": "2026-11-21T01:59:30Z",
+    "end": "2026-11-21T02:10:00Z"
+   },
+   "cuda_graph_bs": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    24,
+    32,
+    40,
+    48
+   ],
+   "server_log": "server.log"
+  }
+ }
+}

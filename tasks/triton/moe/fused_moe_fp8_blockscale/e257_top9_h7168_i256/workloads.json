@@ -1,18 +1,609 @@
 {
-  "description": "Token counts of one DeepSeek-V3 FP8 MoE layer on a tensor-parallel-8 rank (the 7168/256/257/top-9 rows of AITER's a8w8_blockscale_tuned_fmoe_ds_v3.csv tune tokens 1 to 32768): decode batches from 1 to 256 and chunked-prefill sizes up to 16384 tokens; odd batch sizes are correctness-only.",
-  "cases": [
-    {"id": "t1", "axes": {"num_tokens": 1}, "checks": ["correctness", "performance"], "source": "decode, batch 1"},
-    {"id": "t3", "axes": {"num_tokens": 3}, "checks": ["correctness"], "source": "decode, odd batch"},
-    {"id": "t4", "axes": {"num_tokens": 4}, "checks": ["correctness", "performance"], "source": "decode, batch 4"},
-    {"id": "t16", "axes": {"num_tokens": 16}, "checks": ["correctness", "performance"], "source": "decode, batch 16"},
-    {"id": "t37", "axes": {"num_tokens": 37}, "checks": ["correctness"], "source": "decode, unaligned batch"},
-    {"id": "t64", "axes": {"num_tokens": 64}, "checks": ["correctness", "performance"], "source": "decode, batch 64"},
-    {"id": "t200", "axes": {"num_tokens": 200}, "checks": ["correctness"], "source": "decode, unaligned batch"},
-    {"id": "t256", "axes": {"num_tokens": 256}, "checks": ["correctness", "performance"], "source": "decode, batch 256"},
-    {"id": "t1000", "axes": {"num_tokens": 1000}, "checks": ["correctness"], "source": "unaligned prefill"},
-    {"id": "t1024", "axes": {"num_tokens": 1024}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
-    {"id": "t3000", "axes": {"num_tokens": 3000}, "checks": ["correctness"], "source": "unaligned prefill"},
-    {"id": "t4096", "axes": {"num_tokens": 4096}, "checks": ["correctness", "performance"], "source": "prefill chunk"},
-    {"id": "t16384", "axes": {"num_tokens": 16384}, "checks": ["correctness", "performance"], "source": "chunked prefill, 16384-token chunk"}
-  ]
+ "description": "fused_moe_fp8_blockscale shapes of the AgentX agentic serving corpus replayed on deepseek-ai/DeepSeek-V3 (TP 8); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "deepseek-v3-tp8-mi355x-v3",
+  "model": "deepseek-ai/DeepSeek-V3",
+  "coverage": 0.984,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher fused_moe; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 8,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": false,
+   "page_size": 1,
+   "kv_cache_dtype": "fp8_e4m3",
+   "chunked_prefill_size": 16384,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.68,
+   "context_length": 163840,
+   "attention_backend": "aiter",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": "EAGLE",
+   "speculative_num_steps": 3,
+   "speculative_num_draft_tokens": 4,
+   "speculative_eagle_topk": 1,
+   "speculative_draft_model_path": "deepseek-ai/DeepSeek-V3@e815299b0bcbac849fa540c768ef21845365c9eb",
+   "max_running_requests": 48,
+   "max_total_num_tokens": 3288610,
+   "disable_cuda_graph": false,
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 163840,
+   "trajectories": 393,
+   "trajectories_unreachable": 1,
+   "requests": 98827,
+   "requests_dropped": 44439,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 17588762432,
+   "dropped_share": 0.4497,
+   "input_tokens_dropped_share": 0.813
+  }
+ },
+ "cases": [
+  {
+   "id": "t1",
+   "axes": {
+    "num_tokens": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 1"
+  },
+  {
+   "id": "t3",
+   "axes": {
+    "num_tokens": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, odd batch"
+  },
+  {
+   "id": "t4",
+   "axes": {
+    "num_tokens": 4
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 4"
+  },
+  {
+   "id": "t16",
+   "axes": {
+    "num_tokens": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 16"
+  },
+  {
+   "id": "n20",
+   "axes": {
+    "num_tokens": 20
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft, not a performance case (0.00% of the operator's GPU time)"
+  },
+  {
+   "id": "t32768",
+   "axes": {
+    "num_tokens": 32768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis maximum (32768 routes to the fused shared expert)"
+  },
+  {
+   "id": "n27",
+   "axes": {
+    "num_tokens": 27
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 13.78,
+   "observed": {
+    "phases": [
+     "draft"
+    ],
+    "time_share": 0.0086,
+    "members": [
+     {
+      "num_tokens": 21
+     },
+     {
+      "num_tokens": 22
+     },
+     {
+      "num_tokens": 23
+     },
+     {
+      "num_tokens": 24
+     },
+     {
+      "num_tokens": 25
+     },
+     {
+      "num_tokens": 26
+     },
+     {
+      "num_tokens": 27
+     },
+     {
+      "num_tokens": 28
+     },
+     {
+      "num_tokens": 29
+     },
+     {
+      "num_tokens": 30
+     },
+     {
+      "num_tokens": 31
+     }
+    ]
+   },
+   "source": "AgentX draft: 11 recorded shape(s) {'num_tokens': 21} .. {'num_tokens': 31}, 0.9% of the operator's GPU time"
+  },
+  {
+   "id": "t37",
+   "axes": {
+    "num_tokens": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, unaligned batch"
+  },
+  {
+   "id": "t64",
+   "axes": {
+    "num_tokens": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 64"
+  },
+  {
+   "id": "n80",
+   "axes": {
+    "num_tokens": 80
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/verify, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n108",
+   "axes": {
+    "num_tokens": 108
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 406.4,
+   "observed": {
+    "phases": [
+     "draft",
+     "verify"
+    ],
+    "time_share": 0.3628,
+    "members": [
+     {
+      "num_tokens": 84
+     },
+     {
+      "num_tokens": 88
+     },
+     {
+      "num_tokens": 92
+     },
+     {
+      "num_tokens": 96
+     },
+     {
+      "num_tokens": 100
+     },
+     {
+      "num_tokens": 104
+     },
+     {
+      "num_tokens": 108
+     },
+     {
+      "num_tokens": 112
+     },
+     {
+      "num_tokens": 116
+     },
+     {
+      "num_tokens": 120
+     },
+     {
+      "num_tokens": 124
+     }
+    ]
+   },
+   "source": "AgentX draft/verify: 11 recorded shape(s) {'num_tokens': 84} .. {'num_tokens': 124}, 36.3% of the operator's GPU time"
+  },
+  {
+   "id": "n193",
+   "axes": {
+    "num_tokens": 193
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.04% of the operator's GPU time)"
+  },
+  {
+   "id": "t200",
+   "axes": {
+    "num_tokens": 200
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, unaligned batch"
+  },
+  {
+   "id": "t256",
+   "axes": {
+    "num_tokens": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, batch 256"
+  },
+  {
+   "id": "n321",
+   "axes": {
+    "num_tokens": 321
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.09% of the operator's GPU time)"
+  },
+  {
+   "id": "n705",
+   "axes": {
+    "num_tokens": 705
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.06% of the operator's GPU time)"
+  },
+  {
+   "id": "n769",
+   "axes": {
+    "num_tokens": 769
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.06% of the operator's GPU time)"
+  },
+  {
+   "id": "n961",
+   "axes": {
+    "num_tokens": 961
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.13% of the operator's GPU time)"
+  },
+  {
+   "id": "t1000",
+   "axes": {
+    "num_tokens": 1000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "t1024",
+   "axes": {
+    "num_tokens": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "n1344",
+   "axes": {
+    "num_tokens": 1344
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.07% of the operator's GPU time)"
+  },
+  {
+   "id": "n1473",
+   "axes": {
+    "num_tokens": 1473
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.07% of the operator's GPU time)"
+  },
+  {
+   "id": "n1602",
+   "axes": {
+    "num_tokens": 1602
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n1921",
+   "axes": {
+    "num_tokens": 1921
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n2048",
+   "axes": {
+    "num_tokens": 2048
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n2113",
+   "axes": {
+    "num_tokens": 2113
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n2305",
+   "axes": {
+    "num_tokens": 2305
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.09% of the operator's GPU time)"
+  },
+  {
+   "id": "n2497",
+   "axes": {
+    "num_tokens": 2497
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.09% of the operator's GPU time)"
+  },
+  {
+   "id": "t3000",
+   "axes": {
+    "num_tokens": 3000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned prefill"
+  },
+  {
+   "id": "n3266",
+   "axes": {
+    "num_tokens": 3266
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.12% of the operator's GPU time)"
+  },
+  {
+   "id": "t4096",
+   "axes": {
+    "num_tokens": 4096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk"
+  },
+  {
+   "id": "n5248",
+   "axes": {
+    "num_tokens": 5248
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.16% of the operator's GPU time)"
+  },
+  {
+   "id": "n5506",
+   "axes": {
+    "num_tokens": 5506
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX draft/prefill, not a performance case (0.16% of the operator's GPU time)"
+  },
+  {
+   "id": "n7107",
+   "axes": {
+    "num_tokens": 7107
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 2.089,
+   "observed": {
+    "phases": [
+     "draft",
+     "prefill"
+    ],
+    "time_share": 0.0094,
+    "members": [
+     {
+      "num_tokens": 6144
+     },
+     {
+      "num_tokens": 6274
+     },
+     {
+      "num_tokens": 6337
+     },
+     {
+      "num_tokens": 6656
+     },
+     {
+      "num_tokens": 7107
+     }
+    ]
+   },
+   "source": "AgentX draft/prefill: 5 recorded shape(s) {'num_tokens': 6144} .. {'num_tokens': 7107}, 0.9% of the operator's GPU time"
+  },
+  {
+   "id": "n9472",
+   "axes": {
+    "num_tokens": 9472
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 2.506,
+   "observed": {
+    "phases": [
+     "draft",
+     "prefill"
+    ],
+    "time_share": 0.0142,
+    "members": [
+     {
+      "num_tokens": 7872
+     },
+     {
+      "num_tokens": 8001
+     },
+     {
+      "num_tokens": 8705
+     },
+     {
+      "num_tokens": 9088
+     },
+     {
+      "num_tokens": 9089
+     },
+     {
+      "num_tokens": 9472
+     }
+    ]
+   },
+   "source": "AgentX draft/prefill: 6 recorded shape(s) {'num_tokens': 7872} .. {'num_tokens': 9472}, 1.4% of the operator's GPU time"
+  },
+  {
+   "id": "n11905",
+   "axes": {
+    "num_tokens": 11905
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 0.8355,
+   "observed": {
+    "phases": [
+     "draft",
+     "prefill"
+    ],
+    "time_share": 0.0062,
+    "members": [
+     {
+      "num_tokens": 11456
+     },
+     {
+      "num_tokens": 11905
+     }
+    ]
+   },
+   "source": "AgentX draft/prefill: 2 recorded shape(s) {'num_tokens': 11456} .. {'num_tokens': 11905}, 0.6% of the operator's GPU time"
+  },
+  {
+   "id": "n16384",
+   "axes": {
+    "num_tokens": 16384
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 58.49,
+   "observed": {
+    "phases": [
+     "draft",
+     "prefill"
+    ],
+    "time_share": 0.5835,
+    "members": [
+     {
+      "num_tokens": 13184
+     },
+     {
+      "num_tokens": 13185
+     },
+     {
+      "num_tokens": 14017
+     },
+     {
+      "num_tokens": 15425
+     },
+     {
+      "num_tokens": 16384
+     }
+    ]
+   },
+   "source": "AgentX draft/prefill: 5 recorded shape(s) {'num_tokens': 13184} .. {'num_tokens': 16384}, 58.3% of the operator's GPU time"
+  }
+ ]
 }

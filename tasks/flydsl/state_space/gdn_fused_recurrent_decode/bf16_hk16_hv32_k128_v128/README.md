@@ -68,6 +68,39 @@ recurrence contractive.
 Float64, vectorized over groups of 32 sequences. Against an emulation of the kernel's order of
 operations (below) it gives 55.3-55.7 dB SQNR on `out` (a bfloat16 output) and 142.6-144.1 dB on the state.
 
+## Workloads
+
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`Qwen/Qwen3-Next-80B-A3B-Instruct-FP8` on SGLang 0.5.23 and MI355X (capture `qwen3-next-80b-tp1-mi355x-v1`):
+TP 1, no DP attention, MTP speculative decoding with the checkpoint's own MTP layer (NEXTN, 3 steps, 4 tokens
+verified per sequence) and replay-SSM state updates, chunked prefill 16384, and a 262144-token context
+(requests that do not fit are skipped: 30% of the corpus requests, 67% of its input tokens). Each case's
+`weight` is how often its shapes ran (calls per second of the steady state, TP rank 0), and the task scores
+the serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in the
+operator before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in
+`workloads.json` records the capture, the effective serving settings and the share of the corpus the context
+window dropped. The 7 weighted cases cover 100.0% of the operator's recorded GPU time:
+
+| `batch` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 24 | verify | 0.6% | 0.1755 |
+| 25 | verify | 3.4% | 1.053 |
+| 26 | verify | 15.6% | 4.825 |
+| 27 | verify | 30.3% | 9.299 |
+| 28 | verify | 30.7% | 9.299 |
+| 29 | verify | 14.2% | 4.299 |
+| 30 | verify | 5.2% | 1.579 |
+
+`batch` is the number of sequences of a step. With MTP no single-token decode step runs: the target model's
+verify step updates each sequence's state over its 4 draft tokens with SGLang's replay-SSM kernel (one call
+per step and layer), so the weights count those calls by their sequence count, while the task times one token
+per sequence. The batch sizes are what this load produced (24-30 running sequences). In the MI355X QA audit
+the baseline took 25-29 us.
+
+The earlier performance cases (batch 8 to 800) are correctness-only, together with the boundary cases 1, 3, 37
+and 100 (19 cases in total).
+
 ## Comparison (overrides of the default bound)
 
 `out` uses `baseline_relative` with `k: 8` and `max_violation_fraction: 1e-4`; `state` uses `baseline_relative` with

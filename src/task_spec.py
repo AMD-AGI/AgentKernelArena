@@ -365,11 +365,23 @@ def _optional_fields(obj: dict) -> None:
         # Written only by task_contract when it resolves a schema-v3 package for
         # one target language; a task author never declares it.
         contract = _mapping(obj["contract"], "contract", {
-            "schema_version", "task_file", "target_language", "baseline_language", "operator"})
+            "schema_version", "task_file", "target_language", "baseline_language", "operator",
+            "case_weights"})
         if contract.get("schema_version") != 3 or contract.get("task_file") != "task.yaml":
             raise TaskConfigError("contract identifies a schema-v3 task.yaml")
         if contract.get("target_language") != obj["candidate"]["language"]:
             raise TaskConfigError("contract.target_language must equal candidate.language")
+        if "case_weights" in contract:
+            validate_case_weights(contract["case_weights"])
+
+
+def validate_case_weights(weights: Any) -> dict[str, float]:
+    """Performance case ID -> positive finite weight, as resolved from a weighted task's workloads."""
+    if not isinstance(weights, dict) or not weights or any(
+            not isinstance(key, str) or not key or type(value) not in (int, float)
+            or not math.isfinite(value) or value <= 0 for key, value in weights.items()):
+        raise TaskConfigError("contract.case_weights maps performance case IDs to positive finite weights")
+    return {key: float(value) for key, value in weights.items()}
 
 
 @dataclass(frozen=True)
@@ -413,6 +425,12 @@ class TaskSpec:
     def contract(self) -> dict | None:
         """The schema-v3 resolution record, or None for a schema-v2 task."""
         return deepcopy(self._config.get("contract"))
+
+    @property
+    def case_weights(self) -> dict[str, float] | None:
+        """Performance case ID -> weight for a weighted schema-v3 task, else None (equal weights)."""
+        weights = (self._config.get("contract") or {}).get("case_weights")
+        return None if weights is None else validate_case_weights(weights)
 
     @property
     def target_language(self) -> str | None:

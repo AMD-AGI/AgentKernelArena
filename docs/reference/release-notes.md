@@ -58,6 +58,65 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `Aiter-task-mi300`, `image_kernel`) are replaced by the new tasks; no compatibility layer is
   provided. The end-to-end serving tasks keep schema v2.
 
+### Case weights for performance cases
+
+- A schema-v3 task can give each performance case a `weight`, how often it
+  runs in a recorded production workload (calls per second). Either every
+  performance case has a weight or none does. The task's speedup is then the
+  serving-weighted speedup, `Σ wᵢ·t_baselineᵢ / Σ wᵢ·t_candidateᵢ` (the
+  aggregate of GEAK's kernel extraction), so a win on a rare shape cannot hide
+  a loss on a frequent one. A case may record what it `observed` (phases, time
+  share, merged shapes), and `weight_provenance` may record the `deployment`
+  and the `corpus` coverage. Unweighted tasks score, serialize and hash as
+  before. See [Case weights](../how-to/add-task.md#case-weights).
+- A weighted task declares `weight_provenance` in `workloads.json`. Its
+  `coverage` (the share of the recorded GPU time that the cases represent) must
+  be at least 0.8, and this rule replaces the 100× size-span rule. The 4 to 16
+  case count and the 10 µs timing floor still apply.
+- `baseline_perf.yaml` and `optimized_perf.yaml` record each case's `weight`,
+  and `task_result.yaml` and held-out results record `case_weights`, so the
+  task value can be reproduced from the per-case results. A quality-loop repair
+  cannot change weights or their provenance.
+- Eight tasks carry AgentX weights: `flydsl` `gemm_a16w16` `n5120_k2880`
+  (GPT-OSS-120B), `gluon` `gemm_a8w8_blockscale` `n7168_k2048` and `triton`
+  `fused_moe_fp8_blockscale` (DeepSeek-V3), `triton` `fused_moe_mxfp4`
+  (GLM-5.2-MXFP4), `flydsl` `causal_conv1d_fwd`, `gdn_chunk_fwd_h` and
+  `gdn_fused_recurrent_decode` (Qwen3-Next-80B-A3B) and `flydsl`
+  `paged_attention_decode` `fp8kv_pertensor_q8_kv1_d128_p1024`
+  (Qwen3-235B-A22B), whose `max_seq_len` axis now reaches 262144. Their earlier
+  performance cases are correctness-only, and correctness cases found by the QA
+  audit were added; each README describes the capture.
+
+### AgentX workload tool
+
+- `python3 -m src.tools.agentx_workloads` derives weighted performance cases
+  from the AgentX agentic serving corpus. `capture` serves a model with SGLang
+  in Docker, replays the corpus with exact prompt lengths and prefix sharing,
+  and records profiler windows in steady state; `census` lists every kernel's
+  op, shapes, calls and GPU time; `propose` writes a task's `workloads.json`
+  with case weights, `weight_provenance` and the required correctness cases,
+  validated against the task contract. See
+  [Derive task workloads from AgentX traces](../how-to/agentx-workloads.md).
+- Decode is measured in a second server leg without CUDA graphs, because the
+  ROCm profiler does not record shapes for HIP-graph replays; decode shapes are
+  then padded to the production graph batch sizes. Each phase's measured
+  per-step costs are scaled to the step counts of the production scheduler log,
+  and GEMM time is rebuilt from every logged batch and a per-call cost model by
+  M, so shapes no profiler window caught still get their weight.
+- `capture` sets the chunked-prefill size (default 16384) and memory fraction
+  (default 0.80), and restarts a crashed server, resuming the replay and
+  skipping only the affected profiler windows; crashes and restarts are
+  recorded in `capture.json` and `census.md`.
+- Speculative decoding (MTP, EAGLE, DSpark) is recorded as its own phases
+  (`verify`, `draft`, `draft_prefill`). Shape hooks give kernels that Python
+  wrappers launch (Triton, Gluon, FlyDSL) the wrapper's input shapes. Requests
+  that do not fit the context window are skipped and their share is recorded.
+- Matchers cover dense, batched and skinny GEMM, decode attention, RMSNorm and
+  fused add-RMSNorm, QK-norm, RoPE, quantization, gated activations, MoE
+  routing and sorting, fused FP8 block-scale and MXFP4 MoE, causal conv1d and
+  Gated DeltaNet, and the DeepSeek-V4 sparse MLA, indexer and top-k kernels.
+  The tool changes no task unless run with `--write`.
+
 ### Agent sandbox
 
 - Optimizing agents now run confined to their task workspace with Linux

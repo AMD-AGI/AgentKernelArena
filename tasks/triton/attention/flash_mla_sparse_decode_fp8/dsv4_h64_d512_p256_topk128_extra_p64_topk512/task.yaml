@@ -9,7 +9,8 @@ description: >-
   pages (float8_e4m3fn storage): page_size records of 576 bytes (448 OCP E4M3 codes, then 64 bfloat16 values), then
   page_size scale records of 8 bytes (7 UE8M0 exponents, one per 64 codes, and a pad byte). A
   slot decodes to kv[s] = [e4m3(code[d]) * 2^(scale[d // 64] - 127) for d < 448, bf16 tail], which
-  is both key and value. With logit[h, s] = sm_scale * q[b, 0, h, :] . kv[s]:
+  is both key and value. With logit[h, s] = sm_scale * q[b, 0, h, :] . kv[s], where sm_scale = 512^-0.5
+  is DeepSeek-V4's softmax scale (head_dim^-0.5, fixed by the scenario, not an input):
   output[b, 0, h] = sum_s exp(logit[h, s]) * kv[s] / (sum_s exp(logit[h, s]) + exp(sinks[h])),
   rounded to bfloat16, and lse[b, 0, h] = log(sum_s exp(logit[h, s])) in float32 (the sink
   excluded). A request without KV entries has a zero output and lse = +inf.
@@ -79,7 +80,6 @@ interface:
       dtype: int32
       role: metadata
       distribution: {kind: generator}
-    sm_scale: {kind: scalar, dtype: float32, default: 0.04419417382415922}
     sinks:
       kind: tensor
       shape: [heads]
@@ -108,7 +108,8 @@ baseline:
       order; the split heuristic sees the table widths, as upstream's dense path does); the reduce
       kernel also writes the log-sum-exp of the logits (sink excluded, +inf for an empty row); both
       pools are OCP E4M3 (float8_e4m3fn storage, read as bytes); the fallback kernel for un-tuned architectures and the vLLM platform
-      plumbing are removed.
+      plumbing are removed; the softmax scale is fixed at DeepSeek-V4's 512 ** -0.5 in run() instead of an
+      argument.
 compare:
   output: {bound: baseline_relative, k: 3, max_violation_fraction: 0.001}
   lse: {bound: tolerance, atol: 1.0e-4, rtol: 1.0e-5}

@@ -4,7 +4,8 @@ DeepSeek-V4 attention reads its key/value cache from a packed FP8 pool. Each que
 heads of dimension 512 and an index table of 128 pool slots with a valid prefix length
 `sparse_lens[b]`; the nonnegative entries of the prefix are attended, `-1` selects nothing, and entries
 past the prefix must be ignored. A slot decodes to one 512-wide vector that is both key and value.
-With `logit[h, s] = sm_scale * q[b, 0, h] . kv[s]` and per-head sink logits:
+With `logit[h, s] = sm_scale * q[b, 0, h] . kv[s]`, `sm_scale = 512^-0.5` (fixed, below), and per-head sink
+logits:
 
 ```text
 output[b, 0, h] = sum_s exp(logit[h, s]) kv[s] / (sum_s exp(logit[h, s]) + exp(sinks[h]))   (bfloat16)
@@ -12,6 +13,12 @@ lse[b, 0, h] = log(sum_s exp(logit[h, s]))                     (float32, the sin
 ```
 
 A row that selects nothing has a zero output and `lse = +inf`.
+
+The softmax scale is fixed at DeepSeek-V4's `sm_scale = 512^-0.5` (about 0.0442): SGLang's DSv4 attention
+passes `head_dim ** -0.5` with `head_dim = 512` and applies no YaRN mscale to it (unlike DeepSeek-V3, the
+model's YaRN rope scaling has no `mscale_all_dim` and changes only the rotary frequencies). The scale is part
+of the scenario, not an input: a scalar input cannot declare a value range, so an input scale would put every
+finite float32 value in the task's domain, including scales at which the float32 logits overflow.
 
 **Packed pool.** `kv_cache` is `[2019, 256, 1, 584]` float8_e4m3fn storage. A page holds 256 payloads of
 576 bytes (448 E4M3 codes, then 64 bfloat16 rope values) followed by 256 scale records of 8 bytes (7
@@ -70,12 +77,40 @@ is `-1`), 64, 63 and 127 (legal tails), 65 (`-1` tail) and 128 with every third 
 are standard normal; sinks are normal with standard deviation 2 so the sink term is visible in full
 windows, not only in short rows.
 
-Performance cases are decode batches of 160-4096 rows and prefill chunks of 8192 and 16384 tokens.
-A decode row moves about 0.2 MB (64 KB of queries, 75 KB of KV records, 64 KB of output), so 160
-rows are estimated near 11 us; a prefill row reuses its neighbours' KV records from cache and moves
-about 0.13 MB, so 16384 rows are estimated near 0.5 ms. Smaller decode batches are correctness-only.
-The source task's per-length cases (0, 1, 63-65, 127, 128, holes, legal tails, mixed rows) are covered
-by the boundary rows and the per-row patterns of every case.
+**Weighted performance cases.** The performance cases come from a recorded agentic serving workload: the
+AgentX corpus (`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent
+sessions against `deepseek-ai/DeepSeek-V4-Flash-DSpark` (the V4-Flash weights with the DSpark draft model) on
+SGLang 0.5.23 and MI355X (capture `deepseek-v4-flash-tp4-dp4-mi355x-v1`): TP 4 with DP attention 4, DSpark
+speculative decoding (block size 5, 6 tokens verified per sequence), chunked prefill 16384 (4096 per attention
+rank), FP8 KV cache in 256-token pages, and a 1048576-token context (the whole corpus fits). Each case's
+`weight` is how often its shapes ran (calls per second of the steady state, TP rank 0), and the task scores
+the serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in the
+operator before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in
+`workloads.json` records the capture, the effective serving settings and the share of the corpus the context
+window dropped. The 8 weighted cases cover 99.3% of the operator's recorded GPU time:
+
+| `batch` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 30 | draft | 6.5% | 2.705 |
+| 35 | draft | 24.9% | 11.42 |
+| 36 | verify | 4.4% | 1.803 |
+| 40 | draft | 24.6% | 10.82 |
+| 42 | verify | 17.2% | 7.614 |
+| 45 | draft | 3.0% | 1.303 |
+| 48 | verify | 16.7% | 7.214 |
+| 54 | verify | 2.0% | 0.8683 |
+
+`batch` is the number of query rows; a verify or draft token is one row. In this deployment the rows without a
+compressed pool come from the target model's verify step (36-54 rows: 6 tokens x 6-9 sequences per attention
+rank) and from the DSpark draft model (30-45 rows); the few prefill rows fell below the 0.5% share threshold.
+The operator is a very small part of this deployment (0.02% of the recorded GPU time; most attention reads the
+compressed pools of the sibling scenarios). The served kernel took about 11 us per call; in the MI355X QA
+audit the baseline took about 76 us for every case, almost independent of the row count.
+
+The earlier performance cases (decode batches of 160-4096 rows, prefill chunks of 8192 and 16384 tokens) are
+correctness-only, as are the other recorded shapes (24 cases in total). The source task's per-length cases (0,
+1, 63-65, 127, 128, holes, legal tails, mixed rows) are covered by the boundary rows and the per-row patterns
+of every case.
 
 ## Error bounds
 

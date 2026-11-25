@@ -1,5 +1,54 @@
 {
- "description": "Token counts of the GLM-5 MXFP4 MoE layer at intermediate 512 (257 experts, top 9) from AITER's tuned token list (the old task scored powers of two from 1 to 4096); odd and unaligned batches are correctness-only.",
+ "description": "fused_moe_mxfp4 shapes of the AgentX agentic serving corpus replayed on amd/GLM-5.2-MXFP4 (TP 4); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "glm-5.2-tp4-mi355x-v1",
+  "model": "amd/GLM-5.2-MXFP4",
+  "coverage": 0.984,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher fused_moe; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 4,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": false,
+   "page_size": 64,
+   "kv_cache_dtype": "fp8_e4m3",
+   "chunked_prefill_size": 32768,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.85,
+   "context_length": 262144,
+   "attention_backend": "dsa",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": "EAGLE",
+   "speculative_num_steps": 5,
+   "speculative_num_draft_tokens": 6,
+   "speculative_eagle_topk": 1,
+   "speculative_draft_model_path": "GLM-5.2-MXFP4",
+   "max_running_requests": 48,
+   "max_total_num_tokens": 2954752,
+   "disable_cuda_graph": false,
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 262144,
+   "trajectories": 393,
+   "trajectories_unreachable": 0,
+   "requests": 98827,
+   "requests_dropped": 29830,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 14555855104,
+   "dropped_share": 0.3018,
+   "input_tokens_dropped_share": 0.6728
+  }
+ },
  "cases": [
   {
    "id": "t1",
@@ -7,8 +56,7 @@
     "num_tokens": 1
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "decode batch 1, axis minimum; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
   },
@@ -28,8 +76,7 @@
     "num_tokens": 4
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "decode batch 4; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
   },
@@ -39,8 +86,7 @@
     "num_tokens": 16
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "decode batch 16; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
   },
@@ -50,8 +96,7 @@
     "num_tokens": 64
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "decode batch 64; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
   },
@@ -66,15 +111,72 @@
    "source": "unaligned batch (not a multiple of 16)"
   },
   {
-   "id": "t256",
+   "id": "n120",
    "axes": {
-    "num_tokens": 256
+    "num_tokens": 120
    },
    "checks": [
     "correctness",
     "performance"
    ],
+   "weight": 64.41,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1768,
+    "members": [
+     {
+      "num_tokens": 108
+     },
+     {
+      "num_tokens": 114
+     },
+     {
+      "num_tokens": 120
+     },
+     {
+      "num_tokens": 126
+     },
+     {
+      "num_tokens": 132
+     },
+     {
+      "num_tokens": 138
+     }
+    ]
+   },
+   "source": "AgentX verify: 6 recorded shape(s) {'num_tokens': 108} .. {'num_tokens': 138}, 17.7% of the operator's GPU time"
+  },
+  {
+   "id": "t256",
+   "axes": {
+    "num_tokens": 256
+   },
+   "checks": [
+    "correctness"
+   ],
    "source": "decode/prefill batch 256; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "n448",
+   "axes": {
+    "num_tokens": 448
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
+  },
+  {
+   "id": "n512",
+   "axes": {
+    "num_tokens": 512
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.03% of the operator's GPU time)"
   },
   {
    "id": "t1000",
@@ -92,10 +194,49 @@
     "num_tokens": 1024
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "prefill chunk 1024; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "n1280",
+   "axes": {
+    "num_tokens": 1280
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n1664",
+   "axes": {
+    "num_tokens": 1664
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.04% of the operator's GPU time)"
+  },
+  {
+   "id": "n2368",
+   "axes": {
+    "num_tokens": 2368
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.10% of the operator's GPU time)"
+  },
+  {
+   "id": "n3264",
+   "axes": {
+    "num_tokens": 3264
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.06% of the operator's GPU time)"
   },
   {
    "id": "t4096",
@@ -103,10 +244,39 @@
     "num_tokens": 4096
    },
    "checks": [
-    "correctness",
-    "performance"
+    "correctness"
    ],
    "source": "prefill chunk 4096; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "n4864",
+   "axes": {
+    "num_tokens": 4864
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n5440",
+   "axes": {
+    "num_tokens": 5440
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n7936",
+   "axes": {
+    "num_tokens": 7936
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.11% of the operator's GPU time)"
   },
   {
    "id": "t8192",
@@ -114,10 +284,263 @@
     "num_tokens": 8192
    },
    "checks": [
+    "correctness"
+   ],
+   "source": "prefill chunk 8192; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+  },
+  {
+   "id": "n8256",
+   "axes": {
+    "num_tokens": 8256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.08% of the operator's GPU time)"
+  },
+  {
+   "id": "n8704",
+   "axes": {
+    "num_tokens": 8704
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.17% of the operator's GPU time)"
+  },
+  {
+   "id": "n11968",
+   "axes": {
+    "num_tokens": 11968
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.11% of the operator's GPU time)"
+  },
+  {
+   "id": "n12800",
+   "axes": {
+    "num_tokens": 12800
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.11% of the operator's GPU time)"
+  },
+  {
+   "id": "n14144",
+   "axes": {
+    "num_tokens": 14144
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.07% of the operator's GPU time)"
+  },
+  {
+   "id": "n16064",
+   "axes": {
+    "num_tokens": 16064
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.13% of the operator's GPU time)"
+  },
+  {
+   "id": "n17024",
+   "axes": {
+    "num_tokens": 17024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.14% of the operator's GPU time)"
+  },
+  {
+   "id": "n17152",
+   "axes": {
+    "num_tokens": 17152
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX prefill, not a performance case (0.14% of the operator's GPU time)"
+  },
+  {
+   "id": "n19904",
+   "axes": {
+    "num_tokens": 19904
+   },
+   "checks": [
     "correctness",
     "performance"
    ],
-   "source": "prefill chunk 8192; AITER GLM-5 MXFP4 MoE tuned token count (aiter/configs/model_configs/glm5_fp4_tuned_fmoe.csv, 6144/512/257/9)"
+   "weight": 0.2503,
+   "observed": {
+    "phases": [
+     "prefill"
+    ],
+    "time_share": 0.0048,
+    "members": [
+     {
+      "num_tokens": 19264
+     },
+     {
+      "num_tokens": 19328
+     },
+     {
+      "num_tokens": 19904
+     }
+    ]
+   },
+   "source": "AgentX prefill: 3 recorded shape(s) {'num_tokens': 19264} .. {'num_tokens': 19904}, 0.5% of the operator's GPU time"
+  },
+  {
+   "id": "n30720",
+   "axes": {
+    "num_tokens": 30720
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 4.006,
+   "observed": {
+    "phases": [
+     "prefill"
+    ],
+    "time_share": 0.1017,
+    "members": [
+     {
+      "num_tokens": 20800
+     },
+     {
+      "num_tokens": 20992
+     },
+     {
+      "num_tokens": 21376
+     },
+     {
+      "num_tokens": 21760
+     },
+     {
+      "num_tokens": 22016
+     },
+     {
+      "num_tokens": 22208
+     },
+     {
+      "num_tokens": 22400
+     },
+     {
+      "num_tokens": 22528
+     },
+     {
+      "num_tokens": 22848
+     },
+     {
+      "num_tokens": 23488
+     },
+     {
+      "num_tokens": 24512
+     },
+     {
+      "num_tokens": 24896
+     },
+     {
+      "num_tokens": 25280
+     },
+     {
+      "num_tokens": 25408
+     },
+     {
+      "num_tokens": 26176
+     },
+     {
+      "num_tokens": 26816
+     },
+     {
+      "num_tokens": 26944
+     },
+     {
+      "num_tokens": 27584
+     },
+     {
+      "num_tokens": 27712
+     },
+     {
+      "num_tokens": 27776
+     },
+     {
+      "num_tokens": 27968
+     },
+     {
+      "num_tokens": 28352
+     },
+     {
+      "num_tokens": 28480
+     },
+     {
+      "num_tokens": 28608
+     },
+     {
+      "num_tokens": 29056
+     },
+     {
+      "num_tokens": 29248
+     },
+     {
+      "num_tokens": 29440
+     },
+     {
+      "num_tokens": 29568
+     },
+     {
+      "num_tokens": 30144
+     },
+     {
+      "num_tokens": 30592
+     },
+     {
+      "num_tokens": 30720
+     },
+     {
+      "num_tokens": 30784
+     }
+    ]
+   },
+   "source": "AgentX prefill: 32 recorded shape(s) {'num_tokens': 20800} .. {'num_tokens': 30784}, 10.2% of the operator's GPU time"
+  },
+  {
+   "id": "n32768",
+   "axes": {
+    "num_tokens": 32768
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 22.32,
+   "observed": {
+    "phases": [
+     "prefill"
+    ],
+    "time_share": 0.7009,
+    "members": [
+     {
+      "num_tokens": 32448
+     },
+     {
+      "num_tokens": 32576
+     },
+     {
+      "num_tokens": 32768
+     }
+    ]
+   },
+   "source": "AgentX prefill: 3 recorded shape(s) {'num_tokens': 32448} .. {'num_tokens': 32768}, 70.1% of the operator's GPU time"
   }
  ]
 }

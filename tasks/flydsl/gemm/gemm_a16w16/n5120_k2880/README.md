@@ -16,14 +16,42 @@ and `aiter/gemm_a16w16` (Triton) suites; the float16 cases are dropped.
   kernel's bias path off. A choice that is tuned for the bias variant may be slightly off for the bias-free one.
 - **Baseline changes:** the kernel was a builder returning a launcher; `run()` selects the table row for `m`, compiles each configuration once (`functools.lru_cache`) and launches on the current stream. Absolute `aiter` imports became relative; environment switches, `numpy` and star imports were removed from the helpers so the sources pass the FlyDSL candidate rules. `buffer_ops.py` and `vector.py` are AITER's copies of ROCm/FlyDSL code (Apache-2.0, headers kept); `baseline/LICENSE` is AITER's MIT license. `splitk_hgemm.py` differs from AITER only in its import line.
 - **Reference:** `reference.py` multiplies in float64 (rows of `a` in chunks) and the result is judged against the bfloat16 output, with the `baseline_relative` bound at `k` = 8 (see below). The earlier task gated every element at bf16 1e-2 absolute or relative against an FP32 reference, which AITER's own split-K dispatches could not meet; here each element is judged against the baseline's own error. Split-K configurations reduce inside the kernel (zero-fill, then atomic bfloat16 adds guarded by a counter pair the kernel resets), so their rounding error is larger than a single-pass kernel's; that is part of the baseline error budget.
-- **Workloads:** `m` = 1 to 64 (decode and small batches) plus the unaligned sizes 33, 100, 200, 300 and 1000 are
-  correctness-only (the tuned file lists 7.8 to 12.2 us for `m` = 1 to 64, too close to the 10 us floor to score). Performance cases are
-  `m = 128 .. 65536` (512x span; 14.5 us at 128 in the tuned file): chunked and batched prefill. The largest output is 640 MiB.
-  Boundary correctness cases: `m = 1`, `m = 33` and `m = 100`. K = 2880 is not a power of two and not a multiple of 128, so
-  tile_k 64 with split-K 3 (960 per split) is the largest K tile the table uses.
+- **Workloads:** weighted by a recorded serving workload of GPT-OSS-120B; see Workloads below.
 - **Not verified here:** the kernel needs FlyDSL and gfx950. The table was checked on the CPU against the kernel's tiling,
-  LDS and split-K counter constraints only. Risks for the GPU audit: the `m = 128` case is near the 10 us floor, bias-tuned
+  LDS and split-K counter constraints only. Risks for the GPU audit: the decode cases (`m` = 24, 32) are near the 10 us floor, bias-tuned
   tiles run without bias, and the spin-waiting split-K counters under CUDA-graph replay.
+
+## Workloads
+
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`openai/gpt-oss-120b` on SGLang 0.5.23 and MI355X (capture `gpt-oss-120b-tp1-mi355x-v1`): TP 1, no DP
+attention, no speculative decoding, chunked prefill 16384, bfloat16 KV cache, and the model's 131072-token
+context (requests that do not fit are skipped: 53% of the corpus requests, 87% of its input tokens). Each
+case's `weight` is how often its shapes ran (calls per second of the steady state, TP rank 0), and the task
+scores the serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in
+the operator before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in
+`workloads.json` records the capture, the effective serving settings and the share of the corpus the context
+window dropped. The 6 weighted cases cover 98.9% of the operator's recorded GPU time:
+
+| `m` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 24 | decode | 0.9% | 19.02 |
+| 32 | decode | 19.5% | 384.7 |
+| 6720 | prefill | 0.7% | 1.024 |
+| 9024 | prefill | 1.3% | 1.447 |
+| 10560 | prefill | 2.1% | 1.8 |
+| 16384 | prefill | 74.5% | 51.07 |
+
+Decode runs `m` = the running batch padded to its CUDA-graph batch size (24 and 32 at this load); prefill runs
+`m` = the new tokens of a batch, up to the 16384-token chunk, which alone takes three quarters of the time. In
+the MI355X QA audit the baseline took 15-17 us for the decode cases and 0.21-0.45 ms for the prefill cases.
+
+The earlier performance cases (`m` = 128 to 65536, except 16384, which is now weighted) are correctness-only,
+together with the earlier correctness cases (`m` = 1 to 64 and the unaligned 33, 100, 200, 300 and 1000), `m`
+= 1001 and 4099 (not multiples of 4, on single-pass tiles) and the other recorded shapes (77 cases in total).
+The largest output (`m` = 65536) is 640 MiB. K = 2880 is not a power of two and not a multiple of 128, so
+tile_k 64 with split-K 3 (960 per split) is the largest K tile the table uses.
 
 ## FlyDSL 0.3.2 adaptation
 

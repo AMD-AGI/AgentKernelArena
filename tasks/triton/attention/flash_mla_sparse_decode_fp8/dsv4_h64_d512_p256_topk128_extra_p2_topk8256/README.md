@@ -14,7 +14,8 @@ both key and value:
   pool `extra_kv_cache` (2 slots per page, one compressed entry per 128 tokens).
 
 A slot is `page * page_size + position`; `-1` inside a prefix selects nothing and
-entries past a prefix are ignored. With `logit = sm_scale * q . kv`:
+entries past a prefix are ignored. With `logit = sm_scale * q . kv` and `sm_scale = 512^-0.5`
+(fixed, below):
 
 ```text
 output[b, 0, h] = sum_s exp(logit[h, s]) kv[s] / (sum_s exp(logit[h, s]) + exp(sinks[h]))   (bfloat16)
@@ -22,6 +23,12 @@ lse[b, 0, h]    = log(sum_s exp(logit[h, s]))                                   
 ```
 
 A request without any KV entry has a zero output and `lse = +inf`.
+
+The softmax scale is fixed at DeepSeek-V4's `sm_scale = 512^-0.5` (about 0.0442): SGLang's DSv4 attention
+passes `head_dim ** -0.5` with `head_dim = 512` and applies no YaRN mscale to it (unlike DeepSeek-V3, the
+model's YaRN rope scaling has no `mscale_all_dim` and changes only the rotary frequencies). The scale is part
+of the scenario, not an input: a scalar input cannot declare a value range, so an input scale would put every
+finite float32 value in the task's domain, including scales at which the float32 logits overflow.
 
 **Packed pools.** A pool is `[pages, page_size, 1, 584]` bytes, held in `float8_e4m3fn`
 storage as `flash_mla_with_kvcache` receives it. A page holds
@@ -107,13 +114,50 @@ Correctness cases cover the boundary lengths:
 - window lengths 1-128, and a partial window (1, 63, 65, 127) next to a non-empty
   compressed prefix (rows 7-10; in production a window shorter than 128 only
   occurs before the first compressed entry, but the index contract allows it);
-- compressed-entry counts 0, 1, 2, 16-33, 64-128, 256-512, 8191, 8255, and the
-  full width of 8256.
+- compressed-entry counts 0, 1, 2, 3-7, 8-16, 16-33, 64-128, 256-512, 8191, 8255,
+  and the full width of 8256;
+- slot byte offsets past 4 GiB: 1024 requests of up to 1M tokens, whose extra pool
+  is 4.9 GB.
 
-Performance cases range from short-context high-concurrency decode
-(1024 x 256 tokens) to 1M-token contexts (32 x 1,048,576), with batch x context
-spanning 128x. Small batches move too little KV for the 10 µs timing floor
-(about 27 MB), so they are correctness-only.
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`deepseek-ai/DeepSeek-V4-Flash-DSpark` (the V4-Flash weights with the DSpark draft model) on SGLang 0.5.23 and
+MI355X (capture `deepseek-v4-flash-tp4-dp4-mi355x-v1`): TP 4 with DP attention 4, DSpark speculative decoding
+(block size 5, 6 tokens verified per sequence), chunked prefill 16384 (4096 per attention rank), FP8 KV cache
+in 256-token pages, and a 1048576-token context (the whole corpus fits). Each case's `weight` is how often its
+shapes ran (calls per second of the steady state, TP rank 0), and the task scores the serving-weighted speedup
+`sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in the operator before and after (see
+Case weights in `docs/how-to/add-task.md`). `weight_provenance` in `workloads.json` records the capture, the
+effective serving settings and the share of the corpus the context window dropped. The 15 weighted cases cover
+99.5% of the operator's recorded GPU time:
+
+| `batch` | `ctx` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | ---: | --- | ---: | ---: |
+| 36 | 114688 | verify | 1.2% | 2.605 |
+| 36 | 120832 | verify | 4.2% | 9.017 |
+| 36 | 137728 | verify | 2.8% | 6.011 |
+| 48 | 112640 | verify | 1.8% | 2.672 |
+| 48 | 120832 | verify | 1.9% | 3.139 |
+| 48 | 131072 | verify | 5.6% | 10.05 |
+| 48 | 141312 | verify | 4.6% | 6.679 |
+| 42 | 166912 | verify | 5.8% | 12.22 |
+| 42 | 189952 | verify | 18.3% | 37.2 |
+| 42 | 198656 | verify | 10.2% | 18.9 |
+| 48 | 202240 | verify | 13.3% | 20.81 |
+| 48 | 210944 | verify | 4.1% | 7.214 |
+| 48 | 219648 | verify | 17.0% | 24.71 |
+| 48 | 239616 | verify | 7.3% | 10.69 |
+| 48 | 271872 | verify | 1.4% | 2.004 |
+
+`batch` is the number of query rows: in the verify step each of the 6 tokens of a sequence is a row (36-48
+rows: 6-8 sequences per attention rank). `ctx` is the step's mean KV length per sequence from the scheduler
+log (the task draws the other requests between `ctx/2` and `ctx`, so a case reads somewhat less KV than the
+recorded step). All weighted cases are verify steps of the target model's C128A layers; prefill rows (other
+index-table widths) and the draft model's rows (no compressed pool) do not match this scenario. In the MI355X
+QA audit the baseline took 0.14-0.31 ms, growing with the compressed history.
+
+The earlier performance cases (1024 x 256 to 32 x 1,048,576 tokens) are correctness-only, as are the boundary
+cases above and the other recorded shapes (37 cases in total).
 
 `sinks` are drawn uniformly from [-2, 12], the range the LSE covers from one to
 8k entries, so the sink changes the output in every length regime. Queries are

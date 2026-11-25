@@ -1,133 +1,336 @@
 {
-  "description": "Decode batch sizes of a Qwen3-Next style gated-delta-rule layer (16 query/key heads, 32 value heads, head dimension 128, float32 state of 2 MB per sequence); batches below 8 sequences take less than 10 us and are correctness-only.",
-  "cases": [
-    {
-      "id": "b1",
-      "axes": {
-        "batch": 1
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "single-sequence decode (axis minimum)"
-    },
-    {
-      "id": "b3",
-      "axes": {
-        "batch": 3
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "small odd decode batch"
-    },
-    {
-      "id": "b37",
-      "axes": {
-        "batch": 37
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "unaligned decode batch"
-    },
-    {
-      "id": "b100",
-      "axes": {
-        "batch": 100
-      },
-      "checks": [
-        "correctness"
-      ],
-      "source": "unaligned decode batch"
-    },
-    {
-      "id": "b8",
-      "axes": {
-        "batch": 8
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "small decode batch"
-    },
-    {
-      "id": "b16",
-      "axes": {
-        "batch": 16
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "decode batch"
-    },
-    {
-      "id": "b32",
-      "axes": {
-        "batch": 32
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "decode batch"
-    },
-    {
-      "id": "b64",
-      "axes": {
-        "batch": 64
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "decode batch"
-    },
-    {
-      "id": "b128",
-      "axes": {
-        "batch": 128
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "decode batch"
-    },
-    {
-      "id": "b256",
-      "axes": {
-        "batch": 256
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "large decode batch"
-    },
-    {
-      "id": "b512",
-      "axes": {
-        "batch": 512
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "large decode batch"
-    },
-    {
-      "id": "b800",
-      "axes": {
-        "batch": 800
-      },
-      "checks": [
-        "correctness",
-        "performance"
-      ],
-      "source": "high-concurrency decode batch"
-    }
-  ]
+ "description": "gdn_fused_recurrent_decode shapes of the AgentX agentic serving corpus replayed on Qwen/Qwen3-Next-80B-A3B-Instruct-FP8 (TP 1); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "qwen3-next-80b-tp1-mi355x-v1",
+  "model": "Qwen/Qwen3-Next-80B-A3B-Instruct-FP8",
+  "coverage": 1.0,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher gdn_fused_recurrent_decode; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 1,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": false,
+   "page_size": 64,
+   "kv_cache_dtype": "auto",
+   "chunked_prefill_size": 16384,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.9,
+   "context_length": 262144,
+   "attention_backend": "aiter",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": "EAGLE",
+   "speculative_num_steps": 3,
+   "speculative_num_draft_tokens": 4,
+   "speculative_eagle_topk": 1,
+   "speculative_draft_model_path": "Qwen3-Next-80B-A3B-Instruct-FP8",
+   "max_running_requests": 48,
+   "max_total_num_tokens": 3836480,
+   "disable_cuda_graph": false,
+   "server_env": "SGLANG_ENABLE_SPEC_V2=1 AITER_GDR_FLYDSL=1 SGLANG_AITER_HONOR_EXPLICIT_MEM_FRACTION=1",
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 262144,
+   "trajectories": 393,
+   "trajectories_unreachable": 0,
+   "requests": 98827,
+   "requests_dropped": 29830,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 14555855104,
+   "dropped_share": 0.3018,
+   "input_tokens_dropped_share": 0.6728
+  }
+ },
+ "cases": [
+  {
+   "id": "b1",
+   "axes": {
+    "batch": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single-sequence decode (axis minimum)"
+  },
+  {
+   "id": "b3",
+   "axes": {
+    "batch": 3
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small odd decode batch"
+  },
+  {
+   "id": "b8",
+   "axes": {
+    "batch": 8
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "small decode batch"
+  },
+  {
+   "id": "b16",
+   "axes": {
+    "batch": 16
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b24",
+   "axes": {
+    "batch": 24
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 0.1755,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0056,
+    "members": [
+     {
+      "batch": 24
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 24}, 0.6% of the operator's GPU time"
+  },
+  {
+   "id": "b25",
+   "axes": {
+    "batch": 25
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 1.053,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0335,
+    "members": [
+     {
+      "batch": 25
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 25}, 3.3% of the operator's GPU time"
+  },
+  {
+   "id": "b26",
+   "axes": {
+    "batch": 26
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 4.825,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1562,
+    "members": [
+     {
+      "batch": 26
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 26}, 15.6% of the operator's GPU time"
+  },
+  {
+   "id": "b27",
+   "axes": {
+    "batch": 27
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 9.299,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.3029,
+    "members": [
+     {
+      "batch": 27
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 27}, 30.3% of the operator's GPU time"
+  },
+  {
+   "id": "b28",
+   "axes": {
+    "batch": 28
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 9.299,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.3074,
+    "members": [
+     {
+      "batch": 28
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 28}, 30.7% of the operator's GPU time"
+  },
+  {
+   "id": "b29",
+   "axes": {
+    "batch": 29
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 4.299,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.1419,
+    "members": [
+     {
+      "batch": 29
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 29}, 14.2% of the operator's GPU time"
+  },
+  {
+   "id": "b30",
+   "axes": {
+    "batch": 30
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 1.579,
+   "observed": {
+    "phases": [
+     "verify"
+    ],
+    "time_share": 0.0525,
+    "members": [
+     {
+      "batch": 30
+     }
+    ]
+   },
+   "source": "AgentX verify: 1 recorded shape(s) {'batch': 30}, 5.3% of the operator's GPU time"
+  },
+  {
+   "id": "b32",
+   "axes": {
+    "batch": 32
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b37",
+   "axes": {
+    "batch": 37
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode batch"
+  },
+  {
+   "id": "b64",
+   "axes": {
+    "batch": 64
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b100",
+   "axes": {
+    "batch": 100
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "unaligned decode batch"
+  },
+  {
+   "id": "b128",
+   "axes": {
+    "batch": 128
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode batch"
+  },
+  {
+   "id": "b256",
+   "axes": {
+    "batch": 256
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "large decode batch"
+  },
+  {
+   "id": "b512",
+   "axes": {
+    "batch": 512
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "large decode batch"
+  },
+  {
+   "id": "b800",
+   "axes": {
+    "batch": 800
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "high-concurrency decode batch"
+  }
+ ]
 }

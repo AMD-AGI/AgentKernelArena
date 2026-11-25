@@ -123,15 +123,18 @@ class RepairPolicy:
         cases = {}
         for case in contract.workloads["cases"]:
             cases[case["id"]] = {"axes": case["axes"], "scalars": case.get("scalars", {}),
-                                 "checks": case["checks"]}
-        return cls(task_id, _json({key: raw.get(key) for key in _LOCKED_FIELDS}), _json(raw["compare"]),
+                                 "checks": case["checks"], "weight": case.get("weight")}
+        locked = {key: raw.get(key) for key in _LOCKED_FIELDS}
+        # Case weights and their provenance are scored workload, like the performance cases.
+        locked["weight_provenance"] = contract.workloads.get("weight_provenance")
+        return cls(task_id, _json(locked), _json(raw["compare"]),
                    _json(cases), _json(_baseline_sources(task_dir)))
 
     def verify(self, task_dir: Path) -> None:
         proposed = self.capture(task_dir, self.task_id)
         if proposed.locked != self.locked:
             raise RepairRejected("Task repair changed the scored task contract (interface, reference, "
-                                 "baseline, operator, platform or timeout)")
+                                 "baseline, operator, platform, timeout or weight provenance)")
         if proposed.baseline != self.baseline:
             raise RepairRejected("Task repair changed the vendored baseline sources")
         original_compare, updated_compare = json.loads(self.compare), json.loads(proposed.compare)

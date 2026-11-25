@@ -37,13 +37,13 @@ def _contract():
     return load_task_contract(PILOT / "task.yaml", task_id=PILOT_ID).resolved_contract("triton")
 
 
-def completed_run(root: Path, *, accepted: bool = True) -> tuple[Path, Path]:
-    """A framework-complete run of the pilot task whose candidate was edited."""
+def completed_run(root: Path, *, accepted: bool = True, task: Path = PILOT) -> tuple[Path, Path]:
+    """A framework-complete run of the pilot task (or a variant of it) whose candidate was edited."""
     run = root / "run_20261105_000000"
     workspace = run / "triton_normalization_rms_norm_bf16_h8192_20261105_000000"
-    shutil.copytree(PILOT, workspace, ignore=shutil.ignore_patterns("__pycache__"))
-    render_workspace(PILOT, workspace, task_id=PILOT_ID, target_language="triton")
-    spec = load_task_spec(PILOT / "task.yaml", task_id=PILOT_ID, target_language="triton")
+    shutil.copytree(task, workspace, ignore=shutil.ignore_patterns("__pycache__"))
+    render_workspace(task, workspace, task_id=PILOT_ID, target_language="triton")
+    spec = load_task_spec(task / "task.yaml", task_id=PILOT_ID, target_language="triton")
     state = run / ".task-sessions" / workspace.name
     session = TaskSession.create(spec, workspace, state, LOGGER)
     with mock.patch("src.task_runtime._runtime_identity", return_value=RUNTIME):
@@ -57,12 +57,29 @@ def completed_run(root: Path, *, accepted: bool = True) -> tuple[Path, Path]:
     return run, workspace
 
 
+WEIGHTS = {"t2048": 0.4, "t8192": 0.25, "t32768": 0.2, "t131072": 0.1, "t204800": 0.05}
+
+
+def weighted_pilot(destination: Path) -> Path:
+    """A copy of the pilot task whose performance cases carry WEIGHTS."""
+    shutil.copytree(PILOT, destination, ignore=shutil.ignore_patterns("__pycache__"))
+    workloads = json.loads((destination / "workloads.json").read_text())
+    for case in workloads["cases"]:
+        if case["id"] in WEIGHTS:
+            case["weight"] = WEIGHTS[case["id"]]
+    workloads["weight_provenance"] = {"kind": "fixture", "source": "fixture@1", "capture": "fixture",
+                                      "coverage": 0.9}
+    (destination / "workloads.json").write_text(json.dumps(workloads))
+    return destination
+
+
 class FakeEvaluator:
     """Answers each action from the contract in the workspace it runs in."""
 
-    def __init__(self, *, fail=(), times=None, during=None):
+    def __init__(self, *, fail=(), times=None, during=None, case_times=None):
         self.fail = set(fail)
         self.times = times or {"baseline": 2.0, "candidate": 1.0}
+        self.case_times = case_times or {}  # (role, case id) -> ms, overriding times
         self.during = during or {}
         self.calls = []
         self.contracts = []
@@ -82,7 +99,8 @@ class FakeEvaluator:
             if action == "validate-task":
                 row["checks"] = case["checks"]
             if action == "performance":
-                row.update(execution_time_ms=self.times[role], benchmark_method="cuda_graph")
+                row.update(execution_time_ms=self.case_times.get((role, case["id"]), self.times[role]),
+                           benchmark_method="cuda_graph")
             rows.append(row)
         failed = (role, action) in self.fail
         result = ActionResult(role, action, "FAIL" if failed else "PASS", tuple(rows),
@@ -156,8 +174,8 @@ class HeldOutEvaluationTests(unittest.TestCase):
         self.addCleanup(runtime.stop)
         self.addCleanup(self._directory.cleanup)
 
-    def evaluate(self, evaluator, *, accepted=True, cases=None, change=None):
-        run, workspace = completed_run(self.root, accepted=accepted)
+    def evaluate(self, evaluator, *, accepted=True, cases=None, change=None, task=PILOT):
+        run, workspace = completed_run(self.root, accepted=accepted, task=task)
         if change:
             change(workspace)
         cases_file = None
@@ -256,6 +274,22 @@ class HeldOutEvaluationTests(unittest.TestCase):
                 self.assertEqual(result["generalization_status"], "evaluation_error")
                 self.assertEqual((result["speedup_ratio"], result["score"]), (0.0, 0.0))
                 self.assertIn(match, result["error"])
+
+    def test_weighted_task_scores_the_serving_weighted_speedup(self):
+        task = weighted_pilot(self.root / "weighted")
+        # t2048 (weight 0.4) is 4x faster, every other case 1x: total time 0.4*4 + 0.6*1 = 2.2 -> 1.0.
+        evaluator = FakeEvaluator(times={"baseline": 1.0, "candidate": 1.0},
+                                  case_times={("baseline", "t2048"): 4.0})
+        result, _, _ = self.evaluate(evaluator, task=task)
+        self.assertIsNone(result["error"])
+        self.assertAlmostEqual(result["speedup_ratio"], 2.2, places=12)
+        self.assertEqual(result["case_weights"], WEIGHTS)
+        shutil.rmtree(self.root / "run_20261105_000000")
+        shutil.rmtree(self.root / "out")
+        result, _, _ = self.evaluate(FakeEvaluator(), task=task, cases=[
+            {"id": "h777", "axes": {"n_tokens": 777}, "checks": ["correctness", "performance"]}])
+        self.assertEqual(result["generalization_status"], "evaluation_error")
+        self.assertIn("correctness-only", result["error"])
 
     def test_a_changed_scoring_runtime_is_an_evaluation_error(self):
         run, workspace = completed_run(self.root)

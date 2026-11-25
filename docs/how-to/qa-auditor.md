@@ -111,7 +111,7 @@ not prove.
 | Check | Severity | Meaning | Fix |
 | --- | --- | --- | --- |
 | `QA-AUDIT` | blocking | The audit did not run to completion (framework or environment failure, a missing or altered report, or the audit changed protected task state). | Fix the reported failure and rerun. |
-| `QA-SPEC` | blocking | `task.yaml` or `workloads.json` does not load. | Fix them until the framework loads them. |
+| `QA-SPEC` | blocking | `task.yaml` or `workloads.json` does not load, including the [case-weight](add-task.md#case-weights) rules. | Fix them until the framework loads them. |
 | `QA-PACKAGE` | blocking | A task file imports a production package (`aiter`, `vllm`, `sglang`, ...), uses a process, network, dynamic-import or file API (including one reached as an attribute, such as `torch.ctypes` or `torch.os`), names an absolute path, includes a vendor library header in a HIP baseline, or ships a binary. | Vendor the code into the task; use only the task and allowed libraries. |
 | `QA-REFERENCE` | blocking | The reference imports anything but PyTorch, standard math helpers and task-root helpers, or returns a bfloat16, float16 or float8 result. | Write `reference.py` in float32/float64 PyTorch only. |
 | `QA-PROVENANCE` | blocking | The baseline's revision is not a fixed commit or release, a provenance field is a placeholder, or a non-Apache-2.0 baseline has no `baseline/LICENSE`. | Fill `baseline.provenance` with the real source, revision, path and license. |

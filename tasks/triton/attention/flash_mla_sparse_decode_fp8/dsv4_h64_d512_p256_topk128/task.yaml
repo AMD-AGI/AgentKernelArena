@@ -5,7 +5,8 @@ description: >-
   heads of dimension 512 and selects the nonnegative slots among the first sparse_lens[b] entries of
   sparse_indices[b, 0]; slot s = page * 256 + position decodes to one 512-dimensional vector that is both
   key and value (448 float8_e4m3fn codes times 2^(scale - 127) per 64-code tile, then 64 bfloat16 rope
-  values). With logit[h, s] = sm_scale * q[b, 0, h] . kv[s]: output[b, 0, h] =
+  values). With logit[h, s] = sm_scale * q[b, 0, h] . kv[s], where sm_scale = 512^-0.5 is DeepSeek-V4's
+  softmax scale (head_dim^-0.5, fixed by the scenario, not an input): output[b, 0, h] =
   sum_s exp(logit[h, s]) kv[s] / (sum_s exp(logit[h, s]) + exp(sinks[h])) rounded to bfloat16, and
   lse[b, 0, h] = log(sum_s exp(logit[h, s])) in float32, excluding the sink. A row that selects nothing
   has a zero output and lse = +inf.
@@ -52,7 +53,6 @@ interface:
       role: metadata
       distribution: {kind: generator}
       description: Valid prefix length of each row's index table, in [0, topk].
-    sm_scale: {kind: scalar, dtype: float32, default: 0.04419417382415922, description: "Softmax scale, 1/sqrt(512)."}
     sinks:
       kind: tensor
       shape: [heads]
@@ -80,7 +80,7 @@ baseline:
       _process_kv_block_aggressive and _fused_gather_attn_dsv4_kernel unchanged; the gfx942 FP8 probe
       inlined for gfx950; @triton.autotune replaced by its BLOCK_H=64, BLOCK_N=64, 8-warp configuration;
       the split-K (topk >= 8192) and >2 GB buffer-ops branches dropped; output and lse written into the
-      preallocated tensors.
+      preallocated tensors; the softmax scale fixed at DeepSeek-V4's 512 ** -0.5 in run() instead of an argument.
 compare:
   output: {bound: baseline_relative, k: 5, max_violation_fraction: 1.0e-6}
   lse: {bound: baseline_relative, k: 8, max_violation_fraction: 5.0e-4}

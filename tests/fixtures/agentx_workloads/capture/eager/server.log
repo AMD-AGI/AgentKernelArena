@@ -1,0 +1,6 @@
+[2026-11-21 01:59:00 TP0] Prefill batch, #new-seq: 1, #new-token: 6, #cached-token: 0, token usage: 0.00, #running-req: 0, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 0.09
+[2026-11-21 02:00:00 TP0] Prefill batch, #new-seq: 2, #new-token: 3000, #cached-token: 47000, token usage: 0.40, #running-req: 27, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 900.00
+[2026-11-21 02:00:00 TP1] Prefill batch, #new-seq: 2, #new-token: 3000, #cached-token: 47000, token usage: 0.40, #running-req: 27, #queue-req: 0, #pending-token: 0, cuda graph: False, input throughput (token/s): 900.00
+[2026-11-21 02:00:00 TP0] Decode batch, #running-req: 29, #token: 2320000, token usage: 0.40, cuda graph: False, gen throughput (token/s): 800.00, #queue-req: 0
+[2026-11-21 02:00:01 TP0] Decode batch, #running-req: 29, #token: 2320029, token usage: 0.40, cuda graph: False, gen throughput (token/s): 800.00, #queue-req: 0
+[2026-11-21 02:30:00 TP0] Decode batch, #running-req: 30, #token: 10, token usage: 0.40, cuda graph: False, gen throughput (token/s): 800.00, #queue-req: 0

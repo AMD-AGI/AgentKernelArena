@@ -44,10 +44,37 @@ appended as expert 256 with weight `1 / routed_scaling_factor` = 0.4. Hidden sta
 
 ## Workloads
 
-Token counts from the AITER tune file: decode batches 1, 4, 16, 64 and 256, and prefill chunks of 1024, 4096
-and 16384 tokens are timed (even one token reads nine experts, about 50 MB of weights). 3, 37, 200, 1000 and
-3000 tokens are correctness-only boundary and unaligned cases. They cover the three tile configurations of
-the baseline (below 256, below 1024 and from 1024 tokens).
+The performance cases come from a recorded agentic serving workload: the AgentX corpus
+(`semianalysisai/cc-traces-weka-062126`, agentic coding sessions) replayed with 32 concurrent sessions against
+`deepseek-ai/DeepSeek-V3` (FP8 checkpoint) on SGLang 0.5.23 and MI355X (capture `deepseek-v3-tp8-mi355x-v3`):
+TP 8, no DP attention, MTP speculative decoding with the checkpoint's own MTP layer (EAGLE, 3 steps, 4 tokens
+verified per sequence), chunked prefill 16384, FP8 KV cache, aiter attention, and the model's 163840-token
+context (requests that do not fit are skipped: 45% of the corpus requests, 81% of its input tokens). Each
+case's `weight` is how often its shapes ran (calls per second of the steady state, TP rank 0), and the task
+scores the serving-weighted speedup `sum(w*t_baseline)/sum(w*t_candidate)`, the time the workload spends in
+the operator before and after (see Case weights in `docs/how-to/add-task.md`). `weight_provenance` in
+`workloads.json` records the capture, the effective serving settings and the share of the corpus the context
+window dropped. The 6 weighted cases cover 98.4% of the operator's recorded GPU time:
+
+| `num_tokens` | Phases | Share of the operator's time | Weight (calls/s) |
+| ---: | --- | ---: | ---: |
+| 27 | draft | 0.9% | 13.78 |
+| 108 | draft, verify | 36.3% | 406.4 |
+| 7107 | draft, prefill | 0.9% | 2.089 |
+| 9472 | draft, prefill | 1.4% | 2.506 |
+| 11905 | draft, prefill | 0.6% | 0.8355 |
+| 16384 | draft, prefill | 58.4% | 58.49 |
+
+`num_tokens` is the layer input's token count. With MTP the target model's decode is a verify step of 4 tokens
+per sequence (108 = 4 x 27), the MTP draft layer runs the same MoE layer (27 tokens, one per sequence, and its
+prefill), and prefill runs chunks of up to 16384 tokens. Prefill takes about 61% of the time and verify about
+36%. In the MI355X QA audit the baseline took 0.35 ms (27 tokens) to 15.3 ms (16384 tokens).
+
+The earlier performance cases (the AITER tune file's decode batches 1, 4, 16, 64 and 256 and prefill chunks of
+1024 and 4096 tokens; 16384 is now weighted) are correctness-only, together with the boundary and unaligned
+cases 3, 37, 200, 1000 and 3000, the axis maximum 32768 (where the fused shared expert receives 32768 routes)
+and the other recorded shapes (37 cases in total). They still cover the three tile configurations of the
+baseline (below 256, below 1024 and from 1024 tokens).
 
 ## Reference
 

@@ -1,24 +1,772 @@
 {
-  "description": "Decode steps of GQA 8:1 models with head size 128 per tensor-parallel rank (e.g. Llama-3.1-70B at TP 8, Qwen3-30B-A3B at TP 4) on MI355X with an FP8 KV cache (one scale per tensor) in 1024-token pages, as AITER's persistent paged-attention path serves them. Batch sizes and context lengths extend the ranges of AITER's op_tests/test_pa_ps.py (batch 64-158, contexts to 10240) to long-context decode; the largest case (about 12.6M cached tokens, 3.2 GB of FP8 KV per layer) fits the KV capacity of Qwen3-30B-A3B at TP 4 on one MI355X. Short-context and small batches are correctness-only; s3_l1027 and s81_l1027 are the batches of the upstream FlyDSL test.",
-  "cases": [
-    {"id": "s1_l1", "axes": {"num_seqs": 1, "max_seq_len": 1}, "checks": ["correctness"], "source": "first decode token of a one-token prompt"},
-    {"id": "s3_l1027", "axes": {"num_seqs": 3, "max_seq_len": 1027}, "checks": ["correctness"], "source": "upstream FlyDSL PA test batch, context crossing a page by three tokens"},
-    {"id": "s81_l1027", "axes": {"num_seqs": 81, "max_seq_len": 1027}, "checks": ["correctness"], "source": "upstream FlyDSL PA test batch"},
-    {"id": "s2_l1024", "axes": {"num_seqs": 2, "max_seq_len": 1024}, "checks": ["correctness"], "source": "one full page per sequence"},
-    {"id": "s7_l300", "axes": {"num_seqs": 7, "max_seq_len": 300}, "checks": ["correctness"], "source": "low-concurrency decode, short prompts"},
-    {"id": "s33_l4097", "axes": {"num_seqs": 33, "max_seq_len": 4097}, "checks": ["correctness"], "source": "contexts crossing a page boundary by one token"},
-    {"id": "s300_l1024", "axes": {"num_seqs": 300, "max_seq_len": 1024}, "checks": ["correctness"], "source": "more sequences than compute units, one page each"},
-    {"id": "s512_l2000", "axes": {"num_seqs": 512, "max_seq_len": 2000}, "checks": ["correctness"], "source": "largest decode batch, short contexts"},
-    {"id": "s5_l100000", "axes": {"num_seqs": 5, "max_seq_len": 100000}, "checks": ["correctness"], "source": "few long-context requests split across many compute units"},
-    {"id": "s1_l131072", "axes": {"num_seqs": 1, "max_seq_len": 131072}, "checks": ["correctness", "performance"], "source": "single 128k-context request"},
-    {"id": "s4_l131072", "axes": {"num_seqs": 4, "max_seq_len": 131072}, "checks": ["correctness", "performance"], "source": "low-concurrency 128k-context decode"},
-    {"id": "s16_l32768", "axes": {"num_seqs": 16, "max_seq_len": 32768}, "checks": ["correctness", "performance"], "source": "decode, concurrency 16, 32k contexts"},
-    {"id": "s64_l8192", "axes": {"num_seqs": 64, "max_seq_len": 8192}, "checks": ["correctness", "performance"], "source": "decode, concurrency 64 (AITER PA PS test batch, context 8192)"},
-    {"id": "s128_l8192", "axes": {"num_seqs": 128, "max_seq_len": 8192}, "checks": ["correctness", "performance"], "source": "decode, concurrency 128 (AITER PA PS test batch cu_num / 2)"},
-    {"id": "s64_l32768", "axes": {"num_seqs": 64, "max_seq_len": 32768}, "checks": ["correctness", "performance"], "source": "decode, concurrency 64, 32k contexts"},
-    {"id": "s256_l8192", "axes": {"num_seqs": 256, "max_seq_len": 8192}, "checks": ["correctness", "performance"], "source": "decode, concurrency 256"},
-    {"id": "s128_l32768", "axes": {"num_seqs": 128, "max_seq_len": 32768}, "checks": ["correctness", "performance"], "source": "decode, concurrency 128, 32k contexts"},
-    {"id": "s64_l131072", "axes": {"num_seqs": 64, "max_seq_len": 131072}, "checks": ["correctness", "performance"], "source": "decode, concurrency 64, 128k contexts"},
-    {"id": "s256_l65536", "axes": {"num_seqs": 256, "max_seq_len": 65536}, "checks": ["correctness", "performance"], "source": "decode, concurrency 256, 64k contexts (near the KV capacity)"}
-  ]
+ "description": "paged_attention_decode shapes of the AgentX agentic serving corpus replayed on Qwen/Qwen3-235B-A22B-Instruct-2507-FP8 (TP 8); each performance case is weighted by how often its shapes run (calls per second of the steady state) and the task scores the ratio of total times. The task's earlier shapes and the boundary shapes are correctness-only.",
+ "weight_provenance": {
+  "kind": "agentx",
+  "source": "semianalysisai/cc-traces-weka-062126@23f152f6f0f9399a85901b89a6458def0ef16729",
+  "capture": "qwen3-235b-a22b-tp8-mi355x-v1",
+  "model": "Qwen/Qwen3-235B-A22B-Instruct-2507-FP8",
+  "coverage": 0.989,
+  "weight_unit": "calls per second of the steady state, TP rank 0",
+  "description": "device time of TP rank 0: decode kernels from the eager leg's profiler windows, prefill kernels from every leg's windows, each phase scaled to the graph leg's logged steady-state step count; image lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109; matcher decode_attention; decode shapes padded to captured CUDA-graph batch sizes.",
+  "deployment": {
+   "image": "lmsysorg/sglang-rocm:v0.5.23-rocm720-mi35x-20261109",
+   "version": "0.5.23.dev20261109+ge60f7e909b",
+   "tp_size": 8,
+   "dp_size": 1,
+   "ep_size": 1,
+   "enable_dp_attention": false,
+   "page_size": 16,
+   "kv_cache_dtype": "fp8_e4m3",
+   "chunked_prefill_size": 16384,
+   "max_prefill_tokens": 16384,
+   "mem_fraction_static": 0.68,
+   "context_length": 262144,
+   "attention_backend": "aiter",
+   "moe_runner_backend": "auto",
+   "quantization": null,
+   "speculative_algorithm": null,
+   "speculative_num_steps": null,
+   "speculative_num_draft_tokens": null,
+   "speculative_eagle_topk": null,
+   "speculative_draft_model_path": null,
+   "max_running_requests": null,
+   "max_total_num_tokens": 6885024,
+   "disable_cuda_graph": false,
+   "replay_lanes": 32,
+   "replay_think_cap_s": 300.0,
+   "replay_duration_s": 1320.0,
+   "replay_warmup_s": 300.0
+  },
+  "corpus": {
+   "context_cap_tokens": 262144,
+   "trajectories": 393,
+   "trajectories_unreachable": 0,
+   "requests": 98827,
+   "requests_dropped": 29830,
+   "input_tokens": 21635381376,
+   "input_tokens_dropped": 14555855104,
+   "dropped_share": 0.3018,
+   "input_tokens_dropped_share": 0.6728
+  }
+ },
+ "cases": [
+  {
+   "id": "s1_l1",
+   "axes": {
+    "num_seqs": 1,
+    "max_seq_len": 1
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "first decode token of a one-token prompt"
+  },
+  {
+   "id": "s2_l1024",
+   "axes": {
+    "num_seqs": 2,
+    "max_seq_len": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "one full page per sequence"
+  },
+  {
+   "id": "s7_l300",
+   "axes": {
+    "num_seqs": 7,
+    "max_seq_len": 300
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "low-concurrency decode, short prompts"
+  },
+  {
+   "id": "s3_l1027",
+   "axes": {
+    "num_seqs": 3,
+    "max_seq_len": 1027
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "upstream FlyDSL PA test batch, context crossing a page by three tokens"
+  },
+  {
+   "id": "s81_l1027",
+   "axes": {
+    "num_seqs": 81,
+    "max_seq_len": 1027
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "upstream FlyDSL PA test batch"
+  },
+  {
+   "id": "s1_l131072",
+   "axes": {
+    "num_seqs": 1,
+    "max_seq_len": 131072
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "single 128k-context request"
+  },
+  {
+   "id": "s33_l4097",
+   "axes": {
+    "num_seqs": 33,
+    "max_seq_len": 4097
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "contexts crossing a page boundary by one token"
+  },
+  {
+   "id": "s300_l1024",
+   "axes": {
+    "num_seqs": 300,
+    "max_seq_len": 1024
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "more sequences than compute units, one page each"
+  },
+  {
+   "id": "s5_l100000",
+   "axes": {
+    "num_seqs": 5,
+    "max_seq_len": 100000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "few long-context requests split across many compute units"
+  },
+  {
+   "id": "s16_l32768",
+   "axes": {
+    "num_seqs": 16,
+    "max_seq_len": 32768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 16, 32k contexts"
+  },
+  {
+   "id": "s4_l131072",
+   "axes": {
+    "num_seqs": 4,
+    "max_seq_len": 131072
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "low-concurrency 128k-context decode"
+  },
+  {
+   "id": "s64_l8192",
+   "axes": {
+    "num_seqs": 64,
+    "max_seq_len": 8192
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 64 (AITER PA PS test batch, context 8192)"
+  },
+  {
+   "id": "s512_l2000",
+   "axes": {
+    "num_seqs": 512,
+    "max_seq_len": 2000
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "largest decode batch, short contexts"
+  },
+  {
+   "id": "s128_l8192",
+   "axes": {
+    "num_seqs": 128,
+    "max_seq_len": 8192
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 128 (AITER PA PS test batch cu_num / 2)"
+  },
+  {
+   "id": "s256_l8192",
+   "axes": {
+    "num_seqs": 256,
+    "max_seq_len": 8192
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 256"
+  },
+  {
+   "id": "s64_l32768",
+   "axes": {
+    "num_seqs": 64,
+    "max_seq_len": 32768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 64, 32k contexts"
+  },
+  {
+   "id": "s33_l4097_scale",
+   "axes": {
+    "num_seqs": 33,
+    "max_seq_len": 4097
+   },
+   "scalars": {
+    "softmax_scale": 0.0625
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "non-default softmax_scale (an input; the other cases use 128 ** -0.5)"
+  },
+  {
+   "id": "s160_l262144",
+   "axes": {
+    "num_seqs": 160,
+    "max_seq_len": 262144
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "axis maximum context; each cache is 5 GiB, so KV addresses cross 4 GiB"
+  },
+  {
+   "id": "num_seqs24_max_seq_len123904",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 123904
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 38.63,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0063,
+    "members": [
+     {
+      "num_seqs": 24,
+      "max_seq_len": 123904
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 24, 'max_seq_len': 123904}, 0.6% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs24_max_seq_len126464",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 126464
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 556.9,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.09,
+    "members": [
+     {
+      "num_seqs": 24,
+      "max_seq_len": 126464
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 24, 'max_seq_len': 126464}, 9.0% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs24_max_seq_len128512",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 128512
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX decode, not a performance case (0.46% of the operator's GPU time)"
+  },
+  {
+   "id": "num_seqs24_max_seq_len129536",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 129536
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 41.35,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0066,
+    "members": [
+     {
+      "num_seqs": 24,
+      "max_seq_len": 129536
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 24, 'max_seq_len': 129536}, 0.7% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs24_max_seq_len132096",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 132096
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX decode, not a performance case (0.13% of the operator's GPU time)"
+  },
+  {
+   "id": "num_seqs24_max_seq_len133120",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 133120
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 55.96,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0086,
+    "members": [
+     {
+      "num_seqs": 24,
+      "max_seq_len": 133120
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 24, 'max_seq_len': 133120}, 0.9% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs24_max_seq_len134656",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 134656
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 35.02,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0054,
+    "members": [
+     {
+      "num_seqs": 24,
+      "max_seq_len": 134656
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 24, 'max_seq_len': 134656}, 0.5% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs24_max_seq_len135680",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 135680
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 35.9,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0054,
+    "members": [
+     {
+      "num_seqs": 24,
+      "max_seq_len": 135680
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 24, 'max_seq_len': 135680}, 0.5% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs24_max_seq_len144384",
+   "axes": {
+    "num_seqs": 24,
+    "max_seq_len": 144384
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX decode, not a performance case (0.16% of the operator's GPU time)"
+  },
+  {
+   "id": "num_seqs32_max_seq_len129024",
+   "axes": {
+    "num_seqs": 32,
+    "max_seq_len": 129024
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 28.24,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0053,
+    "members": [
+     {
+      "num_seqs": 32,
+      "max_seq_len": 129024
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 32, 'max_seq_len': 129024}, 0.5% of the operator's GPU time"
+  },
+  {
+   "id": "s128_l32768",
+   "axes": {
+    "num_seqs": 128,
+    "max_seq_len": 32768
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 128, 32k contexts"
+  },
+  {
+   "id": "num_seqs32_max_seq_len132608",
+   "axes": {
+    "num_seqs": 32,
+    "max_seq_len": 132608
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "AgentX decode, not a performance case (0.35% of the operator's GPU time)"
+  },
+  {
+   "id": "num_seqs32_max_seq_len133632",
+   "axes": {
+    "num_seqs": 32,
+    "max_seq_len": 133632
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 39.15,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0084,
+    "members": [
+     {
+      "num_seqs": 32,
+      "max_seq_len": 133632
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 32, 'max_seq_len': 133632}, 0.8% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs32_max_seq_len136704",
+   "axes": {
+    "num_seqs": 32,
+    "max_seq_len": 136704
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 116.4,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0249,
+    "members": [
+     {
+      "num_seqs": 32,
+      "max_seq_len": 136192
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 136704
+     }
+    ]
+   },
+   "source": "AgentX decode: 2 recorded shape(s) {'num_seqs': 32, 'max_seq_len': 136192} .. {'num_seqs': 32, 'max_seq_len': 136704}, 2.5% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs32_max_seq_len139264",
+   "axes": {
+    "num_seqs": 32,
+    "max_seq_len": 139264
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 131.5,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0264,
+    "members": [
+     {
+      "num_seqs": 32,
+      "max_seq_len": 138240
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 138752
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 139264
+     }
+    ]
+   },
+   "source": "AgentX decode: 3 recorded shape(s) {'num_seqs': 32, 'max_seq_len': 138240} .. {'num_seqs': 32, 'max_seq_len': 139264}, 2.6% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs32_max_seq_len140288",
+   "axes": {
+    "num_seqs": 32,
+    "max_seq_len": 140288
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 33.79,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.0075,
+    "members": [
+     {
+      "num_seqs": 32,
+      "max_seq_len": 140288
+     }
+    ]
+   },
+   "source": "AgentX decode: 1 recorded shape(s) {'num_seqs': 32, 'max_seq_len': 140288}, 0.7% of the operator's GPU time"
+  },
+  {
+   "id": "num_seqs32_max_seq_len147968",
+   "axes": {
+    "num_seqs": 32,
+    "max_seq_len": 147968
+   },
+   "checks": [
+    "correctness",
+    "performance"
+   ],
+   "weight": 3537.0,
+   "observed": {
+    "phases": [
+     "decode"
+    ],
+    "time_share": 0.7943,
+    "members": [
+     {
+      "num_seqs": 32,
+      "max_seq_len": 141312
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 141824
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 142336
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 142848
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 143360
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 144384
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 144896
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 145408
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 145920
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 146432
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 146944
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 147456
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 147968
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 148480
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 148992
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 149504
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 150016
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 150528
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 151040
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 151552
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 152064
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 152576
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 153088
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 154112
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 154624
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 155136
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 155648
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 156160
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 157184
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 157696
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 158720
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 159744
+     },
+     {
+      "num_seqs": 32,
+      "max_seq_len": 160768
+     }
+    ]
+   },
+   "source": "AgentX decode: 33 recorded shape(s) {'num_seqs': 32, 'max_seq_len': 141312} .. {'num_seqs': 32, 'max_seq_len': 160768}, 79.4% of the operator's GPU time"
+  },
+  {
+   "id": "s64_l131072",
+   "axes": {
+    "num_seqs": 64,
+    "max_seq_len": 131072
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 64, 128k contexts"
+  },
+  {
+   "id": "s256_l65536",
+   "axes": {
+    "num_seqs": 256,
+    "max_seq_len": 65536
+   },
+   "checks": [
+    "correctness"
+   ],
+   "source": "decode, concurrency 256, 64k contexts (near the KV capacity)"
+  }
+ ]
 }
