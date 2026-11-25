@@ -4,6 +4,7 @@ Enforcement tests run only where the kernel offers Landlock ABI 3 or later; the
 rest are pure CPU checks.
 """
 import ast
+import ctypes
 import json
 import logging
 import os
@@ -109,6 +110,13 @@ def test_run_start_notes_unconfined_auto_runs_and_refuses_strict_ones(landlock_h
     context, output = _start_run("geak", agent_sandbox="landlock")
     assert context is None and "not supported" in output
     assert _start_run("geak", agent_sandbox="none") == ("started", "")
+
+
+def test_path_beneath_attr_matches_the_packed_kernel_struct():
+    # struct landlock_path_beneath_attr: __u64 allowed_access, __s32 parent_fd, packed.
+    assert ctypes.sizeof(sandbox._PathBeneathAttr) == 12
+    assert sandbox._PathBeneathAttr.allowed_access.offset == 0
+    assert sandbox._PathBeneathAttr.parent_fd.offset == 8
 
 
 def test_complement_excludes_subtree_and_symlinks_into_it(tmp_path):

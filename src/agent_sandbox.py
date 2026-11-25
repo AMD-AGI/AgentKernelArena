@@ -256,6 +256,9 @@ class _RulesetAttr(ctypes.Structure):
 
 
 class _PathBeneathAttr(ctypes.Structure):
+    # The kernel struct is packed (12 bytes). Python 3.14 deprecates _pack_ without an
+    # explicit _layout_; "ms" keeps the layout ctypes has always used here.
+    _layout_ = "ms"
     _pack_ = 1
     _fields_ = [("allowed_access", ctypes.c_uint64), ("parent_fd", ctypes.c_int32)]
 
