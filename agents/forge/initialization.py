@@ -100,7 +100,7 @@ def _implementer_setup(api, plan: dict, spec, root: Path, *, timeout: int, prote
         commit_new_paths=new_path_patterns(spec, root),
     )
     # The gate runs the task's complete validation, so both of its limits are the session's.
-    measurement = api.GateMeasurement(driver_script=driver, interposed_driver_path=driver, correctness_only=True,
+    measurement = api.GateMeasurement(driver_script=driver, correctness_only=True,
                                       stage_timeout_sec=timeout, bench_timeout_sec=timeout)
     session = api.SessionOptions(session_timeout_sec=timeout, insession_gate=True,
                                  permission_mode=plan["agent_config"]["permission_mode"])

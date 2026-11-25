@@ -411,11 +411,10 @@ override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
 `supervisor_backend`, `lanes`, and `python`. An empty supervisor follows the
-selected backend. `lanes` is how many implementer sessions the loop runs per
-round: empty follows the engine default, and the value is passed to
-`forge-loop` as `--lanes`, so what a given count means (an engine may run a
-single lane without its planning stage) is the engine's to say. A rewrite's
-nested loop is not given it. Task preparation, profiling, planning probes and
+selected backend. `lanes` is the engine's implementer lane count per round:
+empty follows the engine default, and the value is passed to `forge-loop` as
+`--lanes`, so what a given count means is the engine's to say. A rewrite's
+nested loop is not given it. Task preparation, profiling and
 knowledge warm starts follow the engine defaults. One thing about scoring is
 not left to the engine: Arena's speedup is the geometric mean of per-case
 speedups, so an engine whose `forge-loop` accepts `--case-aggregate` is told

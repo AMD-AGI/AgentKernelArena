@@ -98,8 +98,8 @@ def test_implementer_setup_carries_every_initialization_control(tmp_path):
     assert "INITIALIZE" in setup.task.program_md
     assert str(root / "solution/kernel.hip") in setup.task.source_files
     assert vars(setup.session) == dict(session_timeout_sec=23, permission_mode="acceptEdits", insession_gate=True)
-    assert vars(setup.measurement) == dict(driver_script=driver, interposed_driver_path=driver,
-                                         correctness_only=True, stage_timeout_sec=23, bench_timeout_sec=23)
+    assert vars(setup.measurement) == dict(driver_script=driver, correctness_only=True,
+                                         stage_timeout_sec=23, bench_timeout_sec=23)
 
 
 def test_new_file_patterns_stay_inside_declared_tree_directories(tmp_path):
