@@ -92,6 +92,7 @@ def _start_run(agent, **settings):
               "target_gpu_model": "MI355X", **settings}
     output = io.StringIO()
     with patch("main._load_config", return_value=config), \
+            patch("main.probe_gpu_agents", return_value=None), \
             patch("main._resolve_run", side_effect=AssertionError("started")), redirect_stdout(output):
         try:
             context = _build_context(argparse.Namespace(run_suffix=None, config_name="unused.yaml"),

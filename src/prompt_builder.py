@@ -99,7 +99,7 @@ def prompt_builder(task_config_dir: str, workspace_directory: Path, eval_config:
     if not target_gpu_model:
         raise ValueError(
             "target_gpu_model is required in config.yaml. "
-            "Set it to your GPU model (e.g. MI300, MI355X, RDNA4)."
+            "Set it to your GPU model (e.g. MI300, MI355X, RDNA4, W7900)."
         )
     logger.info(f"Building prompt from config: {task_config_path}")
 

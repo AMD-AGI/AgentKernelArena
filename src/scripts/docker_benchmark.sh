@@ -12,8 +12,10 @@ GFX950_V0520_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:e20849665c105d389ef91d23c0d
 GFX950_SGLANG_V0514_IMMUTABLE_IMAGE="lmsysorg/sglang@sha256:7a3087bc8b17b246a807215c37e2260e2b83c052423a92cb73966eea5d8b2d7f"
 # Pin the MI355X runtime; retain the older manifest for explicit rollback.
 DEFAULT_DOCKER_IMAGE_GFX950="${AKA_DOCKER_IMAGE_GFX950:-$GFX950_V0520_IMMUTABLE_IMAGE}"
-# Built on first use when absent; its Dockerfile pins the base.
+# Built on first use when absent; its Dockerfile names the base. The W7900
+# (gfx1100) runs the same image.
 DEFAULT_DOCKER_IMAGE_GFX1201="${AKA_DOCKER_IMAGE_GFX1201:-agent-kernel-arena:rdna4-rocm10-v1}"
+DEFAULT_DOCKER_IMAGE_GFX1100="${AKA_DOCKER_IMAGE_GFX1100:-agent-kernel-arena:rdna4-rocm10-v1}"
 CONTAINER_WORKDIR="${AKA_DOCKER_WORKDIR:-/workspace}"
 HOST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HOST_HOME="${HOME:?HOME must be set}"
@@ -97,6 +99,7 @@ Environment overrides:
   AKA_DOCKER_IMAGE_GFX942 Default image for gfx942.
   AKA_DOCKER_IMAGE_GFX950 Default image for gfx950.
   AKA_DOCKER_IMAGE_GFX1201 RDNA4 image (also the build-rdna4-image output tag).
+  AKA_DOCKER_IMAGE_GFX1100 Radeon PRO W7900 image (default: the RDNA4 image).
   AKA_NODE_PREFIX         Host Node prefix containing bin/node and npm-installed agent CLI(s).
   AKA_CODEX_AUTH_DIR      Host Codex auth/config source directory (default: ~/.codex).
                          Isolated workers copy it from a read-only mount into their HOME.
@@ -157,6 +160,7 @@ docker_image_for_arch() {
         gfx942) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX942" ;;
         gfx950) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX950" ;;
         gfx1201) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX1201" ;;
+        gfx1100) printf '%s\n' "$DEFAULT_DOCKER_IMAGE_GFX1100" ;;
         *)
             die "No Docker image mapping for GPU arch '$arch'. Set AKA_DOCKER_IMAGE or ${env_name}."
             ;;
@@ -284,7 +288,7 @@ detect_host_gpu_arch() {
 
 select_runtime() {
     local arch="$1"
-    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH (for example gfx942, gfx950, or gfx1201)"
+    [[ -n "$arch" ]] || die "Could not infer GPU arch; set AKA_GPU_ARCH (for example gfx942, gfx950, gfx1201, or gfx1100)"
 
     SELECTED_GPU_ARCH="$(normalize_gpu_arch "$arch")"
     CONFIG_DOCKER_IMAGE="${2:-}"
@@ -417,17 +421,19 @@ build_rdna4_image() {
     # Send only the recipe, normalizer, and package lock as build context.
     docker build --pull=false \
         --file "$HOST_ROOT/docker/rdna4/Dockerfile" \
-        --tag "$DEFAULT_DOCKER_IMAGE_GFX1201" \
+        --tag "${1:-$DEFAULT_DOCKER_IMAGE_GFX1201}" \
         "$HOST_ROOT/docker/rdna4"
 }
 
 ensure_runtime_image() {
+    local arch_override
+    [[ "$SELECTED_GPU_ARCH" == "gfx1201" || "$SELECTED_GPU_ARCH" == "gfx1100" ]] || return 0
+    arch_override="AKA_DOCKER_IMAGE_$(printf '%s' "$SELECTED_GPU_ARCH" | tr '[:lower:]' '[:upper:]')"
     # Custom images retain Docker's normal pull/run behavior, even if an
     # override happens to equal our default tag. Never build over an override.
-    [[ "$SELECTED_GPU_ARCH" == "gfx1201" \
-        && -z "$CONFIG_DOCKER_IMAGE" \
+    [[ -z "$CONFIG_DOCKER_IMAGE" \
         && -z "${AKA_DOCKER_IMAGE:-}" \
-        && -z "${AKA_DOCKER_IMAGE_GFX1201:-}" ]] || return 0
+        && -z "${!arch_override:-}" ]] || return 0
     if docker image inspect "$SELECTED_IMAGE" >/dev/null 2>&1; then
         return 0
     fi
@@ -435,7 +441,7 @@ ensure_runtime_image() {
     docker info >/dev/null \
         || die "Cannot access Docker; check daemon access before building the RDNA4 runtime."
     echo "RDNA4 image '$SELECTED_IMAGE' is missing; building the pinned runtime before launch. The first build may download the base image and locked packages." >&2
-    build_rdna4_image >&2 \
+    build_rdna4_image "$SELECTED_IMAGE" >&2 \
         || die "RDNA4 runtime build failed; no experiment was started. Retry the command or run make docker-build-rdna4."
 }
 
@@ -1349,13 +1355,17 @@ build_docker_args() {
         )
     fi
 
-    if [[ "$SELECTED_GPU_ARCH" == "gfx1201" ]]; then
+    if [[ "$SELECTED_GPU_ARCH" == "gfx1201" || "$SELECTED_GPU_ARCH" == "gfx1100" ]]; then
         # AITER's repository and installed-package builds use separate caches.
         # The host-UID container does not have a writable host-home mount.
         docker_args+=(
             -e "AITER_ROOT_DIR=/tmp/aiter-root${cache_postfix}"
             -e "AITER_JIT_DIR=/tmp/aiter-jit${cache_postfix}"
         )
+    fi
+    if [[ "$SELECTED_GPU_ARCH" == "gfx1100" ]]; then
+        # FlyDSL compiles into ~/.flydsl by default, which is not writable here.
+        docker_args+=(-e "FLYDSL_RUNTIME_CACHE_DIR=/tmp/flydsl-runtime-cache${cache_postfix}")
     fi
 
     if [[ -n "${AKA_VISIBLE_GPU:-}" ]]; then
@@ -1684,6 +1694,12 @@ if selected_arch and actual_arch and not actual_arch.startswith(selected_arch):
         "fix target_gpu_model for experiment runs, or use AKA_GPU_ARCH only for shell/smoke diagnostics"
     )
 
+# Product-qualified models (W7900) also require the board's marketing name; a
+# gfx11 device without one is refused. Preflight passes the run config.
+from src.gpu_identity import smoke_identity_lines
+for identity_line in smoke_identity_lines(selected_arch, os.environ.get("AKA_SMOKE_CONFIG") or None):
+    print(identity_line)
+
 # Device discovery and memory copies can succeed even when the first actual
 # kernel crashes. Exercise arithmetic and validate its result before task work.
 host_values = torch.arange(32, dtype=torch.float32)
@@ -1767,7 +1783,7 @@ PY
 
 container_preflight() {
     local config_name="${1:-$DEFAULT_RUN_CONFIG}"
-    container_smoke
+    AKA_SMOKE_CONFIG="$config_name" container_smoke
     # Only verify the agent(s) this config actually uses (mounts are scoped the same way).
     # A deterministic-only audit (qa_auditor with backend none) needs no agent CLI.
     local required

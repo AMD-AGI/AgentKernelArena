@@ -94,6 +94,23 @@ This topic summarizes the features available in each AgentKernelArena release. F
   as suspect, and report how close each baseline and candidate is to its floor. See
   [Estimate roofline floors](../how-to/roofline-floors.md).
 
+### Radeon PRO W7900 (`gfx1100`)
+
+- `target_gpu_model: W7900` selects the Radeon PRO W7900 and W7900 Dual Slot.
+  `gfx1100` also names the W7800 and the RX 7900 series, so every visible GPU
+  must report `gfx1100` and one of the two W7900 rocminfo marketing names.
+  Any other board, an empty name or a missing `rocminfo` is refused before a run
+  directory is created. Accepted runs write `gpu_identity/<role>.json`.
+- The W7900 runs the RDNA4 image, `agent-kernel-arena:rdna4-rocm10-v1`, which
+  the runner builds on first use (`make docker-build-rdna4`;
+  `AKA_DOCKER_IMAGE_GFX1100` overrides it). The recipe now names its base by
+  the versioned `rocm/vllm` tag and checks for `rocminfo`; existing images are
+  reused. See the
+  [runtime guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md).
+- W7900 prompts use RDNA3 architecture, HIP and Triton guides.
+- Evaluation-tool sidecars are refused on `gfx1100`. Every shipped kernel task
+  declares `gfx950`, so a W7900 run skips it, as on the other non-MI355X GPUs.
+
 ## AgentKernelArena 0.4.0
 
 AgentKernelArena 0.4.0 makes Arena an RL-ready environment with bounded,

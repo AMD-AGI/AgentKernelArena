@@ -60,6 +60,45 @@ def test_rdna4_uses_default_guides_for_languages_it_does_not_override(language, 
     assert text == expected_guides("RDNA4_architecture.md", guide)
 
 
+@pytest.mark.parametrize("model", ["W7900", "w7900"])
+@pytest.mark.parametrize("language", ["hip", "triton"])
+def test_w7900_selects_rdna3_guides(model, language):
+    text, arch = _load_cheatsheet(language, model, ROOT, LOGGER)
+
+    assert arch == "gfx1100"
+    assert text == expected_guides(
+        "RDNA3_architecture.md", f"{language}_rdna3_cheatsheet.md"
+    )
+
+
+@pytest.mark.parametrize("language,guide", [
+    ("flydsl", "flydsl_cheatsheet.md"),
+    ("gluon", "gluon_cheatsheet.md"),
+    ("gpu", "gpu_cheatsheet.md"),
+])
+def test_w7900_keeps_default_guide_for_languages_without_rdna3_override(language, guide):
+    text, arch = _load_cheatsheet(language, "W7900", ROOT, LOGGER)
+
+    assert arch == "gfx1100"
+    assert text == expected_guides("RDNA3_architecture.md", guide)
+
+
+def test_w7900_task_prompt_names_gfx1100(tmp_path):
+    workspace = tmp_path / "workspace"
+    shutil.copytree(PILOT, workspace, ignore=shutil.ignore_patterns("__pycache__"))
+    render_workspace(PILOT, workspace, task_id=PILOT_ID, target_language="hip")
+    text = prompt_builder(
+        str(PILOT / "task.yaml"),
+        workspace,
+        {"target_gpu_model": "W7900", "_task_id": PILOT_ID},
+        LOGGER,
+    )
+
+    assert expected_guides("RDNA3_architecture.md", "hip_rdna3_cheatsheet.md") in text
+    assert "architecture token: `gfx1100`" in text
+    assert "gfx1201" not in text
+
+
 def test_unknown_gpu_does_not_infer_rdna_support():
     text, arch = _load_cheatsheet("hip", "UNKNOWN_GPU", ROOT, LOGGER)
 

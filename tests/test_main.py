@@ -105,6 +105,7 @@ def build(task_root: Path, config: dict, agent_template: str = "claude_code"):
     run_directory = task_root / "run"
     run_directory.mkdir(exist_ok=True)
     with patch("main._load_config", return_value=config), \
+            patch("main.probe_gpu_agents", return_value=None), \
             patch("main._resolve_run", return_value=(run_directory, "run_" + TIMESTAMP, TIMESTAMP, False)), \
             patch("main._configure_logging", return_value=LOGGER), \
             patch("main.apply_subprocess_python_path", return_value="python"), \
@@ -281,6 +282,7 @@ def build_budget(agent_settings: dict):
     args = argparse.Namespace(run_suffix=None, config_name="unused.yaml")
     output = io.StringIO()
     with patch("main._load_config", return_value=config), \
+            patch("main.probe_gpu_agents", return_value=None), \
             patch("main._resolve_run", side_effect=AssertionError("run directory resolved")), \
             redirect_stdout(output):
         context = _build_context(args, need_agent_launcher=True)
