@@ -275,20 +275,12 @@ def test_real_upstream_rejects_failure_diagnostics_as_benchmark_or_correctness(t
     script = r'''
 import asyncio, json, sys
 from agents.forge.engine import probe
-try:
-    from kernelforge.evaluation.correctness.driver import test_correctness
-    from kernelforge.evaluation.benchmark.runner import bench_wallclock as measure, BenchRun
-    async def bench_wallclock(driver):
-        return await measure(BenchRun(driver))
-except ModuleNotFoundError as error:
-    if not error.name.startswith('kernelforge.evaluation'):
-        raise
-    from kernelforge.mcp_server.tools.test import test_correctness
-    from kernelforge.mcp_server.tools.bench import bench_wallclock
+from kernelforge.evaluation.correctness.driver import test_correctness
+from kernelforge.evaluation.benchmark.runner import BenchRun, bench_wallclock
 probe()
 async def main():
     return {'correctness': await test_correctness(sys.argv[1]),
-            'benchmark': await bench_wallclock(sys.argv[1])}
+            'benchmark': await bench_wallclock(BenchRun(sys.argv[1]))}
 print(json.dumps(asyncio.run(main())))
 '''
     result = subprocess.run([python, "-c", script, str(driver)], cwd=engine,
@@ -934,10 +926,8 @@ def test_resume_recovery_does_not_hide_environment_or_evidence_errors(tmp_path, 
 
 
 @pytest.mark.parametrize("default_branch", ["main", "master"])
-def test_scratch_branch_passes_real_upstream_campaign_preflight(tmp_path, monkeypatch, default_branch):
-    python = os.environ.get("AKA_FORGE_PROBE_PYTHON")
-    if not python:
-        pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
+def test_scratch_repository_leaves_the_git_default_branch(tmp_path, monkeypatch, default_branch):
+    """The engine refuses to optimize on main or master, whichever the runtime's Git defaults to."""
     # Model the actual Docker runtime without modifying any user's Git config.
     git_config = tmp_path / "global.gitconfig"
     git_config.write_text(f"[init]\n\tdefaultBranch = {default_branch}\n")
@@ -949,25 +939,10 @@ def test_scratch_branch_passes_real_upstream_campaign_preflight(tmp_path, monkey
     adapter._initialize_git(root)
     actual = subprocess.check_output(["git", "branch", "--show-current"], cwd=root, text=True).strip()
     assert actual == "codex/arena-forge"
-    script = r'''
-import sys
-from agents.forge.engine import probe
-from kernelforge.loop import campaign_config
-import inspect
-probe()
-options = dict(kernel='kernel.py', driver='driver.py', program_md_file=None,
-    gpu_target='gfx950', gpu_type='mi355x', kernel_backend='triton', task_type='repository')
-if 'inputs' in inspect.signature(campaign_config.create_campaign_config).parameters:
-    inputs = campaign_config.CampaignInputs(**options, source_files='kernel.py', target_functions='add')
-    campaign_config.create_campaign_config(workspace_dir=sys.argv[1], inputs=inputs)
-else:
-    campaign_config.create_campaign_config(workspace_dir=sys.argv[1], **options,
-        source_files=['kernel.py'], target_functions=['add'])
-'''
-    env = dict(os.environ, PYTHONPATH=str(ROOT))
-    run = subprocess.run([python, "-c", script, str(root)], cwd=root, env=env,
-                         capture_output=True, text=True, timeout=30)
-    assert run.returncode == 0, run.stdout + run.stderr
+    # A campaign starts from a clean tree with the kernel and the driver tracked.
+    assert subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True) == ""
+    tracked = subprocess.check_output(["git", "ls-files"], cwd=root, text=True).split()
+    assert {"kernel.py", "driver.py"} <= set(tracked)
 
 
 def test_internal_absolute_symlinks_rebind_to_snapshot(tmp_path):

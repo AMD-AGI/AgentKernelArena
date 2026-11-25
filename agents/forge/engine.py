@@ -14,7 +14,9 @@ once the engine offers that phase as a command of its own.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.metadata
+import io
 import json
 import os
 from pathlib import Path
@@ -28,18 +30,29 @@ from agents.forge.bridge import load_plan
 ADAPTER_API = 1
 
 
+def _rewrite_handshake(cli) -> dict:
+    """What ``forge-rewrite-by-flydsl --capabilities-json`` prints for the rewrite's consumers."""
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        cli.main(args=["forge-rewrite-by-flydsl", "--capabilities-json"], standalone_mode=False)
+    return json.loads(printed.getvalue())
+
+
 def probe() -> dict:
-    """Check the published command line the adapter builds, nothing deeper."""
+    """Check the published command line the adapter builds and the library names initialization imports."""
     from kernelforge import cli
     from kernelforge.kernel_backends.constants import KERNEL_BACKENDS
+    from agents.forge.initialization import engine_library
 
+    # An engine that moved one of these fails here, before any campaign work.
+    engine_library()
     try:
         version = importlib.metadata.version("hyperloom-inference_optimizer")
     except importlib.metadata.PackageNotFoundError:
         version = "source-checkout"
     required = {
         "forge-loop": {"kernel", "driver", "workspace_dir", "max_hours",
-                       "source_files", "target_functions", "baseline_json"},
+                       "source_files", "target_functions", "baseline_json", "commit_new_paths"},
         "forge-rewrite-by-flydsl": {"source_kernel", "driver", "workspace_dir", "max_hours",
                                     "prepare_driver", "flydsl_kernel_name"},
     }
@@ -54,20 +67,21 @@ def probe() -> dict:
     # adapter asks for the standalone kernel only where the engine accepts that.
     rewrite = cli.main.commands["forge-rewrite-by-flydsl"]
     applyback_optional = "applyback" in {parameter.name for parameter in rewrite.params}
+    # Optional as well: an engine that cannot be told how Arena aggregates
+    # per-case speedups still runs, scoring its search by its own aggregate.
+    loop = cli.main.commands["forge-loop"]
+    case_aggregate = "case_aggregate" in {parameter.name for parameter in loop.params}
     # The PORT states which source languages it ingests. An engine that does
     # not publish them cannot be told the baseline's language, so the adapter
     # refuses a FlyDSL rewrite there instead of letting the engine guess.
-    try:
-        from kernelforge.rewrite_by_flydsl.protocol import SUPPORTED_SOURCE_LANGUAGES
-        rewrite_sources = sorted(str(name) for name in SUPPORTED_SOURCE_LANGUAGES)
-    except ImportError:
-        rewrite_sources = None
+    languages = _rewrite_handshake(cli).get("source_languages")
+    rewrite_sources = sorted(map(str, languages)) if isinstance(languages, list) else None
     from agents.forge.adapter import INITIALIZATION_LANGUAGES
     return {"adapter_api": ADAPTER_API, "version": version,
             "initialization_targets": sorted([*INITIALIZATION_LANGUAGES, "flydsl"]),
             "backends": sorted(KERNEL_BACKENDS), "rewrite_target": "flydsl",
             "rewrite_source_languages": rewrite_sources,
-            "applyback_optional": applyback_optional}
+            "applyback_optional": applyback_optional, "case_aggregate": case_aggregate}
 
 
 def main(argv=None):
@@ -80,7 +94,7 @@ def main(argv=None):
     plan = load_plan(Path(os.environ["ARENA_FORGE_PLAN"]))
     probe()  # Refuse an engine whose published command line moved.
     from kernelforge.cli import main as cli
-    from agents.forge.initialization import initialize, prepare_loop
+    from agents.forge.initialization import engine_library, initialize, prepare_loop
     from agents.forge.process_tree import managed_children
     with managed_children():
         initialization = asyncio.run(initialize(plan))
@@ -89,7 +103,7 @@ def main(argv=None):
         # mode. Preserve a failed engine exit, even if it wrote partial JSON.
         if isinstance(exit_code, int) and exit_code != 0:
             raise SystemExit(exit_code)
-        from kernelforge.tracker.usage import combine_usage_totals
+        combine_usage_totals = engine_library().usage.combine_usage_totals
         result_path = Path(plan["result"])
         result = json.loads(result_path.read_text())
         result["initialization"] = initialization

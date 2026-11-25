@@ -101,18 +101,21 @@ entering the ordinary performance search:
    timing through the public baseline actions. Start from the workspace's
    unimplemented template at the candidate entry; an empty file is created only
    if the entry is missing.
-2. Run `kernelforge.orchestrator.agent.make_agent_fn` with the target backend's
+2. Run the engine's published implementer,
+   `kernelforge.workflows.forge_loop.api.make_agent_fn`, with the target backend's
    expertise prompt, normal configured provider/model, real SDK session execution,
    workspace guard and correctness-only in-session gate. README.md,
    `_aka_eval/CANDIDATE.md` and the read-only baseline supply the contract.
-   Both the keyword interface and the grouped `ImplementerSetup` interface are
-   supported, preserving the same protected paths, correctness gate and session
-   limit. The grouped gate receives the validation limit for both stage and
+   Its `ImplementerSetup` carries the protected paths, the correctness gate and
+   the session limit; the gate receives the validation limit for both stage and
    benchmark timeouts.
-   For grouped engines, new helper files are allowed inside declared trees in
-   directories present at session startup. That engine's nonrecursive new-file
-   allowlist rejects helpers in newly created directories; Arena does not widen
-   the allowlist outside the task's declared trees.
+   New helper files are allowed inside declared trees in directories present at
+   session startup. The engine's nonrecursive new-file allowlist rejects helpers
+   in newly created directories; Arena does not widen the allowlist outside the
+   task's declared trees. The loop that follows, and the loop of an
+   optimize-only run, are handed the same allowlist as `--commit-new-path`, so a
+   session that adds a module to a declared tree has it committed with its KEEP
+   rather than having the whole change rolled back.
    After initialization, the loop receives the remaining campaign budget and,
    when supported by its CLI, the same absolute deadline.
 3. After each session, independently run candidate compile and complete
@@ -334,13 +337,23 @@ backfills a solution.
 ## Installed KernelForge runtime
 
 The command line and the measurement driver are the whole interface to the
-engine. The adapter patches no engine symbol and pins no engine module, so the
-two release cadences are independent; [engine.py](engine.py) exists for the two
-jobs that genuinely need the engine importable. `--arena-probe` reports what the
-installed engine accepts, in the exact interpreter the campaign will use, and
-checks that both commands still take the options the adapter builds.
+engine for optimize and rewrite campaigns, and the adapter patches no engine
+symbol. [engine.py](engine.py) exists for the two jobs that genuinely need the
+engine importable, and refuses anything else.
+
+`--arena-probe` reports what the installed engine accepts, in the exact
+interpreter the campaign will use. It checks that both commands still take the
+options the adapter builds, reads the capability handshake the rewrite command
+prints (`forge-rewrite-by-flydsl --capabilities-json`), and imports the library
+names initialization is built from.
+
 `--arena-initialize` runs the correctness-only implementer the engine publishes
-only as a library. It refuses anything else.
+only as a library. It is built from `kernelforge.workflows.forge_loop.api`, the
+interface the engine publishes for callers outside its loop, with
+`kernelforge.config.Config` and the usage ledger in
+`kernelforge.agent_backends.usage`. An engine without them, which is any
+Hyperloom revision before `05e67da61`, fails the probe before campaign work
+starts.
 
 Upstream owns its GPU DSL/compiler support and SDKs. Install the `forge` extra in
 the GPU runtime environment (it also pulls the agent SDK dependencies). Through
@@ -382,9 +395,9 @@ A dedicated interpreter can be selected with run-level `agent.python`.
 Backend selection follows the run's target language. The operator name comes
 from the task contract, and the engine's KB framework identity (`aiter`,
 `sglang`, `vllm`, else `standalone`) from the baseline's recorded provenance
-source. The probe reports the rewrite's accepted source languages from
-`kernelforge.rewrite_by_flydsl.protocol`; an engine that does not publish them
-cannot run a FlyDSL rewrite. TileLang is a baseline language only and never a
+source. The probe reports the rewrite's accepted source languages from the
+capability handshake the rewrite command prints; an engine that does not publish
+them cannot run a FlyDSL rewrite. TileLang is a baseline language only and never a
 Forge target.
 
 New scratch repositories start on `codex/arena-forge`, independently of the
@@ -397,10 +410,18 @@ Search defaults live in [agent_config.yaml](agent_config.yaml); the run may
 override `workflow`, `model`, `agent_backend`, `permission_mode`,
 `timeout_seconds`, `session_timeout_seconds`, `max_port_attempts`,
 `initialization_max_attempts`, `initialization_budget_fraction`,
-`supervisor_backend`, and `python`. An empty supervisor follows the selected
-backend. Lane count, task preparation, profiling, planning probes and knowledge
-warm starts follow the engine defaults. Arena publishes the task and leaves the
-search policy to Forge. Two consequences are load bearing. The public task
+`supervisor_backend`, `lanes`, and `python`. An empty supervisor follows the
+selected backend. `lanes` is the engine's implementer lane count per round:
+empty follows the engine default, and the value is passed to `forge-loop` as
+`--lanes`, so what a given count means is the engine's to say. A rewrite's
+nested loop is not given it. Task preparation, profiling and
+knowledge warm starts follow the engine defaults. One thing about scoring is
+not left to the engine: Arena's speedup is the geometric mean of per-case
+speedups, so an engine whose `forge-loop` accepts `--case-aggregate` is told
+`geometric` and judges its own KEEPs by the mean that grades its result. An
+engine without the option still runs and searches by its own aggregate; the
+probe reports which under `case_aggregate`. Arena publishes the task and
+leaves the rest of the search policy to Forge. Two consequences are load bearing. The public task
 protocol exposes no profiler invocation, so the bridge answers `--profile-run`
 with an explicit unsupported capability. A single-file upstream recipe cannot
 describe a multi-file candidate, so a `solution/` tree with helper files may
@@ -425,13 +446,12 @@ Most tests drive the adapter with a replaced engine subprocess: they cover the
 protocol, the delivery selection and the recovery paths, and their CPU timing
 fixtures are not GPU measurements or actual optimization runs. The tests gated on
 `AKA_FORGE_PROBE_PYTHON` use the installed engine for real — that a driver's
-failure diagnostics are never read as a benchmark or a correctness pass, that the
-scratch branch survives campaign preflight under a `main` or `master` Git
-default, and that HIP/Triton initialization runs the real Forge implementer,
-session execution, workspace guard and correctness gate. They cover rejected
-attempts, an unedited workspace, harness tampering, session timeouts and a
-failing loop. The provider is scripted throughout, so they prove neither model
-quality nor GPU compiler compatibility. Real LLM/GPU qualification on
+failure diagnostics are never read as a benchmark or a correctness pass, and
+that HIP/Triton initialization runs the real Forge implementer, session
+execution and correctness gate. They cover rejected attempts, an unedited
+workspace, harness tampering, session timeouts and a failing loop. The provider
+is scripted throughout and enters through the engine's provider registry, so
+they prove neither model quality nor GPU compiler compatibility. Real LLM/GPU qualification on
 schema-v3 tasks remains a required integration gate for every target language;
 Gluon initialization and the v3 workflows have not yet run on a GPU.
 

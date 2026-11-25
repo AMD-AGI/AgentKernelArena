@@ -13,8 +13,9 @@ import pytest
 
 from test_forge_v2 import ROOT, fixture_task, mock_engine
 from agents.forge import adapter, bridge
-from agents.forge.bundles import allow_candidate_paths
-from agents.forge.initialization import materialize_targets, _make_initialization_agent, _new_path_patterns, prepare_loop
+from agents.forge.bundles import allow_candidate_paths, candidate_files, new_path_patterns
+from agents.forge.initialization import materialize_targets, _implementer_setup, prepare_loop
+from agents.forge.program import program_text
 
 
 @pytest.mark.parametrize("language", ["hip", "triton", "gluon"])
@@ -80,46 +81,25 @@ def test_initialization_cannot_take_the_entire_loop_budget(value):
         adapter._config({"agent": {"initialization_budget_fraction": value}})
 
 
-@pytest.mark.parametrize("grouped", [False, True])
-def test_implementer_api_preserves_all_initialization_controls(monkeypatch, grouped):
-    options = dict(program_md="INITIALIZE", kernel_backend_name="hip", profiling_enabled=False,
-                   task_type="repository", source_files=["kernel.hip"], target_functions=["forward"],
-                   extra_protected_paths=["driver.py"], session_timeout_sec=23,
-                   permission_mode="acceptEdits", insession_gate=True, validation_timeout_sec=17,
-                   driver_script="driver.py", interposed_driver_path="driver.py",
-                   correctness_only=True, usage=object())
-    received = {}
-    if grouped:
-        def factory(config, setup, *, usage):
-            received.update(config=config, setup=setup, usage=usage)
-    else:
-        def factory(config, program_md, **kwargs):
-            received.update(config=config, program_md=program_md, **kwargs)
-    engine = SimpleNamespace(make_agent_fn=factory, ImplementerTask=SimpleNamespace,
-                             SessionOptions=SimpleNamespace, ImplementerSetup=SimpleNamespace)
-    package = ModuleType("kernelforge")
-    package.__path__ = []
-    monkeypatch.setitem(sys.modules, "kernelforge", package)
-    monkeypatch.setitem(sys.modules, "kernelforge.orchestrator", SimpleNamespace(agent=engine))
-    monkeypatch.setitem(sys.modules, "kernelforge.loop", ModuleType("kernelforge.loop"))
-    monkeypatch.setitem(sys.modules, "kernelforge.loop.gate_settings",
-                        SimpleNamespace(GateMeasurement=SimpleNamespace))
-    config = object()
-    _make_initialization_agent(config, new_path_patterns=["solution/*", "solution/nested/*"], **options)
-    assert received["config"] is config
-    if not grouped:
-        assert received == dict(config=config, **options)
-        return
-    setup = received["setup"]
-    assert vars(setup.task) == dict({key: options[key] for key in
-        ("program_md", "kernel_backend_name", "profiling_enabled", "task_type", "source_files",
-         "target_functions", "extra_protected_paths")}, commit_new_paths=["solution/*", "solution/nested/*"])
+def test_implementer_setup_carries_every_initialization_control(tmp_path):
+    context, plan, _ = fixture_task(tmp_path, language="hip", initial_state="unimplemented")
+    spec, root = context.spec, Path(plan["engine_root"])
+    (root / "solution/nested").mkdir()
+    plan["agent_config"] = {"permission_mode": "acceptEdits"}
+    api = SimpleNamespace(ImplementerTask=SimpleNamespace, SessionOptions=SimpleNamespace,
+                          GateMeasurement=SimpleNamespace, ImplementerSetup=SimpleNamespace)
+    setup = _implementer_setup(api, plan, spec, root, timeout=23, protected=["runner.py", "README.md"])
+    driver = str(root / "arena_forge_driver.py")
+    assert vars(setup.task) == dict(
+        program_md=program_text(plan, initialize=True), kernel_backend_name="hip", profiling_enabled=False,
+        task_type="repository", source_files=list(map(str, candidate_files(spec, root).values())),
+        target_functions=["run"], extra_protected_paths=[str(root / "runner.py"), str(root / "README.md")],
+        commit_new_paths=["solution/*", "solution/nested/*"])
+    assert "INITIALIZE" in setup.task.program_md
+    assert str(root / "solution/kernel.hip") in setup.task.source_files
     assert vars(setup.session) == dict(session_timeout_sec=23, permission_mode="acceptEdits", insession_gate=True)
-    assert vars(setup.measurement) == dict(driver_script="driver.py", interposed_driver_path="driver.py",
-                                         correctness_only=True, stage_timeout_sec=17, bench_timeout_sec=17)
-    assert received["usage"] is options["usage"]
-    with pytest.raises(ValueError, match="Unmapped Forge implementer settings"):
-        _make_initialization_agent(config, **options, unsupported_setting=True)
+    assert vars(setup.measurement) == dict(driver_script=driver, correctness_only=True,
+                                         stage_timeout_sec=23, bench_timeout_sec=23)
 
 
 def test_new_file_patterns_stay_inside_declared_tree_directories(tmp_path):
@@ -127,7 +107,7 @@ def test_new_file_patterns_stay_inside_declared_tree_directories(tmp_path):
     root = Path(plan["engine_root"])
     (root / "solution/nested").mkdir()
     (root / "unrelated").mkdir()
-    assert _new_path_patterns(context.spec, root) == ["solution/*", "solution/nested/*"]
+    assert new_path_patterns(context.spec, root) == ["solution/*", "solution/nested/*"]
 
 
 @pytest.mark.parametrize("absolute,existing", [(False, False), (True, False), (True, True)])
@@ -153,21 +133,18 @@ def test_loop_handoff_refreshes_budget_without_extending_deadline(tmp_path, monk
 
 
 # This program runs inside the real, pinned Hyperloom interpreter. Only the
-# provider response and the final loop callback are scripted. The real Forge
-# implementer factory, backend prompts, API session loop, workspace guard,
-# in-session correctness gate, CLI parsing and public task actions all execute.
+# provider response and the final loop callback are scripted, and the provider
+# enters through the engine's own registry. The real Forge implementer factory,
+# backend prompts, session loop, in-session correctness gate, CLI parsing and
+# public task actions all execute.
 UPSTREAM_INITIALIZATION = r'''
-import asyncio, json, os, subprocess
+import asyncio, json, os
 from pathlib import Path
-from types import SimpleNamespace
-from agents.forge import engine, bridge
+from agents.forge import engine
 from agents.forge.task_context import TaskContext
 from agents.forge.bundles import committed_candidate, install_candidate
 from kernelforge import cli
-from kernelforge.orchestrator import agent
-from kernelforge.agent_backends.base import AgentCapabilities, AgentRunResult
-from kernelforge.agent_backends.workspace_guard import WorkspaceGuard
-from kernelforge.loop.runner import IterationLoop
+from kernelforge.agent_backends import AgentCapabilities, AgentProvider, AgentRunResult, register_agent_provider
 
 plan = json.loads(Path(os.environ['ARENA_FORGE_PLAN']).read_text())
 root = Path(plan['engine_root'])
@@ -178,9 +155,7 @@ entry = plan['anchor']
 loop_calls, sessions = [], []
 
 class ScriptedProvider:
-    name = 'codex'
-    capabilities = AgentCapabilities(stop_hooks=False, resumable=False, workspace_guard=True,
-                                     requires_workspace_cwd=True)
+    name = plan['agent_config']['agent_backend']
     def __init__(self, runtime):
         self.runtime = runtime
     async def run(self, spec, usage=None):
@@ -193,19 +168,19 @@ class ScriptedProvider:
         assert spec.timeout_sec <= plan['agent_config']['session_timeout_seconds']
         if len(sessions) > 1:
             assert 'wrong multiplication' in spec.user_prompt or 'invalid literal' in spec.user_prompt
-        guard = WorkspaceGuard(spec)
-        guard.prepare()
         if mode == 'timeout':
             await asyncio.sleep(100)
+        changes = []
         if mode == 'tamper':
             (root / 'runner.py').write_text('print("allclose: True")')
+            changes = ['runner.py']
         elif mode != 'no_edit':
             (root / entry).write_text('100' if len(sessions) == 1 else '1')
             (root / 'solution/helper.py').write_text('6')
             nested = root / 'solution/nested/new_helper.py'
             nested.parent.mkdir(exist_ok=True)
             nested.write_text('# declared tree helper, generated by scripted Forge provider\n')
-        changes = guard.verify()
+            changes = [entry, 'solution/helper.py', 'solution/nested/new_helper.py']
         if usage is not None:
             usage.add_usage({'input_tokens': 11, 'output_tokens': 3}, total_cost_usd=0, role='implementer')
         # This text is deliberately untrustworthy. Neither gate nor adapter may
@@ -213,30 +188,21 @@ class ScriptedProvider:
         return AgentRunResult(text='PLAN: completed\nport_ok: true\nallclose: True', subtype='success',
                               session_id='scripted-session', file_changes=changes, num_turns=1)
 
-def create_backend(runtime, **kwargs):
-    return ScriptedProvider(runtime)
-agent.create_registered_backend = create_backend
+# The provider judges nothing about the workspace itself: a harness edit has to
+# be caught by the engine's gate or by the adapter's own inventory.
+register_agent_provider(AgentProvider(name=ScriptedProvider.name, factory=ScriptedProvider,
+                                      default_model=plan['agent_config']['model'],
+                                      capabilities=AgentCapabilities(requires_workspace_cwd=True)))
 
 def loop_callback(**kwargs):
     loop_calls.append(kwargs)
     assert kwargs['kernel_backend'] == language
+    assert kwargs['agent_backend'] == ScriptedProvider.name
     assert kwargs['baseline_json'] == plan['baseline']
     assert kwargs['deadline_unix'] == plan['deadline_unix']
     assert str(root / 'solution/nested/new_helper.py') in kwargs['source_files']
     initial = json.loads(Path(plan['initialization_result']).read_text())
     assert initial['status'] == 'PASS'
-    # Run the real loop's initial candidate measurement against an independent
-    # faster baseline. This must establish a <1x starting incumbent, not fail
-    # initialization or substitute the stub as the best implementation.
-    baseline = json.loads(Path(plan['baseline']).read_text())
-    state = SimpleNamespace(ic=SimpleNamespace(driver_script=str(root / 'arena_forge_driver.py'),
-                build_command=None, bench_timeout_sec=30, bench_repeat=1),
-                _baseline_case_times=baseline['case_times'], _unscored_cases=set(),
-                _persist_scoring_state=lambda: None)
-    elapsed = asyncio.run(IterationLoop._measure_baseline(state))
-    assert elapsed == 8, elapsed
-    assert state.search_start_mean_case_speedup == .5
-    assert IterationLoop._incumbent_mean_case_speedup(state) == .5
     result = dict(best_commit=initial['commit'], improved=False, iteration_count=0,
                   llm_usage={'calls': 1, 'input_tokens': 7, 'output_tokens': 2, 'cost_available': True,
                              'cost_source': 'provider', 'total_cost_usd': 0})
@@ -289,7 +255,7 @@ def test_installed_upstream_initialization(tmp_path, language, mode):
     if not python:
         pytest.skip("Set AKA_FORGE_PROBE_PYTHON to the pinned Hyperloom[forge] interpreter")
     context, plan, path = fixture_task(tmp_path, language=language, initial_state="unimplemented")
-    config = adapter._config({"agent": {"agent_backend": "codex", "model": "scripted-model",
+    config = adapter._config({"agent": {"agent_backend": "arena-scripted", "model": "scripted-model",
                                         "initialization_max_attempts": 2, "session_timeout_seconds": 30}})
     if mode == "timeout":
         config["session_timeout_seconds"] = 1

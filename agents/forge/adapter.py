@@ -19,7 +19,8 @@ import yaml
 from agents.forge import bridge
 from agents.forge.common import _read_forge_result, _resolve_gpu_arch, _resolve_gpu_type, run_forge_subprocess
 from agents.forge.task_context import TaskContext
-from agents.forge.bundles import allow_candidate_paths, candidate_files, committed_candidate, copy_workspace, install_candidate
+from agents.forge.bundles import (allow_candidate_paths, candidate_files, committed_candidate, copy_workspace,
+                                  install_candidate, new_path_patterns)
 from src.task_contract import BASELINE_DIR
 from src.task_spec import resolve_task_path
 from src.tools.agent_cost import report_agent_usage
@@ -128,7 +129,7 @@ def _config(eval_config: dict) -> dict:
         raise ValueError("agent run configuration must be a mapping")
     allowed = {"workflow", "model", "timeout_seconds", "permission_mode", "agent_backend",
                "python", "max_port_attempts", "supervisor_backend", "session_timeout_seconds",
-               "initialization_max_attempts", "initialization_budget_fraction"}
+               "initialization_max_attempts", "initialization_budget_fraction", "lanes"}
     config.update({key: value for key, value in overrides.items() if key in allowed})
     if overrides.get("agent_backend") not in (None, "claude") and "model" not in overrides:
         # A Claude default is not a model ID for another provider. Let upstream
@@ -140,6 +141,9 @@ def _config(eval_config: dict) -> dict:
     for field in ("max_port_attempts", "session_timeout_seconds", "initialization_max_attempts"):
         if type(config[field]) is not int or config[field] < 1:
             raise ValueError(f"Forge {field} must be a positive integer")
+    # Empty leaves the lane count to the engine, which also owns its upper bound.
+    if config.get("lanes") is not None and (type(config["lanes"]) is not int or config["lanes"] < 1):
+        raise ValueError("Forge lanes must be a positive integer")
     fraction = config["initialization_budget_fraction"]
     if type(fraction) not in (int, float) or not 0 < fraction < 1:
         raise ValueError("Forge initialization_budget_fraction must be between zero and one")
@@ -286,6 +290,10 @@ def recover_timeout_candidate(plan: dict, engine: Path, result, fallback: str = 
     return "", ""
 
 
+#: How src.testcases.calculate_average_speedup combines per-case speedups, in the
+#: engine's vocabulary.
+ARENA_CASE_AGGREGATE = "geometric"
+
 #: The engine dates its own budget from the moment its process is up, which
 #: trails the moment this argv is built by interpreter start, the capability
 #: probe and the engine import. Measured at 42s on MI355X; keep room to spare.
@@ -341,6 +349,19 @@ def build_command(plan: dict, context: TaskContext, config: dict, *, gpu_arch: s
                     "--baseline-json", plan["baseline"], "--program-md-file", plan["program"],
                     "--agent-backend", config["agent_backend"],
                     "--session-timeout-sec", str(config["session_timeout_seconds"])]
+        # The task lets a candidate add files to its solution tree, and the
+        # engine commits a created file only where it was told one may appear.
+        # Without this a session that splits the kernel into a new module has
+        # its whole change rolled back.
+        for pattern in new_path_patterns(context.spec, root):
+            command += ["--commit-new-path", pattern]
+        if config.get("lanes") is not None:
+            command += ["--lanes", str(config["lanes"])]
+        if plan.get("case_aggregate"):
+            # Arena's speedup is the geometric mean of per-case speedups. An
+            # engine searching by another mean keeps candidates Arena scores
+            # lower, so it is told which one grades its result.
+            command += ["--case-aggregate", ARENA_CASE_AGGREGATE]
     else:
         command += ["--source-kernel", plan["source"], "--flydsl-kernel-name", plan["anchor"],
                     "--logical-op-name", context.operator, "--no-prepare-driver",
@@ -434,6 +455,7 @@ def launch(eval_config: dict, task_config_dir: str, workspace: str) -> str:
         capabilities = json.loads(probe.stdout)
         status["engine"] = capabilities
         plan["applyback_optional"] = bool(capabilities.get("applyback_optional"))
+        plan["case_aggregate"] = bool(capabilities.get("case_aggregate"))
         require_supported_backend(context.spec, capabilities)
         candidate = context.spec.candidate
         initially_target = candidate.initial_state == "implemented" and candidate.initial_language == candidate.language

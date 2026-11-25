@@ -34,6 +34,20 @@ def allow_candidate_paths(engine: Path, spec: TaskSpec, *, prefix: str = "") -> 
         stream.write("\n".join(lines) + "\n")
 
 
+def new_path_patterns(spec: TaskSpec, root: Path) -> list[str]:
+    """Authorize new files only in declared trees and existing directories."""
+    patterns = []
+    for scope in spec.candidate.editable:
+        if scope.scope != "tree":
+            continue
+        tree = resolve_task_path(root, scope.path, must_exist=True)
+        for directory in [tree, *sorted(path for path in tree.rglob("*") if path.is_dir())]:
+            relative = directory.relative_to(root).as_posix()
+            resolve_task_path(root, relative, must_exist=True)
+            patterns.append(relative + "/*")
+    return patterns
+
+
 def copy_workspace(source: Path, destination: Path) -> None:
     """Copy, without hardlinks, and refuse external symlinks before copying."""
     for path in source.rglob("*"):
