@@ -8,8 +8,11 @@ import json
 import logging
 import os
 from pathlib import Path
+import re
+import shutil
 import signal
 import subprocess
+import tempfile
 import time
 import uuid
 
@@ -63,6 +66,65 @@ def task_run_is_complete(workspace: Path, expected_task_name: str, agent_name: s
         return completion == _completion_record(session, agent_name)
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, yaml.YAMLError):
         return False
+
+
+# Build caches that compiled code is loaded from. The runner points them at
+# directories an agent can write (/tmp, HOME), and a cache key is computable
+# from the candidate's source, so a planted artifact would be loaded in place
+# of the audited source. The final evaluation builds in new private ones.
+# Unset, the AITER and FlyDSL caches default to directories under HOME, which
+# the agent can write as well, so they are replaced whether or not they are set.
+# Python loads a __pycache__/*.pyc beside a source whose recorded mtime and size
+# match, and the candidate and the _aka_eval harness are imported from the
+# agent's workspace; PYTHONPYCACHEPREFIX makes Python use only its own tree.
+BUILD_CACHE_VARIABLES = ("TRITON_CACHE_DIR", "TORCH_EXTENSIONS_DIR", "TORCHINDUCTOR_CACHE_DIR",
+                         "AKA_KERNEL_CACHE_DIR", "XDG_CACHE_HOME", "MIOPEN_CACHE_DIR", "MIOPEN_CUSTOM_CACHE_DIR",
+                         "AITER_JIT_DIR", "FLYDSL_RUNTIME_CACHE_DIR", "FLYDSL_AUTOTUNE_CACHE_DIR",
+                         "PYTHONPYCACHEPREFIX")
+# Replaced only where the runner sets it: there it is a build directory that
+# starts empty in each container, while elsewhere it may name AITER's own tree.
+CONFIGURED_BUILD_CACHE_VARIABLES = ("AITER_ROOT_DIR",)
+_AGENT_RECORD = re.compile(r"agent-[0-9a-f]{32}\.json")
+
+
+@contextmanager
+def _private_build_caches(state: Path):
+    """Point every build cache at a new directory beside the task's state.
+
+    The state directory is outside the paths the agent sandbox grants, and the
+    directories are created after the agent has stopped.
+    """
+    root = Path(tempfile.mkdtemp(prefix="final-evaluation-caches-", dir=state))
+    names = [*BUILD_CACHE_VARIABLES, *(name for name in CONFIGURED_BUILD_CACHE_VARIABLES if os.environ.get(name))]
+    values = {}
+    for name in names:
+        values[name] = str(root / name.lower())
+        Path(values[name]).mkdir()
+    try:
+        with _agent_environment(values):
+            yield values
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _sandbox_history(state: Path) -> list[dict]:
+    """The sandbox record of every agent invocation of this task, this one included."""
+    from .agent_sandbox import NOT_LAUNCHED, OFF
+    records = []
+    for path in sorted(state.iterdir()):
+        if not _AGENT_RECORD.fullmatch(path.name):
+            continue
+        try:
+            row = json.loads(path.read_text())
+        except (OSError, ValueError):
+            records.append({"status": "invalid", "reason": f"unreadable agent record {path.name}"})
+            continue
+        if isinstance(row.get("sandbox"), dict):
+            records.append(row["sandbox"])
+        else:
+            # Written before the sandbox existed: an agent that ran was unconfined.
+            records.append({"status": NOT_LAUNCHED if row.get("status") == "NOT_RUN" else OFF})
+    return records
 
 
 @contextmanager
@@ -241,6 +303,15 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
             raise ValueError(f"Task {task_name} needs a target_language from the run config")
     eval_config["_target_language"] = target_language
     spec = load_task_spec(Path(task_config_dir), task_id=task_name, target_language=target_language)
+    from .agent_sandbox import resolve as resolve_sandbox, sandbox_mode
+    # Decided, and for agent_sandbox: landlock refused, before any workspace,
+    # baseline or model work is spent.
+    mode = sandbox_mode(eval_config)
+    confine, unconfined_reason = resolve_sandbox(mode, agent.value, measurement=measurement_kind(spec.to_mapping()),
+                                                 world_size=_world_size(spec), run_directory=run_directory)
+    if unconfined_reason:
+        logger.info("Agent sandbox not applied to %s: %s", task_name, unconfined_reason)
+    sandbox_plan = {"mode": mode, "confine": confine, "reason": unconfined_reason}
     policy = budget_policy(eval_config)
     if policy and "final_evaluation_pairs" in policy and measurement_kind(spec.to_mapping()) != "serving":
         raise ValueError("final_evaluation_pairs applies only to serving tasks")
@@ -254,11 +325,24 @@ def run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
     record = open_budget(_budget_path(run_directory, task_name), policy)
     arguments = dict(eval_config=eval_config, agent=agent, agent_launcher=agent_launcher,
                      task_name=task_name, task_config_dir=task_config_dir, run_directory=run_directory,
-                     timestamp=timestamp, logger=logger, spec=spec, budget_record=record)
+                     timestamp=timestamp, logger=logger, spec=spec, budget_record=record,
+                     sandbox_plan=sandbox_plan)
     if record is None:
         return _run_task_v2(**arguments)
     with _agent_environment({"ARENA_TASK_DEADLINE": str(record["deadline_epoch"])}):
         return _run_task_v2(**arguments)
+
+
+def _world_size(spec: TaskSpec) -> int:
+    """GPUs one evaluation of the task uses.
+
+    A multi-GPU task declares ``distributed.world_size`` in its task.yaml, which the
+    contract resolves to the spec's ``contract.world_size``; single-GPU tasks have none.
+    """
+    world_size = getattr(spec, "world_size", None)
+    if isinstance(world_size, int):
+        return world_size
+    return (spec.to_mapping().get("contract") or {}).get("world_size", 1)
 
 
 def _sweep_before_final_evaluation(config: dict, state: Path, logger: logging.Logger) -> dict:
@@ -289,7 +373,8 @@ def _sweep_before_final_evaluation(config: dict, state: Path, logger: logging.Lo
 
 def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
                 task_config_dir: str, run_directory: Path, timestamp: str,
-                logger: logging.Logger, spec: TaskSpec, budget_record: dict | None) -> tuple[bool, Path]:
+                logger: logging.Logger, spec: TaskSpec, budget_record: dict | None,
+                sandbox_plan: dict) -> tuple[bool, Path]:
     """Preserve agent failures and score the delivered files independently."""
     config = spec.to_mapping()
     from .measurement import measurement_kind, serving_pair_count
@@ -341,14 +426,35 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         from agents.qa_auditor.report import qa_report_is_complete
         return qa_report_is_complete(workspace), workspace
 
+    from . import agent_sandbox
     agent_result = {"status": "NOT_RUN", "error": None, "duration_s": 0.0,
-                    "candidate_changed": None}
+                    "candidate_changed": None, "sandbox": agent_sandbox.not_launched_record(sandbox_plan["mode"])}
+    agent_record = state / f"agent-{uuid.uuid4().hex}.json"
+    sandbox = None
     if initial.accepted:
         source_before = session.candidate_source_evidence()
+        if sandbox_plan["confine"]:
+            sandbox = agent_sandbox.prepare(sandbox_plan["mode"], workspace=workspace, state_directory=state,
+                                            baseline_workspace=session.baseline_workspace)
+            environment.update(sandbox.environment)
+            if not sandbox.policy.get("home_isolated"):
+                logger.warning("Agent HOME %s is not isolated to this worker; the sandbox lets the agent write "
+                               "there, and later tasks' agents read it. Parallel Docker runs isolate HOME.",
+                               os.environ.get("HOME"))
         started = time.monotonic()
+        launched = False
         try:
             from .run_budget import agent_budget
             agent_config = agent_budget(agent_config, budget_record)
+            launched = True
+            if sandbox is not None:
+                planned = agent_sandbox.launch_record(sandbox)
+            elif sandbox_plan["reason"]:
+                planned = agent_sandbox.not_applied_record(sandbox_plan["mode"], sandbox_plan["reason"])
+            else:
+                planned = agent_sandbox.off_record(sandbox_plan["mode"])
+            # Written first: an interrupted invocation still leaves the evidence of its launch.
+            _json_file(agent_record, {**agent_result, "status": "RUNNING", "sandbox": planned})
             with _agent_environment(environment):
                 agent_launcher(eval_config=agent_config, task_config_dir=task_config_dir, workspace=str(workspace))
             agent_result["status"] = "COMPLETED"
@@ -362,22 +468,32 @@ def _run_task_v2(*, eval_config: dict, agent, agent_launcher, task_name: str,
         source_after = session.candidate_source_evidence()
         if source_before["error"] is None and source_after["error"] is None:
             agent_result["candidate_changed"] = source_before["sources"] != source_after["sources"]
-    _json_file(state / f"agent-{uuid.uuid4().hex}.json", agent_result)
+        # An invocation whose budget was spent before the launch keeps its not_launched record.
+        if launched:
+            agent_result["sandbox"] = sandbox.record() if sandbox is not None else planned
+    _json_file(agent_record, agent_result)
+    # A resumed task keeps the candidate of earlier invocations, so its evidence covers all of them.
+    sandbox_evidence = agent_sandbox.combine(sandbox_plan["mode"], _sandbox_history(state))
     sweep = _sweep_before_final_evaluation(config, state, logger)
-    result = evaluate_task_session(
-        session, eval_config={**eval_config, "agent": {**eval_config.get("agent", {}), "template": agent.value}},
-        logger=logger, result_metadata={"agent_execution": agent_result, "process_sweep": sweep})
+    with _private_build_caches(state):
+        result = evaluate_task_session(
+            session, eval_config={**eval_config, "agent": {**eval_config.get("agent", {}), "template": agent.value}},
+            logger=logger, result_metadata={"agent_execution": agent_result, "process_sweep": sweep})
     accepted = all(result.get(key) is True for key in (
         "pass_compilation", "pass_correctness", "pass_tool_gate", "benchmark_method_consistent", "workload_consistent"))
     accepted = accepted and result.get("pass_verification", True) is True
     accepted = accepted and result.get("best_optimized_execution_time", 0) > 0
+    result["agent_sandbox"] = sandbox_evidence
+    # Fail closed: a confined launch without valid attestation taints the task.
+    accepted = accepted and agent_sandbox.accepts(sandbox_plan["mode"], sandbox_evidence)
     # Leftover processes taint any measurement; serving tasks additionally need
     # a container the framework could sweep at all.
     if sweep["status"] == "leftovers" or (sweep["required"] and sweep["status"] != "clean"):
         accepted = False
     exports = []
     if accepted:
-        exports = _run_exports(session, harness, logger)
+        with _private_build_caches(state):
+            exports = _run_exports(session, harness, logger)
         _json_file(state / "exports.json", {"exports": exports})
     result.update(candidate_accepted=accepted, exports=exports,
                   delivery_status=("COMPLETE" if all(row["status"] == "PASS" for row in exports)

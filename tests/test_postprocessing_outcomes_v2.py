@@ -28,7 +28,9 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
     workspaces = []
     executions = [("COMPLETED", True), ("FAILED", True), ("FAILED", False),
                   ("NOT_RUN", None), (None, None)]
-    for (task_name, accepted, delivery, correct, _), (execution, changed) in zip(fixtures, executions):
+    sandboxes = ["enforced", "mixed", "not_applied", "some later status", None]
+    for (task_name, accepted, delivery, correct, _), (execution, changed), sandbox in zip(
+            fixtures, executions, sandboxes):
         workspace = run / task_name.replace("/", "_")
         workspace.mkdir(parents=True)
         result = {
@@ -41,6 +43,8 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
             result.update(candidate_accepted=accepted, delivery_status=delivery)
         if execution is not None:
             result["agent_execution"] = {"status": execution, "candidate_changed": changed}
+        if sandbox is not None:
+            result["agent_sandbox"] = {"mode": "auto", "status": sandbox}
         (workspace / "task_result.yaml").write_text(yaml.safe_dump(result))
         workspaces.append(str(workspace))
 
@@ -60,6 +64,9 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
         "agent_not_run_count": 1, "agent_execution_unknown_count": 1,
         "candidate_changed_count": 2, "candidate_unchanged_count": 1,
         "candidate_change_unknown_count": 2,
+        "agent_sandbox_enforced_count": 1, "agent_sandbox_mixed_count": 1,
+        "agent_sandbox_not_applied_count": 1, "agent_sandbox_off_count": 0,
+        "agent_sandbox_unknown_count": 2,
     }
     for key, count in expected_counts.items():
         assert overall[key] == count
@@ -71,8 +78,12 @@ def test_final_outcomes_survive_all_report_formats_without_changing_scores(
     with csv_path.open() as handle:
         rows = {row["Task Name"]: row for row in csv.DictReader(handle)}
     text_rows = build_data.load_status_map(reports / "overall_report.txt")
-    for (name, accepted, delivery, correct, status), (execution, changed) in zip(fixtures, executions):
+    report_text = (reports / "overall_report.txt").read_text()
+    assert "Sandbox: mixed" in report_text and "  mixed:                1" in report_text
+    for (name, accepted, delivery, correct, status), (execution, changed), sandbox in zip(
+            fixtures, executions, sandboxes):
         row = rows[name]
+        assert row["Agent Sandbox"] == (sandbox if sandbox in ("enforced", "mixed", "not_applied") else "N/A")
         assert row["Status"] == text_rows[name]["status"] == status
         assert row["Candidate Accepted"] == ("N/A" if accepted is None else "YES" if accepted else "NO")
         assert row["Delivery Status"] == (delivery or "N/A")

@@ -58,6 +58,30 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `Aiter-task-mi300`, `image_kernel`) are replaced by the new tasks; no compatibility layer is
   provided. The end-to-end serving tasks keep schema v2.
 
+### Agent sandbox
+
+- Optimizing agents now run confined to their task workspace with Linux
+  Landlock by default (`agent_sandbox: auto`). A confined agent can no longer
+  read or change framework code, task packages or other workspaces in the
+  checkout. Every confined launch is attested, and an unattested one is not
+  accepted. The sandbox covers Claude Code, Codex, Cursor and DeepSeek Harness on
+  single-GPU kernel tasks. Other agents, serving tasks, multi-GPU tasks and
+  kernels without Landlock ABI 3 run unconfined, and `task_result.yaml` records
+  why. `agent_sandbox: landlock` instead refuses what it cannot confine, and
+  `none` turns the sandbox off. See
+  [Agent sandbox](../how-to/agents.md#agent-sandbox).
+- The sandbox applies only when the run directory is inside the checkout. A
+  resumed task's `agent_sandbox` status combines all of its invocations, so a
+  resume that no longer launches the agent keeps the earlier evidence, and a
+  task confined only in part reports `mixed`. Run summaries and the CSV report
+  show the status.
+- The final evaluation compiles into new private build caches (Triton, PyTorch
+  extensions, TorchInductor, the HIP kernel cache, MIOpen, `XDG_CACHE_HOME`, the
+  AITER JIT directory, the FlyDSL runtime and autotune caches, and Python
+  bytecode through `PYTHONPYCACHEPREFIX`), so an artifact an agent planted in a
+  shared cache or a workspace `__pycache__` is never loaded. This also applies
+  without the sandbox.
+
 ### Roofline floors
 
 - `python3 -m src.roofline` computes a theoretical lower bound (floor) on the
@@ -69,6 +93,23 @@ This topic summarizes the features available in each AgentKernelArena release. F
   downgrade any model that a baseline beats, list candidates that beat a floor
   as suspect, and report how close each baseline and candidate is to its floor. See
   [Estimate roofline floors](../how-to/roofline-floors.md).
+
+### Radeon PRO W7900 (`gfx1100`)
+
+- `target_gpu_model: W7900` selects the Radeon PRO W7900 and W7900 Dual Slot.
+  `gfx1100` also names the W7800 and the RX 7900 series, so every visible GPU
+  must report `gfx1100` and one of the two W7900 rocminfo marketing names.
+  Any other board, an empty name or a missing `rocminfo` is refused before a run
+  directory is created. Accepted runs write `gpu_identity/<role>.json`.
+- The W7900 runs the RDNA4 image, `agent-kernel-arena:rdna4-rocm10-v1`, which
+  the runner builds on first use (`make docker-build-rdna4`;
+  `AKA_DOCKER_IMAGE_GFX1100` overrides it). The recipe now names its base by
+  the versioned `rocm/vllm` tag and checks for `rocminfo`; existing images are
+  reused. See the
+  [runtime guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md).
+- W7900 prompts use RDNA3 architecture, HIP and Triton guides.
+- Evaluation-tool sidecars are refused on `gfx1100`. Every shipped kernel task
+  declares `gfx950`, so a W7900 run skips it, as on the other non-MI355X GPUs.
 
 ## AgentKernelArena 0.4.0
 

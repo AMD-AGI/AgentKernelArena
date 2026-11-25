@@ -29,6 +29,7 @@ The following prerequisites are required before running AgentKernelArena.
   and smoke commands.
   For `gfx1201`, the runner automatically builds the default
   [RDNA4 runtime](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md) on first use if it is missing.
+  `gfx1100` uses the same image, qualified only for the Radeon PRO W7900.
 - **Git**
 - **Node.js 22+ and npm**, when using the alternative npm installation of Claude
   Code or another npm-installed agent CLI. DeepSeek Harness uses a dedicated
@@ -147,6 +148,27 @@ for its pinned base, non-root runtime layout, and task coverage. A successful
 smoke establishes runtime availability, not support for every task or profiler
 analysis of an optimized candidate.
 
+### Radeon PRO W7900 (`gfx1100`)
+
+The W7900 runs the RDNA4 image. `gfx1100` also names other boards, so `target_gpu_model: W7900` requires every visible GPU to
+report the rocminfo marketing name `AMD Radeon Pro W7900` or
+`AMD Radeon Pro W7900 Dual Slot`; anything else is refused before a run
+directory is created. On a multi-GPU host, pin one board with
+`AKA_VISIBLE_GPU`:
+
+```bash
+AKA_VISIBLE_GPU=0 make docker-smoke
+CONFIG_PATH=example_configs/quickstart_claude_w7900.yaml
+make docker-check-agents CONFIG="$CONFIG_PATH"
+AKA_VISIBLE_GPU=0 make docker-run CONFIG="$CONFIG_PATH"
+```
+
+`make docker-build-rdna4` prebuilds or rebuilds the image. Evaluation-tool
+sidecars are refused on `gfx1100`, and tasks whose `required_arch` excludes
+`gfx1100` are skipped before workspace setup. Every shipped schema-v3 kernel
+task currently declares `gfx950`, so select or locally adapt a task whose
+`platform_support` includes `gfx1100`. See the [image recipe and limits](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md).
+
 ## Install agent CLIs
 
 Install whichever agent you plan to run. Claude Code recommends its native
@@ -204,6 +226,7 @@ longer Cursor Agent run over a whole category, use
 | `example_configs/quickstart_claude_mi300a.yaml` | Claude Code RMSNorm task (Triton) with the MI300A hardware profile (`gfx942`). |
 | `example_configs/quickstart_claude_mi355x.yaml` | First Claude Code run on MI355X (`gfx950`). |
 | `example_configs/quickstart_claude_rdna4.yaml` | First Claude Code run on RDNA4 (`gfx1201`); builds the default runtime on first use if missing. |
+| `example_configs/quickstart_claude_w7900.yaml` | First Claude Code run on a Radeon PRO W7900 (`gfx1100`); refuses other `gfx1100` boards. |
 | `example_configs/quickstart_deepseek_harness_mi300.yaml` | First DeepSeek Harness run on MI300/MI300X (`gfx942`). |
 | `example_configs/quickstart_deepseek_harness_mi355x.yaml` | First DeepSeek Harness run on MI355X (`gfx950`). |
 | `example_configs/benchmark_cursor_mi355x.yaml` | Cursor Agent over a task category on MI355X; requires an installed and authenticated Cursor Agent CLI. |

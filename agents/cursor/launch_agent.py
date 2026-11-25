@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 from agents import register_agent
 from agents.run_budget import append_run_budget
+from src.agent_sandbox import wrap_command
 from src.module_registration import AgentType, load_prompt_builder
 from src.process_control import stop_process_group as _stop_process
 from src.prompts.agent_budget import iteration_budget_guidance, time_budget_guidance
@@ -195,7 +196,7 @@ def _run_cursor_process(cmd, workspace, process_env, timeout_seconds, stdout_lin
     """Run one cursor-agent process, streaming output; return its raw outcome."""
     # Use Popen for real-time output streaming with interactive input support
     process = subprocess.Popen(
-        cmd,
+        wrap_command(cmd, process_env),
         stdin=subprocess.PIPE,  # Keep stdin closed so the agent exits when done
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

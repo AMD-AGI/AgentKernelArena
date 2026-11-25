@@ -18,8 +18,16 @@ from src.preprocessing import (
 from src.module_registration import AgentType, load_agent_launcher, load_post_processing_handler
 from src.runtime_env import apply_subprocess_python_path
 from src.task_spec import required_gpu_arches
+from src.gpu_identity import (
+    identity_error,
+    identity_summary,
+    load_model_identity,
+    probe_gpu_agents,
+    write_identity_record,
+)
 from src.tools.agent_cost import AgentCostCollector
 from src.tools.agent_time_budget import validate_run_budget_mode
+from src.eval_tools.config import EvalToolsConfig
 
 
 QUEUE_DIR_NAME = ".parallel"
@@ -344,8 +352,27 @@ def _build_context(
         return None
     try:
         validate_run_budget_mode(agent.value, config["agent"])
-    except ValueError as error:
+        from src.agent_sandbox import resolve as resolve_sandbox, sandbox_mode
+        mode = sandbox_mode(config)
+        if need_agent_launcher:
+            # Task-independent checks; serving tasks are decided per task.
+            _, unconfined_reason = resolve_sandbox(mode, agent.value)
+            if unconfined_reason:
+                print(f"Note: agent_sandbox {mode}: agents run unconfined in this run: {unconfined_reason}")
+    except (ValueError, RuntimeError) as error:
         print(f"Error: {error}")
+        return None
+
+    gpu_identity = load_model_identity(config.get("target_gpu_model"))
+    gpu_agents = probe_gpu_agents()
+    try:
+        enabled_eval_tools = EvalToolsConfig.from_mapping(config).enabled
+    except ValueError:
+        # Malformed sections keep failing in the per-task evaluation stage.
+        enabled_eval_tools = ()
+    identity_refusal = identity_error(gpu_identity, gpu_agents, enabled_eval_tools)
+    if identity_refusal:
+        print(f"Error: {identity_refusal}")
         return None
 
     project_root = Path(__file__).resolve().parent
@@ -375,6 +402,12 @@ def _build_context(
     ):
         if os.environ.get(env_name):
             logger.info(f"{env_name}={os.environ[env_name]}")
+    if gpu_identity.product_gated:
+        logger.info(identity_summary(gpu_identity, gpu_agents))
+        identity_record = write_identity_record(
+            run_directory, role or "serial", gpu_identity, gpu_agents
+        )
+        logger.info(f"GPU identity record: {identity_record}")
 
     python_path = apply_subprocess_python_path()
     logger.info(f"Subprocess Python environment: {python_path}")
