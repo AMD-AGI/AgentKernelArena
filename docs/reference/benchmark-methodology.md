@@ -50,8 +50,8 @@ For each performance case, `performance_action` in
 `benchmark_cuda_graph_cold_cache_amortized_samples`. Every call `i` is captured
 into two graphs of its own:
 
-- an operator graph: load call `i`'s inputs, poison call `i`'s outputs, evict
-  the caches, call the implementation;
+- an operator graph: restore call `i`'s mutable inputs, poison call `i`'s
+  outputs, evict the caches, call the implementation;
 - a reference graph: the same without the call.
 
 A sample replays the `K` operator graphs back to back between one Event pair,
@@ -74,8 +74,8 @@ the next calls' preparation and eviction and was subtracted with them.
 ### Calls per sample
 
 `K` is `4 GiB / (memory of one call)`, clamped to 4..32
-(`amortized_calls_per_replay`). The memory of one call is its input draw, its
-reference outputs, three copies of its checked values (its output and
+(`amortized_calls_per_replay`). The memory of one call is its input draw (twice: stored
+and staged), its reference outputs, three copies of its checked values (its output and
 mutable-input buffers, their first checked copy and the baseline's outputs) and
 the poison patterns. It depends only on the case, never on a measured time or
 on the role, so baseline and candidate always use the same `K`. More calls make
@@ -90,25 +90,32 @@ a workspace that does not fit fails the case the same way.
 
 ### Draws and checks
 
-Every call of a sample has an input draw of its own: `K` seeds derived from the
-case's two framework seeds (`draw_seed`), each with its own reference outputs
-and, when a bound is baseline-relative, its own baseline outputs. Read-only
-inputs are reloaded into shared buffers before each call; each call writes its
-own outputs and its own copy of every mutable input, so every call's result is
-still there after a sample. Warm-up runs on the two correctness draws, never on
-a timed draw. Poison is captured too: NaN fills of floating-point outputs
-capture directly, and for other outputs `K` distinct random patterns are drawn
-before capture and copied in, because a device generator cannot be created
-during capture.
+The case has `K` input draws: seeds derived from the case's two framework seeds
+(`draw_seed`), each with its own reference outputs and, when a bound is
+baseline-relative, its own baseline outputs. Every call has its own input,
+output and mutable-input buffers, so every call's result is still there after a
+sample. Before every sample a fresh random permutation from the operating
+system's entropy (`os.urandom`) assigns the draws to the calls, and the draws
+are copied into the calls' input buffers then, outside both Event spans; the
+captured preparation of a call restores its mutable inputs from that copy and
+poisons its outputs. The permutation is drawn after the candidate's last Python
+call and is held only in local variables. Warm-up runs on the two correctness
+draws, never on a timed draw. Poison is captured too: NaN fills of
+floating-point outputs capture directly, and for other outputs `K` distinct
+random patterns are drawn before capture and copied in, because a device
+generator cannot be created during capture.
 
 The candidate's Python runs once per call while the graphs are captured, so it
-could count the calls. With one shared output buffer it could work on the last
-call only; with repeated inputs it could copy an earlier call's result. With a
-draw and buffers per call, neither passes: after every sample the evaluator
-checks every call against the reference of its draw, with the same bounds as
-correctness (baseline-relative bounds included). The first check of each call
-is the full check; later samples compare the call's checked values bitwise with
-that first checked result, and run the full check again on any difference.
+can tell the calls apart. With one shared output buffer it could work on the
+last call only; with repeated inputs it could copy an earlier call's result; and
+if a graph saw the same draw in every sample, a call could keep device state of
+its own, compute in the first sample and restore the stored result in every
+later one, without reading its inputs. Distinct draws, per-call buffers and the
+per-sample permutation close these: after every sample the evaluator checks
+every call against the reference of the draw it had in that sample, with the
+same bounds as correctness (baseline-relative bounds included). The first check
+of each draw is the full check; later results for that draw are compared
+bitwise with the first checked one, and a difference is checked fully again.
 
 After the samples the reference group is replayed once more, and the checks of
 every call must reject what it leaves. A candidate whose checks accept a call
@@ -117,20 +124,52 @@ that never ran the operator fails the case with
 recorded as `reference_control_undetected_calls` and fails the QA audit
 (`QA-TIMING-CONTROL`).
 
+A case also fails as `unverifiable_measurement`, in both roles, when its
+amortized median is below `0.8 x single-call median - 10 us`
+(`CONSISTENCY_RATIO`, `CONSISTENCY_SLACK_MS`). Removing the replay's fixed cost
+(about 7 us) cannot account for that much: the timed calls did less work than
+the single-call samples. Measured MI355X cases stay at least about 6 us above
+this bound (short cases) or within about 12% of their single-call time (long
+cases).
+
 Copying each call's outputs into a snapshot after the call, in both graphs,
 would not cancel: in the operator graph the copy reads values the call has just
 left in the caches, in the reference graph it reads poison that the eviction
 has removed from them. On MI355X, `add` with 8M float16 elements measured
-10.6 us with such copies and 14.0 to 15.3 us without them.
+10.6 us with such copies and 14.0 to 15.3 us without them. Reloading every
+call's read-only inputs into one shared buffer inside its graph, as an earlier
+revision did, gave the same case per-process offsets of about 10% (14.1 to
+14.4 us in some processes, 12.6 to 13.1 us in others); with per-call input
+buffers loaded outside the spans, six processes on two GPUs measured 12.4 to
+12.95 us.
 
-The draws are fixed for a case. Implementation code that recognises a draw on
-the device and returns a stored result from an earlier replay is not ruled out
-by these checks, as it was not by the single-call method.
+Implementation code that fingerprints its inputs on the device and returns a
+result stored for that fingerprint in an earlier replay is not ruled out by
+these checks; the single-call method had the same exposure.
+
+A capture that fails (for example because a call left a forked stream unjoined)
+fails its case, and the remaining cases of the action are reported as not
+measured: the process's capture state is no longer usable. PyTorch aborts the
+process when such a graph is destroyed, so the timing helper keeps it alive
+(`failed_captures()`), and a process that holds one, such as the evaluator, ends
+with `os._exit` after reporting its result. A tampering error raised during
+capture keeps its label even when ending the capture raises another error.
 
 The evaluator's binding integrity check (see
 [What happens during a run](../how-to/run-evaluation.md#what-happens-during-a-run))
 runs after every candidate call, including the captured ones, after every
 sample and after timing.
+
+### Final evaluation
+
+The final evaluation measures each arm in four fresh processes, interleaved in
+balanced blocks (baseline, candidate, candidate, baseline, twice), and scores
+the per-case mean of each arm. `interleaved_statistics` in the result records,
+per case, each arm's coefficient of variation over its processes, a
+`high_variance` flag above 5%, and a paired 95% interval of the speedup (the
+k-th baseline process paired with the k-th candidate process). With a
+performance action of about 10 to 35 s on the tasks measured, the four extra
+processes cost a few minutes per task.
 
 ### Single-call time
 

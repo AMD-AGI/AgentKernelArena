@@ -44,15 +44,19 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `max_violation_fraction` never admits an element more than 16× over the
   bound. Integer and packed outputs compare exactly.
 - Timing is amortized cold-cache CUDA-graph timing
-  (`cuda_graph_cold_cache_amortized`): up to 32 calls per sample, each on its
-  own input draw and in its own graph after a 1 GiB cache flush, minus the same
-  graphs without the calls, with every call's outputs checked. It replaces one
+  (`cuda_graph_cold_cache_amortized`): up to 32 calls per sample, each in its
+  own graph after a 1 GiB cache flush, minus the same graphs without the calls,
+  with every call's outputs checked. The case's input draws are reassigned to
+  the calls by a secret random permutation before every sample, and a per-call
+  time far below the single-call time fails the case. It replaces one
   call per replay (`cuda_graph_cold_cache`), which charged about 7 us of Event
   and graph-launch cost to every call on MI355X; a 10-sample median of that is
   still recorded as `single_call_cold_ms`. Short cases score lower than before,
   `QA-TIMING-FLOOR` is 5 us of amortized time (was 10 us single-call), a new
   `QA-TIMING-CONTROL` check requires the output checks to reject a call that did
-  not run, and results of the two methods are not compared. The final evaluation
+  not run, and results of the two methods are not compared. The final
+  evaluation runs four processes per arm and reports each case's spread and a
+  paired 95% speedup interval. The final evaluation
   remeasures the baseline interleaved with the candidate, and a task's speedup
   is the geometric mean over its performance cases.
 - The `qa_auditor` agent replaces `task_validator`. It reports itemized
