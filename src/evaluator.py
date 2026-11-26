@@ -10,6 +10,7 @@ validation (remeasured beside the candidate for schema v3) sets the speedup.
 """
 import logging
 import math
+import statistics
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Mapping, TYPE_CHECKING
@@ -215,10 +216,12 @@ def evaluate_kernel(
                     raise ValueError("Serving latency limit exceeded")
         elif task_session.spec.contract is not None:
             # Schema-v3: remeasure the baseline next to the candidate in
-            # alternating fresh processes (B, C, B, C) and average each
-            # arm per case, so device drift cannot favor either side.
+            # fresh processes, in balanced B C C B blocks, and average each arm
+            # per case, so drift cannot favor either side. Several processes
+            # per arm average out process-to-process offsets; the per-case
+            # spread and a paired interval are reported with the result.
             rounds = {"baseline": [], "candidate": []}
-            for role in ("baseline", "candidate", "baseline", "candidate"):
+            for role in FINAL_EVALUATION_ORDER:
                 if role == "candidate":
                     performance = task_session.candidate_action("performance").result
                 else:
@@ -231,6 +234,7 @@ def evaluate_kernel(
             results["interleaved_rounds"] = {
                 role: [[{"id": c.test_case_id, "ms": c.execution_time_ms} for c in run] for run in runs]
                 for role, runs in rounds.items()}
+            results["interleaved_statistics"] = interleaved_statistics(rounds)
         else:
             performance = task_session.candidate_action("performance").result
             if not performance.passed:
@@ -376,6 +380,48 @@ def evaluate_kernel(
     log.info("=" * 80)
     
     return results
+
+
+# Final-evaluation order of fresh performance processes: four per arm in
+# balanced B C C B blocks. A kernel-task performance action takes about
+# 10-35 s, so this costs four more actions than the earlier B C B C.
+FINAL_EVALUATION_ORDER = ("baseline", "candidate", "candidate", "baseline") * 2
+# A case whose per-process times vary by more than this coefficient of
+# variation in either arm is flagged; its speedup is less certain than the
+# others'.
+HIGH_VARIANCE_CV = 0.05
+# Two-sided 95% Student t quantiles by degrees of freedom.
+_T95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262}
+
+
+def interleaved_statistics(rounds: Dict[str, List[List[TestCaseResult]]]) -> Dict[str, Any]:
+    """Per case: each arm's spread over its processes and a paired 95% speedup interval.
+
+    The k-th baseline process is paired with the k-th candidate process (they
+    are adjacent in the interleaved order); the interval is a t interval of the
+    mean log ratio over those pairs. It describes run-to-run variation only.
+    """
+    stats: Dict[str, Any] = {}
+    by_role = {role: [{c.test_case_id: c.execution_time_ms for c in run} for run in runs]
+               for role, runs in rounds.items()}
+    pairs = min(len(by_role["baseline"]), len(by_role["candidate"]))
+    if pairs == 0:
+        return stats
+    for case_id in by_role["baseline"][0]:
+        times = {role: [run[case_id] for run in runs] for role, runs in by_role.items()}
+        if any(t is None or not math.isfinite(t) or t <= 0 for values in times.values() for t in values):
+            continue
+        cv = {role: (statistics.stdev(values) / statistics.fmean(values) if len(values) > 1 else 0.0)
+              for role, values in times.items()}
+        logs = [math.log(times["baseline"][k] / times["candidate"][k]) for k in range(pairs)]
+        entry = {"baseline_cv": cv["baseline"], "candidate_cv": cv["candidate"],
+                 "high_variance": max(cv.values()) > HIGH_VARIANCE_CV,
+                 "speedup_paired_mean": math.exp(statistics.fmean(logs)), "pairs": pairs}
+        if pairs > 1:
+            half = _T95.get(pairs - 1, 1.96) * statistics.stdev(logs) / math.sqrt(pairs)
+            entry["speedup_ci95"] = [math.exp(statistics.fmean(logs) - half), math.exp(statistics.fmean(logs) + half)]
+        stats[case_id] = entry
+    return stats
 
 
 def _mean_cases(runs: List[List[TestCaseResult]]) -> List[TestCaseResult]:
