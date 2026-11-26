@@ -790,6 +790,15 @@ mapfile -t args < <(run_check_args \
 assert_has "codex" "${args[@]}"
 assert_not_has "claude_code" "${args[@]}"
 
+# The eval_only agent installs given files and runs no agent CLI, so the
+# config selects none and the check needs no container.
+EVAL_ONLY_CONFIG="$TEST_HOME/eval-only-config.yaml"
+printf 'agent:\n  template: eval_only\n  source_dir: solutions/example\n' > "$EVAL_ONLY_CONFIG"
+eval_only_output="$(run_check_args "$CODEX_HOME" "$EVAL_ONLY_CONFIG" AKA_NODE_PREFIX="$CODEX_PREFIX")" \
+    || fail "check-agents failed for the eval_only agent"
+[[ "$eval_only_output" == "agent.template eval_only needs no agent CLI; nothing to check" ]] \
+    || fail "unexpected eval_only check-agents output: $eval_only_output"
+
 # A natively installed Claude CLI is a launcher in ~/.local/bin that resolves
 # into ~/.local/share/claude/versions. Both sides of that symlink must be
 # mounted at the same absolute paths inside the container.

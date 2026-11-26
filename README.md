@@ -167,6 +167,7 @@ Task workspaces preserve reproducibility and separate concurrent runs. The privi
 | Install the runtime and authenticate an agent | [Installation](docs/install/install.md) |
 | Run, select tasks or resume an experiment | [Run an experiment](docs/how-to/run-evaluation.md) |
 | Configure an agent, model or time budget | [Agents and models](docs/how-to/agents.md) |
+| Evaluate an existing kernel without an agent | [Evaluate a given implementation](docs/how-to/evaluate-solution.md) |
 | Run model-wide kernel optimization or an AgentX workload | [End-to-end tasks](docs/how-to/e2e-kernel-tasks.md) |
 | Spread tasks across GPUs or GPU groups | [Parallel execution](docs/how-to/parallel-run.md) |
 | Submit from a Slurm/Spur login node | [Cluster execution](docs/how-to/slurm-run.md) |

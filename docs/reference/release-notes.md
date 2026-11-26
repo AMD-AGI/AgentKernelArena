@@ -82,6 +82,20 @@ This topic summarizes the features available in each AgentKernelArena release. F
   shared cache or a workspace `__pycache__` is never loaded. This also applies
   without the sandbox.
 
+### Evaluate a given implementation
+
+- The `eval_only` agent evaluates implementation files you already have
+  instead of running an optimizing agent. It installs
+  `<source_dir>/<task_id>/<editable path>` files into each task workspace,
+  refusing any file outside the task's editable paths, symlinks and missing
+  entry points, and the framework then evaluates them as usual. It runs no
+  model and needs no credentials; its installer runs under the agent sandbox,
+  where a refused or missing solution is never accepted.
+  See [Evaluate a given implementation](../how-to/evaluate-solution.md).
+- `make docker-check-agents` succeeds without starting a container when the
+  config selects no agent CLI (the `eval_only` agent, or a `qa_auditor` with
+  backend `none`) instead of failing with "No agent selected".
+
 ### Roofline floors
 
 - `python3 -m src.roofline` computes a theoretical lower bound (floor) on the

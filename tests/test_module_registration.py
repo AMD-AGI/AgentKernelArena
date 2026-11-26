@@ -28,7 +28,7 @@ def test_retired_agent_templates_are_rejected(name, spelling):
 
 @pytest.mark.parametrize("name", [
     "cursor", "claude_code", "codex", "deepseek_harness", "qa_auditor", "geak", "geak_v4", "forge",
-    "forge_operator2flydsl",
+    "forge_operator2flydsl", "eval_only",
 ])
 def test_remaining_agents_load_with_their_postprocessors(name):
     logger = logging.getLogger(__name__)

@@ -649,6 +649,8 @@ resolve_optimizer_agents() {
         # A deterministic-only audit needs no model CLI in the container.
         [[ "$tmpl" == "none" ]] && { printf '\n'; return; }
     fi
+    # The eval_only agent installs given files; it runs no agent CLI.
+    [[ "$tmpl" == "eval_only" ]] && { printf '\n'; return; }
     case "$tmpl" in
         claude|claude_code) printf 'claude_code\n' ;;
         cursor|cursor-agent) printf 'cursor\n' ;;
@@ -2369,7 +2371,12 @@ case "${1:-}" in
         configure_forge_runtime "$config_name"
         # By default, check only the CLI selected by CONFIG. AKA_AGENTS can
         # request one, several, or `all` explicitly.
-        REQUIRED_AGENTS="$(normalize_check_agents "$(resolve_required_agents "$config_name")")"
+        REQUIRED_AGENTS="$(resolve_required_agents "$config_name")"
+        if [[ -z "${REQUIRED_AGENTS// /}" ]]; then
+            echo "agent.template $(read_agent_template "$config_name") needs no agent CLI; nothing to check"
+            exit 0
+        fi
+        REQUIRED_AGENTS="$(normalize_check_agents "$REQUIRED_AGENTS")"
         AGENTS_STRICT=1
         docker_exec 0 bash src/scripts/docker_benchmark.sh _container_check_agents $REQUIRED_AGENTS
         ;;

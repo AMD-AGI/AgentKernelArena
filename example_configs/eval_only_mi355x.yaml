@@ -1,0 +1,16 @@
+# Evaluate given implementations on MI355X (gfx950) instead of running an
+# optimizing agent; no agent CLI or credentials. See
+# docs/how-to/evaluate-solution.md for the solution directory layout.
+agent:
+  template: eval_only
+  source_dir: solutions/example   # <source_dir>/<task_id>/solution/... per task
+
+# The language of the given implementations.
+target_language: triton   # triton | gluon | hip | flydsl | asm
+
+tasks:
+  - triton/normalization/rms_norm/bf16_h8192
+
+target_gpu_model: MI355X
+log_directory: logs
+workspace_directory_prefix: workspace

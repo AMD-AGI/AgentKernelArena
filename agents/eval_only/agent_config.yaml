@@ -1,0 +1,10 @@
+# Evaluate given files instead of running an optimizing agent; see
+# docs/how-to/evaluate-solution.md. No model, network access or credentials.
+#
+# Directory of solution files, laid out as <source_dir>/<task_id>/<editable path>.
+# A relative path resolves against the repository root; Docker runs mount only
+# the checkout, so keep it inside the checkout there. Set it in the run config:
+#   agent: {template: eval_only, source_dir: solutions/my_kernels}
+source_dir: null
+# Hard limit for installing one task's files.
+timeout_seconds: 600

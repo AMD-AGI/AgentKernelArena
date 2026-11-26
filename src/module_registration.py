@@ -17,6 +17,7 @@ class AgentType(Enum):
     QA_AUDITOR = "qa_auditor"
     GEAK = "geak"
     FORGE = "forge"
+    EVAL_ONLY = "eval_only"
 
     @classmethod
     def from_string(cls, agent_string: str) -> 'AgentType':
@@ -74,6 +75,8 @@ def load_agent_launcher(agent_type: AgentType, logger: logging.Logger) -> Callab
             from agents.geak import launch_agent  # noqa: F401
         elif agent_type == AgentType.FORGE:
             from agents.forge import launch_agent  # noqa: F401
+        elif agent_type == AgentType.EVAL_ONLY:
+            from agents.eval_only import launch_agent  # noqa: F401
     except ImportError as e:
         logger.error(f"Failed to import agent {agent_name}: {e}")
         raise
@@ -109,7 +112,8 @@ def load_post_processing_handler(agent_type: AgentType, logger: logging.Logger) 
         from agents.qa_auditor.postprocessing import audit_post_processing
         logger.info(f"Using audit_post_processing for agent: {agent_name}")
         return audit_post_processing
-    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.DEEPSEEK_HARNESS, AgentType.GEAK, AgentType.FORGE]:
+    elif agent_type in [AgentType.CURSOR, AgentType.CLAUDE_CODE, AgentType.CODEX, AgentType.DEEPSEEK_HARNESS,
+                        AgentType.GEAK, AgentType.FORGE, AgentType.EVAL_ONLY]:
         logger.info(f"Using general_post_processing for agent: {agent_name}")
         return general_post_processing
     else:

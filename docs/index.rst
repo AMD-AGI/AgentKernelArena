@@ -30,6 +30,7 @@ repository.
       * :doc:`Check kernels with evaluation tools <how-to/use-evaluation-tools>`
       * :doc:`Run tasks in parallel across multiple GPUs <how-to/parallel-run>`
       * :doc:`Configure agents and models <how-to/agents>`
+      * :doc:`Evaluate a given implementation <how-to/evaluate-solution>`
       * :doc:`Task definition, schema, and authoring <how-to/add-task>`
       * :doc:`Optimize kernels through serving throughput <how-to/e2e-kernel-tasks>`
       * :doc:`Audit tasks with the QA auditor <how-to/qa-auditor>`

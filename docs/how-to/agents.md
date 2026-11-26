@@ -29,6 +29,7 @@ The following agents are available.
 | `forge` | KernelForge on schema-v3 kernel tasks; target languages `triton`, `gluon`, `hip` and `flydsl` (FlyDSL rewrites need a Triton or HIP baseline) |
 | `geak` | GEAK Workflow engine on schema-v3 kernel tasks; target languages `triton`, `gluon`, `hip` and `flydsl` |
 | `qa_auditor` | Task QA auditor; does not optimize kernels (see [Audit tasks with the QA auditor](qa-auditor.md)) |
+| `eval_only` | Installs given implementation files and runs no model, for evaluating an existing kernel (see [Evaluate a given implementation](evaluate-solution.md)) |
 
 The [registry](https://github.com/AMD-AGI/AgentKernelArena/blob/main/src/module_registration.py) maps the legacy names
 `geak_v4` to `geak` and `forge_operator2flydsl` to `forge`, with the same
@@ -79,7 +80,8 @@ CONFIG_PATH=example_configs/quickstart_claude_mi300.yaml
 make docker-check-agents CONFIG="$CONFIG_PATH"
 ```
 
-Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
+A config that selects no agent CLI, such as the `eval_only` agent, has nothing
+to check. Use `AGENTS=<comma-separated names>` for an explicit subset or `AGENTS=all` for
 the original three CLIs (Cursor, Claude Code, and Codex) and login states. GEAK and its aliases resolve to
 Claude Code for this check; normal runs also check the pinned GEAK engine and
 SDK. Other specialized integrations have their own checks; their README files
@@ -159,9 +161,9 @@ agent_sandbox: auto   # the default; or landlock, or none
 
 The sandbox supports a launch when all of these hold:
 
-- the agent is Claude Code, Codex, Cursor or DeepSeek Harness. GEAK and Forge
-  are not supported; the QA auditor is part of the framework and is never
-  confined;
+- the agent is Claude Code, Codex, Cursor, DeepSeek Harness or the `eval_only`
+  agent (whose file installer runs confined). GEAK and Forge are not supported;
+  the QA auditor is part of the framework and is never confined;
 - the task is a single-GPU kernel task. Serving tasks under `tasks/e2e/` need
   the full checkout, and multi-GPU tasks (a `task.yaml` whose `distributed`
   block sets `world_size` to 2 or more) are not supported;
@@ -254,6 +256,7 @@ value is not reported. Arena never estimates dollars from tokens.
 | `forge` | KernelForge `llm_usage.total_cost_usd`, when `cost_available` is not false | KernelForge `llm_usage` counters |
 | `deepseek_harness` | `null` | The `--json` final event's `usage`, when emitted; otherwise `null` |
 | `qa_auditor` | `null` | `null` |
+| `eval_only` | `null` | `null` |
 
 Main fields:
 
