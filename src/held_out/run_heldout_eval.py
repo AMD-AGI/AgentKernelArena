@@ -68,7 +68,7 @@ import sys
 
 import yaml
 
-from src.evaluator import _mean_cases
+from src.evaluator import FINAL_EVALUATION_ORDER, _mean_cases
 from src.harness_guard import snapshot_workspace_harness, verify_workspace_harness
 from src.score import score
 from src.task_contract import EVAL_DIR
@@ -291,16 +291,17 @@ def evaluate_task(workspace: Path, output: Path, *, salt: str, cases_file: Path 
         result["generalization_status"] = classify(baseline_ok, candidate_ok)
 
         if baseline_ok and candidate_ok:
-            # Fresh alternating processes, as in the final evaluation, so drift
-            # cannot favor either side.
+            # Fresh processes in the final evaluation's interleaved order (four
+            # per arm in B C C B blocks), so drift cannot favor either side.
             rounds = {"baseline": [], "candidate": []}
-            for role in ("baseline", "candidate", "baseline", "candidate"):
+            for role in FINAL_EVALUATION_ORDER:
                 performance = execute(role, "performance", manifest)
                 if not performance.passed:
                     failures.append(f"{role} performance: {performance.reason}")
                     break
                 rounds[role].append(performance_cases(performance))
-            if len(rounds["baseline"]) == len(rounds["candidate"]) == 2:
+            if (len(rounds["baseline"]) == FINAL_EVALUATION_ORDER.count("baseline")
+                    and len(rounds["candidate"]) == FINAL_EVALUATION_ORDER.count("candidate")):
                 baseline_cases, candidate_cases = _mean_cases(rounds["baseline"]), _mean_cases(rounds["candidate"])
                 for role, cases in (("baseline", baseline_cases), ("candidate", candidate_cases)):
                     result[f"{role}_execution_time"] = sum(c.execution_time_ms for c in cases) / len(cases)

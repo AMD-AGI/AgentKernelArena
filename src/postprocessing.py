@@ -87,6 +87,33 @@ def _task_label(task: Dict[str, Any]) -> str:
     return f"{task['task_name']} [{language}]" if language else str(task['task_name'])
 
 
+def _timing_spread(stats: Any) -> Optional[Dict[str, Any]]:
+    """Summary of a task's interleaved_statistics: high-variance cases and per-case 95% intervals."""
+    if not isinstance(stats, dict) or not stats:
+        return None
+    measured = {case: entry for case, entry in stats.items()
+                if isinstance(entry, dict) and "skipped" not in entry}
+    return {
+        "cases": len(measured),
+        "high_variance": sorted(case for case, entry in measured.items() if entry.get("high_variance")),
+        "speedup_ci95": {case: entry["speedup_ci95"] for case, entry in measured.items()
+                         if isinstance(entry.get("speedup_ci95"), list)},
+        "skipped": {case: entry["skipped"] for case, entry in stats.items()
+                    if isinstance(entry, dict) and "skipped" in entry},
+    }
+
+
+def _timing_spread_label(spread: Optional[Dict[str, Any]]) -> str:
+    if not spread:
+        return "N/A"
+    flagged = spread["high_variance"]
+    text = (f"{len(flagged)}/{spread['cases']} cases high variance: {', '.join(flagged)}" if flagged
+            else f"{spread['cases']} cases, none high variance")
+    if spread["skipped"]:
+        text += f"; {len(spread['skipped'])} not assessed"
+    return text
+
+
 def _build_general_report_lines(
     aggregate_result: Dict[str, Any], 
     run_metadata: Optional[Dict[str, str]] = None,
@@ -126,6 +153,11 @@ def _build_general_report_lines(
         f"  P25/P75/P90 Speedup:   {aggregate_result.get('p25_speedup', 0.0):.2f}x / {aggregate_result.get('p75_speedup', 0.0):.2f}x / {aggregate_result.get('p90_speedup', 0.0):.2f}x",
         f"  Valid Speedup Count:   {aggregate_result['valid_speedup_count']}",
     ])
+    spreads = [task.get("timing_spread") for task in aggregate_result.get("task_details", [])]
+    if any(spreads):
+        flagged = sum(1 for spread in spreads if spread and spread["high_variance"])
+        lines.append(f"  High-variance timing:  {flagged}/{sum(1 for spread in spreads if spread)} tasks have a case "
+                     "whose per-process times vary by more than 5% (see TASK DETAILS)")
     if aggregate_result.get("mixed_measurements"):
         lines = [line for line in lines if not any(label in line for label in
                  ("Total Score:", "Average Score:", "Speedup", "Valid Speedup"))]
@@ -232,6 +264,14 @@ def _build_general_report_lines(
             f"  Optimization: {outcome['optimization_outcome'] or 'N/A'}"
             f"  Sandbox: {outcome['agent_sandbox_status'] or 'N/A'}"
         )
+        spread = task.get("timing_spread")
+        if spread:
+            lines.append(f"         Timing spread (final evaluation): {_timing_spread_label(spread)}")
+            for case, (low, high) in list(spread["speedup_ci95"].items())[:8]:
+                flag = "  HIGH VARIANCE" if case in spread["high_variance"] else ""
+                lines.append(f"           {case}: speedup 95% CI {low:.3f}x - {high:.3f}x{flag}")
+            if len(spread["speedup_ci95"]) > 8:
+                lines.append(f"           ... {len(spread['speedup_ci95']) - 8} more cases in task_result.yaml")
         if task["error"]:
             lines.append(f"         Error: {task['error']}")
 
@@ -581,6 +621,7 @@ def general_post_processing(
             for key in ('target_language', 'operator', 'operator_category'):
                 task_info[key] = result_data.get(key)
             task_info['measurement_kind'] = result_data.get('measurement_kind', 'kernel')
+            task_info['timing_spread'] = _timing_spread(result_data.get('interleaved_statistics'))
             task_info['pass_compilation'] = result_data.get('pass_compilation', False)
             task_info['pass_correctness'] = result_data.get('pass_correctness', False)
             task_info.update(_outcome_fields(result_data))
@@ -721,6 +762,8 @@ def general_post_processing(
             'mixed_measurements': mixed_measurements,
             'task_types': task_type_breakdown,
             'target_languages': language_breakdown,
+            'timing_spread': {task.get('task_name', ''): task['timing_spread'] for task in task_details
+                              if task.get('timing_spread')},
         }
         if mixed_measurements:
             for key in list(json_data['overall']):
@@ -765,6 +808,7 @@ def export_task_results_csv(
       - Delivery Status
       - Agent Execution (COMPLETED/FAILED/NOT_RUN/N/A)
       - Candidate Changed (YES/NO/N/A; file content, not an optimization verdict)
+      - Timing Spread (high-variance cases of the final evaluation's interleaved processes)
       - Optimization_summary
     """
     if not workspace_paths:
@@ -833,6 +877,7 @@ def export_task_results_csv(
             "Agent Sandbox": outcome["agent_sandbox_status"] or "N/A",
             "Candidate Changed": _acceptance_label(outcome["candidate_changed"]),
             "Optimization Outcome": outcome['optimization_outcome'] or 'N/A',
+            "Timing Spread": _timing_spread_label(task.get("timing_spread")),
             "Optimization_summary": optimization_summary.strip(),
         })
 
@@ -841,7 +886,7 @@ def export_task_results_csv(
             f,
             fieldnames=["Task Name", "Task Type", "Target Language", "Operator", "Measurement", "Score", "Speedup", "Status",
                         "Candidate Accepted", "Delivery Status", "Agent Execution", "Agent Sandbox",
-                        "Candidate Changed", "Optimization Outcome", "Optimization_summary"]
+                        "Candidate Changed", "Optimization Outcome", "Timing Spread", "Optimization_summary"]
         )
         writer.writeheader()
         writer.writerows(rows)

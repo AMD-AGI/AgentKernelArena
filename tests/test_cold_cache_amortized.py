@@ -599,3 +599,58 @@ def test_the_evaluator_reports_and_exits_cleanly_after_a_failed_capture():
     lines = [line for line in result.stdout.splitlines() if line.startswith("ARENA_EVAL_RESULT=")]
     assert result.returncode == 1, result.stderr[-2000:]
     assert len(lines) == 1 and json.loads(lines[0].split("=", 1)[1])["status"] == "FAIL"
+
+
+def test_interleaved_statistics_skip_a_case_missing_from_an_arm_with_a_reason():
+    from src.evaluator import interleaved_statistics
+    from src.testcases import TestCaseResult as Case
+
+    rounds = {"baseline": [[Case("a", [1], 2.0), Case("b", [1], 1.0)] for _ in range(4)],
+              "candidate": [[Case("a", [1], 1.0)] for _ in range(4)]}
+    rounds["candidate"][2].append(Case("b", [1], 1.0))
+    rounds["baseline"][1][0] = Case("a", [1], float("nan"))
+    stats = interleaved_statistics(rounds)
+    assert stats["b"] == {"skipped": "missing from 3 of 4 candidate processes"}
+    assert "non-finite" in stats["a"]["skipped"]
+    assert interleaved_statistics({"baseline": [], "candidate": []}) == {}
+
+
+def test_reports_show_the_final_evaluations_timing_spread(tmp_path):
+    import csv
+
+    import yaml
+
+    from src.evaluator import write_task_result
+    from src.postprocessing import general_post_processing
+    from src.testcases import TestCaseResult as Case
+
+    run = tmp_path / "workspace_MI355X_codex" / "run_20261126_120000"
+    workspace = run / "triton_add"
+    workspace.mkdir(parents=True)
+    statistics_ = {"m128": {"baseline_cv": 0.08, "candidate_cv": 0.01, "high_variance": True,
+                            "speedup_paired_mean": 1.5, "pairs": 4, "speedup_ci95": [1.21, 1.86]},
+                   "m512": {"baseline_cv": 0.01, "candidate_cv": 0.01, "high_variance": False,
+                            "speedup_paired_mean": 1.1, "pairs": 4, "speedup_ci95": [1.08, 1.12]},
+                   "m9": {"skipped": "missing from 1 of 4 candidate processes"}}
+    results = {"pass_compilation": True, "pass_correctness": True, "base_execution_time": 2.0,
+               "best_optimized_execution_time": 1.0, "average_speedup": 2.0,
+               "benchmark_method_consistent": True, "workload_consistent": True,
+               "interleaved_statistics": statistics_}
+    write_task_result(workspace, results, [Case("m128", [1], 2.0)], "triton/add", "codex", create_plots=False)
+    written = yaml.safe_load((workspace / "task_result.yaml").read_text())
+    assert written["interleaved_statistics"] == statistics_
+    score = written["speedup_ratio"]
+
+    general_post_processing([str(workspace)], logger=None)
+    text = (run / "reports/overall_report.txt").read_text()
+    assert "High-variance timing:  1/1 tasks" in text
+    assert "Timing spread (final evaluation): 1/2 cases high variance: m128; 1 not assessed" in text
+    assert "m128: speedup 95% CI 1.210x - 1.860x  HIGH VARIANCE" in text
+    assert "m512: speedup 95% CI 1.080x - 1.120x\n" in text
+    data = json.loads((run / "reports/task_type_breakdown.json").read_text())
+    assert data["timing_spread"]["triton/add"]["high_variance"] == ["m128"]
+    with open(run / "reports/overall_summary.csv") as handle:
+        row, = list(csv.DictReader(handle))
+    assert row["Timing Spread"] == "1/2 cases high variance: m128; 1 not assessed"
+    # Reporting does not change the score: still the per-case mean speedup.
+    assert yaml.safe_load((workspace / "task_result.yaml").read_text())["speedup_ratio"] == score == 2.0

@@ -16,6 +16,7 @@ from unittest import mock
 
 import yaml
 
+from src.evaluator import FINAL_EVALUATION_ORDER
 from src.held_out import run_heldout_eval as heldout
 from src.task_contract import case_seeds, load_task_contract, render_workspace
 from src.task_execution import ExecutedAction
@@ -186,9 +187,9 @@ class HeldOutEvaluationTests(unittest.TestCase):
         self.assertEqual(result["original_run_speedup_ratio"], 1.5)
         self.assertEqual([call[:2] for call in evaluator.calls], [
             ("task", "validate-task"), ("baseline", "compile"), ("baseline", "correctness"),
-            ("candidate", "compile"), ("candidate", "correctness"), ("baseline", "performance"),
-            ("candidate", "performance"), ("baseline", "performance"), ("candidate", "performance")])
-        self.assertEqual(len(list((output / "actions").glob("*.json"))), 9)
+            ("candidate", "compile"), ("candidate", "correctness"),
+            *[(role, "performance") for role in FINAL_EVALUATION_ORDER]])
+        self.assertEqual(len(list((output / "actions").glob("*.json"))), 5 + len(FINAL_EVALUATION_ORDER))
         contract = evaluator.contracts[0]
         self.assertIn("h777", [case["id"] for case in contract["cases"]])
         original = {case["id"]: case["seeds"] for case in _contract()["cases"]}

@@ -82,8 +82,9 @@ part of the repository.
    extra cases.
 4. Runs the trusted evaluator: `validate-task` (its case list must equal the
    held-out contract's), then baseline and candidate `compile` and `correctness`,
-   then `performance` in alternating fresh processes (baseline, candidate,
-   baseline, candidate), averaged per case as in the final evaluation. After
+   then `performance` in fresh processes in the final evaluation's interleaved
+   order (four per arm: baseline, candidate, candidate, baseline, twice),
+   averaged per case as in the final evaluation. After
    every action the harness guard and the candidate digests are rechecked. Action
    evidence is kept under `actions/`.
 

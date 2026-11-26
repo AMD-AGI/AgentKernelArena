@@ -400,16 +400,26 @@ def interleaved_statistics(rounds: Dict[str, List[List[TestCaseResult]]]) -> Dic
     The k-th baseline process is paired with the k-th candidate process (they
     are adjacent in the interleaved order); the interval is a t interval of the
     mean log ratio over those pairs. It describes run-to-run variation only.
+    A case that is missing from a process or has an invalid time gets
+    ``{"skipped": reason}`` instead; scoring checks case identity separately.
     """
     stats: Dict[str, Any] = {}
     by_role = {role: [{c.test_case_id: c.execution_time_ms for c in run} for run in runs]
                for role, runs in rounds.items()}
-    pairs = min(len(by_role["baseline"]), len(by_role["candidate"]))
+    pairs = min(len(by_role.get("baseline", [])), len(by_role.get("candidate", [])))
     if pairs == 0:
         return stats
-    for case_id in by_role["baseline"][0]:
+    case_ids = sorted({case_id for runs in by_role.values() for run in runs for case_id in run})
+    for case_id in case_ids:
+        missing = {role: sum(case_id not in run for run in runs) for role, runs in by_role.items()}
+        if any(missing.values()):
+            stats[case_id] = {"skipped": "missing from " + ", ".join(
+                f"{count} of {len(by_role[role])} {role} processes" for role, count in missing.items() if count)}
+            continue
         times = {role: [run[case_id] for run in runs] for role, runs in by_role.items()}
-        if any(t is None or not math.isfinite(t) or t <= 0 for values in times.values() for t in values):
+        if any(type(t) not in (int, float) or not math.isfinite(t) or t <= 0
+               for values in times.values() for t in values):
+            stats[case_id] = {"skipped": "a process reported a missing, non-finite or non-positive time"}
             continue
         cv = {role: (statistics.stdev(values) / statistics.fmean(values) if len(values) > 1 else 0.0)
               for role, values in times.items()}
@@ -651,6 +661,7 @@ def write_task_result(
         'task_schema_version', 'runtime_identity', 'initial_task_validation',
         'baseline_correctness', 'agent_execution', 'framework_error',
         'evaluated_candidate_sources', 'candidate_source_error', 'serving_measurement', 'measurement_kind',
+        'interleaved_statistics',
         'process_sweep', 'candidate_verification', 'pass_verification',
     ):
         if field in evaluation_results:
