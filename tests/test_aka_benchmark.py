@@ -154,6 +154,54 @@ def test_pytorch_empty_graph_warning_is_detected(monkeypatch):
         helper._capture_graph(lambda: None, repeats=1, stream=object())
 
 
+def test_a_graph_whose_capture_failed_is_kept_alive(monkeypatch):
+    # PyTorch aborts the process when such a graph is destroyed.
+    helper = _load_helper(monkeypatch)
+
+    class _FailingCapture:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            raise RuntimeError("operation not permitted when stream is capturing")
+
+    graphs = []
+    monkeypatch.setattr(helper.torch.cuda, "CUDAGraph", lambda: graphs.append(object()) or graphs[-1],
+                        raising=False)
+    monkeypatch.setattr(helper.torch.cuda, "stream", lambda _stream: nullcontext(), raising=False)
+    monkeypatch.setattr(helper.torch.cuda, "graph", lambda _graph: _FailingCapture(), raising=False)
+    assert helper.failed_captures() == 0
+    with pytest.raises(RuntimeError, match="capturing"):
+        helper._capture_graph(lambda: None, repeats=1, stream=object())
+    assert helper.failed_captures() == 1 and helper._FAILED_CAPTURES[0] is graphs[0]
+
+
+def test_a_tampering_error_raised_during_capture_survives_the_capture_end_error(monkeypatch):
+    helper = _load_helper(monkeypatch)
+
+    class Tampering(BaseException):
+        pass
+
+    class _FailingEnd:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            raise RuntimeError("capture invalidated")
+
+    monkeypatch.setattr(helper.torch.cuda, "CUDAGraph", object, raising=False)
+    monkeypatch.setattr(helper.torch.cuda, "stream", lambda _stream: nullcontext(), raising=False)
+    monkeypatch.setattr(helper.torch.cuda, "graph", lambda _graph: _FailingEnd(), raising=False)
+
+    def tampers():
+        raise Tampering("rebound a timing method")
+
+    with pytest.raises(Tampering, match="rebound"):
+        helper._capture_graph(tampers, repeats=1, stream=object())
+    with pytest.raises(RuntimeError, match="invalidated"):
+        helper._capture_graph(lambda: None, repeats=1, stream=object())
+
+
 def test_capture_error_has_explicit_event_fallback_reason(monkeypatch):
     helper = _load_helper(monkeypatch)
 

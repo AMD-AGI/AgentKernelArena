@@ -200,6 +200,7 @@ def check_initial(context: dict, contract_raw: dict | None, findings: list[Findi
         return
     if contract_raw is None:
         return
+    from src.measurement import AMORTIZED_COLD_CACHE_METHOD
     from src.task_contract import TARGET_LANGUAGES
 
     if contract_raw["baseline"]["language"] in TARGET_LANGUAGES:
@@ -212,8 +213,13 @@ def check_initial(context: dict, contract_raw: dict | None, findings: list[Findi
         for record in _actions(context, role, "performance"):
             for case in record["result"].get("cases", []):
                 method = case.get("benchmark_method")
-                if method != "cuda_graph_cold_cache":
+                if method != AMORTIZED_COLD_CACHE_METHOD:
                     findings.append(Finding("QA-TIMING-METHOD", f"{role} {case.get('test_case_id')}: {method}"))
+                if role == "baseline" and (case.get("metadata") or {}).get("reference_control_undetected_calls"):
+                    findings.append(Finding(
+                        "QA-TIMING-CONTROL", f"{case.get('test_case_id')}: "
+                        f"{case['metadata']['reference_control_undetected_calls']} timed calls without the "
+                        "operator passed the output checks"))
                 if role == "baseline":
                     time_ms = case.get("execution_time_ms")
                     if not isinstance(time_ms, (int, float)) or time_ms < MIN_BASELINE_CASE_MS:

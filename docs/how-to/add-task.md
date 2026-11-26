@@ -274,9 +274,12 @@ it. The framework enforces, when it loads the task:
   domain.
 
 The QA auditor additionally requires every performance case to take the
-baseline **at least 10 µs**: below that, launch overhead dominates the
-measurement. Real shapes that run faster (decode with M=1) stay correctness-only.
-A task whose production shapes are all below 10 µs is not a kernel task.
+baseline **at least 5 µs** of amortized cold-cache time (the scored
+`execution_time_ms`): below that, the noise of a sample is a large share of the
+measurement. Real shapes that run faster stay correctness-only. A task whose
+production shapes are all below 5 µs is not a kernel task. Timing figures in
+older task READMEs are single-call cold-cache medians against the earlier
+10 µs floor; they include about 7 µs of graph-launch and Event cost.
 
 ## The candidate interface
 
@@ -352,10 +355,14 @@ python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
 - **Correctness** runs every case twice, with two framework seeds, on the same
   buffers: the second call loads new inputs into the first call's storage, so a
   cached or stale result fails. Read-only inputs must be unchanged afterwards.
-- **Performance** times each performance case with
-  `benchmark_cuda_graph_cold_cache_samples` (10 warmups, 100 samples, median),
-  alternating the two input draws between samples and checking every timed
-  sample's outputs.
+- **Performance** times each performance case with amortized cold-cache
+  CUDA-graph timing (`benchmark_cuda_graph_cold_cache_amortized_samples`: 10
+  warmups, 100 samples, median): up to 32 calls per sample, each on its own
+  input draw and in its own graph after a 1 GiB cache flush, minus the same
+  graphs without the calls. Every call's outputs are checked after every
+  sample. A 10-sample single-call cold-cache median is recorded as
+  `single_call_cold_ms`. See the
+  [benchmark methodology](../reference/benchmark-methodology.md#schema-v3-kernel-tasks).
 - **Scoring.** The per-case speedup is baseline time over candidate time; the
   task's speedup is their geometric mean. Any failed correctness case scores 0.
   The final evaluation remeasures the baseline next to the candidate.

@@ -165,3 +165,146 @@ def test_event_collector_keeps_measured_allocation_and_prepares_eager_rerun() ->
     assert result is outputs[-1] and result is not measured
     assert torch.equal(result, pristine * 2.)
     assert torch.equal(measured, (pristine - 3.) * 2.)
+
+
+def test_amortized_cold_cache_keeps_every_captured_call_observable() -> None:
+    from src.tools.perf.aka_benchmark import (
+        ReadOnlyCacheFlush, TimedRun, benchmark_cuda_graph_cold_cache_amortized_samples,
+    )
+    count = 4
+    flush = ReadOnlyCacheFlush()
+    draws = [torch.full((4096,), float(i + 1), device="cuda") for i in range(count)]
+    x = torch.empty(4096, device="cuda")
+    outputs = torch.empty((count, 4096), device="cuda")
+    expected = torch.stack(draws) * 2
+
+    def prepare(index):
+        x.copy_(draws[index])
+        outputs[index].fill_(float("nan"))
+
+    observed = []
+    timed = TimedRun()
+    timed.after_sample = lambda returned: observed.append(torch.equal(outputs, expected))
+    samples, metadata = benchmark_cuda_graph_cold_cache_amortized_samples(
+        [lambda index=index: torch.mul(x, 2, out=outputs[index]) for index in range(count)],
+        cache_flush=flush, prepare_fn=prepare, warmup=2, repetition=6, timed_run=timed)
+    assert len(samples) == 6 and observed == [True] * 6
+    assert metadata["benchmark_method"] == "cuda_graph_cold_cache_amortized"
+    assert metadata["benchmark_calls_per_replay"] == count
+    operator_ms, reference_ms = metadata["benchmark_operator_graph_ms"], metadata["benchmark_reference_graph_ms"]
+    assert min(reference_ms) > 0 and sorted(operator_ms)[3] > sorted(reference_ms)[3]
+    # The final reference replay never ran the operator: every call's output holds poison.
+    assert torch.isnan(outputs).all()
+    timed.rerun()
+    assert torch.equal(outputs, expected)
+
+
+_FORK_PROGRAM = """
+import os, sys, torch
+from src.tools.perf.aka_benchmark import ReadOnlyCacheFlush, benchmark_cuda_graph_cold_cache_amortized_samples
+join_each = sys.argv[1] == "join"
+count = 4
+x = torch.full((4096,), 3.0, device="cuda")
+outputs = torch.empty((count, 4096), device="cuda")
+side = torch.cuda.Stream()
+
+def call(index):
+    current = torch.cuda.current_stream()
+    side.wait_stream(current)
+    with torch.cuda.stream(side):
+        torch.mul(x, 2, out=outputs[index])
+    # A candidate that joins only at the last call lets each call overlap the next call's eviction.
+    if join_each or index == count - 1:
+        current.wait_stream(side)
+
+try:
+    samples, _ = benchmark_cuda_graph_cold_cache_amortized_samples(
+        [lambda index=index: call(index) for index in range(count)], cache_flush=ReadOnlyCacheFlush(),
+        warmup=1, repetition=4)
+    print("MEASURED", len(samples), bool(torch.equal(outputs, torch.full_like(outputs, 6.0))), flush=True)
+except RuntimeError as exc:
+    print("REJECTED", "capture failed" in str(exc), flush=True)
+# A graph whose capture failed aborts PyTorch when destroyed; end without finalizing it.
+os._exit(0)
+"""
+
+
+def test_amortized_calls_must_join_their_forked_streams_within_their_own_graph() -> None:
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    def run(mode):
+        result = subprocess.run([sys.executable, "-c", _FORK_PROGRAM, mode], cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True, timeout=600)
+        assert result.returncode == 0, result.stderr[-2000:]
+        return result.stdout.split()
+
+    assert run("join") == ["MEASURED", "4", "True"]
+    assert run("fork") == ["REJECTED", "True"]
+
+
+def _amortized_on_gpu(monkeypatch, call):
+    """The evaluator's amortized stage on a synthetic exact-bound case (y = 2x, idx = x > 0)."""
+    import sys
+    import types
+
+    import src.tools.perf.aka_benchmark as helper
+    from src.tools.arena_eval import evaluate, values
+
+    monkeypatch.setitem(sys.modules, "src.tools.arena_eval._aka_benchmark", helper)
+    device = torch.device("cuda", torch.cuda.current_device())
+
+    def inputs(seed):
+        x = torch.randn(4096, generator=torch.Generator(device=device).manual_seed(seed), device=device)
+        return {"x": x}, {"y": 2 * x, "idx": (x > 0).to(torch.int32)}
+
+    monkeypatch.setattr(evaluate, "_draw", lambda contract, case, index, device: inputs(
+        evaluate.draw_seed(case, index)))
+    contract = types.SimpleNamespace(mutable=(), checked_tensors=("y", "idx"), element_order="fixed",
+                                     compare={"y": {"bound": "exact"}, "idx": {"bound": "exact"}},
+                                     timing={"warmup": 2, "repetition": 8})
+    drawn = [inputs(seed) for seed in (1, 2)]
+    data = types.SimpleNamespace(inputs=[types.SimpleNamespace(kernel=k) for k, _ in drawn],
+                                 references=[r for _, r in drawn], baselines=None)
+    working = values.clone_inputs(data.inputs[0].kernel)
+    outputs = {"y": torch.empty(4096, device=device), "idx": torch.empty(4096, dtype=torch.int32, device=device)}
+    case = types.SimpleNamespace(seeds=(3, 4), case_id="c0")
+    return evaluate._amortized_cold(contract, "candidate", call, case, data, working, outputs,
+                                    helper.ReadOnlyCacheFlush(), None, device, None)
+
+
+def _honest(x, y, idx):
+    torch.mul(x, 2, out=y)
+    idx.copy_((x > 0).to(torch.int32))
+
+
+def test_amortized_evaluator_accepts_an_honest_call(monkeypatch) -> None:
+    samples, metadata, failed = _amortized_on_gpu(monkeypatch, _honest)
+    assert failed == [] and len(samples) == 8 and metadata["reference_control_undetected_calls"] == 0
+
+
+def test_amortized_evaluator_rejects_a_call_that_restores_a_stored_result(monkeypatch) -> None:
+    """Each captured call computes in its graph's first replay, stores the result in device state of its own
+    and restores it in every later replay; it reads no input to decide."""
+    flags = torch.zeros(64, dtype=torch.int32, device="cuda")
+    # Allocated outside capture: memory a graph allocates for itself may be reused by later graphs.
+    stashes = [(torch.empty(4096, device="cuda"), torch.empty(4096, dtype=torch.int32, device="cuda"))
+               for _ in range(64)]
+    captured = []
+
+    def stashing(x, y, idx):
+        if not torch.cuda.is_current_stream_capturing():
+            _honest(x, y, idx)
+            return
+        index = len(captured)
+        captured.append(index)
+        flag, stash = flags[index] != 0, stashes[index]
+        y.copy_(torch.where(flag, stash[0], 2 * x))
+        idx.copy_(torch.where(flag, stash[1], (x > 0).to(torch.int32)))
+        stash[0].copy_(y)
+        stash[1].copy_(idx)
+        flags[index].fill_(1)
+
+    _, _, failed = _amortized_on_gpu(monkeypatch, stashing)
+    assert failed and failed[0]["sample"] == 1

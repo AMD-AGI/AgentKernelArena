@@ -11,7 +11,9 @@ does not import `src`.
   PyTorch). Schema-v3 kernel tasks receive it as `_aka_eval/_aka_benchmark.py`
   when `src/task_contract.py::render_workspace` writes the evaluator; the
   evaluator times every performance case with
-  `benchmark_cuda_graph_cold_cache_samples` and `ReadOnlyCacheFlush`.
+  `benchmark_cuda_graph_cold_cache_amortized_samples` (scored) and
+  `benchmark_cuda_graph_cold_cache_samples` (recorded as `single_call_cold_ms`),
+  both with `ReadOnlyCacheFlush`.
 - `serving.py`, `serving_bundle.py`, `serving_backends.py`,
   `serving_scenarios.py`, `serving_request_plan.py` — the end-to-end serving
   client, compute-bundle installation and evidence, and scenario composition.

@@ -235,8 +235,10 @@ scoring; it writes a framework-finalized `qa_report.yaml` per task and
 aggregates a `qa_summary.json`. See [Audit tasks with the QA auditor](qa-auditor.md).
 
 For kernel tasks the final evaluation remeasures the baseline interleaved with
-the candidate under cold-cache CUDA-graph timing, and the task's speedup is the
-geometric mean of its performance cases' speedups.
+the candidate under amortized cold-cache CUDA-graph timing, in four fresh
+processes per arm, and the task's speedup is the geometric mean of its
+performance cases' speedups. `interleaved_statistics` records each case's
+run-to-run spread and a paired 95% speedup interval.
 
 Candidate code runs in the evaluator's process, so the static audit cannot rule
 out every reflective change to the code that times and judges it. The evaluator

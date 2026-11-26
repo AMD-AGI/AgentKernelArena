@@ -6,27 +6,63 @@ import statistics
 import hashlib
 import json
 
-DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback", "cuda_graph_cold_weights",
-                            "cuda_graph_cold_cache"})
+COLD_CACHE_METHOD = "cuda_graph_cold_cache"
+AMORTIZED_COLD_CACHE_METHOD = "cuda_graph_cold_cache_amortized"
+COLD_CACHE_METHODS = frozenset({COLD_CACHE_METHOD, AMORTIZED_COLD_CACHE_METHOD})
+DEVICE_METHODS = frozenset({"cuda_graph", "cuda_event_fallback", "cuda_graph_cold_weights"}) | COLD_CACHE_METHODS
 SERVING_METHOD = "serving_wall_clock"
 
-COLD_CACHE_POLICY = {
+_EVICTION_POLICY = {
     "benchmark_cache_policy": "read_only_eviction_before_each_invocation",
     "benchmark_cache_flush_in_timing": False,
+}
+COLD_CACHE_POLICY = {
+    **_EVICTION_POLICY,
     "benchmark_effective_repeats": 1,
     "benchmark_metric": "gpu_event_graph_span",
 }
+AMORTIZED_COLD_CACHE_POLICY = {
+    **_EVICTION_POLICY,
+    "benchmark_metric": "gpu_event_span_difference_per_call",
+    "benchmark_graphs": "one_per_call",
+    "benchmark_trailing_eviction": True,
+    "benchmark_replay_order": "alternating",
+}
 
 
-def cold_cache_identity(metadata: dict) -> tuple:
-    """Validated cache/timing identity; method name alone cannot establish fairness."""
-    for key, expected in COLD_CACHE_POLICY.items():
+def cold_cache_identity(metadata: dict, method: str | None = None) -> tuple:
+    """Validated cache/timing identity; method name alone cannot establish fairness.
+
+    ``method`` is the case row's ``benchmark_method``; without it the metadata's
+    own is used, and the two must agree. The identity starts with the method, so
+    the single-call and the amortized cold-cache methods never compare equal.
+    The amortized method's calls per sample is part of it: the per-call time
+    depends slightly on the count, so differing counts are never paired.
+    """
+    recorded = metadata.get("benchmark_method")
+    if method is None:
+        method = recorded
+    elif recorded is not None and recorded != method:
+        raise ValueError(f"cold-cache metadata records {recorded!r}, the case {method!r}")
+    if method == AMORTIZED_COLD_CACHE_METHOD:
+        policy = AMORTIZED_COLD_CACHE_POLICY
+        calls = metadata.get("benchmark_calls_per_replay")
+        if type(calls) is not int or calls < 1:
+            raise ValueError("amortized cold-cache timing requires a positive integer benchmark_calls_per_replay")
+    elif method == COLD_CACHE_METHOD:
+        policy = COLD_CACHE_POLICY
+    else:
+        raise ValueError(f"{method!r} is not a cold-cache timing method")
+    for key, expected in policy.items():
         if type(metadata.get(key)) is not type(expected) or metadata[key] != expected:
             raise ValueError(f"cold-cache timing requires {key}={expected!r}")
     nbytes = metadata.get("benchmark_cache_flush_bytes")
     if type(nbytes) is not int or nbytes <= 0 or nbytes % 16384:
         raise ValueError("cold-cache timing requires a positive eviction size divisible by 16384")
-    return tuple(metadata[key] for key in COLD_CACHE_POLICY) + (nbytes,)
+    identity = (method,) + tuple(metadata[key] for key in policy) + (nbytes,)
+    if method == AMORTIZED_COLD_CACHE_METHOD:
+        identity += (metadata["benchmark_calls_per_replay"],)
+    return identity
 
 # Serving runtime limits a task may tighten or relax in its runtime lock. The
 # adapter is materialized beside the task, so this table is the single source

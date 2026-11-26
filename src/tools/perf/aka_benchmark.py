@@ -749,12 +749,26 @@ def benchmark_cuda_event_samples(
     return samples
 
 
+# PyTorch aborts the process when a graph whose capture failed is destroyed
+# (for example after a call left a forked stream unjoined: "The graph should be
+# registered to the state"). Such graphs are kept alive here instead, so the
+# failure is reported; a process holding one must end without finalizing them
+# (see ``failed_captures``).
+_FAILED_CAPTURES: list[Any] = []
+
+
+def failed_captures() -> int:
+    """How many graphs failed to capture in this process (they are never destroyed)."""
+    return len(_FAILED_CAPTURES)
+
+
 def _capture_graph(
     fn: Callable[[], Any],
     repeats: int,
     stream: Any,
     prepare_fn: Callable[[], Any] | None = None,
     output_holder: list[Any] | None = None,
+    pool: Any = None,
 ) -> Any:
     graph = torch.cuda.CUDAGraph()
     if prepare_fn is not None:
@@ -767,14 +781,28 @@ def _capture_graph(
             synchronize()
         else:
             torch.cuda.synchronize()
-    with warnings.catch_warnings(record=True) as captured_warnings:
-        warnings.simplefilter("always")
-        with torch.cuda.stream(stream):
-            with torch.cuda.graph(graph):
-                for _ in range(repeats):
-                    captured_outputs = fn()
-                    if output_holder is not None:
-                        output_holder[:] = [captured_outputs]
+    try:
+        with warnings.catch_warnings(record=True) as captured_warnings:
+            warnings.simplefilter("always")
+            with torch.cuda.stream(stream):
+                with torch.cuda.graph(graph, **({} if pool is None else {"pool": pool})):
+                    for _ in range(repeats):
+                        captured_outputs = fn()
+                        if output_holder is not None:
+                            output_holder[:] = [captured_outputs]
+    except BaseException as exc:
+        _FAILED_CAPTURES.append(graph)
+        # Ending a failed capture can raise its own error from the graph's
+        # __exit__, which would hide what the captured code raised. Re-raise a
+        # BaseException that is not an Exception (for example the evaluator's
+        # tampering error) so generic handlers cannot relabel it.
+        if isinstance(exc, Exception):
+            cause = exc.__context__
+            while cause is not None:
+                if not isinstance(cause, Exception):
+                    raise cause from None
+                cause = cause.__context__
+        raise
     torch.cuda.synchronize()
     if any(
         "graph is empty" in str(item.message).lower()
@@ -1491,6 +1519,254 @@ def benchmark_cuda_graph_cold_cache_samples(
     return values, metadata
 
 
+AMORTIZED_COLD_CACHE_METHOD = "cuda_graph_cold_cache_amortized"
+# Calls per sample of the amortized method. The count depends only on the case's
+# buffer sizes, never on a measured time, so baseline and candidate always use
+# the same count. More calls shrink the per-sample noise (about +-0.6 us p10-p90
+# at 32 calls on MI355X) and the share of any per-sample cost the reference does
+# not cancel; the per-call buffers bound it, and 4 is the minimum.
+AMORTIZED_MIN_CALLS = 4
+AMORTIZED_MAX_CALLS = 32
+# Bound on the per-call device memory (draws, buffers, references, checks).
+AMORTIZED_BUFFER_BUDGET_BYTES = 4 << 30
+
+
+def amortized_calls_per_replay(
+    per_call_bytes: int,
+    *,
+    budget_bytes: int = AMORTIZED_BUFFER_BUDGET_BYTES,
+    minimum: int = AMORTIZED_MIN_CALLS,
+    maximum: int = AMORTIZED_MAX_CALLS,
+) -> int:
+    """Calls per sample for the amortized method, from the memory one call needs.
+
+    ``budget_bytes // per_call_bytes`` clamped to ``[minimum, maximum]``. The
+    count is a function of the case alone (its input, output and reference
+    sizes), so both arms of a comparison use the same count. At the minimum the
+    budget can be exceeded; an allocation that does not fit fails the
+    measurement instead of weakening it.
+    """
+    if type(minimum) is not int or type(maximum) is not int or not 1 <= minimum <= maximum:
+        raise ValueError("amortized timing needs integer 1 <= minimum <= maximum calls")
+    if type(per_call_bytes) is not int or per_call_bytes <= 0 or type(budget_bytes) is not int or budget_bytes <= 0:
+        raise ValueError("amortized timing needs integer per_call_bytes > 0 and budget_bytes > 0")
+    return min(maximum, max(minimum, budget_bytes // per_call_bytes))
+
+
+def _amortized_group_ms(graphs: list[Any], stream: Any, cache_flush: ReadOnlyCacheFlush) -> float:
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    # Order the replays after the caller's work (checks, poison) on its stream.
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        start_event.record(stream)
+        for graph in graphs:
+            graph.replay()
+        # A trailing eviction in both groups puts the last call's write-back
+        # inside the span, as every earlier call's falls into the next eviction.
+        cache_flush()
+        end_event.record(stream)
+    _wait_for_event(end_event)
+    return _event_elapsed_ms(start_event, end_event)
+
+
+def benchmark_cuda_graph_cold_cache_amortized_samples(
+    calls: Any,
+    *,
+    cache_flush: ReadOnlyCacheFlush,
+    prepare_fn: Callable[[int], Any] | None = None,
+    warmup_fn: Callable[[int], Any] | None = None,
+    stage_fn: Callable[[], Any] | None = None,
+    warmup: int = 10,
+    repetition: int = 100,
+    timed_run: Any | None = None,
+) -> tuple[list[float], dict[str, Any]]:
+    """Cold-cache per-call time with the fixed cost of graph replay subtracted.
+
+    ``calls`` holds one zero-argument callable per call of a sample; ``K`` is
+    its length. Each callable must run the complete operator on buffers of its
+    own (its outputs and any input it mutates), so that every call's result is
+    still observable after a sample. For every call ``i`` two graphs are
+    captured on one side stream:
+
+    - an operator graph: ``prepare_fn(i)``, cache eviction, ``calls[i]()``;
+    - a reference graph: ``prepare_fn(i)``, cache eviction.
+
+    Capturing each call into its own graph makes every call join any stream it
+    forks before its capture ends, so no call's work can overlap the next
+    call's preparation and eviction. The operator graphs share one memory pool.
+
+    A sample replays the K operator graphs back to back between one pair of
+    Events, followed by one more eviction, and the K reference graphs the same
+    way; the two groups alternate in order (reference first on even samples)
+    and the sample is ``(operator span - reference span) / K``. Preparation,
+    the evictions, the graph launches and the Events are in both spans, so
+    their mean cost cancels; what remains is each call's time from evicted
+    caches, including the write-back of its outputs during the next eviction.
+    Graph launch and eviction costs vary from replay to replay, which is the
+    noise of a sample.
+
+    ``prepare_fn(i)`` is captured, so it must be capturable (copies and fills on
+    the current stream; no generator creation, host synchronization or
+    allocation). It loads call ``i``'s inputs and poisons its outputs.
+    ``warmup_fn(w)``, when given, replaces the eager warm-up step
+    ``prepare_fn(w % K); calls[w % K]()``, so a caller can warm up on inputs
+    that are never timed. ``stage_fn()``, when given, runs eagerly before every
+    sample's first group (and before the priming replays and ``rerun_ms``),
+    outside both Event spans; a caller uses it to load new inputs into the
+    buffers the captured preparation reads, so a graph does not see the same
+    inputs in every sample.
+
+    A graph whose capture failed is never destroyed (PyTorch aborts the process
+    when it is): ``failed_captures()`` counts them, and a process with one must
+    end with ``os._exit`` after reporting, as the evaluator does.
+
+    ``timed_run.after_sample(outputs)`` runs after every reported sample, while
+    the buffers hold the operator group's results (before the reference group
+    overwrites them when the operator group ran first); ``outputs`` is the list
+    of the calls' captured return values. After the reported samples the
+    reference group is replayed once more, so on return every call's buffers
+    hold what a call that never ran the operator leaves behind; a caller checks
+    that its output checks reject them. ``rerun()`` replays the operator group
+    and ``rerun_ms()`` measures one more sample. ``before_sample`` is rejected.
+
+    There is no Event fallback: ``AKA_BENCHMARK_FORCE_EVENT=1``, a capture
+    failure, an invalid Event span or a median below the empty-graph floor raise.
+    """
+    if timed_run is not None:
+        timed_run._bind(None, None)
+    calls = list(calls)
+    if not calls or not all(callable(call) for call in calls):
+        raise ValueError("amortized cold-cache timing needs one callable per call of a sample")
+    if type(warmup) is not int or warmup < 0 or type(repetition) is not int or repetition < 1:
+        raise ValueError("amortized cold-cache timing requires integer warmup >= 0 and repetition >= 1")
+    if os.environ.get(_FORCE_EVENT_ENV) == "1":
+        raise RuntimeError("cold-cache measurement requires CUDA-graph replay; Event timing is forbidden")
+    if not isinstance(cache_flush, ReadOnlyCacheFlush):
+        raise TypeError("cache_flush must be a ReadOnlyCacheFlush instance")
+    if cache_flush.device.index != torch.cuda.current_device():
+        raise ValueError("cache eviction and graph replay must use the same current device")
+    if getattr(timed_run, "before_sample", None) is not None:
+        raise ValueError("cold-cache snapshots belong in prepare_fn, before cache eviction")
+    for name, callback in (("prepare_fn", prepare_fn), ("warmup_fn", warmup_fn), ("stage_fn", stage_fn)):
+        if callback is not None and not callable(callback):
+            raise TypeError(f"{name} must be callable or None")
+    _, after_observer = _sample_observers(timed_run)
+    _require_gpu_timing()
+    count = len(calls)
+
+    def one_call(index: int, with_operator: bool) -> Any:
+        if prepare_fn is not None:
+            prepare_fn(index)
+        cache_flush()
+        return calls[index]() if with_operator else None
+
+    # Eager warm-up compiles and loads every specialization outside capture.
+    for index in range(warmup):
+        if warmup_fn is not None:
+            warmup_fn(index)
+        else:
+            if prepare_fn is not None:
+                prepare_fn(index % count)
+            calls[index % count]()
+    torch.cuda.synchronize()
+
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    pool = torch.cuda.graph_pool_handle()
+    operator_graphs, reference_graphs, captured_outputs = [], [], []
+    try:
+        for index in range(count):
+            holder: list[Any] = []
+            operator_graphs.append(_capture_graph(lambda index=index: one_call(index, True), 1, stream,
+                                                  output_holder=holder, pool=pool))
+            if len(holder) != 1:
+                raise RuntimeError("the operator graph did not capture its call")
+            captured_outputs.append(holder[0])
+        for index in range(count):
+            reference_graphs.append(_capture_graph(lambda index=index: one_call(index, False), 1, stream))
+    except Exception as exc:
+        try:
+            torch.cuda.synchronize()
+        except Exception:
+            pass
+        detail = str(exc).replace("\n", " ")[:300]
+        raise RuntimeError(f"amortized cold-cache timing: CUDA-graph capture failed: "
+                           f"{type(exc).__name__}: {detail}") from exc
+
+    def stage() -> None:
+        if stage_fn is not None:
+            stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(stream):
+                stage_fn()
+
+    # Prime every graph executable outside the reported samples.
+    for _ in range(2):
+        stage()
+        _amortized_group_ms(reference_graphs, stream, cache_flush)
+        _amortized_group_ms(operator_graphs, stream, cache_flush)
+
+    def one_sample(operator_first: bool, observe: Callable[[], Any] | None) -> tuple[float, float]:
+        stage()
+        if operator_first:
+            operator_ms = _amortized_group_ms(operator_graphs, stream, cache_flush)
+            if observe is not None:
+                observe()
+            reference_ms = _amortized_group_ms(reference_graphs, stream, cache_flush)
+        else:
+            reference_ms = _amortized_group_ms(reference_graphs, stream, cache_flush)
+            operator_ms = _amortized_group_ms(operator_graphs, stream, cache_flush)
+            if observe is not None:
+                observe()
+        return operator_ms, reference_ms
+
+    observe = None if after_observer is None else (lambda: after_observer(captured_outputs))
+    operator_spans: list[float] = []
+    reference_spans: list[float] = []
+    values: list[float] = []
+    for index in range(repetition):
+        operator_ms, reference_ms = one_sample(index % 2 == 1, observe)
+        operator_spans.append(operator_ms)
+        reference_spans.append(reference_ms)
+        values.append((operator_ms - reference_ms) / count)
+    # The control replay: every call's buffers now hold what no operator call wrote.
+    _amortized_group_ms(reference_graphs, stream, cache_flush)
+    torch.cuda.synchronize()
+    median_ms = statistics.median(values)
+    if not all(math.isfinite(value) for value in values) or median_ms < _EMPTY_GRAPH_FLOOR_MS:
+        raise RuntimeError("amortized cold-cache timing: empty or invalid CUDA-graph replay "
+                           f"(median per-call difference {median_ms!r} ms)")
+    metadata: dict[str, Any] = {
+        "benchmark_method": AMORTIZED_COLD_CACHE_METHOD,
+        "benchmark_samples": repetition,
+        "benchmark_warmup": warmup,
+        "benchmark_calls_per_replay": count,
+        "benchmark_cache_policy": "read_only_eviction_before_each_invocation",
+        "benchmark_cache_flush_bytes": cache_flush.nbytes,
+        "benchmark_cache_flush_in_timing": False,
+        "benchmark_metric": "gpu_event_span_difference_per_call",
+        "benchmark_graphs": "one_per_call",
+        "benchmark_trailing_eviction": True,
+        "benchmark_replay_order": "alternating",
+        "benchmark_operator_graph_ms": operator_spans,
+        "benchmark_reference_graph_ms": reference_spans,
+    }
+    if timed_run is not None:
+        def _replay_once() -> Any:
+            _amortized_group_ms(operator_graphs, stream, cache_flush)
+            torch.cuda.synchronize()
+            return captured_outputs
+
+        def _replay_once_timed() -> tuple[Any, float]:
+            operator_ms, reference_ms = one_sample(False, None)
+            torch.cuda.synchronize()
+            return captured_outputs, (operator_ms - reference_ms) / count
+
+        timed_run._bind(_replay_once, captured_outputs, _replay_once_timed)
+        metadata["benchmark_timed_run_kind"] = "captured_graph"
+    return values, metadata
+
+
 def summarize_paired_speedup(rounds: list[dict[str, Any]], *, seed: int = 0,
                             bootstrap_samples: int = 10000) -> dict[str, Any]:
     """Paired geometric-mean speedup and a 95% percentile-bootstrap interval.
@@ -1588,11 +1864,14 @@ def benchmark_paired_cuda_graph_cold_cache(
 
 
 __all__ = [
+    "AMORTIZED_COLD_CACHE_METHOD",
     "COLD_CACHE_METHOD",
     "COLD_WEIGHTS_METHOD",
     "DEFAULT_CACHE_FLUSH_BYTES",
     "ReadOnlyCacheFlush",
     "TimedRun",
+    "amortized_calls_per_replay",
+    "benchmark_cuda_graph_cold_cache_amortized_samples",
     "benchmark_cuda_graph_cold_cache_samples",
     "benchmark_paired_cuda_graph_cold_cache",
     "benchmark_cuda_event_samples",

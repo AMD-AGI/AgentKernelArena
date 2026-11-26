@@ -62,8 +62,12 @@ left when there is.
   charged at one bf16 product, the fastest arithmetic, because nothing has ruled
   it out; for most float32 tasks that floor is loose, and a probe tightens it.
   The file format is in `src/roofline/precision_policy.py`.
-- **Timing.** Only measurements made with `cuda_graph_cold_cache` are joined:
-  that method evicts the caches before every call, so every byte comes from HBM.
+- **Timing.** Only measurements made with a cold-cache method are joined
+  (`cuda_graph_cold_cache_amortized`, or the earlier single-call
+  `cuda_graph_cold_cache`): both evict the caches before every call, so every
+  byte comes from HBM. The single-call method also charges the fixed cost of a
+  graph replay to every call, so it overstates short operators; each joined
+  record keeps its method.
 
 ## Confidence tiers
 

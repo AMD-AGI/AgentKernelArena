@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from src.roofline import __main__ as cli
-from src.roofline.join import COLD_CACHE, join, measurements, report_rows
+from src.roofline.join import AMORTIZED_COLD_CACHE, COLD_CACHE, join, measurements, report_rows
 
 
 def floor(task_id="t/a", case_id="c1", model="m@v1", t_floor_us=10.0, tier="estimated"):
@@ -31,6 +31,14 @@ def test_measurements_keep_cold_cache_cases_and_record_skips(tmp_path):
     assert [(r["task_id"], r["case_id"], r["role"], r["us"]) for r in rows] == [("t/a", "c1", "baseline", 20.0)]
     reasons = sorted(s["reason"] for s in skipped)
     assert reasons[0].startswith("benchmark_method") and reasons[1] == "status FAIL"
+
+
+def test_measurements_keep_amortized_cold_cache_cases_with_their_method(tmp_path):
+    write_session(tmp_path / "s1", "t/a", [case("c1", 0.015, method=AMORTIZED_COLD_CACHE), case("c2", 0.02)])
+    rows, skipped = measurements(tmp_path)
+    assert [(r["case_id"], r["us"], r["method"]) for r in rows] == [
+        ("c1", 15.0, AMORTIZED_COLD_CACHE), ("c2", 20.0, COLD_CACHE)]
+    assert skipped == []
 
 
 def test_join_computes_fractions_from_the_fastest_measurement():

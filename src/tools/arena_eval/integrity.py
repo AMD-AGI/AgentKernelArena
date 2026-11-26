@@ -36,6 +36,7 @@ import gc
 import importlib
 import json
 import math
+import os
 import statistics
 import sys
 import time
@@ -48,7 +49,7 @@ EVALUATOR_MODULES = ("audit", "compare", "contract", "controls", "evaluate", "lo
 # Module globals the evaluator itself updates: name -> (module, class) the value
 # must be an exact instance of, or None.
 MUTABLE_GLOBALS = {"evaluate": {"_FLUSH": ("_aka_benchmark", "ReadOnlyCacheFlush")}}
-STDLIB_MODULES = (builtins, gc, importlib, json, math, statistics, time, types)
+STDLIB_MODULES = (builtins, gc, importlib, json, math, os, statistics, time, types)
 SYS_FUNCTIONS = ("settrace", "setprofile", "gettrace", "getprofile", "exit", "modules")
 _TRACKED_KINDS = (types.FunctionType, types.BuiltinFunctionType, types.MethodType, types.ModuleType,
                   type, staticmethod, classmethod, property)
