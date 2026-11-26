@@ -352,10 +352,14 @@ python3 -m _aka_eval.evaluate candidate {compile|correctness|performance}
 - **Correctness** runs every case twice, with two framework seeds, on the same
   buffers: the second call loads new inputs into the first call's storage, so a
   cached or stale result fails. Read-only inputs must be unchanged afterwards.
-- **Performance** times each performance case with
-  `benchmark_cuda_graph_cold_cache_samples` (10 warmups, 100 samples, median),
-  alternating the two input draws between samples and checking every timed
-  sample's outputs.
+- **Performance** times each performance case with amortized cold-cache
+  CUDA-graph timing (`benchmark_cuda_graph_cold_cache_amortized_samples`: 10
+  warmups, 100 samples, median): up to 32 calls per graph, each after a 1 GiB
+  cache flush, minus the same graph without the calls. The two input draws
+  alternate between calls, and every call's outputs are checked after every
+  sample. The single-call cold-cache median is recorded as
+  `single_call_cold_ms`. See the
+  [benchmark methodology](../reference/benchmark-methodology.md#schema-v3-kernel-tasks).
 - **Scoring.** The per-case speedup is baseline time over candidate time; the
   task's speedup is their geometric mean. Any failed correctness case scores 0.
   The final evaluation remeasures the baseline next to the candidate.

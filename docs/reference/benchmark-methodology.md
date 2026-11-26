@@ -17,34 +17,124 @@ on a CUDA build and HIP Graph on a ROCm build.
 ## Schema-v3 kernel tasks
 
 Kernel tasks (see the [task contract](../how-to/add-task.md#evaluation)) use one
-timing method in every language. Each call to `run()` is captured into a CUDA
-graph and timed per replay after a 1 GiB cache flush
-(`benchmark_cuda_graph_cold_cache_samples`: 10 warmups, 100 samples, median).
-The two framework input draws alternate between samples, and every timed
-sample's outputs are checked. There is no Event fallback for these tasks: a
-baseline that cannot be captured on the current stream fails the QA audit
-(`QA-TIMING-METHOD`), and each performance case must take the baseline at least
-10 us (`QA-TIMING-FLOOR`). The final evaluation remeasures the baseline
-interleaved with the candidate, and the task's speedup is the geometric mean of
-the per-case speedups (baseline time over candidate time). The remaining
-sections of this page describe the shared helper and the older fallback and
-cold-weight policies, which apply to the end-to-end and legacy helper paths.
+timing method in every language: amortized cold-cache CUDA-graph timing
+(`benchmark_method: cuda_graph_cold_cache_amortized`, 10 warmups, 100 samples,
+median). Every call starts with its caches evicted by a 1 GiB read sweep, and
+the fixed cost of a graph replay is subtracted instead of being charged to the
+call. There is no Event fallback for these tasks: a baseline that cannot be
+captured on the current stream fails the QA audit (`QA-TIMING-METHOD`), and each
+performance case must take the baseline at least 10 us of amortized time
+(`QA-TIMING-FLOOR`). The final evaluation remeasures the baseline interleaved
+with the candidate, and the task's speedup is the geometric mean of the per-case
+speedups (baseline time over candidate time). The remaining sections of this
+page describe the shared helper and the older fallback and cold-weight
+policies, which apply to the end-to-end and legacy helper paths.
+
+### Why the replay cost is subtracted
+
+Cold-cache timing needs every call to start with evicted caches, so the earlier
+single-call method (`cuda_graph_cold_cache`) timed one call per graph replay:
+preparation, eviction, start Event, a replay of a one-call graph, end Event.
+That span also contains the Event pair and the graph launch, about 7 us on
+MI355X. An empty Triton kernel scored 9.1 to 9.5 us although it adds about
+1.6 us inside a graph. The constant compresses the speedups of short operators
+and lets a case pass the 10 us floor on overhead alone. Cold caches stay: with
+warm caches a decode-size weight remains in the 256 MB MALL between samples.
+
+### The amortized method
+
+For each performance case, `performance_action` in
+`src/tools/arena_eval/evaluate.py` captures two graphs with
+`benchmark_cuda_graph_cold_cache_amortized_samples`. With `K` calls per replay:
+
+- the operator graph runs, for each call `i`: load input draw `i mod 2`, poison
+  call `i`'s outputs, evict the caches, call the implementation;
+- the reference graph runs the same sequence without the calls.
+
+Every call writes its own output buffers and its own copy of any mutable input;
+read-only inputs are shared.
+
+Each sample replays both graphs, each between its own Event pair, and reports
+`(operator span - reference span) / K`. The order alternates between samples
+(reference first, then operator first) so drift cancels. Preparation, eviction,
+the graph launch and the Events appear in both spans and cancel; the operator
+still starts every call with evicted caches. The write-back of a call's outputs
+happens during the next call's eviction and is counted, as it is in
+`cuda_graph_cold_weights`. Each sample's
+two raw spans are kept in `benchmark_operator_graph_ms` and
+`benchmark_reference_graph_ms`.
+
+`K` is chosen per case and per arm from that case's single-call median (below):
+`int(2 ms / estimate)`, clamped to 4..32. Operators under about 60 us get 32
+calls, which keeps the per-sample spread near +-0.6 us (p10 to p90). Longer
+operators get fewer calls, so a replay holds about 2 ms of operator time and the
+GPU cost of a case stays bounded; at 4 calls the residual replay cost is a small
+fraction of one call. The per-call median does not depend on `K`, so the two
+arms of a comparison may use different counts. `K` is recorded as
+`benchmark_calls_per_replay` and is not part of the comparison identity.
+
+Poison is captured too. NaN fills of floating-point outputs capture directly. A
+device generator cannot be created during capture, so for other outputs `K`
+distinct random patterns are drawn before capture and copied in by each call.
+
+### Checking every call
+
+With one shared output buffer only the last call's outputs would survive a
+replay, and the candidate's Python runs once per call while the graph is
+captured, so a candidate could count the calls and do the work on the last one
+only. With a buffer per call, every call's result survives. After every sample
+the evaluator checks all `K` calls against the reference for that call's input
+draw, with the same bounds as correctness (baseline-relative bounds included).
+Copying each call's outputs into a snapshot after the call, in both graphs,
+does not cancel: in the operator graph the copy reads values the call has just
+left in the caches, in the reference graph it reads poison that the eviction
+has removed from them. On MI355X, `add` with 8M float16 elements measured
+10.6 us with such copies and 14.0 to 15.3 us without them.
+
+After the samples the reference graph is replayed once more, and a candidate's
+checks must reject every call's buffers from it: if they accept the result of a
+call that never ran the operator, per-call work cannot be shown and the case
+fails with `failure_kind: unverifiable_measurement`. For the baseline this
+control is only recorded (`reference_control_undetected_calls`).
+
+The per-call buffers and poison patterns take `K` times the checked bytes of one
+call (`benchmark_call_buffer_bytes`). When that exceeds 4 GiB, `K` is reduced to
+fit, but never below 4; at 4 calls the budget can be exceeded, and an
+allocation that does not fit fails the case instead of weakening the
+measurement.
+
+The evaluator's binding integrity check (see
+[What happens during a run](../how-to/run-evaluation.md#what-happens-during-a-run))
+runs after every candidate call, including the captured ones, after every
+sample and after timing.
+
+### Single-call time
+
+Before the amortized measurement, each case is also timed with the single-call
+method (`benchmark_cuda_graph_cold_cache_samples`: 10 warmups, 100 samples, every
+sample's outputs checked). Its median is recorded as `single_call_cold_ms` in
+the case metadata, for continuity with earlier results, and is the estimate
+from which `K` is chosen. It is not scored. Times, speedups and floor checks
+from the single-call method are not comparable with amortized ones: the method
+names differ, and the evaluator never pairs the two.
 
 ## Canonical Python API
 
 The canonical implementation is `src/tools/perf/aka_benchmark.py`, which the
 schema-v3 evaluator uses for kernel tasks. Its `ReadOnlyCacheFlush` uses a reusable initialized 1 GiB read sweep, after input
-preparation and before the start Event of every single-operator graph replay.
-The resulting `cuda_graph_cold_cache` metric is an Event graph span with eviction
-excluded. It is distinct from the legacy warm `cuda_graph` method below, profiler
-kernel-duration sums and `cuda_graph_cold_weights` rotation. Explicit migrations
-need fresh paired measurements and GPU qualification; this addition does not
-change historical task policies or scores.
+preparation and before every timed call. The single-call
+`cuda_graph_cold_cache` metric is an Event graph span with eviction excluded; the
+amortized `cuda_graph_cold_cache_amortized` metric is the per-call difference
+of two such spans, described above. Both are distinct from the legacy warm
+`cuda_graph` method below, profiler kernel-duration sums and
+`cuda_graph_cold_weights` rotation.
 
 Cold-cache performance case rows must put the returned timing metadata under
 `metadata`, with `benchmark_method` and `execution_time_ms` on the case row.
-The protocol checks the cache policy, metric, one invocation per replay and
-eviction byte count; comparison rejects differing or missing cache identities.
+The protocol checks the cache policy, metric and eviction byte count, and one
+invocation per replay (single-call) or a positive call count and alternating
+replay order (amortized); comparison rejects differing or missing cache
+identities.
 The reference's paired utility preserves raw samples and reports a geometric
 mean speedup with a paired-round 95% percentile-bootstrap interval. It is a
 diagnostic comparison, not a replacement for task correctness or Arena scoring.
@@ -261,8 +351,10 @@ Benchmark methods are then compared **per matched case**:
 - graph versus event fallback is retained as timing data but produces no
   speedup;
 - cold-weight graph (`cuda_graph_cold_weights`) is comparable only with cold-weight graph;
-- cold-cache graph (`cuda_graph_cold_cache`) is comparable only with the same
-  cold-cache method, metric, eviction policy and eviction byte count;
+- cold-cache graph (`cuda_graph_cold_cache` or `cuda_graph_cold_cache_amortized`)
+  is comparable only with the same cold-cache method, metric, eviction policy and
+  eviction byte count; the two cold-cache methods are never compared with each
+  other, and the amortized method's calls per replay may differ between arms;
 - different shapes may use different methods, provided each matched
   baseline/optimized pair uses the same exact method.
 
@@ -275,7 +367,8 @@ alternate Event baseline.
 
 Missing or unknown method metadata is not comparable and produces no speedup;
 every scored case must explicitly identify `cuda_graph`,
-`cuda_event_fallback`, `cuda_graph_cold_weights` or `cuda_graph_cold_cache`.
+`cuda_event_fallback`, `cuda_graph_cold_weights`, `cuda_graph_cold_cache` or
+`cuda_graph_cold_cache_amortized`.
 
 An aggregate `mixed:...` method string is never scored, even when the baseline
 and optimized strings are identical. It records only a set of methods and loses
