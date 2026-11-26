@@ -68,7 +68,7 @@ POLICY_ENV = "ARENA_AGENT_SANDBOX_POLICY"
 # Set by the Docker runner when each worker has its own HOME (parallel runs).
 ISOLATED_HOME_ENV = "AGENT_KERNEL_ARENA_ISOLATED_HOME"
 # Launchers that pass their agent command through wrap_command().
-SUPPORTED_AGENTS = frozenset({"claude_code", "codex", "cursor", "deepseek_harness"})
+SUPPORTED_AGENTS = frozenset({"claude_code", "codex", "cursor", "deepseek_harness", "eval_only"})
 # Agents that are part of the framework's control plane rather than optimizers.
 EXEMPT_AGENTS = frozenset({"qa_auditor"})
 POLICY_VERSION = 1

@@ -28,6 +28,7 @@ ships quickstarts and specialized examples, including:
 | `example_configs/benchmark_cursor_mi355x.yaml` | Cursor Agent over a whole task category on MI355X; use only after installing and authenticating Cursor Agent. |
 | `example_configs/evaluation_tools_advisory_mi355x.yaml` | Default-disabled template for experimental `gfx950` evaluation-tool sidecars. It still requires task-specific adapters before opt-in. |
 | `example_configs/qa_audit_all_mi355x.yaml` | [QA audit](qa-auditor.md) of every task on MI355X. |
+| `example_configs/eval_only_mi355x.yaml` | Evaluate given implementation files on MI355X without an agent; see [Evaluate a given implementation](evaluate-solution.md). |
 | `example_configs/e2e_*_qa_mi355x.yaml` | QA audit of an end-to-end serving task. |
 
 For a first run, select the quickstart that matches the physical GPU:
