@@ -136,12 +136,15 @@ Copying each call's outputs into a snapshot after the call, in both graphs,
 would not cancel: in the operator graph the copy reads values the call has just
 left in the caches, in the reference graph it reads poison that the eviction
 has removed from them. On MI355X, `add` with 8M float16 elements measured
-10.6 us with such copies and 14.0 to 15.3 us without them. Reloading every
-call's read-only inputs into one shared buffer inside its graph, as an earlier
-revision did, gave the same case per-process offsets of about 10% (14.1 to
-14.4 us in some processes, 12.6 to 13.1 us in others); with per-call input
-buffers loaded outside the spans, six processes on two GPUs measured 12.4 to
-12.95 us.
+10.6 us with such copies and 14.0 to 15.3 us without them.
+
+Short cases also vary from process to process more than within a process. On
+MI355X, `add` with 8M float16 elements measured 12.3 to 13.5 us across ten
+fresh processes on two GPUs (coefficient of variation 3%), while one process's
+samples spread about +-1.2 us around their median and the single-call medians
+of the same processes varied by 2%. The cause is not identified; the final
+evaluation therefore averages several processes per arm and flags cases whose
+spread is high (below).
 
 Implementation code that fingerprints its inputs on the device and returns a
 result stored for that fingerprint in an earlier replay is not ruled out by
