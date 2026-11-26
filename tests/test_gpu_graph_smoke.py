@@ -165,3 +165,35 @@ def test_event_collector_keeps_measured_allocation_and_prepares_eager_rerun() ->
     assert result is outputs[-1] and result is not measured
     assert torch.equal(result, pristine * 2.)
     assert torch.equal(measured, (pristine - 3.) * 2.)
+
+
+def test_amortized_cold_cache_keeps_every_captured_call_observable() -> None:
+    from src.tools.perf.aka_benchmark import (
+        ReadOnlyCacheFlush, TimedRun, benchmark_cuda_graph_cold_cache_amortized_samples,
+    )
+    count = 4
+    flush = ReadOnlyCacheFlush()
+    draws = [torch.full((4096,), float(i + 1), device="cuda") for i in range(count)]
+    x = torch.empty(4096, device="cuda")
+    outputs = torch.empty((count, 4096), device="cuda")
+    expected = torch.stack(draws) * 2
+
+    def prepare(index):
+        x.copy_(draws[index])
+        outputs[index].fill_(float("nan"))
+
+    observed = []
+    timed = TimedRun()
+    timed.after_sample = lambda returned: observed.append(torch.equal(outputs, expected))
+    samples, metadata = benchmark_cuda_graph_cold_cache_amortized_samples(
+        [lambda index=index: torch.mul(x, 2, out=outputs[index]) for index in range(count)],
+        cache_flush=flush, prepare_fn=prepare, warmup=2, repetition=6, timed_run=timed)
+    assert len(samples) == 6 and observed == [True] * 6
+    assert metadata["benchmark_method"] == "cuda_graph_cold_cache_amortized"
+    assert metadata["benchmark_calls_per_replay"] == count
+    operator_ms, reference_ms = metadata["benchmark_operator_graph_ms"], metadata["benchmark_reference_graph_ms"]
+    assert min(reference_ms) > 0 and sorted(operator_ms)[3] > sorted(reference_ms)[3]
+    # The final reference replay never ran the operator: every call's output holds poison.
+    assert torch.isnan(outputs).all()
+    timed.rerun()
+    assert torch.equal(outputs, expected)

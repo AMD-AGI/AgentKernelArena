@@ -150,7 +150,7 @@ def _benchmark_method_mismatches(
     """
 
     mismatches: List[Dict[str, Any]] = []
-    from .measurement import DEVICE_METHODS, SERVING_METHOD, cold_cache_identity
+    from .measurement import COLD_CACHE_METHODS, DEVICE_METHODS, SERVING_METHOD, cold_cache_identity
     comparable_methods = DEVICE_METHODS | {SERVING_METHOD}
     for base_case, opt_case in matched_cases:
         base_metadata = base_case.metadata or {}
@@ -171,9 +171,10 @@ def _benchmark_method_mismatches(
             or opt_method not in comparable_methods
         )
         cache_policy_mismatch = False
-        if base_method == opt_method == "cuda_graph_cold_cache":
+        if base_method == opt_method and base_method in COLD_CACHE_METHODS:
             try:
-                cache_policy_mismatch = cold_cache_identity(base_metadata) != cold_cache_identity(opt_metadata)
+                cache_policy_mismatch = (cold_cache_identity(base_metadata, base_method)
+                                         != cold_cache_identity(opt_metadata, opt_method))
             except ValueError:
                 cache_policy_mismatch = True
         if (

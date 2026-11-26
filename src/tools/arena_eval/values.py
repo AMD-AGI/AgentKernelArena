@@ -189,19 +189,56 @@ def allocate_outputs(contract: Contract, case: Case, device: torch.device) -> di
             for name, declaration in contract.outputs.items()}
 
 
+def nan_poisoned(tensor: torch.Tensor) -> bool:
+    return str(tensor.dtype).removeprefix("torch.") in NAN_POISONED
+
+
+def _random_bytes(tensor: torch.Tensor, salt: int, index: int) -> None:
+    generator = device_generator((salt * 1000003 + index) & 0x7FFFFFFF, tensor.device)
+    raw = tensor.view(torch.uint8)
+    raw.copy_(torch.randint(0, 256, raw.shape, generator=generator, device=tensor.device,
+                            dtype=torch.int64).to(torch.uint8))
+
+
 def poison(outputs: dict[str, torch.Tensor], salt: int) -> None:
     """Make every unwritten output element detectable, differently per call."""
     for index, (name, tensor) in enumerate(outputs.items()):
         if tensor.numel() == 0:
             continue
-        dtype_name = str(tensor.dtype).removeprefix("torch.")
-        if dtype_name in NAN_POISONED:
+        if nan_poisoned(tensor):
             tensor.fill_(math.nan)
         else:
-            generator = device_generator((salt * 1000003 + index) & 0x7FFFFFFF, tensor.device)
-            raw = tensor.view(torch.uint8)
-            raw.copy_(torch.randint(0, 256, raw.shape, generator=generator, device=tensor.device,
-                                    dtype=torch.int64).to(torch.uint8))
+            _random_bytes(tensor, salt, index)
+
+
+def poison_pattern(outputs: dict[str, torch.Tensor], salt: int) -> dict[str, torch.Tensor]:
+    """The bytes ``poison(outputs, salt)`` writes into outputs that are not NaN-filled.
+
+    A device generator cannot be created during CUDA-graph capture, so captured
+    poisoning copies these precomputed patterns in with ``apply_poison``.
+    """
+    pattern = {}
+    for index, (name, tensor) in enumerate(outputs.items()):
+        if tensor.numel() and not nan_poisoned(tensor):
+            pattern[name] = torch.empty_like(tensor)
+            _random_bytes(pattern[name], salt, index)
+    return pattern
+
+
+def apply_poison(outputs: dict[str, torch.Tensor], pattern: dict[str, torch.Tensor]) -> None:
+    """Capturable poisoning: NaN fill, or a copy of a ``poison_pattern``."""
+    for name, tensor in outputs.items():
+        if not tensor.numel():
+            continue
+        if name in pattern:
+            tensor.copy_(pattern[name])
+        else:
+            tensor.fill_(math.nan)
+
+
+def nbytes(values: dict[str, Any]) -> int:
+    return sum(value.numel() * value.element_size() for value in values.values()
+               if isinstance(value, torch.Tensor))
 
 
 def copy_into(destination: dict[str, Any], source: dict[str, Any]) -> None:

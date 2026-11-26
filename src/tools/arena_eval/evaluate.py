@@ -313,14 +313,127 @@ def _cache_flush(nbytes: int):
     return _FLUSH
 
 
-def performance_action(contract: Contract, role: str) -> dict:
+def _single_call_cold(contract: Contract, role: str, call, data: _CaseData, working: dict, outputs: dict,
+                      flush, check) -> tuple[list[float], dict, list]:
+    """The single-call cold-cache samples: one call per replay, its outputs checked after every sample."""
     from . import values
     from ._aka_benchmark import TimedRun, benchmark_cuda_graph_cold_cache_samples
 
+    timing = contract.timing
+    state = {"prepared": 0, "current": 0, "checked": 0, "failed": []}
+
+    def prepare() -> None:
+        index = state["prepared"] % 2
+        values.copy_into(working, data.inputs[index].kernel)
+        values.poison(outputs, 100 + state["prepared"])
+        state["current"] = index
+        state["prepared"] += 1
+
+    def after_sample(_outputs) -> None:
+        # First, before the sample is used: candidate code ran while it was measured.
+        if check is not None:
+            check("a timing sample")
+        index = state["current"]
+        ok, metrics = _check(contract, role, values.checked_values(contract, working, outputs),
+                             data.references[index],
+                             None if data.baselines is None else data.baselines[index])
+        state["checked"] += 1
+        if not ok and len(state["failed"]) < 3:
+            state["failed"].append({"sample": state["checked"], "outputs": metrics})
+
+    timed = TimedRun()
+    timed.after_sample = after_sample
+    samples, metadata = benchmark_cuda_graph_cold_cache_samples(
+        lambda: call(**working, **outputs), cache_flush=flush,
+        warmup=int(timing.get("warmup", 10)), repetition=int(timing.get("repetition", 100)),
+        prepare_fn=prepare, timed_run=timed)
+    if check is not None:
+        check("timing")
+    return samples, dict(metadata, checked_samples=state["checked"]), state["failed"]
+
+
+def _amortized_cold(contract: Contract, role: str, call, data: _CaseData, working: dict, outputs: dict,
+                    flush, check, estimate_ms: float) -> tuple[list[float], dict, list]:
+    """Amortized cold-cache samples with every call's results checked.
+
+    The candidate's Python runs once per call while the graph is captured, so
+    with one shared output buffer it could count the calls and do the work on
+    the last one only. Each call of a replay therefore writes its own outputs
+    and mutable inputs (read-only inputs are shared), and every call is checked
+    after every sample. Copying the results out after each call instead would
+    not cancel: the copy reads values the operator has just left in the caches,
+    while the reference graph's copy reads them cold.
+    """
+    import torch
+
+    from . import values
+    from ._aka_benchmark import (TimedRun, amortized_calls_per_replay,
+                                 benchmark_cuda_graph_cold_cache_amortized_samples)
+
+    timing = contract.timing
+    mutable = {name: working[name] for name in contract.mutable}
+    # Each call owns its outputs, its mutable inputs and a poison pattern of every
+    # output that is not NaN-filled.
+    per_call = values.nbytes(outputs) + values.nbytes(mutable) + values.nbytes(
+        {name: tensor for name, tensor in outputs.items() if not values.nan_poisoned(tensor)})
+    count = amortized_calls_per_replay(estimate_ms, per_call_bytes=per_call)
+    # Distinct poison per call, precomputed: generators cannot be created under capture.
+    patterns = [values.poison_pattern(outputs, 1000 + index) for index in range(count)]
+    inputs = [{**working, **{name: torch.empty_like(tensor) for name, tensor in mutable.items()}}
+              for _ in range(count)]
+    written = [{name: torch.empty_like(tensor) for name, tensor in outputs.items()} for _ in range(count)]
+    state = {"checked": 0, "failed": []}
+
+    def prepare(index: int) -> None:
+        values.copy_into(inputs[index], data.inputs[index % 2].kernel)
+        values.apply_poison(written[index], patterns[index])
+
+    def check_calls() -> list[dict]:
+        failed = []
+        for index in range(count):
+            ok, metrics = _check(contract, role, values.checked_values(contract, inputs[index], written[index]),
+                                 data.references[index % 2],
+                                 None if data.baselines is None else data.baselines[index % 2])
+            if not ok:
+                failed.append({"call": index, "outputs": metrics})
+        return failed
+
+    def after_sample(_outputs) -> None:
+        if check is not None:
+            check("a timing sample")
+        state["checked"] += 1
+        for failure in check_calls():
+            if len(state["failed"]) < 3:
+                state["failed"].append({"sample": state["checked"], **failure})
+
+    timed = TimedRun()
+    timed.after_sample = after_sample
+    samples, metadata = benchmark_cuda_graph_cold_cache_amortized_samples(
+        [lambda index=index: call(**inputs[index], **written[index]) for index in range(count)],
+        cache_flush=flush, prepare_fn=prepare,
+        warmup=int(timing.get("warmup", 10)), repetition=int(timing.get("repetition", 100)),
+        timed_run=timed)
+    if check is not None:
+        check("timing")
+    # Control: the helper ended with a reference-graph replay, which never runs
+    # the operator. Checks that accept those buffers cannot show that each call
+    # did its work, so a candidate is not scored on them.
+    undetected = count - len(check_calls())
+    metadata = dict(metadata, checked_samples=state["checked"], checked_calls=state["checked"] * count,
+                    benchmark_call_buffer_bytes=per_call, reference_control_undetected_calls=undetected)
+    failed = state["failed"]
+    if undetected and role == "candidate":
+        failed = failed + [{"control": f"{undetected} of {count} calls without the operator passed the "
+                                       "output checks; per-call work cannot be verified"}]
+    return samples, metadata, failed
+
+
+def performance_action(contract: Contract, role: str) -> dict:
+    from . import values
+
     device = _device()
     call, baseline_call, need_baseline, check = _role_calls(contract, role)
-    timing = contract.timing
-    flush = _cache_flush(int(timing.get("cache_flush_bytes", 1 << 30)))
+    flush = _cache_flush(int(contract.timing.get("cache_flush_bytes", 1 << 30)))
     rows, failures = [], []
     for case in contract.cases:
         if "performance" not in case.checks:
@@ -330,42 +443,22 @@ def performance_action(contract: Contract, role: str) -> dict:
             data = _CaseData(contract, case, device, baseline_call, need_baseline)
             working = values.clone_inputs(data.inputs[0].kernel)
             outputs = values.allocate_outputs(contract, case, device)
-            state = {"prepared": 0, "current": 0, "checked": 0, "failed": []}
-
-            def prepare() -> None:
-                index = state["prepared"] % 2
-                values.copy_into(working, data.inputs[index].kernel)
-                values.poison(outputs, 100 + state["prepared"])
-                state["current"] = index
-                state["prepared"] += 1
-
-            def after_sample(_outputs) -> None:
-                # First, before the sample is used: candidate code ran while it was measured.
-                if check is not None:
-                    check("a timing sample")
-                index = state["current"]
-                ok, metrics = _check(contract, role, values.checked_values(contract, working, outputs),
-                                     data.references[index],
-                                     None if data.baselines is None else data.baselines[index])
-                state["checked"] += 1
-                if not ok and len(state["failed"]) < 3:
-                    state["failed"].append({"sample": state["checked"], "outputs": metrics})
-
-            timed = TimedRun()
-            timed.after_sample = after_sample
-            samples, metadata = benchmark_cuda_graph_cold_cache_samples(
-                lambda: call(**working, **outputs), cache_flush=flush,
-                warmup=int(timing.get("warmup", 10)), repetition=int(timing.get("repetition", 100)),
-                prepare_fn=prepare, timed_run=timed)
-            if check is not None:
-                check("timing")
-            if state["failed"]:
-                row.update(status="FAIL", failure_kind="numerical_mismatch",
-                           metadata={"measured_output_failures": state["failed"]})
+            single, single_metadata, failed = _single_call_cold(contract, role, call, data, working, outputs,
+                                                                flush, check)
+            if not failed:
+                samples, metadata, failed = _amortized_cold(contract, role, call, data, working, outputs,
+                                                            flush, check, statistics.median(single))
+            if failed:
+                control = any("control" in failure for failure in failed)
+                row.update(status="FAIL",
+                           failure_kind="unverifiable_measurement" if control else "numerical_mismatch",
+                           metadata={"measured_output_failures": failed})
             else:
-                metadata = dict(metadata)
-                metadata.update(checked_samples=state["checked"], samples_min_ms=min(samples),
-                                samples_max_ms=max(samples), samples_count=len(samples))
+                metadata.update(samples_min_ms=min(samples), samples_max_ms=max(samples),
+                                samples_count=len(samples),
+                                single_call_cold_ms=statistics.median(single),
+                                single_call_cold_method=single_metadata["benchmark_method"],
+                                single_call_cold_checked_samples=single_metadata["checked_samples"])
                 row.update(status="PASS", execution_time_ms=statistics.median(samples),
                            benchmark_method=metadata["benchmark_method"], metadata=metadata)
         except Exception as exc:
