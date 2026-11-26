@@ -274,8 +274,10 @@ def test_every_call_has_its_own_draw_and_is_checked_after_every_sample(helper, d
     # Each call is fully checked once, then by bitwise equality; the control checks every call again.
     assert metadata["full_checks"] == 32 + 32
     assert metadata["reference_control_undetected_calls"] == 0
-    # The draw (x, state), its reference (y, idx, state), 3 x the checked bytes and an int32 poison pattern.
-    assert metadata["benchmark_call_buffer_bytes"] == 2 * 256 + 3 * 256 + 3 * 3 * 256 + 256
+    # The draw (x, state) twice (stored and staged), its reference (y, idx, state), 3 x the checked
+    # bytes and an int32 poison pattern.
+    assert metadata["benchmark_call_buffer_bytes"] == 2 * 2 * 256 + 3 * 256 + 3 * 3 * 256 + 256
+    assert metadata["benchmark_draw_assignment"] == "secret_permutation_per_sample"
 
 
 def test_a_result_that_changes_after_its_first_check_is_checked_fully_again(helper, draws):
@@ -323,6 +325,56 @@ def test_a_candidate_that_works_only_on_the_last_captured_call_fails(helper, dra
     assert [failure["call"] for failure in failed] == [0, 1, 2]
 
 
+def test_a_candidate_that_restores_a_stored_result_in_later_samples_fails(helper, draws):
+    """The review's stash cheat: each captured call computes in its graph's first replay, keeps the
+    result in state of its own, and only restores it in later replays. It needs no input
+    inspection, so it passed while every graph saw the same draw in every sample."""
+    seen = {"calls": 0}
+    stash = {}
+
+    def stashing(x, y, idx):
+        seen["calls"] += 1
+        if seen["calls"] <= 2:          # warm-up
+            _honest(x, y, idx)
+            return
+        graph = (seen["calls"] - 3) % 32  # which captured call (graph) this is
+        if graph in stash:
+            y.copy_(stash[graph][0])
+            idx.copy_(stash[graph][1])
+        else:
+            _honest(x, y, idx)
+            stash[graph] = (y.clone(), idx.clone())
+
+    _, _, failed = _amortized(helper, stashing)
+    assert failed and failed[0]["sample"] == 1
+
+
+def test_draws_are_reassigned_to_the_calls_by_a_fresh_secret_permutation(helper, draws, monkeypatch):
+    orders = []
+    original = evaluate._secret_permutation
+
+    def recorded(count):
+        orders.append(original(count))
+        return orders[-1]
+
+    monkeypatch.setattr(evaluate, "_secret_permutation", recorded)
+    _, metadata, failed = _amortized(helper, _honest)
+    assert failed == []
+    # Two priming stages, then one per sample.
+    assert len(orders) == 2 + 4 and all(sorted(order) == list(range(32)) for order in orders)
+    assert len({tuple(order) for order in orders}) == len(orders)
+
+
+def test_the_secret_permutation_is_uniform_and_uses_the_os_entropy(monkeypatch):
+    counts = [[0] * 4 for _ in range(4)]
+    for _ in range(4000):
+        for position, value in enumerate(evaluate._secret_permutation(4)):
+            counts[position][value] += 1
+    assert all(800 < count < 1200 for row in counts for count in row)
+    monkeypatch.setattr(evaluate.os, "urandom", lambda n: bytes(n))
+    assert evaluate._secret_permutation(5) == [1, 2, 3, 4, 0]
+
+
 def test_checks_that_accept_calls_without_the_operator_fail_a_candidate_only(helper, draws, monkeypatch):
     monkeypatch.setattr(evaluate, "_check", lambda *args: (True, {}))
     _, metadata, failed = _amortized(helper, _honest)
@@ -334,7 +386,7 @@ def test_checks_that_accept_calls_without_the_operator_fail_a_candidate_only(hel
 
 def test_baseline_and_candidate_use_the_same_number_of_calls(helper, draws, monkeypatch):
     monkeypatch.setattr(helper, "amortized_calls_per_replay",
-                        functools.partial(helper.amortized_calls_per_replay, budget_bytes=5 * 2560))
+                        functools.partial(helper.amortized_calls_per_replay, budget_bytes=5 * 2816))
     monkeypatch.setattr(values, "allocate_outputs", lambda contract, case, device: {
         "y": torch.empty(64), "idx": torch.empty(64, dtype=torch.int32)})
     _, baseline, failed = _amortized(helper, _honest, role="baseline")
@@ -348,7 +400,7 @@ def test_baseline_and_candidate_use_the_same_number_of_calls(helper, draws, monk
 
 
 def test_the_memory_budget_reduces_calls_but_never_below_four(helper, draws, monkeypatch):
-    per_call = 256 + 3 * 256 * 2 + 256 * 2 + 256
+    per_call = 2 * 256 + 3 * 256 * 2 + 256 * 2 + 256
     monkeypatch.setattr(helper, "amortized_calls_per_replay",
                         functools.partial(helper.amortized_calls_per_replay, budget_bytes=6 * per_call))
     _, metadata, failed = _amortized(helper, _honest)
@@ -410,6 +462,39 @@ def test_performance_rows_report_the_amortized_time_and_a_short_single_call_time
     cold_cache_identity(row["metadata"], row["benchmark_method"])
 
 
+def test_an_amortized_time_far_below_the_single_call_time_fails_the_case(helper, draws, monkeypatch):
+    assert evaluate._consistent(0.0055, 0.0115) and evaluate._consistent(0.18, 0.21)
+    assert not evaluate._consistent(0.4, 1.0) and not evaluate._consistent(0.005, 0.025)
+    contract = _contract()
+    contract.cases = [types.SimpleNamespace(checks=("performance",), seeds=(5, 6), case_id="c0",
+                                            identity=lambda: {"test_case_id": "c0"})]
+    _performance(helper, monkeypatch, contract)
+    # A per-call time of 0.5 us against a 20 us single-call time: the timed calls did less.
+    monkeypatch.setitem(SPANS, "operator", SPANS["reference"] + 0.0005)
+    report = evaluate.performance_action(contract, "baseline")
+    row = report["cases"][0]
+    assert report["status"] == "FAIL" and row["failure_kind"] == "unverifiable_measurement"
+    assert "single-call median" in row["metadata"]["measured_output_failures"][0]["consistency"]
+
+
+def test_cases_after_a_failed_capture_are_reported_as_not_measured(helper, draws, monkeypatch):
+    contract = _contract()
+    contract.cases = [types.SimpleNamespace(checks=("performance",), seeds=(5, 6), case_id=f"c{i}",
+                                            identity=lambda i=i: {"test_case_id": f"c{i}"}) for i in range(3)]
+    _performance(helper, monkeypatch, contract)
+
+    def fails_capture(*args, **kwargs):
+        helper._FAILED_CAPTURES.append(object())
+        raise RuntimeError("amortized cold-cache timing: CUDA-graph capture failed: unjoined")
+
+    monkeypatch.setattr(evaluate, "_amortized_cold", fails_capture)
+    monkeypatch.setattr(helper, "_FAILED_CAPTURES", [])
+    report = evaluate.performance_action(contract, "candidate")
+    rows = report["cases"]
+    assert "capture failed" in rows[0]["metadata"]["error"]
+    assert all("capture of an earlier case failed" in row["metadata"]["error"] for row in rows[1:])
+
+
 def test_tampering_found_during_an_amortized_sample_fails_the_action(helper, draws, monkeypatch):
     contract = _contract()
     contract.cases = [types.SimpleNamespace(checks=("performance",), seeds=(5, 6), case_id="c0",
@@ -469,3 +554,48 @@ def test_amortized_cases_compare_only_with_the_same_call_count_and_never_with_si
         with pytest.raises(TaskProtocolError, match="cold-cache"):
             parse_command_result(RESULT_PREFIX + json.dumps(report), role="baseline",
                                  action="performance", returncode=0)
+
+
+def test_interleaved_statistics_report_spread_and_a_paired_interval():
+    from src.evaluator import FINAL_EVALUATION_ORDER, interleaved_statistics
+    from src.testcases import TestCaseResult as Case
+
+    assert FINAL_EVALUATION_ORDER.count("baseline") == FINAL_EVALUATION_ORDER.count("candidate") == 4
+    rounds = {"baseline": [[Case("a", [1], t), Case("b", [1], 1.0)] for t in (2.0, 2.0, 2.2, 1.8)],
+              "candidate": [[Case("a", [1], t), Case("b", [1], 1.0)] for t in (1.0, 1.0, 1.1, 0.9)]}
+    stats = interleaved_statistics(rounds)
+    assert stats["a"]["speedup_paired_mean"] == pytest.approx(2.0)
+    assert stats["a"]["speedup_ci95"] == pytest.approx([2.0, 2.0])
+    assert stats["a"]["high_variance"] is True and stats["b"]["high_variance"] is False
+    assert stats["b"]["speedup_ci95"] == pytest.approx([1.0, 1.0])
+
+
+_FAILED_CAPTURE_PROGRAM = """
+import os, runpy, sys, types
+
+class Graph:
+    # Stands in for a CUDA graph whose capture failed: PyTorch aborts when it is destroyed.
+    def __del__(self):
+        os.abort()
+
+helper = types.ModuleType("src.tools.arena_eval._aka_benchmark")
+helper._FAILED_CAPTURES = [Graph()]
+helper.failed_captures = lambda: len(helper._FAILED_CAPTURES)
+sys.modules[helper.__name__] = helper
+sys.argv = ["evaluate", "candidate", "performance"]
+import src.tools.arena_eval.contract as contract
+def broken():
+    raise contract.ContractError("no contract in this test")
+contract.load_contract = broken
+runpy.run_module("src.tools.arena_eval.evaluate", run_name="__main__")
+"""
+
+
+def test_the_evaluator_reports_and_exits_cleanly_after_a_failed_capture():
+    import subprocess
+
+    result = subprocess.run([sys.executable, "-c", _FAILED_CAPTURE_PROGRAM], cwd=Path(__file__).resolve().parents[1],
+                            capture_output=True, text=True, timeout=300)
+    lines = [line for line in result.stdout.splitlines() if line.startswith("ARENA_EVAL_RESULT=")]
+    assert result.returncode == 1, result.stderr[-2000:]
+    assert len(lines) == 1 and json.loads(lines[0].split("=", 1)[1])["status"] == "FAIL"

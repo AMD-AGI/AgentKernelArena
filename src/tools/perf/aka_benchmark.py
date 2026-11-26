@@ -790,8 +790,18 @@ def _capture_graph(
                         captured_outputs = fn()
                         if output_holder is not None:
                             output_holder[:] = [captured_outputs]
-    except BaseException:
+    except BaseException as exc:
         _FAILED_CAPTURES.append(graph)
+        # Ending a failed capture can raise its own error from the graph's
+        # __exit__, which would hide what the captured code raised. Re-raise a
+        # BaseException that is not an Exception (for example the evaluator's
+        # tampering error) so generic handlers cannot relabel it.
+        if isinstance(exc, Exception):
+            cause = exc.__context__
+            while cause is not None:
+                if not isinstance(cause, Exception):
+                    raise cause from None
+                cause = cause.__context__
         raise
     torch.cuda.synchronize()
     if any(
@@ -1566,6 +1576,7 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
     cache_flush: ReadOnlyCacheFlush,
     prepare_fn: Callable[[int], Any] | None = None,
     warmup_fn: Callable[[int], Any] | None = None,
+    stage_fn: Callable[[], Any] | None = None,
     warmup: int = 10,
     repetition: int = 100,
     timed_run: Any | None = None,
@@ -1600,7 +1611,15 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
     allocation). It loads call ``i``'s inputs and poisons its outputs.
     ``warmup_fn(w)``, when given, replaces the eager warm-up step
     ``prepare_fn(w % K); calls[w % K]()``, so a caller can warm up on inputs
-    that are never timed.
+    that are never timed. ``stage_fn()``, when given, runs eagerly before every
+    sample's first group (and before the priming replays and ``rerun_ms``),
+    outside both Event spans; a caller uses it to load new inputs into the
+    buffers the captured preparation reads, so a graph does not see the same
+    inputs in every sample.
+
+    A graph whose capture failed is never destroyed (PyTorch aborts the process
+    when it is): ``failed_captures()`` counts them, and a process with one must
+    end with ``os._exit`` after reporting, as the evaluator does.
 
     ``timed_run.after_sample(outputs)`` runs after every reported sample, while
     the buffers hold the operator group's results (before the reference group
@@ -1629,7 +1648,7 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
         raise ValueError("cache eviction and graph replay must use the same current device")
     if getattr(timed_run, "before_sample", None) is not None:
         raise ValueError("cold-cache snapshots belong in prepare_fn, before cache eviction")
-    for name, callback in (("prepare_fn", prepare_fn), ("warmup_fn", warmup_fn)):
+    for name, callback in (("prepare_fn", prepare_fn), ("warmup_fn", warmup_fn), ("stage_fn", stage_fn)):
         if callback is not None and not callable(callback):
             raise TypeError(f"{name} must be callable or None")
     _, after_observer = _sample_observers(timed_run)
@@ -1675,12 +1694,20 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
         raise RuntimeError(f"amortized cold-cache timing: CUDA-graph capture failed: "
                            f"{type(exc).__name__}: {detail}") from exc
 
+    def stage() -> None:
+        if stage_fn is not None:
+            stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(stream):
+                stage_fn()
+
     # Prime every graph executable outside the reported samples.
     for _ in range(2):
+        stage()
         _amortized_group_ms(reference_graphs, stream, cache_flush)
         _amortized_group_ms(operator_graphs, stream, cache_flush)
 
     def one_sample(operator_first: bool, observe: Callable[[], Any] | None) -> tuple[float, float]:
+        stage()
         if operator_first:
             operator_ms = _amortized_group_ms(operator_graphs, stream, cache_flush)
             if observe is not None:

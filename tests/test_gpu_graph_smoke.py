@@ -242,3 +242,69 @@ def test_amortized_calls_must_join_their_forked_streams_within_their_own_graph()
 
     assert run("join") == ["MEASURED", "4", "True"]
     assert run("fork") == ["REJECTED", "True"]
+
+
+def _amortized_on_gpu(monkeypatch, call):
+    """The evaluator's amortized stage on a synthetic exact-bound case (y = 2x, idx = x > 0)."""
+    import sys
+    import types
+
+    import src.tools.perf.aka_benchmark as helper
+    from src.tools.arena_eval import evaluate, values
+
+    monkeypatch.setitem(sys.modules, "src.tools.arena_eval._aka_benchmark", helper)
+    device = torch.device("cuda", torch.cuda.current_device())
+
+    def inputs(seed):
+        x = torch.randn(4096, generator=torch.Generator(device=device).manual_seed(seed), device=device)
+        return {"x": x}, {"y": 2 * x, "idx": (x > 0).to(torch.int32)}
+
+    monkeypatch.setattr(evaluate, "_draw", lambda contract, case, index, device: inputs(
+        evaluate.draw_seed(case, index)))
+    contract = types.SimpleNamespace(mutable=(), checked_tensors=("y", "idx"), element_order="fixed",
+                                     compare={"y": {"bound": "exact"}, "idx": {"bound": "exact"}},
+                                     timing={"warmup": 2, "repetition": 8})
+    drawn = [inputs(seed) for seed in (1, 2)]
+    data = types.SimpleNamespace(inputs=[types.SimpleNamespace(kernel=k) for k, _ in drawn],
+                                 references=[r for _, r in drawn], baselines=None)
+    working = values.clone_inputs(data.inputs[0].kernel)
+    outputs = {"y": torch.empty(4096, device=device), "idx": torch.empty(4096, dtype=torch.int32, device=device)}
+    case = types.SimpleNamespace(seeds=(3, 4), case_id="c0")
+    return evaluate._amortized_cold(contract, "candidate", call, case, data, working, outputs,
+                                    helper.ReadOnlyCacheFlush(), None, device, None)
+
+
+def _honest(x, y, idx):
+    torch.mul(x, 2, out=y)
+    idx.copy_((x > 0).to(torch.int32))
+
+
+def test_amortized_evaluator_accepts_an_honest_call(monkeypatch) -> None:
+    samples, metadata, failed = _amortized_on_gpu(monkeypatch, _honest)
+    assert failed == [] and len(samples) == 8 and metadata["reference_control_undetected_calls"] == 0
+
+
+def test_amortized_evaluator_rejects_a_call_that_restores_a_stored_result(monkeypatch) -> None:
+    """Each captured call computes in its graph's first replay, stores the result in device state of its own
+    and restores it in every later replay; it reads no input to decide."""
+    flags = torch.zeros(64, dtype=torch.int32, device="cuda")
+    # Allocated outside capture: memory a graph allocates for itself may be reused by later graphs.
+    stashes = [(torch.empty(4096, device="cuda"), torch.empty(4096, dtype=torch.int32, device="cuda"))
+               for _ in range(64)]
+    captured = []
+
+    def stashing(x, y, idx):
+        if not torch.cuda.is_current_stream_capturing():
+            _honest(x, y, idx)
+            return
+        index = len(captured)
+        captured.append(index)
+        flag, stash = flags[index] != 0, stashes[index]
+        y.copy_(torch.where(flag, stash[0], 2 * x))
+        idx.copy_(torch.where(flag, stash[1], (x > 0).to(torch.int32)))
+        stash[0].copy_(y)
+        stash[1].copy_(idx)
+        flags[index].fill_(1)
+
+    _, _, failed = _amortized_on_gpu(monkeypatch, stashing)
+    assert failed and failed[0]["sample"] == 1

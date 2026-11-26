@@ -399,19 +399,41 @@ def _same_bytes(first: dict, second: dict) -> bool:
     return all(torch.equal(values.tensor_bytes(first[name]), values.tensor_bytes(second[name])) for name in first)
 
 
+def _secret_permutation(count: int) -> list[int]:
+    """A fresh uniformly random order of ``range(count)`` from the operating system's entropy.
+
+    It is drawn after the candidate's last Python call of the measurement and is
+    held only in local variables, so candidate code can neither predict nor read it.
+    """
+    order = list(range(count))
+    for index in range(count - 1, 0, -1):
+        # Rejection sampling over 32-bit draws: no modulo bias.
+        limit = (1 << 32) - (1 << 32) % (index + 1)
+        while True:
+            value = int.from_bytes(os.urandom(4), "little")
+            if value < limit:
+                break
+        other = value % (index + 1)
+        order[index], order[other] = order[other], order[index]
+    return order
+
+
 def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _CaseData, working: dict,
                     outputs: dict, flush, check, device, baseline_call) -> tuple[list[float], dict, list]:
     """Amortized cold-cache samples with every call's results checked.
 
-    The candidate's Python runs once per captured call, so with one shared
-    output buffer it could count the calls and work on the last one only, and
-    with repeated inputs a call could copy the result of an earlier call. Each
-    call of a sample therefore has an input draw of its own (with its own
-    reference and, where the bound needs it, baseline outputs) and writes its
-    own outputs and mutable inputs; read-only inputs are reloaded into shared
-    buffers. Every call is checked after every sample: fully once per call,
-    then by bitwise equality with its first checked result (a mismatch is
-    checked fully again).
+    The candidate's Python runs once per captured call, so it could count the
+    calls: with one shared output buffer it could work on the last call only;
+    with repeated inputs a call could copy an earlier call's result; and with a
+    fixed draw per graph a call could keep device state, compute in the first
+    sample and restore a stored result in every later one. So the case has K
+    distinct draws (each with its own reference and, where the bound needs it,
+    baseline outputs), every call writes its own outputs and mutable inputs,
+    and before every sample a secret random permutation assigns the draws to the
+    calls: the draws are copied into the calls' input buffers outside both Event
+    spans. Every call is checked after every sample against its draw of that
+    sample: fully the first time a draw is checked, then by bitwise equality
+    with that draw's first checked result (a difference is checked fully again).
     """
     import torch
 
@@ -423,10 +445,11 @@ def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _Case
     mutable = {name: working[name] for name in contract.mutable}
     first_inputs, first_reference = _draw(contract, case, 0, device)
     checked_bytes = values.nbytes(outputs) + values.nbytes(mutable)
-    # One call holds its draw, its reference, its output and mutable-input buffers, their
-    # first checked copy, the baseline's outputs and a poison pattern of each output that is
-    # not NaN-filled. Baseline outputs count in both roles, so K never depends on the role.
-    per_call = (values.nbytes(first_inputs) + values.nbytes(first_reference) + 3 * checked_bytes
+    # One call holds its draw, the copy of a draw staged into its input buffers, its
+    # reference, its output and mutable-input buffers, the first checked copy of its draw's
+    # results, the baseline's outputs and a poison pattern of each output that is not
+    # NaN-filled. Baseline outputs count in both roles, so K never depends on the role.
+    per_call = (2 * values.nbytes(first_inputs) + values.nbytes(first_reference) + 3 * checked_bytes
                 + values.nbytes({name: tensor for name, tensor in outputs.items() if not values.nan_poisoned(tensor)}))
     count = amortized_calls_per_replay(per_call)
     draws, references = [first_inputs], [first_reference]
@@ -439,14 +462,24 @@ def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _Case
         baselines = [_baseline_outputs(contract, case, baseline_call, inputs, device) for inputs in draws]
     # Distinct poison per call, precomputed: generators cannot be created under capture.
     patterns = [values.poison_pattern(outputs, 1000 + index) for index in range(count)]
-    inputs = [{**working, **{name: torch.empty_like(tensor) for name, tensor in mutable.items()}}
-              for _ in range(count)]
+    # Call i reads its read-only inputs from staged[i] and works on its own copy of the
+    # mutable ones, which its preparation restores from staged[i].
+    staged = [values.clone_inputs(first_inputs) for _ in range(count)]
+    inputs = [{**staged[index], **{name: torch.empty_like(tensor) for name, tensor in mutable.items()}}
+              for index in range(count)]
     written = [{name: torch.empty_like(tensor) for name, tensor in outputs.items()} for _ in range(count)]
+    assigned: list[int] = []        # the draw of each call in the current sample; empty until timing starts
     verified: list[dict | None] = [None] * count
     state = {"checked": 0, "full_checks": 0, "failed": []}
 
+    def stage() -> None:
+        assigned[:] = _secret_permutation(count)
+        for index, draw in enumerate(assigned):
+            values.copy_into(staged[index], draws[draw])
+
     def prepare(index: int) -> None:
-        values.copy_into(inputs[index], draws[index])
+        for name in mutable:
+            inputs[index][name].copy_(staged[index][name])
         values.apply_poison(written[index], patterns[index])
 
     def warm(index: int) -> None:
@@ -456,14 +489,15 @@ def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _Case
         call(**working, **outputs)
 
     def check_call(index: int, *, full: bool) -> tuple[bool, dict]:
+        draw = assigned[index]
         result = values.checked_values(contract, inputs[index], written[index])
-        if not full and verified[index] is not None and _same_bytes(verified[index], result):
+        if not full and verified[draw] is not None and _same_bytes(verified[draw], result):
             return True, {}
         state["full_checks"] += 1
-        ok, metrics = _check(contract, role, result, references[index],
-                             None if baselines is None else baselines[index])
-        if ok and verified[index] is None and not full:
-            verified[index] = {name: tensor.clone() for name, tensor in result.items()}
+        ok, metrics = _check(contract, role, result, references[draw],
+                             None if baselines is None else baselines[draw])
+        if ok and verified[draw] is None and not full:
+            verified[draw] = {name: tensor.clone() for name, tensor in result.items()}
         return ok, metrics
 
     def after_sample(_outputs) -> None:
@@ -473,13 +507,14 @@ def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _Case
         for index in range(count):
             ok, metrics = check_call(index, full=False)
             if not ok and len(state["failed"]) < 3:
-                state["failed"].append({"sample": state["checked"], "call": index, "outputs": metrics})
+                state["failed"].append({"sample": state["checked"], "call": index, "draw": assigned[index],
+                                        "outputs": metrics})
 
     timed = TimedRun()
     timed.after_sample = after_sample
     samples, metadata = benchmark_cuda_graph_cold_cache_amortized_samples(
         [lambda index=index: call(**inputs[index], **written[index]) for index in range(count)],
-        cache_flush=flush, prepare_fn=prepare, warmup_fn=warm,
+        cache_flush=flush, prepare_fn=prepare, warmup_fn=warm, stage_fn=stage,
         warmup=int(timing.get("warmup", 10)), repetition=int(timing.get("repetition", 100)),
         timed_run=timed)
     if check is not None:
@@ -490,6 +525,7 @@ def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _Case
     undetected = sum(check_call(index, full=True)[0] for index in range(count))
     metadata = dict(metadata, checked_samples=state["checked"], checked_calls=state["checked"] * count,
                     full_checks=state["full_checks"], benchmark_call_buffer_bytes=per_call,
+                    benchmark_draw_assignment="secret_permutation_per_sample",
                     reference_control_undetected_calls=undetected)
     failed = state["failed"]
     if undetected and role == "candidate":
@@ -498,8 +534,23 @@ def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _Case
     return samples, metadata, failed
 
 
+# A per-call time far below the same operator's single-call time cannot come
+# from removing the replay's fixed cost (about 7 us on MI355X) and the noise
+# of either measurement: it means the timed calls did less than the
+# single-call samples. Honest cases sit within a few us (short) or a few
+# percent (long) of the single-call median.
+CONSISTENCY_RATIO = 0.8
+CONSISTENCY_SLACK_MS = 0.010
+
+
+def _consistent(amortized_ms: float, single_ms: float) -> bool:
+    return amortized_ms >= CONSISTENCY_RATIO * single_ms - CONSISTENCY_SLACK_MS
+
+
 def performance_action(contract: Contract, role: str) -> dict:
     from . import values
+
+    from ._aka_benchmark import failed_captures
 
     device = _device()
     call, baseline_call, need_baseline, check = _role_calls(contract, role)
@@ -509,6 +560,15 @@ def performance_action(contract: Contract, role: str) -> dict:
         if "performance" not in case.checks:
             continue
         row = case.identity()
+        if failed_captures():
+            # A failed capture leaves the process's capture state unusable, so later
+            # cases cannot be measured here; say so instead of reporting their errors.
+            row.update(status="FAIL", failure_kind="execution_error",
+                       metadata={"error": "not measured: a CUDA-graph capture of an earlier case failed in "
+                                          "this process"})
+            failures.append(row["test_case_id"])
+            rows.append(row)
+            continue
         try:
             data = _CaseData(contract, case, device, baseline_call, need_baseline)
             working = values.clone_inputs(data.inputs[0].kernel)
@@ -518,8 +578,13 @@ def performance_action(contract: Contract, role: str) -> dict:
             if not failed:
                 samples, metadata, failed = _amortized_cold(contract, role, call, case, data, working, outputs,
                                                             flush, check, device, baseline_call)
+            if not failed and not _consistent(statistics.median(samples), statistics.median(single)):
+                failed = [{"consistency": f"amortized median {statistics.median(samples) * 1e3:.2f} us is below "
+                                          f"{CONSISTENCY_RATIO} x the single-call median "
+                                          f"{statistics.median(single) * 1e3:.2f} us - "
+                                          f"{CONSISTENCY_SLACK_MS * 1e3:.0f} us"}]
             if failed:
-                control = any("control" in failure for failure in failed)
+                control = any("control" in failure or "consistency" in failure for failure in failed)
                 row.update(status="FAIL",
                            failure_kind="unverifiable_measurement" if control else "numerical_mismatch",
                            metadata={"measured_output_failures": failed})
@@ -584,15 +649,19 @@ def _failed_captures() -> int:
     return helper.failed_captures() if helper is not None else 0
 
 
+def _exit(code: int) -> None:
+    if _failed_captures():
+        # PyTorch aborts while destroying a graph whose capture failed, which
+        # would replace the reported result's exit code with a signal.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(code)
+    sys.exit(code)
+
+
 if __name__ == "__main__":
     os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
     # Containers often run as a uid absent from /etc/passwd; getpass-based
     # cache paths in PyTorch/Triton must not turn that into a task failure.
     os.environ.setdefault("USER", "aka")
-    code = main()
-    if _failed_captures():
-        # PyTorch aborts while destroying a graph whose capture failed, which
-        # would replace the reported result's exit code with a signal.
-        sys.stderr.flush()
-        os._exit(code)
-    sys.exit(code)
+    _exit(main())

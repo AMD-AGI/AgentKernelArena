@@ -148,6 +148,7 @@ def test_tampering_found_during_a_timing_sample_survives_the_timing_helper(monke
 
     helper = types.ModuleType(f"{PACKAGE}._aka_benchmark")
     helper.TimedRun, helper.benchmark_cuda_graph_cold_cache_samples = TimedRun, benchmark
+    helper.failed_captures = lambda: 0
     monkeypatch.setitem(sys.modules, helper.__name__, helper)
 
     def check(stage):
