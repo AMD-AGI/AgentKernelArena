@@ -215,6 +215,11 @@ def check_initial(context: dict, contract_raw: dict | None, findings: list[Findi
                 method = case.get("benchmark_method")
                 if method != AMORTIZED_COLD_CACHE_METHOD:
                     findings.append(Finding("QA-TIMING-METHOD", f"{role} {case.get('test_case_id')}: {method}"))
+                if role == "baseline" and (case.get("metadata") or {}).get("reference_control_undetected_calls"):
+                    findings.append(Finding(
+                        "QA-TIMING-CONTROL", f"{case.get('test_case_id')}: "
+                        f"{case['metadata']['reference_control_undetected_calls']} timed calls without the "
+                        "operator passed the output checks"))
                 if role == "baseline":
                     time_ms = case.get("execution_time_ms")
                     if not isinstance(time_ms, (int, float)) or time_ms < MIN_BASELINE_CASE_MS:

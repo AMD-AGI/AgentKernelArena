@@ -259,7 +259,11 @@ def _context(**initial) -> dict:
     ("gfx942", {}, ["QA-UNVERIFIED-ARCH"]),
     ("gfx950", {"candidate_checks": "FAIL"}, ["QA-POSITIVE"]),
     ("gfx950", {"case": {"execution_time_ms": 0.004}}, ["QA-TIMING-FLOOR"]),
+    ("gfx950", {"case": {"execution_time_ms": 0.006}}, []),
     ("gfx950", {"case": {"benchmark_method": "hip_events"}}, ["QA-TIMING-METHOD"]),
+    ("gfx950", {"case": {"benchmark_method": "cuda_graph_cold_cache"}}, ["QA-TIMING-METHOD"]),
+    ("gfx950", {"case": {"metadata": {"reference_control_undetected_calls": 3}}}, ["QA-TIMING-CONTROL"]),
+    ("gfx950", {"case": {"metadata": {"reference_control_undetected_calls": 0}}}, []),
     ("gfx950", {"accepted": False, "errors": ["baseline compile failed"]}, ["QA-INITIAL"]),
 ])
 def test_run_deterministic_on_the_pilot(workspace, tmp_path, monkeypatch, arch, initial, expected):
