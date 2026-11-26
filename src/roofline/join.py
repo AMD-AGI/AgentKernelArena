@@ -1,9 +1,12 @@
 """Join floors with measured performance evidence and summarize per task.
 
 Measurements come from task-session action records (``action-NNNN-<role>-performance.json``)
-whose session directory holds ``session.json`` with the task ID. Only cases timed with
-``cuda_graph_cold_cache`` are joined: that method evicts the caches before every call, so every
-byte comes from HBM and the HBM bandwidth applies. Other methods are skipped with a reason.
+whose session directory holds ``session.json`` with the task ID. Only cases timed with a cold-cache
+method (``cuda_graph_cold_cache_amortized``, the evaluator's current one, or the earlier single-call
+``cuda_graph_cold_cache``) are joined: both evict the caches before every call, so every byte comes
+from HBM and the HBM bandwidth applies. The single-call method also charges the fixed cost of one
+graph replay to every call, so it overstates short operators; each joined record keeps its method.
+Other methods are skipped with a reason.
 
 A measurement more than ``VIOLATION_MARGIN`` faster than its floor is a violation, and its role
 decides what it means. A baseline is a reviewed reference implementation, so a baseline violation
@@ -34,6 +37,8 @@ from .arch import Peaks
 from .generated import GENERATION_KEYS
 
 COLD_CACHE = "cuda_graph_cold_cache"
+AMORTIZED_COLD_CACHE = "cuda_graph_cold_cache_amortized"
+COLD_CACHE_METHODS = (AMORTIZED_COLD_CACHE, COLD_CACHE)
 VIOLATION_MARGIN = 0.95
 ACTION_FILE = re.compile(r"action-\d+-(?P<role>baseline|candidate)-performance\.json$")
 
@@ -61,9 +66,9 @@ def measurements(evidence_root: Path) -> tuple[list[dict], list[dict]]:
             continue
         for case in result.get("cases", []):
             method = case.get("benchmark_method")
-            if method != COLD_CACHE:
+            if method not in COLD_CACHE_METHODS:
                 skipped.append({"file": str(path), "task_id": task_id, "case_id": case.get("test_case_id"),
-                                "reason": f"benchmark_method {method!r} is not {COLD_CACHE}"})
+                                "reason": f"benchmark_method {method!r} is not a cold-cache method"})
                 continue
             rows.append({"task_id": task_id, "case_id": case["test_case_id"], "role": match["role"],
                          "us": float(case["execution_time_ms"]) * 1e3, "method": method, "file": str(path),
