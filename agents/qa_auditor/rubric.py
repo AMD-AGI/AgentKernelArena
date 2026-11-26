@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-RUBRIC_VERSION = "2026-11-10.1"
+RUBRIC_VERSION = "2026-11-26.1"
 BLOCKING = "blocking"
 WARNING = "warning"
 MIN_BASELINE_CASE_MS = 0.010
@@ -46,9 +46,10 @@ CHECKS = {check.check_id: check for check in (
           "computation, no process/FFI/interpreter modules reached through attributes, capturable launches) "
           "so the candidate path accepts a correct implementation. A harness_tampering failure means the "
           "baseline changed an evaluator, PyTorch or interpreter binding; stop doing that."),
-    Check("QA-TIMING-METHOD", BLOCKING, "Every performance case is a cold-cache CUDA-graph timing",
+    Check("QA-TIMING-METHOD", BLOCKING, "Every performance case is an amortized cold-cache CUDA-graph timing",
           "Make the baseline graph-capturable on the current stream."),
-    Check("QA-TIMING-FLOOR", BLOCKING, "Every performance case takes the baseline at least 10 us",
+    Check("QA-TIMING-FLOOR", BLOCKING, "Every performance case takes the baseline at least 10 us "
+          "(amortized cold-cache time)",
           "Use larger production shapes for performance cases; keep small shapes as correctness-only."),
     Check("QA-CONTROLS", BLOCKING, "Correctness rejects every known-wrong control implementation",
           "Strengthen inputs, cases or the error bound so the surviving control fails."),

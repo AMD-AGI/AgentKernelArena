@@ -247,7 +247,7 @@ def test_provenance_needs_a_fixed_revision_and_a_license_file(workspace, update,
 
 
 def _context(**initial) -> dict:
-    case = {"test_case_id": "t2048", "benchmark_method": "cuda_graph_cold_cache", "execution_time_ms": 0.05}
+    case = {"test_case_id": "t2048", "benchmark_method": "cuda_graph_cold_cache_amortized", "execution_time_ms": 0.05}
     case.update(initial.pop("case", {}))
     return {"task_id": PILOT_ID, "task_config": {"contract": {"baseline_language": "triton"}},
             "initial_validation": {"accepted": True, "candidate_checks": "PASS", **initial},

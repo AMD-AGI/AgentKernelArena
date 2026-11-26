@@ -117,8 +117,8 @@ not prove.
 | `QA-PROVENANCE` | blocking | The baseline's revision is not a fixed commit or release, a provenance field is a placeholder, or a non-Apache-2.0 baseline has no `baseline/LICENSE`. | Fill `baseline.provenance` with the real source, revision, path and license. |
 | `QA-INITIAL` | blocking | Framework initial validation did not accept the task. | Make `validate-task` and baseline compile, correctness and performance pass; read the captured evidence. |
 | `QA-POSITIVE` | blocking | A copy of the baseline fails as a candidate, including a `harness_tampering` failure. | Make the baseline satisfy its language's candidate rules (kernels only, no PyTorch computation, no process/FFI/interpreter modules reached through attributes, capturable launches) and stop changing evaluator, PyTorch or interpreter bindings. |
-| `QA-TIMING-METHOD` | blocking | A performance case was not timed as a cold-cache CUDA graph. | Make the baseline graph-capturable on the current stream. |
-| `QA-TIMING-FLOOR` | blocking | A performance case takes the baseline under 10 us. | Use larger production shapes; keep small shapes correctness-only. |
+| `QA-TIMING-METHOD` | blocking | A performance case was not timed as an amortized cold-cache CUDA graph (`cuda_graph_cold_cache_amortized`). | Make the baseline graph-capturable on the current stream. |
+| `QA-TIMING-FLOOR` | blocking | A performance case takes the baseline under 10 us of amortized cold-cache time (the scored `execution_time_ms`, not `single_call_cold_ms`). | Use larger production shapes; keep small shapes correctness-only. |
 | `QA-CONTROLS` | blocking | A known-wrong control implementation passes correctness. | Strengthen inputs, cases or the error bound. |
 | `QA-CONTROLS-RUN` | blocking | The control suite timed out, wrote no report or did not complete. | Fix the input, reference or baseline failure it reports. |
 | `QA-INPUTS` | blocking | An input draw is degenerate (constant, or exactly representable in a lower precision than declared). | Use a distribution whose values vary. |
@@ -156,7 +156,7 @@ as absent. Key fields:
 
 ```yaml
 qa_report_version: 1
-rubric_version: "2026-11-10.1"
+rubric_version: "2026-11-26.1"
 task_id: triton/normalization/rms_norm/bf16_h8192
 task_package_sha256: ...        # the exact task package audited
 target_language: triton         # the candidate language used for the positive control
