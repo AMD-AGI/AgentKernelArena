@@ -199,32 +199,46 @@ def test_amortized_cold_cache_keeps_every_captured_call_observable() -> None:
     assert torch.equal(outputs, expected)
 
 
-def _fork_calls(join_each: bool):
-    count = 4
-    x = torch.full((4096,), 3.0, device="cuda")
-    outputs = torch.empty((count, 4096), device="cuda")
-    side = torch.cuda.Stream()
+_FORK_PROGRAM = """
+import os, sys, torch
+from src.tools.perf.aka_benchmark import ReadOnlyCacheFlush, benchmark_cuda_graph_cold_cache_amortized_samples
+join_each = sys.argv[1] == "join"
+count = 4
+x = torch.full((4096,), 3.0, device="cuda")
+outputs = torch.empty((count, 4096), device="cuda")
+side = torch.cuda.Stream()
 
-    def call(index):
-        current = torch.cuda.current_stream()
-        side.wait_stream(current)
-        with torch.cuda.stream(side):
-            torch.mul(x, 2, out=outputs[index])
-        # A candidate that joins only at the last call lets each call overlap the next call's eviction.
-        if join_each or index == count - 1:
-            current.wait_stream(side)
+def call(index):
+    current = torch.cuda.current_stream()
+    side.wait_stream(current)
+    with torch.cuda.stream(side):
+        torch.mul(x, 2, out=outputs[index])
+    # A candidate that joins only at the last call lets each call overlap the next call's eviction.
+    if join_each or index == count - 1:
+        current.wait_stream(side)
 
-    return [lambda index=index: call(index) for index in range(count)], outputs
+try:
+    samples, _ = benchmark_cuda_graph_cold_cache_amortized_samples(
+        [lambda index=index: call(index) for index in range(count)], cache_flush=ReadOnlyCacheFlush(),
+        warmup=1, repetition=4)
+    print("MEASURED", len(samples), bool(torch.equal(outputs, torch.full_like(outputs, 6.0))), flush=True)
+except RuntimeError as exc:
+    print("REJECTED", "capture failed" in str(exc), flush=True)
+# A graph whose capture failed aborts PyTorch when destroyed; end without finalizing it.
+os._exit(0)
+"""
 
 
 def test_amortized_calls_must_join_their_forked_streams_within_their_own_graph() -> None:
-    from src.tools.perf.aka_benchmark import ReadOnlyCacheFlush, benchmark_cuda_graph_cold_cache_amortized_samples
-    flush = ReadOnlyCacheFlush()
-    calls, outputs = _fork_calls(join_each=True)
-    samples, _ = benchmark_cuda_graph_cold_cache_amortized_samples(calls, cache_flush=flush, warmup=1,
-                                                                   repetition=4)
-    assert len(samples) == 4
-    calls, outputs = _fork_calls(join_each=False)
-    with pytest.raises(RuntimeError, match="capture failed"):
-        benchmark_cuda_graph_cold_cache_amortized_samples(calls, cache_flush=flush, warmup=1, repetition=4)
-    torch.cuda.synchronize()
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    def run(mode):
+        result = subprocess.run([sys.executable, "-c", _FORK_PROGRAM, mode], cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True, timeout=600)
+        assert result.returncode == 0, result.stderr[-2000:]
+        return result.stdout.split()
+
+    assert run("join") == ["MEASURED", "4", "True"]
+    assert run("fork") == ["REJECTED", "True"]

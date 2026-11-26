@@ -579,9 +579,20 @@ def main() -> int:
     return code
 
 
+def _failed_captures() -> int:
+    helper = sys.modules.get(f"{__package__}._aka_benchmark")
+    return helper.failed_captures() if helper is not None else 0
+
+
 if __name__ == "__main__":
     os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
     # Containers often run as a uid absent from /etc/passwd; getpass-based
     # cache paths in PyTorch/Triton must not turn that into a task failure.
     os.environ.setdefault("USER", "aka")
-    sys.exit(main())
+    code = main()
+    if _failed_captures():
+        # PyTorch aborts while destroying a graph whose capture failed, which
+        # would replace the reported result's exit code with a signal.
+        sys.stderr.flush()
+        os._exit(code)
+    sys.exit(code)

@@ -749,6 +749,19 @@ def benchmark_cuda_event_samples(
     return samples
 
 
+# PyTorch aborts the process when a graph whose capture failed is destroyed
+# (for example after a call left a forked stream unjoined: "The graph should be
+# registered to the state"). Such graphs are kept alive here instead, so the
+# failure is reported; a process holding one must end without finalizing them
+# (see ``failed_captures``).
+_FAILED_CAPTURES: list[Any] = []
+
+
+def failed_captures() -> int:
+    """How many graphs failed to capture in this process (they are never destroyed)."""
+    return len(_FAILED_CAPTURES)
+
+
 def _capture_graph(
     fn: Callable[[], Any],
     repeats: int,
@@ -768,14 +781,18 @@ def _capture_graph(
             synchronize()
         else:
             torch.cuda.synchronize()
-    with warnings.catch_warnings(record=True) as captured_warnings:
-        warnings.simplefilter("always")
-        with torch.cuda.stream(stream):
-            with torch.cuda.graph(graph, **({} if pool is None else {"pool": pool})):
-                for _ in range(repeats):
-                    captured_outputs = fn()
-                    if output_holder is not None:
-                        output_holder[:] = [captured_outputs]
+    try:
+        with warnings.catch_warnings(record=True) as captured_warnings:
+            warnings.simplefilter("always")
+            with torch.cuda.stream(stream):
+                with torch.cuda.graph(graph, **({} if pool is None else {"pool": pool})):
+                    for _ in range(repeats):
+                        captured_outputs = fn()
+                        if output_holder is not None:
+                            output_holder[:] = [captured_outputs]
+    except BaseException:
+        _FAILED_CAPTURES.append(graph)
+        raise
     torch.cuda.synchronize()
     if any(
         "graph is empty" in str(item.message).lower()
