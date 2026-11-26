@@ -128,9 +128,12 @@ A case also fails as `unverifiable_measurement`, in both roles, when its
 amortized median is below `0.8 x single-call median - 10 us`
 (`CONSISTENCY_RATIO`, `CONSISTENCY_SLACK_MS`). Removing the replay's fixed cost
 (about 7 us) cannot account for that much: the timed calls did less work than
-the single-call samples. Measured MI355X cases stay at least about 6 us above
+the single-call samples. Measured MI355X cases stay at least about 5 us above
 this bound (short cases) or within about 12% of their single-call time (long
-cases).
+cases). The bound limits a cheat confined to the timed stage: a review of this
+method estimated that such a cheat can stay under it with at most about 1.3 to
+1.9x fake speedup. It does not stop an implementation that cheats the same way
+in both stages (below).
 
 Copying each call's outputs into a snapshot after the call, in both graphs,
 would not cancel: in the operator graph the copy reads values the call has just
@@ -146,9 +149,13 @@ of the same processes varied by 2%. The cause is not identified; the final
 evaluation therefore averages several processes per arm and flags cases whose
 spread is high (below).
 
-Implementation code that fingerprints its inputs on the device and returns a
-result stored for that fingerprint in an earlier replay is not ruled out by
-these checks; the single-call method had the same exposure.
+Implementation code that fingerprints its inputs on the device (reads a few
+elements) and returns a result stored for that fingerprint in an earlier replay
+is not ruled out by these checks or by the consistency bound, because it can do
+so in the single-call samples and the amortized samples alike. A review verified
+that such a cheat passes with this method and with the earlier single-call
+method, so the gap predates it. Timing samples on secret fresh draws, never seen
+before by the implementation, are the planned follow-up.
 
 A capture that fails (for example because a call left a forked stream unjoined)
 fails its case, and the remaining cases of the action are reported as not
