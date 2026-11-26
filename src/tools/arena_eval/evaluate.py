@@ -313,6 +313,11 @@ def _cache_flush(nbytes: int):
     return _FLUSH
 
 
+# The single-call cold-cache median is kept as metadata for continuity with
+# earlier results; it is not scored, so a few samples suffice.
+SINGLE_CALL_SAMPLES = 10
+
+
 def _single_call_cold(contract: Contract, role: str, call, data: _CaseData, working: dict, outputs: dict,
                       flush, check) -> tuple[list[float], dict, list]:
     """The single-call cold-cache samples: one call per replay, its outputs checked after every sample."""
@@ -345,24 +350,68 @@ def _single_call_cold(contract: Contract, role: str, call, data: _CaseData, work
     timed.after_sample = after_sample
     samples, metadata = benchmark_cuda_graph_cold_cache_samples(
         lambda: call(**working, **outputs), cache_flush=flush,
-        warmup=int(timing.get("warmup", 10)), repetition=int(timing.get("repetition", 100)),
+        warmup=int(timing.get("warmup", 10)), repetition=SINGLE_CALL_SAMPLES,
         prepare_fn=prepare, timed_run=timed)
     if check is not None:
         check("timing")
     return samples, dict(metadata, checked_samples=state["checked"]), state["failed"]
 
 
-def _amortized_cold(contract: Contract, role: str, call, data: _CaseData, working: dict, outputs: dict,
-                    flush, check, estimate_ms: float) -> tuple[list[float], dict, list]:
+def draw_seed(case: Case, index: int) -> int:
+    """The seed of the amortized measurement's draw ``index``, derived from the case's framework seeds.
+
+    A SplitMix64 step in integer arithmetic only, so candidate code that runs in
+    this process has no library function to replace. The draws differ from the
+    two correctness seeds, which warm the operator up and time the single-call
+    samples, and from each other.
+    """
+    mask = (1 << 64) - 1
+    value = (case.seeds[0] << 32 | case.seeds[1]) + (index + 1) * 0x9E3779B97F4A7C15 & mask
+    value = (value ^ value >> 30) * 0xBF58476D1CE4E5B9 & mask
+    value = (value ^ value >> 27) * 0x94D049BB133111EB & mask
+    return (value ^ value >> 31) & 0x7FFFFFFF
+
+
+def _draw(contract: Contract, case: Case, index: int, device) -> tuple[dict, dict]:
+    """Kernel inputs and reference outputs of amortized draw ``index``."""
+    from . import values
+
+    drawn = values.make_inputs(contract, case, draw_seed(case, index), device)
+    return drawn.kernel, values.reference_outputs(contract, drawn.logical)
+
+
+def _baseline_outputs(contract: Contract, case: Case, baseline_call, inputs: dict, device) -> dict:
+    from . import values
+
+    kernel = values.clone_inputs(inputs)
+    outputs = values.allocate_outputs(contract, case, device)
+    values.poison(outputs, 7)
+    baseline_call(**kernel, **outputs)
+    _synchronize()
+    return {name: tensor.clone() for name, tensor in values.checked_values(contract, kernel, outputs).items()}
+
+
+def _same_bytes(first: dict, second: dict) -> bool:
+    import torch
+
+    from . import values
+
+    return all(torch.equal(values.tensor_bytes(first[name]), values.tensor_bytes(second[name])) for name in first)
+
+
+def _amortized_cold(contract: Contract, role: str, call, case: Case, data: _CaseData, working: dict,
+                    outputs: dict, flush, check, device, baseline_call) -> tuple[list[float], dict, list]:
     """Amortized cold-cache samples with every call's results checked.
 
-    The candidate's Python runs once per call while the graph is captured, so
-    with one shared output buffer it could count the calls and do the work on
-    the last one only. Each call of a replay therefore writes its own outputs
-    and mutable inputs (read-only inputs are shared), and every call is checked
-    after every sample. Copying the results out after each call instead would
-    not cancel: the copy reads values the operator has just left in the caches,
-    while the reference graph's copy reads them cold.
+    The candidate's Python runs once per captured call, so with one shared
+    output buffer it could count the calls and work on the last one only, and
+    with repeated inputs a call could copy the result of an earlier call. Each
+    call of a sample therefore has an input draw of its own (with its own
+    reference and, where the bound needs it, baseline outputs) and writes its
+    own outputs and mutable inputs; read-only inputs are reloaded into shared
+    buffers. Every call is checked after every sample: fully once per call,
+    then by bitwise equality with its first checked result (a mismatch is
+    checked fully again).
     """
     import torch
 
@@ -372,55 +421,76 @@ def _amortized_cold(contract: Contract, role: str, call, data: _CaseData, workin
 
     timing = contract.timing
     mutable = {name: working[name] for name in contract.mutable}
-    # Each call owns its outputs, its mutable inputs and a poison pattern of every
-    # output that is not NaN-filled.
-    per_call = values.nbytes(outputs) + values.nbytes(mutable) + values.nbytes(
-        {name: tensor for name, tensor in outputs.items() if not values.nan_poisoned(tensor)})
-    count = amortized_calls_per_replay(estimate_ms, per_call_bytes=per_call)
+    first_inputs, first_reference = _draw(contract, case, 0, device)
+    checked_bytes = values.nbytes(outputs) + values.nbytes(mutable)
+    # One call holds its draw, its reference, its output and mutable-input buffers, their
+    # first checked copy, the baseline's outputs and a poison pattern of each output that is
+    # not NaN-filled. Baseline outputs count in both roles, so K never depends on the role.
+    per_call = (values.nbytes(first_inputs) + values.nbytes(first_reference) + 3 * checked_bytes
+                + values.nbytes({name: tensor for name, tensor in outputs.items() if not values.nan_poisoned(tensor)}))
+    count = amortized_calls_per_replay(per_call)
+    draws, references = [first_inputs], [first_reference]
+    for index in range(1, count):
+        inputs, reference = _draw(contract, case, index, device)
+        draws.append(inputs)
+        references.append(reference)
+    baselines = None
+    if data.baselines is not None:
+        baselines = [_baseline_outputs(contract, case, baseline_call, inputs, device) for inputs in draws]
     # Distinct poison per call, precomputed: generators cannot be created under capture.
     patterns = [values.poison_pattern(outputs, 1000 + index) for index in range(count)]
     inputs = [{**working, **{name: torch.empty_like(tensor) for name, tensor in mutable.items()}}
               for _ in range(count)]
     written = [{name: torch.empty_like(tensor) for name, tensor in outputs.items()} for _ in range(count)]
-    state = {"checked": 0, "failed": []}
+    verified: list[dict | None] = [None] * count
+    state = {"checked": 0, "full_checks": 0, "failed": []}
 
     def prepare(index: int) -> None:
-        values.copy_into(inputs[index], data.inputs[index % 2].kernel)
+        values.copy_into(inputs[index], draws[index])
         values.apply_poison(written[index], patterns[index])
 
-    def check_calls() -> list[dict]:
-        failed = []
-        for index in range(count):
-            ok, metrics = _check(contract, role, values.checked_values(contract, inputs[index], written[index]),
-                                 data.references[index % 2],
-                                 None if data.baselines is None else data.baselines[index % 2])
-            if not ok:
-                failed.append({"call": index, "outputs": metrics})
-        return failed
+    def warm(index: int) -> None:
+        # Warm-up uses the correctness draws and the single-call buffers, never a timed draw.
+        values.copy_into(working, data.inputs[index % 2].kernel)
+        values.poison(outputs, 50 + index)
+        call(**working, **outputs)
+
+    def check_call(index: int, *, full: bool) -> tuple[bool, dict]:
+        result = values.checked_values(contract, inputs[index], written[index])
+        if not full and verified[index] is not None and _same_bytes(verified[index], result):
+            return True, {}
+        state["full_checks"] += 1
+        ok, metrics = _check(contract, role, result, references[index],
+                             None if baselines is None else baselines[index])
+        if ok and verified[index] is None and not full:
+            verified[index] = {name: tensor.clone() for name, tensor in result.items()}
+        return ok, metrics
 
     def after_sample(_outputs) -> None:
         if check is not None:
             check("a timing sample")
         state["checked"] += 1
-        for failure in check_calls():
-            if len(state["failed"]) < 3:
-                state["failed"].append({"sample": state["checked"], **failure})
+        for index in range(count):
+            ok, metrics = check_call(index, full=False)
+            if not ok and len(state["failed"]) < 3:
+                state["failed"].append({"sample": state["checked"], "call": index, "outputs": metrics})
 
     timed = TimedRun()
     timed.after_sample = after_sample
     samples, metadata = benchmark_cuda_graph_cold_cache_amortized_samples(
         [lambda index=index: call(**inputs[index], **written[index]) for index in range(count)],
-        cache_flush=flush, prepare_fn=prepare,
+        cache_flush=flush, prepare_fn=prepare, warmup_fn=warm,
         warmup=int(timing.get("warmup", 10)), repetition=int(timing.get("repetition", 100)),
         timed_run=timed)
     if check is not None:
         check("timing")
-    # Control: the helper ended with a reference-graph replay, which never runs
-    # the operator. Checks that accept those buffers cannot show that each call
-    # did its work, so a candidate is not scored on them.
-    undetected = count - len(check_calls())
+    # Control: the helper ended with a reference replay, which never runs the
+    # operator. Checks that accept those buffers cannot show that each call did
+    # its work, so a candidate is not scored on them.
+    undetected = sum(check_call(index, full=True)[0] for index in range(count))
     metadata = dict(metadata, checked_samples=state["checked"], checked_calls=state["checked"] * count,
-                    benchmark_call_buffer_bytes=per_call, reference_control_undetected_calls=undetected)
+                    full_checks=state["full_checks"], benchmark_call_buffer_bytes=per_call,
+                    reference_control_undetected_calls=undetected)
     failed = state["failed"]
     if undetected and role == "candidate":
         failed = failed + [{"control": f"{undetected} of {count} calls without the operator passed the "
@@ -446,8 +516,8 @@ def performance_action(contract: Contract, role: str) -> dict:
             single, single_metadata, failed = _single_call_cold(contract, role, call, data, working, outputs,
                                                                 flush, check)
             if not failed:
-                samples, metadata, failed = _amortized_cold(contract, role, call, data, working, outputs,
-                                                            flush, check, statistics.median(single))
+                samples, metadata, failed = _amortized_cold(contract, role, call, case, data, working, outputs,
+                                                            flush, check, device, baseline_call)
             if failed:
                 control = any("control" in failure for failure in failed)
                 row.update(status="FAIL",
@@ -458,7 +528,7 @@ def performance_action(contract: Contract, role: str) -> dict:
                                 samples_count=len(samples),
                                 single_call_cold_ms=statistics.median(single),
                                 single_call_cold_method=single_metadata["benchmark_method"],
-                                single_call_cold_checked_samples=single_metadata["checked_samples"])
+                                single_call_cold_samples=len(single))
                 row.update(status="PASS", execution_time_ms=statistics.median(samples),
                            benchmark_method=metadata["benchmark_method"], metadata=metadata)
         except Exception as exc:

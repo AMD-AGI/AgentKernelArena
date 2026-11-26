@@ -755,6 +755,7 @@ def _capture_graph(
     stream: Any,
     prepare_fn: Callable[[], Any] | None = None,
     output_holder: list[Any] | None = None,
+    pool: Any = None,
 ) -> Any:
     graph = torch.cuda.CUDAGraph()
     if prepare_fn is not None:
@@ -770,7 +771,7 @@ def _capture_graph(
     with warnings.catch_warnings(record=True) as captured_warnings:
         warnings.simplefilter("always")
         with torch.cuda.stream(stream):
-            with torch.cuda.graph(graph):
+            with torch.cuda.graph(graph, **({} if pool is None else {"pool": pool})):
                 for _ in range(repeats):
                     captured_outputs = fn()
                     if output_holder is not None:
@@ -1492,60 +1493,51 @@ def benchmark_cuda_graph_cold_cache_samples(
 
 
 AMORTIZED_COLD_CACHE_METHOD = "cuda_graph_cold_cache_amortized"
-# Calls per replay of the amortized method. The single-call bracket (Event pair
-# plus graph launch) is about 7 us on MI355X; subtracting the reference graph
-# removes it, and the remaining per-sample noise (about +-0.6 us p10-p90 at 32
-# calls) shrinks as 1/calls. 32 calls cover every operator under ~60 us; longer
-# operators need fewer calls for the same relative precision, so the count
-# targets about 2 ms of operator time per replay, and never drops below 4 so
-# the residual replay cost stays a small fraction of one call.
+# Calls per sample of the amortized method. The count depends only on the case's
+# buffer sizes, never on a measured time, so baseline and candidate always use
+# the same count. More calls shrink the per-sample noise (about +-0.6 us p10-p90
+# at 32 calls on MI355X) and the share of any per-sample cost the reference does
+# not cancel; the per-call buffers bound it, and 4 is the minimum.
 AMORTIZED_MIN_CALLS = 4
 AMORTIZED_MAX_CALLS = 32
-AMORTIZED_TARGET_REPLAY_MS = 2.0
-# Bound on the per-call buffers (K copies of every output and mutable input).
-AMORTIZED_SNAPSHOT_BUDGET_BYTES = 4 << 30
+# Bound on the per-call device memory (draws, buffers, references, checks).
+AMORTIZED_BUFFER_BUDGET_BYTES = 4 << 30
 
 
 def amortized_calls_per_replay(
-    estimate_ms: float,
+    per_call_bytes: int,
     *,
-    per_call_bytes: int = 0,
-    budget_bytes: int = AMORTIZED_SNAPSHOT_BUDGET_BYTES,
-    target_ms: float = AMORTIZED_TARGET_REPLAY_MS,
+    budget_bytes: int = AMORTIZED_BUFFER_BUDGET_BYTES,
     minimum: int = AMORTIZED_MIN_CALLS,
     maximum: int = AMORTIZED_MAX_CALLS,
 ) -> int:
-    """Calls per replay for the amortized method, from a single-call estimate.
+    """Calls per sample for the amortized method, from the memory one call needs.
 
-    ``int(target_ms / estimate_ms)`` clamped to ``[minimum, maximum]``: short
-    operators get ``maximum`` calls, long ones fewer so a replay stays near
-    ``target_ms`` of operator time. ``per_call_bytes`` is the memory each call
-    needs for its own buffers (outputs, mutable inputs, poison patterns); the count is
-    reduced until ``calls * per_call_bytes <= budget_bytes``, but never below
-    ``minimum``. At the minimum the budget can be exceeded, and an allocation
-    that does not fit fails the measurement instead of weakening it.
+    ``budget_bytes // per_call_bytes`` clamped to ``[minimum, maximum]``. The
+    count is a function of the case alone (its input, output and reference
+    sizes), so both arms of a comparison use the same count. At the minimum the
+    budget can be exceeded; an allocation that does not fit fails the
+    measurement instead of weakening it.
     """
-    estimate_ms = float(estimate_ms)
-    if not math.isfinite(estimate_ms) or estimate_ms <= 0.0:
-        raise ValueError(f"amortized timing needs a positive finite estimate, got {estimate_ms!r}")
     if type(minimum) is not int or type(maximum) is not int or not 1 <= minimum <= maximum:
         raise ValueError("amortized timing needs integer 1 <= minimum <= maximum calls")
-    if type(per_call_bytes) is not int or per_call_bytes < 0 or type(budget_bytes) is not int or budget_bytes <= 0:
-        raise ValueError("amortized timing needs integer per_call_bytes >= 0 and budget_bytes > 0")
-    calls = min(maximum, max(minimum, int(float(target_ms) / estimate_ms)))
-    if per_call_bytes:
-        calls = min(calls, max(minimum, budget_bytes // per_call_bytes))
-    return calls
+    if type(per_call_bytes) is not int or per_call_bytes <= 0 or type(budget_bytes) is not int or budget_bytes <= 0:
+        raise ValueError("amortized timing needs integer per_call_bytes > 0 and budget_bytes > 0")
+    return min(maximum, max(minimum, budget_bytes // per_call_bytes))
 
 
-def _amortized_replay_ms(graph: Any, stream: Any) -> float:
+def _amortized_group_ms(graphs: list[Any], stream: Any, cache_flush: ReadOnlyCacheFlush) -> float:
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
-    # Order the replay after the caller's work (checks, poison) on its stream.
+    # Order the replays after the caller's work (checks, poison) on its stream.
     stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
         start_event.record(stream)
-        graph.replay()
+        for graph in graphs:
+            graph.replay()
+        # A trailing eviction in both groups puts the last call's write-back
+        # inside the span, as every earlier call's falls into the next eviction.
+        cache_flush()
         end_event.record(stream)
     _wait_for_event(end_event)
     return _event_elapsed_ms(start_event, end_event)
@@ -1556,39 +1548,51 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
     *,
     cache_flush: ReadOnlyCacheFlush,
     prepare_fn: Callable[[int], Any] | None = None,
+    warmup_fn: Callable[[int], Any] | None = None,
     warmup: int = 10,
     repetition: int = 100,
     timed_run: Any | None = None,
 ) -> tuple[list[float], dict[str, Any]]:
-    """Cold-cache per-call time with the replay's fixed cost subtracted.
+    """Cold-cache per-call time with the fixed cost of graph replay subtracted.
 
-    ``calls`` holds one zero-argument callable per call of a replay; ``K`` is
+    ``calls`` holds one zero-argument callable per call of a sample; ``K`` is
     its length. Each callable must run the complete operator on buffers of its
     own (its outputs and any input it mutates), so that every call's result is
-    still observable after a replay. Two graphs are captured on one side stream:
+    still observable after a sample. For every call ``i`` two graphs are
+    captured on one side stream:
 
-    - the operator graph runs, for ``i`` in ``0..K-1``: ``prepare_fn(i)``, cache
-      eviction, ``calls[i]()``;
-    - the reference graph runs the same sequence without the calls.
+    - an operator graph: ``prepare_fn(i)``, cache eviction, ``calls[i]()``;
+    - a reference graph: ``prepare_fn(i)``, cache eviction.
 
-    Each sample replays both graphs, each between its own pair of Events, in
-    alternating order (reference first on even samples, operator first on odd
-    ones) so drift cancels, and reports ``(operator_ms - reference_ms) / K``.
-    Preparation, eviction and the replay's launch and Event cost appear in both
-    spans and cancel; every call starts with evicted caches.
+    Capturing each call into its own graph makes every call join any stream it
+    forks before its capture ends, so no call's work can overlap the next
+    call's preparation and eviction. The operator graphs share one memory pool.
+
+    A sample replays the K operator graphs back to back between one pair of
+    Events, followed by one more eviction, and the K reference graphs the same
+    way; the two groups alternate in order (reference first on even samples)
+    and the sample is ``(operator span - reference span) / K``. Preparation,
+    the evictions, the graph launches and the Events are in both spans, so
+    their mean cost cancels; what remains is each call's time from evicted
+    caches, including the write-back of its outputs during the next eviction.
+    Graph launch and eviction costs vary from replay to replay, which is the
+    noise of a sample.
 
     ``prepare_fn(i)`` is captured, so it must be capturable (copies and fills on
     the current stream; no generator creation, host synchronization or
     allocation). It loads call ``i``'s inputs and poisons its outputs.
+    ``warmup_fn(w)``, when given, replaces the eager warm-up step
+    ``prepare_fn(w % K); calls[w % K]()``, so a caller can warm up on inputs
+    that are never timed.
 
     ``timed_run.after_sample(outputs)`` runs after every reported sample, while
-    the buffers hold the operator graph's results (before the reference graph
-    overwrites them when the operator ran first); ``outputs`` is the list of the
-    calls' captured return values. After the reported samples the reference
-    graph is replayed once more, so on return every call's buffers hold what a
-    call that never ran the operator leaves behind; a caller checks that its
-    output checks reject them. ``rerun()`` replays the operator graph and
-    ``rerun_ms()`` measures one more sample. ``before_sample`` is rejected.
+    the buffers hold the operator group's results (before the reference group
+    overwrites them when the operator group ran first); ``outputs`` is the list
+    of the calls' captured return values. After the reported samples the
+    reference group is replayed once more, so on return every call's buffers
+    hold what a call that never ran the operator leaves behind; a caller checks
+    that its output checks reject them. ``rerun()`` replays the operator group
+    and ``rerun_ms()`` measures one more sample. ``before_sample`` is rejected.
 
     There is no Event fallback: ``AKA_BENCHMARK_FORCE_EVENT=1``, a capture
     failure, an invalid Event span or a median below the empty-graph floor raise.
@@ -1597,7 +1601,7 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
         timed_run._bind(None, None)
     calls = list(calls)
     if not calls or not all(callable(call) for call in calls):
-        raise ValueError("amortized cold-cache timing needs one callable per call of a replay")
+        raise ValueError("amortized cold-cache timing needs one callable per call of a sample")
     if type(warmup) is not int or warmup < 0 or type(repetition) is not int or repetition < 1:
         raise ValueError("amortized cold-cache timing requires integer warmup >= 0 and repetition >= 1")
     if os.environ.get(_FORCE_EVENT_ENV) == "1":
@@ -1608,35 +1612,43 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
         raise ValueError("cache eviction and graph replay must use the same current device")
     if getattr(timed_run, "before_sample", None) is not None:
         raise ValueError("cold-cache snapshots belong in prepare_fn, before cache eviction")
-    if prepare_fn is not None and not callable(prepare_fn):
-        raise TypeError("prepare_fn must be callable or None")
+    for name, callback in (("prepare_fn", prepare_fn), ("warmup_fn", warmup_fn)):
+        if callback is not None and not callable(callback):
+            raise TypeError(f"{name} must be callable or None")
     _, after_observer = _sample_observers(timed_run)
     _require_gpu_timing()
     count = len(calls)
 
-    def sequence(with_operator: bool) -> list[Any]:
-        returned = []
-        for index, call in enumerate(calls):
-            if prepare_fn is not None:
-                prepare_fn(index)
-            cache_flush()
-            if with_operator:
-                returned.append(call())
-        return returned
+    def one_call(index: int, with_operator: bool) -> Any:
+        if prepare_fn is not None:
+            prepare_fn(index)
+        cache_flush()
+        return calls[index]() if with_operator else None
 
     # Eager warm-up compiles and loads every specialization outside capture.
     for index in range(warmup):
-        if prepare_fn is not None:
-            prepare_fn(index % count)
-        calls[index % count]()
+        if warmup_fn is not None:
+            warmup_fn(index)
+        else:
+            if prepare_fn is not None:
+                prepare_fn(index % count)
+            calls[index % count]()
     torch.cuda.synchronize()
 
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
-    holder: list[Any] = []
+    pool = torch.cuda.graph_pool_handle()
+    operator_graphs, reference_graphs, captured_outputs = [], [], []
     try:
-        operator_graph = _capture_graph(lambda: sequence(True), 1, stream, output_holder=holder)
-        reference_graph = _capture_graph(lambda: sequence(False), 1, stream)
+        for index in range(count):
+            holder: list[Any] = []
+            operator_graphs.append(_capture_graph(lambda index=index: one_call(index, True), 1, stream,
+                                                  output_holder=holder, pool=pool))
+            if len(holder) != 1:
+                raise RuntimeError("the operator graph did not capture its call")
+            captured_outputs.append(holder[0])
+        for index in range(count):
+            reference_graphs.append(_capture_graph(lambda index=index: one_call(index, False), 1, stream))
     except Exception as exc:
         try:
             torch.cuda.synchronize()
@@ -1645,24 +1657,21 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
         detail = str(exc).replace("\n", " ")[:300]
         raise RuntimeError(f"amortized cold-cache timing: CUDA-graph capture failed: "
                            f"{type(exc).__name__}: {detail}") from exc
-    captured_outputs = holder[0] if holder else []
-    if len(captured_outputs) != count:
-        raise RuntimeError("amortized cold-cache timing: the operator graph did not capture every call")
 
-    # Prime both graph executables outside the reported samples.
+    # Prime every graph executable outside the reported samples.
     for _ in range(2):
-        _amortized_replay_ms(reference_graph, stream)
-        _amortized_replay_ms(operator_graph, stream)
+        _amortized_group_ms(reference_graphs, stream, cache_flush)
+        _amortized_group_ms(operator_graphs, stream, cache_flush)
 
     def one_sample(operator_first: bool, observe: Callable[[], Any] | None) -> tuple[float, float]:
         if operator_first:
-            operator_ms = _amortized_replay_ms(operator_graph, stream)
+            operator_ms = _amortized_group_ms(operator_graphs, stream, cache_flush)
             if observe is not None:
                 observe()
-            reference_ms = _amortized_replay_ms(reference_graph, stream)
+            reference_ms = _amortized_group_ms(reference_graphs, stream, cache_flush)
         else:
-            reference_ms = _amortized_replay_ms(reference_graph, stream)
-            operator_ms = _amortized_replay_ms(operator_graph, stream)
+            reference_ms = _amortized_group_ms(reference_graphs, stream, cache_flush)
+            operator_ms = _amortized_group_ms(operator_graphs, stream, cache_flush)
             if observe is not None:
                 observe()
         return operator_ms, reference_ms
@@ -1677,7 +1686,7 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
         reference_spans.append(reference_ms)
         values.append((operator_ms - reference_ms) / count)
     # The control replay: every call's buffers now hold what no operator call wrote.
-    _amortized_replay_ms(reference_graph, stream)
+    _amortized_group_ms(reference_graphs, stream, cache_flush)
     torch.cuda.synchronize()
     median_ms = statistics.median(values)
     if not all(math.isfinite(value) for value in values) or median_ms < _EMPTY_GRAPH_FLOOR_MS:
@@ -1691,14 +1700,16 @@ def benchmark_cuda_graph_cold_cache_amortized_samples(
         "benchmark_cache_policy": "read_only_eviction_before_each_invocation",
         "benchmark_cache_flush_bytes": cache_flush.nbytes,
         "benchmark_cache_flush_in_timing": False,
-        "benchmark_metric": "gpu_event_graph_span_difference_per_call",
+        "benchmark_metric": "gpu_event_span_difference_per_call",
+        "benchmark_graphs": "one_per_call",
+        "benchmark_trailing_eviction": True,
         "benchmark_replay_order": "alternating",
         "benchmark_operator_graph_ms": operator_spans,
         "benchmark_reference_graph_ms": reference_spans,
     }
     if timed_run is not None:
         def _replay_once() -> Any:
-            _amortized_replay_ms(operator_graph, stream)
+            _amortized_group_ms(operator_graphs, stream, cache_flush)
             torch.cuda.synchronize()
             return captured_outputs
 

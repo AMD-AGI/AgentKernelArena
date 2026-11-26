@@ -21,12 +21,11 @@ COLD_CACHE_POLICY = {
     "benchmark_effective_repeats": 1,
     "benchmark_metric": "gpu_event_graph_span",
 }
-# The amortized method's calls per replay is chosen per case and arm from a
-# single-call estimate; the per-call median does not depend on it, so it is
-# validated but is not part of the identity.
 AMORTIZED_COLD_CACHE_POLICY = {
     **_EVICTION_POLICY,
-    "benchmark_metric": "gpu_event_graph_span_difference_per_call",
+    "benchmark_metric": "gpu_event_span_difference_per_call",
+    "benchmark_graphs": "one_per_call",
+    "benchmark_trailing_eviction": True,
     "benchmark_replay_order": "alternating",
 }
 
@@ -37,6 +36,8 @@ def cold_cache_identity(metadata: dict, method: str | None = None) -> tuple:
     ``method`` is the case row's ``benchmark_method``; without it the metadata's
     own is used, and the two must agree. The identity starts with the method, so
     the single-call and the amortized cold-cache methods never compare equal.
+    The amortized method's calls per sample is part of it: the per-call time
+    depends slightly on the count, so differing counts are never paired.
     """
     recorded = metadata.get("benchmark_method")
     if method is None:
@@ -58,7 +59,10 @@ def cold_cache_identity(metadata: dict, method: str | None = None) -> tuple:
     nbytes = metadata.get("benchmark_cache_flush_bytes")
     if type(nbytes) is not int or nbytes <= 0 or nbytes % 16384:
         raise ValueError("cold-cache timing requires a positive eviction size divisible by 16384")
-    return (method,) + tuple(metadata[key] for key in policy) + (nbytes,)
+    identity = (method,) + tuple(metadata[key] for key in policy) + (nbytes,)
+    if method == AMORTIZED_COLD_CACHE_METHOD:
+        identity += (metadata["benchmark_calls_per_replay"],)
+    return identity
 
 # Serving runtime limits a task may tighten or relax in its runtime lock. The
 # adapter is materialized beside the task, so this table is the single source
