@@ -17,7 +17,7 @@ The following hardware configurations are supported and tested.
 | --- | --- | --- |
 | MI300X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI300X` |
 | MI325X | 7.2 (Bundled in the selected SGLang image.) | `target_gpu_model: MI325X` |
-| MI355X | 10.0 (Bundled in the selected SGLang image.) | `target_gpu_model: MI355X` |
+| MI355X | 10.0 (Bundled in the selected SGLang image.) | `target_gpu_model: MI355X`. Known issue: some hipBLASLt bfloat16/float16 GEMM kernels in this image return wrong results ([rocm-libraries#14129](https://github.com/ROCm/rocm-libraries/issues/14129)). Kernel-task scoring does not reach them, and the end-to-end serving tasks run in their own ROCm 7.2.0 images. See the [MI355X runtime guide](mi355x-runtime.md#known-issue-hipblaslt-bfloat16float16-gemm-kernels). |
 | RDNA4 (`gfx1201`, 16 GB tested) | Pinned in the [RDNA4 recipe](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/Dockerfile) | `target_gpu_model: RDNA4`; HIP/Triton task runtime checks, with limits in the [recipe guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md). |
 | Radeon PRO W7900 and W7900 Dual Slot (`gfx1100`, 48 GB) | Pinned in the [RDNA4 recipe](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/Dockerfile) (same image) | `target_gpu_model: W7900`; every visible GPU must report `gfx1100` and one of the two W7900 marketing names. Other `gfx1100` boards (W7800, RX 7900 series) and `gfx1101`/`gfx1102` are refused. See the [recipe guide](https://github.com/AMD-AGI/AgentKernelArena/blob/main/docker/rdna4/README.md). |
 

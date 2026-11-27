@@ -58,6 +58,15 @@ This topic summarizes the features available in each AgentKernelArena release. F
   `Aiter-task-mi300`, `image_kernel`) are replaced by the new tasks; no compatibility layer is
   provided. The end-to-end serving tasks keep schema v2.
 
+### Known issue: hipBLASLt in the MI355X image
+
+- The MI355X image's hipBLASLt has bfloat16/float16 GEMM kernels that return wrong results at a few exact sizes
+  ([rocm-libraries#14129](https://github.com/ROCm/rocm-libraries/issues/14129), fixed by
+  [PR #14147](https://github.com/ROCm/rocm-libraries/pull/14147), in no ROCm release as of 2026-11-27; backport
+  request: [rocm-libraries#16919](https://github.com/ROCm/rocm-libraries/issues/16919)). Kernel-task references compute their products in float64 (rocBLAS), no task case
+  uses an affected size, and the end-to-end serving tasks run in ROCm 7.2.0 images without these kernels. See the
+  [MI355X runtime guide](mi355x-runtime.md#known-issue-hipblaslt-bfloat16float16-gemm-kernels).
+
 ### Agent sandbox
 
 - Optimizing agents now run confined to their task workspace with Linux
