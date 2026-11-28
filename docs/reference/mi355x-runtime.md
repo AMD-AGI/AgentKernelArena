@@ -29,6 +29,41 @@ source hashes. Image-acquired AITER trees can change even when task config and
 candidate bytes do not. Tasks that require a vLLM installation still need their
 explicitly documented runtime; the SGLang default does not provide it.
 
+## Known issue: hipBLASLt bfloat16/float16 GEMM kernels
+
+The image's hipBLASLt (`100401-8d1ae90e`, from ROCm/rocm-libraries `8d1ae90e`) has the race reported in
+[rocm-libraries#14129](https://github.com/ROCm/rocm-libraries/issues/14129) and fixed by
+[PR #14147](https://github.com/ROCm/rocm-libraries/pull/14147) (merge commit `46a10bc9cd28`), which postdates this build.
+As of 2026-11-27, no ROCm (TheRock) release up to and including 10.2 contains the fix. Backport request:
+[rocm-libraries#16919](https://github.com/ROCm/rocm-libraries/issues/16919).
+
+- **Affected kernels:** bfloat16/float16 TN GEMMs with macro tile 256x160x64, the custom main-loop schedule (`_CMS_`
+  in the kernel name) and DirectToLds loads (`DTLA1`/`DTLB1`). In the kernel's naming, Tensile's A is torch's `b` (the
+  `[n, k]` weight) and Tensile's B is torch's `a` (the activations). The prologue's last prefetch of `a` can still be
+  in flight when the main loop first reads it from LDS, so rows of the output tile use stale values.
+- **Sizes the default heuristic sends to them (no TunableOp):** hipBLASLt's exact-size table for MI355X maps bfloat16
+  (M, N, K) = (1280, 7680, 3840), (1919, 5120, 4096), (2056, 8192, 2048), (1792, 5120, 256) and (150000, 1024, 1024),
+  and float16 (6144, 1536, 3072), to these kernels. At the first three, with two alternating input sets,
+  `torch.matmul` returned wrong results in 13,818 of 13,824 calls in this image; the other three sizes were not run in
+  this image. Other sizes use other kernels; PyTorch TunableOp can also select the affected kernels at other sizes.
+- **Kernel tasks are not affected.** For the 384 schema-v3 kernel tasks, a GPU scan of every reference at every
+  case found only float64 matrix products, which PyTorch sends to rocBLAS, not hipBLASLt. The QA calibration
+  probe evaluates references in float32, which selects none of the affected kernels. No task case has an affected
+  size. Candidates cannot call library GEMMs, baselines are vendored kernels, and AgentKernelArena does not enable
+  TunableOp.
+- **End-to-end serving tasks are not affected.** `qwen3_0_6b_sglang` and `qwen3_next_80b_sglang` run in their own
+  locked ROCm 7.2.0 images (hipBLASLt `1.2.1.70200`), whose hipBLASLt library contains no kernel of the affected
+  schedule. A Magpie catalog workload runs in the image its run config binds; a binding to an image with this
+  hipBLASLt build could reach the affected kernels if a model GEMM has one of the sizes above.
+- **Outside scoring:** a bfloat16/float16 `torch.matmul` or `F.linear` in this image (for example an agent's own test)
+  can hit the affected kernels at the sizes above. Do not use a reduced-precision PyTorch GEMM as an oracle, and do
+  not set `PYTORCH_TUNABLEOP_ENABLED` in this image.
+- **Image update:** no qualifying release image exists yet. When one whose hipBLASLt contains PR #14147 is
+  available, check the sizes above against a float64 reference before switching the `gfx950` default, then
+  requalify as described in the last section of this guide. The
+  [earlier runtime qualification record](runtime-upgrade-qualification.md) shows the procedure used for a previous
+  image change.
+
 ## SDK and profiling
 
 The runner selects SDK core libraries before starting workloads and routes
